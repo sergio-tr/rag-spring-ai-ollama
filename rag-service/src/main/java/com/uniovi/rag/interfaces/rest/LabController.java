@@ -137,6 +137,10 @@ public class LabController {
         return legacyEvaluationsRemoved();
     }
 
+    /**
+     * Experimental preset catalog aligned with Chat ({@code GET …/chat/presets/catalog}) via {@link LabExperimentalPresetCatalogService}.
+     * Rows derive semantics from {@link com.uniovi.rag.service.evaluation.preset.ExperimentalPresetCanonicalCatalog}; DB-backed labels come from the workbook snapshot when present.
+     */
     @GetMapping("/experimental-presets")
     public List<ExperimentalPresetCatalogItemDto> experimentalPresets() {
         return experimentalPresetCatalogService.list();

@@ -59,16 +59,29 @@ class LabExperimentalPresetCatalogServiceTest {
         assertThat(rows).extracting("code").doesNotHaveDuplicates();
         assertThat(rows).allMatch(r -> r.productPresetId() != null && !r.productPresetId().isBlank());
         assertThat(rows).allMatch(r -> r.labOnly() == (r.labSelectable() && !r.chatSelectable()));
+        var p0 = rows.stream().filter(r -> "P0".equals(r.code())).findFirst().orElseThrow();
+        assertThat(p0.corpusRequired()).isTrue();
+        assertThat(p0.requiresSnapshot()).isTrue();
+        assertThat(p0.requiresProjectDocuments()).isTrue();
+        assertThat(p0.singleTurnBenchmarkSelectable()).isTrue();
+
+        var p1 = rows.stream().filter(r -> "P1".equals(r.code())).findFirst().orElseThrow();
+        assertThat(p1.corpusRequired()).isTrue();
+        assertThat(p1.requiresSnapshot()).isTrue();
+        assertThat(p1.singleTurnBenchmarkSelectable()).isTrue();
+
         var p13 = rows.stream().filter(r -> "P13".equals(r.code())).findFirst().orElseThrow();
         assertThat(p13.supported()).isTrue();
-        assertThat(p13.supportStatus()).isEqualTo("REQUIRES_MULTI_TURN");
+        assertThat(p13.supportStatus()).isEqualTo("FUTURE_MULTI_TURN_NOT_SELECTABLE");
         assertThat(p13.reasonIfUnsupported()).isNull();
         assertThat(p13.chatSelectable()).isTrue();
         assertThat(p13.requiresMultiTurn()).isTrue();
+        assertThat(p13.singleTurnBenchmarkSelectable()).isFalse();
 
         var p14 = rows.stream().filter(r -> "P14".equals(r.code())).findFirst().orElseThrow();
         assertThat(p14.chatSelectable()).isTrue();
         assertThat(p14.requiresMultiTurn()).isTrue();
+        assertThat(p14.singleTurnBenchmarkSelectable()).isFalse();
 
         var p11 = rows.stream().filter(r -> "P11".equals(r.code())).findFirst().orElseThrow();
         var p12 = rows.stream().filter(r -> "P12".equals(r.code())).findFirst().orElseThrow();

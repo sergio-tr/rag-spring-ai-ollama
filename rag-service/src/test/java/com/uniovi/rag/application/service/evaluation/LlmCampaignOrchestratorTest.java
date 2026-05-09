@@ -130,7 +130,12 @@ class LlmCampaignOrchestratorTest {
                         false,
                         false,
                         true,
-                        true);
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
 
         BenchmarkJobAccepted accepted = orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req);
         assertThat(accepted.campaignId()).isPresent();

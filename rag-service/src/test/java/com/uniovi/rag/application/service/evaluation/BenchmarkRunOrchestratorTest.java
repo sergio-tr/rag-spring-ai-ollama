@@ -14,6 +14,7 @@ import com.uniovi.rag.infrastructure.persistence.RagPresetRepository;
 import com.uniovi.rag.infrastructure.persistence.ResolvedConfigSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
+import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
 import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
 import com.uniovi.rag.service.async.AsyncTaskService;
@@ -97,7 +98,12 @@ class BenchmarkRunOrchestratorTest {
                         false,
                         false,
                         true,
-                        true);
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -164,7 +170,12 @@ class BenchmarkRunOrchestratorTest {
                         false,
                         false,
                         true,
-                        true);
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(LabJobConcurrencyException.class);
@@ -211,7 +222,12 @@ class BenchmarkRunOrchestratorTest {
                         false,
                         false,
                         true,
-                        true);
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "ADMIN", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -269,7 +285,12 @@ class BenchmarkRunOrchestratorTest {
                         false,
                         false,
                         true,
-                        true);
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -334,7 +355,12 @@ class BenchmarkRunOrchestratorTest {
                         false,
                         false,
                         true,
-                        true);
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(LabDatasetGateException.class)
@@ -383,7 +409,12 @@ class BenchmarkRunOrchestratorTest {
                         true,
                         true,
                         true,
-                        true);
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -432,7 +463,12 @@ class BenchmarkRunOrchestratorTest {
                         true,
                         false,
                         true,
-                        true);
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -440,6 +476,114 @@ class BenchmarkRunOrchestratorTest {
                         ex ->
                                 assertThat(((ResponseStatusException) ex).getStatusCode())
                                         .isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void startJsonBenchmark_classpathBootstrap_rejectsNonRagKind() {
+        BenchmarkRunOrchestrator orch =
+                new BenchmarkRunOrchestrator(
+                        userRepository,
+                        evaluationDatasetRepository,
+                        evaluationCampaignRepository,
+                        evaluationRunRepository,
+                        resolvedConfigSnapshotRepository,
+                        knowledgeIndexSnapshotRepository,
+                        ragPresetRepository,
+                        asyncTaskRepository,
+                        asyncTaskService,
+                        labJobLifecycleService,
+                        projectAccessService,
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser);
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "n",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        false,
+                        null,
+                        false,
+                        false,
+                        true,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null);
+
+        assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.LLM_JUDGE_QA, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((ResponseStatusException) ex).getReason())
+                                        .isEqualTo(LabCorpusBootstrapErrors.UNSUPPORTED_BENCHMARK_KIND));
+    }
+
+    @Test
+    void startJsonBenchmark_classpathBootstrap_requiresProjectForRag() {
+        BenchmarkRunOrchestrator orch =
+                new BenchmarkRunOrchestrator(
+                        userRepository,
+                        evaluationDatasetRepository,
+                        evaluationCampaignRepository,
+                        evaluationRunRepository,
+                        resolvedConfigSnapshotRepository,
+                        knowledgeIndexSnapshotRepository,
+                        ragPresetRepository,
+                        asyncTaskRepository,
+                        asyncTaskService,
+                        labJobLifecycleService,
+                        projectAccessService,
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser);
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        UUID.randomUUID(),
+                        null,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "n",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        false,
+                        null,
+                        false,
+                        false,
+                        true,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null);
+
+        assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((ResponseStatusException) ex).getReason())
+                                        .isEqualTo(LabCorpusBootstrapErrors.REQUIRES_PROJECT));
     }
 
     private static byte[] demoReferenceBundleBytes() throws Exception {

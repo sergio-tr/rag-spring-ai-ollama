@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,6 +27,9 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 
 public abstract class AbstractEvaluationService implements EvaluationService {
+
+    /** Bridge telemetry into Lab RAG preset runner metrics payloads (stripped before persistence exporters unless merged). */
+    public static final String EVALUATION_CHAT_TELEMETRY_ROW_KEY = "_evaluation_chat_telemetry";
 
     /** Removed Map/Q&A classpath loop ({@code evaluate}, {@code evaluateWithConfiguration}, {@code evaluateAllConfigurations}). */
     static final String LEGACY_MAP_EVALUATION_REMOVED =
@@ -304,6 +308,11 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 result.put(BenchmarkResultRowKeys.DATASET_QUESTION_ID, q.id());
                 result.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
                 result.put(BenchmarkResultRowKeys.LATENCY_MS, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
+                if (queryResponse != null
+                        && queryResponse.getChatTelemetry() != null
+                        && !queryResponse.getChatTelemetry().isEmpty()) {
+                    result.put(EVALUATION_CHAT_TELEMETRY_ROW_KEY, new LinkedHashMap<>(queryResponse.getChatTelemetry()));
+                }
                 resultsForPrompt.add(result);
                 logEvalQuestion(questionText, queryResponse, result);
             } catch (RuntimeException ex) {

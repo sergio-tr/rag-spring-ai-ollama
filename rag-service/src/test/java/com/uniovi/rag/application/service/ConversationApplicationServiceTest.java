@@ -337,6 +337,10 @@ class ConversationApplicationServiceTest {
                                         List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
                                         false,
                                         true,
+                                        true,
+                                        false,
+                                        false,
+                                        false,
                                         true)));
 
         ResponseStatusException ex =
@@ -385,7 +389,11 @@ class ConversationApplicationServiceTest {
                                         List.of("EXECUTED", "FAILED", "SKIPPED"),
                                         true,
                                         true,
-                                        false)));
+                                        false,
+                                        true,
+                                        true,
+                                        true,
+                                        true)));
 
         service.patchConversation(
                 userId,
@@ -427,6 +435,10 @@ class ConversationApplicationServiceTest {
                                         Map.of(),
                                         List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
                                         false,
+                                        true,
+                                        true,
+                                        true,
+                                        true,
                                         true,
                                         true)));
 
@@ -549,6 +561,10 @@ class ConversationApplicationServiceTest {
                                         List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
                                         false,
                                         true,
+                                        true,
+                                        true,
+                                        true,
+                                        true,
                                         true)));
 
         ResponseStatusException ex =
@@ -597,7 +613,11 @@ class ConversationApplicationServiceTest {
                                         List.of("EXECUTED", "FAILED", "SKIPPED"),
                                         true,
                                         true,
-                                        false)));
+                                        false,
+                                        true,
+                                        true,
+                                        true,
+                                        true)));
 
         when(conversationRepository.save(any(ConversationEntity.class)))
                 .thenAnswer(

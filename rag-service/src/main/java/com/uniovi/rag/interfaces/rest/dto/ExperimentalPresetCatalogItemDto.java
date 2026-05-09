@@ -19,4 +19,8 @@ public record ExperimentalPresetCatalogItemDto(
         List<String> allowedOutcomes,
         boolean chatSelectable,
         boolean labSelectable,
-        boolean labOnly) {}
+        boolean labOnly,
+        boolean corpusRequired,
+        boolean requiresSnapshot,
+        boolean requiresProjectDocuments,
+        boolean singleTurnBenchmarkSelectable) {}

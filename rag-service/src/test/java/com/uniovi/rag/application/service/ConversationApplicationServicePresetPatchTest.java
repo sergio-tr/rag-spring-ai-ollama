@@ -116,7 +116,11 @@ class ConversationApplicationServicePresetPatchTest {
                                         List.of("EXECUTED"),
                                         true,
                                         true,
-                                        false)));
+                                        false,
+                                        true,
+                                        true,
+                                        true,
+                                        true)));
 
         // Should not throw.
         sut.patchConversation(uid, cid, new PatchConversationRequest(null, presetId.toString(), null, null, null, null, null));
@@ -168,6 +172,10 @@ class ConversationApplicationServicePresetPatchTest {
                                         Map.of(),
                                         List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
                                         false,
+                                        true,
+                                        true,
+                                        true,
+                                        true,
                                         true,
                                         true)));
 
