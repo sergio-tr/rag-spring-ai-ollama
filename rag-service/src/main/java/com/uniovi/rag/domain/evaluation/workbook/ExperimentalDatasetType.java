@@ -5,7 +5,7 @@ package com.uniovi.rag.domain.evaluation.workbook;
  * Distinct from persisted {@link com.uniovi.rag.domain.EvaluationDatasetType} (RAG / LLM_ONLY / CLASSIFIER).
  */
 public enum ExperimentalDatasetType {
-    /** Full internal TFG bundle with all protocol sheets. */
+    /** Full internal bundle with all protocol sheets. */
     REFERENCE_BUNDLE,
     /** Primary sheet {@code llm_reader_questions}. */
     LLM_MODEL_BASELINE,

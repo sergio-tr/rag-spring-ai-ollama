@@ -15,7 +15,7 @@ import java.util.Locale;
 /**
  * Lab guardrails that block demo / empty / incomplete evaluation datasets.
  *
- * <p>This is intentionally strict for REFERENCE_BUNDLE: it is the canonical TFG dataset and must never degrade
+ * <p>This is intentionally strict for REFERENCE_BUNDLE: it is the canonical dataset and must never degrade
  * into a 1-row demo workbook.
  */
 public final class LabDatasetGateValidator {
@@ -79,7 +79,7 @@ public final class LabDatasetGateValidator {
                 validateRagDimensions(wb, report);
             }
             case REFERENCE_BUNDLE -> {
-                // Classpath canonical dataset: enforce mandatory TFG minimums at load time (drives /lab/status validity).
+                // Classpath canonical dataset: enforce mandatory minimums at load time (drives /lab/status validity).
                 if (wb.llmReaderQuestions().size() < 30) {
                     report.add(tooSmall(WorkbookSheetNames.LLM_READER_QUESTIONS, 0, "REFERENCE_BUNDLE must include at least 30 llm_reader_questions rows"));
                 }
@@ -208,7 +208,7 @@ public final class LabDatasetGateValidator {
                     "",
                     0,
                     "",
-                    "Demo content detected (RAG_Q1 / sample acta / Evidence: Acta sample 1). This dataset must not be used for TFG Lab benchmarks."));
+                    "Demo content detected (RAG_Q1 / sample acta / Evidence: Acta sample 1). This dataset must not be used for Lab benchmarks."));
         }
     }
 

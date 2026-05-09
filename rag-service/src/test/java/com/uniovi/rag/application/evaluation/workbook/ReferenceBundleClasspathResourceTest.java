@@ -35,7 +35,7 @@ class ReferenceBundleClasspathResourceTest {
                             WorkbookSheetNames.RESULT_SCHEMA,
                             WorkbookSheetNames.SUMMARY_COUNTS);
 
-            // Canonical TFG dataset row-count expectations (guards against accidental demo bundle regressions).
+            // Canonical dataset row-count expectations (guards against accidental demo bundle regressions).
             assertThat(parsed.workbook().llmReaderQuestions()).hasSize(36);
             assertThat(parsed.workbook().embeddingRetrievalQueries()).hasSize(60);
             assertThat(parsed.workbook().ragPresetQuestionsEnriched()).hasSize(60);
@@ -43,7 +43,7 @@ class ReferenceBundleClasspathResourceTest {
             assertThat(parsed.workbook().corpusDocuments()).hasSize(5);
             assertThat(parsed.workbook().ragPresetCatalog()).hasSize(15);
 
-            // RAG questions must carry dataset dimensions (no blank query_type/difficulty in the canonical TFG bundle).
+            // RAG questions must carry dataset dimensions (no blank query_type/difficulty in the canonical bundle).
             assertThat(parsed.workbook().ragPresetQuestionsEnriched())
                     .allSatisfy(q -> {
                         assertThat(q.queryType()).isPresent();
