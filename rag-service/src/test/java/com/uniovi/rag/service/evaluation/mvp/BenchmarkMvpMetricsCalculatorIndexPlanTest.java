@@ -8,6 +8,7 @@ import com.uniovi.rag.application.service.evaluation.LabEvaluationRunService;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -100,7 +101,56 @@ class BenchmarkMvpMetricsCalculatorIndexPlanTest {
                         "reindexErrorCode",
                         "reindexErrorReason",
                         "presetIndexRequirements",
-                        "activeSnapshotCapabilities");
+                        "activeSnapshotCapabilities",
+                        "presetLabel",
+                        "productPresetId",
+                        "workflowName",
+                        "activeFeatures",
+                        "groundingPolicy");
+    }
+
+    @Test
+    void csv_row_prefers_skipped_reason_fields_from_metrics_payload_when_present() {
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        EvaluationResultEntity item = new EvaluationResultEntity();
+        item.setBenchmarkKind("RAG_PRESET_END_TO_END");
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.SKIPPED.name());
+        mp.put(BenchmarkResultRowKeys.ERROR_CODE, "LEGACY_ROW_CODE");
+        mp.put(BenchmarkResultRowKeys.REASON, "Legacy human reason.");
+        mp.put("skippedReasonCode", "CORPUS_REQUIRED");
+        mp.put("skippedReason", "Canonical skip explanation.");
+        item.setMetricsPayload(mp);
+
+        Map<String, String> row = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(item, run);
+        assertThat(row.get("skipReasonCode")).isEqualTo("CORPUS_REQUIRED");
+        assertThat(row.get("skipReason")).contains("Canonical skip explanation");
+    }
+
+    @Test
+    void csv_row_exports_traceability_cells_when_metrics_payload_populated() {
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        EvaluationResultEntity item = new EvaluationResultEntity();
+        item.setBenchmarkKind("RAG_PRESET_END_TO_END");
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put("presetLabel", "P8 label");
+        mp.put("productPresetId", "cafe0001-0001-4001-8001-000000000018");
+        mp.put("workflowName", "ChunkDenseMetadataWorkflow");
+        mp.put("activeFeatures", Map.of("useRetrieval", true));
+        mp.put("materializationStrategy", "HYBRID");
+        mp.put("corpusChars", 1200);
+        mp.put("selectedSnapshotIds", List.of("snap-a"));
+        mp.put("groundingPolicy", "EVIDENCE_FIRST");
+        item.setMetricsPayload(mp);
+
+        Map<String, String> csvRow = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(item, run);
+        assertThat(csvRow.get("presetLabel")).isEqualTo("P8 label");
+        assertThat(csvRow.get("workflowName")).isEqualTo("ChunkDenseMetadataWorkflow");
+        assertThat(csvRow.get("materializationStrategy")).isEqualTo("HYBRID");
+        assertThat(csvRow.get("corpusChars")).isEqualTo("1200");
+        assertThat(csvRow.get("selectedSnapshotIds")).isEqualTo("snap-a");
+        assertThat(csvRow.get("groundingPolicy")).isEqualTo("EVIDENCE_FIRST");
+        assertThat(csvRow.get("activeFeatures")).contains("useRetrieval");
     }
 }
 

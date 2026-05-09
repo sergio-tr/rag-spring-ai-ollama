@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Per-row MVP metrics for TFG exports — computed from persisted {@link EvaluationResultEntity} (+ run fallbacks).
+ * Per-row MVP metrics for exports — computed from persisted {@link EvaluationResultEntity} (+ run fallbacks).
  */
 public final class BenchmarkMvpMetricsCalculator {
 
@@ -154,6 +154,33 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("reindexErrorReason", csvVal(mp.get("reindexErrorReason")));
         row.put("presetIndexRequirements", jsonCell(mp.get("presetIndexRequirements")));
         row.put("activeSnapshotCapabilities", jsonCell(mp.get("activeSnapshotCapabilities")));
+
+        row.put("presetLabel", firstNonBlank(str(mp.get("presetLabel")), str(mp.get(BenchmarkResultRowKeys.PRESET_LABEL))));
+        row.put("productPresetId", csvVal(mp.get("productPresetId")));
+        row.put("workflowName", csvVal(mp.get("workflowName")));
+        row.put("activeFeatures", jsonCell(mp.get("activeFeatures")));
+        row.put("useRetrieval", csvVal(mp.get("useRetrieval")));
+        row.put("naiveFullCorpusInPromptEnabled", csvVal(mp.get("naiveFullCorpusInPromptEnabled")));
+        row.put("materializationStrategy", csvVal(mp.get("materializationStrategy")));
+        row.put("metadataEnabled", csvVal(mp.get("metadataEnabled")));
+        row.put("expansionEnabled", csvVal(mp.get("expansionEnabled")));
+        row.put("nerEnabled", csvVal(mp.get("nerEnabled")));
+        row.put("reasoningEnabled", csvVal(mp.get("reasoningEnabled")));
+        row.put("toolsEnabled", csvVal(mp.get("toolsEnabled")));
+        row.put("functionCallingEnabled", csvVal(mp.get("functionCallingEnabled")));
+        row.put("rankerEnabled", csvVal(mp.get("rankerEnabled")));
+        row.put("postRetrievalEnabled", csvVal(mp.get("postRetrievalEnabled")));
+        row.put("useAdvisor", csvVal(mp.get("useAdvisor")));
+        row.put("adaptiveRoutingEnabled", csvVal(mp.get("adaptiveRoutingEnabled")));
+        row.put("judgeEnabled", csvVal(mp.get("judgeEnabled")));
+        row.put("clarificationEnabled", csvVal(mp.get("clarificationEnabled")));
+        row.put("memoryEnabled", csvVal(mp.get("memoryEnabled")));
+        row.put("corpusRequired", csvVal(mp.get("corpusRequired")));
+        row.put("corpusAvailable", csvVal(mp.get("corpusAvailable")));
+        row.put("corpusChars", csvVal(mp.get("corpusChars")));
+        row.put("corpusTruncated", csvVal(mp.get("corpusTruncated")));
+        row.put("selectedSnapshotIds", joinIds(mp.get("selectedSnapshotIds")));
+        row.put("groundingPolicy", csvVal(mp.get("groundingPolicy")));
         return row;
     }
 
@@ -211,6 +238,10 @@ public final class BenchmarkMvpMetricsCalculator {
         if (!BenchmarkItemOutcome.SKIPPED.name().equals(outcome)) {
             return "";
         }
+        String fromMetrics = str(mp.get("skippedReasonCode"));
+        if (!fromMetrics.isBlank()) {
+            return fromMetrics;
+        }
         String code = str(mp.get(BenchmarkResultRowKeys.ERROR_CODE));
         return code.isBlank() ? "SKIPPED" : code;
     }
@@ -218,6 +249,10 @@ public final class BenchmarkMvpMetricsCalculator {
     private static String skipReason(String outcome, Map<String, Object> mp) {
         if (!BenchmarkItemOutcome.SKIPPED.name().equals(outcome)) {
             return "";
+        }
+        String fromMetrics = str(mp.get("skippedReason"));
+        if (!fromMetrics.isBlank()) {
+            return truncate(fromMetrics, 200);
         }
         String reason = str(mp.get(BenchmarkResultRowKeys.REASON));
         if (!reason.isBlank()) {
