@@ -3,6 +3,9 @@ package com.uniovi.rag.service.async.lab;
 import com.uniovi.rag.application.service.evaluation.BenchmarkDatasetResolutionException;
 import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetResolver;
 import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
+import com.uniovi.rag.application.service.evaluation.lab.LabClasspathCorpusBootstrapService;
+import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
+import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapResult;
 import com.uniovi.rag.application.service.knowledge.ProjectIndexOperationLockService;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
@@ -37,6 +40,7 @@ class EvalRagJobHandler implements LabJobHandler {
     private final TypedRagPresetBenchmarkOrchestrator typedRagPresetBenchmarkOrchestrator;
     private final AsyncTaskCancellationService cancellationService;
     private final ProjectIndexOperationLockService projectIndexOperationLockService;
+    private final LabClasspathCorpusBootstrapService labClasspathCorpusBootstrapService;
 
     EvalRagJobHandler(
             RagFeatureConfiguration featureConfiguration,
@@ -46,7 +50,8 @@ class EvalRagJobHandler implements LabJobHandler {
             ExperimentalDatasetResolver experimentalDatasetResolver,
             TypedRagPresetBenchmarkOrchestrator typedRagPresetBenchmarkOrchestrator,
             AsyncTaskCancellationService cancellationService,
-            ProjectIndexOperationLockService projectIndexOperationLockService) {
+            ProjectIndexOperationLockService projectIndexOperationLockService,
+            LabClasspathCorpusBootstrapService labClasspathCorpusBootstrapService) {
         this.featureConfiguration = featureConfiguration;
         this.implementationProperties = implementationProperties;
         this.canonicalPersistence = canonicalPersistence;
@@ -55,6 +60,7 @@ class EvalRagJobHandler implements LabJobHandler {
         this.typedRagPresetBenchmarkOrchestrator = typedRagPresetBenchmarkOrchestrator;
         this.cancellationService = cancellationService;
         this.projectIndexOperationLockService = projectIndexOperationLockService;
+        this.labClasspathCorpusBootstrapService = labClasspathCorpusBootstrapService;
     }
 
     @Override
@@ -77,6 +83,48 @@ class EvalRagJobHandler implements LabJobHandler {
             }
             mutation.appendProgressLine(taskId, "Resolving typed dataset for RAG_PRESET_END_TO_END…");
             var runWithDataset = evaluationRunRepository.findByIdFetchDataset(evaluationRunId).orElse(null);
+            if (runWithDataset != null && corpusBootstrapPolicyEnabled(runWithDataset)) {
+                UUID uid =
+                        runWithDataset.getUser() != null && runWithDataset.getUser().getId() != null
+                                ? runWithDataset.getUser().getId()
+                                : null;
+                if (uid == null) {
+                    throw new IllegalStateException("EVAL_RAG_CORPUS_BOOTSTRAP_REQUIRES_USER");
+                }
+                try {
+                    LabCorpusBootstrapResult corpusResult =
+                            labClasspathCorpusBootstrapService.bootstrap(uid, runWithDataset);
+                    Map<String, Object> merged =
+                            runWithDataset.getAggregatesJson() != null
+                                    ? new LinkedHashMap<>(runWithDataset.getAggregatesJson())
+                                    : new LinkedHashMap<>();
+                    merged.put("corpusBootstrap", corpusResult.toAggregatesMap());
+                    runWithDataset.setAggregatesJson(Map.copyOf(merged));
+                    evaluationRunRepository.save(runWithDataset);
+                    mutation.appendProgressLine(
+                            taskId,
+                            "Classpath corpus bootstrap: found="
+                                    + corpusResult.discoveredCount()
+                                    + " created="
+                                    + corpusResult.createdCount()
+                                    + " reused="
+                                    + corpusResult.reusedCount()
+                                    + " skipped="
+                                    + corpusResult.skippedCount()
+                                    + " failed="
+                                    + corpusResult.failedCount()
+                                    + " ready="
+                                    + corpusResult.readyCount()
+                                    + " scope="
+                                    + corpusResult.corpusScope()
+                                    + " pattern="
+                                    + corpusResult.classpathDocsLocation());
+                } catch (IllegalStateException ex) {
+                    persistCorpusBootstrapFailure(runWithDataset, ex);
+                    evaluationRunRepository.save(runWithDataset);
+                    throw ex;
+                }
+            }
             if (runWithDataset != null && Boolean.TRUE.equals(autoReindexEnabled(runWithDataset))) {
                 UUID projectId = runWithDataset.getProject() != null ? runWithDataset.getProject().getId() : null;
                 if (projectId == null) {
@@ -171,6 +219,17 @@ class EvalRagJobHandler implements LabJobHandler {
         }
     }
 
+    private static boolean corpusBootstrapPolicyEnabled(EvaluationRunEntity run) {
+        if (run == null || run.getAggregatesJson() == null) {
+            return false;
+        }
+        Object policyObj = run.getAggregatesJson().get("corpusBootstrapPolicy");
+        if (!(policyObj instanceof Map<?, ?> m)) {
+            return false;
+        }
+        return Boolean.TRUE.equals(m.get("enabled"));
+    }
+
     private static boolean autoReindexEnabled(EvaluationRunEntity run) {
         if (run == null || run.getAggregatesJson() == null) {
             return false;
@@ -181,6 +240,18 @@ class EvalRagJobHandler implements LabJobHandler {
         }
         Object enabled = m.get("enabled");
         return Boolean.TRUE.equals(enabled);
+    }
+
+    /** Persists machine-readable bootstrap failure evidence before the job aborts (async handler catch also marks run failed). */
+    private static void persistCorpusBootstrapFailure(EvaluationRunEntity run, IllegalStateException ex) {
+        Map<String, Object> merged =
+                run.getAggregatesJson() != null ? new LinkedHashMap<>(run.getAggregatesJson()) : new LinkedHashMap<>();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("success", false);
+        payload.put("reasonCode", LabCorpusBootstrapErrors.reasonCodeFromMessage(ex.getMessage()));
+        payload.put("message", ex.getMessage());
+        merged.put("corpusBootstrap", payload);
+        run.setAggregatesJson(Map.copyOf(merged));
     }
 
     private void markLockAcquiredBestEffort(EvaluationRunEntity run) {

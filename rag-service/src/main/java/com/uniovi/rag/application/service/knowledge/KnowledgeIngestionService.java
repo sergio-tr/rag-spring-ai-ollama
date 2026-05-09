@@ -34,6 +34,8 @@ public class KnowledgeIngestionService {
 
     private static final String DEFAULT_ORIGINAL_FILENAME = "upload";
 
+    private static final String MIME_APPLICATION_OCTET_STREAM = "application/octet-stream";
+
     private final KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final ProjectDocumentIngestionService projectDocumentIngestionService;
@@ -51,6 +53,67 @@ public class KnowledgeIngestionService {
         this.projectDocumentIngestionService = projectDocumentIngestionService;
         this.projectAccessService = projectAccessService;
         this.resolvedConfigSnapshotApplicationService = resolvedConfigSnapshotApplicationService;
+    }
+
+    /**
+     * Synchronous PROJECT_SHARED ingest from bytes (same pipeline as HTTP upload). Caller handles deduplication.
+     */
+    public ProjectDocumentDto ingestProjectSharedDocumentSynchronouslyFromBytes(
+            UUID userId,
+            UUID projectId,
+            byte[] bytes,
+            String originalFilename,
+            String contentType) throws IOException {
+        ProjectEntity project = projectAccessService.requireOwnedProject(userId, projectId);
+        if (bytes == null || bytes.length == 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "empty_bytes");
+        }
+        String original =
+                originalFilename != null && !originalFilename.isBlank() ? originalFilename : DEFAULT_ORIGINAL_FILENAME;
+        String ct = contentType != null ? contentType : MIME_APPLICATION_OCTET_STREAM;
+
+        KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newIngesting(project, original);
+        row = knowledgeDocumentRepository.save(row);
+
+        Path temp = createPrivateTempFile("rag-lab-bootstrap-", original);
+        Files.write(temp, bytes);
+
+        ingestFromTempFile(userId, projectId, row.getId(), temp, original, ct);
+
+        KnowledgeDocumentEntity done = knowledgeDocumentRepository.findById(row.getId()).orElse(row);
+        return toDto(done);
+    }
+
+    /**
+     * Re-ingest an existing project document from fresh bytes (same document id). Used by Lab classpath bootstrap retries.
+     */
+    public ProjectDocumentDto reingestProjectSharedDocumentSynchronouslyFromBytes(
+            UUID userId,
+            UUID projectId,
+            UUID projectDocumentId,
+            byte[] bytes,
+            String originalFilename,
+            String contentType) throws IOException {
+        projectAccessService.requireOwnedProject(userId, projectId);
+        KnowledgeDocumentEntity row =
+                knowledgeDocumentRepository.findByIdAndProject_Id(projectDocumentId, projectId).orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "project_document"));
+        if (bytes == null || bytes.length == 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "empty_bytes");
+        }
+        String original =
+                originalFilename != null && !originalFilename.isBlank()
+                        ? originalFilename
+                        : (row.getFileName() != null ? row.getFileName() : DEFAULT_ORIGINAL_FILENAME);
+        String ct = contentType != null ? contentType : MIME_APPLICATION_OCTET_STREAM;
+
+        Path temp = createPrivateTempFile("rag-lab-bootstrap-retry-", original);
+        Files.write(temp, bytes);
+
+        ingestFromTempFile(userId, projectId, row.getId(), temp, original, ct);
+
+        KnowledgeDocumentEntity done = knowledgeDocumentRepository.findById(row.getId()).orElse(row);
+        return toDto(done);
     }
 
     public void ingestFromTempFile(
