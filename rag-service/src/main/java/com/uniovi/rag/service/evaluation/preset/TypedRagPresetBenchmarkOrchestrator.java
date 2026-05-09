@@ -11,6 +11,8 @@ import com.uniovi.rag.application.service.runtime.config.IndexCompatibilityResul
 import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
+import com.uniovi.rag.application.service.runtime.WorkflowNameInference;
+import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
 import com.uniovi.rag.domain.evaluation.snapshot.EmbeddingExperimentalSnapshot;
 import com.uniovi.rag.domain.evaluation.snapshot.LlmExperimentalSnapshot;
@@ -23,6 +25,7 @@ import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.service.evaluation.AbstractEvaluationService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
 import com.uniovi.rag.service.evaluation.baseline.ExperimentalSnapshotFactory;
 import com.uniovi.rag.application.exception.RagServiceException;
@@ -65,6 +68,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
     private final KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
     private final ProjectIndexProfileService projectIndexProfileService;
     private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
+    private final CorpusAvailabilityGate corpusAvailabilityGate;
 
     public TypedRagPresetBenchmarkOrchestrator(
             EvaluationService evaluationService,
@@ -74,7 +78,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
             LabPresetRunPlanService labPresetRunPlanService,
             KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
             ProjectIndexProfileService projectIndexProfileService,
-            LabIndexProfileOverrideFactory labIndexProfileOverrideFactory) {
+            LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
+            CorpusAvailabilityGate corpusAvailabilityGate) {
         this.evaluationService = evaluationService;
         this.evaluationRunRepository = evaluationRunRepository;
         this.experimentalSnapshotFactory = experimentalSnapshotFactory;
@@ -83,6 +88,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
         this.projectIndexProfileService = projectIndexProfileService;
         this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
+        this.corpusAvailabilityGate = corpusAvailabilityGate;
     }
 
     @SuppressWarnings("unchecked")
@@ -138,7 +144,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     null,
                     null,
                     LabPresetRunPlanModels.STRATEGY_VERSION,
-                    null);
+                    null,
+                    base);
             @SuppressWarnings("unchecked")
             Map<String, Object> summary =
                     single.get("evaluation_summary") instanceof Map<?, ?>
@@ -227,7 +234,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                         embSnap.model(),
                                         gk,
                                         runPlan.strategyVersion(),
-                                        exec));
+                                        exec,
+                                        base));
                     }
                 }
                 exec = exec.withCompletedAt(Instant.now());
@@ -280,7 +288,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                             runPlan.strategyVersion(),
                                             exec,
                                             "AUTO_REINDEX_FAILED",
-                                            "AUTO_REINDEX_FAILED"));
+                                            "AUTO_REINDEX_FAILED",
+                                            null,
+                                            base));
                         }
                     }
                     if (autoReindexPolicy.failOnReindexFailure()) {
@@ -317,7 +327,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                         embSnap.model(),
                                         gk,
                                         runPlan.strategyVersion(),
-                                        exec));
+                                        exec,
+                                        base));
                     }
                     continue;
                 }
@@ -338,24 +349,59 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                         runPlan.strategyVersion(),
                                         exec,
                                         null,
-                                        null));
+                                        null,
+                                        null,
+                                        base));
                     }
                     continue;
+                }
+
+                if (ExperimentalPresetCanonicalCatalog.requiresSnapshotAssembledCorpusEvidence(preset)) {
+                    UUID projectId = run != null && run.getProject() != null ? run.getProject().getId() : null;
+                    UUID snapForCorpus = resolvePresetSnapshotId(exec, gate);
+                    CorpusAvailabilityGate.Result corpusProbe =
+                            corpusAvailabilityGate.evaluate(
+                                    projectId, snapForCorpus != null ? List.of(snapForCorpus) : List.of());
+                    if (!corpusProbe.satisfied()) {
+                        Map<String, Object> corpusExtras =
+                                corpusAvailabilityGate.probe(
+                                        projectId, snapForCorpus != null ? List.of(snapForCorpus) : List.of());
+                        for (RagPresetQuestion q : questions) {
+                            bump.run();
+                            allRows.add(
+                                    skippedRow(
+                                            q,
+                                            def.name(),
+                                            preset,
+                                            gate,
+                                            gk,
+                                            llmSnap.model(),
+                                            embSnap.model(),
+                                            runPlan.strategyVersion(),
+                                            exec,
+                                            CorpusAvailabilityGate.REASON_CODE,
+                                            CorpusAvailabilityGate.REASON_MESSAGE,
+                                            corpusExtras,
+                                            base));
+                        }
+                        continue;
+                    }
                 }
 
                 RagPresetExperimentalOverlay.Overlay overlay = RagPresetExperimentalOverlay.build(base, preset);
                 lastConfigurationMap = new LinkedHashMap<>();
                 overlay.features().getConfiguration().forEach(lastConfigurationMap::put);
 
+                UUID resolvedSnapId = resolvePresetSnapshotId(exec, gate);
                 try (AutoCloseable ignored =
                         BenchmarkPresetEvaluationContext.openLab(
                                 overlay.terminalRuntimeJson(),
                                 evaluationRunId,
                                 run != null && run.getProject() != null ? run.getProject().getId() : null,
-                                exec.groupSnapshotId() != null ? List.of(exec.groupSnapshotId()) : List.of(),
+                                resolvedSnapId != null ? List.of(resolvedSnapId) : List.of(),
                                 gk != null ? gk.name() : null,
                                 preset != null ? preset.name() : null,
-                                exec.groupSnapshotId() != null)) {
+                                resolvedSnapId != null)) {
                     Map<String, Object> batch =
                             evaluationService.evaluateWithConfigurationForRagPresetQuestions(
                                     overlay.features(),
@@ -373,7 +419,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                 gate,
                                 gk,
                                 runPlan.strategyVersion(),
-                                exec);
+                                exec,
+                                base);
                         allRows.addAll(rows);
                     }
                 } catch (Exception ex) {
@@ -391,7 +438,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                             embSnap.model(),
                                             gk,
                                             runPlan.strategyVersion(),
-                                            exec));
+                                            exec,
+                                            base));
                         } else {
                             allRows.add(
                                     failedRow(
@@ -404,7 +452,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                             gate,
                                             gk,
                                             runPlan.strategyVersion(),
-                                            exec));
+                                            exec,
+                                            base));
                         }
                     }
                 }
@@ -430,6 +479,13 @@ public class TypedRagPresetBenchmarkOrchestrator {
         }
         out.put("evaluation_summary", summary);
         return out;
+    }
+
+    private static UUID resolvePresetSnapshotId(GroupExecution exec, PreflightIndexCompatibility gate) {
+        if (exec != null && exec.groupSnapshotId() != null) {
+            return exec.groupSnapshotId();
+        }
+        return gate != null ? gate.indexSnapshotId() : null;
     }
 
     private static List<LabPresetRunGroupKey> orderedGroupKeys() {
@@ -711,7 +767,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
             PreflightIndexCompatibility indexGate,
             LabPresetRunGroupKey groupKey,
             int runPlanVersion,
-            GroupExecution exec) {
+            GroupExecution exec,
+            RagFeatureConfiguration applicationDefaults) {
         if (rows == null) {
             return;
         }
@@ -724,8 +781,46 @@ public class TypedRagPresetBenchmarkOrchestrator {
             row.put(BenchmarkResultRowKeys.PRESET_LABEL, presetLabel);
             row.put(BenchmarkResultRowKeys.LLM_MODEL_ID, llmModelId);
             row.put(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID, embeddingModelId);
-            row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, indexGate, runPlanVersion, exec));
+            Map<String, Object> metrics =
+                    buildLabMetricsPayload(presetLabel, preset, gk, indexGate, runPlanVersion, exec, applicationDefaults);
+            mergeEvaluationTelemetryIntoMetrics(row, metrics);
+            applyExecutionEvidenceSemantics(metrics, preset);
+            row.put(JSON_KEY_METRICS_PAYLOAD, metrics);
         }
+    }
+
+    private static void mergeEvaluationTelemetryIntoMetrics(Map<String, Object> row, Map<String, Object> metrics) {
+        Object tel = row.remove(AbstractEvaluationService.EVALUATION_CHAT_TELEMETRY_ROW_KEY);
+        if (!(tel instanceof Map<?, ?> map)) {
+            return;
+        }
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            if (e.getKey() != null) {
+                metrics.put(e.getKey().toString(), e.getValue());
+            }
+        }
+    }
+
+    /** Corpus / snapshot semantics after telemetry merge (execution wins for workflowName, corpusChars, snapshots). */
+    private static void applyExecutionEvidenceSemantics(Map<String, Object> metrics, RagExperimentalPresetCode preset) {
+        boolean corpusReq = preset != null && ExperimentalPresetCanonicalCatalog.corpusRequired(preset);
+        metrics.put("corpusRequired", corpusReq);
+        Object cc = metrics.get("corpusChars");
+        if (!(cc instanceof Number)) {
+            cc = metrics.get("promptContextCharCount");
+        }
+        boolean avail = false;
+        if (cc instanceof Number n && n.intValue() > 0) {
+            avail = true;
+        } else if (Boolean.TRUE.equals(metrics.get("closestEvidenceAvailable"))) {
+            avail = true;
+        } else if (Boolean.TRUE.equals(metrics.get("effectiveContextPresent"))) {
+            avail = true;
+        }
+        metrics.put("corpusAvailable", avail);
+        metrics.putIfAbsent("corpusTruncated", Boolean.FALSE);
+        metrics.putIfAbsent("skippedReasonCode", "");
+        metrics.putIfAbsent("skippedReason", "");
     }
 
     private static Map<String, Object> notSupportedRow(
@@ -737,7 +832,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
             String embeddingModelId,
             LabPresetRunGroupKey groupKey,
             int runPlanVersion,
-            GroupExecution exec) {
+            GroupExecution exec,
+            RagFeatureConfiguration applicationDefaults) {
         Map<String, Object> row = baseRow(q, presetLabel, preset, llmModelId, embeddingModelId);
         row.put(JSON_KEY_GENERATED_ANSWER, "");
         row.put("llm_evaluation", "");
@@ -747,7 +843,12 @@ public class TypedRagPresetBenchmarkOrchestrator {
         row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
         LabPresetRunGroupKey gk =
                 groupKey != null ? groupKey : LabPresetRunPlanService.groupKeyFor(preset);
-        row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, null, runPlanVersion, exec));
+        Map<String, Object> metrics =
+                buildLabMetricsPayload(presetLabel, preset, gk, null, runPlanVersion, exec, applicationDefaults);
+        metrics.put("skippedReasonCode", errorCode);
+        metrics.put("skippedReason", errorCode);
+        applyExecutionEvidenceSemantics(metrics, preset);
+        row.put(JSON_KEY_METRICS_PAYLOAD, metrics);
         return row;
     }
 
@@ -762,7 +863,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
             int runPlanVersion,
             GroupExecution exec,
             String overrideErrorCode,
-            String overrideReason) {
+            String overrideReason,
+            Map<String, Object> extraLabMetrics,
+            RagFeatureConfiguration applicationDefaults) {
         Map<String, Object> row = baseRow(q, presetLabel, preset, llmModelId, embeddingModelId);
         row.put(JSON_KEY_GENERATED_ANSWER, "");
         row.put("llm_evaluation", "");
@@ -772,11 +875,23 @@ public class TypedRagPresetBenchmarkOrchestrator {
                         ? overrideErrorCode
                         : gate != null && gate.reasonCode() != null ? gate.reasonCode() : "INDEX_REQUIRES_REINDEX";
         row.put(BenchmarkResultRowKeys.ERROR_CODE, code);
-        row.put(BenchmarkResultRowKeys.REASON, overrideReason != null ? overrideReason : gate != null && gate.message() != null ? gate.message() : code);
+        String humanReason =
+                overrideReason != null
+                        ? overrideReason
+                        : gate != null && gate.message() != null ? gate.message() : code;
+        row.put(BenchmarkResultRowKeys.REASON, humanReason);
         row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
         LabPresetRunGroupKey gk =
                 groupKey != null ? groupKey : LabPresetRunPlanService.groupKeyFor(preset);
-        row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, gate, runPlanVersion, exec));
+        Map<String, Object> metrics =
+                buildLabMetricsPayload(presetLabel, preset, gk, gate, runPlanVersion, exec, applicationDefaults);
+        if (extraLabMetrics != null && !extraLabMetrics.isEmpty()) {
+            metrics.putAll(extraLabMetrics);
+        }
+        metrics.put("skippedReasonCode", code);
+        metrics.put("skippedReason", humanReason);
+        applyExecutionEvidenceSemantics(metrics, preset);
+        row.put(JSON_KEY_METRICS_PAYLOAD, metrics);
         return row;
     }
 
@@ -790,7 +905,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
             PreflightIndexCompatibility indexGate,
             LabPresetRunGroupKey groupKey,
             int runPlanVersion,
-            GroupExecution exec) {
+            GroupExecution exec,
+            RagFeatureConfiguration applicationDefaults) {
         Map<String, Object> row = baseRow(q, presetLabel, preset, llmModelId, embeddingModelId);
         row.put(JSON_KEY_GENERATED_ANSWER, "");
         row.put("llm_evaluation", "");
@@ -805,7 +921,12 @@ public class TypedRagPresetBenchmarkOrchestrator {
         row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
         LabPresetRunGroupKey gk =
                 groupKey != null ? groupKey : LabPresetRunPlanService.groupKeyFor(preset);
-        row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, indexGate, runPlanVersion, exec));
+        Map<String, Object> metrics =
+                buildLabMetricsPayload(presetLabel, preset, gk, indexGate, runPlanVersion, exec, applicationDefaults);
+        metrics.put("skippedReasonCode", "");
+        metrics.put("skippedReason", "");
+        applyExecutionEvidenceSemantics(metrics, preset);
+        row.put(JSON_KEY_METRICS_PAYLOAD, metrics);
         return row;
     }
 
@@ -836,14 +957,58 @@ public class TypedRagPresetBenchmarkOrchestrator {
             LabPresetRunGroupKey groupKey,
             PreflightIndexCompatibility gate,
             int runPlanVersion,
-            GroupExecution exec) {
+            GroupExecution exec,
+            RagFeatureConfiguration applicationDefaults) {
+        RagFeatureConfiguration defaults = applicationDefaults != null ? applicationDefaults : new RagFeatureConfiguration();
+        RagConfig baseConfig =
+                RagConfig.fromFeatureConfiguration(defaults, 10, 0.7, null, null, null, "SIMPLE");
+        RagConfig effective =
+                preset != null
+                        ? RagConfig.applyJsonOverrides(
+                                baseConfig, ExperimentalPresetCanonicalCatalog.effectiveTerminalRuntimeJson(preset))
+                        : baseConfig;
+
         Map<String, Object> metrics = new LinkedHashMap<>();
-        metrics.put("groupKey", groupKey != null ? groupKey.name() : null);
+        metrics.put("presetCode", preset != null ? preset.name() : null);
         metrics.put(BenchmarkResultRowKeys.PRESET_CODE, preset != null ? preset.name() : null);
+        metrics.put("presetLabel", presetLabel);
         metrics.put(BenchmarkResultRowKeys.PRESET_LABEL, presetLabel);
+        metrics.put(
+                "productPresetId",
+                preset != null ? ExperimentalPresetCanonicalCatalog.productPresetId(preset).toString() : null);
+        metrics.put("workflowName", WorkflowNameInference.inferWorkflowName(effective));
+        metrics.put("activeFeatures", effective.toValueMap());
+        metrics.put("useRetrieval", effective.useRetrieval());
+        metrics.put("naiveFullCorpusInPromptEnabled", effective.naiveFullCorpusInPromptEnabled());
+        metrics.put("materializationStrategy", effective.materializationStrategy().name());
+        metrics.put("metadataEnabled", effective.metadataEnabled());
+        metrics.put("expansionEnabled", effective.expansionEnabled());
+        metrics.put("nerEnabled", effective.nerEnabled());
+        metrics.put("reasoningEnabled", effective.reasoningEnabled());
+        metrics.put("toolsEnabled", effective.toolsEnabled());
+        metrics.put("functionCallingEnabled", effective.functionCallingEnabled());
+        metrics.put("rankerEnabled", effective.rankerEnabled());
+        metrics.put("postRetrievalEnabled", effective.postRetrievalEnabled());
+        metrics.put("useAdvisor", effective.useAdvisor());
+        metrics.put("adaptiveRoutingEnabled", effective.adaptiveRoutingEnabled());
+        metrics.put("judgeEnabled", effective.judgeEnabled());
+        metrics.put("clarificationEnabled", effective.clarificationEnabled());
+        metrics.put("memoryEnabled", effective.memoryEnabled());
+        metrics.put("corpusChars", null);
+        metrics.put("corpusTruncated", Boolean.FALSE);
+        metrics.put("corpusRequired", preset != null && ExperimentalPresetCanonicalCatalog.corpusRequired(preset));
+        metrics.put("corpusAvailable", Boolean.FALSE);
+        metrics.put("selectedSnapshotIds", selectedSnapshotIdsForExport(exec, gate));
+        metrics.put("groundingPolicy", "");
+        metrics.put("skippedReasonCode", "");
+        metrics.put("skippedReason", "");
+
+        metrics.put("groupKey", groupKey != null ? groupKey.name() : null);
         metrics.put(JSON_KEY_RUN_PLAN_VERSION, runPlanVersion);
         if (exec != null) {
-            metrics.put("effectiveGroupSnapshotId", exec.groupSnapshotId() != null ? exec.groupSnapshotId().toString() : null);
+            metrics.put(
+                    "effectiveGroupSnapshotId",
+                    exec.groupSnapshotId() != null ? exec.groupSnapshotId().toString() : null);
             metrics.put("groupSnapshotId", exec.groupSnapshotId() != null ? exec.groupSnapshotId().toString() : null);
             metrics.put("groupIndexProfileHash", exec.groupIndexProfileHash());
             metrics.put("reindexAction", exec.reindexAction());
@@ -854,17 +1019,32 @@ public class TypedRagPresetBenchmarkOrchestrator {
             metrics.put("reindexCompletedAt", exec.completedAt() != null ? exec.completedAt().toString() : null);
             metrics.put("reindexErrorCode", exec.errorCode());
             metrics.put("reindexErrorReason", exec.errorReason());
+        } else {
+            metrics.put("forcedSnapshotSelection", Boolean.FALSE);
         }
-        if (gate == null) {
-            return metrics;
+        if (gate != null) {
+            metrics.put("indexCompatibilityStatus", gate.status());
+            metrics.put("requiresReindex", gate.requiresReindex());
+            metrics.put("indexSnapshotId", gate.indexSnapshotId() != null ? gate.indexSnapshotId().toString() : null);
+            metrics.put("indexProfileHash", gate.indexProfileHash());
+            metrics.put("presetIndexRequirements", indexRequirementsMap(gate.presetIndexRequirements()));
+            metrics.put("activeSnapshotCapabilities", snapshotCapsMap(gate.activeSnapshotCapabilities()));
         }
-        metrics.put("indexCompatibilityStatus", gate.status());
-        metrics.put("requiresReindex", gate.requiresReindex());
-        metrics.put("indexSnapshotId", gate.indexSnapshotId() != null ? gate.indexSnapshotId().toString() : null);
-        metrics.put("indexProfileHash", gate.indexProfileHash());
-        metrics.put("presetIndexRequirements", indexRequirementsMap(gate.presetIndexRequirements()));
-        metrics.put("activeSnapshotCapabilities", snapshotCapsMap(gate.activeSnapshotCapabilities()));
         return metrics;
+    }
+
+    /**
+     * Snapshot ids aligned with {@link com.uniovi.rag.service.evaluation.BenchmarkPresetEvaluationContext} / execution
+     * scope (group snapshot when present; otherwise gate snapshot).
+     */
+    private static List<String> selectedSnapshotIdsForExport(GroupExecution exec, PreflightIndexCompatibility gate) {
+        if (exec != null && exec.groupSnapshotId() != null) {
+            return List.of(exec.groupSnapshotId().toString());
+        }
+        if (gate != null && gate.indexSnapshotId() != null) {
+            return List.of(gate.indexSnapshotId().toString());
+        }
+        return List.of();
     }
 
     private static Map<String, Object> indexRequirementsMap(ExperimentalPresetCanonicalCatalog.IndexRequirements req) {

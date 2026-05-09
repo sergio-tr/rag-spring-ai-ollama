@@ -21,6 +21,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
+import com.uniovi.rag.service.evaluation.AbstractEvaluationService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
 import com.uniovi.rag.service.evaluation.baseline.ExperimentalSnapshotFactory;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
@@ -28,11 +29,13 @@ import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentMatchers;
@@ -55,6 +58,17 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     @Mock private KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
     @Mock private ProjectIndexProfileService projectIndexProfileService;
     @Mock private LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
+    @Mock private CorpusAvailabilityGate corpusAvailabilityGate;
+
+    @BeforeEach
+    void defaultCorpusAvailabilityGate() {
+        Mockito.lenient()
+                .when(corpusAvailabilityGate.evaluate(ArgumentMatchers.any(), ArgumentMatchers.any()))
+                .thenReturn(new CorpusAvailabilityGate.Result(true, 1, 3L, null, null));
+        Mockito.lenient()
+                .when(corpusAvailabilityGate.probe(ArgumentMatchers.any(), ArgumentMatchers.any()))
+                .thenReturn(Map.of());
+    }
 
     private static LlmExperimentalSnapshot llmSnap() {
         return new LlmExperimentalSnapshot(
@@ -74,7 +88,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 new LabPresetRunPlanService(knowledgeSnapshotService),
                 knowledgePipelineOrchestrator,
                 projectIndexProfileService,
-                labIndexProfileOverrideFactory);
+                labIndexProfileOverrideFactory,
+                corpusAvailabilityGate);
     }
 
     private static EvaluationRunEntity runWithAutoReindex(ProjectEntity project, boolean enabled) {
@@ -310,6 +325,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
             Map<String, Object> mp = (Map<String, Object>) r.get("metrics_payload");
             assertThat(mp.get("groupKey")).isEqualTo(LabPresetRunGroupKey.HYBRID_METADATA.name());
             assertThat(mp.get("effectiveGroupSnapshotId")).isEqualTo(newSnapId.toString());
+            assertThat(mp.get("materializationStrategy")).isEqualTo("HYBRID");
             assertThat(mp.get("reindexAction")).isEqualTo("BUILD_AND_ACTIVATE");
             assertThat(mp.get("forcedSnapshotSelection")).isEqualTo(true);
         }
@@ -404,35 +420,209 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     }
 
     @Test
-    void p0_without_snapshot_executes() {
+    void p0_without_snapshot_is_skipped_and_does_not_call_evaluation_service() {
         when(experimentalSnapshotFactory.buildLlmSnapshot(null)).thenReturn(llmSnap());
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(null)).thenReturn(embSnap());
 
         List<RagPresetQuestion> questions = List.of(sampleQuestion());
         RagPresetDefinition p0 = preset(RagExperimentalPresetCode.P0);
-        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
-                ArgumentMatchers.any(),
-                ArgumentMatchers.any(),
-                ArgumentMatchers.eq(questions),
-                ArgumentMatchers.any()))
-                .thenReturn(Map.of("results", baseRowsFor(questions.size()), "evaluation_summary", Map.of()));
-        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
 
-        orchestrator()
-                .runPresetBenchmark(
-                        null,
-                        new TypedBenchmarkDataset.RagPresetQuestions(questions, List.of(p0)),
-                        new RagFeatureConfiguration(),
-                        new RagImplementationProperties(),
-                        null,
-                        null);
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                null,
+                                new TypedBenchmarkDataset.RagPresetQuestions(questions, List.of(p0)),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                null,
+                                null);
 
-        Mockito.verify(evaluationService)
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.SKIPPED.name());
+
+        Mockito.verify(evaluationService, Mockito.never())
                 .evaluateWithConfigurationForRagPresetQuestions(
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
-                        ArgumentMatchers.eq(questions),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.any());
+    }
+
+    @Test
+    void p0_skipped_whenCorpusGateFails_withoutCallingEvaluation() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+
+        UUID projectId = UUID.randomUUID();
+        UUID snapshotId = UUID.randomUUID();
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(projectId);
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setProject(project);
+        when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(projectId))
+                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", false, "hSnap", snapshotId)));
+
+        when(corpusAvailabilityGate.evaluate(
+                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.argThat(ids -> ids != null && ids.size() == 1 && snapshotId.equals(ids.get(0)))))
+                .thenReturn(
+                        new CorpusAvailabilityGate.Result(
+                                false,
+                                0,
+                                0L,
+                                CorpusAvailabilityGate.REASON_CODE,
+                                CorpusAvailabilityGate.REASON_MESSAGE));
+        when(corpusAvailabilityGate.probe(
+                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.argThat(ids -> ids != null && ids.size() == 1 && snapshotId.equals(ids.get(0)))))
+                .thenReturn(
+                        Map.of(
+                                "corpusRequired",
+                                true,
+                                "corpusAvailable",
+                                false,
+                                "skippedReasonCode",
+                                CorpusAvailabilityGate.REASON_CODE));
+
+        RagPresetQuestion q = sampleQuestion();
+        RagPresetDefinition p0 = preset(RagExperimentalPresetCode.P0);
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                UUID.randomUUID(),
+                                new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of(p0)),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                null,
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.SKIPPED.name());
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)).isEqualTo(CorpusAvailabilityGate.REASON_CODE);
+        Mockito.verify(evaluationService, Mockito.never())
+                .evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
+        assertThat(mp.get("skippedReasonCode")).isEqualTo(CorpusAvailabilityGate.REASON_CODE);
+        assertThat(mp.get("presetCode")).isEqualTo("P0");
+        assertThat(mp.get("productPresetId")).isNotNull();
+    }
+
+    @Test
+    void p0_executed_merges_telemetry_for_corpus_traceability() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+        UUID snapshotId = UUID.randomUUID();
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any()))
+                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", false, "hSnap", snapshotId)));
+
+        List<RagPresetQuestion> questions = List.of(sampleQuestion());
+        RagPresetDefinition p0 = preset(RagExperimentalPresetCode.P0);
+
+        Map<String, Object> tel = new LinkedHashMap<>();
+        tel.put("workflowName", "CorpusGroundedDirectWorkflow");
+        tel.put("corpusChars", 2400);
+        tel.put("corpusTruncated", false);
+        tel.put("groundingPolicy", "EVIDENCE_ONLY");
+
+        Map<String, Object> evalRow = new HashMap<>();
+        evalRow.put(AbstractEvaluationService.EVALUATION_CHAT_TELEMETRY_ROW_KEY, tel);
+
+        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.eq(questions),
+                        ArgumentMatchers.any()))
+                .thenReturn(Map.of("results", List.of(evalRow), "evaluation_summary", Map.of()));
+        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
+
+        var run = new EvaluationRunEntity();
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(UUID.randomUUID());
+        run.setProject(project);
+        when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                UUID.randomUUID(),
+                                new TypedBenchmarkDataset.RagPresetQuestions(questions, List.of(p0)),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                null,
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
+        assertThat(mp.get("workflowName")).isEqualTo("CorpusGroundedDirectWorkflow");
+        assertThat(mp.get("materializationStrategy")).isEqualTo("CHUNK_LEVEL");
+        assertThat(mp.get("corpusChars")).isEqualTo(2400);
+        assertThat(mp.get("corpusAvailable")).isEqualTo(true);
+        assertThat(mp.get("corpusTruncated")).isEqualTo(false);
+        assertThat(mp.get("groundingPolicy")).isEqualTo("EVIDENCE_ONLY");
+        assertThat(mp.get("selectedSnapshotIds")).isEqualTo(List.of(snapshotId.toString()));
+    }
+
+    @Test
+    void p1_executed_exports_corpus_chars_and_truncation_flag() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+        UUID snapshotId = UUID.randomUUID();
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any()))
+                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", false, "hSnap", snapshotId)));
+
+        List<RagPresetQuestion> questions = List.of(sampleQuestion());
+        RagPresetDefinition p1 = preset(RagExperimentalPresetCode.P1);
+
+        Map<String, Object> tel = new LinkedHashMap<>();
+        tel.put("corpusChars", 50000);
+        tel.put("corpusTruncated", true);
+
+        Map<String, Object> evalRow = new HashMap<>();
+        evalRow.put(AbstractEvaluationService.EVALUATION_CHAT_TELEMETRY_ROW_KEY, tel);
+
+        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.eq(questions),
+                        ArgumentMatchers.any()))
+                .thenReturn(Map.of("results", List.of(evalRow), "evaluation_summary", Map.of()));
+        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
+
+        var run = new EvaluationRunEntity();
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(UUID.randomUUID());
+        run.setProject(project);
+        when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                UUID.randomUUID(),
+                                new TypedBenchmarkDataset.RagPresetQuestions(questions, List.of(p1)),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                null,
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
+        assertThat(mp.get("corpusChars")).isEqualTo(50000);
+        assertThat(mp.get("corpusTruncated")).isEqualTo(true);
     }
 
     @Test
@@ -445,11 +635,12 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 question("RAG-002"));
         List<RagPresetDefinition> catalog = List.of(preset(RagExperimentalPresetCode.P0), preset(RagExperimentalPresetCode.P1), preset(RagExperimentalPresetCode.P2));
 
-        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
-                ArgumentMatchers.any(),
-                ArgumentMatchers.any(),
-                ArgumentMatchers.eq(questions),
-                ArgumentMatchers.any()))
+        Mockito.lenient()
+                .when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.eq(questions),
+                        ArgumentMatchers.any()))
                 .thenAnswer(inv -> Map.of("results", baseRowsFor(questions.size()), "evaluation_summary", Map.of()));
         when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
 
@@ -484,11 +675,12 @@ class TypedRagPresetBenchmarkOrchestratorTest {
             catalog.add(preset(p));
         }
 
-        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
-                ArgumentMatchers.any(),
-                ArgumentMatchers.any(),
-                ArgumentMatchers.eq(questions),
-                ArgumentMatchers.any()))
+        Mockito.lenient()
+                .when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.eq(questions),
+                        ArgumentMatchers.any()))
                 .thenAnswer(inv -> Map.of("results", baseRowsFor(questions.size()), "evaluation_summary", Map.of()));
         when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
 
