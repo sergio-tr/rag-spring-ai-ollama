@@ -35,3 +35,4 @@ services:
         required: false
       otel-collector:
         condition: service_started
+        required: false

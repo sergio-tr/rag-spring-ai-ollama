@@ -140,6 +140,8 @@ INTEGRATION_CHECK_OBS=0 pytest tests/integration -v
 | `INTEGRATION_USE_TESTCONTAINERS` | `1` / `true` to enable `tc_postgres_container` and `test_tc_postgres_smoke` (local Docker only; CI sets `0`). |
 | `INTEGRATION_TC_PRINT_JDBC` | When `1`, the session fixture prints a suggested `SPRING_DATASOURCE_URL` for the running container (Path B advanced). |
 
+**Spring Boot env overrides:** variables such as `RAG_HEALTH_OLLAMA_ENABLED` / `RAG_HEALTH_CLASSIFIER_ENABLED` take precedence over `application-e2e.properties`. CI sets them to `false` so `/actuator/health` stays **UP** without a live Ollama/classifier; avoid exporting them as `true` when running the backend with profile **e2e** unless those services are reachable.
+
 ## What is checked
 
 ### Core stack (always)

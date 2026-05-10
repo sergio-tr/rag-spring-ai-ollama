@@ -264,9 +264,23 @@ seed_admin() {
   log "Seeding e2e admin user (best-effort)."
   docker exec -e PGPASSWORD=postgres "${POSTGRES_CONTAINER}" \
     psql -U postgres -d vectordb -v ON_ERROR_STOP=1 -c "
-      INSERT INTO users (id, email, password_hash, name, role, created_at)
-      VALUES ('e2e0ad00-0000-4000-8000-000000000001', 'admin@e2e.local', '{noop}e2e', 'E2E Admin', 'ADMIN', CURRENT_TIMESTAMP)
-      ON CONFLICT (email) DO NOTHING;
+      INSERT INTO users (id, email, password_hash, name, role, created_at, email_verified, email_verified_at)
+      VALUES (
+        'e2e0ad00-0000-4000-8000-000000000001',
+        'admin@e2e.local',
+        '{noop}e2e',
+        'E2E Admin',
+        'ADMIN',
+        CURRENT_TIMESTAMP,
+        true,
+        CURRENT_TIMESTAMP
+      )
+      ON CONFLICT (email) DO UPDATE SET
+        password_hash = EXCLUDED.password_hash,
+        name = EXCLUDED.name,
+        role = EXCLUDED.role,
+        email_verified = true,
+        email_verified_at = COALESCE(users.email_verified_at, EXCLUDED.email_verified_at);
     " >/dev/null || true
 }
 

@@ -81,7 +81,7 @@ jobs:
         if: failure()
         run: |
           cd docker
-          docker compose -f docker-compose.yml -f compose.obs.yml logs --no-color > /tmp/compose-obs.log || true
+          docker compose -f docker-compose.yml -f compose.obs.yml --profile observability logs --no-color > /tmp/compose-obs.log || true
 
       - name: Upload logs on failure
         if: failure()
@@ -95,5 +95,5 @@ jobs:
         if: always()
         working-directory: docker
         run: |
-          docker compose -f docker-compose.yml -f compose.obs.yml down -v
+          docker compose -f docker-compose.yml -f compose.obs.yml --profile observability down -v
 

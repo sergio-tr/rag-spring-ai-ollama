@@ -138,6 +138,8 @@ start_backend() {
     -e RAG_JWT_SECRET="e2e-ci-jwt-secret-must-be-at-least-32-chars" \
     -e RAG_TEST_USE_TESTCONTAINERS_DATASOURCE=false \
     -e RAG_API_PRODUCT_BASE_PATH=/api/v5 \
+    -e RAG_HEALTH_OLLAMA_ENABLED=false \
+    -e RAG_HEALTH_CLASSIFIER_ENABLED=false \
     eclipse-temurin:21-jdk bash -lc "./mvnw -B -DskipTests spring-boot:run -Dspring-boot.run.profiles=e2e" \
     >/dev/null
 }
@@ -171,9 +173,23 @@ seed_admin() {
   log "Seeding e2e admin user (admin@e2e.local)."
   docker exec -e PGPASSWORD=postgres "${POSTGRES_CONTAINER}" \
     psql -U postgres -d vectordb -v ON_ERROR_STOP=1 -c "
-      INSERT INTO users (id, email, password_hash, name, role, created_at)
-      VALUES ('e2e0ad00-0000-4000-8000-000000000001', 'admin@e2e.local', '{noop}e2e', 'E2E Admin', 'ADMIN', CURRENT_TIMESTAMP)
-      ON CONFLICT (email) DO NOTHING;
+      INSERT INTO users (id, email, password_hash, name, role, created_at, email_verified, email_verified_at)
+      VALUES (
+        'e2e0ad00-0000-4000-8000-000000000001',
+        'admin@e2e.local',
+        '{noop}e2e',
+        'E2E Admin',
+        'ADMIN',
+        CURRENT_TIMESTAMP,
+        true,
+        CURRENT_TIMESTAMP
+      )
+      ON CONFLICT (email) DO UPDATE SET
+        password_hash = EXCLUDED.password_hash,
+        name = EXCLUDED.name,
+        role = EXCLUDED.role,
+        email_verified = true,
+        email_verified_at = COALESCE(users.email_verified_at, EXCLUDED.email_verified_at);
     " >/dev/null
 }
 
