@@ -26,6 +26,7 @@ RAG (Retrieval-Augmented Generation) system with Spring Boot, Spring AI, Ollama 
 ## Quality baseline and API paths in tests
 
 - **Verification gate:** from this directory, `./mvnw clean verify` (Surefire + JaCoCo `jacoco:check` on the configured bundle, line coverage ≥ 80%). Operational equivalent from a parent reactor: `mvn test -pl rag-service` does not replace `verify` if you need the same gate as CI Sonar prep.
+- **Optional Sonar upload from Maven:** with `SONAR_TOKEN` set and the same classifier/webapp coverage artifacts as CI, from this directory run `./mvnw sonar:sonar` (uses `sonar-maven-plugin` and repo-root [`sonar-project.properties`](../sonar-project.properties) via `sonar.projectBaseDir`). Full local parity remains [docs/development/sonar-local-analysis.md](../docs/development/sonar-local-analysis.md) (Docker scanner script).
 - **Runbook (all modules, same commands as CI):** [docs/testing/baseline-runbook.md](../docs/testing/baseline-runbook.md).
 - **Policies and baseline table:** [docs/quality/README.md](../docs/quality/README.md) (exclusions matrix, Ollama/OTLP test notes, Sonar project key).
 - **External test harness (mocks for Ollama, classifier HTTP, OTLP):** [docs/testing/external-test-harness.md](../docs/testing/external-test-harness.md).

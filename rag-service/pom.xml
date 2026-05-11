@@ -24,6 +24,8 @@
         <xmlunit.version>2.10.4</xmlunit.version>
         <commons-lang3.version>3.19.0</commons-lang3.version>
         <flyway.version>10.21.0</flyway.version>
+        <!-- Root holds sonar-project.properties (Java + Python + TS); keep scanner base dir aligned with CI/local scripts. -->
+        <sonar.projectBaseDir>${project.basedir}/..</sonar.projectBaseDir>
     </properties>
 
     <dependencies>
@@ -358,6 +360,13 @@
             </plugin>
 
             <!-- JaCoCo: code coverage for SonarCloud -->
+            <!-- SonarScanner for Maven: run from this directory after coverage inputs exist (see ../sonar-project.properties). -->
+            <plugin>
+                <groupId>org.sonarsource.scanner.maven</groupId>
+                <artifactId>sonar-maven-plugin</artifactId>
+                <version>5.1.0.4751</version>
+            </plugin>
+
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
