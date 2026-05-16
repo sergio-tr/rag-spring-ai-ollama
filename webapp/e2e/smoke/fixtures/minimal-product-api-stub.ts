@@ -125,6 +125,16 @@ export async function installMinimalProductApiStub(page: Page): Promise<void> {
       return;
     }
 
+    if (path === "/model-registry") {
+      await fulfillJson({
+        ollamaReachable: false,
+        ollamaErrorMessage: "offline smoke stub",
+        llmModels: [],
+        embeddingModels: [],
+      });
+      return;
+    }
+
     await fulfillJson({});
   });
 }

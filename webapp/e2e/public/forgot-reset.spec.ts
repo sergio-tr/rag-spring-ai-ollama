@@ -51,14 +51,14 @@ test.describe("Forgot/reset public flows", () => {
     expect(resetCalled).toBe(false);
   });
 
-  test("reset-password shows invalid/reused token errors when backend returns codes @smoke", async ({ page }) => {
+  test("reset-password shows invalid token errors when backend returns code @smoke", async ({ page }) => {
     await page.route("**/auth/reset-password**", async (route, request) => {
       const payload = request.postDataJSON() as { token?: string };
-      const code = payload?.token === "invalid-token" ? "RESET_TOKEN_INVALID" : "RESET_TOKEN_ALREADY_USED";
+      expect(payload?.token).toBe("invalid-token");
       await route.fulfill({
         status: 400,
         contentType: "application/json",
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code: "RESET_TOKEN_INVALID" }),
       });
     });
 
@@ -70,11 +70,25 @@ test.describe("Forgot/reset public flows", () => {
     await typeResetPasswords(page, "Password123!", "Password123!");
     await form.getByRole("button", { name: /set new password/i }).click();
     await expect(page.getByText(/reset link is invalid/i)).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("reset-password shows reused token errors when backend returns code @smoke", async ({ page }) => {
+    await page.route("**/auth/reset-password**", async (route, request) => {
+      const payload = request.postDataJSON() as { token?: string };
+      expect(payload?.token).toBe("reused-token");
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ code: "RESET_TOKEN_ALREADY_USED" }),
+      });
+    });
 
     await page.goto("/en/reset-password?token=reused-token", {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
+    await expect(page).toHaveURL(/token=reused-token/);
+    await expect(page.getByRole("heading", { name: /choose new password/i })).toBeVisible();
     const formAgain = page.locator("form").first();
     await typeResetPasswords(page, "Password123!", "Password123!");
     await formAgain.getByRole("button", { name: /set new password/i }).click();
