@@ -18,6 +18,33 @@ docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env
 
 With observability, add `-f compose.obs.yml`, **`--profile observability`**, and `--env-file ../observability/.env` (see `observability/README.md`).
 
+### Official demo start (health + metrics + traces)
+
+From the **repository root** (creates missing `.env` files when combined with `--env obs`):
+
+- **Prod-style stack in Docker** (packaged `backend` + full product, with OTEL/Jaeger/Prometheus/Grafana):
+
+```bash
+./docker/scripts/up.sh prod --obs
+```
+
+- **CI-equivalent Compose** (explicit files; same services as [`observability-integration.yml`](../.github/workflows/observability-integration.yml)):
+
+```bash
+./docker/scripts/create-env-all.sh --force
+cd docker
+docker compose -f docker-compose.yml -f compose.obs.yml \
+  --profile observability \
+  --env-file ../db/.env \
+  --env-file ../classifier-service/.env \
+  --env-file ../rag-service/.env \
+  --env-file ../webapp/.env \
+  --env-file ../observability/.env \
+  up -d --build
+```
+
+The product **continues to work** if you omit `compose.obs.yml` and `--profile observability`: no collector, no Jaeger/Grafana/Prometheus; backend uses profile `docker` only (no OTLP push to `localhost` inside the container). See `compose.obs.yml` and `rag-service` `application-infra.properties`.
+
 **Ollama (required for RAG):** set **`OLLAMA_BASE_URL`** and **`SPRING_AI_OLLAMA_BASE_URL`** in **`rag-service/.env`** to wherever the HTTP API listens (host: `http://host.docker.internal:11434`, in-stack service: `http://ollama:11434`, another machine: `http://192.168.x.x:11434`). Compose maps both into **`backend`** and **`backend-dev`**; you do **not** need extra compose files for “remote” vs “local”. If Ollama is unreachable, logs show `ResourceAccessException` on `/api/embed` and `/api/chat`. To run Ollama **in Docker** with NVIDIA GPU, use **`./docker/scripts/up.sh … --gpu`** (or **`--ollama`**) so **`--profile ollama`** starts the **`ollama`** service and point **`OLLAMA_BASE_URL=http://ollama:11434`**. To use **GPU on the host** (or any Ollama outside that container) while still passing **`--gpu`** for other services, add **`--ollama-remote`**: that **skips** the local **`ollama`** container profile but leaves the URL entirely to **`rag-service/.env`**. Classifier GPU uses **`compose.gpu.yml`** when NVIDIA is available. Pull models via `docker exec -it ollama ollama pull <model>` when Ollama runs in Docker.
 
 **Health checks (strict):** the backend container probes **`/actuator/health/readiness`** (HTTP **503** until ready). That group includes PostgreSQL, disk space, **Ollama** (`GET /api/tags` and both configured models present), and the **classifier** (`GET /health` with `model: loaded`). The classifier service only becomes healthy when its default model is loaded. Tune or relax checks via `rag.health.*` in `rag-service` (see `application.properties`).
