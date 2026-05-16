@@ -91,7 +91,8 @@ class ClassifierTrainJobHandlerTest {
                                                 && c.labelsFileContent() == null
                                                 && c.labelsFilename() == null
                                                 && c.epochs() == 50
-                                                && c.batchSize() == 8)))
+                                                && c.batchSize() == 8
+                                                && uid.toString().equals(c.trainArtifactOwnerId()))))
                 .thenReturn(labOut);
         AsyncTaskEntity task = task(taskId, payload, user(uid));
 
@@ -119,6 +120,7 @@ class ClassifierTrainJobHandlerTest {
                         2,
                         LabJobPayloadKeys.BATCH_SIZE,
                         4);
+        UUID uid = UUID.randomUUID();
         when(classifierLab.trainBytes(
                         argThat(
                                 (ClassifierTrainBytesCommand c) ->
@@ -128,9 +130,10 @@ class ClassifierTrainJobHandlerTest {
                                                 && "{}".equals(new String(c.labelsFileContent(), StandardCharsets.UTF_8))
                                                 && "l.json".equals(c.labelsFilename())
                                                 && c.epochs() == 2
-                                                && c.batchSize() == 4)))
+                                                && c.batchSize() == 4
+                                                && uid.toString().equals(c.trainArtifactOwnerId()))))
                 .thenReturn(Map.of());
-        AsyncTaskEntity task = task(taskId, payload, user(UUID.randomUUID()));
+        AsyncTaskEntity task = task(taskId, payload, user(uid));
 
         new ClassifierTrainJobHandler(classifierLab, classifierModelRegistryService).run(task, mutation);
 
@@ -144,7 +147,8 @@ class ClassifierTrainJobHandlerTest {
                                                 && "{}".equals(new String(c.labelsFileContent(), StandardCharsets.UTF_8))
                                                 && "l.json".equals(c.labelsFilename())
                                                 && c.epochs() == 2
-                                                && c.batchSize() == 4));
+                                                && c.batchSize() == 4
+                                                && uid.toString().equals(c.trainArtifactOwnerId())));
     }
 
     @Test

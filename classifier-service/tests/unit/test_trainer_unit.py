@@ -71,6 +71,38 @@ def test_train_happy_path_mocked_tf(models_dir, tmp_path, monkeypatch):
     registry.register_model.assert_called_once()
     mock_model.fit.assert_called_once()
     mock_model.save.assert_called_once()
+    meta = registry.register_model.call_args.kwargs["metadata"]
+    assert "ownerId" not in meta
+
+
+def test_train_metadata_contains_owner_id_when_provided(models_dir, tmp_path, monkeypatch):
+    excel = tmp_path / "train.xlsx"
+    _make_excel(excel)
+
+    def fake_split(X_arr, y_arr, **kwargs):
+        return X_arr[:8], X_arr[8:], y_arr[:8], y_arr[8:]
+
+    mock_vec = MagicMock()
+    mock_tv = MagicMock(return_value=mock_vec)
+    mock_model = MagicMock()
+    mock_model.fit = MagicMock()
+    mock_model.save = MagicMock()
+    mock_model.predict = MagicMock(
+        return_value=np.array([[0.6, 0.4], [0.3, 0.7]])
+    )
+
+    monkeypatch.setattr(trainer_mod, "train_test_split", fake_split)
+    monkeypatch.setattr(trainer_mod.tf.keras.layers, "TextVectorization", mock_tv)
+    monkeypatch.setattr(trainer_mod.tf.keras, "Sequential", MagicMock(return_value=mock_model))
+
+    registry = MagicMock()
+    registry.create_new_model_id.return_value = "own01"
+    registry.register_model = MagicMock()
+
+    pipeline = TrainingPipeline(config=Config(), registry=registry)
+    pipeline.train(str(excel), "m", epochs=1, batch_size=2, owner_id="rag-user-9")
+    meta = registry.register_model.call_args.kwargs["metadata"]
+    assert meta["ownerId"] == "rag-user-9"
 
 
 def test_train_stratify_falls_back_when_value_error(models_dir, tmp_path, monkeypatch):

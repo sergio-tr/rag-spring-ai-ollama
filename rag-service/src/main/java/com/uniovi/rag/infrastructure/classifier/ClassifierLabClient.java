@@ -158,6 +158,9 @@ public class ClassifierLabClient implements ClassifierLabPort {
             }
             body.add("epochs", Integer.toString(epochs));
             body.add("batch_size", Integer.toString(batchSize));
+            if (cmd.trainArtifactOwnerId() != null && !cmd.trainArtifactOwnerId().isBlank()) {
+                body.add("owner_id", cmd.trainArtifactOwnerId().trim());
+            }
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);

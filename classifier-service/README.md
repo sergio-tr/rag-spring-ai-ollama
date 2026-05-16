@@ -24,7 +24,7 @@ All code comments are in English.
 | GET | `/health` | Service status; includes whether default model is loaded. |
 | GET | `/models` | List available models (default first, then trained). |
 | POST | `/classify` | Body `{"query": "...", "modelId": "default"}` (modelId optional). Returns `{"queryType": "COUNT_DOCUMENTS"}` etc. All JSON in **camelCase**. |
-| POST | `/train` | Multipart: Excel (Question, QueryType) + `model_name` (tag), optional `labels` (JSON array) or `labels_file` (.txt). Optional `epochs`, `batch_size`. Response: `modelId`, `name`, `metrics` (camelCase). |
+| POST | `/train` | Multipart: Excel (Question, QueryType) + `model_name` (tag), optional `labels` (JSON array) or `labels_file` (.txt). Optional `epochs`, `batch_size`, optional `owner_id` (stored in `metadata.json` when `MODELS_DIR` is shared). Response: `modelId`, `name`, `metrics` (camelCase). |
 | POST | `/evaluate` | Query params `modelId`, `includeImages`; optional file. Returns `modelId`, `metrics` (classificationReport, accuracy, macroAvg, confusionMatrix, classNames), optional base64 images (camelCase). |
 | GET | `/evaluate/{model_id}/report.png` | Classification report heatmap PNG for the model (path segment = model id). |
 | GET | `/evaluate/{model_id}/confusion.png` | Confusion matrix heatmap PNG for the model. |

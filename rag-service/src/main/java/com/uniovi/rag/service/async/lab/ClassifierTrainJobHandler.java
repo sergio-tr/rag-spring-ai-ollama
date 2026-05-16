@@ -72,7 +72,8 @@ class ClassifierTrainJobHandler implements LabJobHandler {
                                     labelsBytes,
                                     labelsBytes != null ? labelsPath.getFileName().toString() : null,
                                     parsed.epochs(),
-                                    parsed.batchSize()));
+                                    parsed.batchSize(),
+                                    task.getUser().getId().toString()));
             mutation.markSucceeded(taskId, res);
             registerModelAfterTrain(task, taskId, parsed.modelName(), res, parsed.epochs(), parsed.batchSize());
         } finally {
