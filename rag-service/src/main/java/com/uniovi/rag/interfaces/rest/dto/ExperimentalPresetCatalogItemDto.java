@@ -23,4 +23,10 @@ public record ExperimentalPresetCatalogItemDto(
         boolean corpusRequired,
         boolean requiresSnapshot,
         boolean requiresProjectDocuments,
-        boolean singleTurnBenchmarkSelectable) {}
+        boolean singleTurnBenchmarkSelectable,
+        /** Ordinal stage P0=0 … P14=14 (thesis ladder). */
+        int protocolStageIndex,
+        /** Parent preset code in the cumulative ladder, or null for P0. */
+        String parentPresetCode,
+        /** Canonical terminal runtime JSON applied in Lab (same keys as Chat {@code rag_preset.values}). */
+        String effectiveTerminalRuntimeJson) {}

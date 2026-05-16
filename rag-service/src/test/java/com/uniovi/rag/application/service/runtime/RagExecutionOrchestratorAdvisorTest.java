@@ -270,7 +270,7 @@ class RagExecutionOrchestratorAdvisorTest {
         QueryPlan plan = plan(AmbiguityStatus.SUFFICIENT);
         ExecutionContext in =
                 ctxWithoutPlan(ragChunkDenseAdvisor(), new KnowledgeSnapshotSelection(
-                        List.of(snap), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+                        List.of(snap), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
 
         WorkflowSelector workflowSelector = mock(WorkflowSelector.class);
         QueryUnderstandingPipeline qu = mock(QueryUnderstandingPipeline.class);

@@ -386,5 +386,37 @@ public final class ExperimentalPresetCanonicalCatalog {
         }
         return null;
     }
+
+    /**
+     * Markdown table of the P0–P14 protocol ladder for thesis annexes (generated only from this catalog).
+     */
+    public static String thesisProtocolLadderMarkdownTable() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("| Stage | Code | Parent | Product preset id | Effective materialization | Metadata | Multi-turn |\n");
+        sb.append("| ---: | --- | --- | --- | --- | :---: | :---: |\n");
+        for (RagExperimentalPresetCode c : RagExperimentalPresetCode.values()) {
+            CanonicalPreset p = require(c);
+            IndexRequirements eff = effectiveIndexRequirements(c);
+            String parent = p.parent() != null ? p.parent().name() : "—";
+            String mat =
+                    eff.requiredMaterialization() != null ? eff.requiredMaterialization().name() : RequiredMaterialization.NONE.name();
+            sb.append("| P")
+                    .append(c.ordinal())
+                    .append(" | ")
+                    .append(c.name())
+                    .append(" | ")
+                    .append(parent)
+                    .append(" | ")
+                    .append(p.productPresetId())
+                    .append(" | ")
+                    .append(mat)
+                    .append(" | ")
+                    .append(eff.requiresMetadataSupport() ? "yes" : "no")
+                    .append(" | ")
+                    .append(p.requiresMultiTurn() ? "yes" : "no")
+                    .append(" |\n");
+        }
+        return sb.toString();
+    }
 }
 

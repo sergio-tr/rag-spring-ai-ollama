@@ -48,6 +48,15 @@ class ExperimentalPresetCanonicalCatalogTest {
         }
     }
 
+    @Test
+    void thesisProtocolLadderMarkdown_containsP0ThroughP14OnceEach() {
+        String md = ExperimentalPresetCanonicalCatalog.thesisProtocolLadderMarkdownTable();
+        for (RagExperimentalPresetCode c : RagExperimentalPresetCode.values()) {
+            assertThat(md).contains("| " + c.name() + " |");
+        }
+        assertThat(md.lines().filter(l -> l.startsWith("| P")).count()).isEqualTo(15);
+    }
+
     private static void assertMonotonicTrue(
             String key, RagExperimentalPresetCode start, RagExperimentalPresetCode end) {
         boolean reachedTrue = false;

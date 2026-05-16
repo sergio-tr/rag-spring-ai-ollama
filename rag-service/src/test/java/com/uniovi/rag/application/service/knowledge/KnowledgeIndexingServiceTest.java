@@ -8,6 +8,7 @@ import com.uniovi.rag.infrastructure.persistence.DocumentArtifactRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.DocumentArtifactEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
+import com.uniovi.rag.infrastructure.vector.PgVectorStoreRegistry;
 import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -29,6 +30,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -39,6 +42,17 @@ class KnowledgeIndexingServiceTest {
 
     @TempDir Path tempDir;
 
+    private static KnowledgeIndexingService sutWithRegistry(
+            PgVectorStore vectorStore,
+            JdbcTemplate jdbcTemplate,
+            ProjectDocumentIngestionService ingestionService,
+            BinaryStoragePort storagePort,
+            DocumentArtifactRepository artifactRepo) {
+        PgVectorStoreRegistry reg = mock(PgVectorStoreRegistry.class);
+        lenient().when(reg.forEmbeddingModelId(anyString())).thenReturn(vectorStore);
+        return new KnowledgeIndexingService(reg, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+    }
+
     @Test
     void processDocument_structuredSearch_savesParsedMetadataIndex_andSkipsVectorsAndChunks() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
@@ -48,7 +62,7 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                new KnowledgeIndexingService(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -97,11 +111,12 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                new KnowledgeIndexingService(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
         when(snapshot.getId()).thenReturn(UUID.randomUUID());
+        when(snapshot.getIndexProfileJsonb()).thenReturn(Map.of("embeddingModelId", "mxbai-embed-large"));
         when(doc.getId()).thenReturn(UUID.randomUUID());
         when(doc.getProject().getId()).thenReturn(UUID.randomUUID());
         when(doc.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
@@ -145,11 +160,12 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                new KnowledgeIndexingService(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
         when(snapshot.getId()).thenReturn(UUID.randomUUID());
+        when(snapshot.getIndexProfileJsonb()).thenReturn(Map.of("embeddingModelId", "mxbai-embed-large"));
         when(doc.getId()).thenReturn(UUID.randomUUID());
         when(doc.getProject().getId()).thenReturn(UUID.randomUUID());
         when(doc.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
@@ -194,7 +210,7 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                new KnowledgeIndexingService(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -228,11 +244,12 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                new KnowledgeIndexingService(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
         when(snapshot.getId()).thenReturn(UUID.randomUUID());
+        when(snapshot.getIndexProfileJsonb()).thenReturn(Map.of("embeddingModelId", "mxbai-embed-large"));
         when(doc.getId()).thenReturn(UUID.randomUUID());
         when(doc.getProject().getId()).thenReturn(UUID.randomUUID());
         when(doc.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
@@ -267,7 +284,7 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                new KnowledgeIndexingService(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
 
         UUID docId = UUID.randomUUID();
         DocumentArtifactEntity parsed = mock(DocumentArtifactEntity.class);
@@ -291,7 +308,7 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                new KnowledgeIndexingService(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class);
         when(doc.getStorageUri()).thenReturn("  ");

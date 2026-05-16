@@ -10,6 +10,8 @@ import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalDataset;
 import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalQuery;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
+import com.uniovi.rag.infrastructure.vector.PgVectorStoreRegistry;
 import com.uniovi.rag.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.service.async.LabJobCancelledException;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
@@ -70,6 +72,12 @@ class EvalEmbeddingRetrievalJobHandlerTest {
     private PgVectorStore vectorStore;
 
     @Mock
+    private PgVectorStoreRegistry vectorStoreRegistry;
+
+    @Mock
+    private EmbeddingSpaceGuard embeddingSpaceGuard;
+
+    @Mock
     private EvaluationService evaluationService;
 
     @Mock
@@ -101,7 +109,8 @@ class EvalEmbeddingRetrievalJobHandlerTest {
 
     private EvalEmbeddingRetrievalJobHandler handler(int topK) {
         return new EvalEmbeddingRetrievalJobHandler(
-                vectorStore,
+                vectorStoreRegistry,
+                embeddingSpaceGuard,
                 evaluationService,
                 canonicalPersistence,
                 experimentalDatasetResolver,
@@ -118,6 +127,8 @@ class EvalEmbeddingRetrievalJobHandlerTest {
         when(experimentalSnapshotFactory.buildLlmSnapshot(any())).thenReturn(SAMPLE_LLM);
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(any())).thenReturn(SAMPLE_EMB);
         when(ollamaModelCatalogClient.isModelAvailable(anyString())).thenReturn(true);
+        when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(anyString())).thenReturn(1024);
+        when(vectorStoreRegistry.forEmbeddingModelId(anyString())).thenReturn(vectorStore);
         when(evaluationRunRepository.findById(runId)).thenReturn(Optional.empty());
     }
 
@@ -269,7 +280,7 @@ class EvalEmbeddingRetrievalJobHandlerTest {
 
         assertThatThrownBy(() -> handler(5).run(task, mutation)).isInstanceOf(IllegalStateException.class);
 
-        verifyNoInteractions(vectorStore);
+        verifyNoInteractions(vectorStoreRegistry);
         verifyNoInteractions(experimentalDatasetResolver);
     }
 

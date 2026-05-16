@@ -13,7 +13,11 @@ public record KnowledgeSnapshotSelection(
         Optional<UUID> projectSharedSnapshotId,
         Optional<UUID> chatLocalSnapshotId,
         Optional<String> projectSnapshotSignatureHash,
-        Optional<String> chatSnapshotSignatureHash) {
+        Optional<String> chatSnapshotSignatureHash,
+        /**
+         * Ollama embedding tag taken from the active project snapshot profile (used for dense query embedding).
+         */
+        Optional<String> denseRetrievalEmbeddingModelId) {
 
     public KnowledgeSnapshotSelection {
         orderedSnapshotIds = List.copyOf(orderedSnapshotIds);
@@ -21,10 +25,17 @@ public record KnowledgeSnapshotSelection(
         chatLocalSnapshotId = Objects.requireNonNullElseGet(chatLocalSnapshotId, Optional::empty);
         projectSnapshotSignatureHash = Objects.requireNonNullElseGet(projectSnapshotSignatureHash, Optional::empty);
         chatSnapshotSignatureHash = Objects.requireNonNullElseGet(chatSnapshotSignatureHash, Optional::empty);
+        denseRetrievalEmbeddingModelId =
+                Objects.requireNonNullElseGet(denseRetrievalEmbeddingModelId, Optional::empty);
     }
 
     public static KnowledgeSnapshotSelection empty() {
         return new KnowledgeSnapshotSelection(
-                List.of(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+                List.of(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty());
     }
 }

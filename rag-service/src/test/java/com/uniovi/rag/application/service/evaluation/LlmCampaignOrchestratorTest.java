@@ -13,6 +13,7 @@ import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepositor
 import com.uniovi.rag.infrastructure.persistence.RagPresetRepository;
 import com.uniovi.rag.infrastructure.persistence.ResolvedConfigSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
@@ -55,6 +56,7 @@ class LlmCampaignOrchestratorTest {
     @Mock private ProjectAccessService projectAccessService;
     @Mock private RagRuntimeProperties ragRuntimeProperties;
     @Mock private EvaluationDatasetStorePort evaluationDatasetStorePort;
+    @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
 
     @Test
     void startJsonBenchmark_llmCampaign_createsCampaignAndChildRuns_andReturnsCampaignId() {
@@ -73,7 +75,8 @@ class LlmCampaignOrchestratorTest {
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
-                        new EvaluationWorkbookParser());
+                        new EvaluationWorkbookParser(),
+                        embeddingSpaceGuard);
 
         UUID userId = UUID.randomUUID();
         UserEntity user = mock(UserEntity.class);
@@ -135,7 +138,8 @@ class LlmCampaignOrchestratorTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        List.of());
 
         BenchmarkJobAccepted accepted = orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req);
         assertThat(accepted.campaignId()).isPresent();

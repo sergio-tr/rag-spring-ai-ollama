@@ -16,12 +16,14 @@ public record StartCampaignRequestDto(
         UUID projectId,
         List<String> llmModelIds,
         List<String> embeddingModelIds,
+        List<UUID> indexSnapshotIds,
         List<String> experimentalPresetCodes,
         Map<String, Object> baseConfig
 ) {
     public StartCampaignRequestDto {
         llmModelIds = llmModelIds == null ? List.of() : llmModelIds;
         embeddingModelIds = embeddingModelIds == null ? List.of() : embeddingModelIds;
+        indexSnapshotIds = indexSnapshotIds == null ? List.of() : indexSnapshotIds;
         experimentalPresetCodes = experimentalPresetCodes == null ? List.of() : experimentalPresetCodes;
         baseConfig = baseConfig == null ? Map.of() : baseConfig;
     }

@@ -311,6 +311,22 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 RagExperimentalPresetCode preset = parsed.get();
                 RagPresetDefinition def = defByPreset.get(preset);
                 if (def == null) {
+                    String label = preset.name();
+                    for (RagPresetQuestion q : questions) {
+                        bump.run();
+                        allRows.add(
+                                notSupportedRow(
+                                        q,
+                                        label,
+                                        preset,
+                                        "PRESET_WORKBOOK_CATALOG_ROW_MISSING",
+                                        llmSnap.model(),
+                                        embSnap.model(),
+                                        gk,
+                                        runPlan.strategyVersion(),
+                                        exec,
+                                        base));
+                    }
                     continue;
                 }
                 Optional<String> blocked = ExperimentalPresetBenchmarkGate.blockReason(preset);

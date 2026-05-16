@@ -5,13 +5,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
 import com.uniovi.rag.application.service.evaluation.LabEvaluationRunService;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class BenchmarkMvpMetricsCalculatorIndexPlanTest {
 
@@ -83,6 +88,55 @@ class BenchmarkMvpMetricsCalculatorIndexPlanTest {
         assertThat(row.get("reindexAction")).isEqualTo("");
         assertThat(row.get("reindexStatus")).isEqualTo("");
         assertThat(row.get("forcedSnapshotSelection")).isEqualTo("");
+    }
+
+    @Test
+    void golden_example_header_matches_live_mvp_column_list() throws Exception {
+        String expected =
+                new String(
+                        getClass()
+                                .getResourceAsStream("/golden/lab-rag-mvp-items-csv-header-example.txt")
+                                .readAllBytes());
+        String actual = String.join(",", LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS()) + "\n";
+        assertThat(actual).isEqualTo(expected);
+    }
+
+    @Test
+    void mvp_csv_columns_include_evaluation_run_and_dataset_trace_fields() {
+        assertThat(LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS())
+                .containsSubsequence(
+                        "benchmarkKind",
+                        "evaluationRunId",
+                        "evaluationDatasetId",
+                        "evaluationDatasetSha256",
+                        "resolvedConfigSnapshotId",
+                        "queryType");
+    }
+
+    @Test
+    void csv_row_includes_run_and_dataset_ids_when_present_on_run_entity() {
+        UUID runId = UUID.randomUUID();
+        UUID dsId = UUID.randomUUID();
+        UUID cfgId = UUID.randomUUID();
+        EvaluationDatasetEntity ds = mock(EvaluationDatasetEntity.class);
+        when(ds.getId()).thenReturn(dsId);
+        ResolvedConfigSnapshotEntity cfg = ResolvedConfigSnapshotEntity.newForInsert();
+        cfg.setId(cfgId);
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setId(runId);
+        run.setDataset(ds);
+        run.setDatasetSha256("a".repeat(64));
+        run.setResolvedConfigSnapshot(cfg);
+
+        EvaluationResultEntity item = new EvaluationResultEntity();
+        item.setBenchmarkKind("RAG_PRESET_END_TO_END");
+        item.setMetricsPayload(new LinkedHashMap<>(Map.of(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name())));
+
+        Map<String, String> row = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(item, run);
+        assertThat(row.get("evaluationRunId")).isEqualTo(runId.toString());
+        assertThat(row.get("evaluationDatasetId")).isEqualTo(dsId.toString());
+        assertThat(row.get("evaluationDatasetSha256")).hasSize(64);
+        assertThat(row.get("resolvedConfigSnapshotId")).isEqualTo(cfgId.toString());
     }
 
     @Test

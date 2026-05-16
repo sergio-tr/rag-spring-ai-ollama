@@ -60,6 +60,8 @@ public class ExperimentalSnapshotFactory {
                 run != null && run.getEmbeddingModelId() != null && !run.getEmbeddingModelId().isBlank()
                         ? run.getEmbeddingModelId().trim()
                         : defaultEmbeddingModel;
-        return new EmbeddingExperimentalSnapshot(model, null, null, null, null, null, "MODEL_DEFAULT", unsupported);
+        Integer dim =
+                run != null && run.getEmbeddingDimensions() != null ? run.getEmbeddingDimensions() : null;
+        return new EmbeddingExperimentalSnapshot(model, dim, null, null, null, null, "MODEL_DEFAULT", unsupported);
     }
 }

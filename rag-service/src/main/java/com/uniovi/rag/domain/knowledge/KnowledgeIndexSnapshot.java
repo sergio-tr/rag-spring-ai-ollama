@@ -19,5 +19,6 @@ public record KnowledgeIndexSnapshot(
         String resolvedConfigHash,
         Map<String, Object> indexProfileJsonb,
         String indexProfileHash,
+        Integer embeddingDimensions,
         Instant createdAt,
         Instant updatedAt) {}

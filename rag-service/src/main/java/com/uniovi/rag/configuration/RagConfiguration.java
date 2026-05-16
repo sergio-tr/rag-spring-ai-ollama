@@ -2,11 +2,13 @@ package com.uniovi.rag.configuration;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
 @Configuration
+@EnableConfigurationProperties(RagVectorProperties.class)
 @Import({
     RagRetrievalConfiguration.class,
     RagToolsBeanConfiguration.class,

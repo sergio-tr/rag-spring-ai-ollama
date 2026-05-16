@@ -1,15 +1,16 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
-import org.springframework.stereotype.Service;
-
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.stereotype.Service;
 
 /**
  * Binds ACTIVE {@code knowledge_index_snapshot} ids for runtime execution. No {@code vector_store} access.
@@ -18,9 +19,13 @@ import java.util.UUID;
 public class KnowledgeRuntimeSnapshotSelector {
 
     private final KnowledgeSnapshotService knowledgeSnapshotService;
+    private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
 
-    public KnowledgeRuntimeSnapshotSelector(KnowledgeSnapshotService knowledgeSnapshotService) {
+    public KnowledgeRuntimeSnapshotSelector(
+            KnowledgeSnapshotService knowledgeSnapshotService,
+            KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository) {
         this.knowledgeSnapshotService = knowledgeSnapshotService;
+        this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
     }
 
     /**
@@ -53,8 +58,9 @@ public class KnowledgeRuntimeSnapshotSelector {
         Optional<String> projHash = projectSnap.map(KnowledgeIndexSnapshotEntity::getSignatureHash);
         Optional<String> chatHash = chatSnap.map(KnowledgeIndexSnapshotEntity::getSignatureHash);
 
-        return new KnowledgeSnapshotSelection(
-                ordered, projectIdOpt, chatIdOpt, projHash, chatHash);
+        Optional<String> dense = resolveDenseEmbeddingFromPair(projectSnap, chatSnap);
+
+        return new KnowledgeSnapshotSelection(ordered, projectIdOpt, chatIdOpt, projHash, chatHash, dense);
     }
 
     /**
@@ -68,11 +74,45 @@ public class KnowledgeRuntimeSnapshotSelector {
         }
         List<UUID> ordered = new ArrayList<>(new LinkedHashSet<>(orderedSnapshotIds));
         Optional<UUID> projectShared = Optional.of(ordered.getFirst());
+        Optional<String> dense = resolveDenseEmbeddingFromSnapshotIds(ordered);
         return new KnowledgeSnapshotSelection(
-                ordered,
-                projectShared,
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty());
+                ordered, projectShared, Optional.empty(), Optional.empty(), Optional.empty(), dense);
+    }
+
+    private static Optional<String> resolveDenseEmbeddingFromPair(
+            Optional<KnowledgeIndexSnapshotEntity> projectSnap, Optional<KnowledgeIndexSnapshotEntity> chatSnap) {
+        Optional<String> fromProject =
+                projectSnap.flatMap(s -> IndexProfileJsonSupport.readEmbeddingModelId(s.getIndexProfileJsonb()));
+        Optional<String> fromChat =
+                chatSnap.flatMap(s -> IndexProfileJsonSupport.readEmbeddingModelId(s.getIndexProfileJsonb()));
+        if (fromProject.isPresent() && fromChat.isPresent()) {
+            if (!IndexProfileJsonSupport.normalizeEmbeddingKey(fromProject.get())
+                    .equals(IndexProfileJsonSupport.normalizeEmbeddingKey(fromChat.get()))) {
+                throw new IllegalStateException(
+                        "Conflicting embeddingModelId between project and chat ACTIVE knowledge snapshots");
+            }
+        }
+        return fromProject.or(() -> fromChat);
+    }
+
+    private Optional<String> resolveDenseEmbeddingFromSnapshotIds(List<UUID> ordered) {
+        String canonical = null;
+        for (UUID id : ordered) {
+            KnowledgeIndexSnapshotEntity snap =
+                    knowledgeIndexSnapshotRepository.findById(id).orElseThrow(
+                            () -> new IllegalStateException("knowledge_index_snapshot not found: " + id));
+            Optional<String> emb = IndexProfileJsonSupport.readEmbeddingModelId(snap.getIndexProfileJsonb());
+            if (emb.isEmpty()) {
+                continue;
+            }
+            if (canonical == null) {
+                canonical = emb.get();
+            } else if (!IndexProfileJsonSupport.normalizeEmbeddingKey(canonical)
+                    .equals(IndexProfileJsonSupport.normalizeEmbeddingKey(emb.get()))) {
+                throw new IllegalStateException(
+                        "Conflicting embeddingModelId across explicit knowledge snapshots for Lab selection");
+            }
+        }
+        return Optional.ofNullable(canonical);
     }
 }

@@ -154,6 +154,7 @@ public class RuntimeTraceReplayStrategy {
                                 Optional.empty(),
                                 Optional.empty(),
                                 Optional.empty(),
+                                Optional.empty(),
                                 Optional.empty());
 
         String configHash = trace.configHash() != null ? trace.configHash() : "";

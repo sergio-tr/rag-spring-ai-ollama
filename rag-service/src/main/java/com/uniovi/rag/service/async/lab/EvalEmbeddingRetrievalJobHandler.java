@@ -16,6 +16,8 @@ import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalQuery;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
+import com.uniovi.rag.infrastructure.vector.PgVectorStoreRegistry;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.service.async.LabJobCancelledException;
@@ -50,7 +52,8 @@ import java.util.UUID;
 @Component
 class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
 
-    private final PgVectorStore vectorStore;
+    private final PgVectorStoreRegistry vectorStoreRegistry;
+    private final EmbeddingSpaceGuard embeddingSpaceGuard;
     private final EvaluationService evaluationService;
     private final EvaluationCanonicalPersistenceService canonicalPersistence;
     private final ExperimentalDatasetResolver experimentalDatasetResolver;
@@ -63,7 +66,8 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
     private final AsyncTaskCancellationService cancellationService;
 
     EvalEmbeddingRetrievalJobHandler(
-            PgVectorStore vectorStore,
+            PgVectorStoreRegistry vectorStoreRegistry,
+            EmbeddingSpaceGuard embeddingSpaceGuard,
             EvaluationService evaluationService,
             EvaluationCanonicalPersistenceService canonicalPersistence,
             ExperimentalDatasetResolver experimentalDatasetResolver,
@@ -74,7 +78,8 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             EvaluationRunRepository evaluationRunRepository,
             AsyncTaskCancellationService cancellationService,
             @Value("${spring.ai.ollama.top-k:5}") int topK) {
-        this.vectorStore = vectorStore;
+        this.vectorStoreRegistry = vectorStoreRegistry;
+        this.embeddingSpaceGuard = embeddingSpaceGuard;
         this.evaluationService = evaluationService;
         this.canonicalPersistence = canonicalPersistence;
         this.experimentalDatasetResolver = experimentalDatasetResolver;
@@ -121,6 +126,9 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             EvaluationRunEntity runOrNull = runOpt.orElse(null);
             var llmSnap = experimentalSnapshotFactory.buildLlmSnapshot(runOrNull);
             var embSnap = experimentalSnapshotFactory.buildEmbeddingSnapshot(runOrNull);
+            if (embSnap.model() != null && !embSnap.model().isBlank()) {
+                embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(embSnap.model().trim());
+            }
             PromptProfileSnapshot prompts = PromptProfileSnapshotFactory.baselineLabProfile();
             baselineRunSnapshotWriter.writeSnapshots(evaluationRunId, llmSnap, embSnap, prompts);
 
@@ -253,7 +261,8 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                 long t0 = System.nanoTime();
                 SearchRequest req =
                         SearchRequest.builder().query(question).topK(topK).similarityThreshold(0.0).build();
-                List<Document> docs = vectorStore.similaritySearch(req);
+                PgVectorStore store = vectorStoreRegistry.forEmbeddingModelId(ctx.embeddingModelId().trim());
+                List<Document> docs = store.similaritySearch(req);
                 long latencyMs = (System.nanoTime() - t0) / 1_000_000L;
 
                 GoldSpec gold = GoldSpec.fromQuery(q);

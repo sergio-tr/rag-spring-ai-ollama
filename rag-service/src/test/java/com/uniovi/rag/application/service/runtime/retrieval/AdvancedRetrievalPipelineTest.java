@@ -220,7 +220,7 @@ class AdvancedRetrievalPipelineTest {
                 resolved,
                 "sys",
                 new KnowledgeSnapshotSelection(
-                        List.of(snapshotId), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
+                        List.of(snapshotId), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
                 Optional.empty(),
                 Optional.empty(),
                 "c",
@@ -326,8 +326,7 @@ class AdvancedRetrievalPipelineTest {
                 List.of(snapshotId),
                 UUID.randomUUID(),
                 Optional.empty(),
-                List.of("all"),
-                true);
+                List.of("all"), true, Optional.empty());
     }
 
     private static QueryPlan planWithDate(String date) {

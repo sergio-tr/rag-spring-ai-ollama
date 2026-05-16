@@ -10,8 +10,10 @@ import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
 import com.uniovi.rag.domain.knowledge.SnapshotSignatureHasher;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
+import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
@@ -56,6 +58,8 @@ public class KnowledgePipelineOrchestrator {
     private final KnowledgeIndexingService knowledgeIndexingService;
     private final ProjectIndexProfileService projectIndexProfileService;
     private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
+    private final EmbeddingSpaceGuard embeddingSpaceGuard;
+    private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
     private final TransactionTemplate transactionTemplate;
     private final MeterRegistry meterRegistry;
 
@@ -67,6 +71,8 @@ public class KnowledgePipelineOrchestrator {
             KnowledgeIndexingService knowledgeIndexingService,
             ProjectIndexProfileService projectIndexProfileService,
             LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
+            EmbeddingSpaceGuard embeddingSpaceGuard,
+            KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
             PlatformTransactionManager transactionManager,
             @Autowired(required = false) MeterRegistry meterRegistry) {
         this.jdbcTemplate = jdbcTemplate;
@@ -76,8 +82,25 @@ public class KnowledgePipelineOrchestrator {
         this.knowledgeIndexingService = knowledgeIndexingService;
         this.projectIndexProfileService = projectIndexProfileService;
         this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
+        this.embeddingSpaceGuard = embeddingSpaceGuard;
+        this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.meterRegistry = meterRegistry;
+    }
+
+    private void probeAndPersistSnapshotEmbeddingDimensions(
+            ProjectIndexProfile profile, MaterializationStrategy strategy, KnowledgeIndexSnapshotEntity building) {
+        if (strategy == MaterializationStrategy.STRUCTURED_SEARCH) {
+            return;
+        }
+        Optional<String> emb = IndexProfileJsonSupport.readEmbeddingModelId(profile.toSnapshotJsonb());
+        if (emb.isEmpty() || emb.get().isBlank()) {
+            throw new IllegalStateException(
+                    "embeddingModelId is required in the project index profile for dense/hybrid vector indexing");
+        }
+        int dims = embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(emb.get().trim());
+        building.setEmbeddingDimensions(dims);
+        knowledgeIndexSnapshotRepository.save(building);
     }
 
     private void recordEtlEvent(String stage, String outcome) {
@@ -217,6 +240,8 @@ public class KnowledgePipelineOrchestrator {
                         profile.toSnapshotJsonb(),
                         profile.profileHash());
 
+        probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
+
         previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
         deleteVectorsForScopeDocs(scopeDocs);
 
@@ -299,6 +324,8 @@ public class KnowledgePipelineOrchestrator {
                         resolvedConfigHash,
                         profile.toSnapshotJsonb(),
                         profile.profileHash());
+
+        probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
 
         previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
         deleteVectorsForScopeDocs(scopeDocs);
@@ -453,6 +480,8 @@ public class KnowledgePipelineOrchestrator {
                             profile.toSnapshotJsonb(),
                             profile.profileHash());
 
+            probeAndPersistSnapshotEmbeddingDimensions(profile, projection.materializationStrategy(), building);
+
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
             for (KnowledgeDocumentEntity d : scopeDocs) {
                 deleteVectorChunksForDocument(d.getId());
@@ -546,6 +575,8 @@ public class KnowledgePipelineOrchestrator {
                             resolvedConfigHash != null ? resolvedConfigHash : "lab-auto-reindex",
                             profile.toSnapshotJsonb(),
                             profile.profileHash());
+
+            probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
             for (KnowledgeDocumentEntity d : scopeDocs) {

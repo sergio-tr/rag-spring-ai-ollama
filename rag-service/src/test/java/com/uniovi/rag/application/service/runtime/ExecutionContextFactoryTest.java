@@ -297,7 +297,7 @@ class ExecutionContextFactoryTest {
         UUID projectId = UUID.randomUUID();
         UUID s1 = UUID.randomUUID();
         when(knowledgeRuntimeSnapshotSelector.selectExplicit(projectId, List.of(s1)))
-                .thenReturn(new KnowledgeSnapshotSelection(List.of(s1), Optional.of(s1), Optional.empty(), Optional.empty(), Optional.empty()));
+                .thenReturn(new KnowledgeSnapshotSelection(List.of(s1), Optional.of(s1), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
 
         when(runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         isNull(), eq(projectId), isNull(), anyString()))

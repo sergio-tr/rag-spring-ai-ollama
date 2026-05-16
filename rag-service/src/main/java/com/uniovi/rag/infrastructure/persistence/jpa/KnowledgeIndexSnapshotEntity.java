@@ -60,6 +60,9 @@ public class KnowledgeIndexSnapshotEntity {
     @Column(name = "index_profile_hash", length = 128)
     private String indexProfileHash;
 
+    @Column(name = "embedding_dimensions")
+    private Integer embeddingDimensions;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -144,6 +147,14 @@ public class KnowledgeIndexSnapshotEntity {
 
     public void setIndexProfileHash(String indexProfileHash) {
         this.indexProfileHash = indexProfileHash;
+    }
+
+    public Integer getEmbeddingDimensions() {
+        return embeddingDimensions;
+    }
+
+    public void setEmbeddingDimensions(Integer embeddingDimensions) {
+        this.embeddingDimensions = embeddingDimensions;
     }
 
     public Instant getCreatedAt() {

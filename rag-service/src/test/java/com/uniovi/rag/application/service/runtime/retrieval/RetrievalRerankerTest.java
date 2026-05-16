@@ -73,8 +73,7 @@ class RetrievalRerankerTest {
                 List.of(sid),
                 UUID.randomUUID(),
                 Optional.empty(),
-                List.of("all"),
-                true);
+                List.of("all"), true, Optional.empty());
     }
 
     private static QueryPlan minimalPlan(List<String> entities) {

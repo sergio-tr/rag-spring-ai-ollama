@@ -14,9 +14,11 @@ import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
+import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +41,8 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
     @Mock private KnowledgeIndexingService knowledgeIndexingService;
     @Mock private ProjectIndexProfileService projectIndexProfileService;
+    @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
+    @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
     @Mock private PlatformTransactionManager transactionManager;
 
     private KnowledgePipelineOrchestrator orchestrator() {
@@ -50,6 +54,8 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
                 knowledgeIndexingService,
                 projectIndexProfileService,
                 new LabIndexProfileOverrideFactory(),
+                embeddingSpaceGuard,
+                knowledgeIndexSnapshotRepository,
                 transactionManager,
                 null);
     }
@@ -73,6 +79,9 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
         when(knowledgeDocumentRepository.findByProject_IdAndCorpusScopeOrderByIdAsc(projectId, CorpusScope.PROJECT_SHARED))
                 .thenReturn(List.of(doc));
         when(knowledgeSnapshotService.findActiveProjectSnapshot(projectId)).thenReturn(Optional.empty());
+
+        when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(any())).thenReturn(1024);
+        when(knowledgeIndexSnapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         KnowledgeIndexSnapshotEntity building = mock(KnowledgeIndexSnapshotEntity.class);
         when(building.getId()).thenReturn(snapshotId);

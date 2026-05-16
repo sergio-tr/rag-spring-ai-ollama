@@ -5,8 +5,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
- * Immutable embedding configuration captured at benchmark start (logical snapshot; runtime may still use a single
- * global {@code EmbeddingModel} bean — see module README limitations).
+ * Immutable embedding configuration captured at benchmark start (logical snapshot aligned with
+ * {@code evaluation_run.embedding_model_id} / {@code knowledge_index_snapshot}).
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record EmbeddingExperimentalSnapshot(

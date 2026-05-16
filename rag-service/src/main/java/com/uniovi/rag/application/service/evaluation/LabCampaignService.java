@@ -45,7 +45,8 @@ public class LabCampaignService {
      * <p>
      * Notes:
      * - LLM sweeps are supported and create multiple child runs.
-     * - Embedding sweeps are blocked if the runtime cannot truly swap embedding models (scientific guardrail).
+     * - Embedding sweeps create one run per model when {@code embeddingModelIds} is set; align {@code indexSnapshotIds}
+     *   for multi-model embedding campaigns.
      * - RAG preset sweeps are modeled as a single run that iterates preset codes (still exported per-preset).
      */
     @Transactional
@@ -82,7 +83,8 @@ public class LabCampaignService {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        req.indexSnapshotIds());
 
         BenchmarkJobAccepted accepted = orchestrator.startJsonBenchmark(userId, "USER", kind, body);
         UUID campaignId = accepted.campaignId().orElse(null);

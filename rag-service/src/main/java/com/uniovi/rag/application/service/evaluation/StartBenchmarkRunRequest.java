@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.evaluation;
 
 import com.uniovi.rag.domain.evaluation.EvaluationRunKind;
 
+import java.util.Objects;
 import java.util.List;
 import java.util.UUID;
 
@@ -49,7 +50,12 @@ public record StartBenchmarkRunRequest(
         /** When true, reuse READY rows with same filename (+checksum when present). */
         Boolean bootstrapSkipExisting,
         /** When true, fail the run when any classpath document cannot be ingested. */
-        Boolean bootstrapFailOnDocumentError) {
+        Boolean bootstrapFailOnDocumentError,
+        /**
+         * Parallel {@code knowledge_index_snapshot} ids for multi-embedding Lab campaigns (same length as resolved
+         * embedding models when more than one model is requested).
+         */
+        List<UUID> indexSnapshotIds) {
 
     public StartBenchmarkRunRequest {
         runKind = runKind == null ? EvaluationRunKind.PRODUCT_EXPLORATION : runKind;
@@ -78,6 +84,10 @@ public record StartBenchmarkRunRequest(
         bootstrapSkipExisting = bootstrapSkipExisting == null ? Boolean.TRUE : Boolean.TRUE.equals(bootstrapSkipExisting);
         bootstrapFailOnDocumentError =
                 bootstrapFailOnDocumentError == null ? Boolean.TRUE : Boolean.TRUE.equals(bootstrapFailOnDocumentError);
+        indexSnapshotIds =
+                indexSnapshotIds == null
+                        ? List.of()
+                        : indexSnapshotIds.stream().filter(Objects::nonNull).toList();
     }
 
     public boolean embeddingDownstreamRagEffective() {

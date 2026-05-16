@@ -28,6 +28,7 @@ class KnowledgeSnapshotResponseDtoTest {
                 "cfg-hash",
                 Map.of(),
                 "profile-hash",
+                null,
                 created,
                 updated);
     }

@@ -134,7 +134,7 @@ class SnapshotCorpusAssemblerTest {
                 RuntimeOperationKind.CHAT_MESSAGE,
                 resolved,
                 "sys",
-                new KnowledgeSnapshotSelection(ids, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
+                new KnowledgeSnapshotSelection(ids, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
                 Optional.empty(),
                 Optional.empty(),
                 "c",

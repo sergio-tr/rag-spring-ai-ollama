@@ -6,7 +6,9 @@ import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
+import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -42,6 +44,8 @@ class KnowledgePipelineOrchestratorTest {
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
     @Mock private KnowledgeIndexingService knowledgeIndexingService;
     @Mock private ProjectIndexProfileService projectIndexProfileService;
+    @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
+    @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
     @Mock private PlatformTransactionManager transactionManager;
 
     @Test
@@ -72,6 +76,8 @@ class KnowledgePipelineOrchestratorTest {
                         knowledgeIndexingService,
                         projectIndexProfileService,
                         mock(LabIndexProfileOverrideFactory.class),
+                        embeddingSpaceGuard,
+                        knowledgeIndexSnapshotRepository,
                         transactionManager,
                         null);
 
@@ -95,6 +101,8 @@ class KnowledgePipelineOrchestratorTest {
                         knowledgeIndexingService,
                         projectIndexProfileService,
                         mock(LabIndexProfileOverrideFactory.class),
+                        embeddingSpaceGuard,
+                        knowledgeIndexSnapshotRepository,
                         transactionManager,
                         null);
 
@@ -123,6 +131,8 @@ class KnowledgePipelineOrchestratorTest {
                         knowledgeIndexingService,
                         projectIndexProfileService,
                         mock(LabIndexProfileOverrideFactory.class),
+                        embeddingSpaceGuard,
+                        knowledgeIndexSnapshotRepository,
                         transactionManager,
                         null);
 

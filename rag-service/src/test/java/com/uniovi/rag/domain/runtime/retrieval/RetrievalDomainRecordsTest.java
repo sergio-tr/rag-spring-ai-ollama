@@ -85,7 +85,8 @@ class RetrievalDomainRecordsTest {
                         projectId,
                         Optional.of("conv-1"),
                         List.of("doc-1"),
-                        false);
+                        false,
+                        Optional.empty());
         assertEquals("query", req.queryText());
         assertTrue(req.conversationId().isPresent());
     }

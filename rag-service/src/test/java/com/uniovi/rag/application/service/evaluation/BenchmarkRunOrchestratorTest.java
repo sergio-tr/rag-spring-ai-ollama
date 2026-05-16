@@ -13,21 +13,32 @@ import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepositor
 import com.uniovi.rag.infrastructure.persistence.RagPresetRepository;
 import com.uniovi.rag.infrastructure.persistence.ResolvedConfigSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
+import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleLoader;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
+import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
 import com.uniovi.rag.service.async.AsyncTaskService;
 import com.uniovi.rag.service.project.ProjectAccessService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.io.ByteArrayInputStream;
@@ -38,7 +49,13 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 
 @ExtendWith(MockitoExtension.class)
@@ -58,6 +75,12 @@ class BenchmarkRunOrchestratorTest {
     @Mock private RagRuntimeProperties ragRuntimeProperties;
     @Mock private EvaluationDatasetStorePort evaluationDatasetStorePort;
     private final EvaluationWorkbookParser evaluationWorkbookParser = new EvaluationWorkbookParser();
+    @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
+
+    @BeforeEach
+    void lenientEmbeddingGuard() {
+        lenient().when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(anyString())).thenReturn(1024);
+    }
 
     @Test
     void startJsonBenchmark_forbidsAdminBaselineForNonAdmin() {
@@ -76,7 +99,8 @@ class BenchmarkRunOrchestratorTest {
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
-                        evaluationWorkbookParser);
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -103,7 +127,8 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        List.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -130,7 +155,8 @@ class BenchmarkRunOrchestratorTest {
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
-                        evaluationWorkbookParser);
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -175,7 +201,8 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        List.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(LabJobConcurrencyException.class);
@@ -198,7 +225,8 @@ class BenchmarkRunOrchestratorTest {
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
-                        evaluationWorkbookParser);
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard);
 
         UUID dsId = UUID.randomUUID();
         when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.empty());
@@ -227,7 +255,8 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        List.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "ADMIN", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -254,7 +283,8 @@ class BenchmarkRunOrchestratorTest {
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
-                        evaluationWorkbookParser);
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -290,7 +320,8 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        List.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -298,6 +329,291 @@ class BenchmarkRunOrchestratorTest {
                         ex ->
                                 assertThat(((ResponseStatusException) ex).getStatusCode())
                                         .isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void startJsonBenchmark_embeddingCampaign_rejectsMisaligned_indexSnapshotIds() throws Exception {
+        BenchmarkRunOrchestrator orch =
+                new BenchmarkRunOrchestrator(
+                        userRepository,
+                        evaluationDatasetRepository,
+                        evaluationCampaignRepository,
+                        evaluationRunRepository,
+                        resolvedConfigSnapshotRepository,
+                        knowledgeIndexSnapshotRepository,
+                        ragPresetRepository,
+                        asyncTaskRepository,
+                        asyncTaskService,
+                        labJobLifecycleService,
+                        projectAccessService,
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard);
+
+        UUID dsId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        byte[] bytes = canonicalReferenceBundleBytes();
+
+        EvaluationDatasetEntity ds = Mockito.mock(EvaluationDatasetEntity.class);
+        UserEntity owner = Mockito.mock(UserEntity.class);
+        Mockito.when(owner.getId()).thenReturn(userId);
+        Mockito.when(ds.getOwner()).thenReturn(owner);
+        Mockito.when(ds.getDatasetScope()).thenReturn("USER_DATASET");
+        Mockito.when(ds.getExperimentalKind()).thenReturn("REFERENCE_BUNDLE");
+        Mockito.when(ds.getStorageUri()).thenReturn("datasets/u1/ref.xlsx");
+        when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.of(ds));
+        when(evaluationDatasetStorePort.openStream(eq("datasets/u1/ref.xlsx"))).thenReturn(new ByteArrayInputStream(bytes));
+        when(labJobLifecycleService.findFirstActiveJobForScope(eq(userId), eq(projectId))).thenReturn(null);
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        dsId,
+                        projectId,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "emb-campaign",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        List.of("mxbai-embed-large", "nomic-embed-text"),
+                        false,
+                        null,
+                        false,
+                        false,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(UUID.randomUUID()));
+
+        assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex -> {
+                            ResponseStatusException r = (ResponseStatusException) ex;
+                            assertThat(r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                            assertThat(r.getReason()).contains("EMBEDDING_CAMPAIGN_REQUIRES_ALIGNED_INDEX_SNAPSHOT_IDS");
+                        });
+        verify(asyncTaskService, never()).submitEvalEmbeddingRetrieval(any(), any(), any());
+    }
+
+    @Test
+    void startJsonBenchmark_embeddingCampaign_rejectsWhenRunEmbeddingModelDoesNotMatchSnapshotProfile()
+            throws Exception {
+        BenchmarkRunOrchestrator orch =
+                new BenchmarkRunOrchestrator(
+                        userRepository,
+                        evaluationDatasetRepository,
+                        evaluationCampaignRepository,
+                        evaluationRunRepository,
+                        resolvedConfigSnapshotRepository,
+                        knowledgeIndexSnapshotRepository,
+                        ragPresetRepository,
+                        asyncTaskRepository,
+                        asyncTaskService,
+                        labJobLifecycleService,
+                        projectAccessService,
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard);
+
+        UUID dsId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID snapId = UUID.randomUUID();
+        byte[] bytes = canonicalReferenceBundleBytes();
+
+        EvaluationDatasetEntity ds = Mockito.mock(EvaluationDatasetEntity.class);
+        UserEntity owner = Mockito.mock(UserEntity.class);
+        Mockito.when(owner.getId()).thenReturn(userId);
+        Mockito.when(ds.getOwner()).thenReturn(owner);
+        Mockito.when(ds.getDatasetScope()).thenReturn("USER_DATASET");
+        Mockito.when(ds.getExperimentalKind()).thenReturn("REFERENCE_BUNDLE");
+        Mockito.when(ds.getStorageUri()).thenReturn("datasets/u1/ref.xlsx");
+        Mockito.when(ds.getId()).thenReturn(dsId);
+        when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.of(ds));
+        when(evaluationDatasetStorePort.openStream(eq("datasets/u1/ref.xlsx"))).thenReturn(new ByteArrayInputStream(bytes));
+        when(labJobLifecycleService.findFirstActiveJobForScope(eq(userId), eq(projectId))).thenReturn(null);
+        when(projectAccessService.requireOwnedProject(eq(userId), eq(projectId))).thenReturn(Mockito.mock(ProjectEntity.class));
+
+        KnowledgeIndexSnapshotEntity idx = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
+        when(idx.getIndexProfileJsonb()).thenReturn(Map.of("embeddingModelId", "nomic-embed-text"));
+        when(idx.getSignatureHash()).thenReturn("sig");
+        when(knowledgeIndexSnapshotRepository.findById(snapId)).thenReturn(Optional.of(idx));
+
+        UserEntity user = Mockito.mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        dsId,
+                        projectId,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "emb-single",
+                        null,
+                        snapId,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        List.of("mxbai-embed-large"),
+                        false,
+                        null,
+                        false,
+                        false,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
+
+        assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex -> {
+                            ResponseStatusException r = (ResponseStatusException) ex;
+                            assertThat(r.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                            assertThat(r.getReason()).contains("EMBEDDING_MODEL_INDEX_MISMATCH");
+                        });
+        verify(asyncTaskService, never()).submitEvalEmbeddingRetrieval(any(), any(), any());
+    }
+
+    @Test
+    void startJsonBenchmark_embeddingCampaign_bindsEachRunToItsAlignedIndexSnapshot() throws Exception {
+        BenchmarkRunOrchestrator orch =
+                new BenchmarkRunOrchestrator(
+                        userRepository,
+                        evaluationDatasetRepository,
+                        evaluationCampaignRepository,
+                        evaluationRunRepository,
+                        resolvedConfigSnapshotRepository,
+                        knowledgeIndexSnapshotRepository,
+                        ragPresetRepository,
+                        asyncTaskRepository,
+                        asyncTaskService,
+                        labJobLifecycleService,
+                        projectAccessService,
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard);
+
+        UUID dsId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID snapA = UUID.randomUUID();
+        UUID snapB = UUID.randomUUID();
+        byte[] bytes = canonicalReferenceBundleBytes();
+
+        EvaluationDatasetEntity ds = Mockito.mock(EvaluationDatasetEntity.class);
+        UserEntity owner = Mockito.mock(UserEntity.class);
+        Mockito.when(owner.getId()).thenReturn(userId);
+        Mockito.when(ds.getOwner()).thenReturn(owner);
+        Mockito.when(ds.getDatasetScope()).thenReturn("USER_DATASET");
+        Mockito.when(ds.getExperimentalKind()).thenReturn("REFERENCE_BUNDLE");
+        Mockito.when(ds.getStorageUri()).thenReturn("datasets/u1/ref.xlsx");
+        Mockito.when(ds.getId()).thenReturn(dsId);
+        when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.of(ds));
+        when(evaluationDatasetStorePort.openStream(eq("datasets/u1/ref.xlsx"))).thenReturn(new ByteArrayInputStream(bytes));
+        when(labJobLifecycleService.findFirstActiveJobForScope(eq(userId), eq(projectId))).thenReturn(null);
+        when(projectAccessService.requireOwnedProject(eq(userId), eq(projectId))).thenReturn(Mockito.mock(ProjectEntity.class));
+
+        KnowledgeIndexSnapshotEntity idxA = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
+        when(idxA.getId()).thenReturn(snapA);
+        when(idxA.getIndexProfileJsonb()).thenReturn(Map.of("embeddingModelId", "mxbai-embed-large"));
+        when(idxA.getSignatureHash()).thenReturn("sig-a");
+        when(knowledgeIndexSnapshotRepository.findById(snapA)).thenReturn(Optional.of(idxA));
+
+        KnowledgeIndexSnapshotEntity idxB = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
+        when(idxB.getId()).thenReturn(snapB);
+        when(idxB.getIndexProfileJsonb()).thenReturn(Map.of("embeddingModelId", "nomic-embed-text"));
+        when(idxB.getSignatureHash()).thenReturn("sig-b");
+        when(knowledgeIndexSnapshotRepository.findById(snapB)).thenReturn(Optional.of(idxB));
+
+        UserEntity user = Mockito.mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        when(evaluationCampaignRepository.save(any(EvaluationCampaignEntity.class)))
+                .thenAnswer(
+                        inv -> {
+                            EvaluationCampaignEntity c = inv.getArgument(0);
+                            if (c.getId() == null) {
+                                c.setId(UUID.randomUUID());
+                            }
+                            return c;
+                        });
+        when(evaluationRunRepository.save(any(EvaluationRunEntity.class)))
+                .thenAnswer(
+                        inv -> {
+                            EvaluationRunEntity r = inv.getArgument(0);
+                            if (r.getId() == null) {
+                                r.setId(UUID.randomUUID());
+                            }
+                            return r;
+                        });
+
+        UUID taskId = UUID.randomUUID();
+        when(asyncTaskService.submitEvalEmbeddingRetrieval(eq(userId), eq(projectId), any(UUID.class)))
+                .thenReturn(taskId);
+        when(asyncTaskRepository.findById(taskId)).thenReturn(Optional.of(Mockito.mock(AsyncTaskEntity.class)));
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        dsId,
+                        projectId,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "emb-campaign",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        List.of("mxbai-embed-large", "nomic-embed-text"),
+                        false,
+                        "cmp",
+                        false,
+                        false,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(snapA, snapB));
+
+        orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req);
+
+        verify(knowledgeIndexSnapshotRepository).findById(snapA);
+        verify(knowledgeIndexSnapshotRepository).findById(snapB);
+        ArgumentCaptor<UUID> runIdCaptor = ArgumentCaptor.forClass(UUID.class);
+        verify(asyncTaskService, times(2)).submitEvalEmbeddingRetrieval(eq(userId), eq(projectId), runIdCaptor.capture());
+        assertThat(runIdCaptor.getAllValues()).doesNotHaveDuplicates();
+    }
+
+    private static byte[] canonicalReferenceBundleBytes() throws Exception {
+        ClassPathResource r = new ClassPathResource(EvaluationReferenceBundleLoader.CLASSPATH_LOCATION);
+        try (var in = r.getInputStream()) {
+            return in.readAllBytes();
+        }
     }
 
     @Test
@@ -317,7 +633,8 @@ class BenchmarkRunOrchestratorTest {
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
-                        evaluationWorkbookParser);
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -360,7 +677,8 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        List.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(LabDatasetGateException.class)
@@ -387,7 +705,8 @@ class BenchmarkRunOrchestratorTest {
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
-                        evaluationWorkbookParser);
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -414,7 +733,8 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        List.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -441,7 +761,8 @@ class BenchmarkRunOrchestratorTest {
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
-                        evaluationWorkbookParser);
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -468,7 +789,8 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        List.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -495,7 +817,8 @@ class BenchmarkRunOrchestratorTest {
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
-                        evaluationWorkbookParser);
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -522,7 +845,8 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        List.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -549,7 +873,8 @@ class BenchmarkRunOrchestratorTest {
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
-                        evaluationWorkbookParser);
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -576,7 +901,8 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        List.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)

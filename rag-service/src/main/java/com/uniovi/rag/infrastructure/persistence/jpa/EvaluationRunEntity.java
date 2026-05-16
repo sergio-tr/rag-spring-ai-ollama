@@ -101,6 +101,9 @@ public class EvaluationRunEntity {
     @Column(name = "embedding_model_id", length = 256)
     private String embeddingModelId;
 
+    @Column(name = "embedding_dimensions")
+    private Integer embeddingDimensions;
+
     @Column(name = "classifier_model_id", length = 256)
     private String classifierModelId;
 
@@ -305,6 +308,14 @@ public class EvaluationRunEntity {
 
     public void setEmbeddingModelId(String embeddingModelId) {
         this.embeddingModelId = embeddingModelId;
+    }
+
+    public Integer getEmbeddingDimensions() {
+        return embeddingDimensions;
+    }
+
+    public void setEmbeddingDimensions(Integer embeddingDimensions) {
+        this.embeddingDimensions = embeddingDimensions;
     }
 
     public String getClassifierModelId() {

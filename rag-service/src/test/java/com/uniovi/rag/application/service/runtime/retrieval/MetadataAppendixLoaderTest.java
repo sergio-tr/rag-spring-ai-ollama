@@ -40,7 +40,7 @@ class MetadataAppendixLoaderTest {
         ExecutionContext ctx = mock(ExecutionContext.class);
         when(ctx.projectId()).thenReturn(null);
         when(ctx.knowledgeSnapshotSelection())
-                .thenReturn(new KnowledgeSnapshotSelection(List.of(UUID.randomUUID()), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+                .thenReturn(new KnowledgeSnapshotSelection(List.of(UUID.randomUUID()), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
 
         String out =
                 loader.loadAppendix(
@@ -74,7 +74,7 @@ class MetadataAppendixLoaderTest {
         ExecutionContext ctx = mock(ExecutionContext.class);
         when(ctx.projectId()).thenReturn(projectId);
         when(ctx.knowledgeSnapshotSelection())
-                .thenReturn(new KnowledgeSnapshotSelection(List.of(snap), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+                .thenReturn(new KnowledgeSnapshotSelection(List.of(snap), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
 
         RetrievalCandidate bad =
                 new RetrievalCandidate("x", "t", Map.of("document_id", "not-a-uuid"), 0, 0, 1, 0, snap, 0);
@@ -94,7 +94,7 @@ class MetadataAppendixLoaderTest {
         ExecutionContext ctx = mock(ExecutionContext.class);
         when(ctx.projectId()).thenReturn(projectId);
         when(ctx.knowledgeSnapshotSelection())
-                .thenReturn(new KnowledgeSnapshotSelection(List.of(snap), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+                .thenReturn(new KnowledgeSnapshotSelection(List.of(snap), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
 
         when(namedJdbc.query(anyString(), any(MapSqlParameterSource.class), ArgumentMatchers.<RowMapper<String>>any()))
                 .thenReturn(List.of("{\"k\":1}", "   ", "{\"k\":2}"));

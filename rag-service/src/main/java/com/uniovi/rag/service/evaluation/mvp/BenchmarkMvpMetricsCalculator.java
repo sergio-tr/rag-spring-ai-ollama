@@ -103,6 +103,18 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("mvpSchemaVersion", BenchmarkMvpSchema.VERSION);
         row.put("itemId", item.getId() != null ? item.getId().toString() : "");
         row.put("benchmarkKind", str(item.getBenchmarkKind()));
+        row.put("evaluationRunId", run != null && run.getId() != null ? run.getId().toString() : "");
+        row.put(
+                "evaluationDatasetId",
+                run != null && run.getDataset() != null && run.getDataset().getId() != null
+                        ? run.getDataset().getId().toString()
+                        : "");
+        row.put("evaluationDatasetSha256", run != null && run.getDatasetSha256() != null ? run.getDatasetSha256() : "");
+        row.put(
+                "resolvedConfigSnapshotId",
+                run != null && run.getResolvedConfigSnapshot() != null && run.getResolvedConfigSnapshot().getId() != null
+                        ? run.getResolvedConfigSnapshot().getId().toString()
+                        : "");
         row.put("queryType", str(mvp.get("queryType")));
         row.put("difficulty", str(mvp.get("difficulty")));
         row.put("datasetQuestionId", str(mvp.get("datasetQuestionId")));

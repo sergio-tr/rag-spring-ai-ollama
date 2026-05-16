@@ -64,6 +64,13 @@ class LabExperimentalPresetCatalogServiceTest {
         assertThat(p0.requiresSnapshot()).isTrue();
         assertThat(p0.requiresProjectDocuments()).isTrue();
         assertThat(p0.singleTurnBenchmarkSelectable()).isTrue();
+        assertThat(p0.protocolStageIndex()).isZero();
+        assertThat(p0.parentPresetCode()).isNull();
+        assertThat(p0.effectiveTerminalRuntimeJson()).isNotBlank().contains("useRetrieval");
+
+        var p3 = rows.stream().filter(r -> "P3".equals(r.code())).findFirst().orElseThrow();
+        assertThat(p3.protocolStageIndex()).isEqualTo(3);
+        assertThat(p3.parentPresetCode()).isEqualTo("P2");
 
         var p1 = rows.stream().filter(r -> "P1".equals(r.code())).findFirst().orElseThrow();
         assertThat(p1.corpusRequired()).isTrue();

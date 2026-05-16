@@ -83,7 +83,7 @@ class RagExecutionOrchestratorSnapshotFallbackTest {
         UUID sid = UUID.randomUUID();
         KnowledgeSnapshotSelection sel =
                 new KnowledgeSnapshotSelection(
-                        List.of(sid), Optional.of(sid), Optional.empty(), Optional.of("ph"), Optional.empty());
+                        List.of(sid), Optional.of(sid), Optional.empty(), Optional.of("ph"), Optional.empty(), Optional.empty());
         ExecutionContext ctx = mock(ExecutionContext.class);
         when(ctx.knowledgeSnapshotSelection()).thenReturn(sel);
 

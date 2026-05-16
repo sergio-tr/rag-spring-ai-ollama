@@ -7,6 +7,7 @@ import com.uniovi.rag.infrastructure.persistence.DocumentArtifactRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.DocumentArtifactEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
+import com.uniovi.rag.infrastructure.vector.PgVectorStoreRegistry;
 import com.uniovi.rag.service.document.ByteArrayMultipartFile;
 import com.uniovi.rag.service.document.KnowledgeChunkMetadataFactory;
 import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
@@ -21,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -41,19 +41,19 @@ public class KnowledgeIndexingService {
 
     private static final Logger log = LoggerFactory.getLogger(KnowledgeIndexingService.class);
 
-    private final PgVectorStore vectorStore;
+    private final PgVectorStoreRegistry vectorStoreRegistry;
     private final JdbcTemplate jdbcTemplate;
     private final ProjectDocumentIngestionService projectDocumentIngestionService;
     private final BinaryStoragePort binaryStoragePort;
     private final DocumentArtifactRepository documentArtifactRepository;
 
     public KnowledgeIndexingService(
-            PgVectorStore vectorStore,
+            PgVectorStoreRegistry vectorStoreRegistry,
             JdbcTemplate jdbcTemplate,
             @Lazy ProjectDocumentIngestionService projectDocumentIngestionService,
             BinaryStoragePort binaryStoragePort,
             DocumentArtifactRepository documentArtifactRepository) {
-        this.vectorStore = vectorStore;
+        this.vectorStoreRegistry = vectorStoreRegistry;
         this.jdbcTemplate = jdbcTemplate;
         this.projectDocumentIngestionService = projectDocumentIngestionService;
         this.binaryStoragePort = binaryStoragePort;
@@ -164,7 +164,12 @@ public class KnowledgeIndexingService {
         }
 
         if (!vectorDocs.isEmpty()) {
-            vectorStore.add(vectorDocs);
+            String embeddingModelId =
+                    IndexProfileJsonSupport.readEmbeddingModelId(snapshot.getIndexProfileJsonb())
+                            .orElseThrow(
+                                    () -> new IllegalStateException(
+                                            "embeddingModelId missing from knowledge_index_snapshot.index_profile_jsonb; cannot embed"));
+            vectorStoreRegistry.forEmbeddingModelId(embeddingModelId).add(vectorDocs);
             // Spring AI PgVectorStore does not automatically populate our optional `vector_store.project_id` column.
             // We keep `metadata.projectId` as-is and also set the column for correct project-scoped retrieval.
             int updated =

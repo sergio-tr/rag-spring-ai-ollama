@@ -271,7 +271,7 @@ class EngineRuntimeRecordsTest {
         UUID a = UUID.randomUUID();
         KnowledgeSnapshotSelection k2 =
                 new KnowledgeSnapshotSelection(
-                        List.of(a), null, Optional.of(UUID.randomUUID()), null, null);
+                        List.of(a), null, Optional.of(UUID.randomUUID()), null, null, null);
         assertThat(k2.orderedSnapshotIds()).containsExactly(a);
         assertThat(k2.projectSnapshotSignatureHash()).isEmpty();
     }

@@ -10,11 +10,13 @@ import com.uniovi.rag.domain.evaluation.workbook.ExperimentalDatasetType;
 import com.uniovi.rag.domain.evaluation.EvaluationDatasetScope;
 import com.uniovi.rag.domain.evaluation.EvaluationRunKind;
 import com.uniovi.rag.domain.evaluation.EvaluationStudyType;
+import com.uniovi.rag.domain.evaluation.workbook.EmbeddingCandidate;
 import com.uniovi.rag.domain.evaluation.workbook.WorkbookParseResult;
 import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.evaluation.workbook.LabDatasetGateValidator;
 import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
+import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
 import com.uniovi.rag.infrastructure.persistence.EvaluationDatasetRepository;
@@ -33,6 +35,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
 import com.uniovi.rag.service.async.AsyncTaskService;
@@ -54,6 +57,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.Optional;
 
 /**
  * Creates {@link EvaluationRunEntity} rows and enqueues {@link AsyncTaskEntity} work for lab benchmarks.
@@ -84,6 +88,7 @@ public class BenchmarkRunOrchestrator {
     private final RagRuntimeProperties ragRuntimeProperties;
     private final EvaluationDatasetStorePort evaluationDatasetStorePort;
     private final EvaluationWorkbookParser evaluationWorkbookParser;
+    private final EmbeddingSpaceGuard embeddingSpaceGuard;
 
     public BenchmarkRunOrchestrator(
             UserRepository userRepository,
@@ -99,7 +104,8 @@ public class BenchmarkRunOrchestrator {
             ProjectAccessService projectAccessService,
             RagRuntimeProperties ragRuntimeProperties,
             EvaluationDatasetStorePort evaluationDatasetStorePort,
-            EvaluationWorkbookParser evaluationWorkbookParser) {
+            EvaluationWorkbookParser evaluationWorkbookParser,
+            EmbeddingSpaceGuard embeddingSpaceGuard) {
         this.userRepository = userRepository;
         this.evaluationDatasetRepository = evaluationDatasetRepository;
         this.evaluationCampaignRepository = evaluationCampaignRepository;
@@ -114,6 +120,7 @@ public class BenchmarkRunOrchestrator {
         this.ragRuntimeProperties = ragRuntimeProperties;
         this.evaluationDatasetStorePort = evaluationDatasetStorePort;
         this.evaluationWorkbookParser = evaluationWorkbookParser;
+        this.embeddingSpaceGuard = embeddingSpaceGuard;
     }
 
     @Transactional
@@ -126,11 +133,8 @@ public class BenchmarkRunOrchestrator {
         if (kind == BenchmarkKind.LLM_JUDGE_QA && wantsLlmCampaign(request)) {
             return startLlmCampaign(userId, roleName, kind, request);
         }
-        // Multi-model embedding campaign: explicitly blocked unless we can truly swap embedding runtime.
         if (kind == BenchmarkKind.EMBEDDING_RETRIEVAL && wantsEmbeddingCampaign(request)) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_IMPLEMENTED,
-                    "EMBEDDING_RUNTIME_SWAP_NOT_IMPLEMENTED: multi-embedding campaigns require true embedding-model swap + reindex/snapshot isolation");
+            return startEmbeddingCampaign(userId, roleName, kind, request);
         }
         // RAG preset sweep campaign: group one run under a campaign so exports/comparison can be campaign-scoped.
         if (kind == BenchmarkKind.RAG_PRESET_END_TO_END && wantsRagPresetCampaign(request)) {
@@ -150,6 +154,7 @@ public class BenchmarkRunOrchestrator {
         EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, request);
         run.setName(request.name() != null ? request.name() : kind.name());
         applyOptionalLinks(run, request);
+        finalizeEmbeddingRetrievalRuntimeBinding(kind, run);
 
         run = evaluationRunRepository.save(run);
 
@@ -308,7 +313,8 @@ public class BenchmarkRunOrchestrator {
                             request.classpathDocsLocation(),
                             request.bootstrapCorpusScope(),
                             request.bootstrapSkipExisting(),
-                            request.bootstrapFailOnDocumentError());
+                            request.bootstrapFailOnDocumentError(),
+                            List.of());
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, modelId));
@@ -327,6 +333,184 @@ public class BenchmarkRunOrchestrator {
         // For backward compatibility, return the first runId + last taskId; expose campaignId explicitly.
         // Clients should use campaignId to list/compare/export across the grouped runs.
         return BenchmarkJobAccepted.ofCampaign(firstRunId, lastTaskId, camp.getId());
+    }
+
+    private BenchmarkJobAccepted startEmbeddingCampaign(
+            UUID userId, String roleName, BenchmarkKind kind, StartBenchmarkRunRequest request) {
+        validateRunKind(roleName, request.runKind());
+        validateClasspathCorpusBootstrapRequest(kind, request);
+        requireNoActiveLabJob(userId, request.projectId());
+        EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
+        validateDatasetForKind(dataset, kind);
+        validateDatasetPreRunEligibility(kind, dataset);
+        validateScienceFields(kind, request);
+
+        List<String> modelIds = resolveEmbeddingCandidateModelIds(dataset, request);
+        if (modelIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "embeddingModelIds is empty");
+        }
+        if (modelIds.size() > 1 && request.indexSnapshotIds().size() != modelIds.size()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "EMBEDDING_CAMPAIGN_REQUIRES_ALIGNED_INDEX_SNAPSHOT_IDS: indexSnapshotIds must match embeddingModelIds length");
+        }
+
+        UserEntity user = userRepository.findById(userId).orElseThrow();
+        EvaluationCampaignEntity camp = new EvaluationCampaignEntity();
+        camp.setUser(user);
+        camp.setCreatedAt(Instant.now());
+        camp.setStudyType(EvaluationStudyType.EMBEDDING_MODEL_BASELINE.name());
+        if (request.campaignName() != null && !request.campaignName().isBlank()) {
+            camp.setName(request.campaignName().trim());
+        } else {
+            camp.setName("Embedding model campaign");
+        }
+        if (request.projectId() != null) {
+            ProjectEntity p = projectAccessService.requireOwnedProject(userId, request.projectId());
+            camp.setProject(p);
+        }
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("datasetId", dataset.getId().toString());
+        meta.put("benchmarkKind", kind.name());
+        meta.put("embeddingModelIds", modelIds);
+        meta.put("indexSnapshotIds", request.indexSnapshotIds().stream().map(UUID::toString).toList());
+        meta.put("useWorkbookCandidates", request.useWorkbookCandidatesEffective());
+        camp.setMetaJson(meta);
+        camp = evaluationCampaignRepository.save(camp);
+
+        UUID firstRunId = null;
+        UUID lastTaskId = null;
+        for (int i = 0; i < modelIds.size(); i++) {
+            String modelId = modelIds.get(i);
+            UUID childIndexSnapshotId = resolveAlignedIndexSnapshotId(request, i, modelIds.size());
+            StartBenchmarkRunRequest childReq =
+                    new StartBenchmarkRunRequest(
+                            request.datasetId(),
+                            request.projectId(),
+                            request.runKind(),
+                            request.name(),
+                            request.resolvedConfigSnapshotId(),
+                            childIndexSnapshotId,
+                            request.presetId(),
+                            request.embeddingDownstreamRag(),
+                            request.experimentalPresetCodes(),
+                            request.llmModelId(),
+                            modelId,
+                            List.of(),
+                            List.of(),
+                            false,
+                            null,
+                            request.autoReindex(),
+                            request.allowActiveSnapshotMutation(),
+                            request.reuseCompatibleActiveSnapshot(),
+                            request.failOnReindexFailure(),
+                            request.bootstrapCorpusFromClasspathDocs(),
+                            request.classpathDocsLocation(),
+                            request.bootstrapCorpusScope(),
+                            request.bootstrapSkipExisting(),
+                            request.bootstrapFailOnDocumentError(),
+                            List.of());
+            EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
+            run.setCampaign(camp);
+            run.setName(childRunName(request.name(), kind, modelId));
+            applyOptionalLinks(run, childReq);
+            finalizeEmbeddingRetrievalRuntimeBinding(kind, run);
+            run = evaluationRunRepository.save(run);
+
+            UUID taskId =
+                    asyncTaskService.submitEvalEmbeddingRetrieval(userId, request.projectId(), run.getId());
+            attachTaskAndRunning(run, taskId);
+
+            if (firstRunId == null) {
+                firstRunId = run.getId();
+            }
+            lastTaskId = taskId;
+        }
+
+        return BenchmarkJobAccepted.ofCampaign(firstRunId, lastTaskId, camp.getId());
+    }
+
+    private static UUID resolveAlignedIndexSnapshotId(StartBenchmarkRunRequest request, int index, int modelsCount) {
+        List<UUID> paired = request.indexSnapshotIds();
+        if (modelsCount > 1) {
+            return paired.get(index);
+        }
+        if (!paired.isEmpty()) {
+            return paired.getFirst();
+        }
+        return request.indexSnapshotId();
+    }
+
+    private List<String> resolveEmbeddingCandidateModelIds(EvaluationDatasetEntity dataset, StartBenchmarkRunRequest request) {
+        if (request.embeddingModelIds() != null && !request.embeddingModelIds().isEmpty()) {
+            return request.embeddingModelIds();
+        }
+        if (!request.useWorkbookCandidatesEffective()) {
+            return List.of();
+        }
+        EvaluationWorkbook wb = parseWorkbookForCandidates(dataset);
+        List<String> out = new ArrayList<>();
+        for (EmbeddingCandidate c : wb.embeddingCandidates()) {
+            String model = c.model() != null && !c.model().isBlank() ? c.model().trim() : null;
+            if (model != null && !model.isBlank()) {
+                out.add(model);
+            }
+        }
+        return out;
+    }
+
+    private void finalizeEmbeddingRetrievalRuntimeBinding(BenchmarkKind kind, EvaluationRunEntity run) {
+        if (kind != BenchmarkKind.EMBEDDING_RETRIEVAL) {
+            return;
+        }
+        KnowledgeIndexSnapshotEntity idx = run.getIndexSnapshot();
+        Optional<String> prof =
+                idx == null ? Optional.empty() : IndexProfileJsonSupport.readEmbeddingModelId(idx.getIndexProfileJsonb());
+        boolean hasRunEmb = run.getEmbeddingModelId() != null && !run.getEmbeddingModelId().isBlank();
+        if (idx == null && !hasRunEmb) {
+            return;
+        }
+        String chosen;
+        if (hasRunEmb) {
+            chosen = run.getEmbeddingModelId().trim();
+            if (prof.isPresent()
+                    && !IndexProfileJsonSupport.normalizeEmbeddingKey(chosen)
+                            .equals(IndexProfileJsonSupport.normalizeEmbeddingKey(prof.get()))) {
+                throw new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "EMBEDDING_MODEL_INDEX_MISMATCH: evaluation_run.embedding_model_id "
+                                + chosen
+                                + " does not match knowledge_index_snapshot profile "
+                                + prof.get()
+                                + " — bind the snapshot indexed with that model or reindex.");
+            }
+        } else {
+            if (prof.isEmpty()) {
+                throw new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "EMBEDDING_MODEL_REQUIRED: specify embeddingModelId or bind an index snapshot whose profile contains embeddingModelId");
+            }
+            chosen = prof.get().trim();
+            run.setEmbeddingModelId(chosen);
+        }
+        int dims = embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(chosen);
+        run.setEmbeddingDimensions(dims);
+        Map<String, Object> agg = new LinkedHashMap<>();
+        if (run.getAggregatesJson() != null && !run.getAggregatesJson().isEmpty()) {
+            agg.putAll(run.getAggregatesJson());
+        }
+        agg.put("embeddingModelId", chosen);
+        agg.put("embeddingDimensions", dims);
+        if (idx != null) {
+            agg.put("indexSnapshotId", idx.getId().toString());
+            if (idx.getIndexProfileHash() != null && !idx.getIndexProfileHash().isBlank()) {
+                agg.put("indexProfileHash", idx.getIndexProfileHash());
+            }
+            if (idx.getSignatureHash() != null) {
+                agg.put("indexSignatureHash", idx.getSignatureHash());
+            }
+        }
+        run.setAggregatesJson(Map.copyOf(agg));
     }
 
     private static boolean wantsLlmCampaign(StartBenchmarkRunRequest request) {

@@ -70,6 +70,9 @@ public class LabExperimentalPresetCatalogService {
             boolean snapReq = ExperimentalPresetCanonicalCatalog.requiresSnapshotForExecution(code);
             boolean docsReq = ExperimentalPresetCanonicalCatalog.requiresProjectDocuments(code);
             boolean singleTurnBench = ExperimentalPresetCanonicalCatalog.singleTurnBenchmarkSelectable(code);
+            ExperimentalPresetCanonicalCatalog.CanonicalPreset canon = ExperimentalPresetCanonicalCatalog.require(code);
+            String parentCode = canon.parent() != null ? canon.parent().name() : null;
+            String terminalJson = ExperimentalPresetCanonicalCatalog.effectiveTerminalRuntimeJson(code).toString();
             out.add(
                     new ExperimentalPresetCatalogItemDto(
                             experimentalProductPresetId(code),
@@ -93,7 +96,10 @@ public class LabExperimentalPresetCatalogService {
                             corpusReq,
                             snapReq,
                             docsReq,
-                            singleTurnBench));
+                            singleTurnBench,
+                            code.ordinal(),
+                            parentCode,
+                            terminalJson));
         }
         out.sort(Comparator.comparing(ExperimentalPresetCatalogItemDto::code));
         return out;
