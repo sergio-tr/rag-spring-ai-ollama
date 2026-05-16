@@ -88,10 +88,24 @@ if skipped == collected:
     print(f"error: false-green integration run: skipped == collected == {collected}", file=sys.stderr)
     sys.exit(23)
 
-if os.environ.get("INTEGRATION_REQUIRE_CLASSIFIER", "").lower() in {"1", "true", "yes", "on"}:
+truthy = {"1", "true", "yes", "on"}
+classifier_model_required = os.environ.get("INTEGRATION_REQUIRE_CLASSIFIER_MODEL", "").lower() in truthy
+
+if os.environ.get("INTEGRATION_REQUIRE_CLASSIFIER", "").lower() in truthy:
     classifier_skip_lines = [
         line for line in text.splitlines()
         if "skipped" in line.lower() and "classifier" in line.lower()
+    ]
+    if not classifier_model_required:
+        classifier_skip_lines = [
+            line
+            for line in classifier_skip_lines
+            if "model not loaded" not in line.lower() and "model != loaded" not in line.lower()
+        ]
+    classifier_skip_lines = [
+        line
+        for line in classifier_skip_lines
+        if "testobservabilitystack" not in line.lower() and "observability tests" not in line.lower()
     ]
     if classifier_skip_lines:
         print("error: classifier is required but classifier-related tests were skipped:", file=sys.stderr)

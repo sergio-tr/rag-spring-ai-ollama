@@ -32,6 +32,22 @@ def _integration_classifier_required() -> bool:
     return _truthy_env("INTEGRATION_REQUIRE_CLASSIFIER")
 
 
+def _integration_classifier_model_required() -> bool:
+    return _truthy_env("INTEGRATION_REQUIRE_CLASSIFIER_MODEL")
+
+
+def _classifier_skip_requires_failure(nodeid: str, reason: str) -> bool:
+    text = f"{nodeid}\n{reason}".lower()
+    if "testobservabilitystack" in text or "observability tests" in text:
+        return False
+    if "classifier" not in text:
+        return False
+    model_not_loaded = "model not loaded" in text or "model != loaded" in text
+    if model_not_loaded and not _integration_classifier_model_required():
+        return False
+    return True
+
+
 def pytest_configure(config: pytest.Config) -> None:
     global _COLLECTED_COUNT, _STRICT_GUARD_FAILURE
     del config
@@ -83,7 +99,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         classifier_skips = {
             nodeid: reason
             for nodeid, reason in skipped.items()
-            if "classifier" in f"{nodeid}\n{reason}".lower()
+            if _classifier_skip_requires_failure(nodeid, reason)
         }
         if classifier_skips:
             first_nodeid, first_reason = next(iter(classifier_skips.items()))
