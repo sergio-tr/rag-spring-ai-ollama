@@ -1,7 +1,12 @@
 package com.uniovi.rag.infrastructure.classifier;
 
 import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.domain.runtime.RagExecutionContext;
+import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
 import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -59,6 +64,28 @@ class ClassifierServiceClientTest {
 
         server.verify();
         assertEquals(QueryType.COUNT_DOCUMENTS, result);
+    }
+
+    @Test
+    void classifyUsesClassifierModelIdFromExecutionContext() {
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        RagConfig cfg = RagConfig.fromFeatureConfiguration(
+                new RagFeatureConfiguration(), 10, 0.7, "llm", "emb", "project-classifier", "SIMPLE");
+        RagExecutionContextHolder.set(
+                new RagExecutionContext("conv", "user", "project", cfg, List.of(RagExecutionContext.ALL_DOCUMENTS), "t"));
+        try {
+            server.expect(requestTo(base + "/classify"))
+                    .andExpect(method(HttpMethod.POST))
+                    .andExpect(content().json("{\"query\":\"How many documents?\",\"modelId\":\"project-classifier\"}"))
+                    .andRespond(withSuccess("{\"queryType\": \"COUNT_DOCUMENTS\"}", MediaType.APPLICATION_JSON));
+
+            QueryType result = classifier.classify("How many documents?");
+
+            server.verify();
+            assertEquals(QueryType.COUNT_DOCUMENTS, result);
+        } finally {
+            RagExecutionContextHolder.clear();
+        }
     }
 
     @Test
