@@ -3,7 +3,7 @@
 # Same compose file chain and env files historically used by repository up/down entrypoints.
 #
 # Usage (from repository root):
-#   ./docker/scripts/docker-compose.sh <build|up|down> <dev|prod> [env options] [stack options]
+#   ./docker/scripts/docker-compose.sh <build|config|up|down> <dev|prod> [env options] [stack options]
 #
 #   down: second arg defaults to prod if omitted (compat with old down.sh).
 #
@@ -35,7 +35,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DOCKER_DIR="$ROOT_DIR/docker"
 
 usage() {
-  echo "Usage: $0 <build|up|down> <dev|prod> [options]" >&2
+  echo "Usage: $0 <build|config|up|down> <dev|prod> [options]" >&2
   echo "  down: <dev|prod> optional (defaults to prod)" >&2
   echo "  Env: --env <db|obs|rag|classifier|ollama|all> ..., --no-env-prompt" >&2
   echo "  dev:  [--all] [--gpu|--ollama] [--ollama-remote] [--obs] [--classifier] [--classifier-gpu] [--logs] [--infra] [--rag] [--proxy] [--down] [--volumes]" >&2
@@ -45,9 +45,9 @@ usage() {
 
 CMD="${1:-}"
 case "$CMD" in
-  build|up|down) shift ;;
+  build|config|up|down) shift ;;
   *)
-    echo "Usage: $0 <build|up|down> <dev|prod> ..." >&2
+    echo "Usage: $0 <build|config|up|down> <dev|prod> ..." >&2
     exit 1
     ;;
 esac
@@ -167,6 +167,8 @@ if [ "$MODE" = dev ]; then
     ACTION=down
   elif [ "$CMD" = build ]; then
     ACTION=build
+  elif [ "$CMD" = config ]; then
+    ACTION=config
   else
     ACTION=up
   fi
@@ -294,6 +296,12 @@ if [ "$MODE" = dev ]; then
     exit 0
   fi
 
+  if [ "$ACTION" = config ]; then
+    docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" config -q
+    echo "Dev compose config OK (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, classifier=$WITH_CLASSIFIER, rag_backend=$WITH_RAG_BACKEND, dev_proxy=$WITH_DEV_PROXY, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+    exit 0
+  fi
+
   maybe_run_env_setup up
 
   SERVICES=(postgres)
@@ -403,19 +411,6 @@ if [ "$ALL" = true ]; then
   fi
 fi
 
-COMPOSE_FILES=(-f "docker-compose.yml")
-[ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.obs.yml")
-COMPOSE_FILES+=(-f "compose.prod.yml")
-[ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.prod-obs.yml")
-
-PROFILE_ARGS=()
-[ "$WITH_OBS" = true ] && PROFILE_ARGS+=(--profile observability)
-[ "$WITH_LOGS" = true ] && PROFILE_ARGS+=(--profile logs)
-[ "$WITH_INFRA" = true ] && PROFILE_ARGS+=(--profile infra)
-if [ "$WITH_GPU" = true ] && [ "$WITH_NVIDIA" = true ] && [ "$WITH_OLLAMA_REMOTE" != true ]; then
-  PROFILE_ARGS+=(--profile ollama)
-fi
-
 has_nvidia_runtime() {
   docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'
 }
@@ -429,7 +424,19 @@ else
   WITH_NVIDIA=false
 fi
 
+COMPOSE_FILES=(-f "docker-compose.yml")
+[ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.obs.yml")
+COMPOSE_FILES+=(-f "compose.prod.yml")
+[ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.prod-obs.yml")
 [ "$WITH_NVIDIA" = true ] && COMPOSE_FILES+=(-f "compose.gpu.yml")
+
+PROFILE_ARGS=()
+[ "$WITH_OBS" = true ] && PROFILE_ARGS+=(--profile observability)
+[ "$WITH_LOGS" = true ] && PROFILE_ARGS+=(--profile logs)
+[ "$WITH_INFRA" = true ] && PROFILE_ARGS+=(--profile infra)
+if [ "$WITH_GPU" = true ] && [ "$WITH_NVIDIA" = true ] && [ "$WITH_OLLAMA_REMOTE" != true ]; then
+  PROFILE_ARGS+=(--profile ollama)
+fi
 
 ENV_ARGS=()
 add_env_file() {
@@ -468,6 +475,12 @@ if [ "$CMD" = build ]; then
   maybe_run_env_setup build
   docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" build
   echo "Prod local images built (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+  exit 0
+fi
+
+if [ "$CMD" = config ]; then
+  docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" config -q
+  echo "Prod compose config OK (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, ollama_remote=$WITH_OLLAMA_REMOTE, logs=$WITH_LOGS, infra=$WITH_INFRA)."
   exit 0
 fi
 
