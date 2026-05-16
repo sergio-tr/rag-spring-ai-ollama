@@ -171,6 +171,21 @@ export type SendChatMessageOptions = {
   sendEnabledTimeoutMs?: number;
 };
 
+export async function openChatConfigurationPanel(page: Page): Promise<Locator> {
+  await page.getByTestId("chat-config-trigger").click();
+  const panel = page.getByTestId("chat-configuration-side-panel").or(page.getByRole("dialog"));
+  await expect(panel).toBeVisible({ timeout: 15_000 });
+  return panel;
+}
+
+export async function openChatDocumentsSheet(page: Page): Promise<Locator> {
+  const panel = await openChatConfigurationPanel(page);
+  await panel.getByTestId("chat-open-documents-sheet").click();
+  const sheet = page.getByTestId("chat-documents-sheet");
+  await expect(sheet).toBeVisible({ timeout: 15_000 });
+  return sheet;
+}
+
 function chatComposerLocators(page: Page): {
   textarea: Locator;
   sendButton: Locator;

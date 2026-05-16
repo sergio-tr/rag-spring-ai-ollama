@@ -11,9 +11,6 @@ import { DeleteConversationDialog } from "@/features/chat/components/DeleteConve
 import { MoveConversationDialog } from "@/features/chat/components/MoveConversationDialog";
 import { NewConversationDialog } from "@/features/chat/components/NewConversationDialog";
 import {
-  CHAT_DETERMINISTIC_DEFAULT_PRESET_ID,
-} from "@/features/chat/lib/conversation-preset-ui";
-import {
   useConversationMessages,
   useConversations,
   useCreateConversation,
@@ -174,10 +171,15 @@ function ChatPageInner() {
   const [editError, setEditError] = useState<string | null>(null);
   const [editingUserMessageId, setEditingUserMessageId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
-  /** Empty string = backend default model. */
-  const [llmModelChoice, setLlmModelChoice] = useState("");
+  /** Empty string = backend default model. Scoped to the conversation edited locally. */
+  const [llmModelChoiceDraft, setLlmModelChoiceDraft] = useState<{ conversationId: string | null; value: string }>(
+    { conversationId: null, value: "" },
+  );
   /** Empty string = no per-conversation classifier override (project RAG JSON applies). */
-  const [classifierModelChoice, setClassifierModelChoice] = useState("");
+  const [classifierModelChoiceDraft, setClassifierModelChoiceDraft] = useState<{
+    conversationId: string | null;
+    value: string;
+  }>({ conversationId: null, value: "" });
   /** Scoped to `conversationId` so switching chats does not require clearing in an effect. */
   const [limitDocsNoticeRecord, setLimitDocsNoticeRecord] = useState<{
     conversationId: string | null;
@@ -286,23 +288,20 @@ function ChatPageInner() {
   );
   const conversationNotFound = Boolean(conversationId && convs && !activeConv);
 
-  useEffect(() => {
-    setLlmModelChoice(activeConv?.llmModel ?? "");
-    setClassifierModelChoice(activeConv?.classifierModelId ?? "");
-  }, [activeConv?.id, activeConv?.llmModel, activeConv?.classifierModelId]);
+  const llmModelChoice =
+    llmModelChoiceDraft.conversationId === activeConv?.id ? llmModelChoiceDraft.value : (activeConv?.llmModel ?? "");
+  const classifierModelChoice =
+    classifierModelChoiceDraft.conversationId === activeConv?.id
+      ? classifierModelChoiceDraft.value
+      : (activeConv?.classifierModelId ?? "");
 
   /** Single source of truth: server-backed conversation row (optimistic updates inside {@link usePatchConversation}). */
-  const selectedDocIds = activeConv?.documentFilter ?? [];
+  const selectedDocIds = useMemo(() => activeConv?.documentFilter ?? [], [activeConv?.documentFilter]);
   const limitDocs = selectedDocIds.length > 0;
   const readyDocIds = useMemo(() => docs?.filter((d) => d.status === "READY").map((d) => d.id) ?? [], [docs]);
   const limitDocsDisabled = !limitDocs && readyDocIds.length === 0;
   const limitDocsToggleNoticeEffective =
     limitDocsDisabled && !limitDocs ? t("limitDocumentsNoReadyHint") : limitDocsToggleNotice;
-
-  const presetSyncKey = useMemo(() => {
-    if (!activeConv) return "";
-    return `${activeConv.id}:${activeConv.presetId ?? ""}:${activeConv.effectivePresetId ?? ""}`;
-  }, [activeConv]);
 
   const presetsCatalogEmpty = !presetsError && presets?.length === 0;
 
@@ -847,7 +846,7 @@ function ChatPageInner() {
   const applyLlmModelChoice = useCallback(
     (v: string) => {
       if (!conversationId) return;
-      setLlmModelChoice(v);
+      setLlmModelChoiceDraft({ conversationId, value: v });
       if (!v.trim()) {
         patchConv.mutate({ conversationId, body: { clearLlmModel: true } });
         return;
@@ -860,7 +859,7 @@ function ChatPageInner() {
   const applyClassifierModelChoice = useCallback(
     (v: string) => {
       if (!conversationId) return;
-      setClassifierModelChoice(v);
+      setClassifierModelChoiceDraft({ conversationId, value: v });
       if (!v.trim()) {
         patchConv.mutate({ conversationId, body: { clearClassifierModelId: true } });
         return;

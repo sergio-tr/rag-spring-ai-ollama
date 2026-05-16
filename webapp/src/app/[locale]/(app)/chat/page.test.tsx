@@ -402,6 +402,9 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
   if (method === "GET" && u.includes("/projects/p1/knowledge/snapshots/active")) {
     return Promise.resolve(null);
   }
+  if (method === "GET" && u.includes("/lab/classifier/models")) {
+    return Promise.resolve([]);
+  }
   if (method === "GET" && u.includes("/chat/presets/catalog")) {
     return Promise.resolve({
       productPresets: [...ragPresetsData],
@@ -1319,7 +1322,7 @@ describe("ChatPage", () => {
     await openChatToolbarOverflow(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     await user.selectOptions(presetSelect, "pr1");
-    expect(screen.getByRole("combobox", { name: /Model/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /^LLM model$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Close$/i })).toBeInTheDocument();
   });
 

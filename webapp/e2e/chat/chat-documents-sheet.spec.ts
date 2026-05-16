@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
-import { createAndActivateProject, loginAsSeedUser, waitForDocumentReadyByName } from "../support/helpers";
+import {
+  createAndActivateProject,
+  loginAsSeedUser,
+  openChatDocumentsSheet,
+  waitForDocumentReadyByName,
+} from "../support/helpers";
 
 const DOC_NAME = "e2e-p8-sheet-doc.txt";
 
@@ -25,22 +30,18 @@ test.describe("Chat manage documents sheet @fullstack", () => {
       mimeType: "text/plain",
       buffer: Buffer.from("sheet inclusion marker.\n"),
     });
-    await waitForDocumentReadyByName(page, DOC_NAME, 120_000);
+    const readyDoc = await waitForDocumentReadyByName(page, DOC_NAME, 120_000);
 
     await page.getByRole("link", { name: /^chat$/i }).click();
     await page.getByTestId("chat-new-conversation").click();
     await expect(page.getByTestId("chat-message-composer")).toBeEnabled({ timeout: 15_000 });
 
-    await page.getByTestId("chat-actions-menu-trigger").click();
-    await page.getByTestId("chat-open-documents-sheet").click();
-
-    const sheet = page.getByTestId("chat-documents-sheet");
+    const sheet = await openChatDocumentsSheet(page);
     await expect(sheet.getByRole("heading", { name: /Documents for this chat/i })).toBeVisible({
       timeout: 15_000,
     });
 
-    const checkboxLabel = new RegExp(`Include ${DOC_NAME.replace(".", "\\.")} in retrieval scope`, "i");
-    const docCheckbox = sheet.getByRole("checkbox", { name: checkboxLabel });
+    const docCheckbox = sheet.getByTestId(`chat-document-include-checkbox-${readyDoc.id}`);
     await expect(docCheckbox).toBeVisible();
 
     // ScrollArea animations/layout shifts trip Playwright "stable" checks on setChecked; click targets real UX surface.

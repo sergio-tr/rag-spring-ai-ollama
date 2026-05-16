@@ -62,6 +62,9 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
           },
           baseEffectiveConfig: { useRetrieval: true },
           effectiveConfig: { useRetrieval: true },
+          conversationLlmModel: null,
+          conversationClassifierModelId: null,
+          conversationModelsPinned: false,
           runtimeOverride: {},
           manualOverrideKeys: [],
           isCustom: false,
@@ -107,6 +110,38 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
         uploadNotice: null,
       },
     });
+  });
+
+  it("exposes stable chat configuration controls for E2E flows", () => {
+    hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
+      data: { capabilities: [] },
+      isLoading: false,
+    });
+    hooksMock.useClassifierModelsQuery.mockReturnValue({
+      data: [{ id: "clf-1", name: "Default classifier", inferenceTag: "default", status: "READY", active: true }],
+      isError: false,
+      isLoading: false,
+    });
+
+    renderSubject();
+
+    expect(screen.getByTestId("chat-limit-documents-checkbox")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-open-documents-sheet")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-preset-select")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Default classifier \(default\)/i })).toBeInTheDocument();
+  });
+
+  it("renders classifier loading errors without hiding document scope controls", () => {
+    hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
+      data: { capabilities: [] },
+      isLoading: false,
+    });
+    hooksMock.useClassifierModelsQuery.mockReturnValue({ data: [], isError: true, isLoading: false });
+
+    renderSubject();
+
+    expect(screen.getByTestId("chat-open-documents-sheet")).toBeEnabled();
+    expect(screen.getByText(/Could not load classifier models/i)).toBeInTheDocument();
   });
 
   it("opens advanced configuration and disables toggle when capability has reasonIfDisabled", () => {

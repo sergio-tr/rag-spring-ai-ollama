@@ -1,8 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
 import {
+  authHeadersFromPage,
   createAndActivateProject,
   loginAsSeedUser,
+  openChatConfigurationPanel,
+  productApiUrl,
   sendChatMessage,
   waitForDocumentReadyByName,
 } from "../support/helpers";
@@ -10,11 +13,10 @@ import {
 /**
  * E2E-05: ingest a doc, then one chat turn.
  *
- * Keep @fullstack stable and fast: only require that the stub assistant reply is produced.
- * UI explainability panels (pipeline/sources) are allowed to evolve without breaking CI smoke.
+ * Demo-grade fullstack check: upload + READY document, chat turn, sources, runtime config, and trace/explainability UI.
  */
 test.describe("Chat RAG", () => {
-  test("E2E-05 send message completes with stub answer pipeline and sources @fullstack", async ({
+  test("E2E-05 upload, basic/advanced preset chat, sources, runtime and trace @fullstack", async ({
     page,
   }) => {
     // Default Playwright test timeout is 30s; this flow waits up to 120s for READY indexing and 120s for the stub reply.
@@ -37,10 +39,62 @@ test.describe("Chat RAG", () => {
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
+    const panel = await openChatConfigurationPanel(page);
+    const presetSelect = panel.getByTestId("chat-preset-select");
+    await expect(presetSelect).toBeVisible({ timeout: 15_000 });
+    await expect(presetSelect).not.toHaveValue("");
+    await panel.getByTestId("chat-config-runtime-collapsible").click();
+    await expect(panel.getByTestId("chat-config-runtime-refresh-effective")).toBeVisible();
+    await expect(panel.getByTestId("chat-config-export-effective")).toBeVisible();
+
+    const optionValues = await presetSelect.locator("option").evaluateAll((options) =>
+      options
+        .map((o) => ({ value: (o as HTMLOptionElement).value, text: (o.textContent ?? "").trim() }))
+        .filter((o) => o.value),
+    );
+    const advanced = optionValues.find((o) => /P9|P10|P11|P12|P13|P14|advanced|avanzad/i.test(o.text));
+    if (advanced) {
+      await presetSelect.selectOption(advanced.value);
+      await expect(presetSelect).toHaveValue(advanced.value);
+    }
+    await page.keyboard.press("Escape").catch(() => undefined);
+
     await page.getByTestId("chat-new-conversation").click();
     await sendChatMessage(page, "What is in my project documents?");
 
     await expect(page.getByText(/could not send message/i)).toHaveCount(0);
     await expect(page.getByText(/E2E stub reply/i)).toBeVisible({ timeout: 120_000 });
+
+    const url = new URL(page.url());
+    const conversationId = url.searchParams.get("conversationId");
+    expect(conversationId, `Expected conversationId in URL after send, got ${page.url()}`).toBeTruthy();
+    const headers = await authHeadersFromPage(page);
+    const messagesRes = await page.request.get(productApiUrl(`/conversations/${conversationId}/messages`), {
+      headers,
+    });
+    expect(messagesRes.status(), await messagesRes.text()).toBe(200);
+    const messages = (await messagesRes.json()) as Array<{
+      role: string;
+      content: string;
+      sources?: unknown[];
+      pipelineSteps?: unknown[];
+      traceId?: string | null;
+    }>;
+    const assistant = [...messages].reverse().find((m) => m.role === "ASSISTANT");
+    expect(assistant, "assistant message should be persisted").toBeTruthy();
+    expect(assistant?.content ?? "").toContain("E2E stub reply");
+    expect(Array.isArray(assistant?.sources) && assistant.sources.length > 0).toBe(true);
+    expect(Array.isArray(assistant?.pipelineSteps) && assistant.pipelineSteps.length > 0).toBe(true);
+
+    await expect(page.getByText(/Sources \(/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: /open activity and tips|activity|actividad/i }).click();
+    await expect(page.getByTestId("trace-history-list")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/message_submitted|assistant_processing_started|assistant_response_received/i).first())
+      .toBeVisible({ timeout: 15_000 });
+    const telemetry = page.getByTestId("explain-runtime-telemetry");
+    if (await telemetry.isVisible().catch(() => false)) {
+      await expect(telemetry).toContainText(/\w+/);
+    }
   });
 });

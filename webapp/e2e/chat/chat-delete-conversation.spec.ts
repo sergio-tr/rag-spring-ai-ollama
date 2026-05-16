@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
-import { createAndActivateProject, loginAsSeedUser } from "../support/helpers";
+import { createAndActivateProject, loginAsSeedUser, openChatConfigurationPanel } from "../support/helpers";
 
 /**
  * Destructive chat delete from shell overflow menu (⋮) with confirmation dialog.
@@ -39,8 +39,8 @@ test.describe("Chat delete conversation @fullstack", () => {
       .toBe(1);
     await expect(convRow).toBeVisible();
 
-    await page.getByTestId("chat-actions-menu-trigger").click();
-    await page.getByTestId("chat-delete-menu-item").click();
+    const panel = await openChatConfigurationPanel(page);
+    await panel.getByTestId("chat-delete-menu-item").click();
 
     const dialog = page.getByTestId("chat-delete-confirm-dialog");
     await expect(dialog.getByRole("heading", { name: /Delete this chat|Eliminar este chat/i })).toBeVisible({

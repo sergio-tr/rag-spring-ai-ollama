@@ -7,6 +7,7 @@ import {
 import {
   createAndActivateProject,
   loginAsSeedUser,
+  openChatConfigurationPanel,
   sendChatMessage,
   waitForDocumentReadyByName,
 } from "../support/helpers";
@@ -27,10 +28,10 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
 
     await expect(page.getByTestId("chat-readable-column")).toBeVisible();
 
-    await page.getByTestId("chat-actions-menu-trigger").click();
-    await expect(page.getByRole("button", { name: /^delete chat$/i })).toBeVisible({ timeout: 15_000 });
+    const panel = await openChatConfigurationPanel(page);
+    await expect(panel.getByTestId("chat-delete-menu-item")).toBeVisible({ timeout: 15_000 });
 
-    const preset = page.getByRole("combobox", { name: /preset/i });
+    const preset = panel.getByTestId("chat-preset-select");
     await expect(preset).toBeVisible({ timeout: 15_000 });
     await expect(preset).not.toHaveValue("");
     const selectedLabel = await preset.locator("option:checked").textContent();
@@ -120,10 +121,8 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await page.getByRole("link", { name: /^chat$/i }).click();
     await page.getByTestId("chat-new-conversation").click();
 
-    await page.getByTestId("chat-actions-menu-trigger").click();
-    const limitCb = page.getByRole("checkbox", {
-      name: /limit retrieval to selected documents|limitar la recuperación/i,
-    });
+    const configPanel = await openChatConfigurationPanel(page);
+    const limitCb = configPanel.getByTestId("chat-limit-documents-checkbox");
     await expect(limitCb).toBeVisible({ timeout: 15_000 });
     await expect(limitCb).not.toBeChecked();
 
@@ -144,10 +143,8 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await expect(sidebarButtons.first()).toBeVisible({ timeout: 15_000 });
     await sidebarButtons.first().click();
 
-    await page.getByTestId("chat-actions-menu-trigger").click();
-    const limitAgain = page.getByRole("checkbox", {
-      name: /limit retrieval to selected documents|limitar la recuperación/i,
-    });
+    const configPanelAgain = await openChatConfigurationPanel(page);
+    const limitAgain = configPanelAgain.getByTestId("chat-limit-documents-checkbox");
     await expect
       .poll(async () => limitAgain.isChecked(), { timeout: 20_000, intervals: [300, 600, 1200] })
       .toBe(true);

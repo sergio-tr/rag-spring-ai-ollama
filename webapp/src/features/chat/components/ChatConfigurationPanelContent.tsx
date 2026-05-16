@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -119,8 +119,8 @@ export function ChatConfigurationPanelContent() {
   const effectiveError = api?.runtimeStateError ?? null;
   const patchPending = Boolean(api?.patchConvPending);
 
-  const caps = capabilitiesQuery.data?.capabilities ?? [];
-  const capByKey = new Map(caps.map((c) => [c.key, c]));
+  const caps = useMemo(() => capabilitiesQuery.data?.capabilities ?? [], [capabilitiesQuery.data?.capabilities]);
+  const capByKey = useMemo(() => new Map(caps.map((c) => [c.key, c])), [caps]);
 
   const classifierModelsQuery = useClassifierModelsQuery(Boolean(api?.projectId));
 
@@ -200,7 +200,7 @@ export function ChatConfigurationPanelContent() {
       ? api.runtimeState.preset.supportStatus || "NOT_SUPPORTED"
       : null;
 
-  useMemo(() => {
+  useEffect(() => {
     const known = new Set(
       [
         "useRetrieval",
@@ -221,7 +221,6 @@ export function ChatConfigurationPanelContent() {
     );
     const unknown = runtimeToggles.filter((c) => !known.has(c.key));
     if (unknown.length > 0 && process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
       console.warn("[chat] Unknown runtime capability keys:", unknown.map((x) => x.key));
     }
   }, [runtimeToggles]);
@@ -325,6 +324,7 @@ export function ChatConfigurationPanelContent() {
               <label className="flex cursor-pointer items-center gap-3 text-sm">
                 <input
                   type="checkbox"
+                  data-testid="chat-limit-documents-checkbox"
                   className="border-input size-4 rounded"
                   checked={Boolean(api?.limitDocs)}
                   disabled={needsProject || needsConversation || Boolean(api?.limitDocsDisabled) || Boolean(api?.patchConvPending)}
@@ -342,6 +342,7 @@ export function ChatConfigurationPanelContent() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
+                data-testid="chat-open-documents-sheet"
                 className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
                 disabled={needsProject || needsConversation}
                 onClick={() => api?.openDocumentsSheet()}
@@ -556,6 +557,7 @@ export function ChatConfigurationPanelContent() {
 
               <select
                 id={presetSelectId}
+                data-testid="chat-preset-select"
                 className={cn(
                   "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
                   api?.presetsError && "border-destructive",
