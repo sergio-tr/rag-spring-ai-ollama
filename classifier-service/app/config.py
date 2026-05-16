@@ -61,4 +61,4 @@ class Config:
 
     def get_default_eval_dataset_path(self) -> str:
         """Path to the default evaluation dataset (Excel). Used when no file is uploaded."""
-        return os.path.join(self.get_data_dir(), "classifier_evaluation_dataset.xlsx")
+        return os.path.join(self.get_data_dir(), "evaluation_dataset.xlsx")

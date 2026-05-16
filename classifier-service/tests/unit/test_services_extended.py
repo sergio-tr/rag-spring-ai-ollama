@@ -67,6 +67,45 @@ def test_evaluation_service_success():
     pipeline.evaluate.assert_called_once()
 
 
+def test_evaluation_service_uses_default_dataset_when_upload_absent(tmp_path):
+    default_dataset = tmp_path / "evaluation_dataset.xlsx"
+    default_dataset.write_bytes(b"placeholder")
+    config = MagicMock()
+    config.get_default_model_id.return_value = "default"
+    config.get_default_eval_dataset_path.return_value = str(default_dataset)
+    pipeline = MagicMock()
+    pipeline.evaluate.return_value = EvaluationResult(
+        model_id="default",
+        classification_report={"accuracy": 1.0},
+        confusion_matrix=[[1]],
+        class_names=["A"],
+    )
+
+    svc = EvaluationService(config=config, pipeline=pipeline)
+    result = svc.evaluate(include_images=False)
+
+    assert result.model_id == "default"
+    pipeline.evaluate.assert_called_once_with(
+        model_id="default",
+        eval_dataset_path=str(default_dataset),
+        include_images=False,
+    )
+
+
+def test_evaluation_service_missing_default_dataset_error_is_clear(tmp_path):
+    missing_dataset = tmp_path / "missing" / "evaluation_dataset.xlsx"
+    config = MagicMock()
+    config.get_default_model_id.return_value = "default"
+    config.get_default_eval_dataset_path.return_value = str(missing_dataset)
+    svc = EvaluationService(config=config, pipeline=MagicMock())
+
+    with pytest.raises(EvaluationError) as err:
+        svc.evaluate()
+
+    assert "Evaluation dataset not found" in str(err.value)
+    assert "Upload a file" in str(err.value)
+
+
 def test_evaluation_model_not_found():
     pipeline = MagicMock()
     pipeline.evaluate.side_effect = FileNotFoundError()
