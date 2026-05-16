@@ -17,6 +17,7 @@ Scripts mirror the **CI PR pipeline** ([`reusable-ci-core.yml`](../workflows/reu
 | [`run-sonar.sh`](run-sonar.sh) | Delegates to `ci-like-sonar.sh` (SonarCloud + coverage). |
 | [`run-pr-dev.sh`](run-pr-dev.sh) | Runs core → integration → e2e → sonar (if `SONAR_TOKEN` set). |
 | [`run-pr-main.sh`](run-pr-main.sh) | Runs `run-pr-dev.sh` then local Gatling smoke + `infra_probe.py` (main/master PR parity). |
+| [`run-closure-ci-local.sh`](run-closure-ci-local.sh) | Final fail-fast closure lane with per-step evidence logs and skip/duration summary. |
 | `ci-like-verify.sh` | **Shim** → `run-ci-core.sh` (deprecated name). |
 | `ci-like-sonar.sh` | Full Sonar local pipeline (called by `run-sonar.sh`). |
 | [`ci-postgres-extensions.sql`](ci-postgres-extensions.sql) | Extensions applied by CI and local scripts. |
@@ -35,6 +36,9 @@ export SONAR_TOKEN=your_token
 
 # Main/master parity (+ performance)
 .github/local/run-pr-main.sh
+
+# Final closure lane with evidence logs
+.github/local/run-closure-ci-local.sh
 ```
 
 ## Closure mode (strict integration + fullstack E2E)

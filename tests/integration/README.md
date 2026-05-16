@@ -39,7 +39,7 @@ The workflow [`.github/workflows/integration.yml`](../../.github/workflows/integ
 - `INTEGRATION_CHECK_OBS=0` (no Jaeger/Prometheus/Grafana assertions in this job).
 - `INTEGRATION_BACKEND_URL=http://127.0.0.1:9000` and optional admin credentials for `TestBackendAdminApi`.
 
-**Classifier:** this job does **not** start `classifier-service`. Tests that require a reachable classifier **skip** (see `TestClassifierService` / connection handling). For full classifier coverage, run locally with Compose or point `INTEGRATION_CLASSIFIER_URL` at a running instance.
+**Classifier:** the standard integration job is backend-focused and may leave classifier checks optional. The classifier-required CI lane and the local closure lane set `INTEGRATION_STRICT=1` and `INTEGRATION_REQUIRE_CLASSIFIER=1`, so classifier reachability cannot become a skip-only false green. The local closure lane also defaults `INTEGRATION_REQUIRE_CLASSIFIER_MODEL=1` so `/classify` must be exercised with a loaded default model.
 
 **Observability:** for `TestObservabilityStack`, use a local stack with `compose.obs.yml` and `INTEGRATION_CHECK_OBS=1` (or `auto`).
 
@@ -74,6 +74,33 @@ The workflow [`.github/workflows/integration.yml`](../../.github/workflows/integ
    ```bash
    ./tests/integration/run-integration-tests.sh
    ```
+
+### Strict closure lane
+
+Use this lane for final validation/evidence capture when backend and classifier are expected to be running already:
+
+```bash
+.github/local/run-integration-closure.sh
+```
+
+Equivalent manual command:
+
+```bash
+INTEGRATION_STRICT=1 \
+INTEGRATION_REQUIRE_CLASSIFIER=1 \
+INTEGRATION_REQUIRE_CLASSIFIER_MODEL=1 \
+INTEGRATION_CHECK_OBS=0 \
+python -m pytest tests/integration -v -rs --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py
+```
+
+Strict closure semantics:
+
+- `INTEGRATION_BACKEND_URL` is required and preflighted via `/actuator/health`.
+- `INTEGRATION_CLASSIFIER_URL` is required and preflighted via `/health`.
+- Backend/classifier connection skips become failures.
+- A run that collects tests but skips all of them fails.
+- If classifier is required, classifier-related skips fail the run.
+- Observability remains optional by default (`INTEGRATION_CHECK_OBS=0`); set `INTEGRATION_CHECK_OBS=1` to require OTEL/Prometheus/Grafana/Jaeger.
 
 ### Optional local DB smoke (Path B)
 
@@ -139,6 +166,9 @@ INTEGRATION_CHECK_OBS=0 pytest tests/integration -v
 | `INTEGRATION_EXPECT_CLASSIFIER_SERVICE_NAME` | Jaeger service name for the Python classifier (default `classifier-service`). |
 | `INTEGRATION_USE_TESTCONTAINERS` | `1` / `true` to enable `tc_postgres_container` and `test_tc_postgres_smoke` (local Docker only; CI sets `0`). |
 | `INTEGRATION_TC_PRINT_JDBC` | When `1`, the session fixture prints a suggested `SPRING_DATASOURCE_URL` for the running container (Path B advanced). |
+| `INTEGRATION_STRICT` | `1` turns service-unreachable skips into failures and activates the all-skipped guard. |
+| `INTEGRATION_REQUIRE_CLASSIFIER` | `1` makes classifier reachability required; classifier-related skips fail in strict mode. |
+| `INTEGRATION_REQUIRE_CLASSIFIER_MODEL` | `1` makes `/health -> model=loaded` required before `/classify` assertions. |
 
 **Spring Boot env overrides:** variables such as `RAG_HEALTH_OLLAMA_ENABLED` / `RAG_HEALTH_CLASSIFIER_ENABLED` take precedence over `application-e2e.properties`. CI sets them to `false` so `/actuator/health` stays **UP** without a live Ollama/classifier; avoid exporting them as `true` when running the backend with profile **e2e** unless those services are reachable.
 
