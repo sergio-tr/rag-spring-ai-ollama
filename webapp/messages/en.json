@@ -521,7 +521,7 @@
     "benchmarkDatasetPlaceholderNone": "No compatible workbook available",
     "benchmarkModelHintsSummary": "Model tags & prompts",
     "benchmarkPromptProfileInfo": "Prompt wording follows the Lab baseline profile on the server. Adjust chat presets separately under Settings — this screen records overrides only as model tags on the evaluation run.",
-    "benchmarkRagPresetCatalogInfo": "Preset identifiers P0–P14 come from your workbook’s catalog sheets — you cannot toggle individual presets here without editing the workbook.",
+    "benchmarkRagPresetCatalogInfo": "Preset identifiers P0–P14 come from your workbook’s catalog sheets; use the preset checkboxes below to run the full catalog or a selected subset.",
     "benchmarkLlmModelOptional": "Chat model tag (optional)",
     "benchmarkLlmModelPlaceholder": "e.g. llama3.2:latest — overrides default only for this run",
     "benchmarkLlmMultiHint": "Tip: select multiple models above to run an LLM campaign (one run per model). The single text field below is used only when no multi-selection is provided.",

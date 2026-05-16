@@ -521,7 +521,7 @@
     "benchmarkDatasetPlaceholderNone": "No hay libro compatible",
     "benchmarkModelHintsSummary": "Tags de modelo y prompts",
     "benchmarkPromptProfileInfo": "La redacción sigue el perfil Lab base del servidor. Ajusta presets de chat en Ajustes — aquí solo se guardan como tags de modelo los valores opcionales de esta pantalla.",
-    "benchmarkRagPresetCatalogInfo": "Los identificadores de preset P0–P14 salen de las hojas catálogo del libro — no se pueden elegir individualmente aquí sin editar el Excel.",
+    "benchmarkRagPresetCatalogInfo": "Los identificadores de preset P0–P14 salen de las hojas catálogo del libro; usa los checkboxes inferiores para ejecutar todo el catálogo o un subconjunto seleccionado.",
     "benchmarkLlmModelOptional": "Tag del modelo de chat (opcional)",
     "benchmarkLlmModelPlaceholder": "p. ej. llama3.2:latest — solo invalida el valor por defecto en esta ejecución",
     "benchmarkLlmMultiHint": "Consejo: selecciona varios modelos arriba para ejecutar una campaña LLM (un run por modelo). El campo de texto se usa solo si no hay selección múltiple.",

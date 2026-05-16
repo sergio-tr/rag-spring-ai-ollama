@@ -416,7 +416,7 @@ export type RuntimeConfigCapabilityDto = {
   key: string;
   label: string;
   description: string;
-  category: "RUNTIME_HOT_SWAPPABLE" | "INDEX_BOUND" | "LAB_ONLY" | "INTERNAL";
+  category: "RUNTIME_HOT_SWAPPABLE" | "ADVANCED_RUNTIME" | "INDEX_BOUND" | "LAB_ONLY" | "INTERNAL";
   visibleInChat: boolean;
   configurableInChat: boolean;
   implemented: boolean;

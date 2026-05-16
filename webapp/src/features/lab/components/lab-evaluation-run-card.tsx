@@ -369,9 +369,14 @@ export function LabEvaluationRunCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resumeNonce-driven only
   }, [resumeNonceEvalCard]);
 
+  const autoFollowCandidate =
+    labRecovery.decision.kind === "auto_follow" ? labRecovery.decision.candidate : null;
+  const autoFollowCandidateJobId = autoFollowCandidate?.jobId ?? "";
+  const autoFollowCandidateEvaluationRunId = autoFollowCandidate?.evaluationRunId ?? "";
+
   useEffect(() => {
-    if (!autoFollowJobId || labRecovery.decision.kind !== "auto_follow") return;
-    const candidate = labRecovery.decision.candidate;
+    if (!autoFollowJobId || !autoFollowCandidate) return;
+    const candidate = autoFollowCandidate;
     if (backendAutoFollowHandledRef.current === autoFollowJobId) {
       if (running) return;
       if (taskStatus?.id === autoFollowJobId && taskStatus.terminal) return;
@@ -411,8 +416,9 @@ export function LabEvaluationRunCard({
   }, [
     autoFollowJobId,
     labRecovery.decision.kind,
-    labRecovery.decision.kind === "auto_follow" ? labRecovery.decision.candidate.jobId : "",
-    labRecovery.decision.kind === "auto_follow" ? labRecovery.decision.candidate.evaluationRunId : "",
+    autoFollowCandidate,
+    autoFollowCandidateJobId,
+    autoFollowCandidateEvaluationRunId,
     running,
     accepted?.jobId,
     taskStatus?.id,

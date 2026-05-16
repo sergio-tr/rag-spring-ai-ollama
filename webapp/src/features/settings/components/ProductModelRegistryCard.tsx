@@ -58,12 +58,20 @@ function ModelRow({
         <Badge variant={badgeVariant}>
           {statusLabel(t, row, pulling)}
         </Badge>
-        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onVerify(row.modelId)}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid={`model-registry-verify-${row.modelId}`}
+          disabled={busy}
+          onClick={() => onVerify(row.modelId)}
+        >
           {t("modelRegistryVerify")}
         </Button>
         <Button
           type="button"
           size="sm"
+          data-testid={`model-registry-pull-${row.modelId}`}
           disabled={busy || row.status === "AVAILABLE"}
           onClick={() => onPull(row.modelId)}
         >
@@ -125,7 +133,7 @@ export function ProductModelRegistryCard() {
   );
 
   return (
-    <Card>
+    <Card data-testid="model-registry-card">
       <CardHeader>
         <CardTitle>{t("modelRegistryCardTitle")}</CardTitle>
         <CardDescription>{t("modelRegistryCardDescription")}</CardDescription>
@@ -163,8 +171,7 @@ export function ProductModelRegistryCard() {
                     onVerify={onVerify}
                     verifyPending={
                       checkM.isPending &&
-                      checkM.variables != null &&
-                      checkM.variables.modelId === row.modelId
+                      checkM.variables?.modelId === row.modelId
                     }
                   />
                 ))}
@@ -184,8 +191,7 @@ export function ProductModelRegistryCard() {
                     onVerify={onVerify}
                     verifyPending={
                       checkM.isPending &&
-                      checkM.variables != null &&
-                      checkM.variables.modelId === row.modelId
+                      checkM.variables?.modelId === row.modelId
                     }
                   />
                 ))}

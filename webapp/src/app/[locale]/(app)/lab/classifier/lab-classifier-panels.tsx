@@ -328,6 +328,7 @@ export function LabClassifierTrainPanel(
           <input
             type="checkbox"
             className="size-4 rounded border"
+            data-testid="lab-classifier-train-sync"
             checked={trainSync}
             onChange={(e) => setTrainSync(e.target.checked)}
             disabled={trainRunning}
@@ -368,6 +369,7 @@ export function LabClassifierTrainPanel(
           <Label htmlFor="cmodel">New model name</Label>
           <Input
             id="cmodel"
+            data-testid="lab-classifier-train-model-name"
             value={modelName}
             aria-invalid={modelNameError != null}
             onChange={(e) => setModelName(e.target.value)}
@@ -383,6 +385,7 @@ export function LabClassifierTrainPanel(
           <Input
             id="cfile"
             type="file"
+            data-testid="lab-classifier-train-file"
             accept=".xlsx,.xls"
             onChange={(e) => setTrainFile(e.target.files?.[0] ?? null)}
           />
@@ -735,6 +738,7 @@ export function LabClassifierEvalPanel(
           <Label htmlFor="emodel">{t("classifierEvalModelId")}</Label>
           <select
             id="emodel"
+            data-testid="lab-classifier-eval-model"
             className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
             value={evalModelId}
             disabled={evalRunning || !classifierOk || (modelsQuery.data?.length ?? 0) === 0}
@@ -760,12 +764,18 @@ export function LabClassifierEvalPanel(
           <Input
             id="efile"
             type="file"
+            data-testid="lab-classifier-eval-file"
             accept=".xlsx,.xls"
             onChange={(e) => setEvalFile(e.target.files?.[0] ?? null)}
           />
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" disabled={evalRunning || !classifierOk} onClick={() => void runEval()}>
+          <Button
+            type="button"
+            data-testid="lab-classifier-evaluate"
+            disabled={evalRunning || !classifierOk}
+            onClick={() => void runEval()}
+          >
             {evalRunning ? t("evalRunning") : t("classifierEvalSubmit")}
           </Button>
           {evalRunning ? (
@@ -845,12 +855,18 @@ export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boole
       <CardContent className="flex flex-col gap-3">
         <div className="grid gap-2">
           <Label htmlFor="q">{t("classifierQuery")}</Label>
-          <Input id="q" value={clsQuery} onChange={(e) => setClsQuery(e.target.value)} />
+          <Input
+            id="q"
+            data-testid="lab-classifier-classify-query"
+            value={clsQuery}
+            onChange={(e) => setClsQuery(e.target.value)}
+          />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="mid">{t("classifierModelIdField")}</Label>
           <select
             id="mid"
+            data-testid="lab-classifier-classify-model"
             className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
             value={clsModelId}
             disabled={clsRunning || !classifierOk || (modelsQuery.data?.length ?? 0) === 0}
@@ -880,6 +896,7 @@ export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boole
         </div>
         <Button
           type="button"
+          data-testid="lab-classifier-classify"
           disabled={clsRunning || !classifierOk || clsQuery.trim().length === 0}
           onClick={() => void runClassify()}
         >

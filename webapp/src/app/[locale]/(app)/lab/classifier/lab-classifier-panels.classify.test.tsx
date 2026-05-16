@@ -42,5 +42,31 @@ describe("LabClassifierClassifyPanel", () => {
 
     expect(apiClient.apiFetch).not.toHaveBeenCalled();
   });
+
+  it("sends the selected classifier model id", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.apiFetch).mockResolvedValue({ queryType: "COUNT_DOCUMENTS", modelId: "tag-1" });
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <IntlTestProvider>
+          <LabClassifierClassifyPanel classifierOk />
+        </IntlTestProvider>
+      </QueryClientProvider>,
+    );
+
+    await user.selectOptions(screen.getByTestId("lab-classifier-classify-model"), "tag-1");
+    await user.clear(screen.getByTestId("lab-classifier-classify-query"));
+    await user.type(screen.getByTestId("lab-classifier-classify-query"), "How many meetings?");
+    await user.click(screen.getByTestId("lab-classifier-classify"));
+
+    expect(apiClient.apiFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/lab/classifier/classify"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ query: "How many meetings?", modelId: "tag-1" }),
+      }),
+    );
+    expect(await screen.findByText(/COUNT_DOCUMENTS/)).toBeInTheDocument();
+  });
 });
 

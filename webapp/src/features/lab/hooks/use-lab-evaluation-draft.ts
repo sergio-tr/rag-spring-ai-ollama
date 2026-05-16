@@ -28,6 +28,22 @@ export type UseLabEvaluationDraftValidationInput = {
   presetsCatalogReady: boolean;
 };
 
+function withoutStorageVersion(stored: LabEvaluationDraftStored): Omit<LabEvaluationDraftStored, "v"> {
+  return {
+    datasetId: stored.datasetId,
+    explicitDraftClear: stored.explicitDraftClear,
+    llmModelId: stored.llmModelId,
+    llmModelIds: stored.llmModelIds,
+    embeddingModelId: stored.embeddingModelId,
+    embeddingModelIds: stored.embeddingModelIds,
+    embeddingDownstreamRag: stored.embeddingDownstreamRag,
+    selectedExperimentalPresetCodes: stored.selectedExperimentalPresetCodes,
+    runName: stored.runName,
+    followMode: stored.followMode,
+    lastEvaluationRunId: stored.lastEvaluationRunId,
+  };
+}
+
 /**
  * Persists Lab evaluation form drafts per benchmark kind in {@code localStorage}
  * under {@code lab:evaluation-draft:v1:{kind}}.
@@ -37,9 +53,7 @@ export function useLabEvaluationDraft(
   validation: UseLabEvaluationDraftValidationInput,
 ) {
   const [draft, setDraft] = useState<Omit<LabEvaluationDraftStored, "v">>(() => {
-    const loaded = loadLabEvaluationDraft(kind);
-    const { v: _v, ...rest } = loaded;
-    return rest;
+    return withoutStorageVersion(loadLabEvaluationDraft(kind));
   });
 
   useEffect(() => {
@@ -88,7 +102,7 @@ export function useLabEvaluationDraft(
       const merged = { ...base, explicitDraftClear: false, ...recommended };
       setDraft(merged);
     },
-    [kind],
+    [],
   );
 
   const setLastEvaluationRunId = useCallback((evaluationRunId: string | null) => {

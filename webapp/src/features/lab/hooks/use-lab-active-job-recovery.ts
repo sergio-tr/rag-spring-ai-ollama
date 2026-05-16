@@ -207,18 +207,37 @@ export type LabActiveJobRecoveryResult = Readonly<{
 }>;
 
 export function useLabActiveJobRecovery(params: LabActiveJobRecoveryInputs): LabActiveJobRecoveryResult {
+  const {
+    sectionKey,
+    benchmarkKind,
+    activeProjectId,
+    draftFollowMode,
+    backendActiveJobs,
+    backendActiveJobsLoading,
+    backendActiveJobsError,
+    sessionRecords,
+  } = params;
   return useMemo(() => {
-    const decision = computeLabActiveJobRecovery(params);
-    const resolvedFollowMode: LabJobFollowMode = params.draftFollowMode === "sse" ? "sse" : "poll";
+    const decision = computeLabActiveJobRecovery({
+      sectionKey,
+      benchmarkKind,
+      activeProjectId,
+      draftFollowMode,
+      backendActiveJobs,
+      backendActiveJobsLoading,
+      backendActiveJobsError,
+      sessionRecords,
+    });
+    const resolvedFollowMode: LabJobFollowMode = draftFollowMode === "sse" ? "sse" : "poll";
     return { decision, resolvedFollowMode };
   }, [
-    params.sectionKey,
-    params.benchmarkKind,
-    params.activeProjectId,
-    params.draftFollowMode,
-    params.backendActiveJobs,
-    params.backendActiveJobsLoading,
-    params.backendActiveJobsError,
-    params.sessionRecords,
+    sectionKey,
+    benchmarkKind,
+    activeProjectId,
+    draftFollowMode,
+    backendActiveJobs,
+    backendActiveJobsLoading,
+    backendActiveJobsError,
+    sessionRecords,
   ]);
 }

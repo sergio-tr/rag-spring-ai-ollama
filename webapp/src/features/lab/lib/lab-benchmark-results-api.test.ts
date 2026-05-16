@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiDownloadBlob, apiFetch } from "@/lib/api-client";
 import {
+  downloadCampaignExport,
+  downloadCampaignMvpItemsJson,
   downloadMvpExport,
+  fetchCampaignComparison,
+  fetchLabCampaignRuns,
   fetchLabEvaluationRun,
   fetchMvpItemsBundle,
   fetchMvpRollupsJson,
@@ -35,6 +39,18 @@ describe("lab-benchmark-results-api", () => {
     expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining(encodeURIComponent("abc/xyz")));
   });
 
+  it("fetchLabCampaignRuns and fetchCampaignComparison hit encoded campaign paths", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([{ id: "run-1" }]);
+    vi.mocked(apiFetch).mockResolvedValueOnce({ winner: "P1" });
+
+    await fetchLabCampaignRuns("campaign/with spaces");
+    await fetchCampaignComparison("campaign/with spaces");
+
+    const encoded = encodeURIComponent("campaign/with spaces");
+    expect(vi.mocked(apiFetch).mock.calls[0][0]).toContain(`/lab/campaigns/${encoded}/runs`);
+    expect(vi.mocked(apiFetch).mock.calls[1][0]).toContain(`/lab/campaigns/${encoded}/comparison`);
+  });
+
   it("fetchMvpRollupsJson and fetchMvpItemsBundle use export paths", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce({ rollups: true });
     vi.mocked(apiFetch).mockResolvedValueOnce({ items: [] });
@@ -51,6 +67,41 @@ describe("lab-benchmark-results-api", () => {
     expect(experimentalApi.triggerBrowserBlobDownload).toHaveBeenCalledWith(
       expect.any(Blob),
       "lab-run-rid-mvp-items.csv",
+    );
+  });
+
+  it("downloadCampaignMvpItemsJson downloads campaign MVP items with stable thesis filename", async () => {
+    vi.mocked(apiDownloadBlob).mockResolvedValueOnce(new Blob(["{}"]));
+
+    await downloadCampaignMvpItemsJson("campaign-1");
+
+    expect(apiDownloadBlob).toHaveBeenCalledWith(
+      expect.stringContaining("/lab/campaigns/campaign-1/export/mvp/items.json"),
+    );
+    expect(experimentalApi.triggerBrowserBlobDownload).toHaveBeenCalledWith(
+      expect.any(Blob),
+      "lab-campaign-campaign-1-mvp-items.json",
+    );
+  });
+
+  it("downloadCampaignExport downloads summary and bundle exports by selected kind", async () => {
+    vi.mocked(apiDownloadBlob).mockResolvedValueOnce(new Blob(["summary"]));
+    vi.mocked(apiDownloadBlob).mockResolvedValueOnce(new Blob(["bundle"]));
+
+    await downloadCampaignExport("campaign-2", "summary.csv");
+    await downloadCampaignExport("campaign-2", "bundle.json");
+
+    expect(vi.mocked(apiDownloadBlob).mock.calls[0][0]).toContain("/export/summary.csv");
+    expect(experimentalApi.triggerBrowserBlobDownload).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Blob),
+      "lab-campaign-campaign-2-summary.csv",
+    );
+    expect(vi.mocked(apiDownloadBlob).mock.calls[1][0]).toContain("/export/bundle.json");
+    expect(experimentalApi.triggerBrowserBlobDownload).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Blob),
+      "lab-campaign-campaign-2-bundle.json",
     );
   });
 
