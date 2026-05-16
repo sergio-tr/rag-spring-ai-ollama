@@ -35,19 +35,16 @@ public abstract class AbstractExecutionWorkflow implements ExecutionWorkflow {
     }
 
     private String invokeChatUnscoped(ExecutionContext ctx, String systemPrompt, String userMessage) {
-        var spec = chatClient.prompt();
+        var builder = chatClient.prompt();
         if (systemPrompt != null && !systemPrompt.isBlank()) {
-            spec = spec.system(systemPrompt);
+            builder = builder.system(systemPrompt);
         }
-        spec = spec.user(userMessage);
-        var chatModelOverride = ctx.chatModelOverride();
-        if (chatModelOverride.isPresent()) {
-            String m = chatModelOverride.get().trim();
-            if (!m.isBlank()) {
-                spec = spec.options(OllamaOptions.builder().model(m).build());
-            }
-        }
-        String out = spec.call().content();
+        var userSpec = builder.user(userMessage);
+        var withModel =
+                ChatGenerationModelSelector.effectiveChatModelId(ctx)
+                        .map(m -> userSpec.options(OllamaOptions.builder().model(m).build()))
+                        .orElse(userSpec);
+        String out = withModel.call().content();
         return out != null ? out : "";
     }
 

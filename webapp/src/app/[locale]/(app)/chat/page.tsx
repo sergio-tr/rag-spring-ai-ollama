@@ -176,6 +176,8 @@ function ChatPageInner() {
   const [editBody, setEditBody] = useState("");
   /** Empty string = backend default model. */
   const [llmModelChoice, setLlmModelChoice] = useState("");
+  /** Empty string = no per-conversation classifier override (project RAG JSON applies). */
+  const [classifierModelChoice, setClassifierModelChoice] = useState("");
   /** Scoped to `conversationId` so switching chats does not require clearing in an effect. */
   const [limitDocsNoticeRecord, setLimitDocsNoticeRecord] = useState<{
     conversationId: string | null;
@@ -283,6 +285,11 @@ function ChatPageInner() {
     [conversationId, convs],
   );
   const conversationNotFound = Boolean(conversationId && convs && !activeConv);
+
+  useEffect(() => {
+    setLlmModelChoice(activeConv?.llmModel ?? "");
+    setClassifierModelChoice(activeConv?.classifierModelId ?? "");
+  }, [activeConv?.id, activeConv?.llmModel, activeConv?.classifierModelId]);
 
   /** Single source of truth: server-backed conversation row (optimistic updates inside {@link usePatchConversation}). */
   const selectedDocIds = activeConv?.documentFilter ?? [];
@@ -837,6 +844,32 @@ function ChatPageInner() {
     [conversationId, patchConv, experimentalPresets],
   );
 
+  const applyLlmModelChoice = useCallback(
+    (v: string) => {
+      if (!conversationId) return;
+      setLlmModelChoice(v);
+      if (!v.trim()) {
+        patchConv.mutate({ conversationId, body: { clearLlmModel: true } });
+        return;
+      }
+      patchConv.mutate({ conversationId, body: { llmModel: v.trim() } });
+    },
+    [conversationId, patchConv],
+  );
+
+  const applyClassifierModelChoice = useCallback(
+    (v: string) => {
+      if (!conversationId) return;
+      setClassifierModelChoice(v);
+      if (!v.trim()) {
+        patchConv.mutate({ conversationId, body: { clearClassifierModelId: true } });
+        return;
+      }
+      patchConv.mutate({ conversationId, body: { classifierModelId: v.trim() } });
+    },
+    [conversationId, patchConv],
+  );
+
   const handleChatDocumentUpload = useCallback(
     async (files: FileList | null) => {
       if (!files?.length || !conversationId || !projectId || !activeConv) return;
@@ -1061,7 +1094,9 @@ function ChatPageInner() {
       openDocumentsSheet: () => setDocsSheetOpen(true),
       onAddDocuments: handleChatDocumentUpload,
       llmModelChoice,
-      setLlmModelChoice,
+      setLlmModelChoice: applyLlmModelChoice,
+      classifierModelChoice,
+      setClassifierModelChoice: applyClassifierModelChoice,
       modelsCatalog,
       modelsError,
       modelsErrorMessage: modelsErrorMessage ?? "",
@@ -1104,6 +1139,9 @@ function ChatPageInner() {
     conversationId,
     activeConv?.title,
     llmModelChoice,
+    applyLlmModelChoice,
+    classifierModelChoice,
+    applyClassifierModelChoice,
     modelsCatalog,
     modelsError,
     modelsErrorMessage,

@@ -80,6 +80,8 @@ public class SecurityConfiguration {
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus")
                         .permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // Product-scoped admin (e.g. /api/v5/admin/models) must not fall through as "any authenticated user".
+                        .requestMatchers(productBasePath + "/admin/**").hasRole("ADMIN")
                         .requestMatchers(productBasePath + "/**").authenticated()
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

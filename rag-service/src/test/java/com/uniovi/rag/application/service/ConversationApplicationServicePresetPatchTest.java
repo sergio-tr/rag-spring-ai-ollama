@@ -120,10 +120,16 @@ class ConversationApplicationServicePresetPatchTest {
                                         true,
                                         true,
                                         true,
-                                        true)));
+                                        true,
+                                        0,
+                                        null,
+                                        "{}")));
 
         // Should not throw.
-        sut.patchConversation(uid, cid, new PatchConversationRequest(null, presetId.toString(), null, null, null, null, null));
+        sut.patchConversation(
+                uid,
+                cid,
+                new PatchConversationRequest(null, presetId.toString(), null, null, null, null, null, null, null, null, null));
     }
 
     @Test
@@ -177,7 +183,10 @@ class ConversationApplicationServicePresetPatchTest {
                                         true,
                                         true,
                                         true,
-                                        true)));
+                                        true,
+                                        0,
+                                        null,
+                                        "{}")));
 
         assertThatThrownBy(
                         () ->
@@ -185,7 +194,17 @@ class ConversationApplicationServicePresetPatchTest {
                                         uid,
                                         cid,
                                         new PatchConversationRequest(
-                                                null, presetId.toString(), null, null, null, null, null)))
+                                                null,
+                                                presetId.toString(),
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(
                         ex -> {

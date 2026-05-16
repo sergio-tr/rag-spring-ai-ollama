@@ -38,6 +38,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
@@ -53,6 +54,7 @@ class ChunkDenseMetadataWorkflowTest {
     void execute_whenAdvisorPackedContextPresent_skipsAdvancedRetrieval() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("answer");
+        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("answer");
 
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(chatClient, pipeline, null);
@@ -68,6 +70,7 @@ class ChunkDenseMetadataWorkflowTest {
     void execute_whenNoAdvisorPackedContext_usesAdvancedRetrievalPromptContext() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("answer2");
+        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("answer2");
 
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
@@ -110,6 +113,7 @@ class ChunkDenseMetadataWorkflowTest {
     void execute_whenDocBoundEmptyContext_returnsExactAbstention() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("should_not_be_used");
+        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("should_not_be_used");
 
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
@@ -151,6 +155,7 @@ class ChunkDenseMetadataWorkflowTest {
     void execute_whenDocBoundDateMismatch_callsLlmAndIncludesMismatchHintInPrompt() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("llm_summary");
+        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("llm_summary");
 
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
@@ -197,6 +202,7 @@ class ChunkDenseMetadataWorkflowTest {
     void execute_whenPromptEmptyButCandidatesPresent_callsLlmUsingFallbackContext() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("from_fallback");
+        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("from_fallback");
 
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
@@ -239,6 +245,7 @@ class ChunkDenseMetadataWorkflowTest {
     void execute_whenDocBoundExactDatePresent_callsLlm() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("summary_ok");
+        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("summary_ok");
 
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))

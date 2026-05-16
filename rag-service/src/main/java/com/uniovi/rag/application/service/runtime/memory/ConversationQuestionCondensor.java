@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.memory;
 
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemorySlice;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryTurn;
@@ -39,15 +40,9 @@ public class ConversationQuestionCondensor {
                         """)
                 .user(prompt);
 
-        // Low temperature to reduce variance (when supported).
-        spec = spec.options(OllamaOptions.builder().temperature(0.0).build());
-        var chatModelOverride = ctx.chatModelOverride();
-        if (chatModelOverride.isPresent()) {
-            String m = chatModelOverride.get().trim();
-            if (!m.isBlank()) {
-                spec = spec.options(OllamaOptions.builder().model(m).temperature(0.0).build());
-            }
-        }
+        OllamaOptions.Builder opt = OllamaOptions.builder().temperature(0.0);
+        ChatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(opt::model);
+        spec = spec.options(opt.build());
 
         String out = spec.call().content();
         return out == null ? "" : out.trim();

@@ -200,6 +200,7 @@ class DefaultQueryUnderstandingPipelineTest {
         // Frozen stage ordering: first seven notes correspond to the QU stages in-order.
         assertTrue(plan.pipelineNotes().get(0).startsWith("qu_normalize "));
         assertTrue(plan.pipelineNotes().get(1).startsWith("qu_classify "));
+        assertTrue(plan.pipelineNotes().get(1).contains("classifierModelId=cls"));
         assertTrue(plan.pipelineNotes().get(2).startsWith("qu_extract_entities "));
         assertTrue(plan.pipelineNotes().get(3).startsWith("qu_rewrite "));
         assertTrue(plan.pipelineNotes().get(4).startsWith("qu_resolve_intent "));

@@ -23,6 +23,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -166,6 +167,36 @@ class ChatScopedRagConfigResolverTest {
         JsonNode node = cut.mergedConversationConfigAsJson(cid);
         assertNotNull(node);
         assertNotNull(node.get("useAdvisor"));
+    }
+
+    @Test
+    void mergedConversationConfigAsJson_includesPersistedLlmAndClassifierAfterRuntimeOverride() throws Exception {
+        ConfigResolver configResolver = mock(ConfigResolver.class);
+        ConversationRepository repo = mock(ConversationRepository.class);
+        ObjectMapper om = new ObjectMapper();
+        UUID cid = UUID.randomUUID();
+        RagConfigurationEntity cfgEnt = mock(RagConfigurationEntity.class);
+        when(cfgEnt.getValues()).thenReturn(Map.of());
+        ConversationEntity conv = mock(ConversationEntity.class);
+        when(conv.getConfig()).thenReturn(cfgEnt);
+        when(conv.getPreset()).thenReturn(null);
+        when(conv.getRuntimeOverride()).thenReturn(Map.of("llmModel", "from-json"));
+        when(conv.getLlmModel()).thenReturn("from-column");
+        when(conv.getClassifierModelId()).thenReturn("cls-tag");
+        when(repo.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
+
+        ChatScopedRagConfigResolver cut =
+                new ChatScopedRagConfigResolver(
+                        configResolver, null, repo, om, false, emptyChatPresetDefaults());
+
+        JsonNode node = cut.mergedConversationConfigAsJson(cid);
+        assertNotNull(node);
+        assertNotNull(node.get("llmModel"));
+        assertNotNull(node.get("classifierModelId"));
+        // Conversation columns win after runtime JSON merge.
+        assertNotNull(node);
+        assertEquals("from-column", node.get("llmModel").asText());
+        assertEquals("cls-tag", node.get("classifierModelId").asText());
     }
 
     @Test

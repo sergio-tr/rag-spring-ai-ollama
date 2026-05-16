@@ -18,6 +18,8 @@ export type ChatToolbarApi = {
   onAddDocuments: (files: FileList | null) => void;
   llmModelChoice: string;
   setLlmModelChoice: (v: string) => void;
+  classifierModelChoice: string;
+  setClassifierModelChoice: (v: string) => void;
   modelsCatalog: ModelsCatalogResponse | undefined;
   modelsError: boolean;
   modelsErrorMessage: string;

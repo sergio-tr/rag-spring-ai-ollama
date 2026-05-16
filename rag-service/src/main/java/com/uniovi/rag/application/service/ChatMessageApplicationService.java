@@ -123,6 +123,10 @@ public class ChatMessageApplicationService {
 
         conv.touchUpdated();
         conversationRepository.save(conv);
+        String persistedLlm = conv.getLlmModel() != null && !conv.getLlmModel().isBlank() ? conv.getLlmModel().trim() : null;
+        String effectiveLlm =
+                body.llmModel() != null && !body.llmModel().isBlank() ? body.llmModel().trim() : persistedLlm;
+
         log.info(
                 "chat_enqueue conversationId={} projectId={} userId={} presetId={} documentFilterCount={} llmModelOverrideSet={}",
                 conversationId,
@@ -130,13 +134,13 @@ public class ChatMessageApplicationService {
                 userId,
                 conv.getPreset() != null ? conv.getPreset().getId() : null,
                 conv.getDocumentFilter() != null ? conv.getDocumentFilter().size() : 0,
-                body.llmModel() != null && !body.llmModel().isBlank());
+                effectiveLlm != null);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put(ChatJobPayloadKeys.CONVERSATION_ID, conversationId.toString());
         payload.put(ChatJobPayloadKeys.USER_MESSAGE_ID, userMsg.getId().toString());
         payload.put(ChatJobPayloadKeys.ASSISTANT_MESSAGE_ID, asst.getId().toString());
-        payload.put(ChatJobPayloadKeys.LLM_MODEL, body.llmModel());
+        payload.put(ChatJobPayloadKeys.LLM_MODEL, effectiveLlm);
         payload.put(ChatJobPayloadKeys.USER_TEXT, content);
         payload.put(
                 ChatJobPayloadKeys.DOCUMENT_FILTER,
@@ -187,11 +191,12 @@ public class ChatMessageApplicationService {
         messageRepository.save(asst);
 
         ConversationEntity conv = conversationRepository.findById(conversationId).orElseThrow();
+        String persistedLlm = conv.getLlmModel() != null && !conv.getLlmModel().isBlank() ? conv.getLlmModel().trim() : null;
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put(ChatJobPayloadKeys.CONVERSATION_ID, conversationId.toString());
         payload.put(ChatJobPayloadKeys.USER_MESSAGE_ID, userMsg.getId().toString());
         payload.put(ChatJobPayloadKeys.ASSISTANT_MESSAGE_ID, asst.getId().toString());
-        payload.put(ChatJobPayloadKeys.LLM_MODEL, null);
+        payload.put(ChatJobPayloadKeys.LLM_MODEL, persistedLlm);
         payload.put(ChatJobPayloadKeys.USER_TEXT, userMsg.getContent());
         payload.put(
                 ChatJobPayloadKeys.DOCUMENT_FILTER,

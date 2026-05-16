@@ -9,6 +9,7 @@ const hooksMock = vi.hoisted(() => ({
   useRuntimeConfigCapabilities: vi.fn(),
   useProjectIndexProfile: vi.fn(),
   useActiveProjectSnapshot: vi.fn(),
+  useClassifierModelsQuery: vi.fn(),
 }));
 
 vi.mock("@/features/chat/hooks/use-runtime-config-capabilities", () => ({
@@ -19,6 +20,9 @@ vi.mock("@/features/projects/hooks/use-project-index-profile", () => ({
 }));
 vi.mock("@/features/projects/hooks/use-active-project-snapshot", () => ({
   useActiveProjectSnapshot: (...args: unknown[]) => hooksMock.useActiveProjectSnapshot(...args),
+}));
+vi.mock("@/features/lab/hooks/use-classifier-registry", () => ({
+  useClassifierModelsQuery: (...args: unknown[]) => hooksMock.useClassifierModelsQuery(...args),
 }));
 
 function renderSubject() {
@@ -36,6 +40,7 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
   beforeEach(() => {
     hooksMock.useProjectIndexProfile.mockReturnValue({ data: null, isLoading: false, isError: false });
     hooksMock.useActiveProjectSnapshot.mockReturnValue({ data: null, isLoading: false, isError: false });
+    hooksMock.useClassifierModelsQuery.mockReturnValue({ data: [], isError: false, isLoading: false });
 
     useChatToolbarStore.setState({
       api: {
@@ -76,6 +81,8 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
         onAddDocuments: vi.fn(),
         llmModelChoice: "",
         setLlmModelChoice: vi.fn(),
+        classifierModelChoice: "",
+        setClassifierModelChoice: vi.fn(),
         modelsCatalog: undefined,
         modelsError: false,
         modelsErrorMessage: "",

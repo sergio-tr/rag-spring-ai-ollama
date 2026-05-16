@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
  * <p>
  * This is intentionally explicit and UX-oriented (labels, ordering, requires/excludes) so the frontend can
  * disable controls and prevent invalid/unsupported configs before sending a message.
+ * <p>
+ * Categories: {@code RUNTIME_HOT_SWAPPABLE}, {@code ADVANCED_RUNTIME}, {@code INDEX_BOUND}, {@code LAB_ONLY},
+ * {@code INTERNAL}.
  */
 @Service
 public class RuntimeConfigCapabilitiesService {
@@ -127,8 +130,35 @@ public class RuntimeConfigCapabilitiesService {
                 List.of(),
                 "Index snapshot compatibility; changing requires reindex."));
 
+        out.add(indexBound(
+                "embeddingModel",
+                "Embedding model",
+                "Dense embedding model baked into the active index snapshot; pick a compatible project profile and reindex to change.",
+                125,
+                List.of("useRetrieval"),
+                List.of(),
+                "Embedding model is index-bound; create a new project/index profile and reindex."));
+
+        out.add(indexBound(
+                "chunkMaxChars",
+                "Chunk size (max chars)",
+                "Maximum characters per chunk for the indexed corpus; defined when the snapshot was built.",
+                126,
+                List.of("useRetrieval"),
+                List.of(),
+                "Chunking parameters are index-bound; reindex with a different profile to change."));
+
+        out.add(indexBound(
+                "chunkOverlap",
+                "Chunk overlap (chars)",
+                "Overlap between consecutive chunks for the indexed corpus; defined when the snapshot was built.",
+                127,
+                List.of("useRetrieval"),
+                List.of(),
+                "Chunking parameters are index-bound; reindex with a different profile to change."));
+
         out.add(
-                runtimeToggle(
+                advancedRuntimeToggle(
                         "clarificationEnabled",
                         "Clarification",
                         "Deterministic clarification loop when the query needs narrowing (multi-turn).",
@@ -137,7 +167,7 @@ public class RuntimeConfigCapabilitiesService {
                         List.of(),
                         "MULTI_TURN_REQUIRED"));
         out.add(
-                runtimeToggle(
+                advancedRuntimeToggle(
                         "memoryEnabled",
                         "Memory",
                         "Uses bounded conversation history / condensation before retrieval when conversation scope exists.",
@@ -162,6 +192,46 @@ public class RuntimeConfigCapabilitiesService {
                         160,
                         List.of(),
                         List.of()));
+
+        // Lab-only: not exposed as Chat toggles (benchmark harness / evaluation overlays).
+        out.add(
+                new RuntimeConfigCapabilityDto(
+                        "experimentalBenchmarkOverlay",
+                        "Experimental benchmark overlay",
+                        "Reserved for Lab benchmark orchestration overlays; not user-tunable from Chat.",
+                        "LAB_ONLY",
+                        false,
+                        false,
+                        true,
+                        true,
+                        null,
+                        1000,
+                        List.of(),
+                        List.of(),
+                        false,
+                        false,
+                        null,
+                        "Not configurable from Chat."));
+
+        // Internal plumbing surfaced for observability only (never Chat-configurable).
+        out.add(
+                new RuntimeConfigCapabilityDto(
+                        "corpusGroundedDirectWorkflow",
+                        "Corpus-grounded direct workflow routing",
+                        "Internal routing flag selected when naive full-corpus mode uses the documentary workflow path.",
+                        "INTERNAL",
+                        false,
+                        false,
+                        true,
+                        true,
+                        null,
+                        2000,
+                        List.of(),
+                        List.of(),
+                        false,
+                        false,
+                        null,
+                        "Internal routing; not user-configurable."));
 
         return new RuntimeConfigCapabilitiesResponse(out);
     }
@@ -203,6 +273,33 @@ public class RuntimeConfigCapabilitiesService {
                 null);
     }
 
+    private static RuntimeConfigCapabilityDto advancedRuntimeToggle(
+            String key,
+            String label,
+            String description,
+            int displayOrder,
+            List<String> requires,
+            List<String> excludes,
+            String supportMode) {
+        return new RuntimeConfigCapabilityDto(
+                key,
+                label,
+                description,
+                "ADVANCED_RUNTIME",
+                true,
+                true,
+                true,
+                true,
+                supportMode,
+                displayOrder,
+                requires != null ? List.copyOf(requires) : List.of(),
+                excludes != null ? List.copyOf(excludes) : List.of(),
+                false,
+                false,
+                null,
+                null);
+    }
+
     private static RuntimeConfigCapabilityDto indexBound(
             String key,
             String label,
@@ -229,7 +326,4 @@ public class RuntimeConfigCapabilitiesService {
                 reasonIfDisabled,
                 null);
     }
-
-    // materializationStrategy values are index-bound and surfaced via index profile/snapshot endpoints.
 }
-

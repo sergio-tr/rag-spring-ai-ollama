@@ -71,6 +71,9 @@ vi.mock("@/features/chat/hooks/use-runtime-config-capabilities", () => ({
     isLoading: false,
   }),
 }));
+vi.mock("@/features/lab/hooks/use-classifier-registry", () => ({
+  useClassifierModelsQuery: () => ({ data: [], isError: false, isLoading: false }),
+}));
 
 describe("ChatConfigurationPanelContent retrieval dependency", () => {
   beforeEach(() => {
@@ -113,6 +116,8 @@ describe("ChatConfigurationPanelContent retrieval dependency", () => {
         onAddDocuments: vi.fn(),
         llmModelChoice: "",
         setLlmModelChoice: vi.fn(),
+        classifierModelChoice: "",
+        setClassifierModelChoice: vi.fn(),
         modelsCatalog: undefined,
         modelsError: false,
         modelsErrorMessage: "",

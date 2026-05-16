@@ -60,12 +60,13 @@ public class ChatRuntimeStateService {
         Map<String, Object> baseEffectiveConfig =
                 baseVr.effectiveConfig() != null ? Map.copyOf(baseVr.effectiveConfig()) : Map.of();
 
-        Map<String, Object> persistedOverride =
-                c.getRuntimeOverride() != null && !c.getRuntimeOverride().isEmpty()
-                        ? new LinkedHashMap<>(c.getRuntimeOverride())
-                        : Map.of();
+        Map<String, Object> persistedForNormalize =
+                ConversationRuntimeModelKeys.copyWithoutModelKeys(
+                        c.getRuntimeOverride() != null && !c.getRuntimeOverride().isEmpty()
+                                ? new LinkedHashMap<>(c.getRuntimeOverride())
+                                : new LinkedHashMap<>());
         RuntimeOverrideNormalizer.NormalizedOverride normalized =
-                RuntimeOverrideNormalizer.normalize(persistedOverride, baseEffectiveConfig);
+                RuntimeOverrideNormalizer.normalize(persistedForNormalize, baseEffectiveConfig);
 
         RuntimeConfigValidateResponse effectiveVr =
                 runtimeConfigValidationService.validate(
@@ -77,7 +78,13 @@ public class ChatRuntimeStateService {
                                 normalized.runtimeOverride()));
 
         Map<String, Object> effectiveConfig =
-                effectiveVr.effectiveConfig() != null ? Map.copyOf(effectiveVr.effectiveConfig()) : Map.of();
+                effectiveVr.effectiveConfig() != null ? new LinkedHashMap<>(effectiveVr.effectiveConfig()) : new LinkedHashMap<>();
+        applyConversationModelColumnsToEffective(c, effectiveConfig);
+
+        String conversationLlmModel = blankToNull(c.getLlmModel());
+        String conversationClassifierModelId = blankToNull(c.getClassifierModelId());
+        boolean conversationModelsPinned = conversationLlmModel != null || conversationClassifierModelId != null;
+        boolean isCustom = !normalized.manualOverrideKeys().isEmpty() || conversationModelsPinned;
 
         ChatPresetSummaryDto presetSummary =
                 presetSummary(selectedPresetId, effectivePresetId, c.getPreset());
@@ -95,14 +102,34 @@ public class ChatRuntimeStateService {
                 effectivePresetId,
                 presetSummary,
                 baseEffectiveConfig,
-                effectiveConfig,
+                Map.copyOf(effectiveConfig),
+                conversationLlmModel,
+                conversationClassifierModelId,
+                conversationModelsPinned,
                 normalized.runtimeOverride(),
                 normalized.manualOverrideKeys(),
-                !normalized.manualOverrideKeys().isEmpty(),
+                isCustom,
                 validation,
                 effectiveVr.selectedWorkflow(),
                 effectiveVr.indexCompatibility(),
                 effectiveVr.requiresReindex());
+    }
+
+    private static void applyConversationModelColumnsToEffective(ConversationEntity c, Map<String, Object> effectiveConfig) {
+        if (c.getLlmModel() != null && !c.getLlmModel().isBlank()) {
+            effectiveConfig.put(ConversationRuntimeModelKeys.LLM_MODEL, c.getLlmModel().trim());
+        }
+        if (c.getClassifierModelId() != null && !c.getClassifierModelId().isBlank()) {
+            effectiveConfig.put(ConversationRuntimeModelKeys.CLASSIFIER_MODEL_ID, c.getClassifierModelId().trim());
+        }
+    }
+
+    private static String blankToNull(String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
     }
 
     private ChatPresetSummaryDto presetSummary(

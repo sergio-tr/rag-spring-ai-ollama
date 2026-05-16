@@ -20,6 +20,9 @@ vi.mock("@/features/projects/hooks/use-active-project-snapshot", () => ({
 vi.mock("@/features/chat/hooks/use-runtime-config-capabilities", () => ({
   useRuntimeConfigCapabilities: (...args: unknown[]) => hooksMock.useRuntimeConfigCapabilities(...args),
 }));
+vi.mock("@/features/lab/hooks/use-classifier-registry", () => ({
+  useClassifierModelsQuery: () => ({ data: [], isError: false, isLoading: false }),
+}));
 
 function renderSubject() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -32,9 +35,41 @@ function renderSubject() {
   );
 }
 
+function indexBoundCap(key: string, label: string, displayOrder: number) {
+  return {
+    key,
+    label,
+    description: "d",
+    category: "INDEX_BOUND" as const,
+    visibleInChat: true,
+    configurableInChat: false,
+    implemented: true,
+    engineWired: true,
+    supportMode: null,
+    displayOrder,
+    requires: [] as string[],
+    excludes: [] as string[],
+    requiresIndexSnapshot: true,
+    requiresReindexWhenChanged: true,
+    reasonIfDisabled: "Index snapshot compatibility; changing requires reindex.",
+    reasonIfNotImplemented: null,
+  };
+}
+
 describe("ChatConfigurationPanelContent index capabilities", () => {
   beforeEach(() => {
-    hooksMock.useRuntimeConfigCapabilities.mockReturnValue({ data: { capabilities: [] }, isLoading: false });
+    hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
+      data: {
+        capabilities: [
+          indexBoundCap("materializationStrategy", "Materialization strategy", 110),
+          indexBoundCap("metadataEnabled", "Metadata index", 120),
+          indexBoundCap("embeddingModel", "Embedding model", 125),
+          indexBoundCap("chunkMaxChars", "Chunk size (max chars)", 126),
+          indexBoundCap("chunkOverlap", "Chunk overlap (chars)", 127),
+        ],
+      },
+      isLoading: false,
+    });
     hooksMock.useProjectIndexProfile.mockReturnValue({ data: null, isLoading: false, isError: false });
     hooksMock.useActiveProjectSnapshot.mockReturnValue({ data: null, isLoading: false, isError: false });
 
@@ -77,6 +112,8 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
         onAddDocuments: vi.fn(),
         llmModelChoice: "",
         setLlmModelChoice: vi.fn(),
+        classifierModelChoice: "",
+        setClassifierModelChoice: vi.fn(),
         modelsCatalog: undefined,
         modelsError: false,
         modelsErrorMessage: "",
@@ -165,14 +202,11 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     }));
 
     renderSubject();
-    expect(screen.getByText(/Materialization strategy/i)).toBeInTheDocument();
-    const matRow = screen.getByText(/Materialization strategy/i).closest("div");
-    expect(matRow).toBeTruthy();
-    expect(within(matRow as HTMLElement).getByText("FULL_TEXT")).toBeInTheDocument();
-    expect(screen.getByText(/Metadata index/i)).toBeInTheDocument();
-    const metaRow = screen.getByText(/Metadata index/i).closest("div");
-    expect(metaRow).toBeTruthy();
-    expect(within(metaRow as HTMLElement).getByText("true")).toBeInTheDocument();
+    const indexSection = screen.getByRole("region", { name: "Index/project capabilities" });
+    expect(within(indexSection).getByText(/Materialization strategy/i)).toBeInTheDocument();
+    expect(within(indexSection).getByText("FULL_TEXT")).toBeInTheDocument();
+    expect(within(indexSection).getByText(/Metadata index/i)).toBeInTheDocument();
+    expect(within(indexSection).getByText("true")).toBeInTheDocument();
   });
 
   it("renders preset kind badges for PRODUCT / EXPERIMENTAL / MISSING", async () => {

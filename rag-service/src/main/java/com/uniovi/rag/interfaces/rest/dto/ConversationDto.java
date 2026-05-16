@@ -24,7 +24,11 @@ public record ConversationDto(
          * Active deterministic clarification payload when waiting for a follow-up user reply ({@code pending_clarification_jsonb}),
          * otherwise {@code null}.
          */
-        Map<String, Object> pendingClarification) {
+        Map<String, Object> pendingClarification,
+        /** Persisted per-conversation LLM override; {@code null} means “use merged preset/project default”. */
+        String llmModel,
+        /** Persisted per-conversation classifier inference tag; {@code null} means “use project configuration”. */
+        String classifierModelId) {
 
     public ConversationDto(
             UUID id,
@@ -34,6 +38,19 @@ public record ConversationDto(
             List<String> documentFilter,
             Map<String, Object> runtimeOverride,
             UUID effectivePresetId) {
-        this(id, title, updatedAt, presetId, documentFilter, runtimeOverride, effectivePresetId, Map.of(), List.of(), null, null);
+        this(
+                id,
+                title,
+                updatedAt,
+                presetId,
+                documentFilter,
+                runtimeOverride,
+                effectivePresetId,
+                Map.of(),
+                List.of(),
+                null,
+                null,
+                null,
+                null);
     }
 }

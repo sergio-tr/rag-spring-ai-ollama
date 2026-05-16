@@ -115,6 +115,10 @@ export type ConversationDto = {
   presetId?: string | null;
   /** When `presetId` is null, backend-resolved default preset id for UX (e.g. Demo_Best). */
   effectivePresetId?: string | null;
+  /** Persisted per-conversation LLM id; empty UI means server default chain applies. */
+  llmModel?: string | null;
+  /** Persisted per-conversation classifier inference tag; null defers to project RAG JSON. */
+  classifierModelId?: string | null;
   /** Project document UUIDs limiting retrieval; empty = all documents in the project. */
   documentFilter?: string[];
   /** Conversation-scoped runtime override keys (merged on top of preset + project config). */
@@ -151,6 +155,9 @@ export type ChatRuntimeStateDto = {
   preset: ChatPresetSummaryDto;
   baseEffectiveConfig: Record<string, unknown>;
   effectiveConfig: Record<string, unknown>;
+  conversationLlmModel: string | null;
+  conversationClassifierModelId: string | null;
+  conversationModelsPinned: boolean;
   runtimeOverride: Record<string, unknown>;
   manualOverrideKeys: string[];
   isCustom: boolean;
@@ -379,7 +386,13 @@ export type ExperimentalPresetCatalogItemDto = {
   } | null;
   requiredCapabilities: string[];
   supported: boolean;
-  supportStatus: "EXECUTABLE" | "PARTIAL" | "NOT_SUPPORTED" | "REQUIRES_MULTI_TURN" | "DISABLED";
+  supportStatus:
+    | "EXECUTABLE"
+    | "PARTIAL"
+    | "NOT_SUPPORTED"
+    | "REQUIRES_MULTI_TURN"
+    | "DISABLED"
+    | "FUTURE_MULTI_TURN_NOT_SELECTABLE";
   reasonIfUnsupported: string | null;
   requiresMultiTurn: boolean;
   mapsToRuntimeCapabilities: Record<string, unknown>;
@@ -388,6 +401,15 @@ export type ExperimentalPresetCatalogItemDto = {
   labSelectable: boolean;
   /** Derived: `labSelectable && !chatSelectable` */
   labOnly: boolean;
+  corpusRequired?: boolean;
+  requiresSnapshot?: boolean;
+  requiresProjectDocuments?: boolean;
+  singleTurnBenchmarkSelectable?: boolean;
+  /** P0=0 … P14=14 */
+  protocolStageIndex?: number;
+  parentPresetCode?: string | null;
+  /** Canonical terminal runtime JSON (Lab + Chat overlay). */
+  effectiveTerminalRuntimeJson?: string;
 };
 
 export type RuntimeConfigCapabilityDto = {
@@ -575,6 +597,10 @@ export type PatchConversationBody = {
   runtimeOverride?: Record<string, unknown> | null;
   clearRuntimeOverride?: boolean;
   clearPendingClarification?: boolean;
+  clearLlmModel?: boolean;
+  llmModel?: string | null;
+  clearClassifierModelId?: boolean;
+  classifierModelId?: string | null;
 };
 
 /** GET `{product}/models` — allowlist vs Ollama tags. */
@@ -599,6 +625,36 @@ export type SelectableModelDto = {
   tags: string[];
   available: boolean;
   lastCheckedAt: string | null;
+};
+
+/** GET `{product}/model-registry` — curated demo LLM/embedding targets + Ollama presence (no allowlist writes). */
+export type ModelRegistryAvailabilityStatus = "AVAILABLE" | "MISSING" | "ERROR";
+
+export type ModelRegistryItemDto = {
+  modelId: string;
+  modelType: "LLM" | "EMBEDDING";
+  status: ModelRegistryAvailabilityStatus;
+  detail: string | null;
+  embeddingCompatible: boolean | null;
+};
+
+export type ModelRegistryResponseDto = {
+  ollamaReachable: boolean;
+  ollamaErrorMessage: string | null;
+  llmModels: ModelRegistryItemDto[];
+  embeddingModels: ModelRegistryItemDto[];
+};
+
+/** POST `{product}/model-registry/check` */
+export type ModelRegistryCheckRequest = {
+  modelId: string;
+  /** When false, skips the embedding HTTP probe for embedding rows. */
+  probeEmbedding?: boolean | null;
+};
+
+/** POST `{product}/model-registry/pull` — only curated ids; returns lab job envelope. */
+export type ModelRegistryPullRequest = {
+  modelId: string;
 };
 
 /** GET {product}/lab/classifier/models */

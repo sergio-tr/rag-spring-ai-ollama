@@ -6,6 +6,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useRuntimeConfigCapabilities } from "@/features/chat/hooks/use-runtime-config-capabilities";
+import { useClassifierModelsQuery } from "@/features/lab/hooks/use-classifier-registry";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import { useActiveProjectSnapshot } from "@/features/projects/hooks/use-active-project-snapshot";
 import { useProjectIndexProfile } from "@/features/projects/hooks/use-project-index-profile";
@@ -96,6 +97,7 @@ export function ChatConfigurationPanelContent() {
   const api = useChatToolbarStore((s) => s.api);
 
   const modelSelectId = useId();
+  const classifierSelectId = useId();
   const presetSelectId = useId();
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
@@ -115,19 +117,28 @@ export function ChatConfigurationPanelContent() {
 
   const effectiveLoading = Boolean(api?.runtimeStateLoading);
   const effectiveError = api?.runtimeStateError ?? null;
+  const patchPending = Boolean(api?.patchConvPending);
 
   const caps = capabilitiesQuery.data?.capabilities ?? [];
   const capByKey = new Map(caps.map((c) => [c.key, c]));
 
+  const classifierModelsQuery = useClassifierModelsQuery(Boolean(api?.projectId));
+
   const runtimeToggles = useMemo(() => {
     const filtered = caps.filter(
       (c) =>
-        c.category === "RUNTIME_HOT_SWAPPABLE" &&
+        (c.category === "RUNTIME_HOT_SWAPPABLE" || c.category === "ADVANCED_RUNTIME") &&
         c.visibleInChat === true &&
         c.configurableInChat === true &&
         c.implemented === true &&
         c.engineWired === true,
     );
+    filtered.sort((a, b) => a.displayOrder - b.displayOrder);
+    return filtered;
+  }, [caps]);
+
+  const indexBoundCaps = useMemo(() => {
+    const filtered = caps.filter((c) => c.category === "INDEX_BOUND" && c.visibleInChat === true);
     filtered.sort((a, b) => a.displayOrder - b.displayOrder);
     return filtered;
   }, [caps]);
@@ -218,6 +229,49 @@ export function ChatConfigurationPanelContent() {
   const documentScopeHint =
     api?.limitDocs && api?.limitDocsToggleNotice ? api.limitDocsToggleNotice : null;
 
+  const manualOverrideKeySet = useMemo(
+    () => new Set(api?.runtimeState?.manualOverrideKeys ?? []),
+    [api?.runtimeState?.manualOverrideKeys],
+  );
+
+  function formatIndexBoundCapabilityValue(key: string): string {
+    const profile = indexProfileQuery.data;
+    const snapCaps = api?.runtimeState?.indexCompatibility?.activeSnapshotCapabilities;
+    const ec = effectiveConfig as EffectiveConfigMap | null;
+    switch (key) {
+      case "materializationStrategy": {
+        if (profile?.materializationStrategy) return profile.materializationStrategy;
+        const v = ec?.materializationStrategy;
+        return v != null && v !== "" ? String(v) : NOT_LOADED_LABEL;
+      }
+      case "metadataEnabled": {
+        if (profile) return String(Boolean(profile.metadataEnabled));
+        const v = ec?.metadataEnabled;
+        return typeof v === "boolean" ? String(v) : NOT_LOADED_LABEL;
+      }
+      case "embeddingModel": {
+        const fromProfile = profile?.embeddingModelId;
+        if (fromProfile) return fromProfile;
+        const fromSnap = snapCaps?.embeddingModelId;
+        if (fromSnap) return fromSnap;
+        const v = ec?.embeddingModel;
+        return v != null && String(v).trim() !== "" ? String(v) : NOT_LOADED_LABEL;
+      }
+      case "chunkMaxChars": {
+        if (profile != null) return String(profile.chunkMaxChars);
+        if (snapCaps?.chunkMaxChars != null) return String(snapCaps.chunkMaxChars);
+        return NOT_LOADED_LABEL;
+      }
+      case "chunkOverlap": {
+        if (profile?.chunkOverlap != null) return String(profile.chunkOverlap);
+        if (snapCaps?.chunkOverlap != null) return String(snapCaps.chunkOverlap);
+        return NOT_LOADED_LABEL;
+      }
+      default:
+        return NOT_LOADED_LABEL;
+    }
+  }
+
   // Ensure the draft starts from persisted overrides, not from the preset.
   // (We still display effective config separately via validate.)
   const productIds = useMemo(() => new Set((api?.presets ?? []).map((p) => p.id)), [api?.presets]);
@@ -227,17 +281,40 @@ export function ChatConfigurationPanelContent() {
   );
 
   const getBooleanValue = (key: string): boolean => {
-    const override = api?.runtimeOverride ? (api.runtimeOverride as Record<string, unknown>)[key] : undefined;
-    if (typeof override === "boolean") return override;
-    const base = effectiveConfig ? (effectiveConfig as Record<string, unknown>)[key] : undefined;
-    return typeof base === "boolean" ? base : false;
+    if (api?.runtimeState?.effectiveConfig) {
+      return coerceBool((api.runtimeState.effectiveConfig as Record<string, unknown>)[key]);
+    }
+    return coerceBool(effectiveConfig ? (effectiveConfig as Record<string, unknown>)[key] : undefined);
   };
 
   const setOverrideBoolean = (key: string, next: boolean) => {
-    const current = api?.runtimeOverride ?? {};
+    const current = (api?.runtimeState?.runtimeOverride ?? api?.runtimeOverride ?? {}) as Record<string, unknown>;
     const updated = { ...current, [key]: next };
     api?.saveRuntimeOverride(updated);
   };
+
+  const exportEffectiveConfig = () => {
+    if (!effectiveConfig || typeof effectiveConfig !== "object") return;
+    const text = JSON.stringify(effectiveConfig, null, 2);
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "chat-effective-config.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const effectiveEntriesSorted = useMemo(() => {
+    if (!effectiveConfig || typeof effectiveConfig !== "object") return [];
+    return Object.entries(effectiveConfig as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
+  }, [effectiveConfig]);
+
+  const baseEffectiveEntriesSorted = useMemo(() => {
+    const base = api?.runtimeState?.baseEffectiveConfig;
+    if (!base || typeof base !== "object") return [];
+    return Object.entries(base as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
+  }, [api?.runtimeState?.baseEffectiveConfig]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -362,25 +439,23 @@ export function ChatConfigurationPanelContent() {
             ) : null}
 
             <div className="grid grid-cols-1 gap-2 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Materialization strategy</span>
-                <span className="font-mono text-xs">
-                  {indexProfileQuery.data?.materializationStrategy ??
-                    (effectiveConfig && typeof (effectiveConfig as EffectiveConfigMap).materializationStrategy === typeof ""
-                      ? String((effectiveConfig as EffectiveConfigMap).materializationStrategy)
-                      : NOT_LOADED_LABEL)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Metadata index</span>
-                <span className="font-mono text-xs">
-                  {indexProfileQuery.data
-                    ? String(Boolean(indexProfileQuery.data.metadataEnabled))
-                    : effectiveConfig && typeof (effectiveConfig as EffectiveConfigMap).metadataEnabled === typeof true
-                      ? String(Boolean((effectiveConfig as EffectiveConfigMap).metadataEnabled))
-                      : NOT_LOADED_LABEL}
-                </span>
-              </div>
+              {indexBoundCaps.map((cap) => {
+                const reason = cap.reasonIfDisabled ?? "Changing this requires a new index snapshot (reindex) or a compatible project profile.";
+                return (
+                  <div key={cap.key} className="flex flex-col gap-0.5 rounded-md border border-dashed bg-muted/20 px-3 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">{cap.label ?? cap.key}</span>
+                      <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase text-muted-foreground">
+                        Locked
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[11px] leading-snug text-muted-foreground">{reason}</span>
+                      <span className="shrink-0 font-mono text-xs">{formatIndexBoundCapabilityValue(cap.key)}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </Box>
@@ -401,7 +476,7 @@ export function ChatConfigurationPanelContent() {
                 )}
                 value={api?.llmModelChoice ?? ""}
                 onChange={(e) => api?.setLlmModelChoice(e.target.value)}
-                disabled={needsProject || needsConversation || !!api?.modelsError}
+                disabled={needsProject || needsConversation || !!api?.modelsError || patchPending}
                 aria-label={tChat("modelLabel")}
               >
                 <option value="">{tChat("modelDefault")}</option>
@@ -419,6 +494,35 @@ export function ChatConfigurationPanelContent() {
                     );
                   })}
               </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label htmlFor={classifierSelectId} className="text-xs">
+                {tChat("classifierLabel")}
+              </Label>
+              <select
+                id={classifierSelectId}
+                className={cn(
+                  "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
+                  classifierModelsQuery.isError && "border-destructive",
+                )}
+                value={api?.classifierModelChoice ?? ""}
+                onChange={(e) => api?.setClassifierModelChoice(e.target.value)}
+                disabled={needsProject || needsConversation || patchPending}
+                aria-label={tChat("classifierLabel")}
+              >
+                <option value="">{tChat("classifierDefault")}</option>
+                {(classifierModelsQuery.data ?? []).map((m) => (
+                  <option key={m.id} value={m.inferenceTag}>
+                    {m.name} ({m.inferenceTag})
+                  </option>
+                ))}
+              </select>
+              {classifierModelsQuery.isError ? (
+                <output role="status" className="text-destructive text-xs">
+                  {tChat("classifierLoadError")}
+                </output>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-1">
@@ -533,42 +637,77 @@ export function ChatConfigurationPanelContent() {
             </div>
 
             <div className="rounded-lg border bg-background/40 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium">Effective config</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium">{tChat("runtimeEffectiveTitle")}</p>
+                <button
+                  type="button"
+                  data-testid="chat-config-export-effective"
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                  disabled={!effectiveConfig || needsProject || needsConversation}
+                  onClick={exportEffectiveConfig}
+                >
+                  {tChat("runtimeEffectiveExport")}
+                </button>
               </div>
-              <p className="text-muted-foreground mt-1 text-xs">
-                Values come from the selected preset + runtime overrides.
-              </p>
+              <p className="text-muted-foreground mt-1 text-xs">{tChat("runtimeEffectiveHint")}</p>
               {effectiveError ? (
                 <p className="text-destructive mt-2 text-xs" role="alert">
                   {effectiveError}
                 </p>
               ) : null}
-              {effectiveConfig ? (
-                <div className="mt-2 grid grid-cols-1 gap-1 text-xs">
-                  <output className="text-muted-foreground mb-1 block text-[11px]">
-                    Effective keys: {Object.keys(effectiveConfig).length}
-                  </output>
-                  {Object.entries(effectiveConfig)
-                    .slice(0, 24)
-                    .map(([k, v]) => (
+
+              {api?.runtimeState ? (
+                <div className="mt-3 space-y-2 rounded-md border bg-background/50 p-2 text-[11px]">
+                  <p className="text-muted-foreground font-medium uppercase tracking-wide">{tChat("runtimeLayersTitle")}</p>
+                  <div>
+                    <span className="text-muted-foreground">{tChat("runtimeBaseLabel")}</span>
+                    <p className="text-muted-foreground mt-0.5 leading-snug">{tChat("runtimeBaseHint")}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">{tChat("runtimeCustomLabel")}</span>
+                    <p className="mt-0.5 font-mono text-xs">
+                      {api.runtimeState.manualOverrideKeys?.length
+                        ? api.runtimeState.manualOverrideKeys.join(", ")
+                        : tChat("runtimeCustomEmpty")}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
+              {api?.runtimeState?.baseEffectiveConfig && baseEffectiveEntriesSorted.length > 0 ? (
+                <details className="mt-3 rounded-md border bg-background/30 p-2 text-xs">
+                  <summary className="cursor-pointer font-medium">{tChat("runtimeBaseExpand")}</summary>
+                  <div className="mt-2 grid max-h-48 grid-cols-1 gap-1 overflow-y-auto text-[11px]">
+                    {baseEffectiveEntriesSorted.map(([k, v]) => (
                       <div key={k} className="flex items-baseline justify-between gap-3">
-                        <span className="truncate font-mono">
-                          {k}
-                          {api?.runtimeOverride &&
-                          Object.prototype.hasOwnProperty.call(api.runtimeOverride, k) ? (
-                            <span className="ml-2 text-muted-foreground">[override]</span>
-                          ) : null}
-                        </span>
+                        <span className="truncate font-mono">{k}</span>
                         <span className="font-mono text-muted-foreground">
-                          {typeof v === typeof "" ||
-                          typeof v === "number" ||
-                          typeof v === typeof true
-                            ? String(v)
-                            : "[object]"}
+                          {typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : "[object]"}
                         </span>
                       </div>
                     ))}
+                  </div>
+                </details>
+              ) : null}
+
+              {effectiveConfig ? (
+                <div className="mt-2 grid max-h-64 grid-cols-1 gap-1 overflow-y-auto text-xs">
+                  <output className="text-muted-foreground mb-1 block text-[11px]">
+                    {tChat("runtimeEffectiveKeyCount", { count: effectiveEntriesSorted.length })}
+                  </output>
+                  {effectiveEntriesSorted.map(([k, v]) => (
+                    <div key={k} className="flex items-baseline justify-between gap-3">
+                      <span className="truncate font-mono">
+                        {k}
+                        {manualOverrideKeySet.has(k) ? (
+                          <span className="ml-2 text-muted-foreground">{tChat("runtimeCustomMarker")}</span>
+                        ) : null}
+                      </span>
+                      <span className="font-mono text-muted-foreground">
+                        {typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : "[object]"}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <output className="text-muted-foreground mt-2 block text-xs">Not loaded.</output>
@@ -591,7 +730,7 @@ export function ChatConfigurationPanelContent() {
                               type="checkbox"
                               className="border-input size-4 rounded"
                               checked={getBooleanValue(key)}
-                              disabled={!!reason}
+                              disabled={!!reason || patchPending}
                               onChange={(e) => setOverrideBoolean(key, e.target.checked)}
                               aria-describedby={reason ? rid : undefined}
                             />

@@ -29,6 +29,7 @@ import org.mockito.Answers;
 import org.springframework.ai.chat.client.ChatClient;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -121,6 +122,7 @@ class CanonicalQueryUsageWorkflowTest {
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
+                        Optional.empty(),
                         Optional.empty()),
                 Optional.empty(),
                 Optional.empty(),
@@ -186,6 +188,7 @@ class CanonicalQueryUsageWorkflowTest {
 
         ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
+        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("ANS");
 
         ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(chatClient, pipeline, null);
 

@@ -17,6 +17,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.application.service.chat.RuntimeOverrideNormalizer;
+import com.uniovi.rag.application.service.chat.ConversationRuntimeModelKeys;
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
 import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
@@ -107,7 +108,8 @@ public class ConversationApplicationService {
 
         Map<String, Object> initialOverrides =
                 body != null && body.initialRuntimeOverride() != null && !body.initialRuntimeOverride().isEmpty()
-                        ? new LinkedHashMap<>(body.initialRuntimeOverride())
+                        ? ConversationRuntimeModelKeys.copyWithoutModelKeys(
+                                new LinkedHashMap<>(body.initialRuntimeOverride()))
                         : Map.of();
         c.setRuntimeOverride(initialOverrides);
 
@@ -175,10 +177,32 @@ public class ConversationApplicationService {
                         || Boolean.TRUE.equals(body.clearRuntimeOverride())
                         || body.runtimeOverride() != null;
 
+        boolean touchesModels =
+                Boolean.TRUE.equals(body.clearLlmModel())
+                        || body.llmModel() != null
+                        || Boolean.TRUE.equals(body.clearClassifierModelId())
+                        || body.classifierModelId() != null;
+
         // Stage all candidate mutations in-memory before persisting (no partial persistence on validation failure).
         String candidateTitle =
                 body.title() != null && !body.title().isBlank() ? body.title().trim() : c.getTitle();
         boolean clearPending = Boolean.TRUE.equals(body.clearPendingClarification());
+
+        String candidateLlmModel = c.getLlmModel();
+        if (Boolean.TRUE.equals(body.clearLlmModel())) {
+            candidateLlmModel = null;
+        } else if (body.llmModel() != null) {
+            String t = body.llmModel().trim();
+            candidateLlmModel = t.isEmpty() ? null : t;
+        }
+
+        String candidateClassifierModelId = c.getClassifierModelId();
+        if (Boolean.TRUE.equals(body.clearClassifierModelId())) {
+            candidateClassifierModelId = null;
+        } else if (body.classifierModelId() != null) {
+            String t = body.classifierModelId().trim();
+            candidateClassifierModelId = t.isEmpty() ? null : t;
+        }
 
         RagPresetEntity candidatePreset = c.getPreset();
         if (Boolean.TRUE.equals(body.clearPreset())) {
@@ -203,8 +227,13 @@ public class ConversationApplicationService {
         Map<String, Object> candidateOverrideRaw =
                 Boolean.TRUE.equals(body.clearRuntimeOverride())
                         ? Map.of()
-                        : (body.runtimeOverride() != null ? new LinkedHashMap<>(body.runtimeOverride()) : c.getRuntimeOverride());
-        candidateOverrideRaw = candidateOverrideRaw != null ? candidateOverrideRaw : Map.of();
+                        : (body.runtimeOverride() != null
+                                ? ConversationRuntimeModelKeys.copyWithoutModelKeys(
+                                        new LinkedHashMap<>(body.runtimeOverride()))
+                                : ConversationRuntimeModelKeys.copyWithoutModelKeys(
+                                        c.getRuntimeOverride() != null
+                                                ? new LinkedHashMap<>(c.getRuntimeOverride())
+                                                : new LinkedHashMap<>()));
 
         if (touchesRuntimeConfig) {
             UUID projectId = c.getProject() != null ? c.getProject().getId() : null;
@@ -261,13 +290,18 @@ public class ConversationApplicationService {
                         && !Objects.equals(
                                 candidateOverrideRaw,
                                 c.getRuntimeOverride() != null ? c.getRuntimeOverride() : Map.of());
+        boolean modelsChanged =
+                touchesModels
+                        && (!Objects.equals(candidateLlmModel, c.getLlmModel())
+                                || !Objects.equals(candidateClassifierModelId, c.getClassifierModelId()));
         boolean changed =
                 !Objects.equals(candidateTitle, c.getTitle())
                         || !Objects.equals(candidatePreset, c.getPreset())
                         || (body.documentFilter() != null
                                 && !Objects.equals(candidateDocumentFilter, c.getDocumentFilter()))
                         || overrideChanged
-                        || clearPending;
+                        || clearPending
+                        || modelsChanged;
 
         if (changed) {
             c.setTitle(candidateTitle);
@@ -277,6 +311,10 @@ public class ConversationApplicationService {
             }
             if (touchesRuntimeConfig) {
                 c.setRuntimeOverride(candidateOverrideRaw);
+            }
+            if (modelsChanged) {
+                c.setLlmModel(candidateLlmModel);
+                c.setClassifierModelId(candidateClassifierModelId);
             }
             if (clearPending) {
                 c.setPendingClarification(null);
@@ -341,7 +379,9 @@ public class ConversationApplicationService {
             RuntimeIndexCompatibilityDto indexCompatibility) {
         UUID presetId = c.getPreset() != null ? c.getPreset().getId() : null;
         List<String> docs = c.getDocumentFilter() != null ? List.copyOf(c.getDocumentFilter()) : List.of();
-        Map<String, Object> runtimeOverride = c.getRuntimeOverride() != null ? Map.copyOf(c.getRuntimeOverride()) : Map.of();
+        Map<String, Object> runtimeOverride =
+                ConversationRuntimeModelKeys.copyWithoutModelKeys(
+                        c.getRuntimeOverride() != null ? new LinkedHashMap<>(c.getRuntimeOverride()) : new LinkedHashMap<>());
         UUID effectivePresetId = chatPresetDefaults.effectivePresetIdForApi(presetId);
         Map<String, Object> preview =
                 effectiveRuntimePreview != null && !effectiveRuntimePreview.isEmpty()
@@ -363,7 +403,9 @@ public class ConversationApplicationService {
                 preview,
                 warns,
                 indexCompatibility,
-                pending);
+                pending,
+                c.getLlmModel(),
+                c.getClassifierModelId());
     }
 
     /**

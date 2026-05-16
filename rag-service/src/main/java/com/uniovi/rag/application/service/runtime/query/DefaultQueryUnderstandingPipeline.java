@@ -74,6 +74,7 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         };
         notes.add(stageNote("qu_classify", classifyStatus, msSince(t1),
                 "classifierStatus=" + c.classifierStatus().name()
+                        + " classifierModelId=" + c.classifierModelIdUsed()
                         + " classifierLabel=" + c.classifierLabel()
                         + " note=" + c.note()));
 

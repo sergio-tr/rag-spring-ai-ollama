@@ -16,4 +16,12 @@ public record PatchConversationRequest(
         Map<String, Object> runtimeOverride,
         Boolean clearRuntimeOverride,
         /** Clears {@code pending_clarification_jsonb} on the conversation (best-effort cancel of clarification flow). */
-        Boolean clearPendingClarification) {}
+        Boolean clearPendingClarification,
+        /** When true, clears {@code conversations.llm_model}. */
+        Boolean clearLlmModel,
+        /** Sets {@code conversations.llm_model}; trimmed empty string is treated as clear. */
+        String llmModel,
+        /** When true, clears {@code conversations.classifier_model_id}. */
+        Boolean clearClassifierModelId,
+        /** Sets {@code conversations.classifier_model_id} (inference tag from classifier registry). */
+        String classifierModelId) {}

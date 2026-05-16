@@ -12,6 +12,7 @@ import com.uniovi.rag.service.config.UserProjectConfigurationService;
 import com.uniovi.rag.service.project.ProjectAccessService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +35,9 @@ import java.util.UUID;
 public class ClassifierModelRegistryService {
 
     public static final String HP_SOURCE_TASK_ID = "sourceTaskId";
+    /** Synthetic catalog row for the built-in classifier tag (see {@link #classifierSystemInferenceTag}). */
+    public static final String HP_SYSTEM_CATALOG = "systemCatalog";
+    public static final String HP_OWNER_ID = "ownerId";
     public static final String HP_EPOCHS = "epochs";
     public static final String HP_BATCH_SIZE = "batchSize";
 
@@ -44,18 +48,25 @@ public class ClassifierModelRegistryService {
     private final ProjectAccessService projectAccessService;
     private final UserProjectConfigurationService userProjectConfigurationService;
     private final ClassifierLabPort classifierLabPort;
+    /** Matches classifier-service default tag ({@code rag.classifier.model-id}) and {@code GET /models} first entry id. */
+    private final String classifierSystemInferenceTag;
 
     public ClassifierModelRegistryService(
             ClassifierModelRepository classifierModelRepository,
             UserRepository userRepository,
             ProjectAccessService projectAccessService,
             UserProjectConfigurationService userProjectConfigurationService,
-            ClassifierLabPort classifierLabPort) {
+            ClassifierLabPort classifierLabPort,
+            @Value("${rag.classifier.model-id:default}") String classifierSystemInferenceTag) {
         this.classifierModelRepository = classifierModelRepository;
         this.userRepository = userRepository;
         this.projectAccessService = projectAccessService;
         this.userProjectConfigurationService = userProjectConfigurationService;
         this.classifierLabPort = classifierLabPort;
+        this.classifierSystemInferenceTag =
+                classifierSystemInferenceTag == null || classifierSystemInferenceTag.isBlank()
+                        ? "default"
+                        : classifierSystemInferenceTag.trim();
     }
 
     /**
@@ -89,6 +100,7 @@ public class ClassifierModelRegistryService {
         String displayName = extractDisplayName(trainResult, requestedModelName);
         Map<String, Object> hp = new LinkedHashMap<>();
         hp.put(HP_SOURCE_TASK_ID, taskKey);
+        hp.put(HP_OWNER_ID, userId.toString());
         hp.put(HP_EPOCHS, epochs);
         hp.put(HP_BATCH_SIZE, batchSize);
         Object metrics = trainResult.get("metrics");
@@ -112,7 +124,7 @@ public class ClassifierModelRegistryService {
     @Transactional
     public void enrichAfterEval(UUID userId, String evaluatedModelTag, Map<String, Object> evalResult) {
         if (evaluatedModelTag == null || evaluatedModelTag.isBlank()) {
-            evaluatedModelTag = "default";
+            evaluatedModelTag = classifierSystemInferenceTag;
         }
         Optional<ClassifierModelEntity> row =
                 classifierModelRepository.findByOwner_IdAndArtifactPath(userId, evaluatedModelTag);
@@ -143,15 +155,16 @@ public class ClassifierModelRegistryService {
     }
 
     /**
-     * UI contract: the model combo must reflect the real classifier-service registry ({@code GET /models}).
-     * We upsert missing external models into {@code classifier_model} so activation continues to use UUID row ids.
+     * Ensures the caller sees a DB-backed row for the shared system classifier tag only (default model).
+     * Disk-trained tags under the shared {@code MODELS_DIR} are never materialized as rows for arbitrary users —
+     * those appear only via {@link #registerAfterSuccessfulTrain(UUID, UUID, String, Map, int, int)} for the training owner.
      */
     @Transactional
     public List<ClassifierModelResponseDto> listForUserWithSync(UUID userId) {
         if (classifierLabPort != null && classifierLabPort.isConfigured()) {
             try {
                 List<Map<String, Object>> external = classifierLabPort.listModels();
-                ensureExternalModelsRegistered(userId, external);
+                ensureSystemDefaultCatalogRow(userId, external);
             } catch (Exception e) {
                 log.warn("Could not sync classifier models from classifier-service: {}", e.getMessage());
             }
@@ -160,7 +173,7 @@ public class ClassifierModelRegistryService {
     }
 
     @Transactional
-    void ensureExternalModelsRegistered(UUID userId, List<Map<String, Object>> externalModels) {
+    void ensureSystemDefaultCatalogRow(UUID userId, List<Map<String, Object>> externalModels) {
         if (externalModels == null || externalModels.isEmpty()) {
             return;
         }
@@ -172,14 +185,17 @@ public class ClassifierModelRegistryService {
             if (row == null) {
                 continue;
             }
-            String inferenceTag = row.get("id") != null ? row.get("id").toString() : null;
+            String inferenceTag = row.get("id") != null ? row.get("id").toString().trim() : null;
             if (inferenceTag == null || inferenceTag.isBlank()) {
+                continue;
+            }
+            if (!classifierSystemInferenceTag.equals(inferenceTag)) {
                 continue;
             }
             Optional<ClassifierModelEntity> existing =
                     classifierModelRepository.findByOwner_IdAndArtifactPath(userId, inferenceTag);
             if (existing.isPresent()) {
-                continue;
+                return;
             }
             String name = row.get("name") != null ? row.get("name").toString() : inferenceTag;
             Instant trainedAt = parseInstantOrNull(row.get("createdAt"));
@@ -187,6 +203,7 @@ public class ClassifierModelRegistryService {
                 trainedAt = Instant.now();
             }
             Map<String, Object> hp = new LinkedHashMap<>();
+            hp.put(HP_SYSTEM_CATALOG, true);
             hp.put("external", true);
             hp.put("source", "classifier-service");
             if (row.get("metrics") instanceof Map<?, ?> mm) {
@@ -195,6 +212,7 @@ public class ClassifierModelRegistryService {
             ClassifierModelEntity e =
                     ClassifierModelEntityFactory.newReadyTrainingArtifact(owner, name, inferenceTag, hp, trainedAt);
             classifierModelRepository.save(e);
+            return;
         }
     }
 
@@ -211,6 +229,14 @@ public class ClassifierModelRegistryService {
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Classifier model not found"));
         if (model.getOwner() == null || !userId.equals(model.getOwner().getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not your classifier model");
+        }
+        if (!isActivatableClassifierRow(model)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Classifier model is not eligible for activation (only user-trained rows, "
+                            + "or the shared system tag '"
+                            + classifierSystemInferenceTag
+                            + "', are allowed)");
         }
         if (model.getStatus() != ClassifierModelStatus.READY || model.getArtifactPath() == null || model.getArtifactPath().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model is not ready for activation");
@@ -236,6 +262,22 @@ public class ClassifierModelRegistryService {
                 userId,
                 inferenceTag);
         return toDto(model);
+    }
+
+    /**
+     * Blocks legacy rows that were incorrectly materialized from shared disk for this user (external only, no task id)
+     * except the configured system inference tag.
+     */
+    private boolean isActivatableClassifierRow(ClassifierModelEntity model) {
+        String tag = model.getArtifactPath() != null ? model.getArtifactPath().trim() : "";
+        Map<String, Object> hp = model.getHyperparams();
+        if (hp != null && hp.get(HP_SOURCE_TASK_ID) != null) {
+            return true;
+        }
+        if (hp != null && Boolean.TRUE.equals(hp.get(HP_SYSTEM_CATALOG))) {
+            return true;
+        }
+        return classifierSystemInferenceTag.equals(tag);
     }
 
     private static ClassifierModelResponseDto toDto(ClassifierModelEntity e) {

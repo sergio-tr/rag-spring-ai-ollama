@@ -33,6 +33,7 @@ public class OpenApiSecurityConfiguration {
      *
      * <p>Rules:
      * - `${rag.api.product-base-path}/**`: authenticated product API
+     * - `${rag.api.product-base-path}/admin/**`: admin-only (same role gate as legacy `/api/admin/**`)
      * - `/api/admin/**`: admin-only API
      * - `/api/auth/**` (others): public
      */

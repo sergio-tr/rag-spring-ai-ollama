@@ -9,6 +9,7 @@ import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.MeetingMinutesToolRawResult;
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
 import com.uniovi.rag.application.service.runtime.tool.MeetingMinutesToolExecutionCore;
 import org.springframework.ai.chat.client.ChatClient;
@@ -58,9 +59,7 @@ public class FunctionCallingExecutor {
             List<FunctionCallback> asFunctions = new ArrayList<>(callbacks);
             OllamaOptions.Builder optBuilder =
                     OllamaOptions.builder().internalToolExecutionEnabled(false).toolCallbacks(asFunctions);
-            ctx.chatModelOverride()
-                    .filter(m -> m != null && !m.isBlank())
-                    .ifPresent(optBuilder::model);
+            ChatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(optBuilder::model);
 
             ChatResponse response1 =
                     chatClient
@@ -173,15 +172,15 @@ public class FunctionCallingExecutor {
             }
 
             String followUpUser = FunctionCallingPrompts.buildFollowUpUserMessage(plan, payload);
-            var followSpec = chatClient.prompt().system(ctx.effectiveSystemPrompt()).user(followUpUser);
-            var chatModelOverride = ctx.chatModelOverride();
-            if (chatModelOverride.isPresent() && !chatModelOverride.get().isBlank()) {
-                followSpec =
-                        followSpec.options(
-                                OllamaOptions.builder().model(chatModelOverride.get().trim()).build());
-            }
-
-            ChatResponse response2 = followSpec.call().chatResponse();
+            var followBuilder = chatClient.prompt().system(ctx.effectiveSystemPrompt()).user(followUpUser);
+            Optional<String> followModel = ChatGenerationModelSelector.effectiveChatModelId(ctx);
+            ChatResponse response2 =
+                    followModel.isPresent()
+                            ? followBuilder
+                                    .options(OllamaOptions.builder().model(followModel.get()).build())
+                                    .call()
+                                    .chatResponse()
+                            : followBuilder.call().chatResponse();
             stages.add(new ExecutionStageTrace(
                     "function_calling_model",
                     0L,

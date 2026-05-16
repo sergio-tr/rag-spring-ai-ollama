@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.runtime.reasoning;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
@@ -70,11 +71,9 @@ public class StructuredAnswerPlanService {
             String prompt = String.format(PROMPT, queryText, type != null ? type.name() : "UNKNOWN");
 
             var spec = chatClient.prompt().user(prompt);
-            if (ctx != null && ctx.chatModelOverride().isPresent()) {
-                String m = ctx.chatModelOverride().get().trim();
-                if (!m.isBlank()) {
-                    spec = spec.options(OllamaOptions.builder().model(m).build());
-                }
+            if (ctx != null) {
+                ChatGenerationModelSelector.effectiveChatModelId(ctx)
+                        .ifPresent(m -> spec.options(OllamaOptions.builder().model(m).build()));
             }
             String raw = spec.call().content();
             String trimmed = safe(raw, MAX_MODEL_OUTPUT_CHARS);

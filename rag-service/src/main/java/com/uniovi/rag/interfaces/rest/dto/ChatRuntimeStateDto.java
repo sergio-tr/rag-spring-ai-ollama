@@ -9,9 +9,11 @@ import java.util.UUID;
  *
  * <p>Hard rules:
  * <ul>
- *   <li>{@code runtimeOverride} is persisted manual differences only (diff against {@code baseEffectiveConfig}).</li>
- *   <li>{@code manualOverrideKeys} is the only authoritative list of overridden keys.</li>
- *   <li>{@code isCustom} is true iff {@code manualOverrideKeys} is non-empty.</li>
+ *   <li>{@code runtimeOverride} is persisted manual differences only (diff against {@code baseEffectiveConfig}),
+ *       excluding {@code llmModel} / {@code classifierModelId} (those live on conversation columns).</li>
+ *   <li>{@code manualOverrideKeys} lists keys in {@code runtimeOverride} only.</li>
+ *   <li>{@code isCustom} is true when there are manual override keys or a pinned conversation model selection.</li>
+ *   <li>{@code effectiveConfig} includes resolved RAG values plus conversation column model pins when set.</li>
  * </ul>
  */
 public record ChatRuntimeStateDto(
@@ -21,6 +23,9 @@ public record ChatRuntimeStateDto(
         ChatPresetSummaryDto preset,
         Map<String, Object> baseEffectiveConfig,
         Map<String, Object> effectiveConfig,
+        String conversationLlmModel,
+        String conversationClassifierModelId,
+        boolean conversationModelsPinned,
         Map<String, Object> runtimeOverride,
         List<String> manualOverrideKeys,
         boolean isCustom,

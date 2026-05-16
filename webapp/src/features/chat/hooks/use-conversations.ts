@@ -34,6 +34,16 @@ export function mergeConversationPatchOptimistic(
   } else if (body.runtimeOverride !== undefined) {
     next.runtimeOverride = body.runtimeOverride ? { ...body.runtimeOverride } : {};
   }
+  if (body.clearLlmModel) {
+    next.llmModel = null;
+  } else if (body.llmModel !== undefined) {
+    next.llmModel = body.llmModel;
+  }
+  if (body.clearClassifierModelId) {
+    next.classifierModelId = null;
+  } else if (body.classifierModelId !== undefined) {
+    next.classifierModelId = body.classifierModelId;
+  }
   if (body.clearPendingClarification) {
     next.pendingClarification = null;
   }

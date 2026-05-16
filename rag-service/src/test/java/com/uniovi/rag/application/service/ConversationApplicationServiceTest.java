@@ -261,9 +261,27 @@ class ConversationApplicationServiceTest {
         ConversationEntity c = mock(ConversationEntity.class);
         when(projectAccessService.requireConversationForUser(userId, convId)).thenReturn(c);
 
-        service.patchConversation(userId, convId, new PatchConversationRequest("New title", null, null, null, null, null, null));
+        service.patchConversation(userId, convId, new PatchConversationRequest("New title", null, null, null, null, null, null, null, null, null, null));
         verify(c).setTitle("New title");
         verify(c).touchUpdated();
+        verify(conversationRepository).save(c);
+    }
+
+    @Test
+    void patchConversation_persistsLlmModelWithoutRunningRuntimeValidationBranch() {
+        UUID userId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        ConversationEntity c = mock(ConversationEntity.class);
+        when(projectAccessService.requireConversationForUser(userId, convId)).thenReturn(c);
+        when(c.getLlmModel()).thenReturn(null);
+
+        service.patchConversation(
+                userId,
+                convId,
+                new PatchConversationRequest(null, null, null, null, null, null, null, null, "phi3:latest", null, null));
+
+        verify(c).setLlmModel("phi3:latest");
+        verify(c, never()).setRuntimeOverride(any());
         verify(conversationRepository).save(c);
     }
 
@@ -279,7 +297,10 @@ class ConversationApplicationServiceTest {
                         ResponseStatusException.class,
                         () ->
                                 service.patchConversation(
-                                        userId, convId, new PatchConversationRequest(null, "bad-uuid", null, null, null, null, null)));
+                                        userId,
+                                        convId,
+                                        new PatchConversationRequest(
+                                                null, "bad-uuid", null, null, null, null, null, null, null, null, null)));
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         verify(conversationRepository, never()).save(any());
     }
@@ -300,7 +321,9 @@ class ConversationApplicationServiceTest {
         when(presetService.requireVisiblePreset(userId, presetId)).thenReturn(preset);
 
         service.patchConversation(
-                userId, convId, new PatchConversationRequest(null, presetId.toString(), null, null, null, null, null));
+                userId,
+                convId,
+                new PatchConversationRequest(null, presetId.toString(), null, null, null, null, null, null, null, null, null));
         verify(c).setPreset(preset);
         verify(c).touchUpdated();
         verify(conversationRepository).save(c);
@@ -341,14 +364,20 @@ class ConversationApplicationServiceTest {
                                         false,
                                         false,
                                         false,
-                                        true)));
+                                        true,
+                                        0,
+                                        null,
+                                        "{}")));
 
         ResponseStatusException ex =
                 assertThrows(
                         ResponseStatusException.class,
                         () ->
                                 service.patchConversation(
-                                        userId, convId, new PatchConversationRequest(null, presetId.toString(), null, null, null, null, null)));
+                                        userId,
+                                        convId,
+                                        new PatchConversationRequest(
+                                                null, presetId.toString(), null, null, null, null, null, null, null, null, null)));
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         verify(conversationRepository, never()).save(any());
     }
@@ -393,12 +422,15 @@ class ConversationApplicationServiceTest {
                                         true,
                                         true,
                                         true,
-                                        true)));
+                                        true,
+                                        0,
+                                        null,
+                                        "{}")));
 
         service.patchConversation(
                 userId,
                 convId,
-                new PatchConversationRequest(null, presetId.toString(), null, null, null, null, null));
+                new PatchConversationRequest(null, presetId.toString(), null, null, null, null, null, null, null, null, null));
 
         verify(c).setPreset(preset);
         verify(conversationRepository).save(c);
@@ -440,7 +472,10 @@ class ConversationApplicationServiceTest {
                                         true,
                                         true,
                                         true,
-                                        true)));
+                                        true,
+                                        0,
+                                        null,
+                                        "{}")));
 
         ResponseStatusException ex =
                 assertThrows(
@@ -449,7 +484,8 @@ class ConversationApplicationServiceTest {
                                 service.patchConversation(
                                         userId,
                                         convId,
-                                        new PatchConversationRequest(null, presetId.toString(), null, null, null, null, null)));
+                                        new PatchConversationRequest(
+                                                null, presetId.toString(), null, null, null, null, null, null, null, null, null)));
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         assertThat(ex.getReason())
                 .contains("not selectable in Chat")
@@ -565,7 +601,10 @@ class ConversationApplicationServiceTest {
                                         true,
                                         true,
                                         true,
-                                        true)));
+                                        true,
+                                        0,
+                                        null,
+                                        "{}")));
 
         ResponseStatusException ex =
                 assertThrows(
@@ -617,7 +656,10 @@ class ConversationApplicationServiceTest {
                                         true,
                                         true,
                                         true,
-                                        true)));
+                                        true,
+                                        0,
+                                        null,
+                                        "{}")));
 
         when(conversationRepository.save(any(ConversationEntity.class)))
                 .thenAnswer(

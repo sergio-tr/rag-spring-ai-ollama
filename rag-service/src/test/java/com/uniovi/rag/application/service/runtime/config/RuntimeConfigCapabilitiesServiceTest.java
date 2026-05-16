@@ -25,10 +25,12 @@ class RuntimeConfigCapabilitiesServiceTest {
         assertThat(clarification.implemented()).isTrue();
         assertThat(clarification.supportMode()).isEqualTo("MULTI_TURN_REQUIRED");
         assertThat(clarification.reasonIfNotImplemented()).isNull();
+        assertThat(clarification.category()).isEqualTo("ADVANCED_RUNTIME");
 
         RuntimeConfigCapabilityDto memory = byKey.get("memoryEnabled");
         assertThat(memory.implemented()).isTrue();
         assertThat(memory.supportMode()).isEqualTo("MULTI_TURN_REQUIRED");
+        assertThat(memory.category()).isEqualTo("ADVANCED_RUNTIME");
 
         RuntimeConfigCapabilityDto routing = byKey.get("adaptiveRoutingEnabled");
         assertThat(routing.implemented()).isTrue();
@@ -62,7 +64,8 @@ class RuntimeConfigCapabilitiesServiceTest {
         }
 
         // Index-bound capabilities must not be configurable in Chat.
-        for (String k : Set.of("materializationStrategy", "metadataEnabled")) {
+        for (String k :
+                Set.of("materializationStrategy", "metadataEnabled", "embeddingModel", "chunkMaxChars", "chunkOverlap")) {
             RuntimeConfigCapabilityDto c = byKey.get(k);
             assertThat(c).as("capability present: " + k).isNotNull();
             assertThat(c.category()).isEqualTo("INDEX_BOUND");
@@ -70,5 +73,13 @@ class RuntimeConfigCapabilitiesServiceTest {
             assertThat(c.requiresReindexWhenChanged()).isTrue();
             assertThat(c.requiresIndexSnapshot()).isTrue();
         }
+
+        RuntimeConfigCapabilityDto lab = byKey.get("experimentalBenchmarkOverlay");
+        assertThat(lab.category()).isEqualTo("LAB_ONLY");
+        assertThat(lab.visibleInChat()).isFalse();
+
+        RuntimeConfigCapabilityDto internal = byKey.get("corpusGroundedDirectWorkflow");
+        assertThat(internal.category()).isEqualTo("INTERNAL");
+        assertThat(internal.visibleInChat()).isFalse();
     }
 }

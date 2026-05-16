@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.reasoning;
 
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
@@ -46,11 +47,9 @@ public class AnswerVerificationService {
         try {
             String prompt = String.format(PROMPT, safe(question, 240), safe(contextExcerpt, 900), safe(answer, 900));
             var spec = chatClient.prompt().user(prompt);
-            if (ctx != null && ctx.chatModelOverride().isPresent()) {
-                String m = ctx.chatModelOverride().get().trim();
-                if (!m.isBlank()) {
-                    spec = spec.options(OllamaOptions.builder().model(m).build());
-                }
+            if (ctx != null) {
+                ChatGenerationModelSelector.effectiveChatModelId(ctx)
+                        .ifPresent(m -> spec.options(OllamaOptions.builder().model(m).build()));
             }
             String raw = spec.call().content();
             String token = raw != null ? raw.trim().toUpperCase() : "";

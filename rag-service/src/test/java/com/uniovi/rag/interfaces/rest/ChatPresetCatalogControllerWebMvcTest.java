@@ -126,7 +126,10 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 true,
                                 true,
                                 true,
-                                true),
+                                true,
+                                0,
+                                null,
+                                "{}"),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000014",
                                 "P4",
@@ -147,7 +150,10 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 true,
                                 true,
                                 true,
-                                true),
+                                true,
+                                0,
+                                null,
+                                "{}"),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000016",
                                 "P6",
@@ -168,7 +174,10 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 true,
                                 true,
                                 true,
-                                true),
+                                true,
+                                0,
+                                null,
+                                "{}"),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000018",
                                 "P8",
@@ -189,7 +198,10 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 true,
                                 true,
                                 true,
-                                true),
+                                true,
+                                0,
+                                null,
+                                "{}"),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000021",
                                 "P13",
@@ -210,7 +222,10 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 true,
                                 true,
                                 true,
-                                false),
+                                false,
+                                0,
+                                null,
+                                "{}"),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000022",
                                 "P14",
@@ -231,7 +246,10 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 true,
                                 true,
                                 true,
-                                false)));
+                                false,
+                                0,
+                                null,
+                                "{}")));
         // Fill up to 15 with placeholders.
         while (experimental.size() < 15) {
             int idx = experimental.size();
@@ -256,7 +274,10 @@ class ChatPresetCatalogControllerWebMvcTest {
                             true,
                             true,
                             true,
-                            true));
+                            true,
+                            0,
+                            null,
+                            "{}"));
         }
         when(labExperimentalPresetCatalogService.list()).thenReturn(experimental);
 

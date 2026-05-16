@@ -125,6 +125,10 @@ class ConversationApplicationServicePatchValidationTest {
                                                 null,
                                                 Map.of("useRetrieval", false),
                                                 null,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
                                                 null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(

@@ -6,7 +6,7 @@ public record RuntimeConfigCapabilityDto(
         String key,
         String label,
         String description,
-        String category, // RUNTIME_HOT_SWAPPABLE | INDEX_BOUND | LAB_ONLY | INTERNAL
+        String category, // RUNTIME_HOT_SWAPPABLE | ADVANCED_RUNTIME | INDEX_BOUND | LAB_ONLY | INTERNAL
         boolean visibleInChat,
         boolean configurableInChat,
         boolean implemented,

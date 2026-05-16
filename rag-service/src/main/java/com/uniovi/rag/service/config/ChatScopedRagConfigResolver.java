@@ -17,6 +17,14 @@ import org.springframework.stereotype.Service;
 /**
  * Resolves {@link RagConfig} for chat-scoped requests using the same cascade as {@link com.uniovi.rag.service.query.ProcessQueryService}
  * (alignment for SSE sources and main turn when config v2 is enabled).
+ *
+ * <p><b>Conversation terminal merge order</b> (each step overwrites keys on collision):
+ * linked conversation {@code RagConfigurationEntity} values → preset values (or deterministic chat default preset)
+ * → {@code runtime_override_jsonb} (diff keys; do not persist {@code llmModel} / {@code classifierModelId} here — use
+ * conversation columns). When legacy JSON still contains those keys, column values applied afterward win.
+ * → {@code conversations.llm_model} column → {@code conversations.classifier_model_id} column.
+ * Request-scoped JSON (e.g. per-message {@code llmModel}) is merged later in {@link com.uniovi.rag.domain.config.RagConfigurationMerge}
+ * as the terminal layer over this node.
  */
 @Service
 public class ChatScopedRagConfigResolver {
@@ -119,7 +127,15 @@ public class ChatScopedRagConfigResolver {
                     .filter(p -> p.getValues() != null && !p.getValues().isEmpty())
                     .ifPresent(p -> merged.putAll(p.getValues()));
         }
-        merged.putAll(c.getRuntimeOverride());
+        if (c.getRuntimeOverride() != null && !c.getRuntimeOverride().isEmpty()) {
+            merged.putAll(c.getRuntimeOverride());
+        }
+        if (c.getLlmModel() != null && !c.getLlmModel().isBlank()) {
+            merged.put("llmModel", c.getLlmModel().trim());
+        }
+        if (c.getClassifierModelId() != null && !c.getClassifierModelId().isBlank()) {
+            merged.put("classifierModelId", c.getClassifierModelId().trim());
+        }
         return merged;
     }
 }

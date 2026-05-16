@@ -74,7 +74,19 @@ class RagExecutionOrchestratorReasoningTest {
                           "safeSummary":"Verify exact evidence; avoid guessing."
                         }
                         """);
+        when(chatClient.prompt().user(anyString()).options(any()).call().content())
+                .thenReturn("""
+                        {
+                          "strategy":"SAFE_STRUCTURED_PLAN",
+                          "objective":"Summarize the acta if (and only if) exact evidence exists.",
+                          "expectedEvidence":["Exact date match"],
+                          "answerConstraints":["Use only context for document claims","If mismatch, say so"],
+                          "verificationChecklist":["Check exact date","No invented facts"],
+                          "safeSummary":"Verify exact evidence; avoid guessing."
+                        }
+                        """);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("final-answer");
+        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("final-answer");
 
         RagConfig rag =
                 new RagConfig(

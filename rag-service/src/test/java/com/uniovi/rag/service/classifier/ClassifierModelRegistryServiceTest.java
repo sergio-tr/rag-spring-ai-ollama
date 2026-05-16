@@ -21,7 +21,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
@@ -55,7 +59,12 @@ class ClassifierModelRegistryServiceTest {
     @BeforeEach
     void setUp() {
         service = new ClassifierModelRegistryService(
-                classifierModelRepository, userRepository, projectAccessService, userProjectConfigurationService, classifierLabPort);
+                classifierModelRepository,
+                userRepository,
+                projectAccessService,
+                userProjectConfigurationService,
+                classifierLabPort,
+                "default");
     }
 
     @Test
@@ -74,6 +83,7 @@ class ClassifierModelRegistryServiceTest {
         assertThat(cap.getValue().getArtifactPath()).isEqualTo("my-tag-1");
         assertThat(cap.getValue().getStatus()).isEqualTo(ClassifierModelStatus.READY);
         assertThat(cap.getValue().getHyperparams()).containsEntry(ClassifierModelRegistryService.HP_SOURCE_TASK_ID, taskId.toString());
+        assertThat(cap.getValue().getHyperparams()).containsEntry(ClassifierModelRegistryService.HP_OWNER_ID, userId.toString());
     }
 
     @Test
@@ -86,6 +96,67 @@ class ClassifierModelRegistryServiceTest {
                 userId, taskId, "lab", Map.of("modelId", "x"), 50, 8);
 
         verify(classifierModelRepository, never()).save(any());
+    }
+
+    @Test
+    void listForUserWithSync_doesNotRegisterOtherUsersDiskModelTags() {
+        UserEntity owner = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
+        when(classifierLabPort.isConfigured()).thenReturn(true);
+        when(classifierLabPort.listModels())
+                .thenReturn(
+                        List.of(
+                                Map.of("id", "a1b2c3d4", "name", "stolen-from-disk", "createdAt", "2020-01-01T00:00:00Z")));
+        when(classifierModelRepository.findByOwner_IdOrderByTrainedAtDesc(userId)).thenReturn(List.of());
+
+        service.listForUserWithSync(userId);
+
+        verify(classifierModelRepository, never()).save(any());
+    }
+
+    @Test
+    void activateForProject_throwsForbiddenWhenRowOwnedByAnotherUser() {
+        UUID projectId = UUID.randomUUID();
+        UUID modelRowId = UUID.randomUUID();
+        UUID otherUser = UUID.randomUUID();
+        UserEntity otherOwner = mock(UserEntity.class);
+        when(otherOwner.getId()).thenReturn(otherUser);
+
+        ClassifierModelEntity model = new ClassifierModelEntity();
+        model.setId(modelRowId);
+        model.setOwner(otherOwner);
+        model.setStatus(ClassifierModelStatus.READY);
+        model.setArtifactPath("tag-x");
+        model.setHyperparams(Map.of(ClassifierModelRegistryService.HP_SOURCE_TASK_ID, "task"));
+
+        when(classifierModelRepository.findById(modelRowId)).thenReturn(Optional.of(model));
+
+        assertThatThrownBy(() -> service.activateForProject(userId, projectId, modelRowId))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void activateForProject_throwsBadRequestWhenOrphanExternalRow() {
+        UUID projectId = UUID.randomUUID();
+        UUID modelRowId = UUID.randomUUID();
+        UserEntity owner = mock(UserEntity.class);
+        when(owner.getId()).thenReturn(userId);
+
+        ClassifierModelEntity model = new ClassifierModelEntity();
+        model.setId(modelRowId);
+        model.setOwner(owner);
+        model.setStatus(ClassifierModelStatus.READY);
+        model.setArtifactPath("foreign-uuid");
+        model.setHyperparams(Map.of("external", true, "source", "classifier-service"));
+
+        when(classifierModelRepository.findById(modelRowId)).thenReturn(Optional.of(model));
+
+        assertThatThrownBy(() -> service.activateForProject(userId, projectId, modelRowId))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test
@@ -105,7 +176,7 @@ class ClassifierModelRegistryServiceTest {
     }
 
     @Test
-    void listForUserWithSync_upsertsExternalModelsWhenMissing() {
+    void listForUserWithSync_upsertsSystemDefaultWhenMissing() {
         UserEntity owner = mock(UserEntity.class);
         when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
         when(classifierLabPort.isConfigured()).thenReturn(true);
@@ -118,6 +189,9 @@ class ClassifierModelRegistryServiceTest {
         ArgumentCaptor<ClassifierModelEntity> cap = ArgumentCaptor.forClass(ClassifierModelEntity.class);
         verify(classifierModelRepository, atLeastOnce()).save(cap.capture());
         assertThat(cap.getAllValues().stream().anyMatch(e -> "default".equals(e.getArtifactPath()))).isTrue();
+        ClassifierModelEntity savedDefault =
+                cap.getAllValues().stream().filter(e -> "default".equals(e.getArtifactPath())).findFirst().orElseThrow();
+        assertThat(savedDefault.getHyperparams()).containsEntry(ClassifierModelRegistryService.HP_SYSTEM_CATALOG, true);
     }
 
     @Test
@@ -168,6 +242,7 @@ class ClassifierModelRegistryServiceTest {
         model.setStatus(ClassifierModelStatus.READY);
         model.setArtifactPath("infer-tag");
         model.setActive(false);
+        model.setHyperparams(Map.of(ClassifierModelRegistryService.HP_SOURCE_TASK_ID, "task-1"));
 
         when(classifierModelRepository.findById(modelRowId)).thenReturn(Optional.of(model));
         when(classifierModelRepository.findByOwner_IdOrderByTrainedAtDesc(userId)).thenReturn(List.of(model));
@@ -180,6 +255,29 @@ class ClassifierModelRegistryServiceTest {
         assertThat(model.isActive()).isTrue();
         assertThat(dto.inferenceTag()).isEqualTo("infer-tag");
         verify(classifierModelRepository, atLeastOnce()).save(any());
+    }
+
+    @Test
+    void activateForProject_allowsSystemInferenceTagWithoutHyperparams() {
+        UUID projectId = UUID.randomUUID();
+        UUID modelRowId = UUID.randomUUID();
+        UserEntity owner = mock(UserEntity.class);
+        when(owner.getId()).thenReturn(userId);
+
+        ClassifierModelEntity model = new ClassifierModelEntity();
+        model.setId(modelRowId);
+        model.setOwner(owner);
+        model.setStatus(ClassifierModelStatus.READY);
+        model.setArtifactPath("default");
+        model.setActive(false);
+        model.setHyperparams(Map.of());
+
+        when(classifierModelRepository.findById(modelRowId)).thenReturn(Optional.of(model));
+        when(classifierModelRepository.findByOwner_IdOrderByTrainedAtDesc(userId)).thenReturn(List.of(model));
+
+        service.activateForProject(userId, projectId, modelRowId);
+
+        verify(userProjectConfigurationService).mergeProjectConfig(userId, projectId, Map.of("classifierModelId", "default"));
     }
 
     @Test
@@ -196,6 +294,7 @@ class ClassifierModelRegistryServiceTest {
         other.setActive(true);
         other.setStatus(ClassifierModelStatus.READY);
         other.setArtifactPath("old");
+        other.setHyperparams(Map.of(ClassifierModelRegistryService.HP_SOURCE_TASK_ID, "task-old"));
 
         ClassifierModelEntity model = new ClassifierModelEntity();
         model.setId(modelRowId);
@@ -203,6 +302,7 @@ class ClassifierModelRegistryServiceTest {
         model.setStatus(ClassifierModelStatus.READY);
         model.setArtifactPath("new-tag");
         model.setActive(false);
+        model.setHyperparams(Map.of(ClassifierModelRegistryService.HP_SOURCE_TASK_ID, "task-new"));
 
         when(classifierModelRepository.findById(modelRowId)).thenReturn(Optional.of(model));
         when(classifierModelRepository.findByOwner_IdOrderByTrainedAtDesc(userId)).thenReturn(List.of(other, model));

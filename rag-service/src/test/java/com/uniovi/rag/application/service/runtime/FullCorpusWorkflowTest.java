@@ -43,6 +43,7 @@ class FullCorpusWorkflowTest {
     void execute_assemblesCorpus_andInvokesChat_andReturnsPlaceholderTraceResult() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("answer");
+        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("answer");
 
         SnapshotCorpusAssembler assembler = mock(SnapshotCorpusAssembler.class);
         when(assembler.assembleFullCorpusText(any(ExecutionContext.class)))

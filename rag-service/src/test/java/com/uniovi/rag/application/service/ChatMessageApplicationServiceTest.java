@@ -182,6 +182,64 @@ class ChatMessageApplicationServiceTest {
     }
 
     @Test
+    void enqueueMessage_payloadPrefersRequestLlmOverPersistedConversationLlm() {
+        UUID userId = UUID.randomUUID();
+        UUID conversationId = UUID.randomUUID();
+
+        ConversationEntity conv = mock(ConversationEntity.class);
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(conv.getProject()).thenReturn(project);
+        when(conv.getDocumentFilter()).thenReturn(List.of());
+        when(conv.getLlmModel()).thenReturn("persisted-llm");
+        when(projectAccessService.requireConversationForUser(userId, conversationId)).thenReturn(conv);
+
+        when(asyncTaskRepository.findByUser_IdAndTaskTypeAndStatusIn(
+                        eq(userId), eq(AsyncTaskType.CHAT_MESSAGE), any()))
+                .thenReturn(List.of());
+
+        when(messageRepository.findMaxSeqByConversationId(conversationId)).thenReturn(0);
+
+        UserEntity user = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        service.enqueueMessage(userId, conversationId, new PostMessageRequest("hi", "request-llm", null));
+
+        ArgumentCaptor<AsyncTaskEntity> taskCap = ArgumentCaptor.forClass(AsyncTaskEntity.class);
+        verify(asyncTaskRepository).save(taskCap.capture());
+        Map<String, Object> payload = taskCap.getValue().getRequestPayload();
+        assertThat(payload.get(ChatJobPayloadKeys.LLM_MODEL)).isEqualTo("request-llm");
+    }
+
+    @Test
+    void enqueueMessage_payloadUsesPersistedConversationLlmWhenRequestOmitsModel() {
+        UUID userId = UUID.randomUUID();
+        UUID conversationId = UUID.randomUUID();
+
+        ConversationEntity conv = mock(ConversationEntity.class);
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(conv.getProject()).thenReturn(project);
+        when(conv.getDocumentFilter()).thenReturn(List.of());
+        when(conv.getLlmModel()).thenReturn("persisted-llm");
+        when(projectAccessService.requireConversationForUser(userId, conversationId)).thenReturn(conv);
+
+        when(asyncTaskRepository.findByUser_IdAndTaskTypeAndStatusIn(
+                        eq(userId), eq(AsyncTaskType.CHAT_MESSAGE), any()))
+                .thenReturn(List.of());
+
+        when(messageRepository.findMaxSeqByConversationId(conversationId)).thenReturn(0);
+
+        UserEntity user = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        service.enqueueMessage(userId, conversationId, new PostMessageRequest("hi", null, null));
+
+        ArgumentCaptor<AsyncTaskEntity> taskCap = ArgumentCaptor.forClass(AsyncTaskEntity.class);
+        verify(asyncTaskRepository).save(taskCap.capture());
+        Map<String, Object> payload = taskCap.getValue().getRequestPayload();
+        assertThat(payload.get(ChatJobPayloadKeys.LLM_MODEL)).isEqualTo("persisted-llm");
+    }
+
+    @Test
     void enqueueMessage_continueBranch_reusesUserMessage() {
         UUID userId = UUID.randomUUID();
         UUID conversationId = UUID.randomUUID();

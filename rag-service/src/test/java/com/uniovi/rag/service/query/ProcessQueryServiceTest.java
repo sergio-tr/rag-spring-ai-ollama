@@ -208,7 +208,7 @@ class ProcessQueryServiceTest {
                 RuntimeOperationKind.CHAT_MESSAGE,
                 minimalResolved(rag),
                 "sys",
-                new KnowledgeSnapshotSelection(List.of(UUID.randomUUID()), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
+                new KnowledgeSnapshotSelection(List.of(UUID.randomUUID()), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
                 Optional.empty(),
                 Optional.empty(),
                 "c",

@@ -2,6 +2,7 @@ package com.uniovi.rag.service.query;
 
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionMapper;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
@@ -142,7 +143,6 @@ public class ProcessQueryService implements QueryService, Loggable {
                 String errorResponse = generateErrorResponse("", new IllegalArgumentException(ERR_EMPTY_QUERY));
                 return QueryResponse.fromLLM(errorResponse);
             }
-            ollamaConnectivityChecker.prepareForQuery(chatModel);
             validateChatDocumentFilter(projectId, documentFilter);
             ExecutionContext ctx =
                     executionContextFactory.buildForChatMessage(
@@ -153,6 +153,8 @@ public class ProcessQueryService implements QueryService, Loggable {
                             documentFilter,
                             chatModel,
                             Optional.ofNullable(userMessageId));
+            ollamaConnectivityChecker.prepareForQuery(
+                    ChatGenerationModelSelector.effectiveChatModelId(ctx).orElse(null));
             return executeOrchestrated(ctx);
         } catch (RagServiceException | ResponseStatusException e) {
             throw e;
