@@ -67,7 +67,7 @@ export NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:${RAG_LOCAL_BACKEND_PORT}"
 export NEXT_PUBLIC_RAG_API_PREFIX=/api/v5
 export E2E_ALLOW_INSECURE_COOKIES=true
 export PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000
-npm run test:e2e:fullstack:ci-fast
+npm run test:e2e:fullstack:ci
 
 stop_spring
 trap - EXIT

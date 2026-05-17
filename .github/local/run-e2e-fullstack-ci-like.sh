@@ -324,7 +324,7 @@ run_playwright_fullstack() {
     -e NEXT_PUBLIC_API_BASE_URL="" \
     -e NEXT_PUBLIC_RAG_API_PREFIX="/api/v5" \
     "${PLAYWRIGHT_IMAGE}" bash -lc \
-      "npm ci --silent --no-audit --no-fund && npm run build && npm run test:e2e:fullstack:ci-fast"
+      "npm ci --silent --no-audit --no-fund && npm run build && npm run test:e2e:fullstack:ci"
 }
 
 stop_backend() {

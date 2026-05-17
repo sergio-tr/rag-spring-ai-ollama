@@ -6,7 +6,7 @@ import { loginAsSeedUser } from "../support/helpers";
  * deterministic seed models even when the Python classifier service is not part of the fast lane.
  */
 test.describe("Lab classifier", () => {
-  test("E2E-08 classifier page exposes configured or unavailable state @fullstack", async ({ page }) => {
+  test("E2E-08 classifier page exposes configured or unavailable state @fullstack @critical", async ({ page }) => {
     await loginAsSeedUser(page);
     await page.goto("/en/lab/classifier");
     await expect(page.getByText(/classifier|clasificador/i).first()).toBeVisible({ timeout: 15_000 });

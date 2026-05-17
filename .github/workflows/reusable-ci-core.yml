@@ -752,7 +752,7 @@ jobs:
           API_BASE_URL: https://127.0.0.1:8443
         run: |
           npx playwright install --with-deps chromium
-          npm run test:e2e:fullstack:ci-fast
+          npm run test:e2e:fullstack:ci
       - name: Stop services
         if: always()
         run: |

@@ -17,7 +17,7 @@ import {
  * Demo-grade fullstack check: upload + READY document, chat turn, sources, runtime config, and trace/explainability UI.
  */
 test.describe("Chat RAG", () => {
-  test("E2E-05 upload, basic/advanced preset chat, sources, runtime and trace @fullstack", async ({
+  test("E2E-05 upload, basic/advanced preset chat, sources, runtime and trace @fullstack @critical", async ({
     page,
   }) => {
     // Default Playwright test timeout is 30s; this flow waits up to 120s for READY indexing and 120s for the stub reply.
@@ -93,7 +93,8 @@ test.describe("Chat RAG", () => {
     expect(Array.isArray(assistant?.sources) && assistant.sources.length > 0).toBe(true);
     expect(Array.isArray(assistant?.pipelineSteps) && assistant.pipelineSteps.length > 0).toBe(true);
 
-    await expect(page.getByText(/Sources \(/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("chat-sources")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("chat-answer")).toContainText(/E2E stub reply/i);
 
     await page.getByRole("button", { name: /open activity and tips|activity|actividad/i }).click();
     await expect(page.getByTestId("trace-history-list")).toBeVisible({ timeout: 15_000 });
