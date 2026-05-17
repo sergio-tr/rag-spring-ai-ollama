@@ -64,7 +64,10 @@ describe("lab-benchmark-mvp-utils", () => {
       },
     };
     expect(readMvpItemOperational(item)).toEqual({
+      modelId: null,
       outcome: "NOT_SUPPORTED",
+      presetCode: null,
+      skipReason: null,
       unsupportedReason: "PRESET_X",
     });
   });
@@ -78,12 +81,24 @@ describe("lab-benchmark-mvp-utils", () => {
       readMvpItemOperational({
         mvp: { operational: { outcome: "EXECUTED", unsupportedReason: "  \t  " } },
       }),
-    ).toEqual({ outcome: "EXECUTED", unsupportedReason: null });
+    ).toEqual({
+      modelId: null,
+      outcome: "EXECUTED",
+      presetCode: null,
+      skipReason: null,
+      unsupportedReason: null,
+    });
     expect(
       readMvpItemOperational({
         mvp: { operational: { outcome: "OK", unsupportedReason: 42 } },
       }),
-    ).toEqual({ outcome: "OK", unsupportedReason: null });
+    ).toEqual({
+      modelId: null,
+      outcome: "OK",
+      presetCode: null,
+      skipReason: null,
+      unsupportedReason: null,
+    });
   });
 
   it("readMvpItems returns array or empty", () => {

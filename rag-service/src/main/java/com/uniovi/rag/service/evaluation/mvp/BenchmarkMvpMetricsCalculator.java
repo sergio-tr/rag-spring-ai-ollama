@@ -58,6 +58,13 @@ public final class BenchmarkMvpMetricsCalculator {
         generation.put("answerLength", actual.length());
         Object semantic = semanticScore(mp);
         generation.put("semanticScore", semantic);
+        Object correctness = correctnessMetric(expected, actual, mp);
+        generation.put("correctness", correctness);
+        generation.put("llmJudgeScore", llmJudgeScore(mp));
+        generation.put("hallucinationRate", hallucinationRate(mp));
+        generation.put("faithfulness", normalizedJudgeScore(mp, "groundedness"));
+        generation.put("sourceSupport", normalizedJudgeScore(mp, "context_sufficiency"));
+        generation.put("dateCorrectness", dateCorrectness(mp));
 
         Map<String, Object> operational = new LinkedHashMap<>();
         operational.put("latencyMs", item.getLatencyMs());
@@ -69,6 +76,10 @@ public final class BenchmarkMvpMetricsCalculator {
                 firstNonBlank(
                         str(mp.get(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID)),
                         run != null ? run.getEmbeddingModelId() : null));
+        operational.put("embeddingDimensions", embeddingDimensions(mp, run));
+        operational.put("embeddingCompatibilityStatus", str(mp.get("embedding_compatibility_status")));
+        operational.put("embeddingCompatibilityErrorCode", str(mp.get("embedding_compatibility_error_code")));
+        operational.put("embeddingCompatibilityReason", str(mp.get("embedding_compatibility_reason")));
         operational.put("presetCode", str(mp.get(BenchmarkResultRowKeys.PRESET_CODE)));
         operational.put("outcome", outcome.isBlank() ? BenchmarkItemOutcome.EXECUTED.name() : outcome);
         operational.put("failureCode", failureCode(outcome, mp));
@@ -111,6 +122,16 @@ public final class BenchmarkMvpMetricsCalculator {
                         : "");
         row.put("evaluationDatasetSha256", run != null && run.getDatasetSha256() != null ? run.getDatasetSha256() : "");
         row.put(
+                "projectId",
+                run != null && run.getProject() != null && run.getProject().getId() != null
+                        ? run.getProject().getId().toString()
+                        : "");
+        row.put(
+                "corpusDocumentSet",
+                run != null && run.getProject() != null && run.getProject().getId() != null
+                        ? "project:" + run.getProject().getId()
+                        : "");
+        row.put(
                 "resolvedConfigSnapshotId",
                 run != null && run.getResolvedConfigSnapshot() != null && run.getResolvedConfigSnapshot().getId() != null
                         ? run.getResolvedConfigSnapshot().getId().toString()
@@ -130,10 +151,21 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("containsExpectedAnswer", csvVal(gen.get("containsExpectedAnswer")));
         row.put("answerLength", csvVal(gen.get("answerLength")));
         row.put("semanticScore", csvVal(gen.get("semanticScore")));
+        row.put("correctness", csvVal(gen.get("correctness")));
+        row.put("llmJudgeScore", csvVal(gen.get("llmJudgeScore")));
+        row.put("hallucinationRate", csvVal(gen.get("hallucinationRate")));
+        row.put("faithfulness", csvVal(gen.get("faithfulness")));
+        row.put("sourceSupport", csvVal(gen.get("sourceSupport")));
+        row.put("dateCorrectness", csvVal(gen.get("dateCorrectness")));
 
         row.put("latencyMs", csvVal(op.get("latencyMs")));
         row.put("modelId", csvVal(op.get("modelId")));
         row.put("embeddingModelId", csvVal(op.get("embeddingModelId")));
+        row.put("embeddingDimensions", csvVal(op.get("embeddingDimensions")));
+        row.put("embeddingCompatibilityStatus", csvVal(op.get("embeddingCompatibilityStatus")));
+        row.put("embeddingCompatibilityErrorCode", csvVal(op.get("embeddingCompatibilityErrorCode")));
+        row.put("embeddingCompatibilityReason", csvVal(op.get("embeddingCompatibilityReason")));
+        row.put("classifierModelId", run != null && run.getClassifierModelId() != null ? run.getClassifierModelId() : "");
         row.put("presetCode", csvVal(op.get("presetCode")));
         row.put("outcome", csvVal(op.get("outcome")));
         row.put("failureCode", csvVal(op.get("failureCode")));
@@ -193,6 +225,7 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("corpusTruncated", csvVal(mp.get("corpusTruncated")));
         row.put("selectedSnapshotIds", joinIds(mp.get("selectedSnapshotIds")));
         row.put("groundingPolicy", csvVal(mp.get("groundingPolicy")));
+        row.put("timestamp", item.getEvaluatedAt() != null ? item.getEvaluatedAt().toString() : "");
         return row;
     }
 
@@ -224,6 +257,79 @@ public final class BenchmarkMvpMetricsCalculator {
             return BenchmarkMvpSchema.NOT_AVAILABLE;
         }
         return n.doubleValue() / 5.0;
+    }
+
+    private static Object correctnessMetric(String expected, String actual, Map<String, Object> mp) {
+        if (normalizedExactMatch(expected, actual)) {
+            return 1.0;
+        }
+        Object judge = normalizedJudgeScore(mp, "correctness");
+        return judge instanceof Number ? judge : BenchmarkMvpSchema.NOT_AVAILABLE;
+    }
+
+    private static Object llmJudgeScore(Map<String, Object> mp) {
+        Object js = mp.get("judge_scores");
+        if (!(js instanceof Map<?, ?> m)) {
+            return BenchmarkMvpSchema.NOT_AVAILABLE;
+        }
+        double sum = 0.0;
+        int count = 0;
+        for (String key : List.of("correctness", "context_sufficiency", "relevance", "independence", "groundedness")) {
+            Object raw = m.get(key);
+            if (raw instanceof Number n) {
+                sum += clampJudge(n.doubleValue()) / 5.0;
+                count++;
+            }
+        }
+        return count > 0 ? sum / count : BenchmarkMvpSchema.NOT_AVAILABLE;
+    }
+
+    private static Object hallucinationRate(Map<String, Object> mp) {
+        Object faithfulness = normalizedJudgeScore(mp, "groundedness");
+        if (faithfulness instanceof Number n) {
+            return 1.0 - n.doubleValue();
+        }
+        return BenchmarkMvpSchema.NOT_AVAILABLE;
+    }
+
+    private static Object dateCorrectness(Map<String, Object> mp) {
+        String requestedDate = str(mp.get("requestedDate"));
+        if (requestedDate.isBlank()) {
+            return BenchmarkMvpSchema.NOT_AVAILABLE;
+        }
+        if (boolObj(mp.get("exactDateMatch"))) {
+            return 1.0;
+        }
+        if (boolObj(mp.get("dateMismatchDetected"))) {
+            return boolObj(mp.get("abstentionTriggered")) ? 1.0 : 0.0;
+        }
+        return BenchmarkMvpSchema.NOT_AVAILABLE;
+    }
+
+    private static Object normalizedJudgeScore(Map<String, Object> mp, String key) {
+        Object js = mp.get("judge_scores");
+        if (!(js instanceof Map<?, ?> m)) {
+            return BenchmarkMvpSchema.NOT_AVAILABLE;
+        }
+        Object raw = m.get(key);
+        if (!(raw instanceof Number n)) {
+            return BenchmarkMvpSchema.NOT_AVAILABLE;
+        }
+        return clampJudge(n.doubleValue()) / 5.0;
+    }
+
+    private static double clampJudge(double value) {
+        return Math.max(1.0, Math.min(5.0, value));
+    }
+
+    private static boolean boolObj(Object raw) {
+        if (raw instanceof Boolean b) {
+            return b;
+        }
+        if (raw instanceof String s) {
+            return Boolean.parseBoolean(s);
+        }
+        return false;
     }
 
     private static String failureCode(String outcome, Map<String, Object> mp) {
@@ -304,6 +410,17 @@ public final class BenchmarkMvpMetricsCalculator {
             return n.intValue();
         }
         return 0;
+    }
+
+    private static Object embeddingDimensions(Map<String, Object> mp, EvaluationRunEntity run) {
+        Object raw = mp.get("embedding_dimensions");
+        if (raw instanceof Number n) {
+            return n.intValue();
+        }
+        if (run != null && run.getEmbeddingDimensions() != null) {
+            return run.getEmbeddingDimensions();
+        }
+        return "";
     }
 
     private static boolean bool(Object primary, boolean fallback) {

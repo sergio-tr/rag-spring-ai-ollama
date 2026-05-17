@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
@@ -69,7 +69,22 @@ describe("LabBenchmarkResultsPanel", () => {
           questionText: "hello?",
           mvp: {
             datasetQuestionId: "RAG-001",
-            operational: { outcome: "NOT_SUPPORTED", unsupportedReason: "NOPE", presetCode: "P0" },
+            generation: {
+              correctness: 0.8,
+              llmJudgeScore: 0.7,
+              hallucinationRate: 0.1,
+              dateCorrectness: 1,
+            },
+            operational: { outcome: "NOT_SUPPORTED", unsupportedReason: "NOPE", presetCode: "P13", modelId: "m1" },
+          },
+        },
+        {
+          id: "item-2",
+          questionText: "other?",
+          mvp: {
+            datasetQuestionId: "RAG-002",
+            generation: { correctness: 0.4, llmJudgeScore: 0.5, hallucinationRate: 0.2, dateCorrectness: null },
+            operational: { outcome: "EXECUTED", presetCode: "P2", modelId: "m2" },
           },
         },
       ],
@@ -86,6 +101,12 @@ describe("LabBenchmarkResultsPanel", () => {
     await waitFor(() => expect(screen.getByTestId("lab-outcome-NOT_SUPPORTED")).toBeInTheDocument());
     expect(screen.getByTestId("lab-outcome-EXECUTED")).toHaveTextContent(/1/i);
     expect(screen.getByTestId("lab-benchmark-results-counts")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-benchmark-trend-graph")).toHaveTextContent(/P13/i);
+    expect(screen.getAllByText(/extension\/multi-turn/i).length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.change(screen.getByTestId("lab-results-filter-model"), { target: { value: "m2" } });
+    expect(screen.queryByText(/hello\?/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/other\?/i)).toBeInTheDocument();
   });
 
   it("shows friendly error when MVP bundle fetch fails", async () => {

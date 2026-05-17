@@ -14,17 +14,104 @@ import {
 } from "@/features/lab/lib/lab-benchmark-results-api";
 import {
   readGlobalOutcomeCounts,
-  readMvpItemOperational,
   readMvpItems,
   readOnExecutedSummary,
 } from "@/features/lab/lib/lab-benchmark-mvp-utils";
 import { getSafeApiErrorMessage } from "@/lib/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
+import { useState } from "react";
 
 const OUTCOME_ORDER = ["EXECUTED", "FAILED", "SKIPPED", "NOT_SUPPORTED"] as const;
 
 const PRIMARY_OUTCOME_KEYS = new Set<string>(OUTCOME_ORDER);
+
+type ResultTableRow = {
+  id: string;
+  question: string;
+  outcome: string;
+  note: string;
+  presetCode: string;
+  modelId: string;
+  correctness: number | null;
+  llmJudgeScore: number | null;
+  hallucinationRate: number | null;
+  faithfulness: number | null;
+  sourceSupport: number | null;
+  dateCorrectness: number | null;
+};
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function metricLabel(value: number | null): string {
+  return value == null ? "—" : value.toFixed(3);
+}
+
+function sortedUnique(values: string[]): string[] {
+  return Array.from(new Set(values.filter((value) => value.trim().length > 0))).sort((a, b) => a.localeCompare(b));
+}
+
+function toResultTableRow(row: unknown, idx: number): ResultTableRow {
+  const item = asRecord(row);
+  const mvp = asRecord(item?.mvp);
+  const generation = asRecord(mvp?.generation);
+  const op = asRecord(mvp?.operational);
+  const outcome = typeof op?.outcome === "string" && op.outcome ? op.outcome : "—";
+  const unsupportedReason = typeof op?.unsupportedReason === "string" && op.unsupportedReason.trim() ? op.unsupportedReason.trim() : "";
+  const skipReason = typeof op?.skipReason === "string" && op.skipReason.trim() ? op.skipReason.trim() : "";
+  const presetCode = typeof op?.presetCode === "string" && op.presetCode.trim() ? op.presetCode.trim() : "—";
+  const modelId = typeof op?.modelId === "string" && op.modelId.trim() ? op.modelId.trim() : "—";
+  const question = typeof item?.questionText === "string" ? item.questionText : "";
+  const note =
+    presetCode === "P13" || presetCode === "P14"
+      ? "extension/multi-turn"
+      : outcome === "NOT_SUPPORTED"
+        ? unsupportedReason || "NOT_SUPPORTED"
+        : outcome === "SKIPPED"
+          ? skipReason || "SKIPPED"
+          : outcome === "FAILED"
+            ? "See export errors"
+            : "—";
+  return {
+    id: typeof item?.id === "string" && item.id ? item.id : `row-${idx}`,
+    question,
+    outcome,
+    note,
+    presetCode,
+    modelId,
+    correctness: numberOrNull(generation?.correctness),
+    llmJudgeScore: numberOrNull(generation?.llmJudgeScore),
+    hallucinationRate: numberOrNull(generation?.hallucinationRate),
+    faithfulness: numberOrNull(generation?.faithfulness),
+    sourceSupport: numberOrNull(generation?.sourceSupport),
+    dateCorrectness: numberOrNull(generation?.dateCorrectness),
+  };
+}
+
+function trendRows(rows: ResultTableRow[]): Array<{ presetCode: string; score: number | null; extension: boolean }> {
+  const grouped = new Map<string, number[]>();
+  for (const row of rows) {
+    if (!row.presetCode || row.presetCode === "—") continue;
+    if (row.correctness == null) {
+      grouped.set(row.presetCode, grouped.get(row.presetCode) ?? []);
+      continue;
+    }
+    grouped.set(row.presetCode, [...(grouped.get(row.presetCode) ?? []), row.correctness]);
+  }
+  return Array.from(grouped.entries())
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+    .map(([presetCode, values]) => ({
+      presetCode,
+      score: values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null,
+      extension: presetCode === "P13" || presetCode === "P14",
+    }));
+}
 
 export type LabBenchmarkResultsPanelProps = {
   evaluationRunId: string | null;
@@ -41,6 +128,8 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
   const runId = evaluationRunId?.trim() ?? "";
   const enabled = loadEnabled && runId.length > 0;
   const campId = campaignId?.trim() ?? "";
+  const [modelFilter, setModelFilter] = useState("ALL");
+  const [presetFilter, setPresetFilter] = useState("ALL");
 
   const query = useQuery({
     queryKey: ["lab", "benchmark-mvp-results", runId],
@@ -85,6 +174,15 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
   const occ = readGlobalOutcomeCounts(payload.rollups);
   const macroExecuted = readOnExecutedSummary(payload.rollups.globalMacro);
   const mvpRows = readMvpItems(payload.itemsBundle);
+  const tableRows = mvpRows.map(toResultTableRow);
+  const modelOptions = sortedUnique(tableRows.map((row) => row.modelId));
+  const presetOptions = sortedUnique(tableRows.map((row) => row.presetCode));
+  const filteredRows = tableRows.filter(
+    (row) =>
+      (modelFilter === "ALL" || row.modelId === modelFilter) &&
+      (presetFilter === "ALL" || row.presetCode === presetFilter),
+  );
+  const trend = trendRows(filteredRows);
   const uniqueQuestionIds = new Set<string>();
   const uniquePresetCodes = new Set<string>();
   for (const row of mvpRows) {
@@ -302,6 +400,66 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
         </div>
       </div>
 
+      <div className="grid gap-3 md:grid-cols-2" data-testid="lab-results-filters">
+        <label className="space-y-1 text-xs">
+          <span className="text-muted-foreground font-medium">{t("benchmarkFilterModel")}</span>
+          <select
+            className="bg-background w-full rounded-md border px-2 py-1"
+            data-testid="lab-results-filter-model"
+            value={modelFilter}
+            onChange={(event) => setModelFilter(event.target.value)}
+          >
+            <option value="ALL">{t("benchmarkFilterAll")}</option>
+            {modelOptions.map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1 text-xs">
+          <span className="text-muted-foreground font-medium">{t("benchmarkFilterPreset")}</span>
+          <select
+            className="bg-background w-full rounded-md border px-2 py-1"
+            data-testid="lab-results-filter-preset"
+            value={presetFilter}
+            onChange={(event) => setPresetFilter(event.target.value)}
+          >
+            <option value="ALL">{t("benchmarkFilterAll")}</option>
+            {presetOptions.map((preset) => (
+              <option key={preset} value={preset}>
+                {preset}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="space-y-2" data-testid="lab-benchmark-trend-graph">
+        <span className="text-muted-foreground text-xs font-medium">{t("benchmarkTrendTitle")}</span>
+        <div className="flex min-h-28 items-end gap-2 rounded-md border bg-background/40 p-3">
+          {trend.length === 0 ? (
+            <span className="text-muted-foreground text-xs">{t("benchmarkTrendEmpty")}</span>
+          ) : (
+            trend.slice(0, 15).map((point) => {
+              const height = point.score == null ? 6 : Math.max(8, Math.round(point.score * 88));
+              return (
+                <div key={point.presetCode} className="flex min-w-10 flex-1 flex-col items-center gap-1">
+                  <div
+                    className={point.extension ? "w-full rounded-t bg-amber-500/70" : "w-full rounded-t bg-primary/70"}
+                    style={{ height }}
+                    title={`${point.presetCode}: ${metricLabel(point.score)}`}
+                  />
+                  <span className="font-mono text-[10px]">{point.presetCode}</span>
+                  {point.extension ? <span className="text-muted-foreground text-[9px]">ext</span> : null}
+                </div>
+              );
+            })
+          )}
+        </div>
+        <p className="text-muted-foreground text-[11px]">{t("benchmarkTrendHint")}</p>
+      </div>
+
       <div className="space-y-2">
         <span className="text-muted-foreground text-xs font-medium">{t("benchmarkPerItemTitle")}</span>
         <div className="max-h-56 overflow-auto rounded-md border">
@@ -309,43 +467,38 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             <thead className="bg-muted/50 sticky top-0">
               <tr>
                 <th className="p-2 font-medium">{t("benchmarkColItem")}</th>
+                <th className="p-2 font-medium">{t("benchmarkColPreset")}</th>
+                <th className="p-2 font-medium">{t("benchmarkColModel")}</th>
                 <th className="p-2 font-medium">{t("benchmarkColOutcome")}</th>
+                <th className="p-2 font-medium">{t("benchmarkColCorrectness")}</th>
+                <th className="p-2 font-medium">{t("benchmarkColJudge")}</th>
+                <th className="p-2 font-medium">{t("benchmarkColHallucination")}</th>
+                <th className="p-2 font-medium">{t("benchmarkColDate")}</th>
                 <th className="p-2 font-medium">{t("benchmarkColNote")}</th>
               </tr>
             </thead>
             <tbody>
-              {mvpRows.slice(0, 80).map((row, idx) => {
-                const id =
-                  row && typeof row === "object" && typeof (row as Record<string, unknown>).id === "string"
-                    ? String((row as Record<string, unknown>).id)
-                    : `row-${idx}`;
-                const qRaw =
-                  row && typeof row === "object" && typeof (row as Record<string, unknown>).questionText === "string"
-                    ? (row as Record<string, unknown>).questionText
-                    : "";
-                const q = typeof qRaw === "string" ? qRaw : "";
-                const snippet = q.length > 96 ? `${q.slice(0, 96)}…` : q;
-                const op = readMvpItemOperational(row);
-                const outcome = op?.outcome ?? "—";
-                const note: string =
-                  outcome === "NOT_SUPPORTED" && typeof op?.unsupportedReason === "string"
-                    ? op.unsupportedReason
-                    : outcome === "FAILED"
-                      ? t("benchmarkFailedHint")
-                      : "—";
+              {filteredRows.slice(0, 80).map((row) => {
+                const snippet = row.question.length > 96 ? `${row.question.slice(0, 96)}…` : row.question;
                 return (
-                  <tr key={id} className="border-t border-border">
+                  <tr key={row.id} className="border-t border-border">
                     <td className="p-2 align-top">{snippet || "—"}</td>
-                    <td className="p-2 align-top font-mono">{outcome}</td>
-                    <td className="text-muted-foreground p-2 align-top">{note}</td>
+                    <td className="p-2 align-top font-mono">{row.presetCode}</td>
+                    <td className="p-2 align-top font-mono">{row.modelId}</td>
+                    <td className="p-2 align-top font-mono">{row.outcome}</td>
+                    <td className="p-2 align-top font-mono">{metricLabel(row.correctness)}</td>
+                    <td className="p-2 align-top font-mono">{metricLabel(row.llmJudgeScore)}</td>
+                    <td className="p-2 align-top font-mono">{metricLabel(row.hallucinationRate)}</td>
+                    <td className="p-2 align-top font-mono">{metricLabel(row.dateCorrectness)}</td>
+                    <td className="text-muted-foreground p-2 align-top">{row.note}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-        {mvpRows.length > 80 ? (
-          <p className="text-muted-foreground text-xs">{t("benchmarkPerItemTruncated", { n: mvpRows.length })}</p>
+        {filteredRows.length > 80 ? (
+          <p className="text-muted-foreground text-xs">{t("benchmarkPerItemTruncated", { n: filteredRows.length })}</p>
         ) : null}
       </div>
     </div>

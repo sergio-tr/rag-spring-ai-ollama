@@ -40,6 +40,8 @@ public class LabEvaluationRunService {
                     "evaluationRunId",
                     "evaluationDatasetId",
                     "evaluationDatasetSha256",
+                    "projectId",
+                    "corpusDocumentSet",
                     "resolvedConfigSnapshotId",
                     "queryType",
                     "difficulty",
@@ -54,9 +56,20 @@ public class LabEvaluationRunService {
                     "containsExpectedAnswer",
                     "answerLength",
                     "semanticScore",
+                    "correctness",
+                    "llmJudgeScore",
+                    "hallucinationRate",
+                    "faithfulness",
+                    "sourceSupport",
+                    "dateCorrectness",
                     "latencyMs",
                     "modelId",
                     "embeddingModelId",
+                    "embeddingDimensions",
+                    "embeddingCompatibilityStatus",
+                    "embeddingCompatibilityErrorCode",
+                    "embeddingCompatibilityReason",
+                    "classifierModelId",
                     "presetCode",
                     "outcome",
                     "failureCode",
@@ -111,7 +124,8 @@ public class LabEvaluationRunService {
                     "corpusChars",
                     "corpusTruncated",
                     "selectedSnapshotIds",
-                    "groundingPolicy");
+                    "groundingPolicy",
+                    "timestamp");
 
     /** Stable MVP CSV columns (shared by comparison exports and unit tests). */
     public static List<String> MVP_ITEMS_CSV_COLUMNS_FOR_TESTS() {
@@ -343,7 +357,16 @@ public class LabEvaluationRunService {
         m.put("workflowSchemaVersion", e.getWorkflowSchemaVersion());
         m.put("datasetSha256", e.getDatasetSha256());
         m.put("datasetId", e.getDataset() != null ? e.getDataset().getId() : null);
+        m.put("projectId", e.getProject() != null ? e.getProject().getId() : null);
         m.put("asyncTaskId", e.getAsyncTask() != null ? e.getAsyncTask().getId() : null);
+        m.put("resolvedConfigSnapshotId", e.getResolvedConfigSnapshot() != null ? e.getResolvedConfigSnapshot().getId() : null);
+        m.put("indexSnapshotId", e.getIndexSnapshot() != null ? e.getIndexSnapshot().getId() : null);
+        m.put("indexSignatureHash", e.getIndexSignatureHash());
+        m.put("presetId", e.getPreset() != null ? e.getPreset().getId() : null);
+        m.put("llmModelId", e.getLlmModelId());
+        m.put("embeddingModelId", e.getEmbeddingModelId());
+        m.put("embeddingDimensions", e.getEmbeddingDimensions());
+        m.put("classifierModelId", e.getClassifierModelId());
         m.put("aggregatesJson", e.getAggregatesJson());
         m.put("createdAt", e.getCreatedAt());
         m.put("completedAt", e.getCompletedAt());

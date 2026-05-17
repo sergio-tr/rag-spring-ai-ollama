@@ -68,6 +68,12 @@ public final class BenchmarkMvpRollupCalculator {
         DoubleSummaryStatistics mrr = new DoubleSummaryStatistics();
         DoubleSummaryStatistics semanticWherePresent = new DoubleSummaryStatistics();
         DoubleSummaryStatistics normalizedExact = new DoubleSummaryStatistics();
+        DoubleSummaryStatistics correctness = new DoubleSummaryStatistics();
+        DoubleSummaryStatistics llmJudge = new DoubleSummaryStatistics();
+        DoubleSummaryStatistics hallucination = new DoubleSummaryStatistics();
+        DoubleSummaryStatistics faithfulness = new DoubleSummaryStatistics();
+        DoubleSummaryStatistics sourceSupport = new DoubleSummaryStatistics();
+        DoubleSummaryStatistics dateCorrectness = new DoubleSummaryStatistics();
         DoubleSummaryStatistics latencyMs = new DoubleSummaryStatistics();
 
         int executedGenerationN = 0;
@@ -103,6 +109,12 @@ public final class BenchmarkMvpRollupCalculator {
             if (ss instanceof Number n) {
                 semanticWherePresent.accept(n.doubleValue());
             }
+            acceptMetric(gen.get("correctness"), correctness);
+            acceptMetric(gen.get("llmJudgeScore"), llmJudge);
+            acceptMetric(gen.get("hallucinationRate"), hallucination);
+            acceptMetric(gen.get("faithfulness"), faithfulness);
+            acceptMetric(gen.get("sourceSupport"), sourceSupport);
+            acceptMetric(gen.get("dateCorrectness"), dateCorrectness);
 
             Object lm = op.get("latencyMs");
             if (lm instanceof Number n) {
@@ -132,6 +144,13 @@ public final class BenchmarkMvpRollupCalculator {
                 "meanSemanticScoreWhereJudgePresent",
                 semanticWherePresent.getCount() > 0 ? semanticWherePresent.getAverage() : null);
         onExecuted.put("semanticJudgePresentCount", semanticWherePresent.getCount());
+        onExecuted.put("meanCorrectness", averageOrNull(correctness));
+        onExecuted.put("meanLlmJudgeScore", averageOrNull(llmJudge));
+        onExecuted.put("meanHallucinationRate", averageOrNull(hallucination));
+        onExecuted.put("meanFaithfulness", averageOrNull(faithfulness));
+        onExecuted.put("meanSourceSupport", averageOrNull(sourceSupport));
+        onExecuted.put("meanDateCorrectness", averageOrNull(dateCorrectness));
+        onExecuted.put("dateCorrectnessSampleCount", dateCorrectness.getCount());
         onExecuted.put("meanLatencyMsWherePresent", latencyMs.getCount() > 0 ? latencyMs.getAverage() : null);
         onExecuted.put("latencySampleCount", latencyMs.getCount());
         out.put("onExecuted", onExecuted);
@@ -161,6 +180,16 @@ public final class BenchmarkMvpRollupCalculator {
     private static String keyOrUnknown(String raw) {
         String t = raw != null ? raw.trim() : "";
         return t.isEmpty() ? "_UNKNOWN" : t;
+    }
+
+    private static void acceptMetric(Object raw, DoubleSummaryStatistics stats) {
+        if (raw instanceof Number n) {
+            stats.accept(n.doubleValue());
+        }
+    }
+
+    private static Double averageOrNull(DoubleSummaryStatistics stats) {
+        return stats.getCount() > 0 ? stats.getAverage() : null;
     }
 
     private static String str(Object o) {

@@ -44,6 +44,9 @@ export function readOnExecutedSummary(rollupBucket: unknown): {
 export type MvpItemOperational = {
   outcome: string;
   unsupportedReason: string | null;
+  skipReason: string | null;
+  presetCode: string | null;
+  modelId: string | null;
 };
 
 export function readMvpItemOperational(item: unknown): MvpItemOperational | null {
@@ -64,9 +67,15 @@ export function readMvpItemOperational(item: unknown): MvpItemOperational | null
     return null;
   }
   const ur = orec.unsupportedReason;
+  const sr = orec.skipReason;
+  const pc = orec.presetCode;
+  const mid = orec.modelId;
   return {
     outcome,
     unsupportedReason: typeof ur === "string" && ur.trim() ? ur.trim() : null,
+    skipReason: typeof sr === "string" && sr.trim() ? sr.trim() : null,
+    presetCode: typeof pc === "string" && pc.trim() ? pc.trim() : null,
+    modelId: typeof mid === "string" && mid.trim() ? mid.trim() : null,
   };
 }
 

@@ -31,9 +31,9 @@ class BenchmarkMvpMetricsCalculatorIndexPlanTest {
                                 BenchmarkResultRowKeys.ITEM_OUTCOME,
                                 BenchmarkItemOutcome.SKIPPED.name(),
                                 BenchmarkResultRowKeys.ERROR_CODE,
-                                "NO_ACTIVE_INDEX",
+                                "REINDEX_REQUIRED",
                                 BenchmarkResultRowKeys.REASON,
-                                "No active index snapshot.",
+                                "No compatible snapshot was selected.",
                                 "groupKey",
                                 "DOCUMENT_LEVEL",
                                 "runPlanVersion",
@@ -41,8 +41,8 @@ class BenchmarkMvpMetricsCalculatorIndexPlanTest {
 
         Map<String, String> row = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(item, run);
         assertThat(row.get("groupKey")).isEqualTo("DOCUMENT_LEVEL");
-        assertThat(row.get("skipReasonCode")).isEqualTo("NO_ACTIVE_INDEX");
-        assertThat(row.get("skipReason")).contains("No active index");
+        assertThat(row.get("skipReasonCode")).isEqualTo("REINDEX_REQUIRED");
+        assertThat(row.get("skipReason")).contains("No compatible snapshot");
         assertThat(row.get("runPlanVersion")).isEqualTo("1");
     }
 
@@ -172,12 +172,12 @@ class BenchmarkMvpMetricsCalculatorIndexPlanTest {
         mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.SKIPPED.name());
         mp.put(BenchmarkResultRowKeys.ERROR_CODE, "LEGACY_ROW_CODE");
         mp.put(BenchmarkResultRowKeys.REASON, "Legacy human reason.");
-        mp.put("skippedReasonCode", "CORPUS_REQUIRED");
+        mp.put("skippedReasonCode", "CORPUS_EVIDENCE_UNAVAILABLE");
         mp.put("skippedReason", "Canonical skip explanation.");
         item.setMetricsPayload(mp);
 
         Map<String, String> row = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(item, run);
-        assertThat(row.get("skipReasonCode")).isEqualTo("CORPUS_REQUIRED");
+        assertThat(row.get("skipReasonCode")).isEqualTo("CORPUS_EVIDENCE_UNAVAILABLE");
         assertThat(row.get("skipReason")).contains("Canonical skip explanation");
     }
 

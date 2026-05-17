@@ -45,6 +45,8 @@ class BenchmarkMvpMetricsCalculatorTest {
         mp.put("gold_found", true);
         mp.put(BenchmarkResultRowKeys.DIFFICULTY, "EASY");
         mp.put(BenchmarkResultRowKeys.DATASET_QUESTION_ID, "q1");
+        mp.put("embedding_dimensions", 1024);
+        mp.put("embedding_compatibility_status", "COMPATIBLE");
         e.setMetricsPayload(mp);
 
         EvaluationRunEntity run = new EvaluationRunEntity();
@@ -70,8 +72,16 @@ class BenchmarkMvpMetricsCalculatorTest {
         Map<String, Object> op = (Map<String, Object>) mvp.get("operational");
         assertThat(op.get("latencyMs")).isEqualTo(99L);
         assertThat(op.get("embeddingModelId")).isEqualTo("run-emb");
+        assertThat(op.get("embeddingDimensions")).isEqualTo(1024);
+        assertThat(op.get("embeddingCompatibilityStatus")).isEqualTo("COMPATIBLE");
         assertThat(op.get("failureCode")).isEqualTo("");
         assertThat(op.get("unsupportedReason")).isEqualTo("");
+
+        Map<String, String> csv = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(e, run);
+        assertThat(csv)
+                .containsEntry("embeddingModelId", "run-emb")
+                .containsEntry("embeddingDimensions", "1024")
+                .containsEntry("embeddingCompatibilityStatus", "COMPATIBLE");
     }
 
     @Test
@@ -99,6 +109,49 @@ class BenchmarkMvpMetricsCalculatorTest {
         Map<String, Object> gen = (Map<String, Object>) mvp.get("generation");
         assertThat(gen.get("normalizedExactMatch")).isEqualTo(false);
         assertThat(gen.get("semanticScore")).isEqualTo(1.0);
+        assertThat(gen.get("correctness")).isEqualTo(1.0);
+        assertThat(gen.get("llmJudgeScore")).isEqualTo(1.0);
+    }
+
+    @Test
+    void ragRow_exposesPrimaryAndSecondaryMetricsForExports() {
+        EvaluationResultEntity e = new EvaluationResultEntity();
+        e.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        e.setExpectedAnswer("president is Ada");
+        e.setActualAnswer("The evidence does not include the requested date.");
+        e.setLatencyMs(42L);
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+        mp.put("judge_scores", Map.of(
+                "correctness", 2,
+                "context_sufficiency", 4,
+                "relevance", 5,
+                "independence", 5,
+                "groundedness", 3));
+        mp.put("requestedDate", "2026-02-25");
+        mp.put("dateMismatchDetected", true);
+        mp.put("abstentionTriggered", true);
+        e.setMetricsPayload(mp);
+
+        Map<String, Object> mvp = BenchmarkMvpMetricsCalculator.computeMvpMetrics(e, null);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> gen = (Map<String, Object>) mvp.get("generation");
+
+        assertThat(gen.get("correctness")).isEqualTo(0.4);
+        assertThat(gen.get("llmJudgeScore")).isEqualTo(0.76);
+        assertThat(gen.get("hallucinationRate")).isEqualTo(0.4);
+        assertThat(gen.get("faithfulness")).isEqualTo(0.6);
+        assertThat(gen.get("sourceSupport")).isEqualTo(0.8);
+        assertThat(gen.get("dateCorrectness")).isEqualTo(1.0);
+
+        Map<String, String> csv = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(e, null);
+        assertThat(csv)
+                .containsEntry("correctness", "0.4")
+                .containsEntry("llmJudgeScore", "0.76")
+                .containsEntry("hallucinationRate", "0.4")
+                .containsEntry("faithfulness", "0.6")
+                .containsEntry("sourceSupport", "0.8")
+                .containsEntry("dateCorrectness", "1.0");
     }
 
     @Test
