@@ -24,6 +24,7 @@ MAVEN_CACHE_VOLUME="${RAG_MAVEN_CACHE_VOLUME:-rag-m2-cache}"
 BACKEND_HOST_PORT="${RAG_CI_BACKEND_HOST_PORT:-9000}"
 WEBAPP_HOST_PORT="${RAG_CI_WEBAPP_HOST_PORT:-3000}"
 REVERSE_PROXY_HTTPS_PORT="${REVERSE_PROXY_HTTPS_PORT:-8443}"
+HOST_GATEWAY_IP="${RAG_CI_HOST_GATEWAY_IP:-}"
 
 # Playwright runs in a Linux container for parity (browser deps included).
 PLAYWRIGHT_IMAGE="${RAG_PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.59.1-jammy}"
@@ -64,6 +65,24 @@ check_host_port_available() {
     echo "  RAG_CI_WEBAPP_HOST_PORT=3100 RAG_CI_BACKEND_HOST_PORT=9100 $0" >&2
     exit 1
   fi
+}
+
+resolve_host_gateway_ip() {
+  if [[ -n "${HOST_GATEWAY_IP}" ]]; then
+    echo "${HOST_GATEWAY_IP}"
+    return
+  fi
+  local resolved
+  resolved="$(
+    docker run --rm --add-host=host-gateway.internal:host-gateway alpine:3.20 \
+      getent hosts host-gateway.internal 2>/dev/null | awk 'NR == 1 { print $1 }' || true
+  )"
+  if [[ "${resolved}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "host-gateway"
+    return
+  fi
+  # Docker Desktop on WSL can resolve host-gateway to IPv6 only; nginx then marks upstreams down.
+  echo "192.168.65.254"
 }
 
 require docker
@@ -196,10 +215,12 @@ wait_for_admin_login() {
 
 start_proxy() {
   log "Starting reverse-proxy container for HTTPS proxy-mode E2E."
+  local host_gateway
+  host_gateway="$(resolve_host_gateway_ip)"
   docker rm -f "${PROXY_CONTAINER}" >/dev/null 2>&1 || true
   docker build -t rag-reverse-proxy-local "${REPO_ROOT}/reverse-proxy" >/dev/null
   docker run -d --name "${PROXY_CONTAINER}" \
-    --add-host=host-gateway.internal:host-gateway \
+    --add-host="host-gateway.internal:${host_gateway}" \
     -p 8080:80 -p 8443:443 \
     -e BACKEND_HOST=host-gateway.internal \
     -e BACKEND_INTERNAL_PORT="${BACKEND_HOST_PORT}" \
@@ -298,15 +319,12 @@ run_playwright_fullstack() {
     -e PLAYWRIGHT_SKIP_WEBSERVER="1" \
     -e PLAYWRIGHT_BASE_URL="https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}" \
     -e PLAYWRIGHT_WORKERS="1" \
-    -e PLAYWRIGHT_RETRIES="1" \
-    -e PLAYWRIGHT_EXPECT_TIMEOUT_MS="10000" \
-    -e PLAYWRIGHT_TEST_TIMEOUT_MS="30000" \
     -e PLAYWRIGHT_IGNORE_HTTPS_ERRORS="1" \
     -e API_BASE_URL="https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}" \
     -e NEXT_PUBLIC_API_BASE_URL="" \
     -e NEXT_PUBLIC_RAG_API_PREFIX="/api/v5" \
     "${PLAYWRIGHT_IMAGE}" bash -lc \
-      "npm ci --silent --no-audit --no-fund && npm run build && npm run test:e2e:fullstack"
+      "npm ci --silent --no-audit --no-fund && npm run build && npm run test:e2e:fullstack:ci-fast"
 }
 
 stop_backend() {

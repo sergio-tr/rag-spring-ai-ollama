@@ -41,7 +41,7 @@ Use **`PATCH {product}/conversations/{id}`** from the same UI for `presetId` / `
 
 ### Research Lab
 
-#### Running the TFG evaluation phases from the Lab (UI-first)
+#### Running the evaluation phases from the Lab (UI-first)
 
 Use the Lab navigation tabs:
 
@@ -62,7 +62,7 @@ Use the Lab navigation tabs:
    - **Outcomes**: runs record honest outcomes like `EXECUTED`, `NOT_SUPPORTED`, and `FAILED`.
    - **Export**: use the MVP exports to capture preset-level results for the thesis.
 
-## Manual validation checklist (TFG-ready)
+## Manual validation checklist
 
 ### Chat
 
@@ -79,7 +79,7 @@ Use the Lab navigation tabs:
 
 ### Lab
 
-1. Open **Lab → Overview** and confirm the **TFG control panel** shows Step 1 (datasets), Step 2 (workflows), and Step 3 (exports).
+1. Open **Lab → Overview** and confirm the **control panel** shows Step 1 (datasets), Step 2 (workflows), and Step 3 (exports).
 2. Open **Datasets** (templates & uploads) and confirm you can download templates and upload a workbook until its status is **VALID**.
 3. Run **LLM baseline** using a compatible **VALID** dataset (reference bundle counts if listed).
 4. Run **Embedding baseline** using a compatible **VALID** embedding workbook.

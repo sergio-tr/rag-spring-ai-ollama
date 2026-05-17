@@ -192,15 +192,12 @@ jobs:
           E2E_LOGIN_TIMEOUT_MS: "12000"
           PLAYWRIGHT_IGNORE_HTTPS_ERRORS: "1"
           PLAYWRIGHT_WORKERS: "1"
-          PLAYWRIGHT_RETRIES: "1"
           PLAYWRIGHT_SKIP_WEBSERVER: "1"
-          PLAYWRIGHT_EXPECT_TIMEOUT_MS: "10000"
-          PLAYWRIGHT_TEST_TIMEOUT_MS: "30000"
           PLAYWRIGHT_BASE_URL: https://127.0.0.1:8443
           API_BASE_URL: https://127.0.0.1:8443
         run: |
           npx playwright install --with-deps chromium
-          npm run test:e2e:fullstack
+          npm run test:e2e:fullstack:debug
 
       - name: Stop services
         if: always()
