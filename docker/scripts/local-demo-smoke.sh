@@ -168,8 +168,43 @@ docker compose "${COMPOSE_ARGS[@]}" ps
 
 BASE_URL="${DEMO_SMOKE_BASE_URL:-http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}}"
 PROMETHEUS_URL="${DEMO_SMOKE_PROMETHEUS_URL:-http://127.0.0.1:${PROMETHEUS_PORT:-9090}}"
+GRAFANA_URL="${DEMO_SMOKE_GRAFANA_URL:-http://127.0.0.1:${GRAFANA_PORT:-3000}}"
+JAEGER_URL="${DEMO_SMOKE_JAEGER_URL:-http://127.0.0.1:${JAEGER_UI_PORT:-16686}}"
+OLLAMA_URL="${DEMO_SMOKE_OLLAMA_URL:-}"
+REQUIRED_OLLAMA_MODELS="${DEMO_SMOKE_REQUIRED_OLLAMA_MODELS:-gemma3:4b,mistral:7b,llama3.1:8b,mxbai-embed-large,nomic-embed-text,bge-m3}"
+
+check_ollama_models() {
+  echo -n "backend -> Ollama /api/tags required models ... "
+  local payload
+  if [ -n "$OLLAMA_URL" ]; then
+    payload="$(curl -sSfL --max-time 10 "${OLLAMA_URL}/api/tags")" || {
+      echo "FAIL"
+      echo "Ollama not reachable at ${OLLAMA_URL}. Start host Ollama or set DEMO_SMOKE_OLLAMA_URL." >&2
+      return 1
+    }
+  elif ! payload="$(docker compose "${COMPOSE_ARGS[@]}" exec -T backend sh -c 'set -eu; base="${SPRING_AI_OLLAMA_BASE_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}"; curl -sSfL --max-time 10 "${base%/}/api/tags"')"; then
+    echo "FAIL"
+    echo "Ollama is not reachable from the backend container. Start host Ollama or set OLLAMA_BASE_URL / SPRING_AI_OLLAMA_BASE_URL in rag-service/.env." >&2
+    return 1
+  fi
+  if ! REQUIRED_OLLAMA_MODELS="$REQUIRED_OLLAMA_MODELS" python3 -c '
+import json, os, sys
+payload = json.load(sys.stdin)
+available = {m.get("name", "") for m in payload.get("models", [])}
+required = [m.strip() for m in os.environ.get("REQUIRED_OLLAMA_MODELS", "").split(",") if m.strip()]
+missing = [m for m in required if m not in available]
+if missing:
+    print("missing: " + ", ".join(missing), file=sys.stderr)
+    sys.exit(1)
+' <<<"$payload"; then
+    echo "FAIL"
+    return 1
+  fi
+  echo "OK"
+}
 
 wait_for_url "${BASE_URL}/en/login" "webapp via reverse-proxy"
+check_ollama_models
 wait_for_url "${BASE_URL}/actuator/health" "backend actuator health"
 check_classifier_health
 wait_for_url "${BASE_URL}/actuator/prometheus" "backend actuator prometheus"
@@ -177,6 +212,8 @@ check_model_registry "$BASE_URL"
 
 if [ "$WITH_OBS" = true ]; then
   wait_for_url "${PROMETHEUS_URL}/-/healthy" "Prometheus health"
+  wait_for_url "${GRAFANA_URL}/api/health" "Grafana health"
+  wait_for_url "${JAEGER_URL}/" "Jaeger UI"
 fi
 
 if [ "$DOWN_AFTER" = true ]; then

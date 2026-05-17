@@ -119,6 +119,9 @@ services:
       RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${PORT:-8000}
       # Keep container health independent from "model loaded" gates.
       RAG_HEALTH_CLASSIFIER_REQUIRE_MODEL_LOADED: "false"
+    extra_hosts:
+      # Linux/WSL2 parity for the official demo mode: Docker app + Ollama on the host.
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy

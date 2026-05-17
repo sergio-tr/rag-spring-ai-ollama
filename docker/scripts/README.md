@@ -115,6 +115,7 @@ Entry point: [`docker-compose.sh`](docker-compose.sh). Shortcuts: [`up.sh`](up.s
 
 ```bash
 ./docker/scripts/docker-compose.sh config prod --obs --no-env-prompt
+./docker/scripts/docker-compose.sh config prod --obs --obs-private --no-env-prompt
 ./docker/scripts/docker-compose.sh config prod --obs --ollama --no-env-prompt
 ./docker/scripts/docker-compose.sh config dev --rag --obs --no-env-prompt
 ```
@@ -144,9 +145,9 @@ Env setup runs **before** `compose up`, not before `dev --down`.
 
 **`--rag` (dev only):** starts **`backend-dev`** and the **`webapp`** in Docker (plus `classifier-service` when needed): `rag-service/` volume, compile loop, and **Spring Boot DevTools**. **`--proxy`** (only with `--rag`) publishes **nginx** like prod (`/` → webapp, `/api/*` → backend-dev); default host HTTP port is **`80`** (`REVERSE_PROXY_DEV_HTTP_PORT`). Without `--proxy`, the webapp uses **`WEBAPP_HTTP_PORT` default 80** (`80:3000`); Grafana uses **`GRAFANA_PORT` default 3000**. With **`--proxy`**, leave the webapp API base URL empty for same-origin nginx. **`prod`** always includes `reverse-proxy` (`compose.prod.yml`). Set **`SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`** only when using in-stack Ollama (`--gpu` / `--ollama`). Optional variable: **`RAG_DEV_POLL_INTERVAL`**.
 
-**Compose layout:** `docker-compose.yml` (core + optional services behind **profiles**: `observability`, `logs`, `infra`, `ollama`, `cadvisor`, and **`rag`** for `backend-dev`). Overlays: `compose.dev.yml` (includes webapp ordering for `--rag`), `compose.dev-proxy.yml` (`--rag --proxy`, adds **`--profile proxy`**), `compose.obs.yml` (Spring OTLP for `backend` / `classifier-service`), `compose.gpu.yml`, `compose.rag-dev-obs.yml` (`--rag --obs`), `compose.prod.yml` (+ `compose.prod-obs.yml` with `--obs`). Ollama HTTP URL is always from **`rag-service/.env`**; **`--ollama-remote`** only affects whether the **`ollama`** profile is started together with **`--gpu`/`--ollama`**.
+**Compose layout:** `docker-compose.yml` (core + optional services behind **profiles**: `observability`, `logs`, `infra`, `ollama`, `cadvisor`, and **`rag`** for `backend-dev`). Overlays: `compose.dev.yml` (includes webapp ordering for `--rag`), `compose.dev-proxy.yml` (`--rag --proxy`, adds **`--profile proxy`**), `compose.obs.yml` (Spring OTLP for `backend` / `classifier-service`), `compose.gpu.yml`, `compose.rag-dev-obs.yml` (`--rag --obs`), `compose.prod.yml`, and `compose.prod-obs.yml` only with `prod --obs --obs-private`. Ollama HTTP URL is always from **`rag-service/.env`**; **`--ollama-remote`** only affects whether the **`ollama`** profile is started together with **`--gpu`/`--ollama`**.
 
-**Flags**: `dev`: `--all`, `--gpu`, `--ollama`, `--obs`, `--classifier`, `--logs`, `--infra`, `--rag`, **`--proxy`**, `--down`, `--volumes`. `prod`: `--all`, `--obs`, `--gpu`, `--ollama`, `--logs`, `--infra` (nginx always). **`down.sh`**: same flags as `up` for `dev` or `prod`. For **`down dev`** / **`build dev`**, pass the **same** flags as `up dev` (including `--rag`, **`--proxy`**, `--all`).
+**Flags**: `dev`: `--all`, `--gpu`, `--ollama`, `--obs`, `--classifier`, `--logs`, `--infra`, `--rag`, **`--proxy`**, `--down`, `--volumes`. `prod`: `--all`, `--obs`, `--obs-private`, `--gpu`, `--ollama`, `--logs`, `--infra` (nginx always). **`down.sh`**: same flags as `up` for `dev` or `prod`. For **`down dev`** / **`build dev`**, pass the **same** flags as `up dev` (including `--rag`, **`--proxy`**, `--all`).
 
 ## Running Compose manually
 
@@ -160,13 +161,14 @@ From `docker/` (env files are optional; compose uses defaults if a file is missi
 
 **Prod local** starts the stack with `compose.prod.yml` (reverse proxy + hardened ports for internal services).
 
-- Start: `./docker/scripts/up.sh prod [--all] [--obs] [--gpu| --ollama] [--logs] [--infra]`
+- Start: `./docker/scripts/up.sh prod [--all] [--obs] [--obs-private] [--gpu| --ollama] [--logs] [--infra]`
 - Build images: `./docker/scripts/build.sh prod` with the **same** flags as `up prod`
 - Stop: `./docker/scripts/down.sh` with the **same** flags you used for `up` (e.g. `--all` = obs + GPU + logs + infra + `-v`)
 
 Notes:
 
-- **`--obs`** adds `compose.obs.yml` and **`--profile observability`** (opt-in). Plain `up.sh prod` is base + `compose.prod.yml` only (reverse proxy, hardened ports).
+- **`--obs`** adds `compose.obs.yml` and **`--profile observability`** (opt-in). In local/demo mode, Prometheus, Grafana, and Jaeger publish host ports so screenshots can be captured.
+- **`--obs-private`** adds `compose.prod-obs.yml` on top of `--obs` and keeps Prometheus, Grafana, Jaeger, and OTEL ports internal.
 - `--gpu` and `--ollama` → same: **`--profile ollama`** if the Docker host has the NVIDIA runtime.
 - `--logs` → **`--profile logs`** (Loki + Promtail); `--infra` → **`--profile infra`** (node-exporter). cAdvisor: **`--profile cadvisor`** (see `docker/README.md`).
 
@@ -196,7 +198,7 @@ For the official prod-local demo path (host-Ollama by default):
 ./docker/scripts/local-demo-smoke.sh --obs
 ```
 
-The script runs `docker-compose.sh config ...`, starts the prod-local stack unless `--skip-up` is passed, prints `docker compose ps`, checks webapp, backend Actuator health, classifier health, `/actuator/prometheus`, and Prometheus when `--obs` is enabled. The authenticated model-registry check runs when `DEMO_SMOKE_EMAIL` and `DEMO_SMOKE_PASSWORD` are supplied; otherwise it is skipped without failing so no secrets are required in docs.
+The script runs `docker-compose.sh config ...`, starts the prod-local stack unless `--skip-up` is passed, prints `docker compose ps`, checks webapp, backend Actuator health, classifier health, `/actuator/prometheus`, host Ollama model tags, and Prometheus/Grafana/Jaeger when `--obs` is enabled. The authenticated model-registry check runs when `DEMO_SMOKE_EMAIL` and `DEMO_SMOKE_PASSWORD` are supplied; otherwise it is skipped without failing so no secrets are required in docs.
 
 Optional in-stack Ollama:
 

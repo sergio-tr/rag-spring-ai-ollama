@@ -27,13 +27,21 @@ OLLAMA_BASE_URL=http://host.docker.internal:11434
 SPRING_AI_OLLAMA_BASE_URL=http://host.docker.internal:11434
 ```
 
-Prepare or refresh local env files once, then validate and start non-interactively:
+Prepare or refresh local env files once, then validate and start non-interactively. This is the official local/demo command set:
 
 ```bash
 ./docker/scripts/create-env-all.sh
 ./docker/scripts/docker-compose.sh config prod --obs --no-env-prompt
 ./docker/scripts/up.sh prod --obs --no-env-prompt
 ```
+
+`prod --obs` exposes the observability UIs on localhost for evidence capture:
+
+- Prometheus: `http://127.0.0.1:${PROMETHEUS_PORT:-9090}`
+- Grafana: `http://127.0.0.1:${GRAFANA_PORT:-3000}`
+- Jaeger: `http://127.0.0.1:${JAEGER_UI_PORT:-16686}`
+
+For VM/private deployments where those UIs must not publish host ports, add `--obs-private`; that merges `compose.prod-obs.yml` and keeps Jaeger/Prometheus/Grafana internal.
 
 Optional local smoke after the stack is up:
 
@@ -233,7 +241,7 @@ Reverse-proxy defaults in this branch:
 - App/static routes: `/` and `/_next/**` routed to webapp
 - API error contract for gateway failures: JSON body (not default HTML) on API locations
 - Upload/body defaults: `API_CLIENT_MAX_BODY_SIZE=50m` (keep aligned with Spring multipart limits)
-- HTTPS redirect: controlled with `REVERSE_PROXY_ENFORCE_HTTPS` (`1` in prod-like, optional `0` in dev debug)
+- HTTPS redirect: controlled with `REVERSE_PROXY_ENFORCE_HTTPS` (`0` by default for local/demo smoke evidence; set `1` when TLS redirect is required)
 
 Start / stop:
 
@@ -248,8 +256,33 @@ Start / stop:
 Options:
 
 - Use `./docker/scripts/up.sh prod --obs --no-env-prompt` to include `compose.obs.yml` and **`--profile observability`** (OTEL, Jaeger, Prometheus, Grafana).
+- Use `./docker/scripts/up.sh prod --obs --obs-private --no-env-prompt` when you need observability but do not want Jaeger/Prometheus/Grafana published on host ports.
 - `--gpu` or `--ollama`: adds **`--profile ollama`** only when the NVIDIA runtime is available (requires `ollama/.env` and NVIDIA Container Toolkit).
 - `--volumes` (only `down.sh`): also remove named volumes
+
+## Demo evidence capture
+
+Use the official local/demo stack above, then capture evidence without committing secrets:
+
+```bash
+mkdir -p .cursor/context/evidence/docker-observability
+docker ps > .cursor/context/evidence/docker-observability/docker-ps.txt
+docker compose -f docker/docker-compose.yml -f docker/compose.obs.yml -f docker/compose.prod.yml \
+  --profile observability \
+  --env-file db/.env \
+  --env-file classifier-service/.env \
+  --env-file rag-service/.env \
+  --env-file webapp/.env \
+  --env-file observability/.env \
+  logs --no-color backend > .cursor/context/evidence/docker-observability/backend.log
+curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/health > .cursor/context/evidence/docker-observability/backend-health.json
+curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/prometheus > .cursor/context/evidence/docker-observability/backend-prometheus.txt
+curl -sf http://127.0.0.1:${PROMETHEUS_PORT:-9090}/-/healthy > .cursor/context/evidence/docker-observability/prometheus-health.txt
+curl -sf http://127.0.0.1:${GRAFANA_PORT:-3000}/api/health > .cursor/context/evidence/docker-observability/grafana-health.json
+curl -sf http://127.0.0.1:${JAEGER_UI_PORT:-16686}/ > .cursor/context/evidence/docker-observability/jaeger-root.html
+```
+
+For screenshots, open Grafana and Jaeger at the URLs printed by `up.sh prod --obs`. Generate at least one Chat or Lab request first, then capture the Grafana dashboard and the Jaeger trace detail. Record the trace ID shown in the UI or in backend logs. Do not store real passwords, JWTs, cookies, or OAuth secrets in evidence files.
 
 ## Deployment runbook
 
