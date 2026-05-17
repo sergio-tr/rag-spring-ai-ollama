@@ -9,6 +9,7 @@
 | `retrieval_benchmark.py` | Main runner: legacy `GET …/query` or `product_chat` (JWT + project + conversation). Schema `benchmark-report-v1` (see `schema/`). |
 | `llm_benchmark.py` | Wrapper with `--family llm` default (same HTTP behaviour; report emphasizes token/cost lines). |
 | `infra_probe.py` | Simple GET probe (default `/actuator/health`) — infra cold/warm, not RAG. |
+| `final_performance_smoke.py` | Final-scope bounded smoke: health/metrics plus optional document, Chat job, and Lab run start/status when `PERF_*` inputs are provided. |
 | `performance_baseline.py` | **Deprecated** — forwards to `retrieval_benchmark.py`. |
 | `actuator_latency_baseline.py` | **Deprecated** — forwards to `infra_probe.py`. |
 
@@ -54,6 +55,37 @@ python tests/performance/infra_probe.py \
   --max-p95-ms 2000 \
   --output-json /tmp/infra-probe.json
 ```
+
+## Final evidence smoke
+
+Use this when collecting final thesis evidence. It records latency, errors, skipped product steps, thresholds, and limitations in one JSON file. It is intentionally a bounded smoke and must not be used to claim production scalability.
+
+```bash
+python tests/performance/final_performance_smoke.py \
+  --backend-base-url http://127.0.0.1:9000 \
+  --output-json .cursor/context/evidence/performance/final-performance-smoke.json
+```
+
+Optional product-scoped measurements:
+
+```bash
+export PERF_BEARER_TOKEN="<jwt>"              # or PERF_EMAIL / PERF_PASSWORD
+export PERF_PROJECT_ID="<project-uuid>"
+export PERF_CONVERSATION_ID="<conversation-uuid>"
+export PERF_DATASET_ID="<dataset-uuid>"       # only needed with --enable-lab-start
+
+python tests/performance/final_performance_smoke.py \
+  --backend-base-url http://127.0.0.1:9000 \
+  --enable-lab-start \
+  --output-json .cursor/context/evidence/performance/final-performance-smoke.json
+```
+
+Defaults:
+
+- `PERF_MAX_ERROR_RATE=0`
+- `PERF_MAX_P95_MS=3000`
+- Product steps are skipped unless the required credentials and IDs are supplied.
+- Pass `--require-product` to fail if document/Chat/Lab product steps are skipped.
 
 ## Product chat scenarios (`transport: product_chat`)
 
