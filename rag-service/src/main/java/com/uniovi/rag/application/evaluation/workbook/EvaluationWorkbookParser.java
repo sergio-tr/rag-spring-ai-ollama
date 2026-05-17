@@ -72,7 +72,7 @@ public final class EvaluationWorkbookParser {
             EvaluationWorkbook wb = builder.build();
             ExperimentalWorkbookValidator.validate(datasetType, wb, report);
             return new WorkbookParseResult(wb, report);
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             ValidationReport r = new ValidationReport();
             r.add(new ValidationIssue(
                     ValidationSeverity.ERROR,

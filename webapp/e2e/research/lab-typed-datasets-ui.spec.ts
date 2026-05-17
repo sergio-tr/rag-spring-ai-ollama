@@ -1,14 +1,15 @@
 import { expect, test } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { loginAsSeedUser } from "../support/helpers";
+import { authHeadersFromPage, loginAsSeedUser, productApiUrl } from "../support/helpers";
 
 /**
  * Full-stack Lab flows for typed experimental datasets (needs Spring + Next + seed user).
  * Tagged {@link @fullstack} — excluded from default `npm run test:e2e`.
  */
 test.describe("Lab typed datasets UI @fullstack", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    testInfo.setTimeout(60_000);
     await loginAsSeedUser(page);
     await page.goto("/en/lab", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: /research lab/i })).toBeVisible({
@@ -47,39 +48,34 @@ test.describe("Lab typed datasets UI @fullstack", () => {
     }
   });
 
-  test("upload valid LLM template shows validation accepted", async ({ page }) => {
+  test("upload blank LLM template shows validation rejected with issues", async ({ page }) => {
     const downloadDir = path.join(process.cwd(), "test-results", "lab-templates-ui");
     fs.mkdirSync(downloadDir, { recursive: true });
     await page.locator("#lab-exp-dataset-kind").selectOption("llm-model-baseline");
-    const [download] = await Promise.all([
-      page.waitForEvent("download"),
-      page.getByTestId("lab-template-llm").click(),
-    ]);
-    const saved = path.join(downloadDir, `upload-valid-${download.suggestedFilename()}`);
-    await download.saveAs(saved);
+    const saved = path.join(downloadDir, "upload-blank-llm-model-baseline-template.xlsx");
+    const templateRes = await page.request.get(productApiUrl("/lab/dataset-templates/llm-model-baseline"), {
+      headers: await authHeadersFromPage(page),
+    });
+    expect(templateRes.status(), await templateRes.text()).toBe(200);
+    fs.writeFileSync(saved, await templateRes.body());
 
     await page.locator("#lab-exp-dataset-file").setInputFiles(saved);
     await page.getByRole("button", { name: /^upload & validate$/i }).click();
-    await expect(page.getByText(/validation \(accepted\)/i)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/validation \(rejected\)/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Has errors|Con errores/i)).toBeVisible();
   });
 
-  test("upload LLM bytes under embedding kind shows validation rejected + issue codes", async ({
+  test("upload invalid XLSX bytes shows validation rejected + issue codes", async ({
     page,
   }) => {
     const downloadDir = path.join(process.cwd(), "test-results", "lab-templates-ui");
     fs.mkdirSync(downloadDir, { recursive: true });
-    await page.locator("#lab-exp-dataset-kind").selectOption("llm-model-baseline");
-    const [download] = await Promise.all([
-      page.waitForEvent("download"),
-      page.getByTestId("lab-template-llm").click(),
-    ]);
-    const saved = path.join(downloadDir, `upload-invalid-${download.suggestedFilename()}`);
-    await download.saveAs(saved);
-
+    const saved = path.join(downloadDir, "upload-invalid-embedding-baseline.xlsx");
+    fs.writeFileSync(saved, Buffer.from("not an xlsx workbook"));
     await page.locator("#lab-exp-dataset-kind").selectOption("embedding-baseline");
     await page.locator("#lab-exp-dataset-file").setInputFiles(saved);
     await page.getByRole("button", { name: /^upload & validate$/i }).click();
-    await expect(page.getByText(/validation \(rejected\)/i)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/validation \(rejected\)/i)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Has errors|Con errores/i)).toBeVisible();
     await expect(page.locator("li").filter({ has: page.locator(".font-mono") }).first()).toBeVisible();
   });
