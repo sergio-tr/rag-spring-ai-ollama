@@ -395,8 +395,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                             embSnap.model(),
                                             runPlan.strategyVersion(),
                                             exec,
-                                            CorpusAvailabilityGate.REASON_CODE,
-                                            CorpusAvailabilityGate.REASON_MESSAGE,
+                                            corpusProbe.reasonCode(),
+                                            corpusProbe.reasonMessage(),
                                             corpusExtras,
                                             base));
                         }
@@ -615,17 +615,17 @@ public class TypedRagPresetBenchmarkOrchestrator {
         UUID projectId = project.getId();
 
         ExperimentalPresetCanonicalCatalog.IndexRequirements req = groupRequirements(group);
-        KnowledgeIndexSnapshotEntity snap = resolveSnapshot(run);
-        boolean hasActive = snap != null && snap.getId() != null;
-        Map<String, Object> profile = hasActive && snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
-        String profileHash = hasActive ? snap.getIndexProfileHash() : null;
+        KnowledgeIndexSnapshotEntity snap = resolveSnapshot(run, req);
+        boolean hasSnapshot = snap != null && snap.getId() != null;
+        Map<String, Object> profile = hasSnapshot && snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
+        String profileHash = hasSnapshot ? snap.getIndexProfileHash() : null;
         IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
-        IndexCompatibilityResult idx = IndexCompatibilityResult.check(req, hasActive, caps);
+        IndexCompatibilityResult idx = labIndexCompatibility(req, hasSnapshot, caps);
 
         if (idx.compatible()) {
-            return exec.withReindexAction("REUSE_ACTIVE")
+            return exec.withReindexAction("REUSE_COMPATIBLE_SNAPSHOT")
                     .withReindexStatus("REUSED")
-                    .withGroupSnapshotId(hasActive ? snap.getId() : null)
+                    .withGroupSnapshotId(hasSnapshot ? snap.getId() : null)
                     .withGroupIndexProfileHash(profileHash);
         }
 
@@ -741,12 +741,12 @@ public class TypedRagPresetBenchmarkOrchestrator {
             return PreflightIndexCompatibility.compatible(req, null, null, null);
         }
 
-        KnowledgeIndexSnapshotEntity snap = resolveSnapshot(run);
-        boolean hasActive = snap != null && snap.getId() != null;
-        Map<String, Object> profile = hasActive && snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
-        String profileHash = hasActive ? snap.getIndexProfileHash() : null;
+        KnowledgeIndexSnapshotEntity snap = resolveSnapshot(run, req);
+        boolean hasSnapshot = snap != null && snap.getId() != null;
+        Map<String, Object> profile = hasSnapshot && snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
+        String profileHash = hasSnapshot ? snap.getIndexProfileHash() : null;
         IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
-        IndexCompatibilityResult idx = IndexCompatibilityResult.check(req, hasActive, caps);
+        IndexCompatibilityResult idx = labIndexCompatibility(req, hasSnapshot, caps);
         return new PreflightIndexCompatibility(
                 idx.compatible(),
                 idx.requiresReindex(),
@@ -755,23 +755,66 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 idx.message(),
                 req,
                 caps,
-                hasActive ? snap.getId() : null,
+                hasSnapshot ? snap.getId() : null,
                 profileHash);
     }
 
-    private KnowledgeIndexSnapshotEntity resolveSnapshot(EvaluationRunEntity run) {
+    private KnowledgeIndexSnapshotEntity resolveSnapshot(
+            EvaluationRunEntity run,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
         if (run == null) {
             return null;
         }
         KnowledgeIndexSnapshotEntity explicit = run.getIndexSnapshot();
-        if (explicit != null && explicit.getId() != null) {
+        if (isCompatibleSnapshot(explicit, requirements)) {
             return explicit;
         }
         ProjectEntity p = run.getProject();
         if (p == null || p.getId() == null) {
-            return null;
+            return explicit != null && explicit.getId() != null ? explicit : null;
         }
-        return knowledgeSnapshotService.findActiveProjectSnapshot(p.getId()).orElse(null);
+        KnowledgeIndexSnapshotEntity active = knowledgeSnapshotService.findActiveProjectSnapshot(p.getId()).orElse(null);
+        if (isCompatibleSnapshot(active, requirements)) {
+            return active;
+        }
+        Optional<KnowledgeIndexSnapshotEntity> compatible =
+                knowledgeSnapshotService.findCompatibleProjectSnapshot(p.getId(), s -> isCompatibleSnapshot(s, requirements));
+        return (compatible != null ? compatible : Optional.<KnowledgeIndexSnapshotEntity>empty())
+                .orElse(explicit != null && explicit.getId() != null ? explicit : active);
+    }
+
+    private static boolean isCompatibleSnapshot(
+            KnowledgeIndexSnapshotEntity snapshot,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
+        if (snapshot == null || snapshot.getId() == null) {
+            return false;
+        }
+        Map<String, Object> profile = snapshot.getIndexProfileJsonb() != null ? snapshot.getIndexProfileJsonb() : Map.of();
+        IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
+        return IndexCompatibilityResult.check(requirements, true, caps).compatible();
+    }
+
+    private static IndexCompatibilityResult labIndexCompatibility(
+            ExperimentalPresetCanonicalCatalog.IndexRequirements req,
+            boolean hasSnapshot,
+            IndexSnapshotCapabilities caps) {
+        if (req == null
+                || req.requiredMaterialization() == null
+                || req.requiredMaterialization() == ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE) {
+            return IndexCompatibilityResult.ok();
+        }
+        if (!hasSnapshot) {
+            return IndexCompatibilityResult.requiresReindex(
+                    "REINDEX_REQUIRED",
+                    "Documents may exist, but no compatible snapshot was selected for this preset.");
+        }
+        IndexCompatibilityResult idx = IndexCompatibilityResult.check(req, true, caps);
+        if (idx.compatible()) {
+            return idx;
+        }
+        return IndexCompatibilityResult.requiresReindex(
+                "NO_COMPATIBLE_SNAPSHOT",
+                idx.message() != null ? idx.message() : "No compatible snapshot satisfies this preset.");
     }
 
     private static void enrichRows(

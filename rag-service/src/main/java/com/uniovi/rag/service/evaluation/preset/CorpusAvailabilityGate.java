@@ -19,10 +19,20 @@ import org.springframework.stereotype.Service;
 @Service
 public class CorpusAvailabilityGate {
 
-    public static final String REASON_CODE = "CORPUS_REQUIRED";
+    public static final String REASON_CODE = "CORPUS_EVIDENCE_UNAVAILABLE";
+
+    public static final String NO_CORPUS_SELECTED = "NO_CORPUS_SELECTED";
+
+    public static final String NO_DOCUMENTS = "NO_DOCUMENTS";
+
+    public static final String NO_READY_DOCUMENTS = "NO_READY_DOCUMENTS";
+
+    public static final String REINDEX_REQUIRED = "REINDEX_REQUIRED";
+
+    public static final String SNAPSHOT_VECTOR_ROWS_MISSING = "SNAPSHOT_VECTOR_ROWS_MISSING";
 
     public static final String REASON_MESSAGE =
-            "This preset requires project documents/corpus, but none was available.";
+            "This preset requires corpus evidence, but usable evidence could not be assembled.";
 
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final NamedParameterJdbcTemplate namedParameterJdbcTemplate;
@@ -40,30 +50,48 @@ public class CorpusAvailabilityGate {
         Result r = evaluate(projectId, snapshotIds);
         m.put("corpusRequired", true);
         m.put("corpusAvailable", r.satisfied());
+        m.put("evaluationCorpusProjectId", projectId != null ? projectId.toString() : null);
+        m.put("evaluationCorpusDocumentIds", r.readyDocumentIds().stream().map(UUID::toString).toList());
+        m.put("projectDocumentCount", r.projectDocumentCount());
         m.put("readySharedDocsWithStorageUriCount", r.readySharedDocsWithUriCount());
         m.put("vectorChunkRowCount", r.vectorChunkRowCount());
         if (!r.satisfied()) {
-            m.put("skippedReasonCode", REASON_CODE);
+            m.put("skippedReasonCode", r.reasonCode());
+            m.put("skippedReason", r.reasonMessage());
         }
         return Map.copyOf(m);
     }
 
     public Result evaluate(UUID projectId, List<UUID> snapshotIds) {
         if (projectId == null) {
-            return new Result(false, 0, 0, REASON_CODE, REASON_MESSAGE);
+            return failed(0, List.of(), 0, NO_CORPUS_SELECTED, "No evaluation corpus/project was selected.");
         }
-        int docsReady =
-                (int)
-                        knowledgeDocumentRepository.findByProject_IdAndCorpusScopeOrderByIdAsc(
-                                        projectId, CorpusScope.PROJECT_SHARED)
-                                .stream()
-                                .filter(CorpusAvailabilityGate::readyWithUri)
-                                .count();
+        List<KnowledgeDocumentEntity> docs = knowledgeDocumentRepository.findByProject_IdAndCorpusScopeOrderByIdAsc(
+                projectId, CorpusScope.PROJECT_SHARED);
+        if (docs == null || docs.isEmpty()) {
+            return failed(0, List.of(), 0, NO_DOCUMENTS, "The selected evaluation corpus has no documents.");
+        }
+        List<UUID> readyDocIds =
+                docs.stream()
+                        .filter(CorpusAvailabilityGate::readyWithUri)
+                        .map(KnowledgeDocumentEntity::getId)
+                        .toList();
+        int docsReady = readyDocIds.size();
         if (docsReady <= 0) {
-            return new Result(false, docsReady, 0, REASON_CODE, REASON_MESSAGE);
+            return failed(
+                    docs.size(),
+                    readyDocIds,
+                    0,
+                    NO_READY_DOCUMENTS,
+                    "The selected evaluation corpus has documents, but none are READY with stored content.");
         }
         if (snapshotIds == null || snapshotIds.isEmpty()) {
-            return new Result(false, docsReady, 0, REASON_CODE, REASON_MESSAGE);
+            return failed(
+                    docs.size(),
+                    readyDocIds,
+                    0,
+                    REINDEX_REQUIRED,
+                    "Documents are READY, but no snapshot was selected for corpus evidence.");
         }
         MapSqlParameterSource p = new MapSqlParameterSource();
         p.addValue("projectId", projectId);
@@ -79,9 +107,30 @@ public class CorpusAvailabilityGate {
                         Long.class);
         long rows = cnt != null ? cnt : 0L;
         if (rows <= 0) {
-            return new Result(false, docsReady, rows, REASON_CODE, REASON_MESSAGE);
+            return failed(
+                    docs.size(),
+                    readyDocIds,
+                    rows,
+                    SNAPSHOT_VECTOR_ROWS_MISSING,
+                    "A snapshot was selected, but it has no vector rows for the evaluation corpus.");
         }
-        return new Result(true, docsReady, rows, null, null);
+        return new Result(true, docs.size(), readyDocIds, docsReady, rows, null, null);
+    }
+
+    private static Result failed(
+            int projectDocumentCount,
+            List<UUID> readyDocumentIds,
+            long vectorRows,
+            String reasonCode,
+            String reasonMessage) {
+        return new Result(
+                false,
+                projectDocumentCount,
+                readyDocumentIds != null ? List.copyOf(readyDocumentIds) : List.of(),
+                readyDocumentIds != null ? readyDocumentIds.size() : 0,
+                vectorRows,
+                reasonCode,
+                reasonMessage);
     }
 
     private static boolean readyWithUri(KnowledgeDocumentEntity d) {
@@ -93,6 +142,8 @@ public class CorpusAvailabilityGate {
 
     public record Result(
             boolean satisfied,
+            int projectDocumentCount,
+            List<UUID> readyDocumentIds,
             int readySharedDocsWithUriCount,
             long vectorChunkRowCount,
             String reasonCode,

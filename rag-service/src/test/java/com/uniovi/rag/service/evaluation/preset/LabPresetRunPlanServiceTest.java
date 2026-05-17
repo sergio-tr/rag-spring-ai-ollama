@@ -128,6 +128,30 @@ class LabPresetRunPlanServiceTest {
     }
 
     @Test
+    void compatible_non_active_snapshot_is_selected_instead_of_incompatible_active_snapshot() {
+        UUID projectId = UUID.randomUUID();
+        UUID compatibleSnapshotId = UUID.randomUUID();
+        KnowledgeSnapshotService snapshotService = Mockito.mock(KnowledgeSnapshotService.class);
+        when(snapshotService.findActiveProjectSnapshot(projectId))
+                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", false, "active", UUID.randomUUID())));
+        when(snapshotService.findCompatibleProjectSnapshot(Mockito.eq(projectId), Mockito.any()))
+                .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "compatible", compatibleSnapshotId)));
+        LabPresetRunPlanService sut = new LabPresetRunPlanService(snapshotService);
+
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        ProjectEntity p = Mockito.mock(ProjectEntity.class);
+        when(p.getId()).thenReturn(projectId);
+        run.setProject(p);
+
+        LabPresetRunPlanModels.LabPresetRunPlan plan = sut.build(run, List.of(RagExperimentalPresetCode.P8));
+
+        assertThat(plan.executablePresetCodes()).containsExactly("P8");
+        assertThat(plan.groups()).hasSize(1);
+        assertThat(plan.groups().get(0).compatibleSnapshotId()).isEqualTo(compatibleSnapshotId);
+        assertThat(plan.groups().get(0).activeSnapshotCapabilities()).containsEntry("materializationStrategy", "HYBRID");
+    }
+
+    @Test
     void no_snapshot_keeps_p0_p1_compatible_and_marks_p2_requires_reindex() {
         KnowledgeSnapshotService snapshotService = Mockito.mock(KnowledgeSnapshotService.class);
         when(snapshotService.findActiveProjectSnapshot(Mockito.any())).thenReturn(Optional.empty());
@@ -161,6 +185,30 @@ class LabPresetRunPlanServiceTest {
         assertThat(plan.groups()).hasSize(1);
         assertThat(plan.groups().get(0).groupKey()).isEqualTo(LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN);
         assertThat(plan.skippedPresetCodes()).containsKeys("P13", "P14");
+    }
+
+    @Test
+    void p0_to_p14_all_receive_run_plan_items() {
+        KnowledgeSnapshotService snapshotService = Mockito.mock(KnowledgeSnapshotService.class);
+        when(snapshotService.findActiveProjectSnapshot(Mockito.any()))
+                .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "h", UUID.randomUUID())));
+        LabPresetRunPlanService sut = new LabPresetRunPlanService(snapshotService);
+
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        ProjectEntity p = Mockito.mock(ProjectEntity.class);
+        when(p.getId()).thenReturn(UUID.randomUUID());
+        run.setProject(p);
+
+        List<RagExperimentalPresetCode> requested = List.of(RagExperimentalPresetCode.values());
+        LabPresetRunPlanModels.LabPresetRunPlan plan = sut.build(run, requested);
+
+        assertThat(plan.items()).hasSize(RagExperimentalPresetCode.values().length);
+        assertThat(plan.items().stream().map(LabPresetRunPlanModels.LabPresetRunPlanItem::presetCode).toList())
+                .containsExactlyInAnyOrderElementsOf(requested.stream().map(Enum::name).toList());
+        assertThat(plan.items().stream()
+                        .filter(i -> "P13".equals(i.presetCode()) || "P14".equals(i.presetCode()))
+                        .allMatch(LabPresetRunPlanModels.LabPresetRunPlanItem::requiresMultiTurn))
+                .isTrue();
     }
 
     private static KnowledgeIndexSnapshotEntity mockSnapshot(

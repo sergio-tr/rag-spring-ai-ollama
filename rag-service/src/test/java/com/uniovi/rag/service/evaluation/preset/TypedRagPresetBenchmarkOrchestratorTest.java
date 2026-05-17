@@ -64,7 +64,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     void defaultCorpusAvailabilityGate() {
         Mockito.lenient()
                 .when(corpusAvailabilityGate.evaluate(ArgumentMatchers.any(), ArgumentMatchers.any()))
-                .thenReturn(new CorpusAvailabilityGate.Result(true, 1, 3L, null, null));
+                .thenReturn(new CorpusAvailabilityGate.Result(true, 1, List.of(UUID.randomUUID()), 1, 3L, null, null));
         Mockito.lenient()
                 .when(corpusAvailabilityGate.probe(ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn(Map.of());
@@ -236,7 +236,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.SKIPPED.name());
         assertThat(String.valueOf(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)))
-                .isEqualTo("MATERIALIZATION_NOT_SUPPORTED");
+                .isEqualTo("NO_COMPATIBLE_SNAPSHOT");
         assertThat(rows.get(0)).containsKey("metrics_payload");
         @SuppressWarnings("unchecked")
         Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
@@ -270,6 +270,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         UUID oldSnapId = UUID.randomUUID();
         UUID newSnapId = UUID.randomUUID();
         when(knowledgeSnapshotService.findActiveProjectSnapshot(projectId))
+                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", true, "hOld", oldSnapId)))
                 .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", true, "hOld", oldSnapId)))
                 .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", true, "hOld", oldSnapId)))
                 .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "hNew", newSnapId)));
@@ -341,6 +342,60 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     }
 
     @Test
+    void autoReindex_reuses_existing_compatible_snapshot_even_when_active_snapshot_is_incompatible() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+
+        UUID projectId = UUID.randomUUID();
+        UUID compatibleSnapshotId = UUID.randomUUID();
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(projectId);
+        EvaluationRunEntity run = runWithAutoReindex(project, true);
+        UUID runId = UUID.randomUUID();
+        when(evaluationRunRepository.findById(runId)).thenReturn(Optional.of(run));
+        when(evaluationRunRepository.save(ArgumentMatchers.any())).thenAnswer(inv -> inv.getArgument(0));
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(projectId))
+                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", true, "active", UUID.randomUUID())));
+        when(knowledgeSnapshotService.findCompatibleProjectSnapshot(ArgumentMatchers.eq(projectId), ArgumentMatchers.any()))
+                .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "compatible", compatibleSnapshotId)));
+
+        RagPresetQuestion q = sampleQuestion();
+        RagPresetDefinition p8 = preset(RagExperimentalPresetCode.P8);
+        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.anyList(),
+                        ArgumentMatchers.any()))
+                .thenReturn(Map.of("results", baseRowsFor(1), "evaluation_summary", Map.of()));
+        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
+
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                runId,
+                                new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of(p8)),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                Set.of(RagExperimentalPresetCode.P8),
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
+        assertThat(mp.get("effectiveGroupSnapshotId")).isEqualTo(compatibleSnapshotId.toString());
+        assertThat(mp.get("reindexAction")).isEqualTo("REUSE_COMPATIBLE_SNAPSHOT");
+        verify(knowledgePipelineOrchestrator, never())
+                .rebuildScopeWithProfileOverride(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any());
+    }
+
+    @Test
     void p4_with_chunk_snapshot_missing_metadata_is_skipped_and_does_not_call_evaluation_service() {
         when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
@@ -370,7 +425,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.SKIPPED.name());
         assertThat(String.valueOf(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)))
-                .isEqualTo("METADATA_SUPPORT_REQUIRED");
+                .isEqualTo("NO_COMPATIBLE_SNAPSHOT");
         Mockito.verify(evaluationService, Mockito.never())
                 .evaluateWithConfigurationForRagPresetQuestions(
                         ArgumentMatchers.any(),
@@ -471,10 +526,12 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 .thenReturn(
                         new CorpusAvailabilityGate.Result(
                                 false,
+                                1,
+                                List.of(),
                                 0,
                                 0L,
-                                CorpusAvailabilityGate.REASON_CODE,
-                                CorpusAvailabilityGate.REASON_MESSAGE));
+                                CorpusAvailabilityGate.NO_READY_DOCUMENTS,
+                                "No READY documents"));
         when(corpusAvailabilityGate.probe(
                         ArgumentMatchers.eq(projectId),
                         ArgumentMatchers.argThat(ids -> ids != null && ids.size() == 1 && snapshotId.equals(ids.get(0)))))
@@ -485,7 +542,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 "corpusAvailable",
                                 false,
                                 "skippedReasonCode",
-                                CorpusAvailabilityGate.REASON_CODE));
+                                CorpusAvailabilityGate.NO_READY_DOCUMENTS));
 
         RagPresetQuestion q = sampleQuestion();
         RagPresetDefinition p0 = preset(RagExperimentalPresetCode.P0);
@@ -503,7 +560,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.SKIPPED.name());
-        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)).isEqualTo(CorpusAvailabilityGate.REASON_CODE);
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)).isEqualTo(CorpusAvailabilityGate.NO_READY_DOCUMENTS);
         Mockito.verify(evaluationService, Mockito.never())
                 .evaluateWithConfigurationForRagPresetQuestions(
                         ArgumentMatchers.any(),
@@ -513,7 +570,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
-        assertThat(mp.get("skippedReasonCode")).isEqualTo(CorpusAvailabilityGate.REASON_CODE);
+        assertThat(mp.get("skippedReasonCode")).isEqualTo(CorpusAvailabilityGate.NO_READY_DOCUMENTS);
         assertThat(mp.get("presetCode")).isEqualTo("P0");
         assertThat(mp.get("productPresetId")).isNotNull();
     }

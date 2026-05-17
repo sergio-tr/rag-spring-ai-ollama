@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -37,7 +38,6 @@ public class LabPresetRunPlanService {
      * @param requested ordered preset codes from the benchmark catalog selection (may be subset of P0–P14).
      */
     public LabPresetRunPlanModels.LabPresetRunPlan build(EvaluationRunEntity run, List<RagExperimentalPresetCode> requested) {
-        SnapshotContext snapCtx = resolveSnapshotContext(run);
         List<RagExperimentalPresetCode> ordered = dedupePreserveOrder(requested);
 
         Map<String, String> skipped = new LinkedHashMap<>();
@@ -59,9 +59,12 @@ public class LabPresetRunPlanService {
                 continue;
             }
             codes.sort(Comparator.comparingInt(RagExperimentalPresetCode::ordinal));
-            LabPresetRunPlanModels.LabPresetRunGroup gr = buildGroup(gk, codes, snapCtx, skipped, executable, items);
+            LabPresetRunPlanModels.LabPresetRunGroup gr = buildGroup(gk, codes, run, skipped, executable, items);
             groups.add(gr);
         }
+
+        SnapshotContext snapCtx =
+                resolveSnapshotContext(run, ExperimentalPresetCanonicalCatalog.IndexRequirements.none());
 
         List<String> requestedStr = ordered.stream().map(RagExperimentalPresetCode::name).toList();
         return new LabPresetRunPlanModels.LabPresetRunPlan(
@@ -72,7 +75,7 @@ public class LabPresetRunPlanService {
                 Map.copyOf(skipped),
                 snapCtx.snapshotId,
                 snapCtx.profileHash,
-                snapCtx.hasActive,
+                snapCtx.hasUsableSnapshot,
                 LabPresetRunPlanModels.STRATEGY_VERSION,
                 Instant.now());
     }
@@ -94,10 +97,14 @@ public class LabPresetRunPlanService {
     private LabPresetRunPlanModels.LabPresetRunGroup buildGroup(
             LabPresetRunGroupKey gk,
             List<RagExperimentalPresetCode> codes,
-            SnapshotContext snapCtx,
+            EvaluationRunEntity run,
             Map<String, String> skipped,
             List<String> executable,
             List<LabPresetRunPlanModels.LabPresetRunPlanItem> items) {
+        ExperimentalPresetCanonicalCatalog.IndexRequirements mergedAgg = codes.stream()
+                .map(ExperimentalPresetCanonicalCatalog::effectiveIndexRequirements)
+                .reduce(ExperimentalPresetCanonicalCatalog.IndexRequirements.none(), this::mergeRequirements);
+        SnapshotContext snapCtx = resolveSnapshotContext(run, mergedAgg);
         if (gk == LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN) {
             for (RagExperimentalPresetCode c : codes) {
                 skipped.put(c.name(), "MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED");
@@ -118,15 +125,10 @@ public class LabPresetRunPlanService {
                                 snapshotCapsMap(snapCtx.caps),
                                 LabPresetRunPlanModels.STRATEGY_VERSION));
             }
-            ExperimentalPresetCanonicalCatalog.IndexRequirements agg =
-                    codes.stream()
-                            .map(ExperimentalPresetCanonicalCatalog::effectiveIndexRequirements)
-                            .reduce(this::mergeRequirements)
-                            .orElse(ExperimentalPresetCanonicalCatalog.IndexRequirements.none());
             return new LabPresetRunPlanModels.LabPresetRunGroup(
                     gk,
                     codes.stream().map(RagExperimentalPresetCode::name).toList(),
-                    indexRequirementsMap(agg),
+                    indexRequirementsMap(mergedAgg),
                     snapshotCapsMap(snapCtx.caps),
                     snapCtx.snapshotId,
                     false,
@@ -150,15 +152,10 @@ public class LabPresetRunPlanService {
         String worstReasonCode = null;
         String worstReason = null;
         String worstStatus = "COMPATIBLE";
-        ExperimentalPresetCanonicalCatalog.IndexRequirements mergedAgg =
-                ExperimentalPresetCanonicalCatalog.IndexRequirements.none();
-
         for (RagExperimentalPresetCode c : codes) {
             ExperimentalPresetCanonicalCatalog.IndexRequirements req =
                     ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(c);
-            mergedAgg = mergeRequirements(mergedAgg, req);
-            IndexCompatibilityResult idx =
-                    IndexCompatibilityResult.check(req, snapCtx.hasActive, snapCtx.caps);
+            IndexCompatibilityResult idx = labIndexCompatibility(req, snapCtx);
             if (!idx.compatible()) {
                 allCompatible = false;
             }
@@ -196,8 +193,11 @@ public class LabPresetRunPlanService {
             for (RagExperimentalPresetCode c : codes) {
                 skipped.put(c.name(), worstReasonCode != null ? worstReasonCode : "INDEX_INCOMPATIBLE");
                 boolean requiresReindex = IndexCompatibilityResult
-                        .check(ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(c), snapCtx.hasActive, snapCtx.caps)
+                        .check(ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(c), snapCtx.hasUsableSnapshot, snapCtx.caps)
                         .requiresReindex();
+                if (!snapCtx.hasUsableSnapshot) {
+                    requiresReindex = true;
+                }
                 items.add(
                         new LabPresetRunPlanModels.LabPresetRunPlanItem(
                                 c.name(),
@@ -308,30 +308,74 @@ public class LabPresetRunPlanService {
         return copy;
     }
 
-    private SnapshotContext resolveSnapshotContext(EvaluationRunEntity run) {
-        KnowledgeIndexSnapshotEntity snap = resolveSnapshot(run);
-        boolean hasActive = snap != null && snap.getId() != null;
+    private SnapshotContext resolveSnapshotContext(
+            EvaluationRunEntity run,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
+        KnowledgeIndexSnapshotEntity snap = resolveSnapshot(run, requirements);
+        boolean hasUsableSnapshot = snap != null && snap.getId() != null;
         Map<String, Object> profile =
-                hasActive && snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
+                hasUsableSnapshot && snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
         IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
-        UUID id = hasActive ? snap.getId() : null;
-        String hash = hasActive ? snap.getIndexProfileHash() : null;
-        return new SnapshotContext(hasActive, caps, id, hash);
+        UUID id = hasUsableSnapshot ? snap.getId() : null;
+        String hash = hasUsableSnapshot ? snap.getIndexProfileHash() : null;
+        return new SnapshotContext(hasUsableSnapshot, caps, id, hash);
     }
 
-    private KnowledgeIndexSnapshotEntity resolveSnapshot(EvaluationRunEntity run) {
+    private KnowledgeIndexSnapshotEntity resolveSnapshot(
+            EvaluationRunEntity run,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
         if (run == null) {
             return null;
         }
         KnowledgeIndexSnapshotEntity explicit = run.getIndexSnapshot();
-        if (explicit != null && explicit.getId() != null) {
+        if (isCompatibleSnapshot(explicit, requirements)) {
             return explicit;
         }
         ProjectEntity p = run.getProject();
         if (p == null || p.getId() == null) {
-            return null;
+            return explicit != null && explicit.getId() != null ? explicit : null;
         }
-        return knowledgeSnapshotService.findActiveProjectSnapshot(p.getId()).orElse(null);
+        KnowledgeIndexSnapshotEntity active = knowledgeSnapshotService.findActiveProjectSnapshot(p.getId()).orElse(null);
+        if (isCompatibleSnapshot(active, requirements)) {
+            return active;
+        }
+        Optional<KnowledgeIndexSnapshotEntity> compatible =
+                knowledgeSnapshotService.findCompatibleProjectSnapshot(p.getId(), s -> isCompatibleSnapshot(s, requirements));
+        return (compatible != null ? compatible : Optional.<KnowledgeIndexSnapshotEntity>empty())
+                .orElse(explicit != null && explicit.getId() != null ? explicit : active);
+    }
+
+    private static boolean isCompatibleSnapshot(
+            KnowledgeIndexSnapshotEntity snapshot,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
+        if (snapshot == null || snapshot.getId() == null) {
+            return false;
+        }
+        Map<String, Object> profile = snapshot.getIndexProfileJsonb() != null ? snapshot.getIndexProfileJsonb() : Map.of();
+        IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
+        return IndexCompatibilityResult.check(requirements, true, caps).compatible();
+    }
+
+    private static IndexCompatibilityResult labIndexCompatibility(
+            ExperimentalPresetCanonicalCatalog.IndexRequirements req,
+            SnapshotContext snapCtx) {
+        if (req == null
+                || req.requiredMaterialization() == null
+                || req.requiredMaterialization() == ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE) {
+            return IndexCompatibilityResult.ok();
+        }
+        if (snapCtx == null || !snapCtx.hasUsableSnapshot()) {
+            return IndexCompatibilityResult.requiresReindex(
+                    "REINDEX_REQUIRED",
+                    "Documents may exist, but no compatible snapshot was selected for this preset.");
+        }
+        IndexCompatibilityResult idx = IndexCompatibilityResult.check(req, true, snapCtx.caps());
+        if (idx.compatible()) {
+            return idx;
+        }
+        return IndexCompatibilityResult.requiresReindex(
+                "NO_COMPATIBLE_SNAPSHOT",
+                idx.message() != null ? idx.message() : "No compatible snapshot satisfies this preset.");
     }
 
     private static Map<String, Object> indexRequirementsMap(ExperimentalPresetCanonicalCatalog.IndexRequirements req) {
@@ -359,5 +403,5 @@ public class LabPresetRunPlanService {
         return m;
     }
 
-    private record SnapshotContext(boolean hasActive, IndexSnapshotCapabilities caps, UUID snapshotId, String profileHash) {}
+    private record SnapshotContext(boolean hasUsableSnapshot, IndexSnapshotCapabilities caps, UUID snapshotId, String profileHash) {}
 }
