@@ -60,7 +60,7 @@ class VectorStoreProjectIdBackfillIntegrationIT {
         jdbcTemplate.update(
                 "INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)",
                 userId,
-                "tfg_r0_backfill_it@test.local",
+                "tfg_r0_backfill_it+" + userId + "@test.local",
                 "{noop}test",
                 "USER");
         jdbcTemplate.update(

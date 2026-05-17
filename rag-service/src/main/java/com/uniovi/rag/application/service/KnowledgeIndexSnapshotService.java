@@ -2,6 +2,8 @@ package com.uniovi.rag.application.service;
 
 import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
@@ -47,7 +49,53 @@ public class KnowledgeIndexSnapshotService {
                     sig,
                     rows.size());
         }
-        return rows.stream().findFirst().orElseGet(() -> createActiveProjectSnapshot(project, sig));
+        return rows.stream()
+                .findFirst()
+                .map(this::ensureLegacySnapshotHasCapabilities)
+                .orElseGet(() -> createActiveProjectSnapshot(project, sig));
+    }
+
+    private KnowledgeIndexSnapshotEntity ensureLegacySnapshotHasCapabilities(KnowledgeIndexSnapshotEntity snapshot) {
+        Map<String, Object> profile = snapshot.getIndexProfileJsonb();
+        String hash = snapshot.getIndexProfileHash();
+        boolean missingProfile = profile == null || profile.isEmpty();
+        boolean missingHash = hash == null || hash.isBlank();
+        if (!missingProfile && !missingHash) {
+            return snapshot;
+        }
+        snapshot.setIndexProfileJsonb(legacyIndexProfileJsonb());
+        snapshot.setIndexProfileHash(legacyIndexProfileHash());
+        snapshot.setUpdatedAt(Instant.now());
+        knowledgeIndexSnapshotRepository.save(snapshot);
+        return snapshot;
+    }
+
+    private static Map<String, Object> legacyIndexProfileJsonb() {
+        return legacyIndexProfile().toSnapshotJsonb();
+    }
+
+    private static String legacyIndexProfileHash() {
+        return legacyIndexProfile().profileHash();
+    }
+
+    private static ProjectIndexProfile legacyIndexProfile() {
+        return new ProjectIndexProfile(
+                UUID.fromString("00000000-0000-0000-0000-000000000000"),
+                MaterializationStrategy.CHUNK_LEVEL,
+                false,
+                null,
+                "mxbai-embed-large",
+                400,
+                null,
+                ProjectIndexProfile.computeProfileHash(
+                        MaterializationStrategy.CHUNK_LEVEL,
+                        false,
+                        null,
+                        "mxbai-embed-large",
+                        400,
+                        null),
+                null,
+                null);
     }
 
     private KnowledgeIndexSnapshotEntity createActiveProjectSnapshot(ProjectEntity project, String signatureHash) {
@@ -57,8 +105,8 @@ public class KnowledgeIndexSnapshotService {
         e.setScopeType(KnowledgeSnapshotScopeType.PROJECT);
         e.setProject(project);
         e.setStatus(IndexSnapshotStatus.ACTIVE);
-        e.setIndexProfileJsonb(Map.of());
-        e.setIndexProfileHash(null);
+        e.setIndexProfileJsonb(legacyIndexProfileJsonb());
+        e.setIndexProfileHash(legacyIndexProfileHash());
         e.setCreatedAt(now);
         e.setUpdatedAt(now);
         return knowledgeIndexSnapshotRepository.save(e);

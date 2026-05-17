@@ -8,8 +8,10 @@ import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.runtime.KnowledgeRuntimeSnapshotSelector;
+import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeIndexCompatibilityDto;
@@ -34,12 +36,18 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class RuntimeConfigValidationService {
 
+    private static final String ERROR = "ERROR";
+    private static final String WARNING = "WARNING";
+    private static final String NO_ACTIVE_INDEX = "NO_ACTIVE_INDEX";
+    private static final String INDEX_COMPATIBILITY_FIELD = "indexCompatibility";
+
     private final ConversationRepository conversationRepository;
     private final ObjectMapper objectMapper;
     private final ConfigResolverService configResolverService;
     private final WorkflowSelector workflowSelector;
     private final KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector;
     private final KnowledgeSnapshotService knowledgeSnapshotService;
+    private final KnowledgeDocumentRepository knowledgeDocumentRepository;
 
     public RuntimeConfigValidationService(
             ConversationRepository conversationRepository,
@@ -47,13 +55,15 @@ public class RuntimeConfigValidationService {
             ConfigResolverService configResolverService,
             WorkflowSelector workflowSelector,
             KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector,
-            KnowledgeSnapshotService knowledgeSnapshotService) {
+            KnowledgeSnapshotService knowledgeSnapshotService,
+            KnowledgeDocumentRepository knowledgeDocumentRepository) {
         this.conversationRepository = conversationRepository;
         this.objectMapper = objectMapper;
         this.configResolverService = configResolverService;
         this.workflowSelector = workflowSelector;
         this.knowledgeRuntimeSnapshotSelector = knowledgeRuntimeSnapshotSelector;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
+        this.knowledgeDocumentRepository = knowledgeDocumentRepository;
     }
 
     public RuntimeConfigValidateResponse validate(UUID userId, RuntimeConfigValidateRequest req) {
@@ -125,7 +135,7 @@ public class RuntimeConfigValidationService {
                             e.code() != null ? e.code() : "INCOMPATIBLE_CONFIGURATION",
                             e.message(),
                             null,
-                            "ERROR")));
+                            ERROR)));
         }
 
         String selectedWorkflow = null;
@@ -140,7 +150,7 @@ public class RuntimeConfigValidationService {
                             "UNSUPPORTED_RUNTIME_CONFIGURATION",
                             null,
                             ex.getMessage(),
-                            "ERROR"));
+                            ERROR));
         } catch (RuntimeException ex) {
             supported = false;
             valid = false;
@@ -149,7 +159,7 @@ public class RuntimeConfigValidationService {
                             "RUNTIME_CONFIG_VALIDATION_ERROR",
                             null,
                             ex.getMessage(),
-                            "ERROR"));
+                            ERROR));
         }
 
         Map<String, Object> effectiveConfig = new LinkedHashMap<>();
@@ -182,13 +192,19 @@ public class RuntimeConfigValidationService {
                                 "TOOLS_FUNCTION_CALLING_PRECEDENCE",
                                 null,
                                 "Tools and function calling are both enabled. Function calling takes precedence over deterministic tools.",
-                                "WARNING"));
+                                WARNING));
             }
             IndexSnapshotCapabilities snapCaps = IndexSnapshotCapabilities.fromIndexProfile(activeProfile);
 
             ExperimentalPresetCanonicalCatalog.IndexRequirements presetReq = resolveIndexRequirements(presetId, rag);
             IndexCompatibilityResult idx =
                     IndexCompatibilityResult.check(presetReq, hasActiveIndex, snapCaps);
+            long readyDocs =
+                    projectId != null
+                            ? knowledgeDocumentRepository.countByProject_IdAndStatus(
+                                    projectId,
+                                    ProjectDocumentStatus.READY)
+                            : 0;
 
             indexCompatibility =
                     new RuntimeIndexCompatibilityDto(
@@ -210,15 +226,28 @@ public class RuntimeConfigValidationService {
                             idx.status());
 
             if (!idx.compatible()) {
-                requiresReindex = idx.requiresReindex();
-                valid = false;
-                supported = false;
-                errors.add(
-                        new RuntimeConfigValidationIssueDto(
-                                idx.reasonCode() != null ? idx.reasonCode() : "INDEX_CAPABILITY_MISMATCH",
-                                "indexCompatibility",
-                                idx.message(),
-                                "ERROR"));
+                boolean emptyProjectWithoutSnapshot =
+                        !hasActiveIndex
+                                && readyDocs == 0
+                                && NO_ACTIVE_INDEX.equals(idx.reasonCode());
+                if (emptyProjectWithoutSnapshot) {
+                    warnings.add(
+                            new RuntimeConfigValidationIssueDto(
+                                    NO_ACTIVE_INDEX,
+                                    INDEX_COMPATIBILITY_FIELD,
+                                    "No active index snapshot yet. Upload documents and index/reindex the project before running corpus-grounded presets.",
+                                    WARNING));
+                } else {
+                    requiresReindex = idx.requiresReindex();
+                    valid = false;
+                    supported = false;
+                    errors.add(
+                            new RuntimeConfigValidationIssueDto(
+                                    idx.reasonCode() != null ? idx.reasonCode() : "INDEX_CAPABILITY_MISMATCH",
+                                    INDEX_COMPATIBILITY_FIELD,
+                                    idx.message(),
+                                    ERROR));
+                }
             } else {
                 // Snapshot has metadata but the selected preset/runtime does not require it.
                 if (hasActiveIndex && Boolean.TRUE.equals(snapCaps.supportsMetadata()) && !presetReq.requiresMetadataSupport()) {
@@ -227,29 +256,21 @@ public class RuntimeConfigValidationService {
                                     "METADATA_AVAILABLE_NOT_USED",
                                     "metadataEnabled",
                                     "Active index supports metadata, but this preset does not require metadata-aware behavior.",
-                                    "WARNING"));
+                                    WARNING));
                 }
             }
             if (!hasActiveIndex && presetReq.requiredMaterialization() == ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE) {
                 warnings.add(
                         new RuntimeConfigValidationIssueDto(
-                                "NO_ACTIVE_INDEX",
+                                NO_ACTIVE_INDEX,
                                 null,
                                 "No active index snapshot yet. Index/project capabilities will apply when documents are indexed.",
-                                "WARNING"));
+                                WARNING));
             }
         }
 
         return new RuntimeConfigValidateResponse(
                 valid, supported, effectiveConfig, errors, warnings, selectedWorkflow, indexCompatibility, requiresReindex);
-    }
-
-    private static String stringOrNull(Object o) {
-        return o instanceof String s ? s : null;
-    }
-
-    private static Boolean boolOrNull(Object o) {
-        return o instanceof Boolean b ? b : null;
     }
 
     private static Optional<UUID> parseUuidOptional(String raw) {
@@ -265,7 +286,7 @@ public class RuntimeConfigValidationService {
 
     private static ExperimentalPresetCanonicalCatalog.IndexRequirements resolveIndexRequirements(
             Optional<UUID> presetIdOpt, RagConfig rag) {
-        if (presetIdOpt != null && presetIdOpt.isPresent()) {
+        if (presetIdOpt.isPresent()) {
             var code = ExperimentalPresetCanonicalCatalog.tryResolveCodeByProductPresetId(presetIdOpt.get());
             if (code != null) {
                 return ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(code);

@@ -22,6 +22,7 @@ import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
@@ -36,11 +37,17 @@ import org.junit.jupiter.api.Test;
 
 class RuntimeConfigValidationServiceTest {
 
+    private static final String USE_RETRIEVAL = "useRetrieval";
+    private static final String MATERIALIZATION_STRATEGY = "materializationStrategy";
+    private static final String CHUNK_LEVEL = "CHUNK_LEVEL";
+    private static final String SUPPORTS_METADATA = "supportsMetadata";
+
     private ConversationRepository conversationRepository;
     private ConfigResolverService configResolverService;
     private WorkflowSelector workflowSelector;
     private KnowledgeRuntimeSnapshotSelector snapshotSelector;
     private KnowledgeSnapshotService snapshotService;
+    private KnowledgeDocumentRepository knowledgeDocumentRepository;
     private RuntimeConfigValidationService sut;
 
     @BeforeEach
@@ -50,6 +57,7 @@ class RuntimeConfigValidationServiceTest {
         workflowSelector = mock(WorkflowSelector.class);
         snapshotSelector = mock(KnowledgeRuntimeSnapshotSelector.class);
         snapshotService = mock(KnowledgeSnapshotService.class);
+        knowledgeDocumentRepository = mock(KnowledgeDocumentRepository.class);
         sut =
                 new RuntimeConfigValidationService(
                         conversationRepository,
@@ -57,11 +65,12 @@ class RuntimeConfigValidationServiceTest {
                         configResolverService,
                         workflowSelector,
                         snapshotSelector,
-                        snapshotService);
+                        snapshotService,
+                        knowledgeDocumentRepository);
     }
 
     @Test
-    void validate_directLlm_ok() {
+    void validateDirectLlmOk() {
         UUID uid = UUID.randomUUID();
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
@@ -77,13 +86,13 @@ class RuntimeConfigValidationServiceTest {
         var resp =
                 sut.validate(
                         uid,
-                        new RuntimeConfigValidateRequest(cid, null, null, Map.of("useRetrieval", false)));
+                        new RuntimeConfigValidateRequest(cid, null, null, Map.of(USE_RETRIEVAL, false)));
         assertThat(resp.valid()).isTrue();
         assertThat(resp.supported()).isTrue();
     }
 
     @Test
-    void validate_chunkLevel_ok() {
+    void validateChunkLevelOk() {
         UUID uid = UUID.randomUUID();
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
@@ -103,13 +112,13 @@ class RuntimeConfigValidationServiceTest {
                                 cid,
                                 null,
                                 null,
-                                Map.of("useRetrieval", true, "materializationStrategy", "CHUNK_LEVEL")));
+                                Map.of(USE_RETRIEVAL, true, MATERIALIZATION_STRATEGY, CHUNK_LEVEL)));
         assertThat(resp.valid()).isTrue();
         assertThat(resp.supported()).isTrue();
     }
 
     @Test
-    void validate_hybridSnapshot_satisfies_chunkLevelRequirement() {
+    void validateHybridSnapshotSatisfiesChunkLevelRequirement() {
         UUID uid = UUID.randomUUID();
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
@@ -118,7 +127,7 @@ class RuntimeConfigValidationServiceTest {
         KnowledgeIndexSnapshotEntity active = mock(KnowledgeIndexSnapshotEntity.class);
         when(active.getId()).thenReturn(UUID.randomUUID());
         when(active.getIndexProfileHash()).thenReturn("h");
-        when(active.getIndexProfileJsonb()).thenReturn(Map.of("materializationStrategy", "HYBRID", "supportsMetadata", true));
+        when(active.getIndexProfileJsonb()).thenReturn(Map.of(MATERIALIZATION_STRATEGY, "HYBRID", SUPPORTS_METADATA, true));
         when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.of(active));
         when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
 
@@ -136,7 +145,7 @@ class RuntimeConfigValidationServiceTest {
                                 cid,
                                 null,
                                 null,
-                                Map.of("useRetrieval", true, "materializationStrategy", "CHUNK_LEVEL")));
+                                Map.of(USE_RETRIEVAL, true, MATERIALIZATION_STRATEGY, CHUNK_LEVEL)));
         assertThat(resp.valid()).isTrue();
         assertThat(resp.requiresReindex()).isFalse();
         assertThat(resp.indexCompatibility()).isNotNull();
@@ -144,7 +153,7 @@ class RuntimeConfigValidationServiceTest {
     }
 
     @Test
-    void validate_chunkSnapshot_doesNotSatisfy_hybridRequirement() {
+    void validateChunkSnapshotDoesNotSatisfyHybridRequirement() {
         UUID uid = UUID.randomUUID();
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
@@ -153,7 +162,7 @@ class RuntimeConfigValidationServiceTest {
         KnowledgeIndexSnapshotEntity active = mock(KnowledgeIndexSnapshotEntity.class);
         when(active.getId()).thenReturn(UUID.randomUUID());
         when(active.getIndexProfileHash()).thenReturn("h");
-        when(active.getIndexProfileJsonb()).thenReturn(Map.of("materializationStrategy", "CHUNK_LEVEL", "supportsMetadata", true));
+        when(active.getIndexProfileJsonb()).thenReturn(Map.of(MATERIALIZATION_STRATEGY, CHUNK_LEVEL, SUPPORTS_METADATA, true));
         when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.of(active));
         when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
 
@@ -171,14 +180,81 @@ class RuntimeConfigValidationServiceTest {
                                 cid,
                                 null,
                                 null,
-                                Map.of("useRetrieval", true, "materializationStrategy", "HYBRID")));
+                                Map.of(USE_RETRIEVAL, true, MATERIALIZATION_STRATEGY, "HYBRID")));
         assertThat(resp.valid()).isFalse();
         assertThat(resp.requiresReindex()).isTrue();
         assertThat(resp.errors()).anyMatch(e -> "MATERIALIZATION_NOT_SUPPORTED".equals(e.code()));
     }
 
     @Test
-    void validate_metadataRequired_fails_whenSnapshotDoesNotSupportMetadata() {
+    void validateNoActiveSnapshotWithNoReadyDocumentsIsWarningNotReindexError() {
+        UUID uid = UUID.randomUUID();
+        UUID cid = UUID.randomUUID();
+        ConversationEntity conv = mockConversation(uid, cid);
+        when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
+        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
+        when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
+        when(knowledgeDocumentRepository.countByProject_IdAndStatus(any(), any())).thenReturn(0L);
+
+        RagConfig rag = mock(RagConfig.class);
+        when(rag.useRetrieval()).thenReturn(true);
+        when(rag.materializationStrategy()).thenReturn(MaterializationStrategy.CHUNK_LEVEL);
+        when(rag.metadataEnabled()).thenReturn(false);
+        when(configResolverService.preview(any())).thenReturn(resolvedWithRag(rag));
+        when(workflowSelector.selectFromResolved(any())).thenReturn(new DummyWorkflow());
+
+        var resp =
+                sut.validate(
+                        uid,
+                        new RuntimeConfigValidateRequest(
+                                cid,
+                                null,
+                                null,
+                                Map.of(USE_RETRIEVAL, true, MATERIALIZATION_STRATEGY, CHUNK_LEVEL)));
+
+        assertThat(resp.valid()).isTrue();
+        assertThat(resp.supported()).isTrue();
+        assertThat(resp.requiresReindex()).isFalse();
+        assertThat(resp.errors()).isEmpty();
+        assertThat(resp.warnings()).anyMatch(e -> "NO_ACTIVE_INDEX".equals(e.code()));
+    }
+
+    @Test
+    void validateNoActiveSnapshotWithReadyDocumentsRequiresReindex() {
+        UUID uid = UUID.randomUUID();
+        UUID cid = UUID.randomUUID();
+        ConversationEntity conv = mockConversation(uid, cid);
+        when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
+        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
+        when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
+        when(knowledgeDocumentRepository.countByProject_IdAndStatus(any(), any())).thenReturn(1L);
+
+        RagConfig rag = mock(RagConfig.class);
+        when(rag.useRetrieval()).thenReturn(true);
+        when(rag.materializationStrategy()).thenReturn(MaterializationStrategy.CHUNK_LEVEL);
+        when(rag.metadataEnabled()).thenReturn(false);
+        when(configResolverService.preview(any())).thenReturn(resolvedWithRag(rag));
+        when(workflowSelector.selectFromResolved(any())).thenReturn(new DummyWorkflow());
+
+        var resp =
+                sut.validate(
+                        uid,
+                        new RuntimeConfigValidateRequest(
+                                cid,
+                                null,
+                                null,
+                                Map.of(USE_RETRIEVAL, true, MATERIALIZATION_STRATEGY, CHUNK_LEVEL)));
+
+        assertThat(resp.valid()).isFalse();
+        assertThat(resp.supported()).isFalse();
+        assertThat(resp.requiresReindex()).isTrue();
+        assertThat(resp.errors()).anyMatch(e -> "NO_ACTIVE_INDEX".equals(e.code()));
+    }
+
+    @Test
+    void validateMetadataRequiredFailsWhenSnapshotDoesNotSupportMetadata() {
         UUID uid = UUID.randomUUID();
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
@@ -187,7 +263,7 @@ class RuntimeConfigValidationServiceTest {
         KnowledgeIndexSnapshotEntity active = mock(KnowledgeIndexSnapshotEntity.class);
         when(active.getId()).thenReturn(UUID.randomUUID());
         when(active.getIndexProfileHash()).thenReturn("h");
-        when(active.getIndexProfileJsonb()).thenReturn(Map.of("materializationStrategy", "CHUNK_LEVEL", "supportsMetadata", false));
+        when(active.getIndexProfileJsonb()).thenReturn(Map.of(MATERIALIZATION_STRATEGY, CHUNK_LEVEL, SUPPORTS_METADATA, false));
         when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.of(active));
         when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
 
@@ -205,14 +281,14 @@ class RuntimeConfigValidationServiceTest {
                                 cid,
                                 null,
                                 null,
-                                Map.of("useRetrieval", true, "materializationStrategy", "CHUNK_LEVEL", "metadataEnabled", true)));
+                                Map.of(USE_RETRIEVAL, true, MATERIALIZATION_STRATEGY, CHUNK_LEVEL, "metadataEnabled", true)));
         assertThat(resp.valid()).isFalse();
         assertThat(resp.requiresReindex()).isTrue();
         assertThat(resp.errors()).anyMatch(e -> "METADATA_SUPPORT_REQUIRED".equals(e.code()));
     }
 
     @Test
-    void validate_reasoningEnabled_supported_whenWorkflowSelectable() {
+    void validateReasoningEnabledSupportedWhenWorkflowSelectable() {
         UUID uid = UUID.randomUUID();
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
@@ -235,7 +311,7 @@ class RuntimeConfigValidationServiceTest {
     }
 
     @Test
-    void validate_rankerEnabled_requiresRetrieval_invalid() {
+    void validateRankerEnabledRequiresRetrievalInvalid() {
         UUID uid = UUID.randomUUID();
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
@@ -253,14 +329,14 @@ class RuntimeConfigValidationServiceTest {
                 sut.validate(
                         uid,
                         new RuntimeConfigValidateRequest(
-                                cid, null, null, Map.of("rankerEnabled", true, "useRetrieval", false)));
+                                cid, null, null, Map.of("rankerEnabled", true, USE_RETRIEVAL, false)));
         assertThat(resp.valid()).isFalse();
         assertThat(resp.supported()).isFalse();
         assertThat(resp.errors()).isNotEmpty();
     }
 
     @Test
-    void validate_useAdvisor_requiresRetrieval_invalid() {
+    void validateUseAdvisorRequiresRetrievalInvalid() {
         UUID uid = UUID.randomUUID();
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
@@ -281,7 +357,7 @@ class RuntimeConfigValidationServiceTest {
                                 cid,
                                 null,
                                 null,
-                                Map.of("useAdvisor", true, "useRetrieval", false)));
+                                Map.of("useAdvisor", true, USE_RETRIEVAL, false)));
         assertThat(resp.valid()).isFalse();
         assertThat(resp.supported()).isFalse();
     }
