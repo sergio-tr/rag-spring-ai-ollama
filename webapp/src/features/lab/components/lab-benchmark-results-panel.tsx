@@ -272,7 +272,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             </table>
           </div>
           <p className="text-muted-foreground text-[11px]">
-            Exports are designed for TFG tables: use summary.csv for aggregated rows and items.csv for per-item analysis.
+            Exports are designed for tables: use summary.csv for aggregated rows and items.csv for per-item analysis.
           </p>
         </div>
       ) : null}

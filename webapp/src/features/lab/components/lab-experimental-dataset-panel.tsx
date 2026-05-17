@@ -312,7 +312,7 @@ export function LabExperimentalDatasetPanel() {
                   </div>
                   {row.isDemoDataset ? (
                     <p className="text-destructive mt-1 text-xs" data-testid="lab-dataset-demo-warning">
-                      {t("datasetBlockedDemoTfg")}
+                      {t("datasetBlockedDemo")}
                     </p>
                   ) : null}
                 </li>

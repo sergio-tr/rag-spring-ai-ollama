@@ -329,7 +329,7 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.getByTestId("lab-experimental-presets-select-core")).toBeInTheDocument();
   });
 
-  it("blocks running when dataset is marked as demo for TFG", () => {
+  it("blocks running when dataset is marked as demo", () => {
     vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
       data: [
         {

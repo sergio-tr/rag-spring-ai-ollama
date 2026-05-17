@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, type UseQueryResult } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
+import type { ExperimentalDatasetListItemDto, LabStatusResponse } from "@/types/api";
 
 vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => (
@@ -42,6 +43,19 @@ vi.mock("@/features/help/HelpPopover", () => ({
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 
+type QueryMock<T> = Partial<UseQueryResult<T, Error>> & {
+  data: T | undefined;
+  isLoading: boolean;
+  isError: boolean;
+};
+
+function queryMock<T>(value: QueryMock<T>): UseQueryResult<T, Error> {
+  return {
+    refetch: vi.fn(),
+    ...value,
+  } as unknown as UseQueryResult<T, Error>;
+}
+
 describe("LabOverviewPage", () => {
   let LabOverviewPage: typeof import("./page").default;
 
@@ -53,20 +67,20 @@ describe("LabOverviewPage", () => {
     LabOverviewPage = (await import("./page")).default;
     vi.mocked(useLabStatus).mockReset();
     vi.mocked(useExperimentalDatasetsQuery).mockReset();
-    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue(queryMock<ExperimentalDatasetListItemDto[]>({
       data: [],
       isLoading: false,
       isError: false,
-    } as never);
+    }));
   });
 
   it("shows error state without throwing when status fetch fails", () => {
-    vi.mocked(useLabStatus).mockReturnValue({
+    vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
       data: undefined,
       isError: true,
       isLoading: false,
       refetch: vi.fn(),
-    } as never);
+    }));
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>
@@ -78,7 +92,7 @@ describe("LabOverviewPage", () => {
   });
 
   it("renders dataset overview table with counts and demo badge when datasets are present", async () => {
-    vi.mocked(useLabStatus).mockReturnValue({
+    vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
       data: {
         datasetKindsReady: true,
         datasets: { enabled: true, datasetKindsReady: true },
@@ -91,8 +105,8 @@ describe("LabOverviewPage", () => {
       isError: false,
       isLoading: false,
       refetch: vi.fn(),
-    } as never);
-    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+    }));
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue(queryMock<ExperimentalDatasetListItemDto[]>({
       data: [
         {
           id: "550e8400-e29b-41d4-a716-446655440000",
@@ -114,7 +128,7 @@ describe("LabOverviewPage", () => {
       ],
       isLoading: false,
       isError: false,
-    } as never);
+    }));
 
     LabOverviewPage = (await import("./page")).default;
     render(
@@ -130,7 +144,7 @@ describe("LabOverviewPage", () => {
   });
 
   it("shows typed reference workbook counts when backend reports dataset kinds ready", () => {
-    vi.mocked(useLabStatus).mockReturnValue({
+    vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
       data: {
         datasetKindsReady: true,
         datasets: { enabled: true, datasetKindsReady: true },
@@ -148,7 +162,7 @@ describe("LabOverviewPage", () => {
       isError: false,
       isLoading: false,
       refetch: vi.fn(),
-    } as never);
+    }));
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>
@@ -163,7 +177,7 @@ describe("LabOverviewPage", () => {
   });
 
   it("shows simplified overview copy without endpoint-heavy primer text", () => {
-    vi.mocked(useLabStatus).mockReturnValue({
+    vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
       data: {
         datasetKindsReady: false,
         datasets: { enabled: false, datasetKindsReady: false },
@@ -174,7 +188,7 @@ describe("LabOverviewPage", () => {
       isError: false,
       isLoading: false,
       refetch: vi.fn(),
-    } as never);
+    }));
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>
@@ -189,7 +203,7 @@ describe("LabOverviewPage", () => {
   });
 
   it("renders locale-aware links for the datasets anchor", () => {
-    vi.mocked(useLabStatus).mockReturnValue({
+    vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
       data: {
         datasetKindsReady: true,
         datasets: { enabled: true, datasetKindsReady: true },
@@ -202,7 +216,7 @@ describe("LabOverviewPage", () => {
       isError: false,
       isLoading: false,
       refetch: vi.fn(),
-    } as never);
+    }));
 
     render(
       <QueryClientProvider client={createTestQueryClient()}>
@@ -216,8 +230,8 @@ describe("LabOverviewPage", () => {
     expect(link).toHaveAttribute("href", "/en#datasets");
   });
 
-  it("renders the three TFG workflows with links to each evaluation page", () => {
-    vi.mocked(useLabStatus).mockReturnValue({
+  it("renders the three workflows with links to each evaluation page", () => {
+    vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
       data: {
         datasetKindsReady: true,
         datasets: { enabled: true, datasetKindsReady: true },
@@ -228,7 +242,7 @@ describe("LabOverviewPage", () => {
       isError: false,
       isLoading: false,
       refetch: vi.fn(),
-    } as never);
+    }));
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>
@@ -236,8 +250,8 @@ describe("LabOverviewPage", () => {
         </IntlTestProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getByTestId("lab-tfg-control-panel")).toBeInTheDocument();
-    expect(screen.getByText(/TFG control panel/i)).toBeInTheDocument();
+    expect(screen.getByTestId("lab-control-panel")).toBeInTheDocument();
+    expect(screen.getByText(/Control panel/i)).toBeInTheDocument();
     expect(screen.getByText(/Step 1/i)).toBeInTheDocument();
     expect(screen.getByText(/Step 2/i)).toBeInTheDocument();
     expect(screen.getByText(/Step 3/i)).toBeInTheDocument();
@@ -249,7 +263,7 @@ describe("LabOverviewPage", () => {
 
   it("collapses technical server status lines behind a disclosure by default", async () => {
     const user = userEvent.setup();
-    vi.mocked(useLabStatus).mockReturnValue({
+    vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
       data: {
         datasetKindsReady: true,
         datasets: { enabled: true, datasetKindsReady: true },
@@ -261,7 +275,7 @@ describe("LabOverviewPage", () => {
       isError: false,
       isLoading: false,
       refetch: vi.fn(),
-    } as never);
+    }));
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>
@@ -276,8 +290,8 @@ describe("LabOverviewPage", () => {
     expect(serverDetails).toHaveAttribute("open");
   });
 
-  it("does not surface compose observability filenames in the primary observability card", () => {
-    vi.mocked(useLabStatus).mockReturnValue({
+  it("does not surface compose observability filenames in the Lab overview cards", () => {
+    vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
       data: {
         datasetKindsReady: true,
         datasets: { enabled: true, datasetKindsReady: true },
@@ -289,7 +303,7 @@ describe("LabOverviewPage", () => {
       isError: false,
       isLoading: false,
       refetch: vi.fn(),
-    } as never);
+    }));
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>
@@ -297,17 +311,18 @@ describe("LabOverviewPage", () => {
         </IntlTestProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getByText(/Distributed tracing/i)).toBeInTheDocument();
+    expect(screen.getByTestId("lab-control-panel")).toBeInTheDocument();
+    expect(screen.getByText("LLM & RAG evaluations")).toBeInTheDocument();
     expect(screen.queryByText(/compose\.obs\.yml/i)).not.toBeInTheDocument();
   });
 
   it("shows loading copy when status is loading", () => {
-    vi.mocked(useLabStatus).mockReturnValue({
+    vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
       data: undefined,
       isError: false,
       isLoading: true,
       refetch: vi.fn(),
-    } as never);
+    }));
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>

@@ -50,72 +50,72 @@ export default function LabOverviewPage() {
 
   return (
     <div className="space-y-6">
-      <Card data-testid="lab-tfg-control-panel">
+      <Card data-testid="lab-control-panel">
         <CardHeader>
-          <CardTitle>{t("tfgControlPanelTitle")}</CardTitle>
-          <CardDescription>{t("tfgControlPanelDescription")}</CardDescription>
+          <CardTitle>{t("controlPanelTitle")}</CardTitle>
+          <CardDescription>{t("controlPanelDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="space-y-2">
-            <p className="text-sm font-medium">{t("tfgStep1Title")}</p>
-            <p className="text-muted-foreground text-xs">{t("tfgStep1Body")}</p>
+            <p className="text-sm font-medium">{t("step1Title")}</p>
+            <p className="text-muted-foreground text-xs">{t("step1Body")}</p>
             <div className="flex flex-wrap gap-2 text-xs">
               <Badge variant={status?.referenceBundleValid === true ? "default" : "secondary"}>
                 {status?.referenceBundleValid === true
-                  ? t("tfgStep1ReferenceBundleValid")
-                  : t("tfgStep1ReferenceBundleUnknown")}
+                  ? t("step1ReferenceBundleValid")
+                  : t("step1ReferenceBundleUnknown")}
               </Badge>
               <Badge variant={(experimentalList.data?.length ?? 0) > 0 ? "outline" : "secondary"}>
-                {t("tfgStep1UploadsBadge", { n: experimentalList.data?.length ?? 0 })}
+                {t("step1UploadsBadge", { n: experimentalList.data?.length ?? 0 })}
               </Badge>
               <Link
                 className="text-primary inline-flex items-center underline underline-offset-4"
                 href="#datasets"
               >
-                {t("tfgStep1JumpToDatasets")}
+                {t("step1JumpToDatasets")}
               </Link>
             </div>
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium">{t("tfgStep2Title")}</p>
-            <p className="text-muted-foreground text-xs">{t("tfgStep2Body")}</p>
+            <p className="text-sm font-medium">{t("step2Title")}</p>
+            <p className="text-muted-foreground text-xs">{t("step2Body")}</p>
             <div className="grid gap-3 sm:grid-cols-3">
               <WorkflowCard
-                title={t("tfgFlowLlmTitle")}
-                body={t("tfgFlowLlmBody")}
-                datasetLine={t("tfgFlowLlmDataset")}
-                outputLine={t("tfgFlowLlmOutput")}
+                title={t("flowLlmTitle")}
+                body={t("flowLlmBody")}
+                datasetLine={t("flowLlmDataset")}
+                outputLine={t("flowLlmOutput")}
                 href="/lab/evaluation/llm"
-                cta={t("tfgFlowCtaOpen")}
+                cta={t("flowCtaOpen")}
                 t={t}
               />
               <WorkflowCard
-                title={t("tfgFlowEmbeddingTitle")}
-                body={t("tfgFlowEmbeddingBody")}
-                datasetLine={t("tfgFlowEmbeddingDataset")}
-                outputLine={t("tfgFlowEmbeddingOutput")}
+                title={t("flowEmbeddingTitle")}
+                body={t("flowEmbeddingBody")}
+                datasetLine={t("flowEmbeddingDataset")}
+                outputLine={t("flowEmbeddingOutput")}
                 href="/lab/evaluation/embedding"
-                cta={t("tfgFlowCtaOpen")}
+                cta={t("flowCtaOpen")}
                 t={t}
               />
               <WorkflowCard
-                title={t("tfgFlowRagTitle")}
-                body={t("tfgFlowRagBody")}
-                datasetLine={t("tfgFlowRagDataset")}
-                outputLine={t("tfgFlowRagOutput")}
+                title={t("flowRagTitle")}
+                body={t("flowRagBody")}
+                datasetLine={t("flowRagDataset")}
+                outputLine={t("flowRagOutput")}
                 href="/lab/evaluation/rag"
-                cta={t("tfgFlowCtaOpen")}
+                cta={t("flowCtaOpen")}
                 t={t}
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium">{t("tfgStep3Title")}</p>
-            <p className="text-muted-foreground text-xs">{t("tfgStep3Body")}</p>
+            <p className="text-sm font-medium">{t("step3Title")}</p>
+            <p className="text-muted-foreground text-xs">{t("step3Body")}</p>
             <div className="rounded-md border bg-muted/20 p-3 text-xs">
-              <p className="text-muted-foreground">{t("tfgStep3Hint")}</p>
+              <p className="text-muted-foreground">{t("step3Hint")}</p>
             </div>
           </div>
         </CardContent>
@@ -315,22 +315,9 @@ export default function LabOverviewPage() {
       </Card>
 
       <div id="datasets" />
+      
       <LabExperimentalDatasetPanel />
 
-      <Card>
-        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <CardTitle className="text-base">{t("obsTitle")}</CardTitle>
-            <CardDescription>{t("obsDescription")}</CardDescription>
-          </div>
-          <HelpPopover
-            triggerAriaLabel={tHelp("labObservabilityTriggerLabel")}
-            title={tHelp("labObservabilityTitle")}
-            message={tHelp("labObservabilityMessage")}
-            details={tHelp("labObservabilityDetails")}
-          />
-        </CardHeader>
-      </Card>
     </div>
   );
 }
@@ -357,10 +344,10 @@ function WorkflowCard({
       <p className="font-medium">{title}</p>
       <p className="text-muted-foreground mt-1 text-xs leading-relaxed">{body}</p>
       <p className="text-muted-foreground mt-2 text-xs">
-        <span className="font-medium">{t("tfgFlowMetaDataset")}:</span> {datasetLine}
+        <span className="font-medium">{t("flowMetaDataset")}:</span> {datasetLine}
       </p>
       <p className="text-muted-foreground mt-1 text-xs">
-        <span className="font-medium">{t("tfgFlowMetaOutput")}:</span> {outputLine}
+        <span className="font-medium">{t("flowMetaOutput")}:</span> {outputLine}
       </p>
       <Link className="text-primary mt-2 inline-block text-xs underline-offset-4 hover:underline" href={href}>
         {cta}
@@ -441,7 +428,7 @@ function DatasetOverviewTable({
                   {r.validationStatus}
                 </Badge>
                 {r.isDemoDataset ? (
-                  <p className="text-destructive mt-1 text-[11px]">{t("datasetBlockedDemoTfg")}</p>
+                  <p className="text-destructive mt-1 text-[11px]">{t("datasetBlockedDemo")}</p>
                 ) : null}
               </td>
             </tr>

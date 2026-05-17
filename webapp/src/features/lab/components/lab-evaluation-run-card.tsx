@@ -1158,7 +1158,7 @@ export function LabEvaluationRunCard({
 
           {hardBlocked ? (
             <p className="text-destructive text-sm" role="alert" data-testid="lab-dataset-blocked-demo">
-              {t("datasetBlockedDemoTfg")}
+              {t("datasetBlockedDemo")}
             </p>
           ) : null}
 

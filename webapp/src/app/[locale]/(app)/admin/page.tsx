@@ -1,7 +1,6 @@
 "use client";
 
-import { apiFetch } from "@/lib/api-client";
-import { apiProductPath } from "@/lib/api-client";
+import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,7 +15,7 @@ import type {
 } from "@/types/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 const modelsKey = ["admin", "models"] as const;
 
@@ -24,8 +23,6 @@ export default function AdminHomePage() {
   const t = useTranslations("Admin");
   const tLab = useTranslations("Lab");
   const qc = useQueryClient();
-  const [health, setHealth] = useState<unknown>(null);
-  const [healthErr, setHealthErr] = useState<string | null>(null);
   const [newModelId, setNewModelId] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
   const [newType, setNewType] = useState<"LLM" | "EMBEDDING">("LLM");
@@ -39,21 +36,6 @@ export default function AdminHomePage() {
   const [pullRunning, setPullRunning] = useState(false);
   const [pullProgress, setPullProgress] = useState<string | null>(null);
   const pullAbortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const h = await apiFetch<unknown>(apiProductPath("/admin/health"));
-        if (!cancelled) setHealth(h);
-      } catch {
-        if (!cancelled) setHealthErr(t("forbiddenOrError"));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [t]);
 
   const listQ = useQuery({
     queryKey: modelsKey,
@@ -131,29 +113,11 @@ export default function AdminHomePage() {
         <h1 className="font-semibold text-2xl tracking-tight">{t("title")}</h1>
         <p className="text-muted-foreground text-sm">{t("subtitle")}</p>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("healthCardTitle")}</CardTitle>
-          <CardDescription>{t("healthCardDescription")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {healthErr && (
-            <p className="text-destructive text-sm" role="alert">
-              {healthErr}
-            </p>
-          )}
-          {!healthErr && health != null ? (
-            <pre className="bg-muted/40 max-h-[200px] overflow-auto rounded-md border border-border p-3 text-xs">
-              {JSON.stringify(health, null, 2)}
-            </pre>
-          ) : null}
-        </CardContent>
-      </Card>
 
-      <Card>
+      <Card data-testid="admin-models-card">
         <CardHeader>
           <CardTitle>{t("allowlistTitle")}</CardTitle>
-          <CardDescription>{t("allowlistDescriptionV5")}</CardDescription>
+          <CardDescription>{t("allowlistDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {listQ.isError ? (
