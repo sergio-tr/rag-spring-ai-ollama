@@ -186,6 +186,20 @@ export async function openChatDocumentsSheet(page: Page): Promise<Locator> {
   return sheet;
 }
 
+export async function createNewChatConversation(page: Page): Promise<void> {
+  await page.getByTestId("chat-new-conversation").click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible({ timeout: 15_000 });
+  await dialog.getByRole("button", { name: /^(create|crear)$/i }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 20_000 });
+  await expect(page).toHaveURL(/[?&]conversationId=[a-f0-9-]{36}/i, { timeout: 20_000 });
+  const conversationId = new URL(page.url()).searchParams.get("conversationId");
+  if (!conversationId) {
+    throw new Error(`createNewChatConversation: missing conversationId in URL ${page.url()}`);
+  }
+  await expect(page.getByTestId(`conversation-item-${conversationId}`)).toBeVisible({ timeout: 20_000 });
+}
+
 function chatComposerLocators(page: Page): {
   textarea: Locator;
   sendButton: Locator;
@@ -273,6 +287,15 @@ export async function sendChatMessage(page: Page, message: string, options?: Sen
     await expect(newConversationButton).toBeVisible({ timeout: 8_000 });
   }
   await newConversationButton.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible({ timeout: 15_000 });
+  await dialog.getByRole("button", { name: /^(create|crear)$/i }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 20_000 });
+  await expect(page).toHaveURL(/[?&]conversationId=[a-f0-9-]{36}/i, { timeout: 20_000 });
+  const conversationId = new URL(page.url()).searchParams.get("conversationId");
+  if (conversationId) {
+    await expect(page.getByTestId(`conversation-item-${conversationId}`)).toBeVisible({ timeout: 20_000 });
+  }
   await prepareComposer();
   if (await clickSendWhenEnabled(sendEnabledTimeoutMs)) {
     return;

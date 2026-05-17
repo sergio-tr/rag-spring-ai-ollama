@@ -6,6 +6,7 @@ import {
 } from "../support/chat-assistant";
 import {
   createAndActivateProject,
+  createNewChatConversation,
   loginAsSeedUser,
   openChatConfigurationPanel,
   sendChatMessage,
@@ -20,7 +21,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     await expect(
       page.getByRole("main").getByRole("button", { name: /^send$|^enviar$/i }),
@@ -58,7 +59,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     await sendChatMessage(page, "Buenos dias");
     await expect(page.getByText("Buenos dias")).toBeVisible({ timeout: 15_000 });
@@ -90,7 +91,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     await sendChatMessage(page, "Buenos dias");
 
@@ -119,7 +120,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await waitForDocumentReadyByName(page, "e2e-limit-docs.txt", 120_000);
 
     await page.getByRole("link", { name: /^chat$/i }).click();
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     const configPanel = await openChatConfigurationPanel(page);
     const limitCb = configPanel.getByTestId("chat-limit-documents-checkbox");
@@ -173,7 +174,7 @@ test.describe("Nginx same-origin chat @fullstack @nginx @chatRuntime", () => {
     await createAndActivateProject(page, uniqueProjectName("e2e-nginx"));
 
     await page.getByRole("link", { name: /^chat$/i }).click();
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     await sendChatMessage(page, "Buenos dias");
     await expect(page.getByText("Buenos dias")).toBeVisible({ timeout: 30_000 });
@@ -204,7 +205,7 @@ test.describe("Classifier unavailable (manual ops) @fullstack @manual @chatRunti
     await createAndActivateProject(page, uniqueProjectName("e2e-class-down"));
 
     await page.getByRole("link", { name: /^chat$/i }).click();
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     await sendChatMessage(page, "Buenos dias");
     await waitForLatestAssistantNonEmpty(page, 180_000);

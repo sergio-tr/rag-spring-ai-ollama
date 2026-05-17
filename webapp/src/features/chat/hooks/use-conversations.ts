@@ -73,8 +73,15 @@ export function useCreateConversation(projectId: string | undefined) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body ?? {}),
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       if (projectId) {
+        qc.setQueryData<ConversationDto[]>(convKey(projectId), (old) => {
+          if (!old) return [data];
+          if (old.some((c) => c.id === data.id)) {
+            return old.map((c) => (c.id === data.id ? data : c));
+          }
+          return [data, ...old];
+        });
         void qc.invalidateQueries({ queryKey: convKey(projectId) });
         void qc.invalidateQueries({ queryKey: ["projects"] });
       }

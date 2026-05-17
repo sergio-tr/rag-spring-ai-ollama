@@ -3,6 +3,7 @@ import { uniqueProjectName } from "../fixtures/projects";
 import {
   authHeadersFromPage,
   createAndActivateProject,
+  createNewChatConversation,
   loginAsSeedUser,
   openChatConfigurationPanel,
   productApiUrl,
@@ -59,7 +60,7 @@ test.describe("Chat RAG", () => {
     }
     await page.keyboard.press("Escape").catch(() => undefined);
 
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
     await sendChatMessage(page, "What is in my project documents?");
 
     await expect(page.getByText(/could not send message/i)).toHaveCount(0);

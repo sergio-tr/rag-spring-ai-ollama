@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
 import {
   createAndActivateProject,
+  createNewChatConversation,
   loginAsSeedUser,
   sendChatMessage,
   waitForDocumentReadyByName,
@@ -35,7 +36,7 @@ test.describe("Phase 8 project documents chat journey @fullstack", () => {
 
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     await sendChatMessage(page, "Phase 8 journey ping");
     await expect(page.getByText("Phase 8 journey ping")).toBeVisible({ timeout: 20_000 });

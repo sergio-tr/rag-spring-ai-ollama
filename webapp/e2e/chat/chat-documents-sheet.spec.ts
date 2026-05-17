@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
 import {
   createAndActivateProject,
+  createNewChatConversation,
   loginAsSeedUser,
   openChatDocumentsSheet,
   waitForDocumentReadyByName,
@@ -33,7 +34,7 @@ test.describe("Chat manage documents sheet @fullstack", () => {
     const readyDoc = await waitForDocumentReadyByName(page, DOC_NAME, 120_000);
 
     await page.getByRole("link", { name: /^chat$/i }).click();
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
     await expect(page.getByTestId("chat-message-composer")).toBeEnabled({ timeout: 15_000 });
 
     const sheet = await openChatDocumentsSheet(page);

@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
-import { createAndActivateProject, loginAsSeedUser, openChatConfigurationPanel } from "../support/helpers";
+import {
+  createAndActivateProject,
+  createNewChatConversation,
+  loginAsSeedUser,
+  openChatConfigurationPanel,
+} from "../support/helpers";
 
 /**
  * Destructive chat delete from shell overflow menu (⋮) with confirmation dialog.
@@ -17,7 +22,7 @@ test.describe("Chat delete conversation @fullstack", () => {
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     const composer = page.getByTestId("chat-message-composer");
     await expect(composer).toBeVisible({ timeout: 25_000 });
