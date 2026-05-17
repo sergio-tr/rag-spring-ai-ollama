@@ -126,6 +126,18 @@ function streamDonePayloadFromAssistantMessage(m: MessageDto): StreamDonePayload
     "judgeCandidateSource",
     "clarificationRequired",
     "clarificationOutcome",
+    "workflowName",
+    "selectedSnapshotIds",
+    "answerPolicy",
+    "groundingPolicy",
+    "requestedDate",
+    "requestedDatePrecision",
+    "matchedDocumentDates",
+    "exactDateMatch",
+    "dateMismatchDetected",
+    "sourceDates",
+    "abstentionReason",
+    "groundingPolicyApplied",
   ];
   for (const k of keys) {
     if (meta[k] !== undefined && meta[k] !== null) {
@@ -149,6 +161,67 @@ function isAssistantClarificationTurn(m: MessageDto): boolean {
 
 function isAssistantRetryable(status: string | null | undefined): boolean {
   return status === "ERROR" || status === "CANCELLED";
+}
+
+function metadataString(meta: Record<string, unknown> | null | undefined, key: string): string | null {
+  const value = meta?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function messageMetadataString(message: MessageDto, key: string): string | null {
+  return metadataString(message.executionMetadata, key);
+}
+
+function messageMetadataList(message: MessageDto, key: string): string[] {
+  const value = message.executionMetadata?.[key];
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value === "string" && value.trim()) return value.split("|").map((x) => x.trim()).filter(Boolean);
+  return [];
+}
+
+function messageMetadataBool(message: MessageDto, key: string): boolean {
+  return coerceBool(message.executionMetadata?.[key]);
+}
+
+function hasRuntimeTraceMetadata(message: MessageDto): boolean {
+  const meta = message.executionMetadata ?? {};
+  return [
+    "traceId",
+    "workflowName",
+    "selectedSnapshotIds",
+    "retrievalDenseCandidateCount",
+    "retrievalAfterCompressionCount",
+    "requestedDate",
+    "dateMismatchDetected",
+    "groundingPolicyApplied",
+    "answerPolicy",
+    "groundingPolicy",
+  ].some((key) => meta[key] !== undefined && meta[key] !== null && String(meta[key]).trim() !== "");
+}
+
+function sourceDetectedDate(source: Record<string, unknown>): string | null {
+  const direct = source.detectedDate ?? source.documentDate ?? source.date_iso ?? source.date;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const meta = source.metadata;
+  if (meta && typeof meta === "object") {
+    const fromMeta = meta as Record<string, unknown>;
+    return metadataString(fromMeta, "detectedDate") ?? metadataString(fromMeta, "documentDate") ?? metadataString(fromMeta, "date_iso");
+  }
+  return null;
+}
+
+function sourceSnippet(source: Record<string, unknown>): string | null {
+  const value = source.snippet ?? source.excerpt ?? source.text ?? source.content;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function sourceScore(source: Record<string, unknown>): string | null {
+  const value = source.distance ?? source.score;
+  return typeof value === "number" ? value.toFixed(4) : value != null ? String(value) : null;
+}
+
+function sourceDateMismatch(sourceDate: string | null, requestedDate: string | null): boolean {
+  return Boolean(sourceDate && requestedDate && sourceDate !== requestedDate);
 }
 
 /** Defers draft hydration so nested callbacks stay shallow (Sonar nesting limit). */
@@ -1168,6 +1241,7 @@ function ChatPageInner() {
       uploadPending: uploadDoc.isPending,
       uploadError,
       uploadNotice,
+      documents: docs,
       runtimeOverride: runtimeState?.runtimeOverride ?? {},
       saveRuntimeOverride: (next) => {
         if (!conversationId) return;
@@ -1214,6 +1288,7 @@ function ChatPageInner() {
     uploadDoc.isPending,
     uploadError,
     uploadNotice,
+    docs,
     runtimeState,
     runtimeStateLoading,
     runtimeStateError,
@@ -1235,7 +1310,7 @@ function ChatPageInner() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-7rem)] min-h-[420px] flex-col gap-2 md:flex-row md:gap-3">
+    <div data-testid="chat-page" className="flex h-[calc(100dvh-7rem)] min-h-[420px] flex-col gap-2 md:flex-row md:gap-3">
       {convListCollapsed ? (
         <div className="flex w-full shrink-0 flex-col items-stretch gap-2 border-border border-b pb-2 md:w-auto md:border-b-0 md:border-r md:pb-0 md:pr-2">
           <Button
@@ -1529,9 +1604,14 @@ function ChatPageInner() {
                       {t("clarificationQuestionLabel")}
                     </p>
                   ) : null}
-                  <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                  <p
+                    className="whitespace-pre-wrap break-words"
+                    data-testid={m.role === "ASSISTANT" ? "chat-answer" : undefined}
+                  >
+                    {m.content}
+                  </p>
                   {m.role === "ASSISTANT" && Array.isArray(m.sources) && m.sources.length > 0 ? (
-                    <div className="mt-2 border-border border-t pt-2">
+                    <div className="mt-2 border-border border-t pt-2" data-testid="chat-sources">
                       <p className="text-muted-foreground text-[11px] font-medium">
                         Sources ({m.sources.length})
                       </p>
@@ -1540,16 +1620,29 @@ function ChatPageInner() {
                           const s = raw as Record<string, unknown>;
                           const file =
                             s.fileName ?? s.filename ?? s.documentName ?? s.documentId ?? `source-${idx + 1}`;
-                          const excerpt = s.excerpt ?? s.text ?? s.content ?? null;
-                          const score = s.score ?? s.distance ?? null;
+                          const requestedDate = messageMetadataString(m, "requestedDate");
+                          const detectedDate = sourceDetectedDate(s);
+                          const excerpt = sourceSnippet(s);
+                          const score = sourceScore(s);
+                          const mismatched = sourceDateMismatch(detectedDate, requestedDate);
                           return (
                             <li key={idx} className="rounded-sm bg-muted/20 px-2 py-1">
                               <div className="flex items-baseline justify-between gap-2">
                                 <span className="truncate font-medium">{String(file)}</span>
-                                {score != null ? (
-                                  <span className="font-mono text-muted-foreground">{String(score)}</span>
+                                {score ? (
+                                  <span className="font-mono text-muted-foreground">{score}</span>
                                 ) : null}
                               </div>
+                              {detectedDate ? (
+                                <p className="font-mono text-muted-foreground mt-0.5">
+                                  date={detectedDate}
+                                </p>
+                              ) : null}
+                              {mismatched ? (
+                                <p className="mt-0.5 text-amber-700 dark:text-amber-300" data-testid="chat-date-warning">
+                                  Source date differs from requested date {requestedDate}.
+                                </p>
+                              ) : null}
                               {excerpt ? (
                                 <p className="text-muted-foreground mt-0.5 line-clamp-3 whitespace-pre-wrap">
                                   {String(excerpt)}
@@ -1559,6 +1652,59 @@ function ChatPageInner() {
                           );
                         })}
                       </ul>
+                    </div>
+                  ) : null}
+                  {m.role === "ASSISTANT" && (!Array.isArray(m.sources) || m.sources.length === 0) ? (
+                    <div className="mt-2 border-border border-t pt-2 text-[11px] text-muted-foreground" data-testid="chat-sources">
+                      No sources returned for this assistant response.
+                    </div>
+                  ) : null}
+                  {m.role === "ASSISTANT" && messageMetadataBool(m, "dateMismatchDetected") ? (
+                    <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px]" data-testid="chat-date-warning">
+                      Date grounding warning: requested {messageMetadataString(m, "requestedDate") ?? "date"} did not have an exact supported source.
+                    </div>
+                  ) : null}
+                  {m.role === "ASSISTANT" && hasRuntimeTraceMetadata(m) ? (
+                    <div className="mt-2 rounded-md border bg-muted/20 px-2 py-1 text-[11px]" data-testid="chat-trace">
+                      <p className="font-medium text-muted-foreground">Trace</p>
+                      <dl className="mt-1 grid grid-cols-1 gap-1 font-mono">
+                        {messageMetadataString(m, "traceId") ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">traceId</dt>
+                            <dd className="break-all">{messageMetadataString(m, "traceId")}</dd>
+                          </div>
+                        ) : null}
+                        {messageMetadataString(m, "workflowName") ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">workflow</dt>
+                            <dd>{messageMetadataString(m, "workflowName")}</dd>
+                          </div>
+                        ) : null}
+                        {messageMetadataString(m, "requestedDate") ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">requestedDate</dt>
+                            <dd>{messageMetadataString(m, "requestedDate")}</dd>
+                          </div>
+                        ) : null}
+                        {messageMetadataList(m, "selectedSnapshotIds").length > 0 ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">snapshot</dt>
+                            <dd className="break-all">{messageMetadataList(m, "selectedSnapshotIds").join(", ")}</dd>
+                          </div>
+                        ) : null}
+                        {m.executionMetadata?.retrievalAfterCompressionCount != null ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">retrieval</dt>
+                            <dd>{String(m.executionMetadata.retrievalAfterCompressionCount)} context chunks</dd>
+                          </div>
+                        ) : null}
+                        {messageMetadataString(m, "groundingPolicyApplied") ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">dateGrounding</dt>
+                            <dd>{messageMetadataString(m, "groundingPolicyApplied")}</dd>
+                          </div>
+                        ) : null}
+                      </dl>
                     </div>
                   ) : null}
                   {m.role === "USER" && m.id === lastUserMessageId && (
@@ -1622,17 +1768,17 @@ function ChatPageInner() {
         </div>
         <div className="flex w-full min-w-0 flex-col gap-2">
           {editError && (
-            <p className="text-destructive break-words text-xs" role="alert">
+            <p className="text-destructive break-words text-xs" data-testid="chat-error" role="alert">
               {editError}
             </p>
           )}
           {sendError && (
-            <p className="text-destructive break-words text-xs" role="alert">
+            <p className="text-destructive break-words text-xs" data-testid="chat-error" role="alert">
               {sendError}
             </p>
           )}
           {patchConv.isError ? (
-            <p className="text-destructive text-xs" role="alert">
+            <p className="text-destructive text-xs" data-testid="chat-error" role="alert">
               {getSafeApiErrorMessage(patchConv.error)}
             </p>
           ) : null}
@@ -1650,13 +1796,15 @@ function ChatPageInner() {
             </p>
           ) : null}
           {runtimeBlockingMessage ? (
-            <p
-              className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive"
-              data-testid="chat-runtime-blocking-input-message"
-              role="alert"
-            >
-              {runtimeBlockingMessage}
-            </p>
+            <div data-testid="chat-error">
+              <p
+                className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+                data-testid="chat-runtime-blocking-input-message"
+                role="alert"
+              >
+                {runtimeBlockingMessage}
+              </p>
+            </div>
           ) : null}
           {conversationId &&
           activeConv?.pendingClarification &&
@@ -1681,22 +1829,24 @@ function ChatPageInner() {
               </Button>
             </div>
           ) : null}
-          <Textarea
-            data-testid="chat-message-composer"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={t("placeholder")}
-            rows={3}
-            className="resize-none"
-            aria-busy={isSending || isStreaming}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !isSending && !isStreaming && !runtimeStateInvalid) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-            disabled={isSending || isStreaming || runtimeStateInvalid}
-          />
+          <div data-testid="chat-message-input">
+            <Textarea
+              data-testid="chat-message-composer"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={t("placeholder")}
+              rows={3}
+              className="resize-none"
+              aria-busy={isSending || isStreaming}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !isSending && !isStreaming && !runtimeStateInvalid) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              disabled={isSending || isStreaming || runtimeStateInvalid}
+            />
+          </div>
           <div className="flex flex-wrap justify-end gap-2">
             <Button
               type="button"

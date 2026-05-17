@@ -5,6 +5,7 @@ import type {
   ChatRuntimeStateDto,
   ExperimentalPresetCatalogItemDto,
   ModelsCatalogResponse,
+  ProjectDocumentDto,
   RagPresetDto,
 } from "@/types/api";
 
@@ -46,6 +47,7 @@ export type ChatToolbarApi = {
   uploadPending: boolean;
   uploadError: string | null;
   uploadNotice: string | null;
+  documents?: ProjectDocumentDto[];
   runtimeOverride: Record<string, unknown>;
   saveRuntimeOverride: (next: Record<string, unknown>) => void;
   clearRuntimeOverride: () => void;

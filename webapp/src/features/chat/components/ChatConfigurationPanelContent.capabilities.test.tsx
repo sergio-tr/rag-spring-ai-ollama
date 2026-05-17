@@ -128,7 +128,35 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     expect(screen.getByTestId("chat-limit-documents-checkbox")).toBeInTheDocument();
     expect(screen.getByTestId("chat-open-documents-sheet")).toBeInTheDocument();
     expect(screen.getByTestId("chat-preset-select")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-llm-model-select")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-classifier-select")).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Default classifier \(default\)/i })).toBeInTheDocument();
+  });
+
+  it("saves topK and similarityThreshold as runtime overrides", () => {
+    const saveRuntimeOverride = vi.fn();
+    hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
+      data: { capabilities: [] },
+      isLoading: false,
+    });
+    useChatToolbarStore.setState((s) => ({
+      api: {
+        ...s.api!,
+        saveRuntimeOverride,
+        runtimeState: {
+          ...s.api!.runtimeState!,
+          effectiveConfig: { useRetrieval: true, topK: 7, similarityThreshold: 0.25 },
+        },
+      },
+    }));
+
+    renderSubject();
+    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    fireEvent.change(screen.getByTestId("chat-runtime-toggle-topK"), { target: { value: "9" } });
+    fireEvent.change(screen.getByTestId("chat-runtime-toggle-similarityThreshold"), { target: { value: "0.4" } });
+
+    expect(saveRuntimeOverride).toHaveBeenCalledWith({ topK: 9 });
+    expect(saveRuntimeOverride).toHaveBeenCalledWith({ similarityThreshold: 0.4 });
   });
 
   it("renders classifier loading errors without hiding document scope controls", () => {

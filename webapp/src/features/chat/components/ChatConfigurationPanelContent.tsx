@@ -146,6 +146,15 @@ export function ChatConfigurationPanelContent() {
       api?.runtimeState?.validation?.warnings,
     ],
   );
+  const documentCounts = useMemo(() => {
+    const docs = api?.documents ?? [];
+    return {
+      total: docs.length,
+      ready: docs.filter((d) => d.status === "READY").length,
+      ingesting: docs.filter((d) => d.status === "INGESTING").length,
+      error: docs.filter((d) => d.status === "ERROR").length,
+    };
+  }, [api?.documents]);
   const issueByField = useMemo(() => {
     const m = new Map<string, RuntimeConfigValidationIssueDto>();
     for (const issue of blockingIssues) {
@@ -373,6 +382,17 @@ export function ChatConfigurationPanelContent() {
     api?.saveRuntimeOverride(updated);
   };
 
+  const getNumberValue = (key: string, fallback: number): number => {
+    const value = mergedRuntimeFlagValues[key];
+    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  };
+
+  const setOverrideNumber = (key: string, next: number) => {
+    if (!Number.isFinite(next)) return;
+    const current = (api?.runtimeState?.runtimeOverride ?? api?.runtimeOverride ?? {}) as Record<string, unknown>;
+    api?.saveRuntimeOverride({ ...current, [key]: next });
+  };
+
   const exportEffectiveConfig = () => {
     if (!effectiveConfig || typeof effectiveConfig !== "object") return;
     const text = JSON.stringify(effectiveConfig, null, 2);
@@ -399,19 +419,21 @@ export function ChatConfigurationPanelContent() {
   return (
     <div className="flex flex-col gap-6">
       {blockingIssues.length > 0 ? (
-        <div
-          className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm"
-          data-testid="chat-runtime-blocking-banner"
-          role="alert"
-        >
-          <p className="font-medium text-destructive">Configuration is invalid.</p>
-          <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
-            {blockingIssues.map((issue) => (
-              <li key={`${issue.code}-${issue.field ?? "global"}`}>
-                {issue.message}
-              </li>
-            ))}
-          </ul>
+        <div data-testid="chat-error">
+          <div
+            className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm"
+            data-testid="chat-runtime-blocking-banner"
+            role="alert"
+          >
+            <p className="font-medium text-destructive">Configuration is invalid.</p>
+            <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+              {blockingIssues.map((issue) => (
+                <li key={`${issue.code}-${issue.field ?? "global"}`}>
+                  {issue.message}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       ) : null}
 
@@ -442,6 +464,25 @@ export function ChatConfigurationPanelContent() {
             </div>
 
             {documentScopeHint ? <MenuHint>{documentScopeHint}</MenuHint> : null}
+
+            <div className="grid grid-cols-2 gap-2 rounded-md border bg-background/50 px-3 py-2 text-xs sm:grid-cols-4">
+              <div>
+                <span className="text-muted-foreground block">Documents</span>
+                <span className="font-mono">{documentCounts.total}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block">READY</span>
+                <span className="font-mono">{documentCounts.ready}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block">INGESTING</span>
+                <span className="font-mono">{documentCounts.ingesting}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block">ERROR</span>
+                <span className="font-mono">{documentCounts.error}</span>
+              </div>
+            </div>
 
             <div className="flex flex-wrap gap-2">
               <button
@@ -500,7 +541,9 @@ export function ChatConfigurationPanelContent() {
                 ) : null}
               </div>
             ) : (
-              <MenuHint>No active index snapshot yet.</MenuHint>
+              <div data-testid="chat-snapshot-warning">
+                <MenuHint>No active index snapshot yet.</MenuHint>
+              </div>
             )}
 
             {api?.runtimeState?.indexCompatibility?.presetIndexRequirements ? (
@@ -534,7 +577,7 @@ export function ChatConfigurationPanelContent() {
             ) : null}
 
             {api?.runtimeState?.requiresReindex ? (
-              <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
+              <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs" data-testid="chat-snapshot-warning">
                 <p className="text-destructive font-medium">Reindex required for this preset.</p>
                 <p className="text-muted-foreground mt-1">
                   The active snapshot does not satisfy the preset’s index requirements (materialization/metadata). Reindex the
@@ -575,6 +618,7 @@ export function ChatConfigurationPanelContent() {
               </Label>
               <select
                 id={modelSelectId}
+                data-testid="chat-llm-model-select"
                 className={cn(
                   "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
                   api?.modelsError && "border-destructive",
@@ -607,6 +651,7 @@ export function ChatConfigurationPanelContent() {
               </Label>
               <select
                 id={classifierSelectId}
+                data-testid="chat-classifier-select"
                 className={cn(
                   "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
                   classifierModelsQuery.isError && "border-destructive",
@@ -843,6 +888,35 @@ export function ChatConfigurationPanelContent() {
 
             {runtimeOpen ? (
               <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span>topK</span>
+                    <input
+                      data-testid="chat-runtime-toggle-topK"
+                      type="number"
+                      min={1}
+                      max={100}
+                      className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+                      value={getNumberValue("topK", 5)}
+                      disabled={patchPending}
+                      onChange={(e) => setOverrideNumber("topK", Number(e.target.value))}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span>similarityThreshold</span>
+                    <input
+                      data-testid="chat-runtime-toggle-similarityThreshold"
+                      type="number"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+                      value={getNumberValue("similarityThreshold", 0)}
+                      disabled={patchPending}
+                      onChange={(e) => setOverrideNumber("similarityThreshold", Number(e.target.value))}
+                    />
+                  </label>
+                </div>
                 <div className="grid grid-cols-1 gap-3">
                   {runtimeToggles.map((cap) => {
                     const key = cap.key;
@@ -856,6 +930,7 @@ export function ChatConfigurationPanelContent() {
                           <label className="flex cursor-pointer items-center gap-3 text-sm">
                             <input
                               type="checkbox"
+                              data-testid={`chat-runtime-toggle-${key}`}
                               className="border-input size-4 rounded"
                               checked={getBooleanValue(key)}
                               disabled={!!reason || patchPending}

@@ -923,6 +923,64 @@ describe("ChatPage", () => {
     await waitFor(() => expect(followLabJob).toHaveBeenCalled());
   });
 
+  it("renders stable selectors for answer, sources, trace, date warning, and composer", async () => {
+    const user = userEvent.setup();
+    chatMessagesStore = [
+      {
+        id: "u1",
+        role: "USER",
+        content: "acta 25/02/2026",
+        createdAt: "",
+        sources: null,
+        queryType: null,
+        pipelineSteps: null,
+        status: "DONE",
+      },
+      {
+        id: "a1",
+        role: "ASSISTANT",
+        content: "No exact acta was found.",
+        createdAt: "",
+        sources: [
+          {
+            documentId: "doc-1",
+            projectDocumentId: "d1",
+            filename: "ACTA 5.pdf",
+            snippet: "meeting fragment",
+            distance: 0.12,
+            distanceLabel: "distance",
+            chunkIndex: 0,
+            detectedDate: "2025-02-25",
+            metadata: null,
+          },
+        ],
+        queryType: "DOCUMENT",
+        pipelineSteps: [],
+        status: "DONE",
+        executionMetadata: {
+          traceId: "trace-1",
+          workflowName: "dense",
+          requestedDate: "2026-02-25",
+          selectedSnapshotIds: ["snap-1"],
+          retrievalAfterCompressionCount: 1,
+          dateMismatchDetected: true,
+          groundingPolicyApplied: "true",
+        },
+      },
+    ];
+
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+
+    expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-answer")).toHaveTextContent("No exact acta");
+    expect(screen.getByTestId("chat-sources")).toHaveTextContent("ACTA 5.pdf");
+    expect(screen.getByTestId("chat-sources")).toHaveTextContent("date=2025-02-25");
+    expect(screen.getAllByTestId("chat-date-warning")[0]).toHaveTextContent(/requested date/i);
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("trace-1");
+    expect(screen.getByTestId("chat-message-input")).toBeInTheDocument();
+  });
+
   it("disables composer and send when runtime-state has blocking issues", async () => {
     const user = userEvent.setup();
     vi.mocked(apiFetch).mockImplementation((url: string | { toString(): string }, init?: RequestInit) => {
