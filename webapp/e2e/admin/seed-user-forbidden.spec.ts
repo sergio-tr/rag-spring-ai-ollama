@@ -10,8 +10,8 @@ test.describe("Admin access for seed user", () => {
     await expect(page.getByRole("link", { name: /^admin$/i })).toHaveCount(0);
     await page.goto("/en/admin");
     await expect(page.getByRole("heading", { name: /administration|administración/i })).toBeVisible();
-    await expect(page.getByText(/forbidden or unreachable|forbidden|prohibido/i).first()).toBeVisible({
-      timeout: 15_000,
-    });
+    await expect(page.getByText(/could not load allowlist|no se pudo cargar/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: /check/i })).toBeDisabled();
+    await expect(page.getByRole("button", { name: /add entry|añadir/i })).toBeDisabled();
   });
 });

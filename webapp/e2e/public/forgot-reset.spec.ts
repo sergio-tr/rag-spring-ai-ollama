@@ -2,8 +2,8 @@ import { expect, test } from "@playwright/test";
 
 async function typeResetPasswords(page: import("@playwright/test").Page, password: string, repeat: string) {
   const form = page.locator("form").first();
-  const passwordInput = form.locator("#password");
-  const repeatPasswordInput = form.locator("#confirmPassword");
+  const passwordInput = form.getByLabel(/^Password$/i);
+  const repeatPasswordInput = form.getByLabel(/^Repeat password$/i);
   await expect(passwordInput).toBeVisible();
   await expect(repeatPasswordInput).toBeVisible();
   await passwordInput.fill(password);
@@ -23,8 +23,9 @@ test.describe("Forgot/reset public flows", () => {
     });
 
     await page.goto("/en/forgot-password", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await expect(page.getByRole("heading", { name: /^Reset password$/i })).toBeVisible();
     const form = page.locator("form").first();
-    const emailInput = form.locator("#email");
+    const emailInput = form.getByLabel(/^Email$/i);
     await expect(emailInput).toBeVisible();
     await expect(emailInput).toBeEnabled();
     await emailInput.fill("user@example.com");
@@ -44,6 +45,7 @@ test.describe("Forgot/reset public flows", () => {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
+    await expect(page.getByRole("heading", { name: /^Choose new password$/i })).toBeVisible();
     const form = page.locator("form").first();
     await typeResetPasswords(page, "Password123!", "Different123!");
     await form.getByRole("button", { name: /set new password/i }).click();

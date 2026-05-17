@@ -11,7 +11,7 @@ import {
 const DOC_NAME = "e2e-p8-sheet-doc.txt";
 
 /**
- * Chat document scope sheet: open via ⋮ overflow → Manage project documents.
+ * Chat document scope sheet: open via Chat configuration → Manage project documents.
  * Assertions are scoped to {@link #chat-documents-sheet} to avoid duplicate global Close buttons (sheet chrome + footer).
  */
 test.describe("Chat manage documents sheet @fullstack", () => {

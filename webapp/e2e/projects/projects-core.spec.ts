@@ -19,8 +19,8 @@ test.describe("Projects core", () => {
   test("E2E-S5-02 documents page loads @fullstack", async ({ page }) => {
     await loginAsSeedUser(page);
     const name = uniqueProjectName("e2e-s5-docs");
-    await createAndActivateProject(page, name);
-    await page.goto("/en/documents");
+    const projectId = await createAndActivateProject(page, name);
+    await page.goto(`/en/documents?projectId=${projectId}`);
     await expect(page).toHaveURL(/[?&]projectId=/, { timeout: 15_000 });
     await expect(page.getByRole("heading", { name: /^documents$/i })).toBeVisible({ timeout: 15_000 });
   });

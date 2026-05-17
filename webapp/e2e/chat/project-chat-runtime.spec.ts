@@ -140,9 +140,9 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    const sidebarButtons = page.locator("aside div.flex.max-h-48").getByRole("button");
-    await expect(sidebarButtons.first()).toBeVisible({ timeout: 15_000 });
-    await sidebarButtons.first().click();
+    const conversationRows = page.getByTestId("conversation-list").locator('[data-testid^="conversation-item-"]');
+    await expect(conversationRows.first()).toBeVisible({ timeout: 15_000 });
+    await conversationRows.first().click();
 
     const configPanelAgain = await openChatConfigurationPanel(page);
     const limitAgain = configPanelAgain.getByTestId("chat-limit-documents-checkbox");

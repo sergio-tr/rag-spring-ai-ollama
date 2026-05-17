@@ -26,9 +26,10 @@ test.describe("Register pending flow", () => {
     });
 
     await page.goto("/en/register", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await expect(page.getByRole("heading", { name: /^Create account$/i })).toBeVisible();
     const form = page.locator("form").first();
-    const nameInput = form.locator("#name");
-    const emailInput = form.locator("#email");
+    const nameInput = form.getByLabel(/^Display name$/i);
+    const emailInput = form.getByLabel(/^Email$/i);
     await expect(nameInput).toBeVisible();
     await expect(emailInput).toBeVisible();
     await nameInput.fill("Pending User");
@@ -41,7 +42,7 @@ test.describe("Register pending flow", () => {
     await form.getByRole("checkbox", { name: /terms and conditions/i }).check();
     await form.getByRole("button", { name: /register/i }).click();
 
-    await expect(page).toHaveURL(new RegExp(`/en/register/pending\\?email=${encodeURIComponent(email)}`), {
+    await expect(page).toHaveURL(new RegExp(String.raw`/en/register/pending\?email=${encodeURIComponent(email)}`), {
       timeout: 15_000,
     });
     expect(sessionPostCount).toBe(0);

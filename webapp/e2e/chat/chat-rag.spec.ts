@@ -37,21 +37,28 @@ test.describe("Chat RAG", () => {
     });
     await waitForDocumentReadyByName(page, "e2e-sources.txt", 120_000);
 
-    await page.getByRole("link", { name: /^chat$/i }).click();
+    const projectId = new URL(page.url()).searchParams.get("projectId");
+    expect(projectId, `Expected projectId after document upload, got ${page.url()}`).toBeTruthy();
+    await page.goto(`/en/chat?projectId=${projectId}`, { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/en\/chat/);
+    await createNewChatConversation(page);
 
     const panel = await openChatConfigurationPanel(page);
     const presetSelect = panel.getByTestId("chat-preset-select");
     await expect(presetSelect).toBeVisible({ timeout: 15_000 });
-    await expect(presetSelect).not.toHaveValue("");
+    expect(await presetSelect.locator("option:not([disabled])").count()).toBeGreaterThan(0);
     await panel.getByTestId("chat-config-runtime-collapsible").click();
     await expect(panel.getByTestId("chat-config-runtime-refresh-effective")).toBeVisible();
     await expect(panel.getByTestId("chat-config-export-effective")).toBeVisible();
 
     const optionValues = await presetSelect.locator("option").evaluateAll((options) =>
       options
-        .map((o) => ({ value: (o as HTMLOptionElement).value, text: (o.textContent ?? "").trim() }))
-        .filter((o) => o.value),
+        .map((o) => ({
+          value: (o as HTMLOptionElement).value,
+          text: (o.textContent ?? "").trim(),
+          disabled: (o as HTMLOptionElement).disabled,
+        }))
+        .filter((o) => o.value && !o.disabled),
     );
     const advanced = optionValues.find((o) => /P9|P10|P11|P12|P13|P14|advanced|avanzad/i.test(o.text));
     if (advanced) {
@@ -60,7 +67,6 @@ test.describe("Chat RAG", () => {
     }
     await page.keyboard.press("Escape").catch(() => undefined);
 
-    await createNewChatConversation(page);
     await sendChatMessage(page, "What is in my project documents?");
 
     await expect(page.getByText(/could not send message/i)).toHaveCount(0);

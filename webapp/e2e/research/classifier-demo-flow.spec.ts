@@ -1,7 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
 import { createClassifierWorkbook } from "../fixtures/xlsx";
-import { createAndActivateProject, loginAsSeedUser } from "../support/helpers";
+import {
+  createAndActivateProject,
+  createNewChatConversation,
+  loginAsSeedUser,
+  openChatConfigurationPanel,
+} from "../support/helpers";
 
 test.describe.serial("Demo classifier flow @fullstack @demoHeavy", () => {
   test("train, evaluate, activate, classify, and expose selected model for chat @fullstack", async ({ page }) => {
@@ -62,9 +67,8 @@ test.describe.serial("Demo classifier flow @fullstack @demoHeavy", () => {
       .toBeVisible({ timeout: 60_000 });
 
     await page.getByRole("link", { name: /^chat$/i }).click();
-    const panelButton = page.getByTestId("chat-config-trigger");
-    await expect(panelButton).toBeVisible({ timeout: 20_000 });
-    await panelButton.click();
+    await createNewChatConversation(page);
+    await openChatConfigurationPanel(page);
     await expect(page.getByText(modelName).or(page.getByText(modelTag))).toBeVisible({ timeout: 30_000 });
   });
 });
