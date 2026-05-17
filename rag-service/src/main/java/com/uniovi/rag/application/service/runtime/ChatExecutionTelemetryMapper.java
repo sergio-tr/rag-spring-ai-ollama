@@ -70,6 +70,7 @@ public final class ChatExecutionTelemetryMapper {
 
         putReasoningTelemetry(trace, m);
         trace.retrievalDiagnostics().ifPresent(d -> putRetrievalDiagnosticsTelemetry(d, m));
+        putDateGroundingTelemetry(trace, m);
 
         parseCorpusBudgetTelemetry(trace, m);
 
@@ -161,5 +162,87 @@ public final class ChatExecutionTelemetryMapper {
         m.put("retrievalProtectedCandidateCount", d.protectedCandidateCount());
         m.put("retrievalDroppedCandidateCount", d.droppedCandidateCount());
         d.rerankScoreSummary().ifPresent(s -> m.put("retrievalRerankScoreSummaryTruncated", s));
+    }
+
+    private static void putDateGroundingTelemetry(ExecutionTrace trace, Map<String, Object> m) {
+        if (trace.stages() == null || trace.stages().isEmpty()) {
+            return;
+        }
+        Optional<ExecutionStageTrace> stage = trace.stages().stream()
+                .filter(s -> s != null
+                        && ("date_grounding_answer_policy".equals(s.stageName())
+                        || "date_grounding".equals(s.stageName())))
+                .reduce((first, second) -> second);
+        if (stage.isEmpty() || stage.get().message() == null || stage.get().message().isBlank()) {
+            return;
+        }
+        String msg = stage.get().message();
+        putIfPresent(m, "requestedDate", tokenAfter(msg, "requestedDate="));
+        putIfPresent(m, "requestedDatePrecision", tokenAfter(msg, "requestedDatePrecision="));
+        putIfPresent(m, "matchedDocumentDates", splitToken(tokenAfter(msg, "matchedDocumentDates=")));
+        putIfPresent(m, "sourceDates", splitToken(tokenAfter(msg, "sourceDates=")));
+        putIfPresent(m, "abstentionReason", tokenAfter(msg, "abstentionReason="));
+        putIfPresent(m, "groundingPolicyApplied", tokenAfter(msg, "groundingPolicyApplied="));
+        putBooleanIfPresent(m, "exactDateMatch", tokenAfter(msg, "exactDateMatch="));
+        putBooleanIfPresent(m, "dateMismatchDetected", tokenAfter(msg, "dateMismatchDetected="));
+    }
+
+    private static void putBooleanIfPresent(Map<String, Object> m, String key, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        m.put(key, Boolean.parseBoolean(value));
+    }
+
+    private static void putIfPresent(Map<String, Object> m, String key, Object value) {
+        if (value == null) {
+            return;
+        }
+        if (value instanceof String s && s.isBlank()) {
+            return;
+        }
+        if (value instanceof List<?> l && l.isEmpty()) {
+            return;
+        }
+        m.put(key, value);
+    }
+
+    private static List<String> splitToken(String value) {
+        if (value == null || value.isBlank() || "[]".equals(value)) {
+            return List.of();
+        }
+        String normalized = value.replace("[", "").replace("]", "").trim();
+        if (normalized.isBlank()) {
+            return List.of();
+        }
+        return List.of(normalized.split("\\|")).stream()
+                .filter(s -> s != null && !s.isBlank())
+                .toList();
+    }
+
+    private static String tokenAfter(String msg, String key) {
+        int start = msg.indexOf(key);
+        if (start < 0) {
+            return "";
+        }
+        start += key.length();
+        int end = msg.length();
+        for (String next : List.of(
+                "requestedDate=",
+                "requestedDatePrecision=",
+                "exactDateMatch=",
+                "dateMismatchDetected=",
+                "sourceDates=",
+                "matchedDocumentDates=",
+                "abstentionReason=",
+                "groundingPolicyApplied=",
+                "before=",
+                "after=")) {
+            int idx = msg.indexOf(next, start);
+            if (idx > start && idx < end) {
+                end = idx;
+            }
+        }
+        return msg.substring(start, end).trim();
     }
 }

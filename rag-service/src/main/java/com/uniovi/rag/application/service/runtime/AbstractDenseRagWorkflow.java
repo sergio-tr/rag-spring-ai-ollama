@@ -90,8 +90,19 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                 "preview=" + preview(effectivePromptContext)));
 
         boolean docBound = RuntimeAnswerPrompts.requiresStrictDocumentGrounding(q);
+        DateGroundingSupport.DateGroundingDecision dateDecision =
+                docBound
+                        ? DateGroundingSupport.decision(q, plan.entityExtractionResult().dates(), curated.finalCandidates())
+                        : DateGroundingSupport.decision("", curated.finalCandidates());
+        stages.add(new ExecutionStageTrace(
+                "date_grounding_answer_policy",
+                0L,
+                ExecutionStageOutcome.SUCCESS,
+                DateGroundingSupport.traceMessage(dateDecision)));
         Optional<String> mismatch =
-                docBound ? RuntimeAnswerPrompts.groundedDateMismatchMessageFor(q, curated.finalCandidates()) : Optional.empty();
+                docBound && dateDecision.dateMismatchDetected()
+                        ? Optional.of(DateGroundingSupport.mismatchMessage(q, dateDecision))
+                        : Optional.empty();
 
         String answer;
         boolean abstention = false;
@@ -102,6 +113,11 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
             abstention = true;
             abstentionReason = "no_document_evidence";
             stages.add(stage("llm", tLlm, ExecutionStageOutcome.SKIPPED, "strict_document_grounding_no_context"));
+        } else if (mismatch.isPresent()) {
+            answer = mismatch.get();
+            abstention = true;
+            abstentionReason = dateDecision.abstentionReason().isBlank() ? "date_mismatch_no_exact_source" : dateDecision.abstentionReason();
+            stages.add(stage("llm", tLlm, ExecutionStageOutcome.SKIPPED, "date_mismatch_no_exact_source"));
         } else {
             String user =
                     RuntimeAnswerPrompts.ragUserTurn(

@@ -28,7 +28,11 @@ final class RuntimeRetrievedSourceMapper {
             String projectDocumentId = str(meta.get("projectDocumentId"));
             Integer chunkIndex = intOrNull(firstPresent(meta, "chunkIndex", "chunk_index"));
             Double distance = doubleOrNull(meta.get("distance"));
-            String detectedDate = firstPresentStr(meta, "detectedDate", "documentDate");
+            String detectedDate = firstPresentStr(meta, "detectedDate", "documentDate", "date_iso", "date", "meetingDate");
+            if (detectedDate == null) {
+                String inferred = DateGroundingSupport.profile(c).isoDate();
+                detectedDate = inferred != null && !inferred.isBlank() ? inferred : null;
+            }
 
             String snippet = null;
             String text = c.content();
@@ -97,6 +101,11 @@ final class RuntimeRetrievedSourceMapper {
         copy(out, meta, "page");
         copy(out, meta, "source");
         copy(out, meta, "section");
+        copy(out, meta, "date_iso");
+        copy(out, meta, "documentDate");
+        copy(out, meta, "detectedDate");
+        copy(out, meta, "president");
+        copy(out, meta, "secretary");
         return out;
     }
 

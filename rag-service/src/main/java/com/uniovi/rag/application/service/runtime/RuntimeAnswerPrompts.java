@@ -60,11 +60,13 @@ public final class RuntimeAnswerPrompts {
 
             CRITICAL RULES:
             1. Base factual claims ONLY on the CONTEXT. Do not invent acta-specific names, dates, attendees, or facts not supported by the CONTEXT.
-            2. If the CONTEXT is non-empty, you MUST attempt a useful answer: summarize, extract, or explain what the CONTEXT supports — even if the answer may be incomplete or imperfect.
-            3. If an exact constraint (for example a specific calendar date) is not satisfied but related fragments exist, say clearly that you did not find an exact match for that constraint, mention the closest documents/dates that appear in the CONTEXT, then continue with a partial summary using cautious wording (for Spanish you may use phrases like "Con los documentos recuperados, parece que..." or "No puedo confirmarlo al 100%%, pero...").
-            4. Do NOT reply with only a generic "no information" message when the CONTEXT is non-empty.
-            5. Answer in the SAME LANGUAGE as the user's question.
-            6. Be concise.
+            2. If the question asks for a specific date/acta, answer only from sources for that exact date/acta.
+            3. If the exact date/acta is not supported by the CONTEXT, say that no matching acta/source was found; you may mention nearby actas only as alternatives, not as the answer.
+            4. Do not mix actas from different dates as if they were one document.
+            5. For roles such as president or secretary, answer only when the role and person are explicit in the CONTEXT; otherwise say the evidence does not support that field.
+            6. If evidence is partial, answer only the supported part and name the limitation.
+            7. Answer in the SAME LANGUAGE as the user's question.
+            8. Be concise.
 
             %s
             <Question> %s </Question>
@@ -79,10 +81,11 @@ public final class RuntimeAnswerPrompts {
 
             CRITICAL RULES:
             1. Do not use general world knowledge for document-specific facts.
-            2. If the CONTEXT is non-empty, produce the best grounded answer you can; prefer partial, hedged answers over refusing when fragments exist.
-            3. If a precise constraint (e.g. exact date) is not met but nearby evidence exists in the CONTEXT, explain the mismatch and still summarize supported facts with uncertainty language.
-            4. Never invent names, dates, counts, or attendees not present in the CONTEXT.
-            5. Answer in the SAME LANGUAGE as the user's question.
+            2. If the question asks for a specific date/acta, answer only from sources for that exact date/acta.
+            3. If the exact date/acta is not supported, abstain clearly and optionally mention nearby actas as alternatives only.
+            4. Never invent names, dates, counts, roles, attendees, or secretary/president fields not present in the CONTEXT.
+            5. Do not merge evidence from different actas unless the user asks for comparison.
+            6. Answer in the SAME LANGUAGE as the user's question.
 
             %s
             <Question> %s </Question>

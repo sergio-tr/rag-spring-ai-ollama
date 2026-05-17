@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /**
  * Snapshot lifecycle: BUILDING / ACTIVE / SUPERSEDED / FAILED and vector_store cleanup by snapshot id.
@@ -173,6 +174,23 @@ public class KnowledgeSnapshotService {
             log.warn("Multiple ACTIVE project snapshots found for project {} (count={}); using most recent", projectId, rows.size());
         }
         return rows.stream().findFirst();
+    }
+
+    public List<KnowledgeIndexSnapshotEntity> findProjectSnapshots(UUID projectId) {
+        if (projectId == null) {
+            return List.of();
+        }
+        return snapshotRepository.findByProjectAndScopeProjectOrderByCreatedAtDesc(
+                projectId, KnowledgeSnapshotScopeType.PROJECT);
+    }
+
+    public Optional<KnowledgeIndexSnapshotEntity> findCompatibleProjectSnapshot(
+            UUID projectId,
+            Predicate<KnowledgeIndexSnapshotEntity> compatibilityPredicate) {
+        if (compatibilityPredicate == null) {
+            return Optional.empty();
+        }
+        return findProjectSnapshots(projectId).stream().filter(compatibilityPredicate).findFirst();
     }
 
     public Optional<KnowledgeIndexSnapshotEntity> findActiveConversationSnapshot(UUID conversationId) {

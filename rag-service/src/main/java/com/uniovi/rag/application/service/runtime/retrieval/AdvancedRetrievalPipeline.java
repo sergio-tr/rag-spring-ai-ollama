@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
+import com.uniovi.rag.application.service.runtime.DateGroundingSupport;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
@@ -136,13 +137,13 @@ public class AdvancedRetrievalPipeline {
         if (!postRetrievalEnabled) {
             traces.add(skipped("retrieval_filter_advanced", "postRetrievalEnabled=false"));
             traces.add(skipped("retrieval_compress", "postRetrievalEnabled=false"));
-            filteredFinal = filteredBasic;
+            filteredFinal = applyDateGrounding(req, filteredBasic, traces);
             compressed =
                     new ContextCompressionStrategy.CompressionResult(
                             filteredFinal, new CompressionOutcome(totalChars(filteredFinal), totalChars(filteredFinal), 0, List.of("postretrieval_disabled")));
         } else {
             long tFilterAdv = System.nanoTime();
-            filteredFinal = retrievalFilter.filterAdvanced(req, plan, rerankResult.candidates());
+            filteredFinal = applyDateGrounding(req, retrievalFilter.filterAdvanced(req, plan, rerankResult.candidates()), traces);
             traces.add(stage("retrieval_filter_advanced", tFilterAdv, ExecutionStageOutcome.SUCCESS, "count=" + filteredFinal.size()));
 
             Set<String> protectedIds = protectedCandidateIds(req, plan, filteredFinal);
@@ -160,15 +161,15 @@ public class AdvancedRetrievalPipeline {
                             "count=" + compressed.candidates().size()));
             droppedByCompression = compressed.outcome() != null ? compressed.outcome().droppedCandidateCount() : 0;
 
-            if (compressed.candidates().isEmpty() && !filteredBasic.isEmpty()) {
+            if (compressed.candidates().isEmpty() && !filteredFinal.isEmpty()) {
                 traceNotes.add("postretrieval_empty_fallback_to_basic");
                 compressed =
                         new ContextCompressionStrategy.CompressionResult(
-                                filteredBasic,
+                                filteredFinal,
                                 new CompressionOutcome(
                                         totalChars(filteredFinal),
-                                        totalChars(filteredBasic),
-                                        Math.max(0, filteredFinal.size() - filteredBasic.size()),
+                                        totalChars(filteredFinal),
+                                        0,
                                         List.of("fallback_to_basic_after_empty_postretrieval")));
             }
         }
@@ -217,7 +218,7 @@ public class AdvancedRetrievalPipeline {
                         retrieved.fusedCount(),
                         rerankResult.candidates().size(),
                         rerankResult.candidates().size(),
-                        postRetrievalEnabled ? filteredFinal.size() : filteredBasic.size(),
+                        filteredFinal.size(),
                         compressed.candidates().size(),
                         protectedCount,
                         droppedByCompression,
@@ -244,6 +245,28 @@ public class AdvancedRetrievalPipeline {
 
     private static ExecutionStageTrace skipped(String name, String detail) {
         return new ExecutionStageTrace(name, 0L, ExecutionStageOutcome.SKIPPED, detail != null ? detail : "");
+    }
+
+    private static List<RetrievalCandidate> applyDateGrounding(
+            RetrievalRequest req,
+            List<RetrievalCandidate> candidates,
+            List<ExecutionStageTrace> traces) {
+        Optional<DateGroundingSupport.RequestedDate> requested =
+                DateGroundingSupport.requestedDate(req.queryText(), req.entities().dates());
+        if (requested.isEmpty()) {
+            traces.add(skipped(
+                    "date_grounding",
+                    DateGroundingSupport.traceMessage(
+                            DateGroundingSupport.decision(req.queryText(), req.entities().dates(), candidates))));
+            return candidates != null ? candidates : List.of();
+        }
+        List<RetrievalCandidate> safeCandidates = candidates != null ? candidates : List.of();
+        List<RetrievalCandidate> selected = DateGroundingSupport.preferExactDate(safeCandidates, requested.get());
+        DateGroundingSupport.DateGroundingDecision decision =
+                DateGroundingSupport.decision(req.queryText(), req.entities().dates(), selected);
+        traces.add(stage("date_grounding", System.nanoTime(), ExecutionStageOutcome.SUCCESS,
+                DateGroundingSupport.traceMessage(decision) + " before=" + safeCandidates.size() + " after=" + selected.size()));
+        return selected;
     }
 
     private static RetrievalReranker.RerankResult identityRerank(RetrievalRequest req, List<RetrievalCandidate> candidates) {

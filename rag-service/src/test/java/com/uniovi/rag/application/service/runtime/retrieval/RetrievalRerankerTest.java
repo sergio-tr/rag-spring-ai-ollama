@@ -55,10 +55,46 @@ class RetrievalRerankerTest {
         assertThat(result.candidates().getFirst().candidateId()).isEqualTo(high.candidateId());
     }
 
+    @Test
+    void rerank_exactRequestedDateOutranksSimilarWrongYear() {
+        UUID s = UUID.randomUUID();
+        RetrievalRequest req = fusionRequest("¿Resumen del acta del 25/02/2026?");
+        RetrievalCandidate wrongYear =
+                new RetrievalCandidate(
+                        s + ":a:0",
+                        "Fecha: 25 de febrero de 2025. Contenido semanticamente parecido.",
+                        Map.of("document_id", "a", "indexSnapshotId", s.toString(), "chunk_index", 0),
+                        Double.NaN,
+                        Double.NaN,
+                        1,
+                        0,
+                        s,
+                        0.20);
+        RetrievalCandidate exactDate =
+                new RetrievalCandidate(
+                        s + ":b:0",
+                        "Fecha: 25 de febrero de 2026. Contenido menos parecido.",
+                        Map.of("document_id", "b", "indexSnapshotId", s.toString(), "chunk_index", 3),
+                        Double.NaN,
+                        Double.NaN,
+                        2,
+                        0,
+                        s,
+                        0.01);
+
+        var result = reranker.rerank(req, minimalPlan(List.of()), List.of(wrongYear, exactDate));
+
+        assertThat(result.candidates().getFirst().candidateId()).isEqualTo(exactDate.candidateId());
+    }
+
     private static RetrievalRequest fusionRequest() {
+        return fusionRequest("q");
+    }
+
+    private static RetrievalRequest fusionRequest(String query) {
         UUID sid = UUID.randomUUID();
         return new RetrievalRequest(
-                "q",
+                query,
                 Map.of(),
                 List.of(),
                 List.of(),

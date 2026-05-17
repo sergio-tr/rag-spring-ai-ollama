@@ -43,6 +43,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -152,10 +153,11 @@ class ChunkDenseMetadataWorkflowTest {
     }
 
     @Test
-    void execute_whenDocBoundDateMismatch_callsLlmAndIncludesMismatchHintInPrompt() {
+    void execute_whenDocBoundDateMismatch_abstainsWithoutCallingLlm() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("llm_summary");
         when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("llm_summary");
+        clearInvocations(chatClient);
 
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
@@ -192,10 +194,17 @@ class ChunkDenseMetadataWorkflowTest {
         ExecutionContext ctx = minimalCtx(Optional.empty(), "hazme un resumen del acta del 25 de febrero de 2025");
         RagExecutionResult out = wf.execute(ctx);
 
-        assertThat(out.answerText()).isEqualTo("llm_summary");
-        verify(chatClient, atLeastOnce()).prompt();
+        assertThat(out.answerText())
+                .contains("No he encontrado un acta con fecha 2025-02-25")
+                .contains("ACTA 5.pdf (2026-02-25)");
         assertThat(out.workflowStageTraces())
-                .anyMatch(s -> "runtime_answer_meta".equals(s.stageName()) && s.message().contains("policy="));
+                .anyMatch(s -> "date_grounding_answer_policy".equals(s.stageName())
+                        && s.message().contains("dateMismatchDetected=true"));
+        assertThat(out.workflowStageTraces())
+                .anyMatch(s -> "runtime_answer_meta".equals(s.stageName())
+                        && s.message().contains("abstention=true")
+                        && s.message().contains("no_exact_date_source"));
+        verify(chatClient, never()).prompt();
     }
 
     @Test
@@ -234,7 +243,7 @@ class ChunkDenseMetadataWorkflowTest {
 
         ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(chatClient, pipeline, null);
 
-        ExecutionContext ctx = minimalCtx(Optional.empty(), "hazme un resumen del acta del 25 de febrero de 2025");
+        ExecutionContext ctx = minimalCtx(Optional.empty(), "hazme un resumen del acta del 25 de febrero de 2026");
         RagExecutionResult out = wf.execute(ctx);
 
         assertThat(out.answerText()).isEqualTo("from_fallback");
