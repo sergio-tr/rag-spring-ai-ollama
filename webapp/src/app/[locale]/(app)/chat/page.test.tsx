@@ -305,6 +305,9 @@ function patchConversationApiCalls() {
 function defaultApiFetch(url: string | { toString(): string }, init?: RequestInit): Promise<unknown> {
   const u = typeof url === "string" ? url : url.toString();
   const method = (init?.method ?? "GET").toUpperCase();
+  if (method === "GET" && /\/projects\/p1\/conversations\/?$/.test(u)) {
+    return Promise.resolve(structuredClone(mockConvRows));
+  }
   const runtimeStateMatch =
     method === "GET" ? u.match(/\/conversations\/([^/]+)\/runtime-state\/?$/) : null;
   if (runtimeStateMatch) {
@@ -918,6 +921,87 @@ describe("ChatPage", () => {
     await user.type(input, "hello");
     await user.click(screen.getByRole("button", { name: /^Send$/i }));
     await waitFor(() => expect(followLabJob).toHaveBeenCalled());
+  });
+
+  it("disables composer and send when runtime-state has blocking issues", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockImplementation((url: string | { toString(): string }, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && u.includes("/runtime-state")) {
+        return Promise.resolve({
+          conversationId: "c1",
+          selectedPresetId: null,
+          effectivePresetId: DEFAULT_EFFECTIVE_PRESET_ID,
+          preset: {
+            kind: "DEFAULT",
+            code: null,
+            label: "Recommended Default",
+            chatSelectable: true,
+            supported: true,
+            supportStatus: null,
+            reasonIfUnsupported: null,
+          },
+          baseEffectiveConfig: {},
+          effectiveConfig: {},
+          runtimeOverride: {},
+          manualOverrideKeys: [],
+          isCustom: false,
+          isValid: false,
+          blockingIssues: [
+            {
+              code: "MATERIALIZATION_NOT_SUPPORTED",
+              field: "presetId",
+              message: "Create or reindex project with compatible profile.",
+              severity: "ERROR",
+            },
+          ],
+          validation: { valid: false, supported: false, errors: [], warnings: [] },
+          selectedWorkflow: null,
+          indexCompatibility: null,
+          requiresReindex: true,
+        });
+      }
+      return defaultApiFetch(url, init);
+    });
+
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+
+    expect(await screen.findByTestId("chat-runtime-blocking-input-message")).toHaveTextContent(
+      /Create or reindex project/i,
+    );
+    expect(screen.getByTestId("chat-message-composer")).toBeDisabled();
+    expect(screen.getByTestId("chat-send-button")).toBeDisabled();
+  });
+
+  it("reverts model UI and refetches runtime-state when PATCH fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockImplementation((url: string | { toString(): string }, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "PATCH" && /\/conversations\/c1\/?$/.test(u)) {
+        throw new ApiError(422, "Model is not available", { kind: "http" });
+      }
+      return defaultApiFetch(url, init);
+    });
+
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
+    const panel = await screen.findByTestId("chat-configuration-side-panel");
+    const modelSelect = within(panel).getByRole("combobox", { name: /^LLM model$/i });
+
+    await user.selectOptions(modelSelect, "llama");
+
+    await waitFor(() => expect(modelSelect).toHaveValue(""));
+    expect(screen.getByText(/Model is not available/i)).toBeInTheDocument();
+    await waitFor(() => {
+      const runtimeCalls = vi
+        .mocked(apiFetch)
+        .mock.calls.filter((call) => String(call[0]).includes("/runtime-state"));
+      expect(runtimeCalls.length).toBeGreaterThan(1);
+    });
   });
 
   it("shows experimental preset label (P4/P6) when selectedPresetId is experimental (never Recommended Default)", async () => {

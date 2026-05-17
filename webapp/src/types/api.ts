@@ -162,9 +162,38 @@ export type ChatRuntimeStateDto = {
   manualOverrideKeys: string[];
   isCustom: boolean;
   validation: ChatRuntimeValidationDto;
+  isValid?: boolean;
+  blockingIssues?: RuntimeConfigValidationIssueDto[];
+  warnings?: RuntimeConfigValidationIssueDto[];
   selectedWorkflow: string | null;
   indexCompatibility: ConversationDto["indexCompatibility"];
   requiresReindex: boolean;
+  presetCompatibility?: PresetCompatibilityDto | null;
+  runtimeCompatibility?: RuntimeCompatibilityDto | null;
+  disabledRuntimeFeatures?: DisabledRuntimeFeatureDto[];
+  disabledPresetReason?: string | null;
+};
+
+export type DisabledRuntimeFeatureDto = {
+  key: string;
+  reasonCode: string | null;
+  reason: string;
+};
+
+export type RuntimeCompatibilityDto = {
+  valid: boolean;
+  supported: boolean;
+  selectedWorkflow: string | null;
+  blockingIssues: RuntimeConfigValidationIssueDto[];
+  warnings: RuntimeConfigValidationIssueDto[];
+};
+
+export type PresetCompatibilityDto = {
+  selectable: boolean;
+  disabledReasonCode: string | null;
+  disabledReason: string | null;
+  indexRequirements: RuntimeIndexCompatibilityDto["presetIndexRequirements"];
+  compatibleWithActiveIndex: boolean;
 };
 
 export type RagPresetDto = {

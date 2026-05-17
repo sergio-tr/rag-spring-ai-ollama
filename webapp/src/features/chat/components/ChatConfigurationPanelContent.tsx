@@ -11,6 +11,7 @@ import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import { useActiveProjectSnapshot } from "@/features/projects/hooks/use-active-project-snapshot";
 import { useProjectIndexProfile } from "@/features/projects/hooks/use-project-index-profile";
 import { cn } from "@/lib/utils";
+import type { RuntimeConfigValidationIssueDto } from "@/types/api";
 
 function Section({
   title,
@@ -121,6 +122,44 @@ export function ChatConfigurationPanelContent() {
 
   const caps = useMemo(() => capabilitiesQuery.data?.capabilities ?? [], [capabilitiesQuery.data?.capabilities]);
   const capByKey = useMemo(() => new Map(caps.map((c) => [c.key, c])), [caps]);
+  const blockingIssues = useMemo(
+    () =>
+      api?.runtimeState?.blockingIssues ??
+      api?.runtimeState?.runtimeCompatibility?.blockingIssues ??
+      api?.runtimeState?.validation?.errors ??
+      [],
+    [
+      api?.runtimeState?.blockingIssues,
+      api?.runtimeState?.runtimeCompatibility?.blockingIssues,
+      api?.runtimeState?.validation?.errors,
+    ],
+  );
+  const warningIssues = useMemo(
+    () =>
+      api?.runtimeState?.warnings ??
+      api?.runtimeState?.runtimeCompatibility?.warnings ??
+      api?.runtimeState?.validation?.warnings ??
+      [],
+    [
+      api?.runtimeState?.warnings,
+      api?.runtimeState?.runtimeCompatibility?.warnings,
+      api?.runtimeState?.validation?.warnings,
+    ],
+  );
+  const issueByField = useMemo(() => {
+    const m = new Map<string, RuntimeConfigValidationIssueDto>();
+    for (const issue of blockingIssues) {
+      if (issue.field && !m.has(issue.field)) m.set(issue.field, issue);
+    }
+    return m;
+  }, [blockingIssues]);
+  const disabledRuntimeFeatureByKey = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const item of api?.runtimeState?.disabledRuntimeFeatures ?? []) {
+      if (item.key) m.set(item.key, item.reason);
+    }
+    return m;
+  }, [api?.runtimeState?.disabledRuntimeFeatures]);
 
   const classifierModelsQuery = useClassifierModelsQuery(Boolean(api?.projectId));
 
@@ -129,9 +168,7 @@ export function ChatConfigurationPanelContent() {
       (c) =>
         (c.category === "RUNTIME_HOT_SWAPPABLE" || c.category === "ADVANCED_RUNTIME") &&
         c.visibleInChat === true &&
-        c.configurableInChat === true &&
-        c.implemented === true &&
-        c.engineWired === true,
+        c.configurableInChat === true,
     );
     filtered.sort((a, b) => a.displayOrder - b.displayOrder);
     return filtered;
@@ -155,6 +192,10 @@ export function ChatConfigurationPanelContent() {
   }
 
   const disabledReason = (key: string): string | null => {
+    const backendReason = disabledRuntimeFeatureByKey.get(key);
+    if (backendReason) return backendReason;
+    const issue = issueByField.get(key);
+    if (issue?.message) return issue.message;
     const c = capByKey.get(key);
     if (!c) return null;
     if (c.reasonIfDisabled) return c.reasonIfDisabled;
@@ -199,6 +240,46 @@ export function ChatConfigurationPanelContent() {
     api?.runtimeState?.preset && !api.runtimeState.preset.chatSelectable
       ? api.runtimeState.preset.supportStatus || "NOT_SUPPORTED"
       : null;
+  const selectedPresetDisabledReason =
+    api?.runtimeState?.disabledPresetReason ??
+    api?.runtimeState?.presetCompatibility?.disabledReason ??
+    issueByField.get("preset")?.message ??
+    issueByField.get("presetId")?.message ??
+    null;
+
+  function presetIndexDisabledReason(p: {
+    chatSelectable: boolean;
+    supportStatus: string;
+    reasonIfUnsupported: string | null;
+    indexRequirements?: {
+      requiredMaterializationStrategy: string | null;
+      requiresMetadataSupport: boolean;
+    } | null;
+  }): string | null {
+    if (!p.chatSelectable) {
+      return p.reasonIfUnsupported || p.supportStatus || "This preset is not selectable in Chat.";
+    }
+    const req = p.indexRequirements;
+    if (!req) return null;
+    const idx = api?.runtimeState?.indexCompatibility;
+    const caps = idx?.activeSnapshotCapabilities;
+    if (!idx?.hasActiveIndex || !caps) {
+      return "Create or reindex the project with a compatible index profile.";
+    }
+    const activeMat = caps.materializationStrategy;
+    const requiredMat = req.requiredMaterializationStrategy;
+    const matOk =
+      !requiredMat ||
+      activeMat === requiredMat ||
+      (activeMat === "HYBRID" && requiredMat === "CHUNK_LEVEL");
+    if (!matOk) {
+      return "Create or reindex the project with a compatible index profile.";
+    }
+    if (req.requiresMetadataSupport && caps.supportsMetadata !== true) {
+      return "Create or reindex the project with metadata support enabled.";
+    }
+    return null;
+  }
 
   useEffect(() => {
     const known = new Set(
@@ -317,6 +398,29 @@ export function ChatConfigurationPanelContent() {
 
   return (
     <div className="flex flex-col gap-6">
+      {blockingIssues.length > 0 ? (
+        <div
+          className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm"
+          data-testid="chat-runtime-blocking-banner"
+          role="alert"
+        >
+          <p className="font-medium text-destructive">Configuration is invalid.</p>
+          <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+            {blockingIssues.map((issue) => (
+              <li key={`${issue.code}-${issue.field ?? "global"}`}>
+                {issue.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {warningIssues.length > 0 ? (
+        <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground" role="status">
+          {warningIssues[0]?.message}
+        </div>
+      ) : null}
+
       <Section title="Document scope">
         <Box>
           <div className="space-y-3">
@@ -585,13 +689,34 @@ export function ChatConfigurationPanelContent() {
                   ))}
                 </optgroup>
                 <optgroup label="TFG experimental presets (P0–P14)">
-                  {experimentalUnique.map((p) => (
-                    <option key={p.productPresetId} value={p.productPresetId} disabled={!p.chatSelectable}>
-                      {experimentalPresetOptionLabel(p)}
-                    </option>
-                  ))}
+                  {experimentalUnique.map((p) => {
+                    const reason = presetIndexDisabledReason(p);
+                    return (
+                      <option
+                        key={p.productPresetId}
+                        value={p.productPresetId}
+                        disabled={Boolean(reason)}
+                        title={reason ?? undefined}
+                      >
+                        {reason && p.chatSelectable
+                          ? `${experimentalPresetOptionLabel(p)} [${reason}]`
+                          : experimentalPresetOptionLabel(p)}
+                      </option>
+                    );
+                  })}
                 </optgroup>
               </select>
+
+              {selectedPresetDisabledReason ? (
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
+                  <p className="font-medium text-destructive">{selectedPresetDisabledReason}</p>
+                  {api?.runtimeState?.requiresReindex ? (
+                    <p className="mt-1 text-muted-foreground">
+                      Create or reindex project with compatible profile.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
 
               {!api?.presetsLoading && !api?.presetsError && (api?.presets?.length ?? 0) === 0 ? (
                 <output role="status" className="text-muted-foreground text-xs">
@@ -722,6 +847,7 @@ export function ChatConfigurationPanelContent() {
                   {runtimeToggles.map((cap) => {
                     const key = cap.key;
                     const reason = disabledReason(key);
+                    const fieldIssue = issueByField.get(key);
                     const rid = `disabled-${key}`;
                     const showMultiTurn = cap.supportMode === "MULTI_TURN_REQUIRED";
                     return (
@@ -747,6 +873,9 @@ export function ChatConfigurationPanelContent() {
                             {reason ? <DisabledReason id={rid} reason={reason} /> : null}
                           </div>
                         </div>
+                        {fieldIssue ? (
+                          <MenuHint>{fieldIssue.message}</MenuHint>
+                        ) : null}
                         {showMultiTurn ? <MenuHint>{tChat("runtimeMultiTurnHint")}</MenuHint> : null}
                       </div>
                     );

@@ -386,6 +386,98 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     expect(screen.getByText(/P3 — Not supported but selectable \[NOT_SUPPORTED: incompatible index\]/)).toBeInTheDocument();
   });
 
+  it("disables experimental preset when active index profile is incompatible", () => {
+    useChatToolbarStore.setState((s) => ({
+      api: {
+        ...s.api!,
+        runtimeState: {
+          ...s.api!.runtimeState!,
+          indexCompatibility: {
+            activeProjectSnapshotId: "snap-1",
+            activeConversationSnapshotId: null,
+            activeIndexProfileHash: "h1",
+            activeIndexProfile: {},
+            hasActiveIndex: true,
+            activeSnapshotCapabilities: {
+              materializationStrategy: "CHUNK_LEVEL",
+              supportsMetadata: false,
+              embeddingModelId: "mxbai",
+              chunkMaxChars: 400,
+              chunkOverlap: null,
+            },
+            presetIndexRequirements: null,
+            compatibleWithPreset: true,
+            compatibilityStatus: "OK",
+          },
+        },
+        experimentalPresets: [
+          {
+            productPresetId: "exp-hybrid",
+            code: "P7",
+            family: "CANONICAL",
+            label: "Hybrid preset",
+            description: "d",
+            indexRequirements: {
+              requiredMaterializationStrategy: "HYBRID",
+              requiresMetadataSupport: true,
+            },
+            requiredCapabilities: [],
+            supported: true,
+            supportStatus: "EXECUTABLE",
+            reasonIfUnsupported: null,
+            requiresMultiTurn: false,
+            mapsToRuntimeCapabilities: {},
+            allowedOutcomes: ["EXECUTED"],
+            chatSelectable: true,
+            labSelectable: true,
+            labOnly: false,
+          },
+        ],
+      },
+    }));
+
+    renderSubject();
+    const option = screen.getByRole("option", { name: /P7 — Hybrid preset/i }) as HTMLOptionElement;
+    expect(option.disabled).toBe(true);
+    expect(option.textContent).toMatch(/Create or reindex the project with a compatible index profile/i);
+  });
+
+  it("shows blocking issue banner and selected preset reindex CTA from runtime-state", () => {
+    useChatToolbarStore.setState((s) => ({
+      api: {
+        ...s.api!,
+        runtimeState: {
+          ...s.api!.runtimeState!,
+          isValid: false,
+          requiresReindex: true,
+          blockingIssues: [
+            {
+              code: "MATERIALIZATION_NOT_SUPPORTED",
+              field: "presetId",
+              message: "This preset requires a HYBRID index.",
+              severity: "ERROR",
+            },
+          ],
+          presetCompatibility: {
+            selectable: false,
+            disabledReasonCode: "MATERIALIZATION_NOT_SUPPORTED",
+            disabledReason: "This preset requires a HYBRID index.",
+            indexRequirements: {
+              requiredMaterializationStrategy: "HYBRID",
+              requiresMetadataSupport: false,
+            },
+            compatibleWithActiveIndex: false,
+          },
+          disabledPresetReason: "This preset requires a HYBRID index.",
+        },
+      },
+    }));
+
+    renderSubject();
+    expect(screen.getByTestId("chat-runtime-blocking-banner")).toHaveTextContent("This preset requires a HYBRID index.");
+    expect(screen.getByText(/Create or reindex project with compatible profile/i)).toBeInTheDocument();
+  });
+
   it("shows preset catalog empty message when presets are loaded and empty", () => {
     useChatToolbarStore.setState((s) => ({
       api: { ...s.api!, presetsLoading: false, presetsError: false, presets: [] },

@@ -181,6 +181,50 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     expect(screen.getByText("Disabled")).toBeInTheDocument();
   });
 
+  it("keeps valid runtime features editable", () => {
+    const saveRuntimeOverride = vi.fn();
+    hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
+      data: {
+        capabilities: [
+          {
+            key: "reasoningEnabled",
+            label: "Reasoning",
+            description: "d",
+            category: "RUNTIME_HOT_SWAPPABLE",
+            visibleInChat: true,
+            configurableInChat: true,
+            implemented: true,
+            engineWired: true,
+            supportMode: null,
+            displayOrder: 1,
+            requires: [],
+            excludes: [],
+            requiresIndexSnapshot: false,
+            requiresReindexWhenChanged: false,
+            reasonIfDisabled: null,
+            reasonIfNotImplemented: null,
+          },
+        ],
+      },
+      isLoading: false,
+    });
+    useChatToolbarStore.setState((s) => ({
+      api: {
+        ...s.api!,
+        saveRuntimeOverride,
+        runtimeState: { ...s.api!.runtimeState!, effectiveConfig: { reasoningEnabled: false } },
+      },
+    }));
+
+    renderSubject();
+    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    const row = screen.getByText("Reasoning").closest("div");
+    const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
+    expect(checkbox.disabled).toBe(false);
+    fireEvent.click(checkbox);
+    expect(saveRuntimeOverride).toHaveBeenCalledWith({ reasoningEnabled: true });
+  });
+
   it("hides runtime toggles that are not configurable in chat (filtered out)", () => {
     hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
       data: {
@@ -213,7 +257,7 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     expect(screen.queryByText("Ranker")).toBeNull();
   });
 
-  it("hides runtime toggles that are not implemented or not engine-wired (filtered out)", () => {
+  it("renders not implemented runtime toggles disabled with reason", () => {
     hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
       data: {
         capabilities: [
@@ -242,7 +286,10 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
 
     renderSubject();
     fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    expect(screen.queryByText("NER")).toBeNull();
+    const row = screen.getByText("NER").closest("div");
+    const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
+    expect(checkbox.disabled).toBe(true);
+    expect(screen.getByText("Disabled")).toBeInTheDocument();
   });
 
   it("disables toggle when capability requires another flag that is false in effective config", () => {
@@ -278,6 +325,56 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
         runtimeState: {
           ...s.api!.runtimeState!,
           effectiveConfig: { useRetrieval: false },
+        },
+      },
+    }));
+
+    renderSubject();
+    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    const row = screen.getByText("Post retrieval").closest("div");
+    const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
+    expect(checkbox.disabled).toBe(true);
+    expect(screen.getByText("Disabled")).toBeInTheDocument();
+  });
+
+  it("uses backend disabledRuntimeFeatures reason before local capability rules", () => {
+    hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
+      data: {
+        capabilities: [
+          {
+            key: "postRetrievalEnabled",
+            label: "Post retrieval",
+            description: "d",
+            category: "RUNTIME_HOT_SWAPPABLE",
+            visibleInChat: true,
+            configurableInChat: true,
+            implemented: true,
+            engineWired: true,
+            supportMode: null,
+            displayOrder: 1,
+            requires: [],
+            excludes: [],
+            requiresIndexSnapshot: false,
+            requiresReindexWhenChanged: false,
+            reasonIfDisabled: null,
+            reasonIfNotImplemented: null,
+          },
+        ],
+      },
+      isLoading: false,
+    });
+    useChatToolbarStore.setState((s) => ({
+      api: {
+        ...s.api!,
+        runtimeState: {
+          ...s.api!.runtimeState!,
+          disabledRuntimeFeatures: [
+            {
+              key: "postRetrievalEnabled",
+              reasonCode: "REQUIRES_useRetrieval",
+              reason: "Requires retrieval from backend contract.",
+            },
+          ],
         },
       },
     }));

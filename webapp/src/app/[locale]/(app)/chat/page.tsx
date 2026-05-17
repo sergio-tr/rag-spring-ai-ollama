@@ -80,6 +80,21 @@ function coerceBool(v: unknown): boolean {
   return v === true || v === "true";
 }
 
+function firstRuntimeBlockingMessage(runtimeState: {
+  isValid?: boolean;
+  blockingIssues?: Array<{ message?: string | null }>;
+  validation?: { valid: boolean; supported: boolean; errors: Array<{ message?: string | null }> };
+} | null): string | null {
+  if (!runtimeState) return null;
+  const issues = runtimeState.blockingIssues ?? runtimeState.validation?.errors ?? [];
+  const first = issues.find((i) => typeof i.message === "string" && i.message.trim() !== "");
+  if (first?.message) return first.message;
+  const valid =
+    runtimeState.isValid ??
+    (runtimeState.validation ? runtimeState.validation.valid && runtimeState.validation.supported : true);
+  return valid ? null : "Configuration is invalid. Open Chat configuration to resolve it.";
+}
+
 function streamDonePayloadFromAssistantMessage(m: MessageDto): StreamDonePayload {
   const meta = m.executionMetadata ?? {};
   const telemetry: Record<string, unknown> = {};
@@ -322,6 +337,8 @@ function ChatPageInner() {
   const runtimeStateQuery = useChatRuntimeState(conversationId);
   const runtimeState = runtimeStateQuery.data ?? null;
   const presetSelectValue = runtimeState?.selectedPresetId ?? "";
+  const runtimeBlockingMessage = firstRuntimeBlockingMessage(runtimeState);
+  const runtimeStateInvalid = Boolean(runtimeBlockingMessage);
 
   const setLastDone = useChatExplainStore((s) => s.setLastDone);
   const setStreamingText = useChatExplainStore((s) => s.setStreamingText);
@@ -568,6 +585,10 @@ function ChatPageInner() {
 
   const send = useCallback(async () => {
     if (!input.trim() || isSending || isStreaming) return;
+    if (runtimeBlockingMessage) {
+      setSendError(runtimeBlockingMessage);
+      return;
+    }
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
@@ -598,12 +619,17 @@ function ChatPageInner() {
       if (!targetConversationId) return;
 
       // R1: rely on runtime-state as the authoritative validation source.
-      const rs = await apiFetch<{ validation: { valid: boolean; supported: boolean; errors: { message: string }[] } }>(
+      const rs = await apiFetch<{
+        isValid?: boolean;
+        blockingIssues?: { message?: string | null }[];
+        validation: { valid: boolean; supported: boolean; errors: { message: string }[] };
+      }>(
         apiProductPath(`/conversations/${targetConversationId}/runtime-state`),
         { signal },
       );
-      if (!rs.validation.valid || !rs.validation.supported) {
-        const msg = rs.validation.errors?.[0]?.message ?? "Unsupported runtime configuration.";
+      const blocking = firstRuntimeBlockingMessage(rs);
+      if (blocking) {
+        const msg = blocking;
         setSendError(msg);
         setInput(text);
         setOptimisticUserContent(null);
@@ -662,6 +688,7 @@ function ChatPageInner() {
     llmModelChoice,
     refetchMessages,
     runChatJob,
+    runtimeBlockingMessage,
     selectConversation,
     t,
   ]);
@@ -737,12 +764,17 @@ function ChatPageInner() {
         continueAfterUserMessageId: userMsgId,
       };
 
-      const rs = await apiFetch<{ validation: { valid: boolean; supported: boolean; errors: { message: string }[] } }>(
+      const rs = await apiFetch<{
+        isValid?: boolean;
+        blockingIssues?: { message?: string | null }[];
+        validation: { valid: boolean; supported: boolean; errors: { message: string }[] };
+      }>(
         apiProductPath(`/conversations/${conversationId}/runtime-state`),
         { signal },
       );
-      if (!rs.validation.valid || !rs.validation.supported) {
-        setSendError(rs.validation.errors?.[0]?.message ?? "Unsupported runtime configuration.");
+      const blocking = firstRuntimeBlockingMessage(rs);
+      if (blocking) {
+        setSendError(blocking);
         return;
       }
 
@@ -848,12 +880,18 @@ function ChatPageInner() {
       if (!conversationId) return;
       setLlmModelChoiceDraft({ conversationId, value: v });
       if (!v.trim()) {
-        patchConv.mutate({ conversationId, body: { clearLlmModel: true } });
+        patchConv.mutate(
+          { conversationId, body: { clearLlmModel: true } },
+          { onError: () => setLlmModelChoiceDraft({ conversationId, value: activeConv?.llmModel ?? "" }) },
+        );
         return;
       }
-      patchConv.mutate({ conversationId, body: { llmModel: v.trim() } });
+      patchConv.mutate(
+        { conversationId, body: { llmModel: v.trim() } },
+        { onError: () => setLlmModelChoiceDraft({ conversationId, value: activeConv?.llmModel ?? "" }) },
+      );
     },
-    [conversationId, patchConv],
+    [activeConv?.llmModel, conversationId, patchConv],
   );
 
   const applyClassifierModelChoice = useCallback(
@@ -861,12 +899,24 @@ function ChatPageInner() {
       if (!conversationId) return;
       setClassifierModelChoiceDraft({ conversationId, value: v });
       if (!v.trim()) {
-        patchConv.mutate({ conversationId, body: { clearClassifierModelId: true } });
+        patchConv.mutate(
+          { conversationId, body: { clearClassifierModelId: true } },
+          {
+            onError: () =>
+              setClassifierModelChoiceDraft({ conversationId, value: activeConv?.classifierModelId ?? "" }),
+          },
+        );
         return;
       }
-      patchConv.mutate({ conversationId, body: { classifierModelId: v.trim() } });
+      patchConv.mutate(
+        { conversationId, body: { classifierModelId: v.trim() } },
+        {
+          onError: () =>
+            setClassifierModelChoiceDraft({ conversationId, value: activeConv?.classifierModelId ?? "" }),
+        },
+      );
     },
-    [conversationId, patchConv],
+    [activeConv?.classifierModelId, conversationId, patchConv],
   );
 
   const handleChatDocumentUpload = useCallback(
@@ -1448,7 +1498,7 @@ function ChatPageInner() {
                       size="sm"
                       variant="secondary"
                       className="h-8"
-                      disabled={isStreaming || isSending || !editBody.trim()}
+                      disabled={isStreaming || isSending || runtimeStateInvalid || !editBody.trim()}
                       onClick={() => void saveUserEditAndRegenerate()}
                     >
                       {t("saveAndRegenerate")}
@@ -1599,6 +1649,15 @@ function ChatPageInner() {
               {t("memoryActiveBadge")}
             </p>
           ) : null}
+          {runtimeBlockingMessage ? (
+            <p
+              className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+              data-testid="chat-runtime-blocking-input-message"
+              role="alert"
+            >
+              {runtimeBlockingMessage}
+            </p>
+          ) : null}
           {conversationId &&
           activeConv?.pendingClarification &&
           Object.keys(activeConv.pendingClarification).length > 0 ? (
@@ -1631,12 +1690,12 @@ function ChatPageInner() {
             className="resize-none"
             aria-busy={isSending || isStreaming}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !isSending && !isStreaming) {
+              if (e.key === "Enter" && !e.shiftKey && !isSending && !isStreaming && !runtimeStateInvalid) {
                 e.preventDefault();
                 void send();
               }
             }}
-            disabled={isSending || isStreaming}
+            disabled={isSending || isStreaming || runtimeStateInvalid}
           />
           <div className="flex flex-wrap justify-end gap-2">
             <Button
@@ -1655,7 +1714,7 @@ function ChatPageInner() {
               type="button"
               size="sm"
               data-testid="chat-send-button"
-              disabled={!input.trim() || isSending || isStreaming}
+              disabled={!input.trim() || isSending || isStreaming || runtimeStateInvalid}
               onClick={() => void send()}
             >
               {t("send")}

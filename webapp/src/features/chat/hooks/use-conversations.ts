@@ -100,29 +100,17 @@ export function usePatchConversation(projectId: string | undefined) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
-    onMutate: async ({
-      conversationId,
-      body,
-    }: {
-      conversationId: string;
-      body: PatchConversationBody;
-    }): Promise<PatchConversationContext> => {
+    onMutate: async (): Promise<PatchConversationContext> => {
       if (!projectId) return { previous: undefined };
-      const previous = qc.getQueryData<ConversationDto[]>(convKey(projectId));
-      // Apply optimistic cache update synchronously before any await so isPending does not
-      // leave controlled inputs (e.g. document sheet checkboxes) disabled while still stale.
-      qc.setQueryData<ConversationDto[]>(convKey(projectId), (old) => {
-        if (!old) return old;
-        return old.map((c) =>
-          c.id === conversationId ? mergeConversationPatchOptimistic(c, body) : c,
-        );
-      });
       await qc.cancelQueries({ queryKey: convKey(projectId) });
-      return { previous };
+      return { previous: qc.getQueryData<ConversationDto[]>(convKey(projectId)) };
     },
-    onError: (_err, _vars, ctx) => {
-      if (!projectId || !ctx?.previous) return;
-      qc.setQueryData(convKey(projectId), ctx.previous);
+    onError: (_err, { conversationId }, ctx) => {
+      if (projectId && ctx?.previous) {
+        qc.setQueryData(convKey(projectId), ctx.previous);
+        void qc.invalidateQueries({ queryKey: convKey(projectId) });
+      }
+      void qc.invalidateQueries({ queryKey: chatRuntimeStateKey(conversationId) });
     },
     onSuccess: (data, { conversationId }) => {
       if (!projectId) return;
@@ -131,6 +119,12 @@ export function usePatchConversation(projectId: string | undefined) {
         return old.map((c) => (c.id === conversationId ? data : c));
       });
       void qc.invalidateQueries({ queryKey: chatRuntimeStateKey(conversationId) });
+    },
+    onSettled: (_data, _error, vars) => {
+      if (projectId) void qc.invalidateQueries({ queryKey: convKey(projectId) });
+      if (vars?.conversationId) {
+        void qc.invalidateQueries({ queryKey: chatRuntimeStateKey(vars.conversationId) });
+      }
     },
   });
 }
