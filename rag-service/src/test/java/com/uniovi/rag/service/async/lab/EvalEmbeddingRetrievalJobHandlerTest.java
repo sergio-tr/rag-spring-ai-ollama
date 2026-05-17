@@ -35,6 +35,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -318,6 +320,59 @@ class EvalEmbeddingRetrievalJobHandlerTest {
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get("item_outcome")).isEqualTo("FAILED");
         verify(mutation).markSucceeded(eq(taskId), ArgumentMatchers.any());
+    }
+
+    @Test
+    void run_dimensionMismatch_recordsUnsupportedRows_withoutQueryingVectorStore() {
+        UUID taskId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        when(experimentalSnapshotFactory.buildLlmSnapshot(any())).thenReturn(SAMPLE_LLM);
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(any()))
+                .thenReturn(
+                        new EmbeddingExperimentalSnapshot(
+                                "nomic-embed-text", null, null, null, null, null, "MODEL_DEFAULT", List.of()));
+        when(evaluationRunRepository.findById(runId)).thenReturn(Optional.empty());
+        when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning("nomic-embed-text"))
+                .thenThrow(
+                        new ResponseStatusException(
+                                HttpStatus.UNPROCESSABLE_ENTITY,
+                                "EMBEDDING_DIMENSION_MISMATCH: model 'nomic-embed-text' outputs 768 dimensions but this deployment's vector_store.embedding column is fixed to 1024"));
+        when(ollamaModelCatalogClient.isModelAvailable(anyString())).thenReturn(true);
+        EmbeddingRetrievalQuery q =
+                new EmbeddingRetrievalQuery(
+                        "eq1",
+                        "q",
+                        "",
+                        Optional.empty(),
+                        Optional.empty(),
+                        "x",
+                        List.of("doc-1"),
+                        List.of(),
+                        "",
+                        "",
+                        "");
+        when(experimentalDatasetResolver.resolve(runId))
+                .thenReturn(
+                        new TypedBenchmarkDataset.EmbeddingQuestions(
+                                new EmbeddingRetrievalDataset(List.of(q), List.of(), List.of())));
+        AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
+
+        handler(2).run(task, mutation);
+
+        verifyNoInteractions(vectorStoreRegistry);
+        ArgumentCaptor<Map<String, Object>> payload = ArgumentCaptor.forClass(Map.class);
+        verify(canonicalPersistence).persistEmbeddingRetrievalResults(eq(runId), payload.capture());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) payload.getValue().get("results");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.getFirst().get("item_outcome")).isEqualTo("NOT_SUPPORTED");
+        assertThat(rows.getFirst().get("error_code")).isEqualTo("EMBEDDING_DIMENSION_MISMATCH");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metrics = (Map<String, Object>) rows.getFirst().get("metrics");
+        assertThat(metrics)
+                .containsEntry("embedding_model_id", "nomic-embed-text")
+                .containsEntry("embedding_compatibility_status", "INCOMPATIBLE")
+                .containsEntry("embedding_compatibility_error_code", "EMBEDDING_DIMENSION_MISMATCH");
     }
 
     @Test

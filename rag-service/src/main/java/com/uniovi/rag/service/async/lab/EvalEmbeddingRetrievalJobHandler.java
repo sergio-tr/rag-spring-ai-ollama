@@ -7,6 +7,7 @@ import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkEvaluationProtocol;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
+import com.uniovi.rag.domain.evaluation.snapshot.EmbeddingExperimentalSnapshot;
 import com.uniovi.rag.domain.evaluation.snapshot.LlmExperimentalSnapshot;
 import com.uniovi.rag.domain.evaluation.snapshot.PromptProfileSnapshot;
 import com.uniovi.rag.domain.model.QueryType;
@@ -33,6 +34,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -105,7 +107,6 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
         LabEvalConcurrency.SERIAL_EVAL.lock();
         try {
             EmbeddingRetrievalDataset embeddingDs = null;
-            EmbeddingBenchmarkContext ctx = EmbeddingBenchmarkContext.disabled();
 
             if (evaluationRunId == null) {
                 throw new IllegalStateException(
@@ -126,9 +127,16 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             EvaluationRunEntity runOrNull = runOpt.orElse(null);
             var llmSnap = experimentalSnapshotFactory.buildLlmSnapshot(runOrNull);
             var embSnap = experimentalSnapshotFactory.buildEmbeddingSnapshot(runOrNull);
-            if (embSnap.model() != null && !embSnap.model().isBlank()) {
-                embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(embSnap.model().trim());
-            }
+            EmbeddingCompatibility embeddingCompatibility = resolveEmbeddingCompatibility(embSnap.model());
+            embSnap = new EmbeddingExperimentalSnapshot(
+                    embSnap.model(),
+                    embeddingCompatibility.dimension(),
+                    embSnap.normalize(),
+                    embSnap.queryPrefix(),
+                    embSnap.passagePrefix(),
+                    embSnap.batchSize(),
+                    embSnap.truncateStrategy(),
+                    embSnap.unsupportedFields());
             PromptProfileSnapshot prompts = PromptProfileSnapshotFactory.baselineLabProfile();
             baselineRunSnapshotWriter.writeSnapshots(evaluationRunId, llmSnap, embSnap, prompts);
 
@@ -136,9 +144,15 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             boolean embeddingCatalogOk = ollamaModelCatalogClient.isModelAvailable(embSnap.model());
             boolean downstreamLlmOk =
                     !downstream || ollamaModelCatalogClient.isModelAvailable(llmSnap.model());
-            ctx =
+            EmbeddingBenchmarkContext ctx =
                     new EmbeddingBenchmarkContext(
-                            downstream, embeddingCatalogOk, downstreamLlmOk, llmSnap, prompts, embSnap.model());
+                            downstream,
+                            embeddingCatalogOk,
+                            downstreamLlmOk,
+                            llmSnap,
+                            prompts,
+                            embSnap.model(),
+                            embeddingCompatibility);
             rows = runEmbeddingQueries(taskId, mutation, embeddingDs.queries(), ctx);
 
             int hitsAt1 = 0;
@@ -168,6 +182,11 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             retrieval.put("mean_mrr", n > 0 ? mrrSum / n : null);
             retrieval.put("n", n);
             retrieval.put("k", topK);
+            retrieval.put("embedding_model_id", ctx.embeddingModelId());
+            retrieval.put("embedding_dimensions", ctx.embeddingCompatibility.dimension());
+            retrieval.put("embedding_compatibility_status", ctx.embeddingCompatibility.status());
+            retrieval.put("embedding_compatibility_error_code", ctx.embeddingCompatibility.errorCode());
+            retrieval.put("embedding_compatibility_reason", ctx.embeddingCompatibility.reason());
             if (embeddingDs != null) {
                 retrieval.put("chunk_registry_rows", embeddingDs.chunkRegistry().size());
                 retrieval.put("corpus_documents_rows", embeddingDs.corpusDocuments().size());
@@ -251,6 +270,27 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                 metrics.put("reason", "embedding_model_not_listed_or_daemon_unreachable");
                 row.put("metrics", metrics);
                 row.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.MODEL_NOT_AVAILABLE.name());
+                row.put("top_document_id", null);
+                row.put(BenchmarkResultRowKeys.LATENCY_MS, null);
+                rows.add(row);
+                continue;
+            }
+            if (!ctx.embeddingCompatibility.compatible()) {
+                Map<String, Object> metrics = baseMetrics(ctx);
+                metrics.put("recall_at_1", 0.0);
+                metrics.put("recall_at_3", 0.0);
+                metrics.put("recall_at_5", 0.0);
+                metrics.put("recall_at_k", 0.0);
+                metrics.put("mrr", 0.0);
+                metrics.put("first_relevant_rank", 0);
+                metrics.put("retrieved_count", 0);
+                metrics.put("gold_found", false);
+                metrics.put("benchmark_protocol", protocol.name());
+                metrics.put("reason", ctx.embeddingCompatibility.reason());
+                row.put("metrics", metrics);
+                row.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.NOT_SUPPORTED.name());
+                row.put(BenchmarkResultRowKeys.ERROR_CODE, ctx.embeddingCompatibility.errorCode());
+                row.put(BenchmarkResultRowKeys.REASON, ctx.embeddingCompatibility.reason());
                 row.put("top_document_id", null);
                 row.put(BenchmarkResultRowKeys.LATENCY_MS, null);
                 rows.add(row);
@@ -408,7 +448,31 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
         Map<String, Object> metrics = new LinkedHashMap<>();
         metrics.put("k", topK);
         metrics.put("embedding_downstream_rag", ctx.downstreamRag);
+        metrics.put("embedding_model_id", ctx.embeddingModelId());
+        metrics.put("embedding_dimensions", ctx.embeddingCompatibility.dimension());
+        metrics.put("embedding_compatibility_status", ctx.embeddingCompatibility.status());
+        metrics.put("embedding_compatibility_error_code", ctx.embeddingCompatibility.errorCode());
+        metrics.put("embedding_compatibility_reason", ctx.embeddingCompatibility.reason());
         return metrics;
+    }
+
+    private EmbeddingCompatibility resolveEmbeddingCompatibility(String modelId) {
+        if (modelId == null || modelId.isBlank()) {
+            return EmbeddingCompatibility.incompatible(
+                    "EMBEDDING_MODEL_REQUIRED",
+                    "embeddingModelId is required for EMBEDDING_RETRIEVAL.");
+        }
+        try {
+            int dims = embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(modelId.trim());
+            return EmbeddingCompatibility.compatible(dims);
+        } catch (ResponseStatusException ex) {
+            String reason = ex.getReason() != null ? ex.getReason() : ex.getMessage();
+            String code =
+                    reason != null && reason.contains("EMBEDDING_DIMENSION_MISMATCH")
+                            ? "EMBEDDING_DIMENSION_MISMATCH"
+                            : "EMBEDDING_DIMENSION_UNAVAILABLE";
+            return EmbeddingCompatibility.incompatible(code, reason != null ? reason : code);
+        }
     }
 
     private enum RetrievalGoldMode {
@@ -602,10 +666,32 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             boolean downstreamLlmCatalogOk,
             LlmExperimentalSnapshot llmSnapshot,
             PromptProfileSnapshot prompts,
-            String embeddingModelId) {
+            String embeddingModelId,
+            EmbeddingCompatibility embeddingCompatibility) {
 
         static EmbeddingBenchmarkContext disabled() {
-            return new EmbeddingBenchmarkContext(false, true, true, null, null, "");
+            return new EmbeddingBenchmarkContext(false, true, true, null, null, "", EmbeddingCompatibility.compatible(null));
+        }
+
+        EmbeddingBenchmarkContext withEmbeddingCompatibility(EmbeddingCompatibility compatibility) {
+            return new EmbeddingBenchmarkContext(
+                    downstreamRag,
+                    embeddingModelCatalogOk,
+                    downstreamLlmCatalogOk,
+                    llmSnapshot,
+                    prompts,
+                    embeddingModelId,
+                    compatibility != null ? compatibility : EmbeddingCompatibility.compatible(null));
+        }
+    }
+
+    private record EmbeddingCompatibility(boolean compatible, Integer dimension, String status, String errorCode, String reason) {
+        static EmbeddingCompatibility compatible(Integer dimension) {
+            return new EmbeddingCompatibility(true, dimension, "COMPATIBLE", "", "");
+        }
+
+        static EmbeddingCompatibility incompatible(String errorCode, String reason) {
+            return new EmbeddingCompatibility(false, null, "INCOMPATIBLE", errorCode, reason);
         }
     }
 }

@@ -609,6 +609,113 @@ class BenchmarkRunOrchestratorTest {
         assertThat(runIdCaptor.getAllValues()).doesNotHaveDuplicates();
     }
 
+    @Test
+    void startJsonBenchmark_embeddingCampaign_recordsDimensionMismatchInsteadOfRejectingRun() throws Exception {
+        BenchmarkRunOrchestrator orch =
+                new BenchmarkRunOrchestrator(
+                        userRepository,
+                        evaluationDatasetRepository,
+                        evaluationCampaignRepository,
+                        evaluationRunRepository,
+                        resolvedConfigSnapshotRepository,
+                        knowledgeIndexSnapshotRepository,
+                        ragPresetRepository,
+                        asyncTaskRepository,
+                        asyncTaskService,
+                        labJobLifecycleService,
+                        projectAccessService,
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard);
+
+        UUID dsId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        byte[] bytes = canonicalReferenceBundleBytes();
+
+        EvaluationDatasetEntity ds = Mockito.mock(EvaluationDatasetEntity.class);
+        UserEntity owner = Mockito.mock(UserEntity.class);
+        Mockito.when(owner.getId()).thenReturn(userId);
+        Mockito.when(ds.getOwner()).thenReturn(owner);
+        Mockito.when(ds.getDatasetScope()).thenReturn("USER_DATASET");
+        Mockito.when(ds.getExperimentalKind()).thenReturn("REFERENCE_BUNDLE");
+        Mockito.when(ds.getStorageUri()).thenReturn("datasets/u1/ref.xlsx");
+        Mockito.when(ds.getId()).thenReturn(dsId);
+        when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.of(ds));
+        when(evaluationDatasetStorePort.openStream(eq("datasets/u1/ref.xlsx"))).thenReturn(new ByteArrayInputStream(bytes));
+        when(labJobLifecycleService.findFirstActiveJobForScope(eq(userId), eq(projectId))).thenReturn(null);
+        when(projectAccessService.requireOwnedProject(eq(userId), eq(projectId))).thenReturn(Mockito.mock(ProjectEntity.class));
+        when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning("nomic-embed-text"))
+                .thenThrow(
+                        new ResponseStatusException(
+                                HttpStatus.UNPROCESSABLE_ENTITY,
+                                "EMBEDDING_DIMENSION_MISMATCH: model 'nomic-embed-text' outputs 768 dimensions but this deployment's vector_store.embedding column is fixed to 1024"));
+
+        UserEntity user = Mockito.mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(evaluationCampaignRepository.save(any(EvaluationCampaignEntity.class)))
+                .thenAnswer(
+                        inv -> {
+                            EvaluationCampaignEntity c = inv.getArgument(0);
+                            if (c.getId() == null) {
+                                c.setId(UUID.randomUUID());
+                            }
+                            return c;
+                        });
+        ArgumentCaptor<EvaluationRunEntity> runCaptor = ArgumentCaptor.forClass(EvaluationRunEntity.class);
+        when(evaluationRunRepository.save(any(EvaluationRunEntity.class)))
+                .thenAnswer(
+                        inv -> {
+                            EvaluationRunEntity r = inv.getArgument(0);
+                            if (r.getId() == null) {
+                                r.setId(UUID.randomUUID());
+                            }
+                            return r;
+                        });
+        UUID taskId = UUID.randomUUID();
+        when(asyncTaskService.submitEvalEmbeddingRetrieval(eq(userId), eq(projectId), any(UUID.class)))
+                .thenReturn(taskId);
+        when(asyncTaskRepository.findById(taskId)).thenReturn(Optional.of(Mockito.mock(AsyncTaskEntity.class)));
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        dsId,
+                        projectId,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "emb-campaign",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        List.of("nomic-embed-text"),
+                        false,
+                        "cmp",
+                        false,
+                        false,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
+
+        orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req);
+
+        verify(evaluationRunRepository, times(2)).save(runCaptor.capture());
+        EvaluationRunEntity savedRun = runCaptor.getAllValues().getFirst();
+        assertThat(savedRun.getAggregatesJson())
+                .containsEntry("embeddingCompatibilityStatus", "INCOMPATIBLE")
+                .containsEntry("embeddingCompatibilityErrorCode", "EMBEDDING_DIMENSION_MISMATCH");
+        verify(asyncTaskService).submitEvalEmbeddingRetrieval(eq(userId), eq(projectId), any(UUID.class));
+    }
+
     private static byte[] canonicalReferenceBundleBytes() throws Exception {
         ClassPathResource r = new ClassPathResource(EvaluationReferenceBundleLoader.CLASSPATH_LOCATION);
         try (var in = r.getInputStream()) {

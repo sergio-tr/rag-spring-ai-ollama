@@ -493,14 +493,25 @@ public class BenchmarkRunOrchestrator {
             chosen = prof.get().trim();
             run.setEmbeddingModelId(chosen);
         }
-        int dims = embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(chosen);
-        run.setEmbeddingDimensions(dims);
         Map<String, Object> agg = new LinkedHashMap<>();
         if (run.getAggregatesJson() != null && !run.getAggregatesJson().isEmpty()) {
             agg.putAll(run.getAggregatesJson());
         }
         agg.put("embeddingModelId", chosen);
-        agg.put("embeddingDimensions", dims);
+        try {
+            int dims = embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(chosen);
+            run.setEmbeddingDimensions(dims);
+            agg.put("embeddingDimensions", dims);
+            agg.put("embeddingCompatibilityStatus", "COMPATIBLE");
+        } catch (ResponseStatusException ex) {
+            if (!isEmbeddingDimensionMismatch(ex)) {
+                throw ex;
+            }
+            run.setEmbeddingDimensions(null);
+            agg.put("embeddingCompatibilityStatus", "INCOMPATIBLE");
+            agg.put("embeddingCompatibilityReason", ex.getReason());
+            agg.put("embeddingCompatibilityErrorCode", "EMBEDDING_DIMENSION_MISMATCH");
+        }
         if (idx != null) {
             agg.put("indexSnapshotId", idx.getId().toString());
             if (idx.getIndexProfileHash() != null && !idx.getIndexProfileHash().isBlank()) {
@@ -511,6 +522,10 @@ public class BenchmarkRunOrchestrator {
             }
         }
         run.setAggregatesJson(Map.copyOf(agg));
+    }
+
+    private static boolean isEmbeddingDimensionMismatch(ResponseStatusException ex) {
+        return ex != null && ex.getReason() != null && ex.getReason().contains("EMBEDDING_DIMENSION_MISMATCH");
     }
 
     private static boolean wantsLlmCampaign(StartBenchmarkRunRequest request) {
