@@ -1,15 +1,20 @@
 package com.uniovi.rag.application.service.chat;
 
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
+import com.uniovi.rag.application.service.runtime.config.RuntimeConfigCapabilitiesService;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
+import com.uniovi.rag.interfaces.rest.dto.DisabledRuntimeFeatureDto;
 import com.uniovi.rag.interfaces.rest.dto.ChatPresetSummaryDto;
 import com.uniovi.rag.interfaces.rest.dto.ChatRuntimeStateDto;
 import com.uniovi.rag.interfaces.rest.dto.ChatRuntimeValidationDto;
 import com.uniovi.rag.interfaces.rest.dto.ExperimentalPresetCatalogItemDto;
+import com.uniovi.rag.interfaces.rest.dto.PresetCompatibilityDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateRequest;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeCompatibilityDto;
 import com.uniovi.rag.service.config.ChatPresetDefaults;
 import com.uniovi.rag.service.project.ProjectAccessService;
 import java.util.LinkedHashMap;
@@ -17,25 +22,45 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
 public class ChatRuntimeStateService {
 
+    private static final String MISSING = "MISSING";
+
     private final ProjectAccessService projectAccessService;
     private final ChatPresetDefaults chatPresetDefaults;
     private final LabExperimentalPresetCatalogService experimentalPresetCatalogService;
     private final RuntimeConfigValidationService runtimeConfigValidationService;
+    private final RuntimeConfigCapabilitiesService runtimeConfigCapabilitiesService;
 
-    public ChatRuntimeStateService(
+    ChatRuntimeStateService(
             ProjectAccessService projectAccessService,
             ChatPresetDefaults chatPresetDefaults,
             LabExperimentalPresetCatalogService experimentalPresetCatalogService,
             RuntimeConfigValidationService runtimeConfigValidationService) {
+        this(
+                projectAccessService,
+                chatPresetDefaults,
+                experimentalPresetCatalogService,
+                runtimeConfigValidationService,
+                new RuntimeConfigCapabilitiesService());
+    }
+
+    @Autowired
+    public ChatRuntimeStateService(
+            ProjectAccessService projectAccessService,
+            ChatPresetDefaults chatPresetDefaults,
+            LabExperimentalPresetCatalogService experimentalPresetCatalogService,
+            RuntimeConfigValidationService runtimeConfigValidationService,
+            RuntimeConfigCapabilitiesService runtimeConfigCapabilitiesService) {
         this.projectAccessService = projectAccessService;
         this.chatPresetDefaults = chatPresetDefaults;
         this.experimentalPresetCatalogService = experimentalPresetCatalogService;
         this.runtimeConfigValidationService = runtimeConfigValidationService;
+        this.runtimeConfigCapabilitiesService = runtimeConfigCapabilitiesService;
     }
 
     public ChatRuntimeStateDto getRuntimeState(UUID userId, UUID conversationId) {
@@ -61,7 +86,7 @@ public class ChatRuntimeStateService {
                 baseVr.effectiveConfig() != null ? Map.copyOf(baseVr.effectiveConfig()) : Map.of();
 
         Map<String, Object> persistedForNormalize =
-                ConversationRuntimeModelKeys.copyWithoutModelKeys(
+                ChatRuntimeCompatibilitySupport.copyWithoutNonRuntimeOverrideKeys(
                         c.getRuntimeOverride() != null && !c.getRuntimeOverride().isEmpty()
                                 ? new LinkedHashMap<>(c.getRuntimeOverride())
                                 : new LinkedHashMap<>());
@@ -86,8 +111,7 @@ public class ChatRuntimeStateService {
         boolean conversationModelsPinned = conversationLlmModel != null || conversationClassifierModelId != null;
         boolean isCustom = !normalized.manualOverrideKeys().isEmpty() || conversationModelsPinned;
 
-        ChatPresetSummaryDto presetSummary =
-                presetSummary(selectedPresetId, effectivePresetId, c.getPreset());
+        ChatPresetSummaryDto presetSummary = presetSummary(selectedPresetId, c.getPreset());
 
         ChatRuntimeValidationDto validation =
                 new ChatRuntimeValidationDto(
@@ -95,6 +119,22 @@ public class ChatRuntimeStateService {
                         effectiveVr.supported(),
                         effectiveVr.errors() != null ? List.copyOf(effectiveVr.errors()) : List.of(),
                         effectiveVr.warnings() != null ? List.copyOf(effectiveVr.warnings()) : List.of());
+        List<RuntimeConfigValidationIssueDto> blockingIssues =
+                ChatRuntimeCompatibilitySupport.blockingIssues(effectiveVr);
+        List<RuntimeConfigValidationIssueDto> warnings =
+                effectiveVr.warnings() != null ? List.copyOf(effectiveVr.warnings()) : List.of();
+        RuntimeCompatibilityDto runtimeCompatibility =
+                ChatRuntimeCompatibilitySupport.runtimeCompatibility(effectiveVr);
+        PresetCompatibilityDto presetCompatibility =
+                ChatRuntimeCompatibilitySupport.presetCompatibility(
+                        presetSummary,
+                        effectiveVr.indexCompatibility(),
+                        blockingIssues);
+        List<DisabledRuntimeFeatureDto> disabledRuntimeFeatures =
+                ChatRuntimeCompatibilitySupport.disabledRuntimeFeatures(
+                        runtimeConfigCapabilitiesService.getCapabilities().capabilities(),
+                        effectiveConfig);
+        String disabledPresetReason = presetCompatibility.disabledReason();
 
         return new ChatRuntimeStateDto(
                 conversationId,
@@ -110,9 +150,16 @@ public class ChatRuntimeStateService {
                 normalized.manualOverrideKeys(),
                 isCustom,
                 validation,
+                blockingIssues.isEmpty(),
+                blockingIssues,
+                warnings,
                 effectiveVr.selectedWorkflow(),
                 effectiveVr.indexCompatibility(),
-                effectiveVr.requiresReindex());
+                effectiveVr.requiresReindex(),
+                presetCompatibility,
+                runtimeCompatibility,
+                disabledRuntimeFeatures,
+                disabledPresetReason);
     }
 
     private static void applyConversationModelColumnsToEffective(ConversationEntity c, Map<String, Object> effectiveConfig) {
@@ -132,8 +179,7 @@ public class ChatRuntimeStateService {
         return t.isEmpty() ? null : t;
     }
 
-    private ChatPresetSummaryDto presetSummary(
-            UUID selectedPresetId, UUID effectivePresetId, RagPresetEntity selectedPresetEntity) {
+    private ChatPresetSummaryDto presetSummary(UUID selectedPresetId, RagPresetEntity selectedPresetEntity) {
         if (selectedPresetId == null) {
             // User did not pick a preset; Chat uses deterministic default, but UI label remains “Recommended Default”.
             return new ChatPresetSummaryDto(
@@ -148,12 +194,12 @@ public class ChatRuntimeStateService {
 
         if (selectedPresetEntity == null) {
             return new ChatPresetSummaryDto(
-                    "MISSING",
+                    MISSING,
                     null,
                     "Missing preset",
                     false,
                     false,
-                    "MISSING",
+                    MISSING,
                     "Preset not found");
         }
 
@@ -165,7 +211,7 @@ public class ChatRuntimeStateService {
                             .orElse(null);
             if (item == null) {
                 return new ChatPresetSummaryDto(
-                        "MISSING",
+                    MISSING,
                         null,
                         selectedPresetEntity.getName(),
                         false,

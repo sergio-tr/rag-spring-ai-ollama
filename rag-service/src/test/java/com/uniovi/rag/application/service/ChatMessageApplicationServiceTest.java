@@ -19,10 +19,14 @@ import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.interfaces.rest.dto.ChatMessageAcceptedDto;
 import com.uniovi.rag.interfaces.rest.dto.ConversationDraftDto;
 import com.uniovi.rag.interfaces.rest.dto.PostMessageRequest;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeIndexCompatibilityDto;
 import com.uniovi.rag.service.async.AsyncLabTaskRunner;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.async.chat.ChatJobCancellationRegistry;
 import com.uniovi.rag.service.async.chat.ChatJobPayloadKeys;
+import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
+import com.uniovi.rag.service.config.ChatPresetDefaults;
 import com.uniovi.rag.service.project.ProjectAccessService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -89,6 +93,12 @@ class ChatMessageApplicationServiceTest {
     @Mock
     private ChatMessageWorkService chatMessageWorkService;
 
+    @Mock
+    private RuntimeConfigValidationService runtimeConfigValidationService;
+
+    @Mock
+    private ChatPresetDefaults chatPresetDefaults;
+
     @InjectMocks
     private ChatMessageApplicationService service;
 
@@ -116,6 +126,34 @@ class ChatMessageApplicationServiceTest {
                             }
                             return m;
                         });
+    }
+
+    @BeforeEach
+    void stubRuntimeValidationAcceptsCurrentConfig() {
+        lenient()
+                .when(chatPresetDefaults.effectivePresetIdForApi(any()))
+                .thenReturn(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID);
+        lenient()
+                .when(runtimeConfigValidationService.validate(any(), any()))
+                .thenReturn(
+                        new RuntimeConfigValidateResponse(
+                                true,
+                                true,
+                                Map.of(),
+                                List.of(),
+                                List.of(),
+                                "wf",
+                                new RuntimeIndexCompatibilityDto(
+                                        null,
+                                        null,
+                                        null,
+                                        Map.of(),
+                                        false,
+                                        null,
+                                        null,
+                                        true,
+                                        "UNKNOWN"),
+                                false));
     }
 
     @BeforeEach

@@ -30,8 +30,15 @@ public record ChatRuntimeStateDto(
         List<String> manualOverrideKeys,
         boolean isCustom,
         ChatRuntimeValidationDto validation,
+        boolean isValid,
+        List<RuntimeConfigValidationIssueDto> blockingIssues,
+        List<RuntimeConfigValidationIssueDto> warnings,
         String selectedWorkflow,
         RuntimeIndexCompatibilityDto indexCompatibility,
-        boolean requiresReindex
+        boolean requiresReindex,
+        PresetCompatibilityDto presetCompatibility,
+        RuntimeCompatibilityDto runtimeCompatibility,
+        List<DisabledRuntimeFeatureDto> disabledRuntimeFeatures,
+        String disabledPresetReason
 ) {}
 

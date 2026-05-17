@@ -18,6 +18,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.application.service.chat.RuntimeOverrideNormalizer;
 import com.uniovi.rag.application.service.chat.ConversationRuntimeModelKeys;
+import com.uniovi.rag.application.service.chat.ChatRuntimeCompatibilitySupport;
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
 import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
@@ -108,10 +109,10 @@ public class ConversationApplicationService {
 
         Map<String, Object> initialOverrides =
                 body != null && body.initialRuntimeOverride() != null && !body.initialRuntimeOverride().isEmpty()
-                        ? ConversationRuntimeModelKeys.copyWithoutModelKeys(
-                                new LinkedHashMap<>(body.initialRuntimeOverride()))
+                        ? new LinkedHashMap<>(body.initialRuntimeOverride())
                         : Map.of();
-        c.setRuntimeOverride(initialOverrides);
+        ChatRuntimeCompatibilitySupport.throwIfIndexBoundOverride(initialOverrides);
+        initialOverrides = ChatRuntimeCompatibilitySupport.copyWithoutNonRuntimeOverrideKeys(initialOverrides);
 
         UUID presetUuidForPreview =
                 c.getPreset() != null
@@ -121,18 +122,19 @@ public class ConversationApplicationService {
         long readyDocs =
                 knowledgeDocumentRepository.countByProject_IdAndStatus(projectId, ProjectDocumentStatus.READY);
 
-        RuntimeConfigValidateResponse vr =
-                runtimeConfigValidationService.validateDraft(userId, projectId, presetUuidForPreview, initialOverrides);
+        RuntimeConfigValidateResponse baseVr =
+                runtimeConfigValidationService.validateDraft(userId, projectId, presetUuidForPreview, Map.of());
+        ChatRuntimeCompatibilitySupport.throwIfInvalid(baseVr);
+        RuntimeOverrideNormalizer.NormalizedOverride normalized =
+                RuntimeOverrideNormalizer.normalize(
+                        initialOverrides,
+                        baseVr.effectiveConfig() != null ? baseVr.effectiveConfig() : Map.of());
 
-        if (vr.requiresReindex() && readyDocs > 0) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Runtime configuration is incompatible with the indexed corpus. Reindex the project or adjust settings.");
-        }
-        boolean allowDespiteIndexMismatch = vr.requiresReindex() && readyDocs == 0;
-        if (!vr.supported() && !allowDespiteIndexMismatch) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, firstBlockingReason(vr));
-        }
+        RuntimeConfigValidateResponse vr =
+                runtimeConfigValidationService.validateDraft(userId, projectId, presetUuidForPreview, normalized.runtimeOverride());
+
+        ChatRuntimeCompatibilitySupport.throwIfInvalid(vr);
+        c.setRuntimeOverride(normalized.runtimeOverride());
 
         List<RuntimeConfigValidationIssueDto> mergedWarnings = new ArrayList<>(vr.warnings());
         if (vr.requiresReindex() && readyDocs == 0) {
@@ -153,14 +155,6 @@ public class ConversationApplicationService {
                         : Map.of();
         RuntimeIndexCompatibilityDto idxCompat = vr.indexCompatibility();
         return toConversationDtoWithHints(c, preview, mergedWarnings, idxCompat);
-    }
-
-    private static String firstBlockingReason(RuntimeConfigValidateResponse vr) {
-        return vr.errors().stream()
-                .map(RuntimeConfigValidationIssueDto::message)
-                .filter(m -> m != null && !m.isBlank())
-                .findFirst()
-                .orElse("Unsupported runtime configuration.");
     }
 
     public ConversationDto patchConversation(
@@ -219,23 +213,15 @@ public class ConversationApplicationService {
             candidatePreset = preset;
         }
 
-        List<String> candidateDocumentFilter =
-                body.documentFilter() != null
-                        ? resolveAndValidateDocumentFilter(c.getProject().getId(), conversationId, body.documentFilter())
-                        : (c.getDocumentFilter() != null ? List.copyOf(c.getDocumentFilter()) : List.of());
+        List<String> candidateDocumentFilter = candidateDocumentFilter(c, conversationId, body.documentFilter());
 
-        Map<String, Object> candidateOverrideRaw =
-                Boolean.TRUE.equals(body.clearRuntimeOverride())
-                        ? Map.of()
-                        : (body.runtimeOverride() != null
-                                ? ConversationRuntimeModelKeys.copyWithoutModelKeys(
-                                        new LinkedHashMap<>(body.runtimeOverride()))
-                                : ConversationRuntimeModelKeys.copyWithoutModelKeys(
-                                        c.getRuntimeOverride() != null
-                                                ? new LinkedHashMap<>(c.getRuntimeOverride())
-                                                : new LinkedHashMap<>()));
+        Map<String, Object> candidateOverrideRaw = candidateRuntimeOverride(c, body);
+        if (body.runtimeOverride() != null) {
+            ChatRuntimeCompatibilitySupport.throwIfIndexBoundOverride(candidateOverrideRaw);
+            candidateOverrideRaw = ChatRuntimeCompatibilitySupport.copyWithoutNonRuntimeOverrideKeys(candidateOverrideRaw);
+        }
 
-        if (touchesRuntimeConfig) {
+        if (touchesRuntimeConfig || touchesModels) {
             UUID projectId = c.getProject() != null ? c.getProject().getId() : null;
             if (projectId == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "conversation missing project");
@@ -266,23 +252,17 @@ public class ConversationApplicationService {
                                     conversationId,
                                     effectivePresetId != null ? effectivePresetId.toString() : null,
                                     null,
-                                    normalized.runtimeOverride()));
+                                    validationOverrideWithModels(
+                                            normalized.runtimeOverride(),
+                                            candidateLlmModel,
+                                            candidateClassifierModelId)));
 
-            long readyDocs =
-                    knowledgeDocumentRepository.countByProject_IdAndStatus(projectId, ProjectDocumentStatus.READY);
-            if (vr.requiresReindex() && readyDocs > 0) {
-                throw new ResponseStatusException(
-                        HttpStatus.CONFLICT,
-                        "Runtime configuration is incompatible with the indexed corpus. Reindex the project or adjust settings.");
+            ChatRuntimeCompatibilitySupport.throwIfInvalid(vr);
+
+            if (touchesRuntimeConfig) {
+                // Persist only after validation has passed; runtimeOverride must be diff-only.
+                candidateOverrideRaw = normalized.runtimeOverride();
             }
-
-            boolean allowDespiteIndexMismatch = vr.requiresReindex() && readyDocs == 0;
-            if ((!vr.supported() || !vr.valid()) && !allowDespiteIndexMismatch) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, firstBlockingReason(vr));
-            }
-
-            // Persist only after validation has passed; runtimeOverride must be diff-only.
-            candidateOverrideRaw = normalized.runtimeOverride();
         }
 
         boolean overrideChanged =
@@ -323,6 +303,45 @@ public class ConversationApplicationService {
             conversationRepository.save(c);
         }
         return toConversationDtoBaseline(c);
+    }
+
+    private List<String> candidateDocumentFilter(
+            ConversationEntity c,
+            UUID conversationId,
+            List<String> requestedDocumentFilter) {
+        if (requestedDocumentFilter != null) {
+            return resolveAndValidateDocumentFilter(c.getProject().getId(), conversationId, requestedDocumentFilter);
+        }
+        return c.getDocumentFilter() != null ? List.copyOf(c.getDocumentFilter()) : List.of();
+    }
+
+    private static Map<String, Object> candidateRuntimeOverride(
+            ConversationEntity c,
+            PatchConversationRequest body) {
+        if (Boolean.TRUE.equals(body.clearRuntimeOverride())) {
+            return Map.of();
+        }
+        if (body.runtimeOverride() != null) {
+            return new LinkedHashMap<>(body.runtimeOverride());
+        }
+        Map<String, Object> persisted =
+                c.getRuntimeOverride() != null ? new LinkedHashMap<>(c.getRuntimeOverride()) : new LinkedHashMap<>();
+        return ChatRuntimeCompatibilitySupport.copyWithoutNonRuntimeOverrideKeys(persisted);
+    }
+
+    private static Map<String, Object> validationOverrideWithModels(
+            Map<String, Object> runtimeOverride,
+            String llmModel,
+            String classifierModelId) {
+        Map<String, Object> out =
+                runtimeOverride != null ? new LinkedHashMap<>(runtimeOverride) : new LinkedHashMap<>();
+        if (llmModel != null && !llmModel.isBlank()) {
+            out.put(ConversationRuntimeModelKeys.LLM_MODEL, llmModel);
+        }
+        if (classifierModelId != null && !classifierModelId.isBlank()) {
+            out.put(ConversationRuntimeModelKeys.CLASSIFIER_MODEL_ID, classifierModelId);
+        }
+        return out;
     }
 
     private void validateExperimentalPresetSupport(RagPresetEntity preset) {

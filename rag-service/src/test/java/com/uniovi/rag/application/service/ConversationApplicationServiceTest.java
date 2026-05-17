@@ -18,6 +18,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
+import com.uniovi.rag.application.service.chat.RuntimeConfigurationInvalidException;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
@@ -268,10 +269,13 @@ class ConversationApplicationServiceTest {
     }
 
     @Test
-    void patchConversation_persistsLlmModelWithoutRunningRuntimeValidationBranch() {
+    void patchConversation_persistsLlmModelAfterRuntimeValidation() {
         UUID userId = UUID.randomUUID();
         UUID convId = UUID.randomUUID();
         ConversationEntity c = mock(ConversationEntity.class);
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(UUID.randomUUID());
+        when(c.getProject()).thenReturn(project);
         when(projectAccessService.requireConversationForUser(userId, convId)).thenReturn(c);
         when(c.getLlmModel()).thenReturn(null);
 
@@ -703,11 +707,11 @@ class ConversationApplicationServiceTest {
                                 new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN"),
                                 false));
 
-        ResponseStatusException ex =
+        RuntimeConfigurationInvalidException ex =
                 assertThrows(
-                        ResponseStatusException.class,
+                        RuntimeConfigurationInvalidException.class,
                         () -> service.createConversation(userId, projectId, new CreateConversationRequest(null, null, null, null)));
-        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertEquals("UNSUPPORTED_RUNTIME_CONFIGURATION", ex.code());
         verify(conversationRepository, never()).save(any());
     }
 
@@ -739,11 +743,11 @@ class ConversationApplicationServiceTest {
                                 new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), true, null, null, false, "REQUIRES_REINDEX"),
                                 true));
 
-        ResponseStatusException ex =
+        RuntimeConfigurationInvalidException ex =
                 assertThrows(
-                        ResponseStatusException.class,
+                        RuntimeConfigurationInvalidException.class,
                         () -> service.createConversation(userId, projectId, new CreateConversationRequest(null, null, null, null)));
-        assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
+        assertEquals("INDEX_REQUIRES_REINDEX", ex.code());
         verify(conversationRepository, never()).save(any());
     }
 }

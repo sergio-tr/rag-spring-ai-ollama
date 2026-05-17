@@ -8,6 +8,7 @@ import com.uniovi.rag.interfaces.rest.auth.FeatureDisabledException;
 import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetValidationException;
 import com.uniovi.rag.application.service.evaluation.LabDatasetGateException;
 import com.uniovi.rag.application.service.evaluation.LabJobConcurrencyException;
+import com.uniovi.rag.application.service.chat.RuntimeConfigurationInvalidException;
 import com.uniovi.rag.service.admin.AdminModelCheckException;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetValidationFailedDto;
@@ -252,6 +253,36 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 trimOrFallback(ex.code(), "MODEL_INVALID"),
                 trimOrFallback(ex.getMessage(), "Model check failed"),
                 null));
+    }
+
+    @ExceptionHandler(RuntimeConfigurationInvalidException.class)
+    public ResponseEntity<ApiErrorResponse> handleRuntimeConfigurationInvalid(
+            RuntimeConfigurationInvalidException ex,
+            HttpServletRequest request) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put(
+                "issues",
+                ex.issues().stream()
+                        .map(i -> {
+                            Map<String, Object> m = new LinkedHashMap<>();
+                            m.put("code", i.code());
+                            m.put("field", i.field());
+                            m.put("message", i.message());
+                            m.put("severity", i.severity());
+                            return m;
+                        })
+                        .toList());
+        return ResponseEntity.status(ex.status())
+                .body(
+                        new ApiErrorResponse(
+                                Instant.now(),
+                                ex.status().value(),
+                                trimOrFallback(ex.code(), "RUNTIME_CONFIGURATION_INVALID"),
+                                trimOrFallback(ex.getMessage(), "Runtime configuration is invalid"),
+                                request != null ? request.getRequestURI() : null,
+                                request != null ? headerFirstNonBlank(request, "X-Request-Id", "x-request-id") : null,
+                                null,
+                                details));
     }
 
     @ExceptionHandler(Exception.class)

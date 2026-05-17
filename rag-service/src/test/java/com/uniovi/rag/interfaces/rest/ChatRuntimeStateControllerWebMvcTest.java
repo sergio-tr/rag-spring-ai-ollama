@@ -88,9 +88,16 @@ class ChatRuntimeStateControllerWebMvcTest {
                                 List.of(USE_RETRIEVAL),
                                 true,
                                 new ChatRuntimeValidationDto(true, true, List.of(), List.of()),
+                                true,
+                                List.of(),
+                                List.of(),
                                 "ChunkDenseRagWorkflow",
                                 null,
-                                false));
+                                false,
+                                null,
+                                null,
+                                List.of(),
+                                null));
 
         mockMvc.perform(get(path("/conversations/{conversationId}/runtime-state"), conversationId))
                 .andExpect(status().isOk())
