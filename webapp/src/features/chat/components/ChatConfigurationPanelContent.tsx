@@ -231,7 +231,7 @@ export function ChatConfigurationPanelContent() {
       : api?.runtimeState?.preset?.kind === "PRODUCT"
         ? "Product"
         : api?.runtimeState?.preset?.kind === "EXPERIMENTAL"
-          ? "TFG"
+          ? "Experimental"
           : api?.runtimeState?.preset?.kind === "MISSING"
             ? "Missing"
             : null;
@@ -688,7 +688,7 @@ export function ChatConfigurationPanelContent() {
                     </option>
                   ))}
                 </optgroup>
-                <optgroup label="TFG experimental presets (P0–P14)">
+                <optgroup label="Experimental presets (P0–P14)">
                   {experimentalUnique.map((p) => {
                     const reason = presetIndexDisabledReason(p);
                     return (

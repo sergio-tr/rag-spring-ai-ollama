@@ -234,7 +234,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
         },
       },
     }));
-    expect(await screen.findByText("TFG")).toBeInTheDocument();
+    expect(await screen.findByText("Experimental")).toBeInTheDocument();
 
     useChatToolbarStore.setState((s) => ({
       api: {

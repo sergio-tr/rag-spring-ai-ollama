@@ -155,7 +155,7 @@ describe("conversation-preset-ui", () => {
         {
           productPresetId: "exp4",
           code: "P4",
-          family: "TFG",
+          family: "Experimental",
           label: "Chunk + metadata retrieval",
           description: "",
           requiredCapabilities: [],
