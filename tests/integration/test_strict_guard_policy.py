@@ -50,3 +50,15 @@ def test_observability_classifier_service_skip_does_not_trigger_classifier_guard
         "tests/integration/test_stack_integration.py::TestObservabilityStack::test_jaeger_lists_classifier_service_after_traffic",
         "Skipped: Observability tests disabled (INTEGRATION_CHECK_OBS=0)",
     )
+
+
+def test_strict_guard_fails_authenticated_flow_skips() -> None:
+    assert conftest._auth_skip_requires_failure(
+        "Skipped: Login did not return a token (seed user missing or wrong INTEGRATION_LOGIN_*)."
+    )
+
+
+def test_strict_guard_does_not_treat_observability_skip_as_auth_skip() -> None:
+    assert not conftest._auth_skip_requires_failure(
+        "Skipped: Observability stack not reachable (OTEL collector metrics)."
+    )

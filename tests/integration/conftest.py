@@ -48,6 +48,16 @@ def _classifier_skip_requires_failure(nodeid: str, reason: str) -> bool:
     return True
 
 
+def _auth_skip_requires_failure(reason: str) -> bool:
+    text = reason.lower()
+    return (
+        "login failed" in text
+        or "login did not return a token" in text
+        or "seed user missing" in text
+        or "wrong integration_login" in text
+    )
+
+
 def pytest_configure(config: pytest.Config) -> None:
     global _COLLECTED_COUNT, _STRICT_GUARD_FAILURE
     del config
@@ -108,6 +118,20 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
                 f"was skipped ({first_nodeid}: {first_reason})."
             )
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
+            return
+
+    auth_skips = {
+        nodeid: reason
+        for nodeid, reason in skipped.items()
+        if _auth_skip_requires_failure(reason)
+    }
+    if auth_skips:
+        first_nodeid, first_reason = next(iter(auth_skips.items()))
+        _STRICT_GUARD_FAILURE = (
+            "strict integration guard failed: authenticated product coverage was skipped "
+            f"({first_nodeid}: {first_reason})."
+        )
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
