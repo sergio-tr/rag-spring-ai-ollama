@@ -343,7 +343,7 @@ class ConversationApplicationServiceTest {
 
         RagPresetEntity preset = mock(RagPresetEntity.class);
         when(preset.getId()).thenReturn(presetId);
-        when(preset.getTags()).thenReturn(List.of("experimental", "tfg"));
+        when(preset.getTags()).thenReturn(List.of("experimental"));
         when(presetService.requireVisiblePreset(userId, presetId)).thenReturn(preset);
         when(experimentalPresetCatalogService.list())
                 .thenReturn(
@@ -400,7 +400,7 @@ class ConversationApplicationServiceTest {
 
         RagPresetEntity preset = mock(RagPresetEntity.class);
         when(preset.getId()).thenReturn(presetId);
-        when(preset.getTags()).thenReturn(List.of("experimental", "tfg"));
+        when(preset.getTags()).thenReturn(List.of("experimental"));
         when(presetService.requireVisiblePreset(userId, presetId)).thenReturn(preset);
 
         when(experimentalPresetCatalogService.list())
@@ -450,7 +450,7 @@ class ConversationApplicationServiceTest {
 
         RagPresetEntity preset = mock(RagPresetEntity.class);
         when(preset.getId()).thenReturn(presetId);
-        when(preset.getTags()).thenReturn(List.of("experimental", "tfg"));
+        when(preset.getTags()).thenReturn(List.of("experimental"));
         when(presetService.requireVisiblePreset(userId, presetId)).thenReturn(preset);
 
         when(experimentalPresetCatalogService.list())
@@ -580,7 +580,7 @@ class ConversationApplicationServiceTest {
 
         RagPresetEntity preset = mock(RagPresetEntity.class);
         when(preset.getId()).thenReturn(presetId);
-        when(preset.getTags()).thenReturn(List.of("experimental", "tfg"));
+        when(preset.getTags()).thenReturn(List.of("experimental"));
         when(presetService.requireVisiblePreset(userId, presetId)).thenReturn(preset);
         when(experimentalPresetCatalogService.list())
                 .thenReturn(
@@ -635,7 +635,7 @@ class ConversationApplicationServiceTest {
 
         RagPresetEntity preset = mock(RagPresetEntity.class);
         when(preset.getId()).thenReturn(presetId);
-        when(preset.getTags()).thenReturn(List.of("experimental", "tfg"));
+        when(preset.getTags()).thenReturn(List.of("experimental"));
         when(presetService.requireVisiblePreset(userId, presetId)).thenReturn(preset);
         when(experimentalPresetCatalogService.list())
                 .thenReturn(

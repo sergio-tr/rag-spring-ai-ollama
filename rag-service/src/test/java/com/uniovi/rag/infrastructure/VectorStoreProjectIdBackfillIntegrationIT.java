@@ -60,21 +60,21 @@ class VectorStoreProjectIdBackfillIntegrationIT {
         jdbcTemplate.update(
                 "INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)",
                 userId,
-                "tfg_r0_backfill_it+" + userId + "@test.local",
+                "backfill_it+" + userId + "@test.local",
                 "{noop}test",
                 "USER");
         jdbcTemplate.update(
                 "INSERT INTO projects (id, owner_id, name, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())",
                 projectId,
                 userId,
-                "TFG_R0_BACKFILL_IT_PROJECT");
+                "BACKFILL_IT_PROJECT");
 
         jdbcTemplate.update(
                 """
                 INSERT INTO vector_store (content, metadata, embedding, chunk_index, project_id)
                 VALUES (?, ?::jsonb, NULL, 0, NULL)
                 """,
-                "TFG_R0_BACKFILL_SMOKE",
+                "BACKFILL_SMOKE",
                 TestJson.json(Map.of(
                         "projectId", projectId.toString(),
                         "projectDocumentId", projectDocumentId.toString(),
@@ -147,7 +147,7 @@ class VectorStoreProjectIdBackfillIntegrationIT {
         RagExecutionContextHolder.set(new RagExecutionContext(null, null, projectId.toString(), cfg, List.of("all"), "it"));
 
         String ctx = naiveCorpusContextService.buildNaiveCorpusContextIfConfigured();
-        assertThat(ctx).contains("TFG_R0_BACKFILL_SMOKE");
+        assertThat(ctx).contains("BACKFILL_SMOKE");
     }
 
     /**
