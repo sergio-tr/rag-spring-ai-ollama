@@ -44,10 +44,12 @@ The Gatling workflow **skips** when `GATLING_BASE_URL` is unset.
 
 **Chat load:** Gatling `ChatSseSimulation` accepts **200 or 202** on `POST …/messages` (streaming vs async job). Mixed simulations focus on **legacy `/query`** + auth + admin; extend feeders if chat must be added to the mix.
 
-## CI
+## CI strategy
 
-- Gatling: `.github/workflows/gatling.yml` (dispatch / schedule; requires `GATLING_BASE_URL` or manual input). Prefer **`MixedRealisticSmokeSimulation`** or **`ActuatorHealthSimulation`** for cheap scheduled runs; use **mixed_profile** / repository variables for `GATLING_PROFILE` when running `MixedRealisticSimulation`.
-- Python micro-benchmark: `.github/workflows/micro-benchmark.yml` (dispatch / weekly; optional).
+- **PR smoke:** `reusable-ci-core.yml` runs the `performance` job only for PRs targeting `main` / `master`. It starts Postgres + Spring `e2e`, routes through the reverse proxy, runs Gatling `ActuatorHealthSimulation`, then runs `infra_probe.py` with strict error-rate and p95 thresholds. This lane does **not** require Ollama or classifier readiness.
+- **Local PR smoke:** `.github/local/run-performance-ci-like.sh --stop-after` mirrors the PR performance job and writes local probe JSON under `.github/local/results/performance/`.
+- **Manual / scheduled Gatling:** `.github/workflows/gatling.yml` (dispatch / schedule; requires `GATLING_BASE_URL` or manual input). Prefer **`MixedRealisticSmokeSimulation`** or **`ActuatorHealthSimulation`** for cheap scheduled runs; use **mixed_profile** / repository variables for `GATLING_PROFILE` when running `MixedRealisticSimulation`.
+- **Manual / scheduled Python micro-benchmark:** `.github/workflows/micro-benchmark.yml` (dispatch / weekly; optional, observation artifact only).
 
 ## Caution
 

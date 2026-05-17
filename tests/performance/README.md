@@ -27,6 +27,34 @@ cd tests/performance
 python retrieval_benchmark.py --backend-base-url http://localhost:9000 --scenario baseline --output-json /tmp/bench.json
 ```
 
+## PR smoke command
+
+Use this for the short performance gate. It is intentionally backend/proxy health only, so it does not require Ollama, model pulls, classifier, or seeded benchmark datasets:
+
+```bash
+.github/local/run-performance-ci-like.sh --stop-after
+```
+
+The wrapper writes `infra-probe-local.json` under `.github/local/results/performance/` and Gatling HTML under `tests/gatling/build/reports/gatling/`.
+
+`infra_probe.py` fails when measured requests exceed either threshold:
+
+- `--max-error-rate` / `PERF_INFRA_MAX_ERROR_RATE` default: `0`
+- `--max-p95-ms` / `PERF_INFRA_MAX_P95_MS` default: `2000`
+
+Example standalone probe:
+
+```bash
+python tests/performance/infra_probe.py \
+  --backend-base-url http://localhost:9000 \
+  --repetitions 5 \
+  --warmup 1 \
+  --concurrency 1 \
+  --max-error-rate 0 \
+  --max-p95-ms 2000 \
+  --output-json /tmp/infra-probe.json
+```
+
 ## Product chat scenarios (`transport: product_chat`)
 
 Requires:

@@ -29,25 +29,25 @@ From this directory:
 ```bash
 chmod +x gradlew
 
-./gradlew compileGatlingScala
+bash ./gradlew --no-daemon compileGatlingScala
 
 # Pick one simulation (class name includes package):
-./gradlew gatlingRun --simulation simulations.ActuatorHealthSimulation
-./gradlew gatlingRun --simulation simulations.ProductAuthenticatedSimulation
-./gradlew gatlingRun --simulation simulations.StressRampSimulation
-./gradlew gatlingRun --simulation simulations.ActuatorThroughputTiersSimulation
-./gradlew gatlingRun --simulation simulations.ChatSseSimulation
-./gradlew gatlingRun --simulation simulations.OpenApiAndReadinessSimulation
-./gradlew gatlingRun --simulation simulations.ProductUnauthenticatedSimulation
-./gradlew gatlingRun --simulation simulations.AuthLoginNegativeSimulation
-./gradlew gatlingRun --simulation simulations.AdminApiSimulation
+bash ./gradlew --no-daemon gatlingRun --simulation simulations.ActuatorHealthSimulation
+bash ./gradlew --no-daemon gatlingRun --simulation simulations.ProductAuthenticatedSimulation
+bash ./gradlew --no-daemon gatlingRun --simulation simulations.StressRampSimulation
+bash ./gradlew --no-daemon gatlingRun --simulation simulations.ActuatorThroughputTiersSimulation
+bash ./gradlew --no-daemon gatlingRun --simulation simulations.ChatSseSimulation
+bash ./gradlew --no-daemon gatlingRun --simulation simulations.OpenApiAndReadinessSimulation
+bash ./gradlew --no-daemon gatlingRun --simulation simulations.ProductUnauthenticatedSimulation
+bash ./gradlew --no-daemon gatlingRun --simulation simulations.AuthLoginNegativeSimulation
+bash ./gradlew --no-daemon gatlingRun --simulation simulations.AdminApiSimulation
 
 # Realistic mixed workload (see "Mixed simulations" below):
-./gradlew gatlingRun --simulation simulations.MixedRealisticLoadSimulation
-./gradlew gatlingRun --simulation simulations.MixedRealisticSmokeSimulation
+bash ./gradlew --no-daemon gatlingRun --simulation simulations.MixedRealisticLoadSimulation
+bash ./gradlew --no-daemon gatlingRun --simulation simulations.MixedRealisticSmokeSimulation
 
 # Run all simulations sequentially (alphabetic order)
-./gradlew gatlingRun --all
+bash ./gradlew --no-daemon gatlingRun --all
 ```
 
 HTML reports are written under `build/reports/gatling/<runId>/index.html`.
