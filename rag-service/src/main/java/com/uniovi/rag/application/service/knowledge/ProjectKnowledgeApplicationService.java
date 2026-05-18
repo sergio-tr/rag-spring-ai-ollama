@@ -84,27 +84,6 @@ public class ProjectKnowledgeApplicationService {
         return KnowledgeRebuildExecuteResponse.from(result);
     }
 
-    /**
-     * Legacy {@code POST /reindex}: same as execute with defaults (plan §10).
-     */
-    public void triggerReindex(UUID userId, UUID projectId, CorpusScope corpusScope, UUID conversationId) {
-        projectAccessService.requireOwnedProject(userId, projectId);
-        validateCorpusForList(userId, corpusScope, conversationId);
-        KnowledgeConfigurationOperationInput input =
-                new KnowledgeConfigurationOperationInput(
-                        projectId,
-                        corpusScope,
-                        conversationId,
-                        KnowledgeOperationKind.EXECUTE,
-                        null,
-                        null,
-                        null,
-                        Set.of(),
-                        userId,
-                        null);
-        knowledgeConfigurationIntegrationService.executeRebuild(input);
-    }
-
     public List<KnowledgeSnapshotSummaryResponse> listSnapshots(
             UUID userId, UUID projectId, CorpusScope corpusScope, UUID conversationId) {
         projectAccessService.requireOwnedProject(userId, projectId);

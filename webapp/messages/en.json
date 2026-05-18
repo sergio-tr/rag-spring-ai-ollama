@@ -477,7 +477,7 @@
     "followModePoll": "Polling",
     "followModeSse": "Live stream",
     "labAdvancedOptionsSummary": "Advanced options",
-    "labAdvancedEvalHelp": "Runs POST JSON to `/lab/benchmarks/'{'kind'}'/runs` (`datasetId`, optional `projectId`, optional `llmModelId` / `embeddingModelId`, optional `embeddingDownstreamRag` for embedding runs). Legacy `/lab/evaluations/llm|rag` endpoints return HTTP 410 — use the canonical benchmark API only.",
+    "labAdvancedEvalHelp": "Runs POST JSON to the canonical benchmark API `/lab/benchmarks/'{'kind'}'/runs` (`datasetId`, optional `projectId`, optional `llmModelId` / `embeddingModelId`, optional `embeddingDownstreamRag` for embedding runs).",
     "labAdvancedClassifierJobHelp": "Training and evaluation send spreadsheets via multipart forms. By default the API queues background work (`HTTP 202`) and exposes polling/SSE paths; use query parameter `sync=true` only for small experiments.",
     "projectScopeActive": "Results use project \"{name}\".",
     "projectScopeNone": "No active project selected — runs use global defaults.",

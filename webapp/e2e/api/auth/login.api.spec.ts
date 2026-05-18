@@ -12,7 +12,7 @@ test.describe("Auth API @api", () => {
 
   test("POST login with wrong password fails", async ({ request }) => {
     const { email } = integrationCredentials();
-    const res = await request.post("/api/auth/login", {
+    const res = await request.post(productUrl("/auth/login"), {
       data: { email, password: "definitely-wrong-password-xyz" },
       headers: { "Content-Type": "application/json", Accept: "application/json" },
     });

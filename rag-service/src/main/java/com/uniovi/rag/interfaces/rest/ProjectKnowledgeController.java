@@ -30,7 +30,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Canonical knowledge API (ingest, reindex, snapshots). Retrieval and RAG are not exposed here.
+ * Canonical knowledge API (ingest, config-aware rebuild, snapshots). Retrieval and RAG are not exposed here.
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}/projects/{projectId}/knowledge")
@@ -87,16 +87,6 @@ public class ProjectKnowledgeController {
             @PathVariable UUID projectId,
             @RequestBody KnowledgeRebuildExecuteRequest request) {
         return projectKnowledgeApplicationService.executeRebuild(principal.userId(), projectId, request);
-    }
-
-    @PostMapping("/reindex")
-    public ResponseEntity<Void> reindex(
-            @AuthenticationPrincipal RagPrincipal principal,
-            @PathVariable UUID projectId,
-            @RequestParam("corpusScope") CorpusScope corpusScope,
-            @RequestParam(value = "conversationId", required = false) UUID conversationId) {
-        projectKnowledgeApplicationService.triggerReindex(principal.userId(), projectId, corpusScope, conversationId);
-        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/snapshots")

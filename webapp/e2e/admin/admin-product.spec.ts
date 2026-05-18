@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { loginAsE2eAdmin } from "../support/helpers";
+import { loginAsE2eAdmin, productApiUrl } from "../support/helpers";
 import { adminEmail, adminPassword } from "../fixtures/users";
 
 /**
@@ -13,13 +13,7 @@ test.describe("Admin product API", () => {
     );
     // Avoid CI flakes: the app can be "healthy" while auth is still seeding/initializing.
     // If admin login is not available yet, skip instead of timing out on the UI.
-    const apiBase = (
-      process.env.NEXT_PUBLIC_API_BASE_URL ??
-      process.env.API_BASE_URL ??
-      process.env.INTEGRATION_BACKEND_URL ??
-      "http://127.0.0.1:9000"
-    ).replace(/\/$/, "");
-    const probe = await request.post(`${apiBase}/api/auth/login`, {
+    const probe = await request.post(productApiUrl("/auth/login"), {
       data: { email: adminEmail(), password: adminPassword() },
     });
     test.skip(

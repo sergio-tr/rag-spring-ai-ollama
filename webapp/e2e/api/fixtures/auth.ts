@@ -1,5 +1,5 @@
 import { expect, type APIRequestContext } from "@playwright/test";
-import { apiBaseUrl } from "./env";
+import { productUrl } from "./env";
 
 export function authHeaders(token: string): Record<string, string> {
   return {
@@ -9,14 +9,14 @@ export function authHeaders(token: string): Record<string, string> {
 }
 
 /**
- * POST /api/auth/login — returns JWT access token or throws if login fails.
+ * POST {product}/auth/login — returns JWT access token or throws if login fails.
  */
 export async function loginAndGetToken(
   request: APIRequestContext,
   email: string,
   password: string,
 ): Promise<string> {
-  const res = await request.post(`${apiBaseUrl()}/api/auth/login`, {
+  const res = await request.post(productUrl("/auth/login"), {
     data: { email, password },
     headers: { "Content-Type": "application/json" },
   });

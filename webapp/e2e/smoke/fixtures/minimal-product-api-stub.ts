@@ -26,7 +26,6 @@ export async function installMinimalProductApiStub(page: Page): Promise<void> {
     datasets: {
       enabled: false,
       datasetKindsReady: false,
-      legacyQuestionCountDeprecated: null,
     },
     evaluations: { llm: false, rag: false, classifierProxy: false, asyncJobs: false },
     classifier: { configured: false, train: false, evaluate: false },

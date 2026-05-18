@@ -76,7 +76,7 @@ export default function AdminHomePage() {
     setPullProgress(null);
     setPullRunning(true);
     try {
-      const accepted = await apiFetch<LabJobAcceptedDto>("/api/admin/ollama/pull", {
+      const accepted = await apiFetch<LabJobAcceptedDto>(apiProductPath("/admin/models/pull"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: pullModel.trim() }),

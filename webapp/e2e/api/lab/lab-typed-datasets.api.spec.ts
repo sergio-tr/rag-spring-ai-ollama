@@ -26,7 +26,7 @@ test.describe("Lab typed datasets & benchmarks API @api", () => {
       referenceBundleValid: boolean;
       datasetKindsReady: boolean;
       countsByDatasetKind: Record<string, number>;
-      datasets: { enabled: boolean; datasetKindsReady?: boolean; legacyQuestionCountDeprecated?: unknown };
+      datasets: { enabled: boolean; datasetKindsReady?: boolean };
       validationIssues?: { code?: string }[];
     };
     expect(typeof body.referenceBundleAvailable).toBe("boolean");
@@ -39,22 +39,6 @@ test.describe("Lab typed datasets & benchmarks API @api", () => {
         datasetKindsReady: expect.any(Boolean),
       }),
     );
-  });
-
-  test("POST lab/evaluations/rag legacy endpoint returns 410 Gone @api", async ({ request }) => {
-    const { email, password } = integrationCredentials();
-    const token = await loginAndGetToken(request, email, password);
-    const res = await request.post(productUrl("/lab/evaluations/rag"), {
-      headers: authHeaders(token),
-    });
-    const goneText = await res.text();
-    expect(res.status(), goneText).toBe(410);
-    const body = parseJsonExpectNonHtml(goneText, "POST lab/evaluations/rag gone") as {
-      error?: string;
-      canonicalStartBenchmarkPathTemplate?: string;
-    };
-    expect(body.error).toBe("LAB_EVALUATIONS_LEGACY_REMOVED");
-    expect(body.canonicalStartBenchmarkPathTemplate ?? "").toContain("/lab/benchmarks/{kind}/runs");
   });
 
   for (const [segment, filename] of [

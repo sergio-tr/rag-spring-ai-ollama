@@ -43,7 +43,6 @@ test.describe.serial("System smoke chain @api @system", () => {
       datasets?: {
         enabled?: boolean;
         datasetKindsReady?: boolean;
-        legacyQuestionCountDeprecated?: unknown;
       };
       datasetKindsReady?: boolean;
       referenceBundleAvailable?: boolean;

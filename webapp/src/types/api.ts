@@ -270,8 +270,6 @@ export type LabValidationIssueDto = {
 export type LabStatusResponse = {
   datasets: {
     enabled: boolean;
-    /** @deprecated Legacy field — always null; do not use as source of truth. */
-    legacyQuestionCountDeprecated?: number | null;
     datasetKindsReady?: boolean;
   };
   /** True when core typed dataset kinds in the internal reference workbook have non-zero row counts and validation passed. */

@@ -93,7 +93,6 @@ public class LabController {
         Map<String, Object> datasets = new LinkedHashMap<>();
         datasets.put("enabled", kindsReady);
         datasets.put("datasetKindsReady", kindsReady);
-        datasets.put("legacyQuestionCountDeprecated", null);
         m.put("datasets", datasets);
 
         m.put(
@@ -117,24 +116,6 @@ public class LabController {
                         + apiPathProperties.getProductBasePath()
                         + "/lab/jobs/{id} or SSE …/events.");
         return m;
-    }
-
-    @PostMapping("/evaluations/llm")
-    public ResponseEntity<Map<String, Object>> evaluateLlm(
-            @AuthenticationPrincipal RagPrincipal principal,
-            @RequestParam(name = "sync", defaultValue = "false") boolean sync,
-            @RequestParam(name = "projectId", required = false) UUID projectId) {
-        requireUserId(principal);
-        return legacyEvaluationsRemoved();
-    }
-
-    @PostMapping("/evaluations/rag")
-    public ResponseEntity<Map<String, Object>> evaluateRag(
-            @AuthenticationPrincipal RagPrincipal principal,
-            @RequestParam(name = "sync", defaultValue = "false") boolean sync,
-            @RequestParam(name = "projectId", required = false) UUID projectId) {
-        requireUserId(principal);
-        return legacyEvaluationsRemoved();
     }
 
     /**
@@ -192,18 +173,6 @@ public class LabController {
     }
 
     public record ClassifierClassifyRequest(String query, String modelId) {}
-
-    private ResponseEntity<Map<String, Object>> legacyEvaluationsRemoved() {
-        String base = apiPathProperties.getProductBasePath();
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("error", "LAB_EVALUATIONS_LEGACY_REMOVED");
-        body.put(
-                "message",
-                "POST /lab/evaluations/llm and /lab/evaluations/rag are removed. "
-                        + "Use POST /lab/benchmarks/{kind}/runs with a typed evaluation_dataset id.");
-        body.put("canonicalStartBenchmarkPathTemplate", base + "/lab/benchmarks/{kind}/runs");
-        return ResponseEntity.status(HttpStatus.GONE).body(body);
-    }
 
     private LabJobAcceptedDto accepted(UUID jobId) {
         String base = apiPathProperties.getProductBasePath() + "/lab/jobs/" + jobId;

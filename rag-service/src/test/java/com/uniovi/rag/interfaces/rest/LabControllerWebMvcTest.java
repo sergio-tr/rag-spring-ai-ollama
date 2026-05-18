@@ -34,10 +34,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -135,23 +133,5 @@ class LabControllerWebMvcTest {
                 .andExpect(jsonPath("$.datasetKindsReady").value(false))
                 .andExpect(jsonPath("$.validationStatus").value("INVALID"))
                 .andExpect(jsonPath("$.validationIssues[0].code").value("WORKBOOK_IO_ERROR"));
-    }
-
-    @Test
-    void evaluateRag_legacyEndpoint_returns410() throws Exception {
-        mockMvc.perform(post(path("/lab/evaluations/rag")))
-                .andExpect(status().isGone())
-                .andExpect(jsonPath("$.error").value("LAB_EVALUATIONS_LEGACY_REMOVED"));
-
-        verifyNoInteractions(asyncTaskService);
-    }
-
-    @Test
-    void evaluateLlm_legacyEndpoint_returns410() throws Exception {
-        mockMvc.perform(post(path("/lab/evaluations/llm")))
-                .andExpect(status().isGone())
-                .andExpect(jsonPath("$.canonicalStartBenchmarkPathTemplate").value("/api/v5/lab/benchmarks/{kind}/runs"));
-
-        verifyNoInteractions(asyncTaskService);
     }
 }
