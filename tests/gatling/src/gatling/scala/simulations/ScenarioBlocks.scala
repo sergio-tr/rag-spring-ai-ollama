@@ -18,11 +18,11 @@ object ScenarioBlocks {
     .acceptHeader("application/json")
     .userAgentHeader("gatling-rag-mixed/1.0")
 
-  /** POST /api/auth/login — requires {@code email} and {@code password} (users feeder). */
+  /** POST {product}/auth/login — requires {@code email} and {@code password} (users feeder). */
   def authLogin: ChainBuilder =
     exec(
       http("mix POST login")
-        .post("/api/auth/login")
+        .post(s"${RagPaths.productPrefix}/auth/login")
         .header("Content-Type", "application/json")
         .body(StringBody("""{"email":"${email}","password":"${password}"}"""))
         .check(status.is(200))
@@ -30,13 +30,13 @@ object ScenarioBlocks {
     )
 
   /**
-   * Admin path: when {@code GATLING_ADMIN_EMAIL} is set, login as admin and GET /api/admin/health.
+   * Admin path: when {@code GATLING_ADMIN_EMAIL} is set, login as admin and GET product admin health.
    * Otherwise login as feed user and GET product projects (light authenticated read).
    */
   def adminOrAuthenticatedRead: ChainBuilder =
     exec(
       http("mix POST login (feed user)")
-        .post("/api/auth/login")
+        .post(s"${RagPaths.productPrefix}/auth/login")
         .header("Content-Type", "application/json")
         .body(StringBody("""{"email":"${email}","password":"${password}"}"""))
         .check(status.is(200))
@@ -44,7 +44,7 @@ object ScenarioBlocks {
     ).doIfOrElse(_ => RagPaths.adminEmail.trim.nonEmpty)(
       exec(
         http("mix POST login (admin)")
-          .post("/api/auth/login")
+          .post(s"${RagPaths.productPrefix}/auth/login")
           .header("Content-Type", "application/json")
           .body(
             StringBody(
@@ -54,8 +54,8 @@ object ScenarioBlocks {
           .check(status.is(200))
           .check(jsonPath("$.accessToken").saveAs("adminToken"))
       ).exec(
-        http("mix GET /api/admin/health")
-          .get("/api/admin/health")
+        http("mix GET product admin health")
+          .get(s"${RagPaths.productPrefix}/admin/health")
           .header("Authorization", session => "Bearer " + session("adminToken").as[String])
           .check(status.is(200))
       )

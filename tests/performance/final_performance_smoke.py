@@ -119,7 +119,7 @@ def _skip(steps: list[StepResult], name: str, method: str, path: str, reason: st
     )
 
 
-def _resolve_token(base_url: str, timeout_s: float) -> tuple[str | None, str | None]:
+def _resolve_token(base_url: str, product_prefix: str, timeout_s: float) -> tuple[str | None, str | None]:
     token = _env("PERF_BEARER_TOKEN")
     if token:
         return token, None
@@ -130,7 +130,7 @@ def _resolve_token(base_url: str, timeout_s: float) -> tuple[str | None, str | N
     code, payload, _ms, err = _request_json(
         base_url,
         "POST",
-        "/api/auth/login",
+        f"{product_prefix.rstrip('/')}/auth/login",
         timeout_s,
         body={"email": email, "password": password},
     )
@@ -257,7 +257,7 @@ def main() -> int:
         args.timeout_s,
     )
 
-    token, token_error = _resolve_token(args.backend_base_url, args.timeout_s)
+    token, token_error = _resolve_token(args.backend_base_url, product, args.timeout_s)
     project_id = _env("PERF_PROJECT_ID")
     conversation_id = _env("PERF_CONVERSATION_ID")
     dataset_id = _env("PERF_DATASET_ID")
@@ -343,6 +343,11 @@ def main() -> int:
 
     failures = _threshold_failures(steps, args.max_error_rate, args.max_p95_ms)
     skipped = [s for s in steps if s.status == "skipped"]
+    product_step_names = {"document_status", "chat_request", "lab_run_start"}
+    product_steps = [s for s in steps if s.name in product_step_names]
+    product_skipped = [s for s in product_steps if s.status == "skipped"]
+    product_failed = [s for s in product_steps if s.status == "failed"]
+    product_flow_complete = bool(product_steps) and not product_skipped and not product_failed
     if args.require_product and skipped:
         failures.append("requireProduct=true but product-scoped steps were skipped")
 
@@ -356,6 +361,8 @@ def main() -> int:
         "command": " ".join(shlex.quote(part) for part in sys.argv),
         "durationSeconds": time.perf_counter() - started,
         "scope": "bounded latency/usability smoke; not production scalability evidence",
+        "evidenceMode": "PRODUCT_FLOW" if product_flow_complete else "INFRA_ONLY",
+        "productFlowComplete": product_flow_complete,
         "thresholds": {
             "maxErrorRate": args.max_error_rate,
             "maxP95Ms": args.max_p95_ms,

@@ -6,7 +6,7 @@
 
 | Script | Role |
 | --- | --- |
-| `retrieval_benchmark.py` | Main runner: legacy `GET …/query` or `product_chat` (JWT + project + conversation). Schema `benchmark-report-v1` (see `schema/`). |
+| `retrieval_benchmark.py` | Main runner for `product_chat` (JWT + project + conversation). Legacy `GET …/query` remains available only for old-baseline comparison. Schema `benchmark-report-v1` (see `schema/`). |
 | `llm_benchmark.py` | Wrapper with `--family llm` default (same HTTP behaviour; report emphasizes token/cost lines). |
 | `infra_probe.py` | Simple GET probe (default `/actuator/health`) — infra cold/warm, not RAG. |
 | `final_performance_smoke.py` | Final-scope bounded smoke: health/metrics plus optional document, Chat job, and Lab run start/status when `PERF_*` inputs are provided. |
@@ -21,16 +21,21 @@ pip install -r tests/performance/requirements.txt
 
 Run from repo root or `tests/performance/` (imports `common.py` from the same directory).
 
-## Quick start (legacy)
+## Quick start (product Chat)
 
 ```bash
 cd tests/performance
+export BENCHMARK_BEARER_TOKEN="<jwt>"
+export BENCHMARK_PROJECT_ID="<project-uuid>"
+export BENCHMARK_CONVERSATION_ID="<conversation-uuid>"
 python retrieval_benchmark.py --backend-base-url http://localhost:9000 --scenario baseline --output-json /tmp/bench.json
 ```
 
+Without those `BENCHMARK_*` inputs, do not use this command as final product performance evidence.
+
 ## PR smoke command
 
-Use this for the short performance gate. It is intentionally backend/proxy health only, so it does not require Ollama, model pulls, classifier, or seeded benchmark datasets:
+Use this for the short performance gate. It is intentionally backend/proxy health only, so it does not require Ollama, model pulls, classifier, or seeded benchmark datasets. Evidence from this command is **INFRA_ONLY**, not product Chat/LAB performance:
 
 ```bash
 .github/local/run-performance-ci-like.sh --stop-after
@@ -66,6 +71,8 @@ python tests/performance/final_performance_smoke.py \
   --output-json .cursor/context/evidence/performance/final-performance-smoke.json
 ```
 
+This command is acceptable only for an **INFRA_ONLY** claim when product steps are skipped. For product performance evidence, use `--require-product` plus the credentials/IDs below.
+
 Optional product-scoped measurements:
 
 ```bash
@@ -77,6 +84,7 @@ export PERF_DATASET_ID="<dataset-uuid>"       # only needed with --enable-lab-st
 python tests/performance/final_performance_smoke.py \
   --backend-base-url http://127.0.0.1:9000 \
   --enable-lab-start \
+  --require-product \
   --output-json .cursor/context/evidence/performance/final-performance-smoke.json
 ```
 
@@ -105,6 +113,10 @@ export BENCHMARK_PROJECT_ID="..."
 export BENCHMARK_CONVERSATION_ID="..."
 python retrieval_benchmark.py --scenario retrieval_off --output-json /tmp/bench.json
 ```
+
+## Legacy `/query` scenarios
+
+Legacy `GET .../query` scenarios are retained for historical comparison and regression diagnosis only. They are not the final product Chat path and must not be cited as release performance evidence unless the report is explicitly labelled `legacy`.
 
 ## Audit & schema
 

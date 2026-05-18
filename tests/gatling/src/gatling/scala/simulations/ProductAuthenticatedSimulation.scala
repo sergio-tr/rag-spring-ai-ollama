@@ -6,7 +6,7 @@ import io.gatling.http.Predef._
 import scala.concurrent.duration.DurationInt
 
 /**
- * Login via POST /api/auth/login then hit product REST (projects list).
+ * Login via POST {product}/auth/login then hit product REST (projects list).
  */
 class ProductAuthenticatedSimulation extends Simulation {
 
@@ -22,8 +22,8 @@ class ProductAuthenticatedSimulation extends Simulation {
 
   private val authenticate =
     exec(
-      http("POST /api/auth/login")
-        .post("/api/auth/login")
+      http("POST product auth login")
+        .post(s"${RagPaths.productPrefix}/auth/login")
         .body(StringBody(loginBody))
         .check(status.is(200))
         .check(jsonPath("$.accessToken").saveAs("accessToken"))

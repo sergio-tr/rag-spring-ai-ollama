@@ -52,9 +52,11 @@ bash ./gradlew --no-daemon gatlingRun --all
 
 HTML reports are written under `build/reports/gatling/<runId>/index.html`.
 
+For final release evidence, prefer product-authenticated simulations (`ProductAuthenticatedSimulation`, `ChatSseSimulation`, or mixed profiles with product credentials). Actuator-only simulations are **INFRA_ONLY** evidence.
+
 ## Shared scenario blocks
 
-[`ScenarioBlocks.scala`](src/gatling/scala/simulations/ScenarioBlocks.scala) holds reusable **ChainBuilder** fragments (legacy query, login, admin vs product fallback) consumed by mixed simulations.
+[`ScenarioBlocks.scala`](src/gatling/scala/simulations/ScenarioBlocks.scala) holds reusable **ChainBuilder** fragments (product login/Chat/admin and legacy query compatibility) consumed by mixed simulations. Legacy query fragments are for historical comparison only.
 
 ## Mixed simulations (`MixedRealistic*`)
 
@@ -71,8 +73,8 @@ HTML reports are written under `build/reports/gatling/<runId>/index.html`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `GATLING_MIX_RAG_PCT` | `70` | Weight for legacy `/query` branch |
-| `GATLING_MIX_AUTH_PCT` | `20` | Weight for `POST /api/auth/login` |
+| `GATLING_MIX_RAG_PCT` | `70` | Weight for the RAG branch. Treat as product evidence only when the selected simulation uses product Chat; legacy `/query` branches are historical/compatibility evidence. |
+| `GATLING_MIX_AUTH_PCT` | `20` | Weight for `POST {product}/auth/login` |
 | `GATLING_MIX_ADMIN_PCT` | `10` | Weight for admin (or product fallback) |
 | `GATLING_PROFILE` | `load` | Used only by `MixedRealisticSimulation` |
 | `GATLING_MIX_DURATION_SEC` | `120` | Loop duration per user (`load`) |
@@ -111,7 +113,7 @@ Stress/spike reuse `GATLING_STRESS_*` / `GATLING_SPIKE_*` where noted in [`Mixed
 | `GATLING_UNAUTH_ITERATION_SEC` | `20` | Loop duration per scenario. |
 | `GATLING_AUTH_NEG_VUS` | `3` | `AuthLoginNegativeSimulation` users. |
 | `GATLING_AUTH_NEG_ITERATION_SEC` | `15` | Loop duration for negative auth scenario. |
-| `GATLING_ADMIN_EMAIL` | *(empty)* | When set (e.g. `admin@e2e.local`), mixed **admin** branch hits `/api/admin/health`. |
+| `GATLING_ADMIN_EMAIL` | *(empty)* | When set (e.g. `admin@e2e.local`), mixed **admin** branch hits `{product}/admin/health`. |
 | `GATLING_ADMIN_PASSWORD` | `e2e` | Password for `GATLING_ADMIN_EMAIL`. |
 | `GATLING_ADMIN_API_VUS` | `3` | Users for `AdminApiSimulation`. |
 
@@ -125,14 +127,14 @@ Stress/spike reuse `GATLING_STRESS_*` / `GATLING_SPIKE_*` where noted in [`Mixed
 | Class | Purpose |
 | --- | --- |
 | `ActuatorHealthSimulation` | Short actuator check / warmup. |
-| `ProductAuthenticatedSimulation` | `POST /api/auth/login` then `GET` projects and config schema. |
+| `ProductAuthenticatedSimulation` | `POST {product}/auth/login` then `GET` projects and config schema. |
 | `StressRampSimulation` | Ramp on actuator health; breakpoint-style runs. |
 | `ActuatorThroughputTiersSimulation` | Several constant-RPS plateaus on actuator in one run. |
 | `ChatSseSimulation` | Login + create project/conversation + **POST** message; asserts **200 or 202**. |
 | `OpenApiAndReadinessSimulation` | `/v3/api-docs`, readiness, liveness (low cost). |
 | `ProductUnauthenticatedSimulation` | `GET` presets + `/config/schema` without JWT (**401 or 403**). |
 | `AuthLoginNegativeSimulation` | Wrong login, invalid email login, invalid refresh (**401/400**). |
-| `AdminApiSimulation` | `/api/admin` unauthenticated + USER **403**; optional ADMIN **200** if `GATLING_ADMIN_EMAIL` set. |
+| `AdminApiSimulation` | Product admin health/models unauthenticated + USER **403**; optional ADMIN **200** if `GATLING_ADMIN_EMAIL` set. |
 | `MixedRealisticSimulation` | Weighted **auth + admin/product** mix; profile from `GATLING_PROFILE`. |
 | `MixedRealisticSmokeSimulation` | **Smoke** profile — few VUs, short duration. |
 | `MixedRealisticLoadSimulation` | **Load** profile — ramp + hold. |
@@ -142,7 +144,7 @@ Stress/spike reuse `GATLING_STRESS_*` / `GATLING_SPIKE_*` where noted in [`Mixed
 
 ## Optional token prep
 
-For JWT-from-CSV feeders, generate tokens with [`gatling-prepare-tokens.sh`](gatling-prepare-tokens.sh) (from repo root: `./tests/gatling/gatling-prepare-tokens.sh`) against `/api/auth/login` and add a `token` column to a CSV; keep secrets out of git. See [docs/performance/README.md](../../docs/performance/README.md).
+For JWT-from-CSV feeders, generate tokens with [`gatling-prepare-tokens.sh`](gatling-prepare-tokens.sh) (from repo root: `./tests/gatling/gatling-prepare-tokens.sh`) against `{product}/auth/login` and add a `token` column to a CSV; keep secrets out of git. See [docs/performance/README.md](../../docs/performance/README.md).
 
 ## Sequential scenario matrix (local)
 
