@@ -2,6 +2,8 @@
 
 **Última actualización:** Febrero 2025
 
+> Nota de mantenimiento 2026-05: este análisis describe una superficie histórica del prototipo. Para evidencia final del producto, usar rutas product-scoped (`/api/v5/...`), Chat por conversaciones/jobs y LAB benchmarks/exportaciones. El endpoint legacy `/query` solo es válido como comparación histórica si se etiqueta explícitamente como legacy.
+
 ## Descripción General del Proyecto
 
 Este proyecto implementa un sistema RAG (Retrieval-Augmented Generation) basado en Spring Boot que utiliza Ollama como proveedor de modelos de lenguaje local. El sistema está diseñado para procesar y consultar documentos, especialmente actas de reuniones, utilizando técnicas avanzadas de procesamiento de lenguaje natural y búsqueda vectorial. La evaluación con herramientas y metadatos (v4) muestra Correctness ≥ 4 en todos los ítems del dataset.
@@ -16,7 +18,7 @@ Este proyecto implementa un sistema RAG (Retrieval-Augmented Generation) basado 
 - **Endpoint base**: `/api/v5`
 - **Funcionalidades principales**:
   - `POST /documents`: Subida y procesamiento de documentos
-  - `GET /query`: Consulta al sistema RAG
+  - `GET /query`: consulta legacy/histórica del sistema RAG; no usar como evidencia final de Chat productivo
   - `GET /evaluate`: Evaluación del rendimiento del sistema (configuración por defecto)
   - `POST /evaluate/custom`: Evaluación con configuración personalizada (body: `expansion`, `ner`, `tools`, `metadata`)
   - `GET /evaluate/all`: Evaluación de las 16 combinaciones de configuración

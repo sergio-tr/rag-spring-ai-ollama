@@ -15,7 +15,7 @@
 | `api.auth` | REST auth controllers, DTOs, exceptions (not application logic) |
 | `api.admin` | `ROLE_ADMIN`: allowlist, Ollama pull orchestration |
 | `interfaces.rest` | Product REST for projects, documents, conversations, knowledge (ingest, rebuild, snapshots), SSE, presets, lab jobs, product config schema. Runtime trace and regression-suite routes (replay, comparison, suite definitions, runs, ZIP import/export); **contract inventory**: [rag-runtime-architecture.md](rag-runtime-architecture.md), [rag-service/README.md](../../rag-service/README.md). |
-| `interfaces.rest.dto.knowledge` | Snapshot responses; `KnowledgeIngestRequest` / `KnowledgeReindexRequest` (query-parameter shapes for knowledge routes) |
+| `interfaces.rest.dto.knowledge` | Snapshot responses and config-aware knowledge rebuild request/response DTOs. |
 | `controller` | Product HTTP surface (JWT) — prefix from `rag.api.product-base-path` |
 | `configuration` | Spring Security, CORS, feature flags, path properties (`RagApiPathProperties`), beans wiring; **`RegressionSuiteDefinitionMutationJacksonConfiguration`** (**`definitionMutationStrictObjectMapper`**) for suite-definition mutation JSON |
 | `security` | JWT filter, `JwtService`, `RagPrincipal` |
