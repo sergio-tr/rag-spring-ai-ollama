@@ -198,7 +198,7 @@ For the official prod-local demo path (host-Ollama by default):
 ./docker/scripts/local-demo-smoke.sh --obs
 ```
 
-The script runs `docker-compose.sh config ...`, starts the prod-local stack unless `--skip-up` is passed, prints `docker compose ps`, checks webapp, backend Actuator health, classifier health, `/actuator/prometheus`, host Ollama model tags, and Prometheus/Grafana/Jaeger when `--obs` is enabled. The authenticated model-registry check runs when `DEMO_SMOKE_EMAIL` and `DEMO_SMOKE_PASSWORD` are supplied; otherwise it is skipped without failing so no secrets are required in docs.
+The script runs `docker-compose.sh config ...`, starts the prod-local stack unless `--skip-up` is passed, prints `docker compose ps`, checks webapp, backend Actuator health, classifier health, `/actuator/prometheus`, host Ollama model tags, and Prometheus/Grafana/Jaeger when `--obs` is enabled. Use `--obs-private` when observability UIs must stay internal; in that mode localhost UI checks are skipped unless `DEMO_SMOKE_PROMETHEUS_URL`, `DEMO_SMOKE_GRAFANA_URL`, and `DEMO_SMOKE_JAEGER_URL` point to forwarded ports. The authenticated model-registry check runs when `DEMO_SMOKE_EMAIL` and `DEMO_SMOKE_PASSWORD` are supplied; otherwise it is skipped without failing so no secrets are required in docs.
 
 Optional in-stack Ollama:
 
@@ -240,7 +240,7 @@ By default the script brings the stack up and then tears it down; use `--keep` t
 Override in `rag-service/.env` via `RAG_DEV_SEED_*` (see `rag-service/.env.example`).
 
 - Login to obtain a JWT:
-  `curl -s -X POST http://localhost:9000/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@dev.local\",\"password\":\"dev\"}"`
+  `curl -s -X POST http://localhost:9000/api/v5/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@dev.local\",\"password\":\"dev\"}"`
 - Use the JWT to call stable product endpoints (non-snapshot-dependent):
   - `GET /api/v5/config/schema`
   - `GET /api/v5/presets`
@@ -255,7 +255,7 @@ curl -sf http://localhost:8000/health && echo " classifier-service OK"
 curl -sf -X POST http://localhost:8000/classify -H "Content-Type: application/json" -d '{"query":"How many documents?"}' && echo " Classify OK"
 
 # Authenticated product smoke (non-snapshot-dependent)
-TOKEN="$(curl -sf -X POST http://localhost:9000/api/auth/login \
+TOKEN="$(curl -sf -X POST http://localhost:9000/api/v5/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"dev@local.test","password":"dev"}' | python -c 'import sys,json; print(json.load(sys.stdin)["accessToken"])')"
 curl -sf -H "Authorization: Bearer ${TOKEN}" "http://localhost:9000/api/v5/config/schema" >/dev/null && echo " Backend schema OK"

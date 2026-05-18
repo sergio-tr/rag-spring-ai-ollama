@@ -8,6 +8,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DOCKER_DIR="$ROOT_DIR/docker"
 
 WITH_OBS=false
+WITH_OBS_PRIVATE=false
 WITH_OLLAMA=false
 SKIP_UP=false
 DOWN_AFTER=false
@@ -15,8 +16,9 @@ TIMEOUT_SECONDS=240
 
 usage() {
   local code="${1:-2}"
-  echo "Usage: $0 [--obs] [--ollama] [--skip-up] [--down-after] [--timeout <seconds>]" >&2
+  echo "Usage: $0 [--obs] [--obs-private] [--ollama] [--skip-up] [--down-after] [--timeout <seconds>]" >&2
   echo "  --obs        Include Prometheus/Grafana/Jaeger/OTEL checks." >&2
+  echo "  --obs-private Include observability without publishing UI ports; skips localhost UI checks unless URLs are provided." >&2
   echo "  --ollama     Optional in-stack Ollama; requires NVIDIA Container Toolkit." >&2
   echo "  --skip-up    Validate and smoke an already running stack." >&2
   echo "  --down-after Stop the stack after checks." >&2
@@ -27,6 +29,11 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --obs)
       WITH_OBS=true
+      shift
+      ;;
+    --obs-private)
+      WITH_OBS=true
+      WITH_OBS_PRIVATE=true
       shift
       ;;
     --ollama|--gpu)
@@ -70,7 +77,7 @@ fi
 COMPOSE_ARGS=(-f "$DOCKER_DIR/docker-compose.yml")
 [ "$WITH_OBS" = true ] && COMPOSE_ARGS+=(-f "$DOCKER_DIR/compose.obs.yml")
 COMPOSE_ARGS+=(-f "$DOCKER_DIR/compose.prod.yml")
-[ "$WITH_OBS" = true ] && COMPOSE_ARGS+=(-f "$DOCKER_DIR/compose.prod-obs.yml")
+[ "$WITH_OBS_PRIVATE" = true ] && COMPOSE_ARGS+=(-f "$DOCKER_DIR/compose.prod-obs.yml")
 [ "$WITH_OLLAMA" = true ] && COMPOSE_ARGS+=(-f "$DOCKER_DIR/compose.gpu.yml")
 
 [ "$WITH_OBS" = true ] && COMPOSE_ARGS+=(--profile observability)
@@ -136,7 +143,7 @@ check_model_registry() {
     curl -ksSfL --max-time 15 \
       -H "Content-Type: application/json" \
       -d "{\"email\":\"${email}\",\"password\":\"${password}\"}" \
-      "${base_url}/api/auth/login" |
+      "${base_url}${product_path}/auth/login" |
       python -c 'import json,sys; print(json.load(sys.stdin).get("accessToken",""))'
   )"
   if [ -z "$token" ]; then
@@ -149,10 +156,12 @@ check_model_registry() {
 
 UP_FLAGS=(prod --no-env-prompt)
 [ "$WITH_OBS" = true ] && UP_FLAGS+=(--obs)
+[ "$WITH_OBS_PRIVATE" = true ] && UP_FLAGS+=(--obs-private)
 [ "$WITH_OLLAMA" = true ] && UP_FLAGS+=(--ollama)
 
 DOWN_FLAGS=(prod)
 [ "$WITH_OBS" = true ] && DOWN_FLAGS+=(--obs)
+[ "$WITH_OBS_PRIVATE" = true ] && DOWN_FLAGS+=(--obs-private)
 [ "$WITH_OLLAMA" = true ] && DOWN_FLAGS+=(--ollama)
 
 echo "Compose config validation ..."
@@ -211,9 +220,16 @@ wait_for_url "${BASE_URL}/actuator/prometheus" "backend actuator prometheus"
 check_model_registry "$BASE_URL"
 
 if [ "$WITH_OBS" = true ]; then
-  wait_for_url "${PROMETHEUS_URL}/-/healthy" "Prometheus health"
-  wait_for_url "${GRAFANA_URL}/api/health" "Grafana health"
-  wait_for_url "${JAEGER_URL}/" "Jaeger UI"
+  if [ "$WITH_OBS_PRIVATE" = true ] &&
+    [ -z "${DEMO_SMOKE_PROMETHEUS_URL:-}" ] &&
+    [ -z "${DEMO_SMOKE_GRAFANA_URL:-}" ] &&
+    [ -z "${DEMO_SMOKE_JAEGER_URL:-}" ]; then
+    echo "Observability UI checks ... SKIP (--obs-private; provide DEMO_SMOKE_*_URL to check forwarded ports)"
+  else
+    wait_for_url "${PROMETHEUS_URL}/-/healthy" "Prometheus health"
+    wait_for_url "${GRAFANA_URL}/api/health" "Grafana health"
+    wait_for_url "${JAEGER_URL}/" "Jaeger UI"
+  fi
 fi
 
 if [ "$DOWN_AFTER" = true ]; then

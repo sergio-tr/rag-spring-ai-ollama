@@ -79,8 +79,8 @@ public class OllamaProvisioningGateFilter extends OncePerRequestFilter {
             return !"GET".equalsIgnoreCase(method);
         }
 
-        // Lab evaluations and benchmarks can call LLM / embeddings.
-        if (path.startsWith(product + "/lab/evaluations") || path.startsWith(product + "/lab/benchmarks")) {
+        // Lab benchmarks can call LLM / embeddings.
+        if (path.startsWith(product + "/lab/benchmarks")) {
             return true;
         }
 

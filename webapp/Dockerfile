@@ -38,7 +38,7 @@ COPY --from=build /app/next.config.ts ./next.config.ts
 
 EXPOSE 3000
 HEALTHCHECK --interval=20s --timeout=5s --start-period=30s --retries=6 \
-  CMD sh -c "wget -qO- http://127.0.0.1:$$PORT/ >/dev/null 2>&1 || exit 1"
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '3000') + '/en/login').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 # PORT and listen host must match docker-compose port mapping and nginx WEBAPP_INTERNAL_PORT.
 CMD ["sh", "-c", "exec npm run start -- -p \"${PORT:-3000}\" -H 0.0.0.0"]
