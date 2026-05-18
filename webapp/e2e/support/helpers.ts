@@ -185,7 +185,7 @@ export async function loginAsSeedUser(page: Page): Promise<void> {
     }
   }
   if (!/\/en\/projects/.test(page.url())) {
-    const loginRes = await page.request.post(`${apiBase()}/api/auth/login`, {
+    const loginRes = await page.request.post(productApiUrl("/auth/login"), {
       data: { email: seedEmail(), password: seedPassword() },
       headers: { "Content-Type": "application/json" },
     });

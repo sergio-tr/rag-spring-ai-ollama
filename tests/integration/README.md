@@ -159,7 +159,7 @@ INTEGRATION_CHECK_OBS=0 pytest tests/integration -v
 | Variable | Purpose |
 | --- | --- |
 | `INTEGRATION_RAG_PRODUCT_BASE_PATH` | Product API prefix; same role as `RAG_API_PRODUCT_BASE_PATH` (must match backend). |
-| `INTEGRATION_LOGIN_EMAIL` | Email for `POST /api/auth/login` in product API tests (default `dev@local.test`). |
+| `INTEGRATION_LOGIN_EMAIL` | Email for `POST {product}/auth/login` in product API tests (default `dev@local.test`). |
 | `INTEGRATION_LOGIN_PASSWORD` | Password for that user (default `dev`, matches V16 `{noop}dev`). |
 | `INTEGRATION_ADMIN_EMAIL` | If set, enables `TestBackendAdminApi` success paths (e.g. `admin@e2e.local` with profile **e2e**). |
 | `INTEGRATION_ADMIN_PASSWORD` | ADMIN password (default `e2e`, matches `E2eAdminUserSeeder`). |
@@ -180,10 +180,10 @@ INTEGRATION_CHECK_OBS=0 pytest tests/integration -v
 - **Classifier**: `GET /health`, `GET /models`, `POST /classify` (including **400** on empty query), **200** classify when model is loaded.
 - **Backend**: `GET /actuator/health` (`UP`), `GET /actuator/info` if exposed, `GET /actuator/prometheus` exposes Micrometer metrics.
 - **Product API (JWT)**: `GET {product}/presets` and `GET {product}/config/schema` return **401 or 403** without `Authorization`; with seed login **200** and JSON shapes. Paged **`GET {product}/projects`** is asserted in **Playwright API** tests, not duplicated here.
-- **OpenAPI**: `GET /v3/api-docs` returns **200** and includes paths for `{product}`, `/api/auth`, `/api/admin`.
-- **Lab (polling)**: `GET {product}/lab/status` requires auth (JSON: `datasets.enabled`, `countsByDatasetKind`, no legacy `questionCount`). Legacy `POST {product}/lab/evaluations/rag` returns **410**; canonical **`POST {product}/lab/benchmarks/RAG_PRESET_END_TO_END/runs`** with `datasetId` returns **202** + `asyncTaskId` (needs **ADMIN** JWT for the Flyway V42 reference `SYSTEM_DATASET`; set `INTEGRATION_ADMIN_*` / e2e profile in CI). Then `GET {product}/lab/jobs/{asyncTaskId}` returns job JSON (see [ADR 0003](../../docs/adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). **SSE** is not asserted here.
-- **Auth API**: `POST /api/auth/login` returns **401** for wrong password or unknown user, **400** for invalid email, **401** for bad refresh token; `POST /api/auth/register` returns **409** when the seed email already exists.
-- **Admin API**: `GET /api/admin/health` and `GET /api/admin/allowlist` require **401/403** without JWT; seed **USER** JWT → **403**; with `INTEGRATION_ADMIN_EMAIL` (+ password), **ADMIN** JWT → **200** and JSON shapes.
+- **OpenAPI**: `GET /v3/api-docs` returns **200** and includes product paths under `{product}`.
+- **Lab (polling)**: `GET {product}/lab/status` requires auth (JSON: `datasets.enabled`, `countsByDatasetKind`, no legacy `questionCount`). Canonical **`POST {product}/lab/benchmarks/RAG_PRESET_END_TO_END/runs`** with `datasetId` returns **202** + `asyncTaskId` (needs **ADMIN** JWT for the Flyway V42 reference `SYSTEM_DATASET`; set `INTEGRATION_ADMIN_*` / e2e profile in CI). Then `GET {product}/lab/jobs/{asyncTaskId}` returns job JSON (see [ADR 0003](../../docs/adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). **SSE** is not asserted here.
+- **Auth API**: `POST {product}/auth/login` returns **401** for wrong password or unknown user, **400** for invalid email, **401** for bad refresh token; `POST {product}/auth/register` returns **409** when the seed email already exists.
+- **Admin API**: `GET {product}/admin/health` and model/admin endpoints require **401/403** without JWT; seed **USER** JWT → **403**; with `INTEGRATION_ADMIN_EMAIL` (+ password), **ADMIN** JWT → **200** and JSON shapes.
 - **Cross-service**: classifier and backend reachable in sequence.
 
 ### Observability (when stack reachable or `INTEGRATION_CHECK_OBS=1`)

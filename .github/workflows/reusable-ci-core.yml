@@ -628,7 +628,7 @@ jobs:
               curl -sS -o /dev/null -w '%{http_code}' \
                 -H 'Content-Type: application/json' \
                 -d '{"email":"dev@local.test","password":"dev"}' \
-                http://127.0.0.1:9000/api/auth/login || true
+                http://127.0.0.1:9000/api/v5/auth/login || true
             )"
             if [ "$code" = "200" ]; then
               echo "Seed login OK"
@@ -657,7 +657,7 @@ jobs:
               curl -sS -o /dev/null -w '%{http_code}' \
                 -H 'Content-Type: application/json' \
                 -d "{\"email\":\"${E2E_ADMIN_EMAIL}\",\"password\":\"${E2E_ADMIN_PASSWORD}\"}" \
-                http://127.0.0.1:9000/api/auth/login || true
+                http://127.0.0.1:9000/api/v5/auth/login || true
             )"
             if [ "$code" = "200" ]; then
               echo "Admin login OK"

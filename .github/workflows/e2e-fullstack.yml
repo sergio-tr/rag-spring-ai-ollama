@@ -102,7 +102,7 @@ jobs:
               curl -sS -o /dev/null -w '%{http_code}' \
                 -H 'Content-Type: application/json' \
                 -d '{"email":"dev@local.test","password":"dev"}' \
-                http://127.0.0.1:9000/api/auth/login || true
+                http://127.0.0.1:9000/api/v5/auth/login || true
             )"
             if [ "$code" = "200" ]; then
               echo "Seed login OK"

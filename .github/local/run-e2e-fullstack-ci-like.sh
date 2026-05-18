@@ -195,7 +195,7 @@ wait_for_backend() {
 }
 
 wait_for_admin_login() {
-  local admin_login_url="https://127.0.0.1:8443/api/auth/login"
+  local admin_login_url="https://127.0.0.1:8443/api/v5/auth/login"
   log "Waiting for e2e admin login to be available."
   for _ in $(seq 1 45); do
     code="$(
