@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.model;
 
+import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.domain.model.QueryType;
 import org.junit.jupiter.api.Test;
 

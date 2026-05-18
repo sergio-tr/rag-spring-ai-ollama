@@ -1,6 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
-import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import java.util.Map;

@@ -10,7 +10,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Privacy-safe execution hints exposed on chat assistant rows ({@code execution_metadata}) and {@link com.uniovi.rag.application.model.QueryResponse} telemetry.
+ * Privacy-safe execution hints exposed on chat assistant rows ({@code execution_metadata}) and {@link com.uniovi.rag.application.result.chat.QueryResponse} telemetry.
  */
 public final class ChatExecutionTelemetryMapper {
 
@@ -181,10 +181,27 @@ public final class ChatExecutionTelemetryMapper {
         putIfPresent(m, "requestedDatePrecision", tokenAfter(msg, "requestedDatePrecision="));
         putIfPresent(m, "matchedDocumentDates", splitToken(tokenAfter(msg, "matchedDocumentDates=")));
         putIfPresent(m, "sourceDates", splitToken(tokenAfter(msg, "sourceDates=")));
+        putIfPresent(m, "topSourceDate", tokenAfter(msg, "topSourceDate="));
+        putIfPresent(m, "closestAvailableDate", tokenAfter(msg, "closestAvailableDate="));
         putIfPresent(m, "abstentionReason", tokenAfter(msg, "abstentionReason="));
         putIfPresent(m, "groundingPolicyApplied", tokenAfter(msg, "groundingPolicyApplied="));
         putBooleanIfPresent(m, "exactDateMatch", tokenAfter(msg, "exactDateMatch="));
+        putBooleanIfPresent(m, "exactDocumentMatch", tokenAfter(msg, "exactDocumentMatch="));
         putBooleanIfPresent(m, "dateMismatchDetected", tokenAfter(msg, "dateMismatchDetected="));
+        putIntIfPresent(m, "candidateSourceCountBeforeDateFilter", tokenAfter(msg, "candidateSourceCountBeforeDateFilter="));
+        putIntIfPresent(m, "candidateSourceCountAfterDateFilter", tokenAfter(msg, "candidateSourceCountAfterDateFilter="));
+        putBooleanIfPresent(m, "dateBoostApplied", tokenAfter(msg, "dateBoostApplied="));
+    }
+
+    private static void putIntIfPresent(Map<String, Object> m, String key, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        try {
+            m.put(key, Integer.parseInt(value));
+        } catch (NumberFormatException ignored) {
+            // Keep telemetry best-effort; malformed trace tokens should not fail Chat responses.
+        }
     }
 
     private static void putBooleanIfPresent(Map<String, Object> m, String key, String value) {
@@ -234,8 +251,14 @@ public final class ChatExecutionTelemetryMapper {
                 "dateMismatchDetected=",
                 "sourceDates=",
                 "matchedDocumentDates=",
+                "exactDocumentMatch=",
+                "topSourceDate=",
+                "closestAvailableDate=",
                 "abstentionReason=",
                 "groundingPolicyApplied=",
+                "candidateSourceCountBeforeDateFilter=",
+                "candidateSourceCountAfterDateFilter=",
+                "dateBoostApplied=",
                 "before=",
                 "after=")) {
             int idx = msg.indexOf(next, start);

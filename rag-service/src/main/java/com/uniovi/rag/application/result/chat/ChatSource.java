@@ -1,4 +1,4 @@
-package com.uniovi.rag.application.model;
+package com.uniovi.rag.application.result.chat;
 
 import java.util.Map;
 

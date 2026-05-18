@@ -1,6 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
-import com.uniovi.rag.application.model.ChatSource;
+import com.uniovi.rag.application.result.chat.ChatSource;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
