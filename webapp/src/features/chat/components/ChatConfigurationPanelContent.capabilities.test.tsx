@@ -170,6 +170,57 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
 
     expect(screen.getByTestId("chat-open-documents-sheet")).toBeEnabled();
     expect(screen.getByText(/Could not load classifier models/i)).toBeInTheDocument();
+    expect(screen.getByTestId("chat-error-code-CLASSIFIER_UNAVAILABLE")).toHaveTextContent(/classifier model is unavailable/i);
+  });
+
+  it("shows actionable runtime error code and active snapshot capabilities", () => {
+    hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
+      data: { capabilities: [] },
+      isLoading: false,
+    });
+    useChatToolbarStore.setState((s) => ({
+      api: {
+        ...s.api!,
+        runtimeState: {
+          ...s.api!.runtimeState!,
+          blockingIssues: [
+            {
+              code: "NO_ACTIVE_INDEX",
+              field: "presetId",
+              message: "No active index snapshot yet.",
+              severity: "ERROR",
+            },
+          ],
+          indexCompatibility: {
+            activeProjectSnapshotId: "snap-1",
+            activeConversationSnapshotId: null,
+            activeIndexProfileHash: "hash",
+            activeIndexProfile: {},
+            hasActiveIndex: true,
+            activeSnapshotCapabilities: {
+              materializationStrategy: "CHUNK_LEVEL",
+              supportsMetadata: true,
+              embeddingModelId: "mxbai-embed-large",
+              chunkMaxChars: 800,
+              chunkOverlap: 120,
+            },
+            presetIndexRequirements: {
+              requiredMaterializationStrategy: "CHUNK_LEVEL",
+              requiresMetadataSupport: true,
+            },
+            compatibleWithPreset: true,
+            compatibilityStatus: "COMPATIBLE",
+          },
+        },
+      },
+    }));
+
+    renderSubject();
+
+    expect(screen.getByTestId("chat-error-code-REINDEX_REQUIRED")).toHaveTextContent("REINDEX_REQUIRED");
+    expect(screen.getByTestId("chat-runtime-blocking-banner")).toHaveTextContent(/requires a new compatible index snapshot/i);
+    expect(screen.getByTestId("chat-index-info")).toHaveTextContent("CHUNK_LEVEL");
+    expect(screen.getByTestId("chat-index-info")).toHaveTextContent("mxbai-embed-large");
   });
 
   it("opens advanced configuration and disables toggle when capability has reasonIfDisabled", () => {

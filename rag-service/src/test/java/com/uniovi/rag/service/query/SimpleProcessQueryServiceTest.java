@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.query;
 
-import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;

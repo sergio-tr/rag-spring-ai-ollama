@@ -1,7 +1,7 @@
 package com.uniovi.rag.service.query;
 
 import com.uniovi.rag.infrastructure.observability.Loggable;
-import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.application.result.chat.QueryResponse;
 
 public interface QueryService extends Loggable {
 

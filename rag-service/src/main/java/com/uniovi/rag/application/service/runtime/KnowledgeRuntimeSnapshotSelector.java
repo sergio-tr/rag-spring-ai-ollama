@@ -10,7 +10,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Binds ACTIVE {@code knowledge_index_snapshot} ids for runtime execution. No {@code vector_store} access.
@@ -85,12 +87,17 @@ public class KnowledgeRuntimeSnapshotSelector {
                 projectSnap.flatMap(s -> IndexProfileJsonSupport.readEmbeddingModelId(s.getIndexProfileJsonb()));
         Optional<String> fromChat =
                 chatSnap.flatMap(s -> IndexProfileJsonSupport.readEmbeddingModelId(s.getIndexProfileJsonb()));
-        if (fromProject.isPresent() && fromChat.isPresent()) {
-            if (!IndexProfileJsonSupport.normalizeEmbeddingKey(fromProject.get())
-                    .equals(IndexProfileJsonSupport.normalizeEmbeddingKey(fromChat.get()))) {
-                throw new IllegalStateException(
-                        "Conflicting embeddingModelId between project and chat ACTIVE knowledge snapshots");
-            }
+        if (fromProject.isPresent()
+                && fromChat.isPresent()
+                && !IndexProfileJsonSupport.normalizeEmbeddingKey(fromProject.get())
+                        .equals(IndexProfileJsonSupport.normalizeEmbeddingKey(fromChat.get()))) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "EMBEDDING_MODEL_SNAPSHOT_MISMATCH: project and chat ACTIVE knowledge snapshots use different embeddingModelId values (project="
+                            + fromProject.get()
+                            + ", chat="
+                            + fromChat.get()
+                            + "). Reindex one scope with the same embedding model before retrieval.");
         }
         return fromProject.or(() -> fromChat);
     }
@@ -109,8 +116,13 @@ public class KnowledgeRuntimeSnapshotSelector {
                 canonical = emb.get();
             } else if (!IndexProfileJsonSupport.normalizeEmbeddingKey(canonical)
                     .equals(IndexProfileJsonSupport.normalizeEmbeddingKey(emb.get()))) {
-                throw new IllegalStateException(
-                        "Conflicting embeddingModelId across explicit knowledge snapshots for Lab selection");
+                throw new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "EMBEDDING_MODEL_SNAPSHOT_MISMATCH: explicit Lab knowledge snapshots use different embeddingModelId values ("
+                                + canonical
+                                + " vs "
+                                + emb.get()
+                                + "). Select snapshots indexed with the same embedding model.");
             }
         }
         return Optional.ofNullable(canonical);

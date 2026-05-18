@@ -4,7 +4,7 @@ import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.domain.runtime.RagEffectiveFeatures;
 import com.uniovi.rag.domain.model.QueryType;
-import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.tool.Tool;
 import com.uniovi.rag.tool.ToolExecutionContext;

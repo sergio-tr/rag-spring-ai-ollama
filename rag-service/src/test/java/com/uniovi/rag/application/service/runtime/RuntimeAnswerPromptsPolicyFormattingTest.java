@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.uniovi.rag.domain.runtime.policy.AnswerGroundingPolicy;
 import java.util.Optional;
@@ -20,5 +21,13 @@ class RuntimeAnswerPromptsPolicyFormattingTest {
                                         Optional.of("pre"),
                                         null))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void secretaryQuestionRequiresDocumentGrounding() {
+        assertThatCode(() -> RuntimeAnswerPrompts.requiresStrictDocumentGrounding("¿Quién fue la secretaria?"))
+                .doesNotThrowAnyException();
+        assertThat(RuntimeAnswerPrompts.requiresStrictDocumentGrounding("¿Quién fue la secretaria?"))
+                .isTrue();
     }
 }

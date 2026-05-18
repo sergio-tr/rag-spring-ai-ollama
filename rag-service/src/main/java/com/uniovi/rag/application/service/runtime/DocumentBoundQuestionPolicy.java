@@ -63,6 +63,7 @@ final class DocumentBoundQuestionPolicy {
                 "presidió",
                 "presidente",
                 "secretario",
+                "secretaria",
                 "duracion",
                 "duración",
                 "orden del dia",
@@ -84,11 +85,7 @@ final class DocumentBoundQuestionPolicy {
         }
 
         // Date-like queries are almost always asking about a specific meeting.
-        if (DATE_LIKE.matcher(s).find()) {
-            return true;
-        }
-
-        return false;
+        return DATE_LIKE.matcher(s).find();
     }
 
     private static boolean containsAny(String text, String... keywords) {

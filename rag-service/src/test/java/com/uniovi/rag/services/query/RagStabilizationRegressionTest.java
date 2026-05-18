@@ -1,7 +1,7 @@
 package com.uniovi.rag.services.query;
 
 import com.uniovi.Application;
-import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.query.QueryService;
 

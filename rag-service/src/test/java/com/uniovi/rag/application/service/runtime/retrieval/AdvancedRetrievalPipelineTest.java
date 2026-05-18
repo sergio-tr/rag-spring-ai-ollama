@@ -204,6 +204,34 @@ class AdvancedRetrievalPipelineTest {
     }
 
     @Test
+    void retrieve_dateSpecificQuestionKeepsExactDateBeforePostFusionCapWhenRerankerDisabled() {
+        UUID sid = UUID.randomUUID();
+        ExecutionContext ctx = executionContext(sid, false, false);
+        QueryPlan plan = planWithDate("25/02/2026");
+        RetrievalRequest req = retrievalRequestWithQueryAndCap(sid, RetrievalMode.DENSE_ONLY, "Resumen del acta del 25/02/2026", 1);
+
+        RetrievalCandidate wrongYear =
+                new RetrievalCandidate("wrong", "Fecha: 25 de febrero de 2025", Map.of("filename", "ACTA2.pdf"), 0.1, 0.0, 1, 0, sid, 1.0);
+        RetrievalCandidate exact =
+                new RetrievalCandidate("exact", "Fecha: 25 de febrero de 2026", Map.of("filename", "ACTA5.pdf"), 0.2, 0.0, 2, 0, sid, 0.9);
+        List<RetrievalCandidate> dense = List.of(wrongYear, exact);
+
+        when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
+        when(denseRetrievalStrategy.retrieve(req)).thenReturn(dense);
+        when(retrievalFilter.filterBasic(eq(req), any())).thenAnswer(inv -> inv.getArgument(1));
+        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+
+        var out = pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow");
+
+        assertThat(out.finalCandidates()).containsExactly(exact);
+        assertThat(out.retrievalStageTraces())
+                .anyMatch(s -> "date_grounding".equals(s.stageName())
+                        && s.message().contains("candidateSourceCountBeforeDateFilter=1")
+                        && s.message().contains("candidateSourceCountAfterDateFilter=1")
+                        && s.message().contains("dateBoostApplied=true"));
+    }
+
+    @Test
     void retrieve_hybridSparseFailure_propagatesRagServiceException() {
         UUID sid = UUID.randomUUID();
         ExecutionContext ctx = executionContext(sid);
@@ -343,6 +371,28 @@ class AdvancedRetrievalPipelineTest {
 
     private static RetrievalRequest retrievalRequestWithQuery(UUID snapshotId, RetrievalMode mode, String query) {
         return retrievalRequestWithQueryAndMaxChars(snapshotId, mode, query, 24_000);
+    }
+
+    private static RetrievalRequest retrievalRequestWithQueryAndCap(UUID snapshotId, RetrievalMode mode, String query, int cap) {
+        return new RetrievalRequest(
+                query,
+                Map.of(),
+                List.of(),
+                List.of(),
+                EntityExtractionResult.emptyWithNote(""),
+                mode,
+                5,
+                5,
+                10,
+                cap,
+                24_000,
+                RetrievalPolicy.denseFetchLimit(5),
+                List.of(snapshotId),
+                UUID.randomUUID(),
+                Optional.empty(),
+                List.of("all"),
+                true,
+                Optional.empty());
     }
 
     private static RetrievalRequest retrievalRequestWithQueryAndMaxChars(UUID snapshotId, RetrievalMode mode, String query, int maxChars) {

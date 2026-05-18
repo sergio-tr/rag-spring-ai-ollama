@@ -265,14 +265,29 @@ public class AdvancedRetrievalPipeline {
         DateGroundingSupport.DateGroundingDecision decision =
                 DateGroundingSupport.decision(req.queryText(), req.entities().dates(), selected);
         traces.add(stage("date_grounding", System.nanoTime(), ExecutionStageOutcome.SUCCESS,
-                DateGroundingSupport.traceMessage(decision) + " before=" + safeCandidates.size() + " after=" + selected.size()));
+                DateGroundingSupport.traceMessage(decision)
+                        + " candidateSourceCountBeforeDateFilter=" + safeCandidates.size()
+                        + " candidateSourceCountAfterDateFilter=" + selected.size()
+                        + " dateBoostApplied=true"
+                        + " before=" + safeCandidates.size()
+                        + " after=" + selected.size()));
         return selected;
     }
 
     private static RetrievalReranker.RerankResult identityRerank(RetrievalRequest req, List<RetrievalCandidate> candidates) {
         int cap = Math.max(0, req.postFusionCap());
-        List<RetrievalCandidate> out = candidates == null ? List.of() : candidates.stream().limit(cap).toList();
+        List<RetrievalCandidate> ordered = dateAwareOrder(req, candidates);
+        List<RetrievalCandidate> out = ordered.stream().limit(cap).toList();
         return new RetrievalReranker.RerankResult(out, List.of());
+    }
+
+    private static List<RetrievalCandidate> dateAwareOrder(RetrievalRequest req, List<RetrievalCandidate> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+        Optional<DateGroundingSupport.RequestedDate> requested =
+                DateGroundingSupport.requestedDate(req.queryText(), req.entities().dates());
+        return requested.map(date -> DateGroundingSupport.preferExactDate(candidates, date)).orElse(candidates);
     }
 
     private static List<String> topCandidateIds(List<RetrievalCandidate> candidates, int max) {

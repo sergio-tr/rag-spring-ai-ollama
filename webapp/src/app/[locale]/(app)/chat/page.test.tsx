@@ -964,6 +964,11 @@ describe("ChatPage", () => {
           selectedSnapshotIds: ["snap-1"],
           retrievalAfterCompressionCount: 1,
           dateMismatchDetected: true,
+          exactDocumentMatch: false,
+          topSourceDate: "2025-02-25",
+          closestAvailableDate: "ACTA 5.pdf (2025-02-25)",
+          candidateSourceCountBeforeDateFilter: 2,
+          candidateSourceCountAfterDateFilter: 1,
           groundingPolicyApplied: "true",
         },
       },
@@ -978,6 +983,10 @@ describe("ChatPage", () => {
     expect(screen.getByTestId("chat-sources")).toHaveTextContent("date=2025-02-25");
     expect(screen.getAllByTestId("chat-date-warning")[0]).toHaveTextContent(/requested date/i);
     expect(screen.getByTestId("chat-trace")).toHaveTextContent("trace-1");
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("topSourceDate");
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("2025-02-25");
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("exactDocumentMatch");
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("2 -> 1");
     expect(screen.getByTestId("chat-message-input")).toBeInTheDocument();
   });
 
@@ -1008,7 +1017,7 @@ describe("ChatPage", () => {
           isValid: false,
           blockingIssues: [
             {
-              code: "MATERIALIZATION_NOT_SUPPORTED",
+              code: "NO_ACTIVE_INDEX",
               field: "presetId",
               message: "Create or reindex project with compatible profile.",
               severity: "ERROR",
@@ -1026,9 +1035,7 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
 
-    expect(await screen.findByTestId("chat-runtime-blocking-input-message")).toHaveTextContent(
-      /Create or reindex project/i,
-    );
+    expect(await screen.findByTestId("chat-runtime-blocking-input-message")).toHaveTextContent(/requires a new compatible index snapshot/i);
     expect(screen.getByTestId("chat-message-composer")).toBeDisabled();
     expect(screen.getByTestId("chat-send-button")).toBeDisabled();
   });

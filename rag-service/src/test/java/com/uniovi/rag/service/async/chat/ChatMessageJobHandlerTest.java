@@ -1,8 +1,8 @@
 package com.uniovi.rag.service.async.chat;
 
 import com.uniovi.rag.application.exception.RagServiceException;
-import com.uniovi.rag.application.model.ChatSource;
-import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.application.result.chat.ChatSource;
+import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.application.service.ChatMessageWorkService;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.exception.ErrorCode;

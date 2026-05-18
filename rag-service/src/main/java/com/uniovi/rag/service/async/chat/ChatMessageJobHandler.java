@@ -2,7 +2,7 @@ package com.uniovi.rag.service.async.chat;
 
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
-import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.application.service.ChatMessageWorkService;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;

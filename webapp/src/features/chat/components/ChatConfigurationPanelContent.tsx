@@ -10,6 +10,7 @@ import { useClassifierModelsQuery } from "@/features/lab/hooks/use-classifier-re
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import { useActiveProjectSnapshot } from "@/features/projects/hooks/use-active-project-snapshot";
 import { useProjectIndexProfile } from "@/features/projects/hooks/use-project-index-profile";
+import { chatFailureHintForCode, normalizeChatFailureCode } from "@/features/chat/lib/chat-job-errors";
 import { cn } from "@/lib/utils";
 import type { RuntimeConfigValidationIssueDto } from "@/types/api";
 
@@ -83,6 +84,11 @@ function experimentalPresetOptionLabel(p: {
 type EffectiveConfigMap = Record<string, unknown>;
 const NOT_LOADED_LABEL = "Not loaded";
 
+function actionableIssueCode(issue: RuntimeConfigValidationIssueDto): string | null {
+  const normalized = normalizeChatFailureCode(issue.code);
+  return normalized ?? (issue.code ? issue.code : null);
+}
+
 /**
  * Shared content for both the desktop side panel and the mobile drawer.
  *
@@ -146,6 +152,7 @@ export function ChatConfigurationPanelContent() {
       api?.runtimeState?.validation?.warnings,
     ],
   );
+  const activeSnapshotCapabilities = api?.runtimeState?.indexCompatibility?.activeSnapshotCapabilities ?? null;
   const documentCounts = useMemo(() => {
     const docs = api?.documents ?? [];
     return {
@@ -429,7 +436,10 @@ export function ChatConfigurationPanelContent() {
             <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
               {blockingIssues.map((issue) => (
                 <li key={`${issue.code}-${issue.field ?? "global"}`}>
-                  {issue.message}
+                  <span className="font-mono text-destructive" data-testid={`chat-error-code-${actionableIssueCode(issue) ?? "UNKNOWN"}`}>
+                    {actionableIssueCode(issue) ?? "UNKNOWN"}
+                  </span>
+                  <span> — {chatFailureHintForCode(issue.code, tChat) ?? issue.message}</span>
                 </li>
               ))}
             </ul>
@@ -576,6 +586,29 @@ export function ChatConfigurationPanelContent() {
               </div>
             ) : null}
 
+            {activeSnapshotCapabilities ? (
+              <div className="rounded-md border bg-background/50 px-3 py-2 text-xs" data-testid="chat-index-info">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Materialization strategy</span>
+                  <span className="font-mono">{activeSnapshotCapabilities.materializationStrategy ?? NOT_LOADED_LABEL}</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Metadata support</span>
+                  <span className="font-mono">{String(Boolean(activeSnapshotCapabilities.supportsMetadata))}</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Embedding model</span>
+                  <span className="font-mono">{activeSnapshotCapabilities.embeddingModelId ?? NOT_LOADED_LABEL}</span>
+                </div>
+                {activeSnapshotCapabilities.chunkMaxChars != null ? (
+                  <div className="mt-1 flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Chunk max chars</span>
+                    <span className="font-mono">{activeSnapshotCapabilities.chunkMaxChars}</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             {api?.runtimeState?.requiresReindex ? (
               <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs" data-testid="chat-snapshot-warning">
                 <p className="text-destructive font-medium">Reindex required for this preset.</p>
@@ -643,6 +676,11 @@ export function ChatConfigurationPanelContent() {
                     );
                   })}
               </select>
+              {api?.modelsError ? (
+                <output className="text-destructive text-xs" data-testid="chat-error-code-MODEL_UNAVAILABLE">
+                  {api.modelsErrorMessage || tChat("chatJobFailure_MODEL_UNAVAILABLE")}
+                </output>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-1">
@@ -669,8 +707,8 @@ export function ChatConfigurationPanelContent() {
                 ))}
               </select>
               {classifierModelsQuery.isError ? (
-                <output role="status" className="text-destructive text-xs">
-                  {tChat("classifierLoadError")}
+                <output className="text-destructive text-xs" data-testid="chat-error-code-CLASSIFIER_UNAVAILABLE">
+                  {tChat("classifierLoadError")} {tChat("chatJobFailure_CLASSIFIER_UNAVAILABLE")}
                 </output>
               ) : null}
             </div>
@@ -764,12 +802,12 @@ export function ChatConfigurationPanelContent() {
               ) : null}
 
               {!api?.presetsLoading && !api?.presetsError && (api?.presets?.length ?? 0) === 0 ? (
-                <output role="status" className="text-muted-foreground text-xs">
+                <output className="text-muted-foreground text-xs">
                   {tChat("presetCatalogEmpty")}
                 </output>
               ) : null}
               {api?.presetsError ? (
-                <output role="status" className="text-destructive text-xs">
+                <output className="text-destructive text-xs">
                   {tChat("presetsLoadError")}
                 </output>
               ) : null}

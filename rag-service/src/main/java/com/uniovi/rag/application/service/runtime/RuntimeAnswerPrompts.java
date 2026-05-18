@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 public final class RuntimeAnswerPrompts {
 
     public static final String INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES =
-            "No he encontrado información suficiente en los documentos del proyecto para responder con seguridad.";
+            "No consta en las fuentes disponibles información suficiente para responder con seguridad.";
 
     public static final String INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_EN =
             "I could not find enough information in the project documents to answer confidently.";

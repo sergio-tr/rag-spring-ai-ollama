@@ -1,7 +1,7 @@
 package com.uniovi.rag.service.query.pipeline;
 
 import com.uniovi.rag.application.model.DraftAndContext;
-import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.domain.model.QueryType;
 import org.junit.jupiter.api.Test;
 

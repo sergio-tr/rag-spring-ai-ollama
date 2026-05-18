@@ -454,7 +454,8 @@ public class KnowledgePipelineOrchestrator {
         try {
             recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "started");
             ProjectIndexProfile profile = loadProfile(projectId);
-            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, projection, profile);
+            ProjectIndexProfile effectiveProfile = profileForProjection(profile, projection);
+            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null, effectiveProfile);
             String indexSigHex = sig.indexSigHex();
             String snapshotSigHex = sig.snapshotSigHex();
 
@@ -477,10 +478,10 @@ public class KnowledgePipelineOrchestrator {
                             snapshotSigHex,
                             resolvedConfigSnapshotId,
                             projection.configHash(),
-                            profile.toSnapshotJsonb(),
-                            profile.profileHash());
+                            effectiveProfile.toSnapshotJsonb(),
+                            effectiveProfile.profileHash());
 
-            probeAndPersistSnapshotEmbeddingDimensions(profile, projection.materializationStrategy(), building);
+            probeAndPersistSnapshotEmbeddingDimensions(effectiveProfile, effectiveProfile.materializationStrategy(), building);
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
             for (KnowledgeDocumentEntity d : scopeDocs) {
@@ -522,6 +523,37 @@ public class KnowledgePipelineOrchestrator {
             }
             throw new IllegalStateException(e.getMessage(), e);
         }
+    }
+
+    private static ProjectIndexProfile profileForProjection(ProjectIndexProfile base, KnowledgeBuildProjection projection) {
+        if (projection == null) {
+            return base;
+        }
+        MaterializationStrategy strategy = projection.materializationStrategy();
+        boolean metadataEnabled = projection.metadataExtractionEnabled();
+        String embeddingModelId = projection.embeddingModelId();
+        int chunkMaxChars = projection.chunkMaxChars();
+        Integer chunkOverlap = projection.chunkOverlap();
+        String hash =
+                ProjectIndexProfile.computeProfileHash(
+                        strategy,
+                        metadataEnabled,
+                        base.metadataProfile(),
+                        embeddingModelId,
+                        chunkMaxChars,
+                        chunkOverlap);
+        Instant now = Instant.now();
+        return new ProjectIndexProfile(
+                base.projectId(),
+                strategy,
+                metadataEnabled,
+                base.metadataProfile(),
+                embeddingModelId,
+                chunkMaxChars,
+                chunkOverlap,
+                hash,
+                now,
+                now);
     }
 
     /**

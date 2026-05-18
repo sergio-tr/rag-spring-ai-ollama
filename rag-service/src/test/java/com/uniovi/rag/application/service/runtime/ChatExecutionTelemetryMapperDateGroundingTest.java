@@ -20,7 +20,7 @@ class ChatExecutionTelemetryMapperDateGroundingTest {
                 "date_grounding_answer_policy",
                 0,
                 ExecutionStageOutcome.SUCCESS,
-                "requestedDate=2026-02-25 requestedDatePrecision=DAY exactDateMatch=true dateMismatchDetected=false sourceDates=2026-02-25 matchedDocumentDates=2026-02-25 abstentionReason= groundingPolicyApplied=DATE_AWARE_SOURCE_GROUNDING")));
+                "requestedDate=2026-02-25 requestedDatePrecision=DAY exactDateMatch=true dateMismatchDetected=false sourceDates=2026-02-25 matchedDocumentDates=2026-02-25 exactDocumentMatch=true topSourceDate=2026-02-25 closestAvailableDate=ACTA5.pdf(2026-02-25) abstentionReason= groundingPolicyApplied=DATE_AWARE_SOURCE_GROUNDING candidateSourceCountBeforeDateFilter=2 candidateSourceCountAfterDateFilter=1 dateBoostApplied=true")));
         when(trace.usedKnowledgeSnapshotIds()).thenReturn(List.of());
         when(trace.clarificationOutcome()).thenReturn("");
         when(trace.memoryOutcome()).thenReturn("");
@@ -42,6 +42,12 @@ class ChatExecutionTelemetryMapperDateGroundingTest {
         assertThat(telemetry).containsEntry("dateMismatchDetected", false);
         assertThat(telemetry.get("sourceDates")).asList().containsExactly("2026-02-25");
         assertThat(telemetry.get("matchedDocumentDates")).asList().containsExactly("2026-02-25");
+        assertThat(telemetry).containsEntry("exactDocumentMatch", true);
+        assertThat(telemetry).containsEntry("topSourceDate", "2026-02-25");
+        assertThat(telemetry).containsEntry("closestAvailableDate", "ACTA5.pdf(2026-02-25)");
+        assertThat(telemetry).containsEntry("candidateSourceCountBeforeDateFilter", 2);
+        assertThat(telemetry).containsEntry("candidateSourceCountAfterDateFilter", 1);
+        assertThat(telemetry).containsEntry("dateBoostApplied", true);
         assertThat(telemetry).containsEntry("groundingPolicyApplied", "DATE_AWARE_SOURCE_GROUNDING");
     }
 }

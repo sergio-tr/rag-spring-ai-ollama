@@ -84,14 +84,16 @@ public final class DateGroundingSupport {
                 return profile(parsed.get(), "metadata:" + key);
             }
         }
+        Object filename = meta.get("filename");
+        Optional<LocalDate> fromFilename = firstExactDate(filename != null ? String.valueOf(filename) : "");
+        if (fromFilename.isPresent()) {
+            return profile(fromFilename.get(), "filename");
+        }
         Optional<LocalDate> fromContent = firstExactDate(candidate.content());
         if (fromContent.isPresent()) {
             return profile(fromContent.get(), "content");
         }
-        Object filename = meta.get("filename");
-        Optional<LocalDate> fromFilename = firstExactDate(filename != null ? String.valueOf(filename) : "");
-        return fromFilename.map(date -> profile(date, "filename"))
-                .orElseGet(() -> new CandidateDateProfile("", Optional.empty(), "unknown"));
+        return new CandidateDateProfile("", Optional.empty(), "unknown");
     }
 
     public static boolean candidateMatchesRequestedDate(RetrievalCandidate candidate, RequestedDate requested) {
@@ -201,8 +203,19 @@ public final class DateGroundingSupport {
                 + " dateMismatchDetected=" + decision.dateMismatchDetected()
                 + " sourceDates=" + String.join("|", decision.sourceDates())
                 + " matchedDocumentDates=" + String.join("|", decision.matchedDocumentDates())
+                + " exactDocumentMatch=" + decision.exactDateMatch()
+                + " topSourceDate=" + firstOrBlank(decision.sourceDates())
+                + " closestAvailableDate=" + firstOrBlank(decision.closestSourceDates())
                 + " abstentionReason=" + decision.abstentionReason()
                 + " groundingPolicyApplied=DATE_AWARE_SOURCE_GROUNDING";
+    }
+
+    private static String firstOrBlank(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return "";
+        }
+        String first = values.get(0);
+        return first != null ? first : "";
     }
 
     private static CandidateDateProfile profile(LocalDate date, String source) {

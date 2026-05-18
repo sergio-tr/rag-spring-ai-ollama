@@ -57,6 +57,17 @@ class DateGroundingSupportTest {
     }
 
     @Test
+    void filenameDateTakesPrecedenceOverUnrelatedContentDates() {
+        RetrievalCandidate acta2026 =
+                candidate("acta-25-02-2026.pdf", "Se compara con la sesión del 25/02/2025.", Map.of());
+
+        var requested = DateGroundingSupport.requestedDate("Dame el acta del 25/02/2026").orElseThrow();
+
+        assertThat(DateGroundingSupport.profile(acta2026).isoDate()).isEqualTo("2026-02-25");
+        assertThat(DateGroundingSupport.candidateMatchesRequestedDate(acta2026, requested)).isTrue();
+    }
+
+    @Test
     void presidentOfConcreteActaRequiresExactDateEvidence() {
         RetrievalCandidate acta2026 = candidate(
                 "ACTA5.pdf",

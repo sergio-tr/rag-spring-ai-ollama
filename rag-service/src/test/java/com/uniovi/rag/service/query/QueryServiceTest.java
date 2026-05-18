@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.query;
 
-import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.domain.model.QueryType;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;

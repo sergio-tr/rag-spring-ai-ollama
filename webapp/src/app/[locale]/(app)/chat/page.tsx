@@ -35,7 +35,7 @@ import {
   getSafeApiErrorMessage,
   sanitizePlainErrorTextForUi,
 } from "@/lib/api-client";
-import { resolveChatJobFailureUserHint } from "@/features/chat/lib/chat-job-errors";
+import { chatFailureHintForCode, normalizeChatFailureCode, resolveChatJobFailureUserHint } from "@/features/chat/lib/chat-job-errors";
 import { followLabJob } from "@/lib/lab-job-follow";
 import { cn } from "@/lib/utils";
 import { Link, useRouter } from "@/navigation";
@@ -82,8 +82,8 @@ function coerceBool(v: unknown): boolean {
 
 function firstRuntimeBlockingMessage(runtimeState: {
   isValid?: boolean;
-  blockingIssues?: Array<{ message?: string | null }>;
-  validation?: { valid: boolean; supported: boolean; errors: Array<{ message?: string | null }> };
+  blockingIssues?: Array<{ code?: string | null; message?: string | null }>;
+  validation?: { valid: boolean; supported: boolean; errors: Array<{ code?: string | null; message?: string | null }> };
 } | null): string | null {
   if (!runtimeState) return null;
   const issues = runtimeState.blockingIssues ?? runtimeState.validation?.errors ?? [];
@@ -93,6 +93,23 @@ function firstRuntimeBlockingMessage(runtimeState: {
     runtimeState.isValid ??
     (runtimeState.validation ? runtimeState.validation.valid && runtimeState.validation.supported : true);
   return valid ? null : "Configuration is invalid. Open Chat configuration to resolve it.";
+}
+
+function firstRuntimeBlockingUserMessage(
+  runtimeState: {
+    isValid?: boolean;
+    blockingIssues?: Array<{ code?: string | null; message?: string | null }>;
+    validation?: { valid: boolean; supported: boolean; errors: Array<{ code?: string | null; message?: string | null }> };
+  } | null,
+  t: (key: string) => string,
+): string | null {
+  if (!runtimeState) return null;
+  const issues = runtimeState.blockingIssues ?? runtimeState.validation?.errors ?? [];
+  const first = issues.find(
+    (i) => normalizeChatFailureCode(i.code) || (typeof i.message === "string" && i.message.trim() !== ""),
+  );
+  const mapped = first ? chatFailureHintForCode(first.code, t) : null;
+  return mapped ?? firstRuntimeBlockingMessage(runtimeState);
 }
 
 function streamDonePayloadFromAssistantMessage(m: MessageDto): StreamDonePayload {
@@ -138,6 +155,12 @@ function streamDonePayloadFromAssistantMessage(m: MessageDto): StreamDonePayload
     "sourceDates",
     "abstentionReason",
     "groundingPolicyApplied",
+    "exactDocumentMatch",
+    "topSourceDate",
+    "closestAvailableDate",
+    "candidateSourceCountBeforeDateFilter",
+    "candidateSourceCountAfterDateFilter",
+    "dateBoostApplied",
   ];
   for (const k of keys) {
     if (meta[k] !== undefined && meta[k] !== null) {
@@ -194,6 +217,12 @@ function hasRuntimeTraceMetadata(message: MessageDto): boolean {
     "requestedDate",
     "dateMismatchDetected",
     "groundingPolicyApplied",
+    "exactDocumentMatch",
+    "topSourceDate",
+    "closestAvailableDate",
+    "candidateSourceCountBeforeDateFilter",
+    "candidateSourceCountAfterDateFilter",
+    "dateBoostApplied",
     "answerPolicy",
     "groundingPolicy",
   ].some((key) => meta[key] !== undefined && meta[key] !== null && String(meta[key]).trim() !== "");
@@ -410,7 +439,7 @@ function ChatPageInner() {
   const runtimeStateQuery = useChatRuntimeState(conversationId);
   const runtimeState = runtimeStateQuery.data ?? null;
   const presetSelectValue = runtimeState?.selectedPresetId ?? "";
-  const runtimeBlockingMessage = firstRuntimeBlockingMessage(runtimeState);
+  const runtimeBlockingMessage = firstRuntimeBlockingUserMessage(runtimeState, t);
   const runtimeStateInvalid = Boolean(runtimeBlockingMessage);
 
   const setLastDone = useChatExplainStore((s) => s.setLastDone);
@@ -694,8 +723,8 @@ function ChatPageInner() {
       // R1: rely on runtime-state as the authoritative validation source.
       const rs = await apiFetch<{
         isValid?: boolean;
-        blockingIssues?: { message?: string | null }[];
-        validation: { valid: boolean; supported: boolean; errors: { message: string }[] };
+        blockingIssues?: { code?: string | null; message?: string | null }[];
+        validation: { valid: boolean; supported: boolean; errors: { code?: string | null; message: string }[] };
       }>(
         apiProductPath(`/conversations/${targetConversationId}/runtime-state`),
         { signal },
@@ -1656,7 +1685,8 @@ function ChatPageInner() {
                   ) : null}
                   {m.role === "ASSISTANT" && (!Array.isArray(m.sources) || m.sources.length === 0) ? (
                     <div className="mt-2 border-border border-t pt-2 text-[11px] text-muted-foreground" data-testid="chat-sources">
-                      No sources returned for this assistant response.
+                      No sources returned for this assistant response. This is expected only for direct/no-retrieval modes or
+                      controlled abstentions; otherwise inspect the trace and runtime configuration.
                     </div>
                   ) : null}
                   {m.role === "ASSISTANT" && messageMetadataBool(m, "dateMismatchDetected") ? (
@@ -1690,6 +1720,34 @@ function ChatPageInner() {
                           <div className="flex justify-between gap-2">
                             <dt className="text-muted-foreground">snapshot</dt>
                             <dd className="break-all">{messageMetadataList(m, "selectedSnapshotIds").join(", ")}</dd>
+                          </div>
+                        ) : null}
+                        {messageMetadataString(m, "topSourceDate") ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">topSourceDate</dt>
+                            <dd>{messageMetadataString(m, "topSourceDate")}</dd>
+                          </div>
+                        ) : null}
+                        {messageMetadataString(m, "closestAvailableDate") ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">closestAvailableDate</dt>
+                            <dd>{messageMetadataString(m, "closestAvailableDate")}</dd>
+                          </div>
+                        ) : null}
+                        {m.executionMetadata?.exactDocumentMatch != null ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">exactDocumentMatch</dt>
+                            <dd>{String(m.executionMetadata.exactDocumentMatch)}</dd>
+                          </div>
+                        ) : null}
+                        {m.executionMetadata?.candidateSourceCountBeforeDateFilter != null ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">dateFilter</dt>
+                            <dd>
+                              {String(m.executionMetadata.candidateSourceCountBeforeDateFilter)}
+                              {" -> "}
+                              {String(m.executionMetadata.candidateSourceCountAfterDateFilter ?? "?")}
+                            </dd>
                           </div>
                         ) : null}
                         {m.executionMetadata?.retrievalAfterCompressionCount != null ? (
