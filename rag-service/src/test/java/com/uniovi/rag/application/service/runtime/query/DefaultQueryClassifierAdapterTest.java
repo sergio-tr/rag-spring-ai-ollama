@@ -31,7 +31,7 @@ class DefaultQueryClassifierAdapterTest {
     @Test
     void nullQueryType_mapsToInvalidOutput_recoverable() {
         QueryClassifier classifier = mock(QueryClassifier.class);
-        when(classifier.classify("hello")).thenReturn(null);
+        when(classifier.classify("hello", "cls")).thenReturn(null);
         DefaultQueryClassifierAdapter adapter = new DefaultQueryClassifierAdapter(classifier);
 
         ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "hello");
@@ -44,7 +44,7 @@ class DefaultQueryClassifierAdapterTest {
     @Test
     void classifierException_mapsToUnavailable_recoverable() {
         QueryClassifier classifier = mock(QueryClassifier.class);
-        when(classifier.classify("hello")).thenThrow(new IllegalStateException("simulated classifier outage"));
+        when(classifier.classify("hello", "cls")).thenThrow(new IllegalStateException("simulated classifier outage"));
         DefaultQueryClassifierAdapter adapter = new DefaultQueryClassifierAdapter(classifier);
 
         ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "hello");
@@ -57,7 +57,7 @@ class DefaultQueryClassifierAdapterTest {
     @Test
     void okClassification_returnsOk() {
         QueryClassifier classifier = mock(QueryClassifier.class);
-        when(classifier.classify("How many documents?")).thenReturn(QueryType.COUNT_DOCUMENTS);
+        when(classifier.classify("How many documents?", "cls")).thenReturn(QueryType.COUNT_DOCUMENTS);
         DefaultQueryClassifierAdapter adapter = new DefaultQueryClassifierAdapter(classifier);
 
         ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "How many documents?");

@@ -60,6 +60,16 @@ public class ClassifierServiceClient implements QueryClassifier {
     @Override
     public QueryType classify(String query) {
         String raw = classifyWithText(query);
+        return parseQueryType(raw);
+    }
+
+    @Override
+    public QueryType classify(String query, String modelId) {
+        String raw = classifyWithText(query, modelId);
+        return parseQueryType(raw);
+    }
+
+    private QueryType parseQueryType(String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
         }
@@ -75,6 +85,11 @@ public class ClassifierServiceClient implements QueryClassifier {
 
     @Override
     public String classifyWithText(String query) {
+        return classifyWithText(query, null);
+    }
+
+    @Override
+    public String classifyWithText(String query, String modelIdOverride) {
         if (baseUrl.isEmpty()) {
             log().debug("[CLASSIFIER] Classifier-service URL not configured, returning null");
             return null;
@@ -85,7 +100,7 @@ public class ClassifierServiceClient implements QueryClassifier {
         String url = baseUrl + "/classify";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        String effectiveModelId = resolveEffectiveModelId();
+        String effectiveModelId = resolveEffectiveModelId(modelIdOverride);
         Map<String, String> body = Map.of("query", query, "modelId", effectiveModelId);
         HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
         try {
@@ -118,7 +133,10 @@ public class ClassifierServiceClient implements QueryClassifier {
         return t.substring(0, 500) + "…";
     }
 
-    private String resolveEffectiveModelId() {
+    private String resolveEffectiveModelId(String explicitModelId) {
+        if (explicitModelId != null && !explicitModelId.isBlank()) {
+            return explicitModelId.trim();
+        }
         RagExecutionContext ctx = RagExecutionContextHolder.get();
         if (ctx != null
                 && ctx.resolvedConfig() != null

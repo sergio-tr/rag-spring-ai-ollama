@@ -34,6 +34,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class DefaultQueryUnderstandingPipelineTest {
@@ -158,7 +159,7 @@ class DefaultQueryUnderstandingPipelineTest {
         RagConfig rag = rag(true, true);
 
         QueryClassifier classifier = mock(QueryClassifier.class);
-        when(classifier.classify(anyString())).thenReturn(QueryType.FILTER_AND_LIST);
+        when(classifier.classify(anyString(), eq("cls"))).thenReturn(QueryType.FILTER_AND_LIST);
 
         QueryAnalyser analyser = mock(QueryAnalyser.class);
         when(analyser.analyse(anyString())).thenReturn(new JSONObject("{\"date\":[],\"place\":[],\"attendees\":[],\"topics\":[],\"mentionedEntities\":[],\"answerType\":\"unknown\",\"comparisonType\":\"none\",\"temporalContext\":\"none\"}"));
@@ -201,6 +202,7 @@ class DefaultQueryUnderstandingPipelineTest {
         assertTrue(plan.pipelineNotes().get(0).startsWith("qu_normalize "));
         assertTrue(plan.pipelineNotes().get(1).startsWith("qu_classify "));
         assertTrue(plan.pipelineNotes().get(1).contains("classifierModelId=cls"));
+        verify(classifier).classify("list all items", "cls");
         assertTrue(plan.pipelineNotes().get(2).startsWith("qu_extract_entities "));
         assertTrue(plan.pipelineNotes().get(3).startsWith("qu_rewrite "));
         assertTrue(plan.pipelineNotes().get(4).startsWith("qu_resolve_intent "));

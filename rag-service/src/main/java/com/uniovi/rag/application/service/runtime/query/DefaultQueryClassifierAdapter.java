@@ -34,7 +34,7 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
             return new ClassifierOutcome(UNCLASSIFIED, Optional.empty(), ClassifierStatus.DISABLED, modelIdUsed, "DISABLED");
         }
         try {
-            QueryType out = classifier.classify(normalizedText);
+            QueryType out = classifier.classify(normalizedText, modelIdUsed);
             out = ClassifierOverrides.apply(normalizedText, out);
             if (out == null) {
                 log.debug(

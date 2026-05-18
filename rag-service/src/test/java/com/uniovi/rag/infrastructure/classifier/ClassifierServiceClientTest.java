@@ -89,6 +89,28 @@ class ClassifierServiceClientTest {
     }
 
     @Test
+    void classifyWithExplicitModelIdOverridesExecutionContext() {
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        RagConfig cfg = RagConfig.fromFeatureConfiguration(
+                new RagFeatureConfiguration(), 10, 0.7, "llm", "emb", "context-classifier", "SIMPLE");
+        RagExecutionContextHolder.set(
+                new RagExecutionContext("conv", "user", "project", cfg, List.of(RagExecutionContext.ALL_DOCUMENTS), "t"));
+        try {
+            server.expect(requestTo(base + "/classify"))
+                    .andExpect(method(HttpMethod.POST))
+                    .andExpect(content().json("{\"query\":\"How many documents?\",\"modelId\":\"explicit-classifier\"}"))
+                    .andRespond(withSuccess("{\"queryType\": \"COUNT_DOCUMENTS\"}", MediaType.APPLICATION_JSON));
+
+            QueryType result = classifier.classify("How many documents?", "explicit-classifier");
+
+            server.verify();
+            assertEquals(QueryType.COUNT_DOCUMENTS, result);
+        } finally {
+            RagExecutionContextHolder.clear();
+        }
+    }
+
+    @Test
     void classifyWithText_returnsString_whenServiceReturns200() {
         String base = ClassifierClientTestSupport.defaultBaseUrl();
         server.expect(requestTo(base + "/classify"))
