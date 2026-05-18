@@ -33,6 +33,7 @@ public class ModelBaselineEvaluationOrchestrator {
 
     private static final String JSON_KEY_CORRECT_ANSWER = "correct_answer";
     private static final String JSON_KEY_GENERATED_ANSWER = "generated_answer";
+    private static final String MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE";
 
     private final EvaluationRunRepository evaluationRunRepository;
     private final ExperimentalSnapshotFactory experimentalSnapshotFactory;
@@ -129,7 +130,10 @@ public class ModelBaselineEvaluationOrchestrator {
                 row.put(JSON_KEY_GENERATED_ANSWER, "");
                 row.put("llm_evaluation", "");
                 row.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.MODEL_NOT_AVAILABLE.name());
+                row.put(BenchmarkResultRowKeys.ERROR_CODE, MODEL_UNAVAILABLE);
+                row.put(BenchmarkResultRowKeys.REASON, MODEL_UNAVAILABLE);
                 baselineMetrics.put("reason", "ollama_model_not_listed_or_daemon_unreachable");
+                baselineMetrics.put("reasonCode", MODEL_UNAVAILABLE);
                 row.put("baseline_metrics", baselineMetrics);
                 row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
                 rows.add(row);

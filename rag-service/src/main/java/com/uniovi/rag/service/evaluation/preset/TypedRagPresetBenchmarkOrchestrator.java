@@ -59,6 +59,10 @@ public class TypedRagPresetBenchmarkOrchestrator {
     private static final String JSON_KEY_METRICS_PAYLOAD = "metrics_payload";
     private static final String JSON_KEY_RUN_PLAN_VERSION = "runPlanVersion";
     private static final String JSON_KEY_RUN_PLAN = "runPlan";
+    private static final String REINDEX_FAILED = "REINDEX_FAILED";
+    private static final String REINDEX_REQUIRED = "REINDEX_REQUIRED";
+    private static final String REINDEX_IN_PROGRESS = "REINDEX_IN_PROGRESS";
+    private static final String NO_COMPATIBLE_SNAPSHOT = "NO_COMPATIBLE_SNAPSHOT";
 
     private final EvaluationService evaluationService;
     private final EvaluationRunRepository evaluationRunRepository;
@@ -145,7 +149,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     null,
                     LabPresetRunPlanModels.STRATEGY_VERSION,
                     null,
-                    base);
+                    base,
+                    null);
             @SuppressWarnings("unchecked")
             Map<String, Object> summary =
                     single.get("evaluation_summary") instanceof Map<?, ?>
@@ -254,9 +259,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     exec =
                             exec.withReindexAction(exec.reindexAction() != null ? exec.reindexAction() : "BUILD_AND_ACTIVATE")
                                     .withReindexStatus("FAILED")
-                                    .withErrorCode("AUTO_REINDEX_FAILED")
+                                    .withErrorCode(REINDEX_FAILED)
                                     .withErrorReason(
-                                            reindexEx.getMessage() != null ? reindexEx.getMessage() : "AUTO_REINDEX_FAILED")
+                                            reindexEx.getMessage() != null ? reindexEx.getMessage() : REINDEX_FAILED)
                                     .withCompletedAt(Instant.now());
                     runPlan = updateGroup(runPlan, gk, mergeGroupExecution(baseGroup, exec));
                     persistRunPlanBestEffort(evaluationRunId, runPlan);
@@ -287,8 +292,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                             embSnap.model(),
                                             runPlan.strategyVersion(),
                                             exec,
-                                            "AUTO_REINDEX_FAILED",
-                                            "AUTO_REINDEX_FAILED",
+                                            REINDEX_FAILED,
+                                            REINDEX_FAILED,
                                             null,
                                             base));
                         }
@@ -350,6 +355,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 }
 
                 PreflightIndexCompatibility gate = checkPresetIndexCompatibility(run, preset);
+                UUID projectId = run != null && run.getProject() != null ? run.getProject().getId() : null;
+                UUID resolvedSnapId = resolvePresetSnapshotId(exec, gate);
+                CorpusDiagnostics corpusDiagnostics = corpusDiagnosticsFor(projectId, resolvedSnapId, preset);
                 if (!gate.compatible()) {
                     for (RagPresetQuestion q : questions) {
                         bump.run();
@@ -364,51 +372,40 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                         embSnap.model(),
                                         runPlan.strategyVersion(),
                                         exec,
-                                        null,
-                                        null,
-                                        null,
+                                        corpusDiagnostics.overrideCode(gate.reasonCode()),
+                                        corpusDiagnostics.overrideReason(gate.message()),
+                                        corpusDiagnostics.metrics(),
                                         base));
                     }
                     continue;
                 }
 
-                if (ExperimentalPresetCanonicalCatalog.requiresSnapshotAssembledCorpusEvidence(preset)) {
-                    UUID projectId = run != null && run.getProject() != null ? run.getProject().getId() : null;
-                    UUID snapForCorpus = resolvePresetSnapshotId(exec, gate);
-                    CorpusAvailabilityGate.Result corpusProbe =
-                            corpusAvailabilityGate.evaluate(
-                                    projectId, snapForCorpus != null ? List.of(snapForCorpus) : List.of());
-                    if (!corpusProbe.satisfied()) {
-                        Map<String, Object> corpusExtras =
-                                corpusAvailabilityGate.probe(
-                                        projectId, snapForCorpus != null ? List.of(snapForCorpus) : List.of());
-                        for (RagPresetQuestion q : questions) {
-                            bump.run();
-                            allRows.add(
-                                    skippedRow(
-                                            q,
-                                            def.name(),
-                                            preset,
-                                            gate,
-                                            gk,
-                                            llmSnap.model(),
-                                            embSnap.model(),
-                                            runPlan.strategyVersion(),
-                                            exec,
-                                            corpusProbe.reasonCode(),
-                                            corpusProbe.reasonMessage(),
-                                            corpusExtras,
-                                            base));
-                        }
-                        continue;
+                if (corpusDiagnostics.blocking()) {
+                    for (RagPresetQuestion q : questions) {
+                        bump.run();
+                        allRows.add(
+                                skippedRow(
+                                        q,
+                                        def.name(),
+                                        preset,
+                                        gate,
+                                        gk,
+                                        llmSnap.model(),
+                                        embSnap.model(),
+                                        runPlan.strategyVersion(),
+                                        exec,
+                                        corpusDiagnostics.reasonCode(),
+                                        corpusDiagnostics.reasonMessage(),
+                                        corpusDiagnostics.metrics(),
+                                        base));
                     }
+                    continue;
                 }
 
                 RagPresetExperimentalOverlay.Overlay overlay = RagPresetExperimentalOverlay.build(base, preset);
                 lastConfigurationMap = new LinkedHashMap<>();
                 overlay.features().getConfiguration().forEach(lastConfigurationMap::put);
 
-                UUID resolvedSnapId = resolvePresetSnapshotId(exec, gate);
                 try (AutoCloseable ignored =
                         BenchmarkPresetEvaluationContext.openLab(
                                 overlay.terminalRuntimeJson(),
@@ -436,7 +433,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                 gk,
                                 runPlan.strategyVersion(),
                                 exec,
-                                base);
+                                base,
+                                corpusDiagnostics.metrics());
                         allRows.addAll(rows);
                     }
                 } catch (Exception ex) {
@@ -469,7 +467,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                             gk,
                                             runPlan.strategyVersion(),
                                             exec,
-                                            base));
+                                            base,
+                                            corpusDiagnostics.metrics()));
                         }
                     }
                 }
@@ -502,6 +501,17 @@ public class TypedRagPresetBenchmarkOrchestrator {
             return exec.groupSnapshotId();
         }
         return gate != null ? gate.indexSnapshotId() : null;
+    }
+
+    private CorpusDiagnostics corpusDiagnosticsFor(
+            UUID projectId, UUID snapshotId, RagExperimentalPresetCode preset) {
+        if (preset == null || !ExperimentalPresetCanonicalCatalog.corpusRequired(preset)) {
+            return CorpusDiagnostics.notRequired();
+        }
+        List<UUID> snapshotIds = snapshotId != null ? List.of(snapshotId) : List.of();
+        CorpusAvailabilityGate.Result result = corpusAvailabilityGate.evaluate(projectId, snapshotIds);
+        Map<String, Object> metrics = corpusAvailabilityGate.probe(projectId, snapshotIds);
+        return new CorpusDiagnostics(result, metrics);
     }
 
     private static List<LabPresetRunGroupKey> orderedGroupKeys() {
@@ -805,7 +815,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
         }
         if (!hasSnapshot) {
             return IndexCompatibilityResult.requiresReindex(
-                    "REINDEX_REQUIRED",
+                    REINDEX_REQUIRED,
                     "Documents may exist, but no compatible snapshot was selected for this preset.");
         }
         IndexCompatibilityResult idx = IndexCompatibilityResult.check(req, true, caps);
@@ -813,7 +823,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
             return idx;
         }
         return IndexCompatibilityResult.requiresReindex(
-                "NO_COMPATIBLE_SNAPSHOT",
+                NO_COMPATIBLE_SNAPSHOT,
                 idx.message() != null ? idx.message() : "No compatible snapshot satisfies this preset.");
     }
 
@@ -827,7 +837,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
             LabPresetRunGroupKey groupKey,
             int runPlanVersion,
             GroupExecution exec,
-            RagFeatureConfiguration applicationDefaults) {
+            RagFeatureConfiguration applicationDefaults,
+            Map<String, Object> extraLabMetrics) {
         if (rows == null) {
             return;
         }
@@ -843,6 +854,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
             Map<String, Object> metrics =
                     buildLabMetricsPayload(presetLabel, preset, gk, indexGate, runPlanVersion, exec, applicationDefaults);
             mergeEvaluationTelemetryIntoMetrics(row, metrics);
+            if (extraLabMetrics != null && !extraLabMetrics.isEmpty()) {
+                metrics.putAll(extraLabMetrics);
+            }
             applyExecutionEvidenceSemantics(metrics, preset);
             row.put(JSON_KEY_METRICS_PAYLOAD, metrics);
         }
@@ -965,13 +979,16 @@ public class TypedRagPresetBenchmarkOrchestrator {
             LabPresetRunGroupKey groupKey,
             int runPlanVersion,
             GroupExecution exec,
-            RagFeatureConfiguration applicationDefaults) {
+            RagFeatureConfiguration applicationDefaults,
+            Map<String, Object> extraLabMetrics) {
         Map<String, Object> row = baseRow(q, presetLabel, preset, llmModelId, embeddingModelId);
         row.put(JSON_KEY_GENERATED_ANSWER, "");
         row.put("llm_evaluation", "");
         row.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.FAILED.name());
-        row.put(BenchmarkResultRowKeys.ERROR_CODE, "PRESET_BATCH_EXCEPTION");
-        row.put(BenchmarkResultRowKeys.REASON, "PRESET_BATCH_EXCEPTION");
+        String code = actionableExceptionCode(ex);
+        String reason = actionableExceptionReason(ex, code);
+        row.put(BenchmarkResultRowKeys.ERROR_CODE, code);
+        row.put(BenchmarkResultRowKeys.REASON, reason);
         row.put(
                 "error",
                 ex.getMessage() != null && !ex.getMessage().isBlank()
@@ -984,9 +1001,43 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 buildLabMetricsPayload(presetLabel, preset, gk, indexGate, runPlanVersion, exec, applicationDefaults);
         metrics.put("skippedReasonCode", "");
         metrics.put("skippedReason", "");
+        if (extraLabMetrics != null && !extraLabMetrics.isEmpty()) {
+            metrics.putAll(extraLabMetrics);
+        }
         applyExecutionEvidenceSemantics(metrics, preset);
         row.put(JSON_KEY_METRICS_PAYLOAD, metrics);
         return row;
+    }
+
+    private static String actionableExceptionCode(Exception ex) {
+        String raw = ex != null && ex.getMessage() != null ? ex.getMessage() : "";
+        if (raw.contains(REINDEX_IN_PROGRESS) || raw.contains("PROJECT_REINDEX_IN_PROGRESS")) {
+            return REINDEX_IN_PROGRESS;
+        }
+        if (raw.contains("NO_ACTIVE_INDEX") || raw.toLowerCase().contains("no active index")) {
+            return REINDEX_REQUIRED;
+        }
+        if (raw.contains(NO_COMPATIBLE_SNAPSHOT)) {
+            return NO_COMPATIBLE_SNAPSHOT;
+        }
+        if (raw.contains("SNAPSHOT_INCOMPATIBLE") || raw.contains("SNAPSHOT_VECTOR_ROWS_MISSING")) {
+            return CorpusAvailabilityGate.SNAPSHOT_VECTOR_ROWS_MISSING;
+        }
+        if (raw.contains("MODEL_UNAVAILABLE") || raw.toLowerCase().contains("model unavailable")) {
+            return "MODEL_UNAVAILABLE";
+        }
+        if (raw.contains(REINDEX_FAILED) || raw.contains("AUTO_REINDEX_FAILED")) {
+            return REINDEX_FAILED;
+        }
+        return "PRESET_BATCH_EXCEPTION";
+    }
+
+    private static String actionableExceptionReason(Exception ex, String code) {
+        String raw = ex != null && ex.getMessage() != null ? ex.getMessage() : null;
+        if (REINDEX_REQUIRED.equals(code)) {
+            return "Documents may exist, but no compatible snapshot was selected for this preset.";
+        }
+        return raw != null && !raw.isBlank() ? raw : code;
     }
 
     private static Map<String, Object> baseRow(
@@ -1035,6 +1086,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
         metrics.put(
                 "productPresetId",
                 preset != null ? ExperimentalPresetCanonicalCatalog.productPresetId(preset).toString() : null);
+        putPresetLadderMetrics(metrics, preset);
         metrics.put("workflowName", WorkflowNameInference.inferWorkflowName(effective));
         metrics.put("activeFeatures", effective.toValueMap());
         metrics.put("useRetrieval", effective.useRetrieval());
@@ -1092,6 +1144,23 @@ public class TypedRagPresetBenchmarkOrchestrator {
         return metrics;
     }
 
+    private static void putPresetLadderMetrics(Map<String, Object> metrics, RagExperimentalPresetCode preset) {
+        boolean singleTurnBenchmarkSelectable =
+                preset != null && ExperimentalPresetCanonicalCatalog.singleTurnBenchmarkSelectable(preset);
+        boolean requiresMultiTurn = preset != null && ExperimentalPresetCanonicalCatalog.requiresMultiTurn(preset);
+        metrics.put("protocolStageIndex", preset != null ? preset.ordinal() : null);
+        metrics.put("presetStage", preset != null ? "P" + preset.ordinal() : null);
+        metrics.put(
+                "presetLadderScope",
+                requiresMultiTurn ? "CONVERSATIONAL_EXTENSION" : "SINGLE_TURN_LADDER");
+        metrics.put("requiresMultiTurn", requiresMultiTurn);
+        metrics.put("singleTurnBenchmarkSelectable", singleTurnBenchmarkSelectable);
+        metrics.put("comparableSingleTurnMetric", singleTurnBenchmarkSelectable);
+        metrics.put(
+                "benchmarkSupportStatus",
+                singleTurnBenchmarkSelectable ? "SINGLE_TURN_SUPPORTED" : "MULTI_TURN_EXTENSION_NOT_COMPARABLE");
+    }
+
     /**
      * Snapshot ids aligned with {@link com.uniovi.rag.service.evaluation.BenchmarkPresetEvaluationContext} / execution
      * scope (group snapshot when present; otherwise gate snapshot).
@@ -1147,6 +1216,32 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 UUID indexSnapshotId,
                 String indexProfileHash) {
             return new PreflightIndexCompatibility(true, false, "COMPATIBLE", null, null, req, caps, indexSnapshotId, indexProfileHash);
+        }
+    }
+
+    private record CorpusDiagnostics(CorpusAvailabilityGate.Result result, Map<String, Object> metrics) {
+        static CorpusDiagnostics notRequired() {
+            return new CorpusDiagnostics(null, Map.of());
+        }
+
+        boolean blocking() {
+            return result != null && !result.satisfied();
+        }
+
+        String reasonCode() {
+            return result != null ? result.reasonCode() : null;
+        }
+
+        String reasonMessage() {
+            return result != null ? result.reasonMessage() : null;
+        }
+
+        String overrideCode(String fallback) {
+            return blocking() && reasonCode() != null ? reasonCode() : fallback;
+        }
+
+        String overrideReason(String fallback) {
+            return blocking() && reasonMessage() != null ? reasonMessage() : fallback;
         }
     }
 }

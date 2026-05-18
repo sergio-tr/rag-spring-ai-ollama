@@ -29,7 +29,7 @@ public class CorpusAvailabilityGate {
 
     public static final String REINDEX_REQUIRED = "REINDEX_REQUIRED";
 
-    public static final String SNAPSHOT_VECTOR_ROWS_MISSING = "SNAPSHOT_VECTOR_ROWS_MISSING";
+    public static final String SNAPSHOT_VECTOR_ROWS_MISSING = "SNAPSHOT_INCOMPATIBLE";
 
     public static final String REASON_MESSAGE =
             "This preset requires corpus evidence, but usable evidence could not be assembled.";

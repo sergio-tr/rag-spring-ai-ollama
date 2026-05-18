@@ -1,4 +1,4 @@
-package com.uniovi.rag.service.evaluation.mvp;
+package com.uniovi.rag.application.service.evaluation.metrics;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -158,6 +158,13 @@ class BenchmarkMvpMetricsCalculatorIndexPlanTest {
                         "activeSnapshotCapabilities",
                         "presetLabel",
                         "productPresetId",
+                        "protocolStageIndex",
+                        "presetStage",
+                        "presetLadderScope",
+                        "requiresMultiTurn",
+                        "singleTurnBenchmarkSelectable",
+                        "comparableSingleTurnMetric",
+                        "benchmarkSupportStatus",
                         "workflowName",
                         "activeFeatures",
                         "groundingPolicy");
@@ -189,6 +196,13 @@ class BenchmarkMvpMetricsCalculatorIndexPlanTest {
         Map<String, Object> mp = new LinkedHashMap<>();
         mp.put("presetLabel", "P8 label");
         mp.put("productPresetId", "cafe0001-0001-4001-8001-000000000018");
+        mp.put("protocolStageIndex", 8);
+        mp.put("presetStage", "P8");
+        mp.put("presetLadderScope", "SINGLE_TURN_LADDER");
+        mp.put("requiresMultiTurn", false);
+        mp.put("singleTurnBenchmarkSelectable", true);
+        mp.put("comparableSingleTurnMetric", true);
+        mp.put("benchmarkSupportStatus", "SINGLE_TURN_SUPPORTED");
         mp.put("workflowName", "ChunkDenseMetadataWorkflow");
         mp.put("activeFeatures", Map.of("useRetrieval", true));
         mp.put("materializationStrategy", "HYBRID");
@@ -199,6 +213,11 @@ class BenchmarkMvpMetricsCalculatorIndexPlanTest {
 
         Map<String, String> csvRow = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(item, run);
         assertThat(csvRow.get("presetLabel")).isEqualTo("P8 label");
+        assertThat(csvRow.get("protocolStageIndex")).isEqualTo("8");
+        assertThat(csvRow.get("presetStage")).isEqualTo("P8");
+        assertThat(csvRow.get("presetLadderScope")).isEqualTo("SINGLE_TURN_LADDER");
+        assertThat(csvRow.get("comparableSingleTurnMetric")).isEqualTo("true");
+        assertThat(csvRow.get("benchmarkSupportStatus")).isEqualTo("SINGLE_TURN_SUPPORTED");
         assertThat(csvRow.get("workflowName")).isEqualTo("ChunkDenseMetadataWorkflow");
         assertThat(csvRow.get("materializationStrategy")).isEqualTo("HYBRID");
         assertThat(csvRow.get("corpusChars")).isEqualTo("1200");

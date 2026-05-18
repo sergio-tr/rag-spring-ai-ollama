@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.evaluation;
 
-import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;

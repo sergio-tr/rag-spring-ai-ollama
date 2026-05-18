@@ -1,4 +1,4 @@
-package com.uniovi.rag.service.evaluation.mvp;
+package com.uniovi.rag.application.service.evaluation.metrics;
 
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;

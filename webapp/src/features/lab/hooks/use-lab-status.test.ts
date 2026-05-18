@@ -23,7 +23,7 @@ function createWrapper() {
 
 const statusPayload = {
   datasetKindsReady: true,
-  datasets: { enabled: true, datasetKindsReady: true, legacyQuestionCountDeprecated: null },
+  datasets: { enabled: true, datasetKindsReady: true },
   evaluations: { llm: true, rag: true, classifierProxy: true, asyncJobs: true },
   classifier: { configured: true, train: true, evaluate: true },
   referenceBundleAvailable: true,

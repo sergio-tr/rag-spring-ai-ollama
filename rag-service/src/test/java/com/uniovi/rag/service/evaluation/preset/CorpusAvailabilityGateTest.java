@@ -77,7 +77,7 @@ class CorpusAvailabilityGateTest {
     }
 
     @Test
-    void readyDocumentsWithSnapshotButNoRowsReturnsVectorRowsMissing() {
+    void readyDocumentsWithSnapshotButNoRowsReturnsSnapshotIncompatible() {
         UUID projectId = UUID.randomUUID();
         UUID snapshotId = UUID.randomUUID();
         KnowledgeDocumentEntity doc = document(UUID.randomUUID(), ProjectDocumentStatus.READY, "s3://doc");
@@ -88,7 +88,7 @@ class CorpusAvailabilityGateTest {
         CorpusAvailabilityGate.Result result = gate.evaluate(projectId, List.of(snapshotId));
 
         assertThat(result.satisfied()).isFalse();
-        assertThat(result.reasonCode()).isEqualTo(CorpusAvailabilityGate.SNAPSHOT_VECTOR_ROWS_MISSING);
+        assertThat(result.reasonCode()).isEqualTo("SNAPSHOT_INCOMPATIBLE");
     }
 
     @Test

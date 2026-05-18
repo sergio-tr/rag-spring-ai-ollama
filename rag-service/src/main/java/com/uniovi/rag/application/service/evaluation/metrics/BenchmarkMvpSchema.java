@@ -1,4 +1,4 @@
-package com.uniovi.rag.service.evaluation.mvp;
+package com.uniovi.rag.application.service.evaluation.metrics;
 
 /** Version tag for thesis-oriented MVP export payloads ({@code items.*}, {@code rollups.json}). */
 public final class BenchmarkMvpSchema {

@@ -108,6 +108,8 @@ class ModelBaselineEvaluationOrchestratorTest {
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME))
                 .isEqualTo(BenchmarkItemOutcome.MODEL_NOT_AVAILABLE.name());
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)).isEqualTo("MODEL_UNAVAILABLE");
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.REASON)).isEqualTo("MODEL_UNAVAILABLE");
     }
 
     @Test

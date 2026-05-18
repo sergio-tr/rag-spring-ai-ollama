@@ -138,7 +138,7 @@ class EvalRagJobHandler implements LabJobHandler {
                                 evaluationRunId,
                                 "RAG_PRESET_END_TO_END autoReindex");
                 if (!attempt.acquired()) {
-                    throw new IllegalStateException("PROJECT_REINDEX_IN_PROGRESS");
+                    throw new IllegalStateException("REINDEX_IN_PROGRESS");
                 }
                 lockAcquired = true;
                 markLockAcquiredBestEffort(runWithDataset);

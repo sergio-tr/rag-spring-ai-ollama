@@ -49,6 +49,65 @@ class ExperimentalPresetCanonicalCatalogTest {
     }
 
     @Test
+    void singleTurnLadder_p0ThroughP12_and_conversationalExtensions_p13P14_areClassifiedExplicitly() {
+        for (RagExperimentalPresetCode c : RagExperimentalPresetCode.values()) {
+            if (c.ordinal() <= RagExperimentalPresetCode.P12.ordinal()) {
+                assertThat(ExperimentalPresetCanonicalCatalog.singleTurnBenchmarkSelectable(c))
+                        .as("%s should be a single-turn Lab preset", c)
+                        .isTrue();
+                assertThat(ExperimentalPresetCanonicalCatalog.requiresMultiTurn(c)).isFalse();
+            } else {
+                assertThat(ExperimentalPresetCanonicalCatalog.singleTurnBenchmarkSelectable(c))
+                        .as("%s should not be compared as a single-turn Lab metric", c)
+                        .isFalse();
+                assertThat(ExperimentalPresetCanonicalCatalog.requiresMultiTurn(c)).isTrue();
+            }
+        }
+    }
+
+    @Test
+    void keyRuntimeConfigs_matchDefensiblePresetLadder() {
+        Map<String, Object> p0 = ExperimentalPresetCanonicalCatalog.effectiveRuntimeValues(RagExperimentalPresetCode.P0);
+        assertThat(p0)
+                .containsEntry("useRetrieval", false)
+                .containsEntry("naiveFullCorpusInPromptEnabled", true)
+                .containsEntry("corpusGroundedDirectWorkflow", true)
+                .containsEntry("materializationStrategy", "CHUNK_LEVEL");
+
+        Map<String, Object> p1 = ExperimentalPresetCanonicalCatalog.effectiveRuntimeValues(RagExperimentalPresetCode.P1);
+        assertThat(p1)
+                .containsEntry("useRetrieval", false)
+                .containsEntry("naiveFullCorpusInPromptEnabled", true)
+                .containsEntry("corpusGroundedDirectWorkflow", false);
+
+        Map<String, Object> p2 = ExperimentalPresetCanonicalCatalog.effectiveRuntimeValues(RagExperimentalPresetCode.P2);
+        assertThat(p2).containsEntry("useRetrieval", true).containsEntry("materializationStrategy", "DOCUMENT_LEVEL");
+
+        Map<String, Object> p4 = ExperimentalPresetCanonicalCatalog.effectiveRuntimeValues(RagExperimentalPresetCode.P4);
+        assertThat(p4).containsEntry("materializationStrategy", "CHUNK_LEVEL").containsEntry("metadataEnabled", true);
+
+        Map<String, Object> p8 = ExperimentalPresetCanonicalCatalog.effectiveRuntimeValues(RagExperimentalPresetCode.P8);
+        assertThat(p8)
+                .containsEntry("materializationStrategy", "HYBRID")
+                .containsEntry("rankerEnabled", true)
+                .containsEntry("postRetrievalEnabled", true)
+                .containsEntry("topK", 12)
+                .containsEntry("similarityThreshold", 0.6);
+
+        Map<String, Object> p12 = ExperimentalPresetCanonicalCatalog.effectiveRuntimeValues(RagExperimentalPresetCode.P12);
+        assertThat(p12)
+                .containsEntry("functionCallingEnabled", true)
+                .containsEntry("useAdvisor", true)
+                .containsEntry("adaptiveRoutingEnabled", true)
+                .containsEntry("judgeEnabled", true);
+
+        Map<String, Object> p13 = ExperimentalPresetCanonicalCatalog.effectiveRuntimeValues(RagExperimentalPresetCode.P13);
+        Map<String, Object> p14 = ExperimentalPresetCanonicalCatalog.effectiveRuntimeValues(RagExperimentalPresetCode.P14);
+        assertThat(p13).containsEntry("clarificationEnabled", true).containsEntry("memoryEnabled", false);
+        assertThat(p14).containsEntry("clarificationEnabled", true).containsEntry("memoryEnabled", true);
+    }
+
+    @Test
     void thesisProtocolLadderMarkdown_containsP0ThroughP14OnceEach() {
         String md = ExperimentalPresetCanonicalCatalog.thesisProtocolLadderMarkdownTable();
         for (RagExperimentalPresetCode c : RagExperimentalPresetCode.values()) {

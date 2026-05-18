@@ -435,6 +435,133 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     }
 
     @Test
+    void p2_readyDocumentsWithoutSnapshot_exportsReindexRequiredWithCorpusIds() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any())).thenReturn(Optional.empty());
+
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(projectId);
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setProject(project);
+        when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+        when(corpusAvailabilityGate.evaluate(
+                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.argThat(List::isEmpty)))
+                .thenReturn(
+                        new CorpusAvailabilityGate.Result(
+                                false,
+                                1,
+                                List.of(documentId),
+                                1,
+                                0L,
+                                CorpusAvailabilityGate.REINDEX_REQUIRED,
+                                "Documents are READY, but no snapshot was selected for corpus evidence."));
+        when(corpusAvailabilityGate.probe(
+                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.argThat(List::isEmpty)))
+                .thenReturn(
+                        Map.of(
+                                "corpusRequired",
+                                true,
+                                "corpusAvailable",
+                                false,
+                                "evaluationCorpusProjectId",
+                                projectId.toString(),
+                                "evaluationCorpusDocumentIds",
+                                List.of(documentId.toString()),
+                                "skippedReasonCode",
+                                CorpusAvailabilityGate.REINDEX_REQUIRED));
+
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                UUID.randomUUID(),
+                                new TypedBenchmarkDataset.RagPresetQuestions(
+                                        List.of(sampleQuestion()), List.of(preset(RagExperimentalPresetCode.P2))),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                null,
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.SKIPPED.name());
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)).isEqualTo(CorpusAvailabilityGate.REINDEX_REQUIRED);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
+        assertThat(mp.get("selectedSnapshotIds")).isEqualTo(List.of());
+        assertThat(mp.get("evaluationCorpusDocumentIds")).isEqualTo(List.of(documentId.toString()));
+        Mockito.verify(evaluationService, Mockito.never())
+                .evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any());
+    }
+
+    @Test
+    void p2_noDocumentsOverridesIndexReasonWithNoDocuments() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any())).thenReturn(Optional.empty());
+
+        UUID projectId = UUID.randomUUID();
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(projectId);
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setProject(project);
+        when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+        when(corpusAvailabilityGate.evaluate(
+                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.argThat(List::isEmpty)))
+                .thenReturn(
+                        new CorpusAvailabilityGate.Result(
+                                false,
+                                0,
+                                List.of(),
+                                0,
+                                0L,
+                                CorpusAvailabilityGate.NO_DOCUMENTS,
+                                "The selected evaluation corpus has no documents."));
+        when(corpusAvailabilityGate.probe(
+                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.argThat(List::isEmpty)))
+                .thenReturn(
+                        Map.of(
+                                "corpusRequired",
+                                true,
+                                "corpusAvailable",
+                                false,
+                                "projectDocumentCount",
+                                0,
+                                "skippedReasonCode",
+                                CorpusAvailabilityGate.NO_DOCUMENTS));
+
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                UUID.randomUUID(),
+                                new TypedBenchmarkDataset.RagPresetQuestions(
+                                        List.of(sampleQuestion()), List.of(preset(RagExperimentalPresetCode.P2))),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                null,
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)).isEqualTo(CorpusAvailabilityGate.NO_DOCUMENTS);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
+        assertThat(mp.get("projectDocumentCount")).isEqualTo(0);
+    }
+
+    @Test
     void p3_with_hybrid_snapshot_executes() {
         when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
@@ -472,6 +599,109 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         ArgumentMatchers.any(),
                         ArgumentMatchers.eq(questions),
                         ArgumentMatchers.any());
+    }
+
+    @Test
+    void p4_compatibleSnapshot_executesAndExportsCorpusSnapshotEvidence() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+        UUID projectId = UUID.randomUUID();
+        UUID snapshotId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.eq(projectId)))
+                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", true, "hMeta", snapshotId)));
+
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(projectId);
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setProject(project);
+        when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+        when(corpusAvailabilityGate.evaluate(
+                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.argThat(ids -> ids != null && ids.size() == 1 && snapshotId.equals(ids.get(0)))))
+                .thenReturn(
+                        new CorpusAvailabilityGate.Result(true, 1, List.of(documentId), 1, 7L, null, null));
+        when(corpusAvailabilityGate.probe(
+                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.argThat(ids -> ids != null && ids.size() == 1 && snapshotId.equals(ids.get(0)))))
+                .thenReturn(
+                        Map.of(
+                                "corpusRequired",
+                                true,
+                                "corpusAvailable",
+                                true,
+                                "evaluationCorpusProjectId",
+                                projectId.toString(),
+                                "evaluationCorpusDocumentIds",
+                                List.of(documentId.toString()),
+                                "vectorChunkRowCount",
+                                7L));
+        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.anyList(),
+                        ArgumentMatchers.any()))
+                .thenReturn(Map.of("results", baseRowsFor(1), "evaluation_summary", Map.of()));
+        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
+
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                UUID.randomUUID(),
+                                new TypedBenchmarkDataset.RagPresetQuestions(
+                                        List.of(sampleQuestion()), List.of(preset(RagExperimentalPresetCode.P4))),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                null,
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
+        assertThat(mp.get("selectedSnapshotIds")).isEqualTo(List.of(snapshotId.toString()));
+        assertThat(mp.get("evaluationCorpusProjectId")).isEqualTo(projectId.toString());
+        assertThat(mp.get("evaluationCorpusDocumentIds")).isEqualTo(List.of(documentId.toString()));
+        assertThat(mp.get("vectorChunkRowCount")).isEqualTo(7L);
+    }
+
+    @Test
+    void legacyNoActiveIndexExceptionIsExportedAsReindexRequired() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any()))
+                .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "hHybrid", UUID.randomUUID())));
+        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.anyList(),
+                        ArgumentMatchers.any()))
+                .thenThrow(new IllegalStateException("NO_ACTIVE_INDEX"));
+        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
+
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(UUID.randomUUID());
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setProject(project);
+        when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                UUID.randomUUID(),
+                                new TypedBenchmarkDataset.RagPresetQuestions(
+                                        List.of(sampleQuestion()), List.of(preset(RagExperimentalPresetCode.P2))),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                null,
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.FAILED.name());
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)).isEqualTo("REINDEX_REQUIRED");
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.REASON))
+                .isEqualTo("Documents may exist, but no compatible snapshot was selected for this preset.");
     }
 
     @Test
@@ -573,6 +803,12 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         assertThat(mp.get("skippedReasonCode")).isEqualTo(CorpusAvailabilityGate.NO_READY_DOCUMENTS);
         assertThat(mp.get("presetCode")).isEqualTo("P0");
         assertThat(mp.get("productPresetId")).isNotNull();
+        assertThat(mp.get("protocolStageIndex")).isEqualTo(0);
+        assertThat(mp.get("presetStage")).isEqualTo("P0");
+        assertThat(mp.get("presetLadderScope")).isEqualTo("SINGLE_TURN_LADDER");
+        assertThat(mp.get("singleTurnBenchmarkSelectable")).isEqualTo(true);
+        assertThat(mp.get("comparableSingleTurnMetric")).isEqualTo(true);
+        assertThat(mp.get("benchmarkSupportStatus")).isEqualTo("SINGLE_TURN_SUPPORTED");
     }
 
     @Test
@@ -680,6 +916,40 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
         assertThat(mp.get("corpusChars")).isEqualTo(50000);
         assertThat(mp.get("corpusTruncated")).isEqualTo(true);
+    }
+
+    @Test
+    void p13_notSupported_exports_multiTurnExtensionClassification_notComparableMetric() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(null)).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(null)).thenReturn(embSnap());
+
+        RagPresetQuestion q = sampleQuestion();
+        RagPresetDefinition p13 = preset(RagExperimentalPresetCode.P13);
+
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                null,
+                                new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of(p13)),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                null,
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME))
+                .isEqualTo(BenchmarkItemOutcome.NOT_SUPPORTED.name());
+        assertThat(mp.get("protocolStageIndex")).isEqualTo(13);
+        assertThat(mp.get("presetStage")).isEqualTo("P13");
+        assertThat(mp.get("presetLadderScope")).isEqualTo("CONVERSATIONAL_EXTENSION");
+        assertThat(mp.get("requiresMultiTurn")).isEqualTo(true);
+        assertThat(mp.get("singleTurnBenchmarkSelectable")).isEqualTo(false);
+        assertThat(mp.get("comparableSingleTurnMetric")).isEqualTo(false);
+        assertThat(mp.get("benchmarkSupportStatus")).isEqualTo("MULTI_TURN_EXTENSION_NOT_COMPARABLE");
+        assertThat(mp.get("skippedReasonCode")).isEqualTo("PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED");
     }
 
     @Test

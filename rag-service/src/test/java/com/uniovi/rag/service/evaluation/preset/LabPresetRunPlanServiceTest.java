@@ -53,6 +53,11 @@ class LabPresetRunPlanServiceTest {
                         LabPresetRunGroupKey.CHUNK_LEVEL.name(),
                         LabPresetRunGroupKey.CHUNK_LEVEL_METADATA.name(),
                         LabPresetRunGroupKey.HYBRID_METADATA.name());
+        LabPresetRunPlanModels.LabPresetRunGroup chunkGroup = plan.groups().stream()
+                .filter(g -> g.groupKey() == LabPresetRunGroupKey.CHUNK_LEVEL)
+                .findFirst()
+                .orElseThrow();
+        assertThat(chunkGroup.presetCodes()).contains("P0", "P1", "P3");
     }
 
     @Test

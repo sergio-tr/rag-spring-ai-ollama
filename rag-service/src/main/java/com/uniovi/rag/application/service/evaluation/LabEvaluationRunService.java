@@ -11,9 +11,9 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.interfaces.rest.dto.CompareRunsResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationResultItemDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationRunDetailDto;
-import com.uniovi.rag.service.evaluation.mvp.BenchmarkMvpMetricsCalculator;
-import com.uniovi.rag.service.evaluation.mvp.BenchmarkMvpRollupCalculator;
-import com.uniovi.rag.service.evaluation.mvp.BenchmarkMvpSchema;
+import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpMetricsCalculator;
+import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpRollupCalculator;
+import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpSchema;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -101,6 +101,13 @@ public class LabEvaluationRunService {
                     "activeSnapshotCapabilities",
                     "presetLabel",
                     "productPresetId",
+                    "protocolStageIndex",
+                    "presetStage",
+                    "presetLadderScope",
+                    "requiresMultiTurn",
+                    "singleTurnBenchmarkSelectable",
+                    "comparableSingleTurnMetric",
+                    "benchmarkSupportStatus",
                     "workflowName",
                     "activeFeatures",
                     "useRetrieval",

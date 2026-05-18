@@ -1,4 +1,4 @@
-package com.uniovi.rag.service.evaluation.mvp;
+package com.uniovi.rag.application.service.evaluation.metrics;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
@@ -201,6 +201,7 @@ public final class BenchmarkMvpMetricsCalculator {
 
         row.put("presetLabel", firstNonBlank(str(mp.get("presetLabel")), str(mp.get(BenchmarkResultRowKeys.PRESET_LABEL))));
         row.put("productPresetId", csvVal(mp.get("productPresetId")));
+        putPresetLadderCsvFields(row, mp);
         row.put("workflowName", csvVal(mp.get("workflowName")));
         row.put("activeFeatures", jsonCell(mp.get("activeFeatures")));
         row.put("useRetrieval", csvVal(mp.get("useRetrieval")));
@@ -227,6 +228,16 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("groundingPolicy", csvVal(mp.get("groundingPolicy")));
         row.put("timestamp", item.getEvaluatedAt() != null ? item.getEvaluatedAt().toString() : "");
         return row;
+    }
+
+    private static void putPresetLadderCsvFields(Map<String, String> row, Map<String, Object> mp) {
+        row.put("protocolStageIndex", csvVal(mp.get("protocolStageIndex")));
+        row.put("presetStage", csvVal(mp.get("presetStage")));
+        row.put("presetLadderScope", csvVal(mp.get("presetLadderScope")));
+        row.put("requiresMultiTurn", csvVal(mp.get("requiresMultiTurn")));
+        row.put("singleTurnBenchmarkSelectable", csvVal(mp.get("singleTurnBenchmarkSelectable")));
+        row.put("comparableSingleTurnMetric", csvVal(mp.get("comparableSingleTurnMetric")));
+        row.put("benchmarkSupportStatus", csvVal(mp.get("benchmarkSupportStatus")));
     }
 
     private static String jsonCell(Object o) {

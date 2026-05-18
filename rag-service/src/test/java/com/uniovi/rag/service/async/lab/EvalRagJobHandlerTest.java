@@ -327,9 +327,9 @@ class EvalRagJobHandlerTest {
 
         assertThatThrownBy(() -> handler().run(task, mutation))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("PROJECT_REINDEX_IN_PROGRESS");
+                .hasMessage("REINDEX_IN_PROGRESS");
 
-        verify(canonicalPersistence).markRunFailed(runId, "PROJECT_REINDEX_IN_PROGRESS");
+        verify(canonicalPersistence).markRunFailed(runId, "REINDEX_IN_PROGRESS");
     }
 
     @Test
