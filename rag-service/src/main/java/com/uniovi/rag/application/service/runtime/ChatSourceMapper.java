@@ -7,25 +7,25 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Normalizes legacy map-shaped sources into {@link ChatSource} (REST mapping lives in {@code interfaces.rest.mapper}).
+ * Normalizes persisted map-shaped sources into {@link ChatSource} (REST mapping lives in {@code interfaces.rest.mapper}).
  */
 public final class ChatSourceMapper {
 
     private ChatSourceMapper() {}
 
-    public static List<ChatSource> fromLegacyMaps(List<Map<String, Object>> legacy) {
-        if (legacy == null || legacy.isEmpty()) {
+    public static List<ChatSource> fromPersistedMaps(List<Map<String, Object>> persisted) {
+        if (persisted == null || persisted.isEmpty()) {
             return List.of();
         }
         List<ChatSource> out = new ArrayList<>();
-        for (Map<String, Object> row : legacy) {
-            ChatSource s = fromLegacyMap(row);
+        for (Map<String, Object> row : persisted) {
+            ChatSource s = fromPersistedMap(row);
             if (s != null) out.add(s);
         }
         return List.copyOf(out);
     }
 
-    public static ChatSource fromLegacyMap(Map<String, Object> row) {
+    public static ChatSource fromPersistedMap(Map<String, Object> row) {
         if (row == null || row.isEmpty()) return null;
         String filename = str(row.get("filename"));
         String documentId =

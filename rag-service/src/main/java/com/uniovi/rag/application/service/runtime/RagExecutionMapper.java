@@ -18,10 +18,10 @@ public final class RagExecutionMapper {
                     result.answerText(),
                     result.toolUsedLabel() != null ? result.toolUsedLabel() : "tool",
                     qt,
-                    ChatSourceMapper.fromLegacyMaps(result.responseSources()),
+                    ChatSourceMapper.fromPersistedMaps(result.responseSources()),
                     telemetry);
         }
         return QueryResponse.fromLLMWithSources(
-                result.answerText(), qt, ChatSourceMapper.fromLegacyMaps(result.responseSources()), telemetry);
+                result.answerText(), qt, ChatSourceMapper.fromPersistedMaps(result.responseSources()), telemetry);
     }
 }

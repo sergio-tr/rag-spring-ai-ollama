@@ -135,24 +135,6 @@ public final class RuntimeAnswerPrompts {
                 rawQuestion, contextBlock, AnswerGroundingPolicy.ATTEMPT_WITH_CONTEXT, documentBound, Optional.empty(), null);
     }
 
-    /**
-     * @deprecated Prefer {@link #ragUserTurn(String, String, AnswerGroundingPolicy, boolean, Optional, String)}.
-     */
-    @Deprecated
-    public static String ragUserTurn(
-            String rawQuestion,
-            String contextBlock,
-            boolean documentBound,
-            String answerPlanBlock) {
-        return ragUserTurn(
-                rawQuestion,
-                contextBlock,
-                AnswerGroundingPolicy.ATTEMPT_WITH_CONTEXT,
-                documentBound,
-                Optional.empty(),
-                answerPlanBlock);
-    }
-
     public static String directBaselineUserTurn(String rawQuestion, String answerPlanBlock) {
         String q = rawQuestion != null ? rawQuestion : "";
         String plan = answerPlanBlock != null && !answerPlanBlock.isBlank() ? answerPlanBlock.trim() : "";

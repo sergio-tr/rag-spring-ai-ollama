@@ -476,7 +476,7 @@ public class ConversationApplicationService {
                 m.getRole(),
                 m.getContent(),
                 m.getCreatedAt(),
-                ChatSourceRestMapper.toDtos(ChatSourceMapper.fromLegacyMaps(m.getSources())),
+                ChatSourceRestMapper.toDtos(ChatSourceMapper.fromPersistedMaps(m.getSources())),
                 m.getQueryType(),
                 m.getPipelineSteps(),
                 m.getStatus() != null ? m.getStatus().name() : null,
