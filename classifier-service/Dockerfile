@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Application (app/ + entrypoint)
 COPY uvicorn_entry.py ./
 COPY app/ ./app/
-# Runtime fix-ups for legacy model artifacts
+# Runtime fix-ups for older model artifacts
 COPY scripts/ ./scripts/
 # Default model and trained models (models/default/ + trained)
 COPY models/ ./models/
