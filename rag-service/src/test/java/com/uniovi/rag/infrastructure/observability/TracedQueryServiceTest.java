@@ -2,7 +2,7 @@ package com.uniovi.rag.infrastructure.observability;
 
 import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.domain.model.QueryType;
-import com.uniovi.rag.service.query.QueryService;
+import com.uniovi.rag.application.service.runtime.execution.QueryExecutionService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.test.simple.SimpleTracer;
 import org.junit.jupiter.api.Test;
@@ -18,7 +18,7 @@ class TracedQueryServiceTest {
 
     @Test
     void generateResponse_withoutObservability_delegatesDirectly() {
-        QueryService delegate = mock(QueryService.class);
+        QueryExecutionService delegate = mock(QueryExecutionService.class);
         QueryResponse resp = QueryResponse.fromLLM("ok", QueryType.BOOLEAN_QUERY);
         when(delegate.generateResponse("q", "m")).thenReturn(resp);
 
@@ -30,7 +30,7 @@ class TracedQueryServiceTest {
 
     @Test
     void generateResponse_withObservability_recordsMetricsAndDelegates() {
-        QueryService delegate = mock(QueryService.class);
+        QueryExecutionService delegate = mock(QueryExecutionService.class);
         ObservabilitySupport obs = new ObservabilitySupport(new SimpleTracer(), new SimpleMeterRegistry());
         QueryResponse resp = QueryResponse.fromLLM("ok", QueryType.BOOLEAN_QUERY);
         when(delegate.generateResponse("q", "m")).thenReturn(resp);
@@ -49,7 +49,7 @@ class TracedQueryServiceTest {
 
     @Test
     void generateResponse_truncatesVeryLongQuestionsForSpanAttributes() {
-        QueryService delegate = mock(QueryService.class);
+        QueryExecutionService delegate = mock(QueryExecutionService.class);
         ObservabilitySupport obs = new ObservabilitySupport(new SimpleTracer(), new SimpleMeterRegistry());
         when(delegate.generateResponse(any(), isNull())).thenAnswer(inv -> QueryResponse.fromLLM("x", QueryType.BOOLEAN_QUERY));
 

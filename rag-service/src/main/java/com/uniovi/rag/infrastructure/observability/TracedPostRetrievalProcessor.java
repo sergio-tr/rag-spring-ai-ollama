@@ -1,6 +1,6 @@
 package com.uniovi.rag.infrastructure.observability;
 
-import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
+import com.uniovi.rag.application.service.runtime.retrieval.post.PostRetrievalProcessor;
 import org.springframework.ai.document.Document;
 
 import java.util.List;

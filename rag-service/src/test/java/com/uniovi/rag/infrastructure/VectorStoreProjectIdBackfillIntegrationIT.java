@@ -5,7 +5,7 @@ import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
-import com.uniovi.rag.service.retriever.NaiveCorpusContextService;
+import com.uniovi.rag.application.service.runtime.retrieval.NaiveCorpusContextService;
 import com.uniovi.rag.testsupport.TestAiStubConfiguration;
 import com.uniovi.rag.testsupport.TestEnvironment;
 import com.uniovi.rag.testsupport.TestcontainersDatasourceConfiguration;

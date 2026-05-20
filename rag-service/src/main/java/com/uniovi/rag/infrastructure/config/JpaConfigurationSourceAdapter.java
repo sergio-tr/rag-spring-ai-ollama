@@ -12,7 +12,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ConfigProfileEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagConfigurationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetProfileRefEntity;
-import com.uniovi.rag.service.preset.PresetService;
+import com.uniovi.rag.application.service.preset.PresetService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;

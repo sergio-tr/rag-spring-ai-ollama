@@ -18,11 +18,11 @@
  *       {@code classify}/{@code classifyWithText} run in span {@code rag.query.classify}
  *       and expose the predicted {@code rag.query.type}. Subclasses implement
  *       {@code doClassifyWithText}.</li>
- *   <li><b>AbstractTracedQueryService</b>: Implements {@link com.uniovi.rag.service.query.QueryService};
+ *   <li><b>TracedQueryService</b>: Implements {@link com.uniovi.rag.application.service.runtime.execution.QueryExecutionService};
  *       {@code generateResponse} runs in a timer and span {@code rag.query.generate}.
  *       Subclasses implement {@code doGenerateResponse}. Internal steps (expand, analyse)
  *       can be wrapped in additional spans by the subclass.</li>
- *   <li><b>TracedContextRetriever</b>: Decorator around any {@link com.uniovi.rag.service.retriever.ContextRetriever};
+ *   <li><b>TracedContextRetriever</b>: Decorator around any {@link com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever};
  *       {@code retrieve} and {@code createContext} run in spans
  *       {@code rag.documents.search}.</li>
  * </ul>

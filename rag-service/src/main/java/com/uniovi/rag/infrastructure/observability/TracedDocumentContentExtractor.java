@@ -1,7 +1,7 @@
 package com.uniovi.rag.infrastructure.observability;
 
 import com.uniovi.rag.domain.model.Cluster;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
