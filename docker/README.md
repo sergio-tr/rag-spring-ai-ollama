@@ -84,9 +84,11 @@ The product **continues to work** if you omit `compose.obs.yml` and `--profile o
 ./docker/scripts/up.sh prod --obs --ollama --no-env-prompt
 ```
 
-`--gpu` and `--ollama` are aliases for the in-stack Ollama path. If NVIDIA runtime is unavailable, the wrapper warns and does **not** activate the `ollama` profile. To use GPU on the host (or any Ollama outside the Compose stack) while still passing `--gpu` for other services, add `--ollama-remote`; that skips the local `ollama` profile and leaves the URL entirely to `rag-service/.env`. Classifier GPU uses `compose.gpu.yml` when NVIDIA is available. Pull models via `ollama pull <model>` on the host, or `docker exec -it ollama ollama pull <model>` when Ollama runs in Docker.
+`--gpu` and `--ollama` are aliases for the in-stack Ollama path. If NVIDIA runtime is unavailable, the wrapper warns and does **not** activate the `ollama` profile. To use GPU on the host (or any Ollama outside the Compose stack) while still passing `--gpu` for other services, add `--ollama-remote`; that skips the local `ollama` profile and leaves the URL entirely to `rag-service/.env`. **Classifier GPU** requires explicit `--classifier-gpu` (merges `compose.gpu.yml`); the default demo stack uses CPU classifier even when an NVIDIA runtime is detected. Pull models via `ollama pull <model>` on the host, or `docker exec -it ollama ollama pull <model>` when Ollama runs in Docker.
 
-**Docker health checks:** container health is intentionally lighter than product readiness. `backend` probes `/actuator/health` only to verify that the JVM responds; it does not prove that Ollama models are present or that authenticated chat is ready. `classifier-service` probes `/health`; the response may report `model: not_loaded`, so run `/classify` or the local smoke script when you need a functional classifier check. Use `/actuator/health/readiness`, `/actuator/prometheus`, model-registry checks, and a real chat/LAB request for demo evidence.
+**Prod-local host ports:** `compose.prod-host-ports.yml` publishes backend `9000` and classifier `8000` for integration/API smoke while the browser entry remains reverse-proxy `80`.
+
+**Docker health checks:** `backend` container health uses `/actuator/health/liveness` so the stack can start before host Ollama models are ready; use `/actuator/health/readiness` and `local-demo-smoke.sh` for model readiness. `classifier-service` probes `/health` via curl. Use `/actuator/prometheus`, model-registry checks, and a real chat/LAB request for demo evidence.
 
 ## Environment files (`.env`)
 

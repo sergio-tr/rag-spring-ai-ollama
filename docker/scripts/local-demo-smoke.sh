@@ -12,7 +12,8 @@ WITH_OBS_PRIVATE=false
 WITH_OLLAMA=false
 SKIP_UP=false
 DOWN_AFTER=false
-TIMEOUT_SECONDS=240
+TIMEOUT_SECONDS=180
+EVIDENCE_DIR="${DEMO_SMOKE_EVIDENCE_DIR:-}"
 
 usage() {
   local code="${1:-2}"
@@ -77,8 +78,8 @@ fi
 COMPOSE_ARGS=(-f "$DOCKER_DIR/docker-compose.yml")
 [ "$WITH_OBS" = true ] && COMPOSE_ARGS+=(-f "$DOCKER_DIR/compose.obs.yml")
 COMPOSE_ARGS+=(-f "$DOCKER_DIR/compose.prod.yml")
+COMPOSE_ARGS+=(-f "$DOCKER_DIR/compose.prod-host-ports.yml")
 [ "$WITH_OBS_PRIVATE" = true ] && COMPOSE_ARGS+=(-f "$DOCKER_DIR/compose.prod-obs.yml")
-[ "$WITH_OLLAMA" = true ] && COMPOSE_ARGS+=(-f "$DOCKER_DIR/compose.gpu.yml")
 
 [ "$WITH_OBS" = true ] && COMPOSE_ARGS+=(--profile observability)
 [ "$WITH_OLLAMA" = true ] && COMPOSE_ARGS+=(--profile ollama)
@@ -99,6 +100,27 @@ add_env_file "$ROOT_DIR/webapp/.env"
 [ "$WITH_OBS" = true ] && add_env_file "$ROOT_DIR/observability/.env"
 [ "$WITH_OLLAMA" = true ] && add_env_file "$ROOT_DIR/ollama/.env"
 
+init_evidence_dir() {
+  if [ -z "$EVIDENCE_DIR" ]; then
+    EVIDENCE_DIR="$ROOT_DIR/.cursor/context/evidence/docker/demo-smoke-$(date -u +%Y%m%dT%H%M%SZ)"
+  fi
+  mkdir -p "$EVIDENCE_DIR/logs"
+}
+
+dump_failure_logs() {
+  local reason="${1:-unknown}"
+  init_evidence_dir
+  echo "Saving failure logs to $EVIDENCE_DIR (reason: $reason)" >&2
+  {
+    echo "failure_reason=$reason"
+    echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  } >"$EVIDENCE_DIR/failure.txt"
+  docker compose "${COMPOSE_ARGS[@]}" ps >"$EVIDENCE_DIR/docker-ps.txt" 2>&1 || true
+  for svc in postgres classifier-service backend webapp reverse-proxy prometheus grafana jaeger; do
+    docker compose "${COMPOSE_ARGS[@]}" logs --tail 150 "$svc" >"$EVIDENCE_DIR/logs/${svc}.log" 2>&1 || true
+  done
+}
+
 wait_for_url() {
   local url="$1"
   local label="$2"
@@ -109,20 +131,22 @@ wait_for_url() {
       echo "OK"
       return 0
     fi
-    sleep 3
+    sleep 2
   done
   echo "FAIL"
+  dump_failure_logs "$label"
   return 1
 }
 
 check_classifier_health() {
-  echo -n "classifier-service /health ... "
-  if docker compose "${COMPOSE_ARGS[@]}" exec -T classifier-service \
-    python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/health', timeout=8)" >/dev/null 2>&1; then
+  local host_port="${CLASSIFIER_SERVICE_PORT:-8000}"
+  echo -n "classifier-service /health (host :${host_port}) ... "
+  if curl -ksSfL --max-time 8 "http://127.0.0.1:${host_port}/health" >/dev/null; then
     echo "OK"
     return 0
   fi
   echo "FAIL"
+  dump_failure_logs "classifier-service /health"
   return 1
 }
 
@@ -212,12 +236,20 @@ if missing:
   echo "OK"
 }
 
+BACKEND_DIRECT_PORT="${BACKEND_PORT:-9000}"
+
 wait_for_url "${BASE_URL}/en/login" "webapp via reverse-proxy"
 check_ollama_models
-wait_for_url "${BASE_URL}/actuator/health" "backend actuator health"
+wait_for_url "http://127.0.0.1:${BACKEND_DIRECT_PORT}/actuator/health/liveness" "backend liveness (host :${BACKEND_DIRECT_PORT})"
+wait_for_url "http://127.0.0.1:${BACKEND_DIRECT_PORT}/actuator/health/readiness" "backend readiness (host :${BACKEND_DIRECT_PORT})"
+wait_for_url "${BASE_URL}/actuator/health" "backend actuator health via proxy"
 check_classifier_health
-wait_for_url "${BASE_URL}/actuator/prometheus" "backend actuator prometheus"
+wait_for_url "${BASE_URL}/actuator/prometheus" "backend actuator prometheus via proxy"
 check_model_registry "$BASE_URL"
+
+init_evidence_dir
+"$SCRIPT_DIR/capture-runtime-evidence.sh" ${WITH_OBS:+--obs} --out "$EVIDENCE_DIR" || true
+echo "Smoke evidence: $EVIDENCE_DIR"
 
 if [ "$WITH_OBS" = true ]; then
   if [ "$WITH_OBS_PRIVATE" = true ] &&

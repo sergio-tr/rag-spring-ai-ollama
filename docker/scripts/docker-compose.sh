@@ -242,7 +242,9 @@ if [ "$MODE" = dev ]; then
   # webapp ordering dependency is now part of compose.dev.yml
   [ "$WITH_DEV_PROXY" = true ] && [ "$WITH_RAG_BACKEND" = true ] && COMPOSE_FILES+=(-f "compose.dev-proxy.yml")
   [ "$WITH_OBS" = true ]        && COMPOSE_FILES+=(-f "compose.obs.yml")
-  [ "$WITH_NVIDIA" = true ] && COMPOSE_FILES+=(-f "compose.gpu.yml")
+  if [ "$WITH_NVIDIA" = true ] && [ "$WITH_CLASSIFIER_GPU" = true ]; then
+    COMPOSE_FILES+=(-f "compose.gpu.yml")
+  fi
   [ "$WITH_RAG_BACKEND" = true ] && [ "$WITH_OBS" = true ] && COMPOSE_FILES+=(-f "compose.rag-dev-obs.yml")
 
   PROFILE_ARGS=()
@@ -429,8 +431,11 @@ fi
 COMPOSE_FILES=(-f "docker-compose.yml")
 [ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.obs.yml")
 COMPOSE_FILES+=(-f "compose.prod.yml")
+COMPOSE_FILES+=(-f "compose.prod-host-ports.yml")
 [ "$WITH_OBS" = true ] && [ "$WITH_OBS_PRIVATE" = true ] && COMPOSE_FILES+=(-f "compose.prod-obs.yml")
-[ "$WITH_NVIDIA" = true ] && COMPOSE_FILES+=(-f "compose.gpu.yml")
+if [ "$WITH_NVIDIA" = true ] && [ "$WITH_CLASSIFIER_GPU" = true ]; then
+  COMPOSE_FILES+=(-f "compose.gpu.yml")
+fi
 
 PROFILE_ARGS=()
 [ "$WITH_OBS" = true ] && PROFILE_ARGS+=(--profile observability)

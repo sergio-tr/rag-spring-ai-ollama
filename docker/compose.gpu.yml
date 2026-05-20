@@ -1,4 +1,4 @@
-# NVIDIA runtime override for classifier-service (merged when the host has the NVIDIA runtime).
+# NVIDIA runtime override for classifier-service (merged only when ./docker/scripts/up.sh is called with --classifier-gpu and the host has the NVIDIA runtime).
 # Ollama in Docker uses profile "ollama" in docker-compose.yml. Remote/host URL: OLLAMA_BASE_URL / SPRING_AI_OLLAMA_BASE_URL in rag-service/.env.
 
 services:
