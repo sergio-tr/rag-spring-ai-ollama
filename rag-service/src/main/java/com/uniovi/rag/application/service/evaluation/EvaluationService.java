@@ -1,5 +1,9 @@
 package com.uniovi.rag.application.service.evaluation;
 
+import com.uniovi.rag.application.result.evaluation.EvaluationSummary;
+import com.uniovi.rag.application.result.evaluation.JudgeSummarizableRow;
+import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
+import com.uniovi.rag.application.result.evaluation.RagPresetEvaluationBatchResult;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
@@ -7,7 +11,6 @@ import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.infrastructure.observability.Loggable;
 
 import java.util.List;
-import java.util.Map;
 import java.util.function.BiConsumer;
 
 public interface EvaluationService extends Loggable {
@@ -17,13 +20,13 @@ public interface EvaluationService extends Loggable {
      *
      * @param itemProgress optional {@code (index1Based, total)} notification before each question
      */
-    Map<String, Object> evaluateWithConfigurationForLlmReaderQuestions(
+    LlmJudgeEvaluationBatchResult evaluateWithConfigurationForLlmReaderQuestions(
             RagFeatureConfiguration customConfig,
             RagImplementationProperties implementationProperties,
             List<LlmReaderQuestion> questions,
             BiConsumer<Integer, Integer> itemProgress);
 
-    default Map<String, Object> evaluateWithConfigurationForLlmReaderQuestions(
+    default LlmJudgeEvaluationBatchResult evaluateWithConfigurationForLlmReaderQuestions(
             RagFeatureConfiguration customConfig,
             RagImplementationProperties implementationProperties,
             List<LlmReaderQuestion> questions) {
@@ -31,13 +34,13 @@ public interface EvaluationService extends Loggable {
     }
 
     /** Canonical benchmark path: RAG pipeline over explicit typed preset question rows. */
-    Map<String, Object> evaluateWithConfigurationForRagPresetQuestions(
+    RagPresetEvaluationBatchResult evaluateWithConfigurationForRagPresetQuestions(
             RagFeatureConfiguration customConfig,
             RagImplementationProperties implementationProperties,
             List<RagPresetQuestion> questions,
             BiConsumer<Integer, Integer> itemProgress);
 
-    default Map<String, Object> evaluateWithConfigurationForRagPresetQuestions(
+    default RagPresetEvaluationBatchResult evaluateWithConfigurationForRagPresetQuestions(
             RagFeatureConfiguration customConfig,
             RagImplementationProperties implementationProperties,
             List<RagPresetQuestion> questions) {
@@ -53,5 +56,5 @@ public interface EvaluationService extends Loggable {
     String judgeQaAnswer(String question, String goldAnswer, String generatedAnswer);
 
     /** Builds {@code evaluation_summary} from per-question benchmark rows. */
-    Map<String, Object> summarizeJudgeResults(List<Map<String, Object>> resultsForPrompt);
+    EvaluationSummary summarizeJudgeResults(List<? extends JudgeSummarizableRow> resultsForPrompt);
 }

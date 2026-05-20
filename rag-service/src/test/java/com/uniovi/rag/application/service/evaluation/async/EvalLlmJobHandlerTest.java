@@ -8,7 +8,9 @@ import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
 import com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService;
+import com.uniovi.rag.application.service.evaluation.EvaluationTestFixtures;
 import com.uniovi.rag.application.service.evaluation.baseline.ModelBaselineEvaluationOrchestrator;
 import java.util.List;
 import java.util.Map;
@@ -76,7 +78,7 @@ class EvalLlmJobHandlerTest {
         TypedBenchmarkDataset.LlmQuestions bundle =
                 new TypedBenchmarkDataset.LlmQuestions(List.of(q), List.of());
         when(experimentalDatasetResolver.resolve(runId)).thenReturn(bundle);
-        Map<String, Object> eval = Map.of("score", 1);
+        LlmJudgeEvaluationBatchResult eval = EvaluationTestFixtures.emptyLlmBatch();
         when(modelBaselineEvaluationOrchestrator.runLlmJudgeBaseline(
                         eq(runId), eq(bundle), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn(eval);
@@ -84,8 +86,8 @@ class EvalLlmJobHandlerTest {
 
         handler().run(task, mutation);
 
-        verify(canonicalPersistence).persistLlmJudgeFromEvaluationMap(runId, eval, BenchmarkKind.LLM_JUDGE_QA);
-        verify(mutation).markSucceeded(taskId, eval);
+        verify(canonicalPersistence).persistLlmJudgeBatch(runId, eval, BenchmarkKind.LLM_JUDGE_QA);
+        verify(mutation).markSucceeded(eq(taskId), ArgumentMatchers.any());
     }
 
     @Test

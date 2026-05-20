@@ -12,7 +12,11 @@ import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.application.result.evaluation.EvaluationSummary;
+import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
+import com.uniovi.rag.application.result.evaluation.LlmJudgeItemResult;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
+import com.uniovi.rag.application.service.evaluation.EvaluationSummaryBuilder;
 import com.uniovi.rag.application.service.async.LabJobCancelledException;
 import org.springframework.stereotype.Service;
 
@@ -57,18 +61,15 @@ public class ModelBaselineEvaluationOrchestrator {
         this.evaluationService = evaluationService;
     }
 
-    /**
-     * Runs typed LLM baseline rows and returns the same payload shape as legacy typed evaluation (for canonical
-     * persistence).
-     */
-    public Map<String, Object> runLlmJudgeBaseline(
+    /** Runs typed LLM baseline rows with judge scoring for canonical persistence. */
+    public LlmJudgeEvaluationBatchResult runLlmJudgeBaseline(
             UUID evaluationRunId,
             TypedBenchmarkDataset.LlmQuestions bundle,
             BiConsumer<Integer, Integer> itemProgress) {
         return runLlmJudgeBaseline(evaluationRunId, bundle, itemProgress, null);
     }
 
-    public Map<String, Object> runLlmJudgeBaseline(
+    public LlmJudgeEvaluationBatchResult runLlmJudgeBaseline(
             UUID evaluationRunId,
             TypedBenchmarkDataset.LlmQuestions bundle,
             BiConsumer<Integer, Integer> itemProgress,
@@ -85,7 +86,7 @@ public class ModelBaselineEvaluationOrchestrator {
         boolean llmAvailable = ollamaModelCatalogClient.isModelAvailable(llmSnap.model());
         Map<String, String> corpusById = CorpusDocumentLookup.indexByDocumentId(bundle.corpusDocuments());
 
-        List<Map<String, Object>> rows = new ArrayList<>();
+        List<LlmJudgeItemResult> rows = new ArrayList<>();
         List<LlmReaderQuestion> questions = bundle.questions();
         int total = questions.size();
         int idx = 0;
@@ -111,32 +112,29 @@ public class ModelBaselineEvaluationOrchestrator {
                 protocol = BenchmarkEvaluationProtocol.LLM_READER_ORACLE_CONTEXT;
             }
 
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("question", q.question());
-            row.put(JSON_KEY_CORRECT_ANSWER, q.expectedAnswer() != null ? q.expectedAnswer() : "");
-            row.put(BenchmarkResultRowKeys.DATASET_QUESTION_ID, q.id());
-            row.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
-            row.put("query_type", q.queryType().map(QueryType::name).orElse(null));
-            row.put(BenchmarkResultRowKeys.DIFFICULTY, q.difficulty().map(DifficultyLevel::name).orElse(null));
-
             Map<String, Object> baselineMetrics = new LinkedHashMap<>();
             baselineMetrics.put("benchmark_protocol", protocol.name());
             baselineMetrics.put("llm_model", llmSnap.model());
-            row.put(BenchmarkResultRowKeys.LLM_MODEL_ID, llmSnap.model());
-            row.put(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID, embSnap.model());
-            row.put("benchmark_protocol", protocol.name());
 
             if (!llmAvailable) {
-                row.put(JSON_KEY_GENERATED_ANSWER, "");
-                row.put("llm_evaluation", "");
-                row.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.MODEL_NOT_AVAILABLE.name());
-                row.put(BenchmarkResultRowKeys.ERROR_CODE, MODEL_UNAVAILABLE);
-                row.put(BenchmarkResultRowKeys.REASON, MODEL_UNAVAILABLE);
                 baselineMetrics.put("reason", "ollama_model_not_listed_or_daemon_unreachable");
                 baselineMetrics.put("reasonCode", MODEL_UNAVAILABLE);
-                row.put("baseline_metrics", baselineMetrics);
-                row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
-                rows.add(row);
+                rows.add(
+                        LlmJudgeItemResult.builder()
+                                .question(q.question())
+                                .correctAnswer(q.expectedAnswer() != null ? q.expectedAnswer() : "")
+                                .datasetQuestionId(q.id())
+                                .itemOutcome(BenchmarkItemOutcome.MODEL_NOT_AVAILABLE)
+                                .queryType(q.queryType().map(QueryType::name).orElse(null))
+                                .difficulty(q.difficulty().map(DifficultyLevel::name).orElse(null))
+                                .evaluationProtocol(protocol.name())
+                                .llmModelId(llmSnap.model())
+                                .embeddingModelId(embSnap.model())
+                                .errorCode(MODEL_UNAVAILABLE)
+                                .errorMessage(MODEL_UNAVAILABLE)
+                                .baselineMetrics(baselineMetrics)
+                                .latencyMs(0L)
+                                .build());
                 continue;
             }
 
@@ -155,6 +153,18 @@ public class ModelBaselineEvaluationOrchestrator {
             baselineMetrics.putAll(ModelBaselineLlmRunner.truncationMetrics(truncation));
 
             long t0 = System.nanoTime();
+            LlmJudgeItemResult.Builder rowBuilder =
+                    LlmJudgeItemResult.builder()
+                            .question(q.question())
+                            .correctAnswer(q.expectedAnswer() != null ? q.expectedAnswer() : "")
+                            .datasetQuestionId(q.id())
+                            .itemOutcome(BenchmarkItemOutcome.EXECUTED)
+                            .queryType(q.queryType().map(QueryType::name).orElse(null))
+                            .difficulty(q.difficulty().map(DifficultyLevel::name).orElse(null))
+                            .evaluationProtocol(protocol.name())
+                            .llmModelId(llmSnap.model())
+                            .embeddingModelId(embSnap.model())
+                            .baselineMetrics(baselineMetrics);
             try {
                 String generated =
                         modelBaselineLlmRunner.generateAnswer(
@@ -165,7 +175,7 @@ public class ModelBaselineEvaluationOrchestrator {
                                 oracleContext,
                                 fullDoc,
                                 truncation);
-                row.put(JSON_KEY_GENERATED_ANSWER, generated != null ? generated : "");
+                rowBuilder.generatedAnswer(generated != null ? generated : "");
                 try {
                     if (cancellationCheck != null) {
                         cancellationCheck.run();
@@ -174,42 +184,40 @@ public class ModelBaselineEvaluationOrchestrator {
                     cancelled = true;
                     cancelReason = ex.getMessage();
                 }
-                String gold = row.get(JSON_KEY_CORRECT_ANSWER) instanceof String s ? s : "";
+                String gold = q.expectedAnswer() != null ? q.expectedAnswer() : "";
                 String judge = evaluationService.judgeQaAnswer(q.question(), gold, generated);
-                row.put("llm_evaluation", judge != null ? judge : "");
-                row.put(BenchmarkResultRowKeys.LATENCY_MS, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
+                rowBuilder.llmEvaluation(judge != null ? judge : "");
+                rowBuilder.latencyMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
             } catch (RuntimeException ex) {
-                row.put(JSON_KEY_GENERATED_ANSWER, "");
-                row.put("llm_evaluation", "");
-                row.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.FAILED.name());
-                row.put(BenchmarkResultRowKeys.ERROR_CODE, ex.getClass().getSimpleName());
-                row.put(BenchmarkResultRowKeys.LATENCY_MS, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
-                row.put(
-                        "error",
-                        ex.getMessage() != null && !ex.getMessage().isBlank()
-                                ? ex.getMessage()
-                                : ex.getClass().getSimpleName());
+                rowBuilder
+                        .generatedAnswer("")
+                        .llmEvaluation("")
+                        .itemOutcome(BenchmarkItemOutcome.FAILED)
+                        .errorCode(ex.getClass().getSimpleName())
+                        .errorMessage(
+                                ex.getMessage() != null && !ex.getMessage().isBlank()
+                                        ? ex.getMessage()
+                                        : ex.getClass().getSimpleName())
+                        .latencyMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
             }
-            row.put("baseline_metrics", baselineMetrics);
-            rows.add(row);
+            rows.add(rowBuilder.build());
             if (cancelled) {
                 break;
             }
         }
 
-        Map<String, Object> out = new HashMap<>();
-        out.put("configuration", Map.of("baseline_phase5", true, "protocol_driver", "ModelBaselineEvaluationOrchestrator"));
-        out.put("results", rows);
-        Map<String, Object> summary = new LinkedHashMap<>(evaluationService.summarizeJudgeResults(rows));
+        EvaluationSummary summary = evaluationService.summarizeJudgeResults(rows);
         if (cancelled) {
-            summary.put("cancelled", true);
-            if (cancelReason != null && !cancelReason.isBlank()) {
-                summary.put("cancel_reason", cancelReason);
-            }
-            summary.put("completed_items", rows.size());
-            summary.put("total_items", total);
+            summary =
+                    summary.withCancellation(
+                            true,
+                            cancelReason,
+                            rows.size(),
+                            total);
         }
-        out.put("evaluation_summary", summary);
-        return out;
+        return new LlmJudgeEvaluationBatchResult(
+                Map.of("baseline_phase5", true, "protocol_driver", "ModelBaselineEvaluationOrchestrator"),
+                rows,
+                summary);
     }
 }

@@ -25,8 +25,14 @@ import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.application.result.evaluation.EvaluationSummary;
+import com.uniovi.rag.application.result.evaluation.LlmJudgeItemResult;
+import com.uniovi.rag.application.result.evaluation.RagPresetBenchmarkRunPayload;
+import com.uniovi.rag.application.result.evaluation.RagPresetEvaluationBatchResult;
 import com.uniovi.rag.application.service.evaluation.AbstractEvaluationService;
+import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
+import com.uniovi.rag.application.service.evaluation.EvaluationSummaryBuilder;
 import com.uniovi.rag.application.service.evaluation.baseline.ExperimentalSnapshotFactory;
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.domain.exception.ErrorCode;
@@ -95,8 +101,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
         this.corpusAvailabilityGate = corpusAvailabilityGate;
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> runPresetBenchmark(
+    public RagPresetBenchmarkRunPayload runPresetBenchmark(
             UUID evaluationRunId,
             TypedBenchmarkDataset.RagPresetQuestions rag,
             RagFeatureConfiguration applicationFeatureDefaults,
@@ -113,8 +118,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 null);
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> runPresetBenchmark(
+    public RagPresetBenchmarkRunPayload runPresetBenchmark(
             UUID evaluationRunId,
             TypedBenchmarkDataset.RagPresetQuestions rag,
             RagFeatureConfiguration applicationFeatureDefaults,
@@ -136,11 +140,12 @@ public class TypedRagPresetBenchmarkOrchestrator {
         List<RagPresetDefinition> catalog = rag.presetCatalog();
 
         if (catalog == null || catalog.isEmpty()) {
-            Map<String, Object> single =
+            RagPresetEvaluationBatchResult single =
                     evaluationService.evaluateWithConfigurationForRagPresetQuestions(
                             base, impl, questions, itemProgress);
+            List<Map<String, Object>> rowMaps = toMutableRowMaps(single.results());
             enrichRows(
-                    (List<Map<String, Object>>) single.get("results"),
+                    rowMaps,
                     null,
                     null,
                     llmSnap.model(),
@@ -151,14 +156,12 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     null,
                     base,
                     null);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> summary =
-                    single.get("evaluation_summary") instanceof Map<?, ?>
-                            ? new LinkedHashMap<>((Map<String, Object>) single.get("evaluation_summary"))
-                            : new LinkedHashMap<>();
-            summary.put("runPlan", labPresetRunPlanService.build(run, List.of()).toMap());
-            single.put("evaluation_summary", summary);
-            return single;
+            EvaluationSummary summary =
+                    single.evaluationSummary()
+                            .withExtensions(
+                                    Map.of("runPlan", labPresetRunPlanService.build(run, List.of()).toMap()));
+            return new RagPresetBenchmarkRunPayload(
+                    single.configurationSnapshot(), fromRowMaps(rowMaps), summary);
         }
 
         List<RagExperimentalPresetCode> codesForPlan;
@@ -416,14 +419,14 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                 gk != null ? gk.name() : null,
                                 preset != null ? preset.name() : null,
                                 resolvedSnapId != null)) {
-                    Map<String, Object> batch =
+                    RagPresetEvaluationBatchResult batch =
                             evaluationService.evaluateWithConfigurationForRagPresetQuestions(
                                     overlay.features(),
                                     impl,
                                     questions,
                                     itemProgress == null ? null : (i, n) -> bump.run());
-                    List<Map<String, Object>> rows = (List<Map<String, Object>>) batch.get("results");
-                    if (rows != null) {
+                    List<Map<String, Object>> rows = toMutableRowMaps(batch.results());
+                    if (!rows.isEmpty()) {
                         enrichRows(
                                 rows,
                                 def.name(),
@@ -480,21 +483,29 @@ public class TypedRagPresetBenchmarkOrchestrator {
             persistRunPlanBestEffort(evaluationRunId, runPlan);
         }
 
-        Map<String, Object> out = new HashMap<>();
-        out.put("configuration", Map.of("preset_benchmark", true, "last_preset_feature_flags", lastConfigurationMap));
-        out.put("results", allRows);
-        Map<String, Object> summary = new LinkedHashMap<>(evaluationService.summarizeJudgeResults(allRows));
-        summary.put("runPlan", runPlan.toMap());
+        EvaluationSummary summary =
+                EvaluationSummaryBuilder.summarize(
+                        EvaluationPayloadMapper.summarizableFromRowMaps(allRows));
+        summary = summary.withExtensions(Map.of("runPlan", runPlan.toMap()));
         if (cancelled) {
-            summary.put("cancelled", true);
-            if (cancelReason != null && !cancelReason.isBlank()) {
-                summary.put("cancel_reason", cancelReason);
-            }
-            summary.put("completed_items", allRows.size());
-            summary.put("total_items", totalOps);
+            summary = summary.withCancellation(true, cancelReason, allRows.size(), totalOps);
         }
-        out.put("evaluation_summary", summary);
-        return out;
+        return new RagPresetBenchmarkRunPayload(
+                Map.of("preset_benchmark", true, "last_preset_feature_flags", lastConfigurationMap),
+                fromRowMaps(allRows),
+                summary);
+    }
+
+    private static List<Map<String, Object>> toMutableRowMaps(List<LlmJudgeItemResult> results) {
+        List<Map<String, Object>> rowMaps = new ArrayList<>();
+        for (LlmJudgeItemResult item : results) {
+            rowMaps.add(new LinkedHashMap<>(EvaluationPayloadMapper.toRowMap(item)));
+        }
+        return rowMaps;
+    }
+
+    private static List<LlmJudgeItemResult> fromRowMaps(List<Map<String, Object>> rowMaps) {
+        return rowMaps.stream().map(EvaluationPayloadMapper::fromRowMap).toList();
     }
 
     private static UUID resolvePresetSnapshotId(GroupExecution exec, PreflightIndexCompatibility gate) {

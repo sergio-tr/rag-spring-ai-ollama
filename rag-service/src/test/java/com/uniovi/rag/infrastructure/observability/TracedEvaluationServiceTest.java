@@ -1,5 +1,7 @@
 package com.uniovi.rag.infrastructure.observability;
 
+import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
+import com.uniovi.rag.application.service.evaluation.EvaluationTestFixtures;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
@@ -7,7 +9,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -45,7 +46,7 @@ class TracedEvaluationServiceTest {
 
     @Test
     void evaluateTypedLlm_delegates() {
-        Map<String, Object> result = Map.of("k", "v");
+        LlmJudgeEvaluationBatchResult result = EvaluationTestFixtures.emptyLlmBatch();
         RagFeatureConfiguration config = mock(RagFeatureConfiguration.class);
         RagImplementationProperties impl = mock(RagImplementationProperties.class);
         when(delegate.evaluateWithConfigurationForLlmReaderQuestions(config, impl, List.of(), null))

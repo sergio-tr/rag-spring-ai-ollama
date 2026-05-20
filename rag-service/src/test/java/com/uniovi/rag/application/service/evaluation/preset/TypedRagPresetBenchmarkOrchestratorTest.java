@@ -22,7 +22,10 @@ import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntit
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
 import com.uniovi.rag.application.service.evaluation.AbstractEvaluationService;
+import com.uniovi.rag.application.result.evaluation.RagPresetBenchmarkRunPayload;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
+import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
+import com.uniovi.rag.application.service.evaluation.EvaluationTestFixtures;
 import com.uniovi.rag.application.service.evaluation.baseline.ExperimentalSnapshotFactory;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
@@ -121,21 +124,18 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(null)).thenReturn(embSnap());
 
         RagPresetQuestion q = sampleQuestion();
-        Map<String, Object> eval = new HashMap<>();
         List<Map<String, Object>> rows = new ArrayList<>();
         Map<String, Object> row = new HashMap<>();
         row.put("question", q.question());
         rows.add(row);
-        eval.put("results", rows);
-        eval.put("evaluation_summary", Map.of());
         when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
                         ArgumentMatchers.eq(List.of(q)),
                         ArgumentMatchers.any()))
-                .thenReturn(eval);
+                .thenReturn(EvaluationTestFixtures.ragBatchFromRowMaps(rows));
 
-        Map<String, Object> out =
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 runId,
@@ -145,10 +145,11 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null,
                                 null);
 
-        assertThat(out.get("results")).isSameAs(rows);
-        assertThat(row.get(BenchmarkResultRowKeys.PRESET_CODE)).isNull();
-        assertThat(row.get(BenchmarkResultRowKeys.LLM_MODEL_ID)).isEqualTo("lm");
-        assertThat(row.get(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID)).isEqualTo("emb");
+        List<Map<String, Object>> outRows = EvaluationTestFixtures.toRowMaps(out);
+        assertThat(outRows).hasSize(rows.size());
+        assertThat(outRows.get(0).get(BenchmarkResultRowKeys.PRESET_CODE)).isNull();
+        assertThat(outRows.get(0).get(BenchmarkResultRowKeys.LLM_MODEL_ID)).isEqualTo("lm");
+        assertThat(outRows.get(0).get(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID)).isEqualTo("emb");
         verify(evaluationRunRepository).findById(runId);
     }
 
@@ -172,7 +173,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         "",
                         "");
 
-        Map<String, Object> out =
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 null,
@@ -183,7 +184,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME))
                 .isEqualTo(BenchmarkItemOutcome.NOT_SUPPORTED.name());
@@ -194,7 +195,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         assertThat(mp.get("groupKey")).isEqualTo(LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN.name());
         assertThat(mp.get("runPlanVersion")).isNotNull();
         @SuppressWarnings("unchecked")
-        Map<String, Object> es = (Map<String, Object>) out.get("evaluation_summary");
+        var es = EvaluationPayloadMapper.summaryToMap(out.evaluationSummary());
         assertThat(es).containsKey("runPlan");
         Mockito.verify(evaluationService, Mockito.never())
                 .evaluateWithConfigurationForRagPresetQuestions(
@@ -202,7 +203,6 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any());
-        Mockito.verify(evaluationService).summarizeJudgeResults(ArgumentMatchers.anyList());
     }
 
     @Test
@@ -221,7 +221,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         run.setProject(project);
         when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
 
-        Map<String, Object> out =
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 UUID.randomUUID(),
@@ -232,7 +232,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.SKIPPED.name());
         assertThat(String.valueOf(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)))
@@ -243,7 +243,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         assertThat(mp.get("groupKey")).isEqualTo(LabPresetRunGroupKey.HYBRID_METADATA.name());
         assertThat(mp.get("runPlanVersion")).isNotNull();
         @SuppressWarnings("unchecked")
-        Map<String, Object> es = (Map<String, Object>) out.get("evaluation_summary");
+        var es = EvaluationPayloadMapper.summaryToMap(out.evaluationSummary());
         assertThat(es).containsKey("runPlan");
         Mockito.verify(evaluationService, Mockito.never())
                 .evaluateWithConfigurationForRagPresetQuestions(
@@ -294,20 +294,15 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         RagPresetDefinition p8 = preset(RagExperimentalPresetCode.P8);
         RagPresetDefinition p9 = preset(RagExperimentalPresetCode.P9);
 
-        Map<String, Object> eval = new HashMap<>();
         List<Map<String, Object>> rows = new ArrayList<>();
         rows.add(new HashMap<>(Map.of("question", q.question())));
-        eval.put("results", rows);
-        eval.put("evaluation_summary", Map.of());
         when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
                         ArgumentMatchers.anyList(),
                         ArgumentMatchers.any()))
-                .thenReturn(eval);
-        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
-
-        Map<String, Object> out =
+                .thenReturn(EvaluationTestFixtures.ragBatchFromRowMaps(rows));
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 runId,
@@ -318,7 +313,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> outRows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> outRows = EvaluationTestFixtures.toRowMaps(out);
         assertThat(outRows).isNotEmpty();
         // All emitted rows should carry effectiveGroupSnapshotId = newSnapId for HYBRID group.
         for (Map<String, Object> r : outRows) {
@@ -366,10 +361,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         ArgumentMatchers.any(),
                         ArgumentMatchers.anyList(),
                         ArgumentMatchers.any()))
-                .thenReturn(Map.of("results", baseRowsFor(1), "evaluation_summary", Map.of()));
-        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
-
-        Map<String, Object> out =
+                .thenReturn(EvaluationTestFixtures.ragBatchFromRowMaps(baseRowsFor(1)));
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 runId,
@@ -380,7 +373,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         @SuppressWarnings("unchecked")
         Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
         assertThat(mp.get("effectiveGroupSnapshotId")).isEqualTo(compatibleSnapshotId.toString());
@@ -410,7 +403,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         run.setProject(project);
         when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
 
-        Map<String, Object> out =
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 UUID.randomUUID(),
@@ -421,7 +414,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.SKIPPED.name());
         assertThat(String.valueOf(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)))
@@ -475,7 +468,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 "skippedReasonCode",
                                 CorpusAvailabilityGate.REINDEX_REQUIRED));
 
-        Map<String, Object> out =
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 UUID.randomUUID(),
@@ -487,7 +480,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.SKIPPED.name());
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)).isEqualTo(CorpusAvailabilityGate.REINDEX_REQUIRED);
@@ -541,7 +534,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 "skippedReasonCode",
                                 CorpusAvailabilityGate.NO_DOCUMENTS));
 
-        Map<String, Object> out =
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 UUID.randomUUID(),
@@ -553,7 +546,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)).isEqualTo(CorpusAvailabilityGate.NO_DOCUMENTS);
         @SuppressWarnings("unchecked")
@@ -575,9 +568,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 ArgumentMatchers.any(),
                 ArgumentMatchers.eq(questions),
                 ArgumentMatchers.any()))
-                .thenReturn(Map.of("results", baseRowsFor(questions.size()), "evaluation_summary", Map.of()));
-        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
-
+                .thenReturn(EvaluationTestFixtures.ragBatchFromRowMaps(baseRowsFor(questions.size())));
         var run = new EvaluationRunEntity();
         ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(UUID.randomUUID());
@@ -641,10 +632,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         ArgumentMatchers.any(),
                         ArgumentMatchers.anyList(),
                         ArgumentMatchers.any()))
-                .thenReturn(Map.of("results", baseRowsFor(1), "evaluation_summary", Map.of()));
-        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
-
-        Map<String, Object> out =
+                .thenReturn(EvaluationTestFixtures.ragBatchFromRowMaps(baseRowsFor(1)));
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 UUID.randomUUID(),
@@ -656,7 +645,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         @SuppressWarnings("unchecked")
         Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
         assertThat(mp.get("selectedSnapshotIds")).isEqualTo(List.of(snapshotId.toString()));
@@ -677,15 +666,13 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         ArgumentMatchers.anyList(),
                         ArgumentMatchers.any()))
                 .thenThrow(new IllegalStateException("NO_ACTIVE_INDEX"));
-        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
-
         ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(UUID.randomUUID());
         EvaluationRunEntity run = new EvaluationRunEntity();
         run.setProject(project);
         when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
 
-        Map<String, Object> out =
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 UUID.randomUUID(),
@@ -697,7 +684,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.FAILED.name());
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)).isEqualTo("REINDEX_REQUIRED");
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.REASON))
@@ -738,7 +725,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         List<RagPresetQuestion> questions = List.of(sampleQuestion());
         RagPresetDefinition p0 = preset(RagExperimentalPresetCode.P0);
 
-        Map<String, Object> out =
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 runId,
@@ -749,7 +736,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.SKIPPED.name());
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)).isEqualTo(CorpusAvailabilityGate.REINDEX_REQUIRED);
@@ -806,7 +793,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
 
         RagPresetQuestion q = sampleQuestion();
         RagPresetDefinition p0 = preset(RagExperimentalPresetCode.P0);
-        Map<String, Object> out =
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 UUID.randomUUID(),
@@ -817,7 +804,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.SKIPPED.name());
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)).isEqualTo(CorpusAvailabilityGate.NO_READY_DOCUMENTS);
@@ -868,16 +855,14 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         ArgumentMatchers.any(),
                         ArgumentMatchers.eq(questions),
                         ArgumentMatchers.any()))
-                .thenReturn(Map.of("results", List.of(evalRow), "evaluation_summary", Map.of()));
-        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
-
+                .thenReturn(EvaluationTestFixtures.ragBatchFromRowMaps(List.of(evalRow)));
         var run = new EvaluationRunEntity();
         ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(UUID.randomUUID());
         run.setProject(project);
         when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
 
-        Map<String, Object> out =
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 UUID.randomUUID(),
@@ -888,7 +873,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         @SuppressWarnings("unchecked")
         Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
         assertThat(mp.get("workflowName")).isEqualTo("CorpusGroundedDirectWorkflow");
@@ -923,16 +908,14 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         ArgumentMatchers.any(),
                         ArgumentMatchers.eq(questions),
                         ArgumentMatchers.any()))
-                .thenReturn(Map.of("results", List.of(evalRow), "evaluation_summary", Map.of()));
-        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
-
+                .thenReturn(EvaluationTestFixtures.ragBatchFromRowMaps(List.of(evalRow)));
         var run = new EvaluationRunEntity();
         ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(UUID.randomUUID());
         run.setProject(project);
         when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
 
-        Map<String, Object> out =
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 UUID.randomUUID(),
@@ -943,7 +926,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         @SuppressWarnings("unchecked")
         Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
         assertThat(mp.get("corpusChars")).isEqualTo(50000);
@@ -958,7 +941,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         RagPresetQuestion q = sampleQuestion();
         RagPresetDefinition p13 = preset(RagExperimentalPresetCode.P13);
 
-        Map<String, Object> out =
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 null,
@@ -969,7 +952,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         @SuppressWarnings("unchecked")
         Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME))
@@ -1000,10 +983,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         ArgumentMatchers.any(),
                         ArgumentMatchers.eq(questions),
                         ArgumentMatchers.any()))
-                .thenAnswer(inv -> Map.of("results", baseRowsFor(questions.size()), "evaluation_summary", Map.of()));
-        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
-
-        Map<String, Object> out =
+                .thenAnswer(inv -> Map.of("results", baseRowsFor(questions.size())));
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 null,
@@ -1014,7 +995,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         assertThat(rows).hasSize(6);
         assertThat(rows.stream().map(r -> String.valueOf(r.get(BenchmarkResultRowKeys.PRESET_CODE))).toList())
                 .containsExactlyInAnyOrder("P0", "P0", "P1", "P1", "P2", "P2");
@@ -1040,10 +1021,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         ArgumentMatchers.any(),
                         ArgumentMatchers.eq(questions),
                         ArgumentMatchers.any()))
-                .thenAnswer(inv -> Map.of("results", baseRowsFor(questions.size()), "evaluation_summary", Map.of()));
-        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
-
-        Map<String, Object> out =
+                .thenAnswer(inv -> Map.of("results", baseRowsFor(questions.size())));
+        RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
                                 null,
@@ -1054,7 +1033,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 null);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
         // Two presets x 60 questions.
         assertThat(rows).hasSize(120);
         assertThat(rows.stream().map(r -> String.valueOf(r.get(BenchmarkResultRowKeys.PRESET_CODE))).distinct().toList())

@@ -8,7 +8,11 @@ import com.uniovi.rag.domain.evaluation.snapshot.LlmExperimentalSnapshot;
 import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
+import com.uniovi.rag.application.result.evaluation.LlmJudgeItemResult;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
+import com.uniovi.rag.application.service.evaluation.EvaluationSummaryBuilder;
+import com.uniovi.rag.application.service.evaluation.EvaluationTestFixtures;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -74,7 +78,7 @@ class ModelBaselineEvaluationOrchestratorTest {
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(run))
                 .thenReturn(new EmbeddingExperimentalSnapshot("e", null, null, null, null, null, "MODEL_DEFAULT", List.of()));
         when(ollamaModelCatalogClient.isModelAvailable("missing:m")).thenReturn(false);
-        when(evaluationService.summarizeJudgeResults(any())).thenReturn(Map.of());
+        when(evaluationService.summarizeJudgeResults(any())).thenReturn(EvaluationTestFixtures.emptySummary());
 
         ModelBaselineEvaluationOrchestrator orch =
                 new ModelBaselineEvaluationOrchestrator(
@@ -99,17 +103,15 @@ class ModelBaselineEvaluationOrchestratorTest {
                         false,
                         "");
 
-        Map<String, Object> payload =
+        LlmJudgeEvaluationBatchResult payload =
                 orch.runLlmJudgeBaseline(runId, new TypedBenchmarkDataset.LlmQuestions(List.of(q), List.of()), null);
 
         verify(modelBaselineLlmRunner, never()).generateAnswer(any(), any(), any(), any(), any(), any(), any());
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) payload.get("results");
+        List<LlmJudgeItemResult> rows = payload.results();
         assertThat(rows).hasSize(1);
-        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME))
-                .isEqualTo(BenchmarkItemOutcome.MODEL_NOT_AVAILABLE.name());
-        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)).isEqualTo("MODEL_UNAVAILABLE");
-        assertThat(rows.get(0).get(BenchmarkResultRowKeys.REASON)).isEqualTo("MODEL_UNAVAILABLE");
+        assertThat(rows.get(0).itemOutcome()).isEqualTo(BenchmarkItemOutcome.MODEL_NOT_AVAILABLE);
+        assertThat(rows.get(0).errorCode()).isEqualTo("MODEL_UNAVAILABLE");
+        assertThat(rows.get(0).errorMessage()).isEqualTo("MODEL_UNAVAILABLE");
     }
 
     @Test
@@ -142,7 +144,7 @@ class ModelBaselineEvaluationOrchestratorTest {
                 .thenReturn("model says");
         when(evaluationService.judgeQaAnswer(eq("Q"), eq("gold"), eq("model says")))
                 .thenReturn("Correctness: 4");
-        when(evaluationService.summarizeJudgeResults(any())).thenReturn(Map.of("generation", Map.of()));
+        when(evaluationService.summarizeJudgeResults(any())).thenReturn(EvaluationSummaryBuilder.summarize(List.of()));
 
         ModelBaselineEvaluationOrchestrator orch =
                 new ModelBaselineEvaluationOrchestrator(
@@ -169,9 +171,10 @@ class ModelBaselineEvaluationOrchestratorTest {
 
         orch.runLlmJudgeBaseline(runId, new TypedBenchmarkDataset.LlmQuestions(List.of(q), List.of()), null);
 
-        ArgumentCaptor<List<Map<String, Object>>> cap = ArgumentCaptor.forClass(List.class);
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<List> cap = ArgumentCaptor.forClass(List.class);
         verify(evaluationService).summarizeJudgeResults(cap.capture());
         assertThat(cap.getValue()).hasSize(1);
-        assertThat(cap.getValue().get(0).get("generated_answer")).isEqualTo("model says");
+        assertThat(((LlmJudgeItemResult) cap.getValue().get(0)).generatedAnswer()).isEqualTo("model says");
     }
 }

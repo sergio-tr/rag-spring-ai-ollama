@@ -9,11 +9,12 @@ import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.application.service.async.LabJobCancelledException;
+import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
 import com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService;
+import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
 import com.uniovi.rag.application.service.evaluation.baseline.ModelBaselineEvaluationOrchestrator;
 import org.springframework.stereotype.Component;
 
-import java.util.Map;
 import java.util.UUID;
 
 @Component
@@ -59,7 +60,7 @@ class EvalLlmJobHandler implements LabJobHandler {
             mutation.appendProgressLine(
                     taskId,
                     "Parsed dataset LLM_JUDGE_QA: " + llm.questions().size() + " questions");
-            Map<String, Object> res =
+            LlmJudgeEvaluationBatchResult res =
                     modelBaselineEvaluationOrchestrator.runLlmJudgeBaseline(
                             evaluationRunId,
                             llm,
@@ -68,15 +69,12 @@ class EvalLlmJobHandler implements LabJobHandler {
                                 mutation.appendProgressLine(taskId, "Running item " + i + "/" + n);
                             },
                             () -> cancellationService.throwIfCancellationRequested(taskId));
-            canonicalPersistence.persistLlmJudgeFromEvaluationMap(
-                    evaluationRunId, res, BenchmarkKind.LLM_JUDGE_QA);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> summary = (Map<String, Object>) res.get("evaluation_summary");
-            if (summary != null && Boolean.TRUE.equals(summary.get("cancelled"))) {
+            canonicalPersistence.persistLlmJudgeBatch(evaluationRunId, res, BenchmarkKind.LLM_JUDGE_QA);
+            if (res.evaluationSummary() != null && Boolean.TRUE.equals(res.evaluationSummary().cancelled())) {
                 mutation.appendProgressLine(taskId, "Cancellation requested by user");
                 throw new LabJobCancelledException("Cancellation requested by user");
             }
-            mutation.markSucceeded(taskId, res);
+            mutation.markSucceeded(taskId, EvaluationPayloadMapper.toAsyncPayload(res));
         } catch (BenchmarkDatasetResolutionException e) {
             if (evaluationRunId != null) {
                 canonicalPersistence.markRunFailed(evaluationRunId, e.getMessage());

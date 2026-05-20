@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation;
 
+import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.domain.EvaluationRunStatus;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
@@ -80,6 +81,14 @@ public class EvaluationCanonicalPersistenceService {
         }
         run.setAggregatesJson(agg);
         evaluationRunRepository.save(run);
+    }
+
+    @Transactional
+    public void persistLlmJudgeBatch(UUID runId, LlmJudgeEvaluationBatchResult batch, BenchmarkKind kind) {
+        if (batch == null) {
+            return;
+        }
+        persistLlmJudgeFromEvaluationMap(runId, EvaluationPayloadMapper.toAsyncPayload(batch), kind);
     }
 
     @Transactional

@@ -1,5 +1,9 @@
 package com.uniovi.rag.infrastructure.observability;
 
+import com.uniovi.rag.application.result.evaluation.EvaluationSummary;
+import com.uniovi.rag.application.result.evaluation.JudgeSummarizableRow;
+import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
+import com.uniovi.rag.application.result.evaluation.RagPresetEvaluationBatchResult;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
@@ -37,7 +41,7 @@ public final class TracedEvaluationService implements EvaluationService {
     }
 
     @Override
-    public Map<String, Object> evaluateWithConfigurationForLlmReaderQuestions(
+    public LlmJudgeEvaluationBatchResult evaluateWithConfigurationForLlmReaderQuestions(
             RagFeatureConfiguration customConfig,
             RagImplementationProperties implementationProperties,
             List<LlmReaderQuestion> questions,
@@ -54,7 +58,7 @@ public final class TracedEvaluationService implements EvaluationService {
     }
 
     @Override
-    public Map<String, Object> evaluateWithConfigurationForRagPresetQuestions(
+    public RagPresetEvaluationBatchResult evaluateWithConfigurationForRagPresetQuestions(
             RagFeatureConfiguration customConfig,
             RagImplementationProperties implementationProperties,
             List<RagPresetQuestion> questions,
@@ -94,7 +98,7 @@ public final class TracedEvaluationService implements EvaluationService {
     }
 
     @Override
-    public Map<String, Object> summarizeJudgeResults(List<Map<String, Object>> resultsForPrompt) {
+    public EvaluationSummary summarizeJudgeResults(List<? extends JudgeSummarizableRow> resultsForPrompt) {
         observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "summarizeJudgeResults");
         return observability.recordTimer(
                 "rag.evaluation.summarizeJudgeResults",

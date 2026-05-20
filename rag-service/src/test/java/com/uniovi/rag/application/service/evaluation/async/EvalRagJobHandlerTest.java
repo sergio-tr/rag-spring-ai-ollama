@@ -18,6 +18,10 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService;
+import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
+import com.uniovi.rag.application.result.evaluation.RagPresetBenchmarkRunPayload;
+import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
+import com.uniovi.rag.application.service.evaluation.EvaluationTestFixtures;
 import com.uniovi.rag.application.service.evaluation.preset.TypedRagPresetBenchmarkOrchestrator;
 import java.time.Instant;
 import java.util.List;
@@ -112,7 +116,7 @@ class EvalRagJobHandlerTest {
                         "");
         when(experimentalDatasetResolver.resolve(runId))
                 .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
-        Map<String, Object> eval = Map.of("k", "v");
+        RagPresetBenchmarkRunPayload eval = EvaluationTestFixtures.emptyRagRunPayload();
         when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
                         eq(runId),
                         ArgumentMatchers.any(TypedBenchmarkDataset.RagPresetQuestions.class),
@@ -135,8 +139,8 @@ class EvalRagJobHandlerTest {
                         ArgumentMatchers.anySet(),
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any());
-        verify(canonicalPersistence).persistLlmJudgeFromEvaluationMap(runId, eval, BenchmarkKind.RAG_PRESET_END_TO_END);
-        verify(mutation).markSucceeded(taskId, eval);
+        verify(canonicalPersistence).persistLlmJudgeBatch(runId, new LlmJudgeEvaluationBatchResult(eval.configuration(), eval.results(), eval.evaluationSummary()), BenchmarkKind.RAG_PRESET_END_TO_END);
+        verify(mutation).markSucceeded(taskId, EvaluationPayloadMapper.toAsyncPayload(eval));
         verifyNoInteractions(labClasspathCorpusBootstrapService);
     }
 
@@ -290,7 +294,7 @@ class EvalRagJobHandlerTest {
                         "");
         when(experimentalDatasetResolver.resolve(runId))
                 .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
-        Map<String, Object> eval = Map.of("k", "v", "evaluation_summary", Map.of());
+        RagPresetBenchmarkRunPayload eval = EvaluationTestFixtures.emptyRagRunPayload();
         when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
                         eq(runId),
                         ArgumentMatchers.any(TypedBenchmarkDataset.RagPresetQuestions.class),
@@ -402,7 +406,7 @@ class EvalRagJobHandlerTest {
                         "");
         when(experimentalDatasetResolver.resolve(runId))
                 .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
-        Map<String, Object> eval = Map.of("k", "v", "evaluation_summary", Map.of());
+        RagPresetBenchmarkRunPayload eval = EvaluationTestFixtures.emptyRagRunPayload();
         when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
                         eq(runId),
                         ArgumentMatchers.any(),

@@ -1,6 +1,11 @@
 package com.uniovi.rag.application.service.evaluation;
 
 import com.uniovi.rag.application.result.chat.QueryResponse;
+import com.uniovi.rag.application.result.evaluation.EvaluationSummary;
+import com.uniovi.rag.application.result.evaluation.JudgeSummarizableRow;
+import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
+import com.uniovi.rag.application.result.evaluation.LlmJudgeItemResult;
+import com.uniovi.rag.application.result.evaluation.RagPresetEvaluationBatchResult;
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
@@ -213,7 +218,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     protected abstract void loadSpecificData();
 
     @Override
-    public Map<String, Object> evaluateWithConfigurationForLlmReaderQuestions(
+    public LlmJudgeEvaluationBatchResult evaluateWithConfigurationForLlmReaderQuestions(
             RagFeatureConfiguration customConfig,
             RagImplementationProperties implementationProperties,
             List<LlmReaderQuestion> questions,
@@ -225,7 +230,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 implementationProperties != null ? implementationProperties : new RagImplementationProperties();
         loadDataWithConfiguration(customConfig);
         QueryExecutionService queryServiceToUse = evaluationServiceFactory.createQueryService(impl);
-        List<Map<String, Object>> resultsForPrompt = new ArrayList<>();
+        List<LlmJudgeItemResult> resultsForPrompt = new ArrayList<>();
         int total = questions.size();
         int idx = 0;
         for (LlmReaderQuestion q : questions) {
@@ -239,21 +244,22 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             String llmResponse =
                     queryResponse != null && queryResponse.getAnswer() != null ? queryResponse.getAnswer() : "";
             String evaluation = evaluateResponse(questionText, correctAnswer, llmResponse);
-            Map<String, Object> result = buildEvalQuestionResult(questionText, correctAnswer, llmResponse, evaluation, queryResponse);
-            result.put(BenchmarkResultRowKeys.DATASET_QUESTION_ID, q.id());
-            result.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+            LlmJudgeItemResult result =
+                    buildEvalQuestionResult(questionText, correctAnswer, llmResponse, evaluation, queryResponse)
+                            .datasetQuestionId(q.id())
+                            .itemOutcome(BenchmarkItemOutcome.EXECUTED)
+                            .build();
             resultsForPrompt.add(result);
             logEvalQuestion(questionText, queryResponse, result);
         }
-        Map<String, Object> results = new HashMap<>();
-        results.put("configuration", customConfig.getConfiguration());
-        results.put("results", resultsForPrompt);
-        results.put("evaluation_summary", buildEvaluationSummary(resultsForPrompt));
-        return results;
+        return new LlmJudgeEvaluationBatchResult(
+                configurationSnapshot(customConfig),
+                resultsForPrompt,
+                EvaluationSummaryBuilder.summarize(resultsForPrompt));
     }
 
     @Override
-    public Map<String, Object> evaluateWithConfigurationForRagPresetQuestions(
+    public RagPresetEvaluationBatchResult evaluateWithConfigurationForRagPresetQuestions(
             RagFeatureConfiguration customConfig,
             RagImplementationProperties implementationProperties,
             List<RagPresetQuestion> questions,
@@ -265,7 +271,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 implementationProperties != null ? implementationProperties : new RagImplementationProperties();
         loadDataWithConfiguration(customConfig);
         QueryExecutionService queryServiceToUse = evaluationServiceFactory.createQueryService(impl);
-        List<Map<String, Object>> resultsForPrompt = new ArrayList<>();
+        List<LlmJudgeItemResult> resultsForPrompt = new ArrayList<>();
         int total = questions.size();
         int idx = 0;
         for (RagPresetQuestion q : questions) {
@@ -281,71 +287,78 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 String llmResponse =
                         queryResponse != null && queryResponse.getAnswer() != null ? queryResponse.getAnswer() : "";
                 String evaluation = evaluateResponse(questionText, correctAnswer, llmResponse);
-                Map<String, Object> result =
-                        buildEvalQuestionResult(questionText, correctAnswer, llmResponse, evaluation, queryResponse);
-                applyDatasetDimensions(q, result);
-                result.put(BenchmarkResultRowKeys.DATASET_QUESTION_ID, q.id());
-                result.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
-                result.put(BenchmarkResultRowKeys.LATENCY_MS, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
+                LlmJudgeItemResult.Builder builder =
+                        buildEvalQuestionResult(questionText, correctAnswer, llmResponse, evaluation, queryResponse)
+                                .datasetQuestionId(q.id())
+                                .itemOutcome(BenchmarkItemOutcome.EXECUTED)
+                                .latencyMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0))
+                                .difficulty(q.difficulty().map(DifficultyLevel::name).orElse(null));
+                String datasetQt = q.queryType().map(QueryType::name).orElse(null);
+                if (datasetQt != null) {
+                    builder.queryType(datasetQt);
+                }
                 if (queryResponse != null
                         && queryResponse.getChatTelemetry() != null
                         && !queryResponse.getChatTelemetry().isEmpty()) {
-                    result.put(EVALUATION_CHAT_TELEMETRY_ROW_KEY, new LinkedHashMap<>(queryResponse.getChatTelemetry()));
+                    builder.chatTelemetry(queryResponse.getChatTelemetry());
                 }
+                LlmJudgeItemResult result = builder.build();
                 resultsForPrompt.add(result);
                 logEvalQuestion(questionText, queryResponse, result);
             } catch (RuntimeException ex) {
-                Map<String, Object> result =
-                        buildEvalQuestionResult(questionText, correctAnswer, "", "", null);
-                applyDatasetDimensions(q, result);
-                result.put(BenchmarkResultRowKeys.DATASET_QUESTION_ID, q.id());
-                result.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.FAILED.name());
-                result.put(BenchmarkResultRowKeys.LATENCY_MS, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
-                result.put(
-                        BenchmarkResultRowKeys.ERROR_CODE,
-                        ex.getClass().getSimpleName());
-                result.put(
-                        "error",
-                        ex.getMessage() != null && !ex.getMessage().isBlank()
-                                ? ex.getMessage()
-                                : ex.getClass().getSimpleName());
-                resultsForPrompt.add(result);
+                LlmJudgeItemResult.Builder builder =
+                        buildEvalQuestionResult(questionText, correctAnswer, "", "", null)
+                                .datasetQuestionId(q.id())
+                                .itemOutcome(BenchmarkItemOutcome.FAILED)
+                                .latencyMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0))
+                                .errorCode(ex.getClass().getSimpleName())
+                                .errorMessage(
+                                        ex.getMessage() != null && !ex.getMessage().isBlank()
+                                                ? ex.getMessage()
+                                                : ex.getClass().getSimpleName())
+                                .difficulty(q.difficulty().map(DifficultyLevel::name).orElse(null));
+                String datasetQt = q.queryType().map(QueryType::name).orElse(null);
+                if (datasetQt != null) {
+                    builder.queryType(datasetQt);
+                }
+                resultsForPrompt.add(builder.build());
                 log().warn("RAG preset evaluation item failed for questionId={}", q.id(), ex);
             }
         }
-        Map<String, Object> results = new HashMap<>();
-        results.put("configuration", customConfig.getConfiguration());
-        results.put("results", resultsForPrompt);
-        results.put("evaluation_summary", buildEvaluationSummary(resultsForPrompt));
-        return results;
+        return new RagPresetEvaluationBatchResult(
+                configurationSnapshot(customConfig),
+                resultsForPrompt,
+                EvaluationSummaryBuilder.summarize(resultsForPrompt));
     }
 
-    private static void applyDatasetDimensions(RagPresetQuestion q, Map<String, Object> result) {
-        result.put(BenchmarkResultRowKeys.DIFFICULTY, q.difficulty().map(DifficultyLevel::name).orElse(null));
-        String datasetQt = q.queryType().map(QueryType::name).orElse(null);
-        if (datasetQt != null) {
-            result.put("query_type", datasetQt);
+    private static Map<String, Object> configurationSnapshot(RagFeatureConfiguration customConfig) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        if (customConfig != null && customConfig.getConfiguration() != null) {
+            customConfig.getConfiguration().forEach(snapshot::put);
         }
+        return snapshot;
     }
 
-    private Map<String, Object> buildEvalQuestionResult(
+    private static LlmJudgeItemResult.Builder buildEvalQuestionResult(
             String question,
             String correctAnswer,
             String llmResponse,
             String evaluation,
             QueryResponse queryResponse) {
-        Map<String, Object> result = new HashMap<>();
-        result.put("question", question);
-        result.put(JSON_KEY_CORRECT_ANSWER, correctAnswer);
-        result.put(JSON_KEY_GENERATED_ANSWER, llmResponse);
-        result.put("llm_evaluation", evaluation);
-        result.put("tool_used", queryResponse != null ? queryResponse.getToolUsed() : null);
-        result.put("query_type", queryResponse != null && queryResponse.getQueryType() != null ? queryResponse.getQueryType().name() : null);
-        result.put("used_tool", queryResponse != null && queryResponse.isUsedTool());
-        return result;
+        return LlmJudgeItemResult.builder()
+                .question(question)
+                .correctAnswer(correctAnswer)
+                .generatedAnswer(llmResponse)
+                .llmEvaluation(evaluation)
+                .toolUsed(queryResponse != null ? queryResponse.getToolUsed() : null)
+                .queryType(
+                        queryResponse != null && queryResponse.getQueryType() != null
+                                ? queryResponse.getQueryType().name()
+                                : null)
+                .usedTool(queryResponse != null && queryResponse.isUsedTool());
     }
 
-    private void logEvalQuestion(String question, QueryResponse queryResponse, Map<String, Object> result) {
+    private void logEvalQuestion(String question, QueryResponse queryResponse, LlmJudgeItemResult result) {
         log().info(
                 "Question: {} | Tool: {} | QueryType: {} | UsedTool: {}",
                 question,
@@ -368,8 +381,8 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     }
 
     @Override
-    public Map<String, Object> summarizeJudgeResults(List<Map<String, Object>> resultsForPrompt) {
-        return buildEvaluationSummary(resultsForPrompt);
+    public EvaluationSummary summarizeJudgeResults(List<? extends JudgeSummarizableRow> resultsForPrompt) {
+        return EvaluationSummaryBuilder.summarize(resultsForPrompt);
     }
 
     protected String evaluateResponse(String question, String correctAnswer, String llmResponse) {
