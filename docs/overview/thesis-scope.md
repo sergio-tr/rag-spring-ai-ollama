@@ -27,7 +27,7 @@
 
 ---
 
-## Deferred / optional
+## Optional / out of thesis scope
 
 - Admin **limits/quotas** and optional product admin system configuration endpoints (not part of the minimum deliverable unless explicitly scoped).
 - Full **Azure** production hardening beyond the documented **Linux VM + Compose** runbook ([runbook-docker-vm.md](../operations/runbook-docker-vm.md), [azure-vm-parameterization.md](../operations/azure-vm-parameterization.md)).

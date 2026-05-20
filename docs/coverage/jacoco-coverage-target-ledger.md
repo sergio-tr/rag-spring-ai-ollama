@@ -125,14 +125,12 @@ POM comments reference types that are **in** the instrumented bundle (not in the
 | EXC-JPA-18 | `.../MessageEntity.class` | `**/MessageEntity.java` | JPA_entities | Gate | High | Postgres IT | **6.04** | — | — |
 | EXC-JPA-19 | `.../MessageFeedbackEntity.class` | `**/MessageFeedbackEntity.java` | JPA_entities | Gate | Med | Postgres IT | **6.04** | — | — |
 | EXC-JPA-20 | `.../ProjectEntity.class` | `**/ProjectEntity.java` | JPA_entities | Gate | High | Postgres IT | **6.04** | — | — |
-| EXC-JPA-21 | `.../PromptTemplateEntity.class` | `**/PromptTemplateEntity.java` | JPA_entities | Gate | Med | Postgres IT | **6.04** | — | — |
 | EXC-JPA-22 | `.../RagConfigurationEntity.class` | `**/RagConfigurationEntity.java` | JPA_entities | Gate | High | Postgres IT | **6.04** | — | — |
 | EXC-JPA-23 | `.../RagConfigurationEntityFactory.class` | `**/RagConfigurationEntityFactory.java` | JPA_entities | Factory | High | Unit | **6.04** | — | — |
 | EXC-JPA-24 | `.../RagPresetEntity.class` | `**/RagPresetEntity.java` | JPA_entities | Gate | Med | Postgres IT | **6.04** | — | — |
 | EXC-JPA-25 | `.../RagPresetProfileRefEntity.class` | `**/RagPresetProfileRefEntity.java` | JPA_entities | Composite | Med | Postgres IT | **6.04** | — | — |
 | EXC-JPA-26 | `.../RagPresetProfileRefId.class` | `**/RagPresetProfileRefId.java` | JPA_entities | Embeddable | Med | Unit + IT | **6.04** | — | — |
 | EXC-JPA-27 | `.../ReindexEventEntity.class` | `**/ReindexEventEntity.java` | JPA_entities | Gate | Med | Postgres IT | **6.04** | — | — |
-| EXC-JPA-28 | `.../ScheduledEvaluationEntity.class` | `**/ScheduledEvaluationEntity.java` | JPA_entities | Gate | Med | Postgres IT | **6.04** | — | — |
 | EXC-JPA-29 | `.../UserEntity.class` | `**/UserEntity.java` | JPA_entities | Gate | High | Postgres IT | **6.04** | — | — |
 | EXC-JPA-30 | `.../UserEntityFactory.class` | `**/UserEntityFactory.java` | JPA_entities | Factory | High | Unit | **6.04** | — | — |
 | EXC-JPA-31 | `.../UserPersonalizationEntity.class` | `**/UserPersonalizationEntity.java` | JPA_entities | Gate | Med | Postgres IT | **6.04** | — | — |

@@ -2,7 +2,9 @@
 
 **Última actualización:** Febrero 2025
 
-> Nota de mantenimiento 2026-05: este análisis describe una superficie histórica del prototipo. Para evidencia final del producto, usar rutas product-scoped (`/api/v5/...`), Chat por conversaciones/jobs y LAB benchmarks/exportaciones. El endpoint legacy `/query` solo es válido como comparación histórica si se etiqueta explícitamente como legacy.
+> **DOC_ONLY_HISTORICAL** — No usar como arquitectura ni gate actuales. Canon: `docs/architecture/`, `.cursor/context/legacy-zero/J8-strict-legacy-final-gate.md`.
+
+> Nota de mantenimiento 2026-05: este análisis describe una superficie histórica del prototipo. Para evidencia final del producto, usar rutas product-scoped (`/api/v5/...`), Chat por conversaciones/jobs y LAB benchmarks/exportaciones. El antiguo `GET /query` no forma parte del producto final; solo como comparación histórica si se etiqueta explícitamente.
 
 ## Descripción General del Proyecto
 
@@ -18,7 +20,7 @@ Este proyecto implementa un sistema RAG (Retrieval-Augmented Generation) basado 
 - **Endpoint base**: `/api/v5`
 - **Funcionalidades principales**:
   - `POST /documents`: Subida y procesamiento de documentos
-  - `GET /query`: consulta legacy/histórica del sistema RAG; no usar como evidencia final de Chat productivo
+  - `GET /query`: consulta histórica del prototipo; no usar como evidencia final de Chat productivo
   - `GET /evaluate`: Evaluación del rendimiento del sistema (configuración por defecto)
   - `POST /evaluate/custom`: Evaluación con configuración personalizada (body: `expansion`, `ner`, `tools`, `metadata`)
   - `GET /evaluate/all`: Evaluación de las 16 combinaciones de configuración

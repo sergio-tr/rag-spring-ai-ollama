@@ -339,9 +339,9 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 | `classifier_model` | V10 | |
 | `message_feedback` | V11 | |
 | `audit_log` | V12 | |
-| `scheduled_evaluation` | V13 | |
-| `prompt_template` | V14 | |
-| `response_cache` | V15 | |
+| ~~`scheduled_evaluation`~~ | V13 → **dropped V56** | Was schema-only; no scheduler API |
+| ~~`prompt_template`~~ | V14 → **dropped V56** | Was schema-only; judge uses Spring `PromptTemplate`, not DB |
+| ~~`response_cache`~~ | V15 → **dropped V56** | Was schema-only; metadata tools use Spring `@Cacheable` (`MetadataLlmResponseCacheService`) |
 | seed / demo | V16, V18 | |
 | `async_task` | V17 | |
 | `evaluation_run.project_id`, `async_task.project_id` | V19 | Nullable FK to `projects`, `ON DELETE SET NULL`; see ADR 0003 |

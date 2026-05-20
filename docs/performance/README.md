@@ -29,9 +29,9 @@ The Gatling workflow **skips** when `GATLING_BASE_URL` is unset.
 
 ### Python micro-benchmarks (analysis only)
 
-- **Scripts:** `tests/performance/retrieval_benchmark.py` (`product_chat` with JWT + project + conversation; legacy `GET …/query` only for old-baseline comparison), `llm_benchmark.py` (wrapper, `--family llm` default), `infra_probe.py` (non-RAG GET probe). See `tests/performance/` for any additional helper scripts.
+- **Scripts:** `tests/performance/retrieval_benchmark.py` (`product_chat` with JWT + project + conversation; optional historical `GET …/query` baseline when explicitly labelled in scenario YAML), `llm_benchmark.py` (wrapper, `--family llm` default), `infra_probe.py` (non-RAG GET probe). See `tests/performance/` for any additional helper scripts.
 - **Report:** JSON `schemaVersion: "1.0"` — see `tests/performance/schema/benchmark-report-v1.schema.json` and `tests/performance/API_RESPONSE_AUDIT.md` (no tokenizer fields in API responses; benchmarks use a **chars/4** heuristic, `estimated: true`).
-- **Scenarios:** `tests/performance/scenarios/*.yaml` — final evidence should use `product_chat` (PUT project RAG config + chat job polling) when `BENCHMARK_BEARER_TOKEN`, `BENCHMARK_PROJECT_ID`, `BENCHMARK_CONVERSATION_ID` are set. `transport: legacy` is retained only for explicitly labelled historical `/query` comparisons.
+- **Scenarios:** `tests/performance/scenarios/*.yaml` — final evidence should use `product_chat` (PUT project RAG config + chat job polling) when `BENCHMARK_BEARER_TOKEN`, `BENCHMARK_PROJECT_ID`, `BENCHMARK_CONVERSATION_ID` are set. `transport: historical_query` (YAML key may still read `legacy`) is for explicitly labelled pre-product `/query` comparisons only.
 - **CI:** [.github/workflows/micro-benchmark.yml](../../.github/workflows/micro-benchmark.yml) — `workflow_dispatch` + weekly schedule; requires repository variable `BENCHMARK_BASE_URL` (or dispatch input). **No gates** — artifacts for observation only. Does **not** run on every commit.
 
 ## Evidence Labels
@@ -60,11 +60,11 @@ Do not cite an `INFRA_ONLY` run as product Chat/LAB performance evidence.
 
 ## Caution
 
-Load against **real LLM** endpoints is environment-dependent. For **comparable** numbers across runs, pin model, max tokens, and concurrency on Ollama. **Stub / e2e** profiles are documented in the backend README for functional tests — Gatling mixed scenarios assume a **reachable** legacy query path when `GATLING_MIX_RAG_PCT` &gt; 0.
+Load against **real LLM** endpoints is environment-dependent. For **comparable** numbers across runs, pin model, max tokens, and concurrency on Ollama. **Stub / e2e** profiles are documented in the backend README for functional tests — Gatling mixed scenarios may still hit historical query simulations when `GATLING_MIX_RAG_PCT` &gt; 0; product evidence uses Chat/job routes.
 
 ## Related
 
-- Legacy tool mapping (k6 → Gatling): [../testing/traceability-legacy-tools.md](../testing/traceability-legacy-tools.md)
+- Retired load-tool mapping (k6 → Gatling): [../testing/traceability-legacy-tools.md](../testing/traceability-legacy-tools.md)
 - Documentation hub: [../README.md](../README.md)
 - Root README (quick links): [../../README.md](../../README.md)
 - Gatling mix configuration (percentages, users CSV): [../../tests/gatling/README.md](../../tests/gatling/README.md)
