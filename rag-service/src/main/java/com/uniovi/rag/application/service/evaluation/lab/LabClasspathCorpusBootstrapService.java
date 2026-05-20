@@ -6,7 +6,7 @@ import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;

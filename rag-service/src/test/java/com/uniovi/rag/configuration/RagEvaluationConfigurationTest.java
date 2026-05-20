@@ -4,7 +4,7 @@ import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
-import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
+import com.uniovi.rag.application.service.evaluation.EvaluationServiceFactory;
 import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;

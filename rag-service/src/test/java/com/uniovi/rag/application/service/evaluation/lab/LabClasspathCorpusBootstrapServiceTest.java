@@ -15,7 +15,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;

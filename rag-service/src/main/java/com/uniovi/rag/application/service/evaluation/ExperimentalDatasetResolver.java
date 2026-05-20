@@ -26,7 +26,7 @@ import java.util.UUID;
 /**
  * Phase 4 bridge: {@code evaluation_run.id} → dataset row → bytes → {@link com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook} → typed lists for handlers.
  *
- * <p>Does not call legacy {@link com.uniovi.rag.service.evaluation.EvaluationService#getQuestionsAndAnswers()}.
+ * <p>Resolves typed benchmark datasets only (no Map-based Q/A classpath).
  */
 @Service
 public class ExperimentalDatasetResolver {

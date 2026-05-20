@@ -4,7 +4,7 @@ import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
-import com.uniovi.rag.service.evaluation.EvaluationService;
+import com.uniovi.rag.application.service.evaluation.EvaluationService;
 
 import java.util.List;
 import java.util.Map;
@@ -34,32 +34,6 @@ public final class TracedEvaluationService implements EvaluationService {
     public TracedEvaluationService(EvaluationService delegate, ObservabilitySupport observability) {
         this.delegate = delegate;
         this.observability = observability;
-    }
-
-    @Override
-    public Map<String, Object> evaluate() {
-        observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "evaluate");
-        return observability.recordTimer("rag.evaluation.evaluate", () ->
-                observability.runWithSpan(
-                        // Domain convention: evaluation execution
-                        SPAN_EVALUATION_RUN,
-                        Map.of(),
-                        SPAN_RESULT_KEY,
-                        delegate::evaluate));
-    }
-
-    @Override
-    public Map<String, Object> evaluateWithConfiguration(
-            RagFeatureConfiguration customConfig,
-            RagImplementationProperties implementationProperties) {
-        observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "evaluateWithConfiguration");
-        String configLabel = customConfig != null ? "custom" : "null";
-        return observability.recordTimer("rag.evaluation.evaluateWithConfiguration", () ->
-                observability.runWithSpan(
-                        SPAN_EVALUATION_RUN,
-                        Map.of("rag.evaluation.id", configLabel),
-                        SPAN_RESULT_KEY,
-                        () -> delegate.evaluateWithConfiguration(customConfig, implementationProperties)));
     }
 
     @Override
@@ -97,17 +71,6 @@ public final class TracedEvaluationService implements EvaluationService {
     }
 
     @Override
-    public Map<String, Map<String, Object>> evaluateAllConfigurations() {
-        observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "evaluateAllConfigurations");
-        return observability.recordTimer("rag.evaluation.evaluateAllConfigurations", () ->
-                observability.runWithSpan(
-                        SPAN_EVALUATION_RUN,
-                        Map.of("rag.evaluation.id", "all"),
-                        SPAN_RESULT_KEY,
-                        delegate::evaluateAllConfigurations));
-    }
-
-    @Override
     public void loadData() {
         observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "loadData");
         observability.recordTimer("rag.evaluation.loadData", () -> {
@@ -118,13 +81,6 @@ public final class TracedEvaluationService implements EvaluationService {
     }
 
     @Override
-    public Map<String, String> getQuestionsAndAnswers() {
-        observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "getQuestionsAndAnswers");
-        return observability.runWithSpan(
-                SPAN_EVALUATION_RUN, Map.of(), SPAN_RESULT_KEY, delegate::getQuestionsAndAnswers);
-    }
-
-    @Override
     public boolean isEvaluationDataLoaded() {
         return delegate.isEvaluationDataLoaded();
     }
@@ -132,20 +88,16 @@ public final class TracedEvaluationService implements EvaluationService {
     @Override
     public String judgeQaAnswer(String question, String goldAnswer, String generatedAnswer) {
         observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "judgeQaAnswer");
-        return observability.runWithSpan(
-                SPAN_EVALUATION_RUN,
-                Map.of(TAG_OPERATION, "judge_qa"),
-                SPAN_RESULT_KEY,
+        return observability.recordTimer(
+                "rag.evaluation.judgeQaAnswer",
                 () -> delegate.judgeQaAnswer(question, goldAnswer, generatedAnswer));
     }
 
     @Override
     public Map<String, Object> summarizeJudgeResults(List<Map<String, Object>> resultsForPrompt) {
         observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "summarizeJudgeResults");
-        return observability.runWithSpan(
-                SPAN_EVALUATION_RUN,
-                Map.of(TAG_OPERATION, "summarize_judge"),
-                SPAN_RESULT_KEY,
+        return observability.recordTimer(
+                "rag.evaluation.summarizeJudgeResults",
                 () -> delegate.summarizeJudgeResults(resultsForPrompt));
     }
 }

@@ -172,6 +172,38 @@ class BenchmarkMvpMetricsCalculatorTest {
     }
 
     @Test
+    void embeddingRow_incompatible_exportsCompatibilityFieldsWithoutRetrievalMetrics() {
+        EvaluationResultEntity e = new EvaluationResultEntity();
+        e.setBenchmarkKind(BenchmarkKind.EMBEDDING_RETRIEVAL.name());
+        e.setQueryType("FACTOID");
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.NOT_SUPPORTED.name());
+        mp.put(BenchmarkResultRowKeys.ERROR_CODE, "EMBEDDING_DIMENSION_MISMATCH");
+        mp.put(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID, "nomic-embed-text");
+        mp.put("embedding_dimensions", 768);
+        mp.put("embedding_compatibility_status", "INCOMPATIBLE");
+        mp.put("embedding_compatibility_error_code", "EMBEDDING_DIMENSION_MISMATCH");
+        mp.put(
+                "embedding_compatibility_reason",
+                "EMBEDDING_DIMENSION_MISMATCH: model 'nomic-embed-text' outputs 768 dimensions but this deployment's vector_store.embedding column is fixed to 1024");
+        e.setMetricsPayload(mp);
+
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setEmbeddingModelId("nomic-embed-text");
+
+        Map<String, String> csv = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(e, run);
+        assertThat(csv)
+                .containsEntry("embeddingModelId", "nomic-embed-text")
+                .containsEntry("embeddingDimensions", "768")
+                .containsEntry("embeddingCompatibilityStatus", "INCOMPATIBLE")
+                .containsEntry("embeddingCompatibilityErrorCode", "EMBEDDING_DIMENSION_MISMATCH")
+                .containsEntry("outcome", "NOT_SUPPORTED")
+                .containsEntry("unsupportedReason", "EMBEDDING_DIMENSION_MISMATCH");
+        assertThat(csv.get("embeddingCompatibilityReason")).contains("768");
+        assertThat(csv.get("failureCode")).isEmpty();
+    }
+
+    @Test
     void deriveRecallFromRank_whenRecallAt3Missing() {
         EvaluationResultEntity e = new EvaluationResultEntity();
         e.setBenchmarkKind(BenchmarkKind.EMBEDDING_RETRIEVAL.name());
