@@ -6,7 +6,7 @@ flowchart TB
     A2["/actuator/health /actuator/health/*"]
     A3["/actuator/prometheus"]
     A4["/v3/api-docs/* /swagger-ui/*"]
-    A5["Legacy prefix /** when security enables public legacy"]
+    A5["Optional extra permit-all paths from security config"]
   end
   subgraph jwt_paths [Authenticated JWT]
     P1["Product API prefix /** default /api/v5"]

@@ -187,7 +187,7 @@ There is **no** single global “active_config” row. **Effective** RAG paramet
 5. **Conversation runtime JSON:** `conversations.runtime_override_jsonb` when a `conversation_id` is supplied (load-only port); merged **before** the terminal request override.
 6. **Terminal request JSON:** HTTP request body override map; wins over the conversation runtime map on key conflicts when both are present.
 
-Chat execution paths that pass a **single** merged JSON node (e.g. legacy chat overlay) still delegate to the same resolver entrypoints; they do not reimplement merge.
+Chat execution paths that pass a **single** merged JSON node still delegate to the same resolver entrypoints; they do not reimplement merge.
 
 **ADR:** [0002-multitenancy-assumption.md](../adr/0002-multitenancy-assumption.md).
 
@@ -208,7 +208,7 @@ This table stores a **reproducible, append-only** persisted trace artefact for o
 | Column | Required on product insert | Purpose |
 | -------- | ---------------------------- | --------- |
 | `id`, `created_at` | yes (DB-generated) | Primary key and timestamp. |
-| `payload_jsonb` | yes | Versioned **projection** of transitional `RagConfig` (`toValueMap()` at write time); audit/replay, not the canonical domain model. May include fixed key **`knowledgeBuildProjection`** (nested JSON from `KnowledgeBuildProjectionMapper`, `projectionVersion` ≥ 1) when the row is created for knowledge execute-without-pin. |
+| `payload_jsonb` | yes | Versioned **projection** of effective `RagConfig` (`toValueMap()` at write time); audit/replay, not the canonical domain model. May include fixed key **`knowledgeBuildProjection`** (nested JSON from `KnowledgeBuildProjectionMapper`, `projectionVersion` ≥ 1) when the row is created for knowledge execute-without-pin. |
 | `capability_set_jsonb` | yes | `CapabilitySet` JSON (mapper-owned shape). |
 | `compatibility_result_jsonb` | yes | Compatibility rule engine output. |
 | `reindex_impact_jsonb` | yes | `ReindexImpact` (V25). |
@@ -217,7 +217,7 @@ This table stores a **reproducible, append-only** persisted trace artefact for o
 | `provenance_jsonb` | yes | Domain provenance plus **`schema_version`** (int), **`creatingUserId`** (UUID string), optional **`correlationId`**, optional **`projectId`** (UUID string) for knowledge pin validation. |
 | `config_hash` | yes | `ResolvedRuntimeConfigHasher` SHA-256 over canonical `ResolvedRuntimeConfig` JSON; when `payload_jsonb` carries **`knowledgeBuildProjection`**, the same hasher appends that nested map so the digest covers the knowledge slice. |
 | `conversation_id`, `message_id`, `job_id` | optional | Optional linkage when the client supplies them. |
-| `prompt_stack_preview_jsonb` | omit (null) | Legacy; not written for new rows. |
+| `prompt_stack_preview_jsonb` | omit (null) | Retired column; not written for new rows. |
 
 **Forward compatibility:** new snapshot JSON keys and new nullable columns should be **additive** only; readers ignore unknown keys where possible.
 
@@ -330,7 +330,7 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 | `users` | V2 | |
 | `projects` | V3 | |
 | `project_documents` | V4 | |
-| `documents`, `vector_store` | V1 + V4 | Legacy corpus + `project_id` scope |
+| `documents`, `vector_store` | V1 + V4 | Shared corpus tables + `project_id` scope |
 | `default_system_configuration`, `rag_configuration` | V5 | |
 | `rag_preset` | V6 | |
 | `conversations`, `messages` | V7 | |
@@ -401,7 +401,7 @@ Do **not** conflate the two: a Lab “eval LLM” `async_task` is **not** an `ev
 
 ---
 
-## Legacy corpus vs project scope
+## Corpus tables vs project scope
 
-- `documents` / `vector_store` originate from the **V1** corpus model; later migrations add **`project_id`** on `vector_store` and **`project_documents`** for per-project ingestion status.
+- `documents` / `vector_store` originate from the **V1** shared-corpus model; later migrations add **`project_id`** on `vector_store` and **`project_documents`** for per-project ingestion status.
 - Chat retrieval should respect **active project** and filters from the product API; see [RAG.md](../RAG.md).

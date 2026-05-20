@@ -58,7 +58,7 @@ POM comments reference types that are **in** the instrumented bundle (not in the
 
 | Area | Examples |
 | ------ | ----------- |
-| Query / chat | `ProcessQueryService`, `SimpleProcessQueryService`, `AnswerGenerationKernel`, `MessageStreamController` |
+| Query / chat | `RuntimeQueryExecutionService`, `RagExecutionOrchestrator`, `MessageStreamController`, `ChatMessageJobHandler` |
 | Web / API | `api.v5.*Controller` (product REST), `LabBenchmarkController` |
 | Application | `ChatMessageApplicationService`, `application.service.me.*`, `ConfigProfileApplicationService`, … |
 | Expanders | `MinuteDocumentStructureExpander` |

@@ -82,7 +82,7 @@ Each row is a mechanism that changes what is **measured**, **analyzed**, or **ru
 **Ollama**
 
 - Production URL: `spring.ai.ollama.base-url` ([`application.properties`](../../rag-service/src/main/resources/application.properties)).
-- **Normative test pattern:** mock [`OllamaConnectivityChecker`](../../rag-service/src/main/java/com/uniovi/rag/interfaces/rest/support/OllamaConnectivityChecker.java) and avoid live HTTP in unit tests (see e.g. [`SimpleProcessQueryServiceTest`](../../rag-service/src/test/java/com/uniovi/rag/service/query/SimpleProcessQueryServiceTest.java), [`RagEvaluationConfigurationTest`](../../rag-service/src/test/java/com/uniovi/rag/configuration/RagEvaluationConfigurationTest.java)).
+- **Normative test pattern:** mock [`OllamaConnectivityChecker`](../../rag-service/src/main/java/com/uniovi/rag/interfaces/rest/support/OllamaConnectivityChecker.java) and avoid live HTTP in unit tests (see e.g. [`RuntimeQueryExecutionServiceTest`](../../rag-service/src/test/java/com/uniovi/rag/application/service/runtime/execution/RuntimeQueryExecutionServiceTest.java), [`RagEvaluationConfigurationTest`](../../rag-service/src/test/java/com/uniovi/rag/configuration/RagEvaluationConfigurationTest.java)).
 
 **OTLP / metrics**
 

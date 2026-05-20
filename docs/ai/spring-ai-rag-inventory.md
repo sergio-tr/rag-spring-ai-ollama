@@ -14,7 +14,7 @@
 | Advanced retrieval | Present | `AdvancedRetrievalPipeline` — sole dense-workflow retrieval entry |
 | Advisors | Present | Spring AI `QuestionAnswerAdvisor` bean + custom `AdvisorPolicyResolver` / `AdvisorStrategy` (P10 packing path) |
 | Deterministic tools | Present | `QueryType` tools + `MeetingMinutesToolsAdapter` (`@Tool`); FC whitelist `DeterministicToolKind` + `DefaultFunctionCallingToolRegistry` |
-| Legacy synthesis path | Present | `AnswerGenerationKernel` / `ResponseSynthesisPipeline` — orchestrated product path goes through workflows; legacy remains for evaluation and transitional callers |
+| Pre-orchestrator synthesis pipeline | Removed | Former `AnswerGenerationKernel` / `ResponseSynthesisPipeline` packages deleted; product and Lab use `RagExecutionOrchestrator` + workflows only |
 | Knowledge ingest | Present | `KnowledgePipelineOrchestrator` — documented sole write path in class Javadoc |
 | Observability | Partial | `ObservabilitySupport` + traced decorators; Micrometer timers for workflow LLM calls (`rag.ai.llm.invoke`), ETL counters (`rag.knowledge.etl.events`) |
 

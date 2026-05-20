@@ -8,7 +8,6 @@ flowchart TB
   subgraph ingress [Spring ingress]
     SEC[Security chain]
     V5[Product API v5]
-    LEG[Legacy RAG v4]
   end
 
   subgraph resolve [Resolution]
@@ -29,13 +28,11 @@ flowchart TB
 
   UI -->|Bearer JWT product| SEC
   SEC --> V5
-  UI -.->|legacy tooling| LEG
   V5 --> CFG
-  LEG --> CFG
   CFG --> SNAP
   CFG --> PIPE
   PIPE --> QU
   QU --> STORE
   QU --> OLL
   QU -.->|optional classify| CLF
-  V5 -.->|SSE chat stream| PIPE
+  V5 -->|POST messages 202 CHAT_MESSAGE job| PIPE
