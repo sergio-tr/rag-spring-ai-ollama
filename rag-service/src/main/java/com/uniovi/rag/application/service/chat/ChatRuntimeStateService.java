@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.chat;
 
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigCapabilitiesService;
+import com.uniovi.rag.interfaces.rest.mapper.RuntimeConfigRestMapper;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
@@ -15,8 +16,8 @@ import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateRequest;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeCompatibilityDto;
-import com.uniovi.rag.service.config.ChatPresetDefaults;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.config.ChatPresetDefaults;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -132,7 +133,9 @@ public class ChatRuntimeStateService {
                         blockingIssues);
         List<DisabledRuntimeFeatureDto> disabledRuntimeFeatures =
                 ChatRuntimeCompatibilitySupport.disabledRuntimeFeatures(
-                        runtimeConfigCapabilitiesService.getCapabilities().capabilities(),
+                        runtimeConfigCapabilitiesService.getCapabilities().capabilities().stream()
+                                .map(RuntimeConfigRestMapper::toCapabilityDto)
+                                .toList(),
                         effectiveConfig);
         String disabledPresetReason = presetCompatibility.disabledReason();
 

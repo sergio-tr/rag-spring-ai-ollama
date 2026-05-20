@@ -16,7 +16,7 @@ import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildPreviewRespo
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeActiveSnapshotResponse;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeSnapshotDetailResponse;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeSnapshotSummaryResponse;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;

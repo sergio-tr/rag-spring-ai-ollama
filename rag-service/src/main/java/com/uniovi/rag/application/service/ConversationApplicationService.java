@@ -21,10 +21,11 @@ import com.uniovi.rag.application.service.chat.ConversationRuntimeModelKeys;
 import com.uniovi.rag.application.service.chat.ChatRuntimeCompatibilitySupport;
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
 import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
+import com.uniovi.rag.interfaces.rest.mapper.ChatSourceRestMapper;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
-import com.uniovi.rag.service.config.ChatPresetDefaults;
-import com.uniovi.rag.service.preset.PresetService;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.config.ChatPresetDefaults;
+import com.uniovi.rag.application.service.preset.PresetService;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -475,7 +476,7 @@ public class ConversationApplicationService {
                 m.getRole(),
                 m.getContent(),
                 m.getCreatedAt(),
-                ChatSourceMapper.toDtos(ChatSourceMapper.fromLegacyMaps(m.getSources())),
+                ChatSourceRestMapper.toDtos(ChatSourceMapper.fromLegacyMaps(m.getSources())),
                 m.getQueryType(),
                 m.getPipelineSteps(),
                 m.getStatus() != null ? m.getStatus().name() : null,

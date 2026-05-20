@@ -37,19 +37,19 @@ class KnowledgeIndexSnapshotServiceTest {
     private KnowledgeIndexSnapshotService service;
 
     @Test
-    void legacySignatureForProjectIsStable() {
+    void bootstrapSignatureForProjectIsStable() {
         UUID pid = UUID.fromString("00000000-0000-0000-0000-0000000000ab");
         assertEquals(
-                KnowledgeIndexSnapshotService.LEGACY_SIGNATURE_PREFIX + pid,
-                KnowledgeIndexSnapshotService.legacySignatureForProject(pid));
+                KnowledgeIndexSnapshotService.BOOTSTRAP_SIGNATURE_PREFIX + pid,
+                KnowledgeIndexSnapshotService.bootstrapSignatureForProject(pid));
     }
 
     @Test
-    void ensureLegacySnapshotReturnsExistingWhenPresent() {
+    void ensureBootstrapSnapshotReturnsExistingWhenPresent() {
         UUID pid = UUID.randomUUID();
         ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(pid);
-        String sig = KnowledgeIndexSnapshotService.legacySignatureForProject(pid);
+        String sig = KnowledgeIndexSnapshotService.bootstrapSignatureForProject(pid);
         KnowledgeIndexSnapshotEntity existing = new KnowledgeIndexSnapshotEntity();
         existing.setIndexProfileJsonb(Map.of(MATERIALIZATION_STRATEGY, CHUNK_LEVEL));
         existing.setIndexProfileHash("existing-profile-hash");
@@ -57,22 +57,22 @@ class KnowledgeIndexSnapshotServiceTest {
                         eq(pid), eq(sig), eq(IndexSnapshotStatus.ACTIVE)))
                 .thenReturn(List.of(existing));
 
-        assertSame(existing, service.ensureLegacySnapshotForProject(project));
+        assertSame(existing, service.ensureBootstrapSnapshotForProject(project));
     }
 
     @Test
-    void ensureLegacySnapshotCreatesWhenMissing() {
+    void ensureBootstrapSnapshotCreatesWhenMissing() {
         UUID pid = UUID.randomUUID();
         ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(pid);
-        String sig = KnowledgeIndexSnapshotService.legacySignatureForProject(pid);
+        String sig = KnowledgeIndexSnapshotService.bootstrapSignatureForProject(pid);
         when(knowledgeIndexSnapshotRepository.findByProject_IdAndSignatureHashAndStatusOrderByUpdatedAtDesc(
                         eq(pid), eq(sig), eq(IndexSnapshotStatus.ACTIVE)))
                 .thenReturn(List.of());
         when(knowledgeIndexSnapshotRepository.save(any(KnowledgeIndexSnapshotEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
 
-        KnowledgeIndexSnapshotEntity created = service.ensureLegacySnapshotForProject(project);
+        KnowledgeIndexSnapshotEntity created = service.ensureBootstrapSnapshotForProject(project);
 
         ArgumentCaptor<KnowledgeIndexSnapshotEntity> cap =
                 ArgumentCaptor.forClass(KnowledgeIndexSnapshotEntity.class);
@@ -85,11 +85,11 @@ class KnowledgeIndexSnapshotServiceTest {
     }
 
     @Test
-    void ensureLegacySnapshotRepairsExistingSnapshotMissingCapabilities() {
+    void ensureBootstrapSnapshotRepairsExistingSnapshotMissingCapabilities() {
         UUID pid = UUID.randomUUID();
         ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(pid);
-        String sig = KnowledgeIndexSnapshotService.legacySignatureForProject(pid);
+        String sig = KnowledgeIndexSnapshotService.bootstrapSignatureForProject(pid);
         KnowledgeIndexSnapshotEntity existing = new KnowledgeIndexSnapshotEntity();
         existing.setIndexProfileJsonb(Map.of());
         existing.setIndexProfileHash(null);
@@ -97,7 +97,7 @@ class KnowledgeIndexSnapshotServiceTest {
                         eq(pid), eq(sig), eq(IndexSnapshotStatus.ACTIVE)))
                 .thenReturn(List.of(existing));
 
-        KnowledgeIndexSnapshotEntity repaired = service.ensureLegacySnapshotForProject(project);
+        KnowledgeIndexSnapshotEntity repaired = service.ensureBootstrapSnapshotForProject(project);
 
         assertSame(existing, repaired);
         assertEquals(CHUNK_LEVEL, repaired.getIndexProfileJsonb().get(MATERIALIZATION_STRATEGY));

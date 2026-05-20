@@ -7,7 +7,7 @@ import com.uniovi.rag.infrastructure.persistence.MessageRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
-import com.uniovi.rag.interfaces.rest.dto.ChatSourceDto;
+import com.uniovi.rag.application.result.chat.ChatSource;
 import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -69,8 +69,8 @@ class ChatMessageWorkServiceTest {
         when(messageRepository.findById(assistantId)).thenReturn(Optional.of(m));
         when(conversationRepository.findById(convId)).thenReturn(Optional.of(conv));
 
-        List<ChatSourceDto> sources =
-                List.of(new ChatSourceDto("d1", null, "f.pdf", "snip", 0.12, "distance", 3, null, null));
+        List<ChatSource> sources =
+                List.of(new ChatSource("d1", null, "f.pdf", "snip", 0.12, "distance", 3, null, null));
         chatMessageWorkService.applyAssistantSuccess(
                 assistantId,
                 convId,
@@ -83,7 +83,7 @@ class ChatMessageWorkServiceTest {
                 Duration.ofMillis(1500));
 
         assertThat(m.getContent()).isEqualTo("answer");
-        assertThat(m.getSources()).isEqualTo(ChatSourceMapper.toPersistedMaps(sources));
+        assertThat(m.getSources()).isEqualTo(ChatSourceMapper.toPersistedMapsFromInternal(sources));
         assertThat(m.getQueryType()).isEqualTo("COUNT");
         assertThat(m.getTraceId()).isEqualTo("trace-1");
         assertThat(m.getStatus()).isEqualTo(MessageProcessingStatus.DONE);

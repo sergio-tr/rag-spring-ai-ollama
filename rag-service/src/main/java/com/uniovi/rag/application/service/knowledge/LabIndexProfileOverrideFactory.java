@@ -2,8 +2,8 @@ package com.uniovi.rag.application.service.knowledge;
 
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
-import com.uniovi.rag.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
-import com.uniovi.rag.service.evaluation.preset.LabPresetRunGroupKey;
+import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunGroupKey;
 import java.time.Instant;
 import java.util.Objects;
 import org.springframework.stereotype.Service;

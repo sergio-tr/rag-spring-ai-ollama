@@ -9,7 +9,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.DocumentArtifactEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.vector.PgVectorStoreRegistry;
-import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
+import com.uniovi.rag.application.service.knowledge.document.ProjectDocumentIngestionService;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;

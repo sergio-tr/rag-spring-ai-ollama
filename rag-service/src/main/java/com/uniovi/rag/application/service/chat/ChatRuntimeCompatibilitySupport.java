@@ -5,6 +5,7 @@ import com.uniovi.rag.interfaces.rest.dto.DisabledRuntimeFeatureDto;
 import com.uniovi.rag.interfaces.rest.dto.PresetCompatibilityDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigCapabilityDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
+import com.uniovi.rag.interfaces.rest.mapper.RuntimeConfigRestMapper;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeCompatibilityDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeIndexCompatibilityDto;
@@ -119,8 +120,8 @@ public final class ChatRuntimeCompatibilitySupport {
         throw new RuntimeConfigurationInvalidException(
                 first.code() != null && !first.code().isBlank() ? first.code() : "RUNTIME_CONFIGURATION_INVALID",
                 first.message() != null && !first.message().isBlank() ? first.message() : "Runtime configuration is invalid.",
-                HttpStatus.UNPROCESSABLE_ENTITY,
-                issues);
+                HttpStatus.UNPROCESSABLE_ENTITY.value(),
+                RuntimeConfigRestMapper.fromValidationIssueDtos(issues));
     }
 
     public static void throwIfIndexBoundOverride(Map<String, Object> raw) {
@@ -131,8 +132,8 @@ public final class ChatRuntimeCompatibilitySupport {
         throw new RuntimeConfigurationInvalidException(
                 "INDEX_BOUND_RUNTIME_OVERRIDE",
                 issues.getFirst().message(),
-                HttpStatus.BAD_REQUEST,
-                issues);
+                HttpStatus.BAD_REQUEST.value(),
+                RuntimeConfigRestMapper.fromValidationIssueDtos(issues));
     }
 
     public static PresetCompatibilityDto presetCompatibility(
