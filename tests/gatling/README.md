@@ -56,7 +56,7 @@ For final release evidence, prefer product-authenticated simulations (`ProductAu
 
 ## Shared scenario blocks
 
-[`ScenarioBlocks.scala`](src/gatling/scala/simulations/ScenarioBlocks.scala) holds reusable **ChainBuilder** fragments (product login/Chat/admin and legacy query compatibility) consumed by mixed simulations. Legacy query fragments are for historical comparison only.
+[`ScenarioBlocks.scala`](src/gatling/scala/simulations/ScenarioBlocks.scala) holds reusable **ChainBuilder** fragments (product login/Chat/admin and historical query compatibility) consumed by mixed simulations. Historical query fragments are for historical comparison only.
 
 ## Mixed simulations (`MixedRealistic*`)
 
@@ -73,7 +73,7 @@ For final release evidence, prefer product-authenticated simulations (`ProductAu
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `GATLING_MIX_RAG_PCT` | `70` | Weight for the RAG branch. Treat as product evidence only when the selected simulation uses product Chat; legacy `/query` branches are historical/compatibility evidence. |
+| `GATLING_MIX_RAG_PCT` | `70` | Weight for the RAG branch. Treat as product evidence only when the selected simulation uses product Chat; historical `/query` branches are historical/compatibility evidence. |
 | `GATLING_MIX_AUTH_PCT` | `20` | Weight for `POST {product}/auth/login` |
 | `GATLING_MIX_ADMIN_PCT` | `10` | Weight for admin (or product fallback) |
 | `GATLING_PROFILE` | `load` | Used only by `MixedRealisticSimulation` |

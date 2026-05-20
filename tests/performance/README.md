@@ -6,7 +6,7 @@
 
 | Script | Role |
 | --- | --- |
-| `retrieval_benchmark.py` | Main runner for `product_chat` (JWT + project + conversation). Legacy `GET …/query` remains available only for old-baseline comparison. Schema `benchmark-report-v1` (see `schema/`). |
+| `retrieval_benchmark.py` | Main runner for `product_chat` (JWT + project + conversation). Historical `GET …/query` remains available only for old-baseline comparison. Schema `benchmark-report-v1` (see `schema/`). |
 | `llm_benchmark.py` | Wrapper with `--family llm` default (same HTTP behaviour; report emphasizes token/cost lines). |
 | `infra_probe.py` | Simple GET probe (default `/actuator/health`) — infra cold/warm, not RAG. |
 | `final_performance_smoke.py` | Final-scope bounded smoke: health/metrics plus optional document, Chat job, and Lab run start/status when `PERF_*` inputs are provided. |
@@ -114,9 +114,9 @@ export BENCHMARK_CONVERSATION_ID="..."
 python retrieval_benchmark.py --scenario retrieval_off --output-json /tmp/bench.json
 ```
 
-## Legacy `/query` scenarios
+## Historical `/query` scenarios
 
-Legacy `GET .../query` scenarios are retained for historical comparison and regression diagnosis only. They are not the final product Chat path and must not be cited as release performance evidence unless the report is explicitly labelled `legacy`.
+Historical `GET .../query` scenarios are retained for historical comparison and regression diagnosis only. They are not the final product Chat path and must not be cited as release performance evidence unless the report is explicitly labelled `historical_query`.
 
 ## Audit & schema
 

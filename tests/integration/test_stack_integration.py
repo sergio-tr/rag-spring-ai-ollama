@@ -293,7 +293,7 @@ class TestBackend:
         integration_seed_credentials: tuple[str, str],
     ) -> None:
         """
-        Authenticated product smoke (replacement for legacy query smoke).
+        Authenticated product smoke (replacement for removed query smoke).
 
         Contract:
           - Must be authenticated (JWT).

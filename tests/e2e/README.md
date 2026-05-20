@@ -12,5 +12,5 @@ This folder holds **technical / Compose** E2E glue. **Product UI E2E** (Playwrig
 **Related automation (not Playwright):**
 
 - HTTP integration: `tests/integration/` (pytest + stack).
-- System / API smoke (Playwright `request`): `cd webapp && npm run test:api` (`make system-checks`). Traceability: [docs/testing/traceability-legacy-tools.md](../../docs/testing/traceability-legacy-tools.md).
+- System / API smoke (Playwright `request`): `cd webapp && npm run test:api` (`make system-checks`). Traceability: [docs/testing/traceability-retired-tools.md](../../docs/testing/traceability-retired-tools.md).
 - Load: `tests/gatling/` (see [docs/performance/README.md](../../docs/performance/README.md)).
