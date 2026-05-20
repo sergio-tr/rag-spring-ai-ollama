@@ -76,6 +76,14 @@ class AdminV5ModelsSecurityWebMvcTest {
     }
 
     @Test
+    void unprefixedAdminMirror_modelsPull_returnsNotFound() throws Exception {
+        mockMvc.perform(post("/api/admin/models/pull")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"model\":\"m1\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void adminHealth_withUserToken_returns403() throws Exception {
         String token = jwtService.createAccessToken(UUID.randomUUID(), "u@test", "USER");
         mockMvc.perform(get("/api/v5/admin/health")
