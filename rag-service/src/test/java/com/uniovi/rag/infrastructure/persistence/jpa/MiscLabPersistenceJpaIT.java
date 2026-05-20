@@ -13,7 +13,6 @@ import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.infrastructure.persistence.ClassifierModelRepository;
 import com.uniovi.rag.infrastructure.persistence.DefaultSystemConfigurationRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationDatasetRepository;
-import com.uniovi.rag.infrastructure.persistence.PromptTemplateRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.testsupport.TestAiStubConfiguration;
 import com.uniovi.rag.testsupport.TestcontainersDatasourceConfiguration;
@@ -57,9 +56,6 @@ class MiscLabPersistenceJpaIT {
     private AllowedModelRepository allowedModelRepository;
 
     @Autowired
-    private PromptTemplateRepository promptTemplateRepository;
-
-    @Autowired
     private AsyncTaskRepository asyncTaskRepository;
 
     @Autowired
@@ -76,7 +72,7 @@ class MiscLabPersistenceJpaIT {
 
     @Test
     @Transactional
-    void persistDefaultConfigAllowedModelPromptAsyncClassifierAndExportArtifact() {
+    void persistDefaultConfigAllowedModelAsyncClassifierAndExportArtifact() {
         Instant now = Instant.parse("2026-05-25T11:00:00Z");
         UserEntity user =
                 userRepository.save(
@@ -91,14 +87,6 @@ class MiscLabPersistenceJpaIT {
         AllowedModelEntity allowed =
                 allowedModelRepository.save(
                         AllowedModelEntity.newRow("llama-x", AllowedModelType.LLM, true, now));
-
-        PromptTemplateEntity tmpl = new PromptTemplateEntity();
-        tmpl.setName("it-tmpl");
-        tmpl.setVersion(1);
-        tmpl.setBody(Map.of("text", "hello"));
-        tmpl.setCreatedAt(now);
-        tmpl.setUpdatedAt(now);
-        tmpl = promptTemplateRepository.save(tmpl);
 
         AsyncTaskEntity task =
                 asyncTaskRepository.save(
@@ -142,10 +130,6 @@ class MiscLabPersistenceJpaIT {
         DefaultSystemConfigurationEntity d2 =
                 defaultSystemConfigurationRepository.findById(def.getId()).orElseThrow();
         assertThat(d2.getValues()).containsEntry("flag", true);
-
-        PromptTemplateEntity t2 = promptTemplateRepository.findById(tmpl.getId()).orElseThrow();
-        assertThat(t2.getName()).isEqualTo("it-tmpl");
-        assertThat(t2.getBody()).containsEntry("text", "hello");
 
         AsyncTaskEntity tsk = asyncTaskRepository.findById(task.getId()).orElseThrow();
         assertThat(tsk.getTaskType()).isEqualTo(AsyncTaskType.ACCOUNT_EXPORT);

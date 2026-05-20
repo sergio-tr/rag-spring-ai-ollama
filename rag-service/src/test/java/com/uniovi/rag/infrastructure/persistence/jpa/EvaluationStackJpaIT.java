@@ -8,7 +8,6 @@ import com.uniovi.rag.domain.evaluation.EvaluationDatasetScope;
 import com.uniovi.rag.infrastructure.persistence.EvaluationDatasetRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
-import com.uniovi.rag.infrastructure.persistence.ScheduledEvaluationRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.testsupport.TestAiStubConfiguration;
 import com.uniovi.rag.testsupport.TestcontainersDatasourceConfiguration;
@@ -56,14 +55,11 @@ class EvaluationStackJpaIT {
     private EvaluationResultRepository evaluationResultRepository;
 
     @Autowired
-    private ScheduledEvaluationRepository scheduledEvaluationRepository;
-
-    @Autowired
     private EntityManager entityManager;
 
     @Test
     @Transactional
-    void persistDatasetRunResultAndScheduledEvaluation() {
+    void persistDatasetRunAndResult() {
         Instant now = Instant.parse("2026-05-10T08:00:00Z");
         UserEntity user =
                 userRepository.save(
@@ -100,16 +96,6 @@ class EvaluationStackJpaIT {
         result.setMetricsPayload(Map.of("score", 0.9));
         result = evaluationResultRepository.save(result);
 
-        ScheduledEvaluationEntity sched = new ScheduledEvaluationEntity();
-        sched.setUser(user);
-        sched.setName("nightly");
-        sched.setCronExpression("0 0 * * *");
-        sched.setDataset(dataset);
-        sched.setEnabled(true);
-        sched.setCreatedAt(now);
-        sched.setUpdatedAt(now);
-        sched = scheduledEvaluationRepository.save(sched);
-
         evaluationResultRepository.flush();
         entityManager.clear();
 
@@ -122,10 +108,5 @@ class EvaluationStackJpaIT {
                 evaluationResultRepository.findById(result.getId()).orElseThrow();
         assertThat(resLoaded.getQuestionText()).isEqualTo("What is RAG?");
         assertThat(resLoaded.getLatencyMs()).isEqualTo(120L);
-
-        ScheduledEvaluationEntity sLoaded =
-                scheduledEvaluationRepository.findById(sched.getId()).orElseThrow();
-        assertThat(sLoaded.getCronExpression()).isEqualTo("0 0 * * *");
-        assertThat(sLoaded.isEnabled()).isTrue();
     }
 }
