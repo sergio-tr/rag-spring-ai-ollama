@@ -7,6 +7,7 @@
 - **CI (PRs to `dev` / `main` / `master` via [`ci.yml`](../../.github/workflows/ci.yml) → [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml)):** **`core_webapp`** runs **`npm run test:coverage`** (Vitest = same suite as **`npm run test`**, with Istanbul output). **`core_webapp_e2e`** runs **`npm run test:e2e`** (`chromium`, **`--grep-invert @fullstack`**, **`testIgnore`** excludes **`e2e/api/**`**). **`playwright_api_smoke`** runs **`npm run test:api`** against Spring **`e2e`** + Postgres (Phase 8D). **`integration`** + **`integration_classifier_required`** run **`pytest tests/integration`** (Phase 8E HTTP extras). **`e2e_fullstack`** runs **`npm run test:e2e:fullstack`** (`--grep @fullstack`) after integration — browser + proxy + live backend (Phase 8C). **`docker_build_smoke`** is limited to **`main`/`master`** PRs and pushes (not **`dev`** PRs).
 - **Manual / optional:** [`.github/workflows/e2e-fullstack.yml`](../../.github/workflows/e2e-fullstack.yml) remains an alternate entry for fullstack-only runs outside the main PR DAG.
 - **Tags:** `@fullstack` = picked only by **`test:e2e:fullstack`**; UI smoke uses **`grep-invert @fullstack`** so accidental tagging matters.
+- **Stack preflight:** **`npm run test:e2e:stack-preflight`** probes backend `/actuator/health` and web `/en/login` (fails in &lt;60s when the stack is down). Chained before **`test:e2e:preflight`** and **`test:e2e:fullstack`**. Set **`E2E_SKIP_STACK_PREFLIGHT=1`** for offline UI-only runs (e.g. `test:e2e:ci-fast` on port 32123 without Spring).
 
 ## Layout
 

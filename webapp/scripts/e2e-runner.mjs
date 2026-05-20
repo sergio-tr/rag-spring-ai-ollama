@@ -2,10 +2,12 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { countListedTests, summarizePlaywrightJson } from "./e2e-report-summary.mjs";
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
   console.error("Usage: node scripts/e2e-runner.mjs <playwright test args>");
+  console.error("Example: node scripts/e2e-runner.mjs --project=chromium --grep @preflight --reporter=list,json");
   process.exit(2);
 }
 
@@ -23,49 +25,6 @@ function argsForList(rawArgs) {
   return rawArgs.filter((arg) => !arg.startsWith("--reporter"));
 }
 
-function parseListedTotal(output) {
-  const match = output.match(/Total:\s+(\d+)\s+tests?/i);
-  return match ? Number.parseInt(match[1], 10) : Number.NaN;
-}
-
-function collectTests(node, acc = []) {
-  if (node == null || typeof node !== "object") {
-    return acc;
-  }
-  if (Array.isArray(node)) {
-    for (const item of node) collectTests(item, acc);
-    return acc;
-  }
-  if (Array.isArray(node.results) && (typeof node.title === "string" || typeof node.outcome === "string")) {
-    acc.push(node);
-  }
-  for (const value of Object.values(node)) {
-    collectTests(value, acc);
-  }
-  return acc;
-}
-
-function summarize(json) {
-  const tests = collectTests(json);
-  const total = tests.length;
-  let skipped = 0;
-  let passed = 0;
-  let failed = 0;
-  for (const test of tests) {
-    const results = Array.isArray(test.results) ? test.results : [];
-    const statuses = results.map((r) => r?.status).filter(Boolean);
-    const outcome = typeof test.outcome === "string" ? test.outcome : "";
-    if (outcome === "skipped" || (statuses.length > 0 && statuses.every((s) => s === "skipped"))) {
-      skipped += 1;
-    } else if (outcome === "unexpected" || statuses.some((s) => ["failed", "timedOut", "interrupted"].includes(String(s)))) {
-      failed += 1;
-    } else {
-      passed += 1;
-    }
-  }
-  return { total, passed, failed, skipped };
-}
-
 const listed = runPlaywright(["--list", ...argsForList(args)]);
 process.stdout.write(listed.stdout);
 process.stderr.write(listed.stderr);
@@ -73,9 +32,10 @@ if (listed.status !== 0) {
   process.exit(listed.status ?? 1);
 }
 
-const listedTotal = parseListedTotal(`${listed.stdout}\n${listed.stderr}`);
+const listedTotal = countListedTests(`${listed.stdout}\n${listed.stderr}`);
 if (!Number.isFinite(listedTotal) || listedTotal <= 0) {
   console.error("E2E guard failed: Playwright collected zero tests for the requested suite.");
+  console.error("Hint: check --grep/--project paths and that spec files export tests.");
   process.exit(1);
 }
 
@@ -84,7 +44,11 @@ const jsonOutput = resolve(process.env.PLAYWRIGHT_JSON_OUTPUT_NAME ?? "test-resu
 mkdirSync(dirname(jsonOutput), { recursive: true });
 rmSync(jsonOutput, { force: true });
 
-const run = runPlaywright(args, {
+const runArgs = args.some((a) => a.startsWith("--reporter"))
+  ? args
+  : [...args, "--reporter=list,json"];
+
+const run = runPlaywright(runArgs, {
   env: {
     ...process.env,
     PLAYWRIGHT_JSON_OUTPUT_NAME: jsonOutput,
@@ -100,26 +64,34 @@ process.stderr.write(run.stderr);
 let summary;
 try {
   let jsonText = "";
-  if (jsonOutputFromEnv && existsSync(jsonOutput)) {
+  if (existsSync(jsonOutput)) {
     jsonText = readFileSync(jsonOutput, "utf8");
   } else if (run.stdout.trim()) {
     jsonText = run.stdout.trim();
-  } else if (existsSync(jsonOutput)) {
-    jsonText = readFileSync(jsonOutput, "utf8");
   }
-  summary = summarize(JSON.parse(jsonText));
+  if (!jsonText.trim()) {
+    throw new Error(`no JSON at ${jsonOutput} and Playwright stdout was empty`);
+  }
+  summary = summarizePlaywrightJson(JSON.parse(jsonText));
 } catch (error) {
   console.error(`E2E guard failed: could not parse Playwright JSON output at ${jsonOutput}: ${error}`);
   process.exit(run.status || 1);
 }
 
 console.log(
-  `E2E summary: total=${summary.total}, passed=${summary.passed}, failed=${summary.failed}, skipped=${summary.skipped}, json=${jsonOutput}`,
+  `E2E summary: listed=${listedTotal}, jsonTotal=${summary.total}, passed=${summary.passed}, failed=${summary.failed}, skipped=${summary.skipped}, json=${jsonOutput}`,
 );
 
 if (summary.total <= 0) {
-  console.error("E2E guard failed: Playwright JSON reported zero tests.");
+  console.error(
+    `E2E guard failed: Playwright JSON reported zero tests (listed ${listedTotal}). Check reporter includes "json" and PLAYWRIGHT_JSON_OUTPUT_NAME.`,
+  );
   process.exit(1);
+}
+if (summary.total !== listedTotal) {
+  console.error(
+    `E2E guard warning: listed ${listedTotal} test(s) but JSON summary counted ${summary.total}. Using JSON counts for pass/fail gates.`,
+  );
 }
 if (summary.skipped >= summary.total && summary.passed === 0 && summary.failed === 0) {
   console.error(`E2E guard failed: all collected tests were skipped (${summary.skipped}/${summary.total}).`);

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import { countListedTests } from "./e2e-report-summary.mjs";
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
@@ -21,12 +22,11 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1);
 }
 
-const output = `${result.stdout}\n${result.stderr}`;
-const match = output.match(/Total:\s+(\d+)\s+tests?/i);
-const total = match ? Number.parseInt(match[1], 10) : Number.NaN;
+const total = countListedTests(`${result.stdout}\n${result.stderr}`);
 
 if (!Number.isFinite(total) || total <= 0) {
   console.error("E2E guard failed: Playwright collected zero tests for the requested critical suite.");
+  console.error("Hint: check --grep/--project and that matching spec files exist under webapp/e2e.");
   process.exit(1);
 }
 
