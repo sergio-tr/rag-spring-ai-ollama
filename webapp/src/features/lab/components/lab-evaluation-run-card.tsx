@@ -528,6 +528,10 @@ export function LabEvaluationRunCard({
         setErr(t("benchmarkNeedsCompatibleDataset"));
         return;
       }
+      if (benchmarkKind === "RAG_PRESET_END_TO_END" && !activeProject?.id) {
+        setErr(t("benchmarkNeedsActiveProject"));
+        return;
+      }
       if (selectedDataset.validationStatus !== "VALID") {
         setErr(t("benchmarkNeedsValidDataset"));
         return;
@@ -542,6 +546,11 @@ export function LabEvaluationRunCard({
       };
       if (benchmarkKind === "RAG_PRESET_END_TO_END" && draft.selectedExperimentalPresetCodes.length > 0) {
         body.experimentalPresetCodes = draft.selectedExperimentalPresetCodes;
+      }
+      if (benchmarkKind === "RAG_PRESET_END_TO_END") {
+        body.autoReindex = true;
+        body.allowActiveSnapshotMutation = true;
+        body.reuseCompatibleActiveSnapshot = true;
       }
       if (draft.runName.trim()) {
         body.campaignName = draft.runName.trim();

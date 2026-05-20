@@ -399,6 +399,12 @@ export type StartBenchmarkRunRequest = {
   useWorkbookCandidates?: boolean | null;
   /** Optional user-facing name for campaign grouping. */
   campaignName?: string | null;
+  /** RAG preset LAB: prepare compatible index snapshot before benchmark when needed. */
+  autoReindex?: boolean | null;
+  /** RAG preset LAB: allow activating a newly built snapshot for this run. */
+  allowActiveSnapshotMutation?: boolean | null;
+  /** RAG preset LAB: reuse active snapshot when it already satisfies preset groups. */
+  reuseCompatibleActiveSnapshot?: boolean | null;
 };
 
 export type ExperimentalPresetCatalogItemDto = {

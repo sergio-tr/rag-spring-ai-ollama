@@ -36,6 +36,12 @@ import {
   sanitizePlainErrorTextForUi,
 } from "@/lib/api-client";
 import { chatFailureHintForCode, normalizeChatFailureCode, resolveChatJobFailureUserHint } from "@/features/chat/lib/chat-job-errors";
+import {
+  readProjectClassifierModelPreference,
+  readProjectLlmModelPreference,
+  writeProjectClassifierModelPreference,
+  writeProjectLlmModelPreference,
+} from "@/features/chat/lib/chat-model-persistence";
 import { followLabJob } from "@/lib/lab-job-follow";
 import { cn } from "@/lib/utils";
 import { Link, useRouter } from "@/navigation";
@@ -110,6 +116,41 @@ function firstRuntimeBlockingUserMessage(
   );
   const mapped = first ? chatFailureHintForCode(first.code, t) : null;
   return mapped ?? firstRuntimeBlockingMessage(runtimeState);
+}
+
+function firstRuntimeBlockingCode(
+  runtimeState: {
+    blockingIssues?: Array<{ code?: string | null; message?: string | null }>;
+    validation?: { errors: Array<{ code?: string | null; message?: string | null }> };
+  } | null,
+): string | null {
+  if (!runtimeState) return null;
+  const issues = runtimeState.blockingIssues ?? runtimeState.validation?.errors ?? [];
+  const first = issues.find((i) => {
+    const code = i.code != null ? String(i.code).trim() : "";
+    return code !== "" || normalizeChatFailureCode(i.code);
+  });
+  if (!first) return null;
+  return normalizeChatFailureCode(first.code) ?? (first.code ? String(first.code).trim() : null);
+}
+
+function sourceSupportsAnswer(source: Record<string, unknown>): boolean {
+  const meta = source.metadata;
+  if (meta && typeof meta === "object") {
+    const m = meta as Record<string, unknown>;
+    if (m.alternativeOnly === true) return false;
+    if (m.supportingAnswer === false) return false;
+  }
+  return true;
+}
+
+function sourceIsAlternativeOnly(source: Record<string, unknown>): boolean {
+  const meta = source.metadata;
+  if (meta && typeof meta === "object") {
+    const m = meta as Record<string, unknown>;
+    return m.alternativeOnly === true || m.supportingAnswer === false;
+  }
+  return false;
 }
 
 function streamDonePayloadFromAssistantMessage(m: MessageDto): StreamDonePayload {
@@ -285,6 +326,8 @@ function ChatPageInner() {
   });
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sendFailureCode, setSendFailureCode] = useState<string | null>(null);
+  const llmPreferenceAppliedRef = useRef<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [editingUserMessageId, setEditingUserMessageId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
@@ -429,7 +472,33 @@ function ChatPageInner() {
 
   useEffect(() => {
     patchConv.reset();
+    llmPreferenceAppliedRef.current = null;
   }, [conversationId]); /* eslint-disable-line react-hooks/exhaustive-deps -- reset patch mutation only when switching chats */
+
+  useEffect(() => {
+    if (!activeConv?.id) return;
+    const fromConv = activeConv.llmModel?.trim() ?? "";
+    const fromProject = projectId ? readProjectLlmModelPreference(projectId) : "";
+    setLlmModelChoiceDraft({
+      conversationId: activeConv.id,
+      value: fromConv || fromProject,
+    });
+    const clfConv = activeConv.classifierModelId?.trim() ?? "";
+    const clfProject = projectId ? readProjectClassifierModelPreference(projectId) : "";
+    setClassifierModelChoiceDraft({
+      conversationId: activeConv.id,
+      value: clfConv || clfProject,
+    });
+  }, [activeConv?.id, activeConv?.llmModel, activeConv?.classifierModelId, projectId]);
+
+  useEffect(() => {
+    if (!conversationId || !projectId || !activeConv) return;
+    const pref = readProjectLlmModelPreference(projectId);
+    if (!pref || activeConv.llmModel?.trim()) return;
+    if (llmPreferenceAppliedRef.current === conversationId) return;
+    llmPreferenceAppliedRef.current = conversationId;
+    patchConv.mutate({ conversationId, body: { llmModel: pref } });
+  }, [conversationId, projectId, activeConv, patchConv]);
 
   useEffect(() => {
     const syncTimer = setTimeout(() => setTitleDraft(activeConv?.title ?? ""), 0);
@@ -440,6 +509,7 @@ function ChatPageInner() {
   const runtimeState = runtimeStateQuery.data ?? null;
   const presetSelectValue = runtimeState?.selectedPresetId ?? "";
   const runtimeBlockingMessage = firstRuntimeBlockingUserMessage(runtimeState, t);
+  const runtimeBlockingCode = firstRuntimeBlockingCode(runtimeState);
   const runtimeStateInvalid = Boolean(runtimeBlockingMessage);
 
   const setLastDone = useChatExplainStore((s) => s.setLastDone);
@@ -631,6 +701,10 @@ function ChatPageInner() {
             t,
           });
           setSendError(hint);
+          setSendFailureCode(
+            normalizeChatFailureCode(terminal.failureCode) ??
+              (terminal.failureCode ? String(terminal.failureCode).trim() : null),
+          );
           useTraceStore.getState().addTraceEvent({
             section: "chat",
             action: "assistant_failed",
@@ -644,6 +718,7 @@ function ChatPageInner() {
         } else {
           setAssistantPhase(null);
           setSendError(null);
+          setSendFailureCode(null);
           const list = refreshed.data ?? [];
           const lastAssistant = [...list]
             .reverse()
@@ -670,6 +745,7 @@ function ChatPageInner() {
           return;
         }
         setAssistantPhase("failed");
+        setSendFailureCode(null);
         setSendError(getSafeApiErrorMessage(e));
         useTraceStore.getState().addTraceEvent({
           section: "chat",
@@ -689,6 +765,7 @@ function ChatPageInner() {
     if (!input.trim() || isSending || isStreaming) return;
     if (runtimeBlockingMessage) {
       setSendError(runtimeBlockingMessage);
+      setSendFailureCode(runtimeBlockingCode);
       return;
     }
     abortRef.current?.abort();
@@ -981,44 +1058,50 @@ function ChatPageInner() {
     (v: string) => {
       if (!conversationId) return;
       setLlmModelChoiceDraft({ conversationId, value: v });
+      const persistOnSuccess = () => {
+        if (projectId) writeProjectLlmModelPreference(projectId, v);
+      };
+      const revertOnError = () => {
+        setLlmModelChoiceDraft({ conversationId, value: activeConv?.llmModel ?? "" });
+      };
       if (!v.trim()) {
         patchConv.mutate(
           { conversationId, body: { clearLlmModel: true } },
-          { onError: () => setLlmModelChoiceDraft({ conversationId, value: activeConv?.llmModel ?? "" }) },
+          { onSuccess: persistOnSuccess, onError: revertOnError },
         );
         return;
       }
       patchConv.mutate(
         { conversationId, body: { llmModel: v.trim() } },
-        { onError: () => setLlmModelChoiceDraft({ conversationId, value: activeConv?.llmModel ?? "" }) },
+        { onSuccess: persistOnSuccess, onError: revertOnError },
       );
     },
-    [activeConv?.llmModel, conversationId, patchConv],
+    [activeConv?.llmModel, conversationId, patchConv, projectId],
   );
 
   const applyClassifierModelChoice = useCallback(
     (v: string) => {
       if (!conversationId) return;
       setClassifierModelChoiceDraft({ conversationId, value: v });
+      const persistOnSuccess = () => {
+        if (projectId) writeProjectClassifierModelPreference(projectId, v);
+      };
+      const revertOnError = () => {
+        setClassifierModelChoiceDraft({ conversationId, value: activeConv?.classifierModelId ?? "" });
+      };
       if (!v.trim()) {
         patchConv.mutate(
           { conversationId, body: { clearClassifierModelId: true } },
-          {
-            onError: () =>
-              setClassifierModelChoiceDraft({ conversationId, value: activeConv?.classifierModelId ?? "" }),
-          },
+          { onSuccess: persistOnSuccess, onError: revertOnError },
         );
         return;
       }
       patchConv.mutate(
         { conversationId, body: { classifierModelId: v.trim() } },
-        {
-          onError: () =>
-            setClassifierModelChoiceDraft({ conversationId, value: activeConv?.classifierModelId ?? "" }),
-        },
+        { onSuccess: persistOnSuccess, onError: revertOnError },
       );
     },
-    [activeConv?.classifierModelId, conversationId, patchConv],
+    [activeConv?.classifierModelId, conversationId, patchConv, projectId],
   );
 
   const handleChatDocumentUpload = useCallback(
@@ -1654,6 +1737,7 @@ function ChatPageInner() {
                           const excerpt = sourceSnippet(s);
                           const score = sourceScore(s);
                           const mismatched = sourceDateMismatch(detectedDate, requestedDate);
+                          const alternative = sourceIsAlternativeOnly(s);
                           return (
                             <li key={idx} className="rounded-sm bg-muted/20 px-2 py-1">
                               <div className="flex items-baseline justify-between gap-2">
@@ -1667,10 +1751,18 @@ function ChatPageInner() {
                                   date={detectedDate}
                                 </p>
                               ) : null}
-                              {mismatched ? (
+                              {alternative ? (
+                                <p className="mt-0.5 text-amber-700 dark:text-amber-300" data-testid="chat-source-alternative">
+                                  {t("sourceAlternativeOnly")}
+                                </p>
+                              ) : null}
+                              {mismatched && !alternative ? (
                                 <p className="mt-0.5 text-amber-700 dark:text-amber-300" data-testid="chat-date-warning">
                                   Source date differs from requested date {requestedDate}.
                                 </p>
+                              ) : null}
+                              {!sourceSupportsAnswer(s) && !alternative && !mismatched ? (
+                                <p className="mt-0.5 text-muted-foreground">{t("sourceNotSupportingAnswer")}</p>
                               ) : null}
                               {excerpt ? (
                                 <p className="text-muted-foreground mt-0.5 line-clamp-3 whitespace-pre-wrap">
@@ -1685,8 +1777,7 @@ function ChatPageInner() {
                   ) : null}
                   {m.role === "ASSISTANT" && (!Array.isArray(m.sources) || m.sources.length === 0) ? (
                     <div className="mt-2 border-border border-t pt-2 text-[11px] text-muted-foreground" data-testid="chat-sources">
-                      No sources returned for this assistant response. This is expected only for direct/no-retrieval modes or
-                      controlled abstentions; otherwise inspect the trace and runtime configuration.
+                      {t("sourcesEmptyExplanation")}
                     </div>
                   ) : null}
                   {m.role === "ASSISTANT" && messageMetadataBool(m, "dateMismatchDetected") ? (
@@ -1694,7 +1785,8 @@ function ChatPageInner() {
                       Date grounding warning: requested {messageMetadataString(m, "requestedDate") ?? "date"} did not have an exact supported source.
                     </div>
                   ) : null}
-                  {m.role === "ASSISTANT" && hasRuntimeTraceMetadata(m) ? (
+                  {m.role === "ASSISTANT" &&
+                  (hasRuntimeTraceMetadata(m) || messageMetadataString(m, "abstentionReason")) ? (
                     <div className="mt-2 rounded-md border bg-muted/20 px-2 py-1 text-[11px]" data-testid="chat-trace">
                       <p className="font-medium text-muted-foreground">Trace</p>
                       <dl className="mt-1 grid grid-cols-1 gap-1 font-mono">
@@ -1708,6 +1800,28 @@ function ChatPageInner() {
                           <div className="flex justify-between gap-2">
                             <dt className="text-muted-foreground">workflow</dt>
                             <dd>{messageMetadataString(m, "workflowName")}</dd>
+                          </div>
+                        ) : null}
+                        {messageMetadataString(m, "classifierModelIdUsed") ||
+                        messageMetadataString(m, "classifierModelId") ? (
+                          <div className="flex justify-between gap-2" data-testid="chat-trace-classifier-model">
+                            <dt className="text-muted-foreground">classifierModel</dt>
+                            <dd className="break-all">
+                              {messageMetadataString(m, "classifierModelIdUsed") ??
+                                messageMetadataString(m, "classifierModelId")}
+                            </dd>
+                          </div>
+                        ) : null}
+                        {messageMetadataString(m, "classifierLabel") ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">classifierLabel</dt>
+                            <dd>{messageMetadataString(m, "classifierLabel")}</dd>
+                          </div>
+                        ) : null}
+                        {messageMetadataString(m, "classifierStatus") ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">classifierStatus</dt>
+                            <dd>{messageMetadataString(m, "classifierStatus")}</dd>
                           </div>
                         ) : null}
                         {messageMetadataString(m, "requestedDate") ? (
@@ -1760,6 +1874,12 @@ function ChatPageInner() {
                           <div className="flex justify-between gap-2">
                             <dt className="text-muted-foreground">dateGrounding</dt>
                             <dd>{messageMetadataString(m, "groundingPolicyApplied")}</dd>
+                          </div>
+                        ) : null}
+                        {messageMetadataString(m, "abstentionReason") ? (
+                          <div className="col-span-full">
+                            <dt className="text-muted-foreground">abstentionReason</dt>
+                            <dd>{messageMetadataString(m, "abstentionReason")}</dd>
                           </div>
                         ) : null}
                       </dl>
@@ -1831,8 +1951,18 @@ function ChatPageInner() {
             </p>
           )}
           {sendError && (
-            <p className="text-destructive break-words text-xs" data-testid="chat-error" role="alert">
+            <p
+              className="text-destructive break-words text-xs"
+              data-testid="chat-error"
+              data-error-code={sendFailureCode ?? undefined}
+              role="alert"
+            >
               {sendError}
+              {sendFailureCode ? (
+                <span className="sr-only" data-testid={`chat-error-code-${sendFailureCode}`}>
+                  {sendFailureCode}
+                </span>
+              ) : null}
             </p>
           )}
           {patchConv.isError ? (
@@ -1862,6 +1992,11 @@ function ChatPageInner() {
               >
                 {runtimeBlockingMessage}
               </p>
+              {runtimeBlockingCode ? (
+                <span className="sr-only" data-testid={`chat-error-code-${runtimeBlockingCode}`}>
+                  {runtimeBlockingCode}
+                </span>
+              ) : null}
             </div>
           ) : null}
           {conversationId &&

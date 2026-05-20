@@ -119,6 +119,14 @@ export function ChatConfigurationPanelContent() {
   const hasCustomOverride = Boolean(api?.runtimeState?.isCustom);
 
   const effectiveConfig = api?.runtimeState?.effectiveConfig ?? null;
+  const activeLlmModel =
+    api?.llmModelChoice?.trim() ||
+    api?.runtimeState?.conversationLlmModel?.trim() ||
+    "";
+  const activeClassifierModel =
+    api?.classifierModelChoice?.trim() ||
+    api?.runtimeState?.conversationClassifierModelId?.trim() ||
+    "";
   const indexProfileQuery = useProjectIndexProfile(api?.projectId);
   const activeSnapQuery = useActiveProjectSnapshot(api?.projectId);
 
@@ -681,6 +689,11 @@ export function ChatConfigurationPanelContent() {
                   {api.modelsErrorMessage || tChat("chatJobFailure_MODEL_UNAVAILABLE")}
                 </output>
               ) : null}
+              {activeLlmModel ? (
+                <p className="text-muted-foreground text-[11px]" data-testid="chat-llm-active-selection">
+                  {tChat("modelActiveSelection", { model: activeLlmModel })}
+                </p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-1">
@@ -711,6 +724,11 @@ export function ChatConfigurationPanelContent() {
                   {tChat("classifierLoadError")} {tChat("chatJobFailure_CLASSIFIER_UNAVAILABLE")}
                 </output>
               ) : null}
+              {activeClassifierModel ? (
+                <p className="text-muted-foreground text-[11px]" data-testid="chat-classifier-active-selection">
+                  {tChat("classifierActiveSelection", { model: activeClassifierModel })}
+                </p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-1">
@@ -730,7 +748,10 @@ export function ChatConfigurationPanelContent() {
                     </span>
                   ) : null}
                   {hasCustomOverride ? (
-                    <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">
+                    <span
+                      className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium"
+                      data-testid="chat-custom-state"
+                    >
                       Custom
                     </span>
                   ) : null}
