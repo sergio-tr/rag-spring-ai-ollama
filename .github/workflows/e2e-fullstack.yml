@@ -1,10 +1,10 @@
-# E2E-01 / E2E-02: Next.js + Spring Boot + Postgres (Flyway seed user). Heavier than e2e.yml — not on every webapp-only PR.
+# Manual fullstack lane — mirrors reusable-ci-core.yml job e2e_fullstack (preflight + @critical only).
+# Authoritative PR gate: ci.yml → reusable-ci-core.yml.
 name: E2E fullstack (Playwright + API)
 
 on:
-  # Manual tool only: the authoritative CI DAG (ci.yml → reusable-ci-core.yml)
-  # already runs fullstack E2E on PRs and on push to main/master.
   workflow_dispatch: {}
+
 concurrency:
   group: e2e-fullstack-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -14,12 +14,11 @@ env:
 
 jobs:
   playwright-fullstack:
-    name: Playwright @fullstack
+    name: Playwright @fullstack @critical
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     services:
       postgres:
-        # Do NOT use `env.*` in `services.<id>.image` (context may be unsupported).
         image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
@@ -40,8 +39,13 @@ jobs:
       RAG_JWT_SECRET: e2e-ci-jwt-secret-must-be-at-least-32-chars
       RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
+      NEXT_PUBLIC_API_BASE_URL: ""
+      NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
+      E2E_ADMIN_ENABLED: "1"
       REVERSE_PROXY_HTTP_PORT: "8080"
       REVERSE_PROXY_HTTPS_PORT: "8443"
+      RAG_HEALTH_OLLAMA_ENABLED: "false"
+      RAG_HEALTH_CLASSIFIER_ENABLED: "false"
     steps:
       - uses: actions/checkout@v6
 
@@ -63,18 +67,10 @@ jobs:
             > /tmp/spring-e2e.log 2>&1 &
           echo $! > /tmp/spring-e2e.pid
 
-      - name: Wait for backend readiness
-        run: |
-          for i in $(seq 1 120); do
-            if curl -fsS http://127.0.0.1:9000/actuator/health/readiness >/dev/null 2>&1; then
-              echo "Backend ready"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "--- spring log (tail) ---"
-          tail -n 200 /tmp/spring-e2e.log || true
-          exit 1
+      - name: Wait for backend readiness (fail-fast on Flyway errors)
+        run: bash ./.github/scripts/e2e-wait-readiness.sh /tmp/spring-e2e.log
+        env:
+          E2E_READINESS_MAX_ATTEMPTS: "45"
 
       - name: Seed deterministic e2e users
         shell: bash
@@ -85,8 +81,7 @@ jobs:
             VALUES
               ('e2e0ad00-0000-4000-8000-000000000001', 'admin@e2e.local', '{noop}e2e', 'E2E Admin', 'ADMIN', CURRENT_TIMESTAMP, true, CURRENT_TIMESTAMP),
               ('e2e0ad00-0000-4000-8000-000000000002', 'dev@local.test', '{noop}dev', 'Dev User', 'USER', CURRENT_TIMESTAMP, true, CURRENT_TIMESTAMP)
-            ON CONFLICT (email) DO UPDATE
-            SET
+            ON CONFLICT (email) DO UPDATE SET
               password_hash = EXCLUDED.password_hash,
               name = EXCLUDED.name,
               role = EXCLUDED.role,
@@ -94,32 +89,17 @@ jobs:
               email_verified_at = COALESCE(users.email_verified_at, CURRENT_TIMESTAMP);
           "
 
-      - name: Wait for e2e seed login to be available
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 90); do
-            code="$(
-              curl -sS -o /dev/null -w '%{http_code}' \
-                -H 'Content-Type: application/json' \
-                -d '{"email":"dev@local.test","password":"dev"}' \
-                http://127.0.0.1:9000/api/v5/auth/login || true
-            )"
-            if [ "$code" = "200" ]; then
-              echo "Seed login OK"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "::error::Seed login not ready after waiting."
-          echo "--- backend health (diagnostic) ---"
-          curl -sS http://127.0.0.1:9000/actuator/health || true
-          echo ""
-          echo "--- backend readiness (diagnostic; 200 or 503) ---"
-          curl -sS http://127.0.0.1:9000/actuator/health/readiness || true
-          echo ""
-          echo "--- spring log (tail) ---"
-          tail -n 200 /tmp/spring-e2e.log || true
-          exit 1
+      - name: Wait for e2e seed login
+        run: bash ./.github/scripts/e2e-wait-login.sh
+        env:
+          E2E_LOGIN_MAX_ATTEMPTS: "30"
+
+      - name: Wait for e2e admin login
+        run: bash ./.github/scripts/e2e-wait-login.sh
+        env:
+          E2E_LOGIN_EMAIL: admin@e2e.local
+          E2E_LOGIN_PASSWORD: e2e
+          E2E_LOGIN_MAX_ATTEMPTS: "30"
 
       - name: Cache npm (webapp)
         uses: ./.github/actions/cache-npm-webapp
@@ -132,31 +112,28 @@ jobs:
 
       - name: Build and start Next.js for proxy mode
         working-directory: webapp
-        env:
-          NEXT_PUBLIC_API_BASE_URL: ""
-          NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
         run: |
           npm install --no-audit --no-fund
           npm run build
-          nohup env npm run start -- -H 0.0.0.0 -p 3000 > /tmp/webapp-e2e.log 2>&1 &
+          nohup npm run start -- -H 0.0.0.0 -p 3000 > /tmp/webapp-e2e.log 2>&1 &
           echo $! > /tmp/webapp-e2e.pid
 
       - name: Wait for webapp health
         run: |
-          for i in $(seq 1 90); do
+          for i in $(seq 1 45); do
             if curl -fsS http://127.0.0.1:3000 >/dev/null 2>&1; then
-              echo "Webapp healthy"
+              echo "Webapp healthy after ${i} attempt(s)"
               exit 0
             fi
             sleep 2
           done
-          echo "--- webapp log (tail) ---"
           tail -n 200 /tmp/webapp-e2e.log || true
           exit 1
 
       - name: Start reverse-proxy container (HTTPS)
         run: |
           docker build -t rag-reverse-proxy-ci reverse-proxy
+          docker rm -f rag-reverse-proxy-ci 2>/dev/null || true
           docker run -d --name rag-reverse-proxy-ci \
             --add-host=host-gateway.internal:host-gateway \
             -p ${REVERSE_PROXY_HTTP_PORT}:80 \
@@ -174,30 +151,59 @@ jobs:
 
       - name: Wait for proxy health
         run: |
-          for i in $(seq 1 90); do
+          for i in $(seq 1 45); do
             if curl -skf https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}/ >/dev/null 2>&1; then
-              echo "Proxy healthy"
+              echo "Proxy healthy after ${i} attempt(s)"
               exit 0
             fi
             sleep 2
           done
-          echo "--- proxy logs ---"
           docker logs rag-reverse-proxy-ci || true
           exit 1
 
-      - name: Install Playwright and run @fullstack through proxy
+      - name: Install Playwright browsers
+        working-directory: webapp
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E stack preflight (curl + auth, fail-fast)
+        working-directory: webapp
+        env:
+          PLAYWRIGHT_BASE_URL: https://127.0.0.1:8443
+          API_BASE_URL: https://127.0.0.1:8443
+          E2E_BACKEND_HEALTH_URL: http://127.0.0.1:9000
+          E2E_WEB_HEALTH_URL: http://127.0.0.1:3000
+          E2E_STACK_PREFLIGHT_MAX_MS: "60000"
+        run: node scripts/e2e-stack-preflight.mjs
+
+      - name: Playwright preflight gate (@preflight)
+        if: success()
         working-directory: webapp
         env:
           E2E_ALLOW_INSECURE_COOKIES: "true"
           E2E_LOGIN_TIMEOUT_MS: "12000"
           PLAYWRIGHT_IGNORE_HTTPS_ERRORS: "1"
-          PLAYWRIGHT_WORKERS: "1"
           PLAYWRIGHT_SKIP_WEBSERVER: "1"
           PLAYWRIGHT_BASE_URL: https://127.0.0.1:8443
           API_BASE_URL: https://127.0.0.1:8443
-        run: |
-          npx playwright install --with-deps chromium
-          npm run test:e2e:fullstack:ci
+          PLAYWRIGHT_RETRIES: "0"
+          PLAYWRIGHT_MAX_FAILURES: "1"
+          PLAYWRIGHT_WORKERS: "1"
+        run: npm run test:e2e:preflight:only
+
+      - name: Playwright @fullstack @critical
+        if: success()
+        working-directory: webapp
+        env:
+          E2E_ALLOW_INSECURE_COOKIES: "true"
+          E2E_LOGIN_TIMEOUT_MS: "12000"
+          PLAYWRIGHT_IGNORE_HTTPS_ERRORS: "1"
+          PLAYWRIGHT_SKIP_WEBSERVER: "1"
+          PLAYWRIGHT_BASE_URL: https://127.0.0.1:8443
+          API_BASE_URL: https://127.0.0.1:8443
+          PLAYWRIGHT_RETRIES: "0"
+          PLAYWRIGHT_MAX_FAILURES: "1"
+          PLAYWRIGHT_WORKERS: "1"
+        run: npm run test:e2e:fullstack:critical
 
       - name: Stop services
         if: always()
@@ -207,26 +213,8 @@ jobs:
           if [ -f /tmp/webapp-e2e.pid ]; then kill "$(cat /tmp/webapp-e2e.pid)" 2>/dev/null || true; fi
           docker rm -f rag-reverse-proxy-ci 2>/dev/null || true
 
-      - name: Upload Spring log on failure
-        if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: spring-e2e-log
-          path: /tmp/spring-e2e.log
-          retention-days: 7
-
-      - name: Upload webapp/proxy logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: webapp-proxy-e2e-logs
-          path: |
-            /tmp/webapp-e2e.log
-            /tmp/proxy-e2e.log
-          retention-days: 7
-
-      - name: Upload Playwright report on failure
-        if: failure()
+      - name: Upload Playwright report
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: playwright-fullstack-report
@@ -234,13 +222,18 @@ jobs:
             webapp/playwright-report/
             webapp/test-results/preflight-results.json
             webapp/test-results/fullstack-critical-results.json
-          retention-days: 7
-          if-no-files-found: warn
-      - name: Upload Playwright traces on failure
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload logs and traces on failure
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: playwright-fullstack-traces
-          path: webapp/test-results/
+          name: playwright-fullstack-failure-logs
+          path: |
+            /tmp/spring-e2e.log
+            /tmp/webapp-e2e.log
+            /tmp/proxy-e2e.log
+            webapp/test-results/
           retention-days: 7
           if-no-files-found: warn

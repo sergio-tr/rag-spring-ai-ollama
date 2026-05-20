@@ -63,7 +63,8 @@ When collecting closure-grade evidence (annexes, release readiness), run:
 
 ```bash
 # Strict stack integration (no false-green: fails if everything was skipped)
-.github/local/run-integration-ci-like.sh
+# Default: recreates Postgres for clean Flyway; use --reuse-postgres only if you know the DB matches current migrations.
+INTEGRATION_REQUIRE_CLASSIFIER=1 .github/local/run-integration-ci-like.sh
 
 # Fullstack E2E (proxy-mode parity, fast-fail)
 .github/local/run-e2e-fullstack-ci-like.sh

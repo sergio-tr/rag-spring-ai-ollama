@@ -21,11 +21,16 @@ PIP_CACHE_VOLUME="${RAG_PIP_CACHE_VOLUME:-rag-pip-cache}"
 
 STOP_AFTER="${RAG_CI_STOP_CONTAINER:-0}"
 
+REUSE_POSTGRES="${RAG_CI_REUSE_POSTGRES:-0}"
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --stop-after) STOP_AFTER=1; shift ;;
+    --reuse-postgres) REUSE_POSTGRES=1; shift ;;
     -h|--help)
-      echo "Usage: $0 [--stop-after]"
+      echo "Usage: $0 [--stop-after] [--reuse-postgres]"
+      echo "  Default: recreate Postgres so Flyway matches current migration checksums."
+      echo "  --reuse-postgres / RAG_CI_REUSE_POSTGRES=1: keep existing ${POSTGRES_CONTAINER} (may fail validate)."
       exit 0
       ;;
     *) echo "Unknown option: $1"; exit 1 ;;
@@ -51,6 +56,8 @@ export INTEGRATION_FAIL_ON_UNREACHABLE="${INTEGRATION_FAIL_ON_UNREACHABLE:-${INT
 export INTEGRATION_REQUIRE_CLASSIFIER="${INTEGRATION_REQUIRE_CLASSIFIER:-0}"
 export INTEGRATION_ADMIN_EMAIL="${INTEGRATION_ADMIN_EMAIL:-admin@e2e.local}"
 export INTEGRATION_ADMIN_PASSWORD="${INTEGRATION_ADMIN_PASSWORD:-e2e}"
+export INTEGRATION_LOGIN_EMAIL="${INTEGRATION_LOGIN_EMAIL:-dev@local.test}"
+export INTEGRATION_LOGIN_PASSWORD="${INTEGRATION_LOGIN_PASSWORD:-dev}"
 
 if [[ ! -f "${REPO_ROOT}/.github/local/ci-postgres-extensions.sql" ]]; then
   echo "error: missing .github/local/ci-postgres-extensions.sql" >&2
@@ -102,6 +109,10 @@ wait_for_pg() {
 }
 
 start_postgres() {
+  if [[ "${REUSE_POSTGRES}" != "1" ]]; then
+    log "Recreating Postgres container for clean Flyway state (${POSTGRES_CONTAINER})."
+    docker rm -f "${POSTGRES_CONTAINER}" >/dev/null 2>&1 || true
+  fi
   if docker ps -a --format '{{.Names}}' | grep -qx "${POSTGRES_CONTAINER}"; then
     if docker ps --format '{{.Names}}' | grep -qx "${POSTGRES_CONTAINER}"; then
       log "Using existing running Postgres container: ${POSTGRES_CONTAINER}"
@@ -163,17 +174,27 @@ start_backend() {
     >/dev/null
 }
 
+SPRING_LOG_PATH="${SPRING_LOG_PATH:-/tmp/spring-integration-docker.log}"
+
 wait_for_backend() {
-  log "Waiting for backend health: http://127.0.0.1:9000/actuator/health"
-  for _ in $(seq 1 90); do
-    if curl -fsS http://127.0.0.1:9000/actuator/health >/dev/null 2>&1; then
-      log "Backend healthy."
+  local readiness_url="http://127.0.0.1:9000/actuator/health/readiness"
+  log "Waiting for backend readiness (fail-fast on Flyway): ${readiness_url}"
+  for i in $(seq 1 45); do
+    docker logs --tail 150 "${BACKEND_CONTAINER}" > "${SPRING_LOG_PATH}" 2>&1 || true
+    if grep -qE 'FlywayValidateException|Migration checksum mismatch|Application run failed' "${SPRING_LOG_PATH}" 2>/dev/null; then
+      echo "error: Spring failed during startup (see backend log tail)." >&2
+      tail -n 120 "${SPRING_LOG_PATH}" >&2 || true
+      return 1
+    fi
+    code="$(curl -s -o /dev/null -w '%{http_code}' "${readiness_url}" 2>/dev/null || true)"
+    if [[ "${code}" == "200" ]]; then
+      log "Backend ready after ${i} attempt(s)."
       return 0
     fi
     sleep 2
   done
-  echo "--- backend log (tail) ---" >&2
-  docker logs --tail 200 "${BACKEND_CONTAINER}" >&2 || true
+  echo "error: backend readiness never returned 200 (${readiness_url})" >&2
+  tail -n 120 "${SPRING_LOG_PATH}" >&2 || true
   return 1
 }
 
@@ -202,21 +223,32 @@ start_classifier() {
     >/dev/null
 }
 
-seed_admin() {
-  log "Seeding e2e admin user (admin@e2e.local)."
+seed_integration_users() {
+  log "Seeding integration users (admin@e2e.local + dev@local.test for pytest JWT flows)."
   docker exec -e PGPASSWORD=postgres "${POSTGRES_CONTAINER}" \
     psql -U postgres -d vectordb -v ON_ERROR_STOP=1 -c "
       INSERT INTO users (id, email, password_hash, name, role, created_at, email_verified, email_verified_at)
-      VALUES (
-        'e2e0ad00-0000-4000-8000-000000000001',
-        'admin@e2e.local',
-        '{noop}e2e',
-        'E2E Admin',
-        'ADMIN',
-        CURRENT_TIMESTAMP,
-        true,
-        CURRENT_TIMESTAMP
-      )
+      VALUES
+        (
+          'e2e0ad00-0000-4000-8000-000000000001',
+          'admin@e2e.local',
+          '{noop}e2e',
+          'E2E Admin',
+          'ADMIN',
+          CURRENT_TIMESTAMP,
+          true,
+          CURRENT_TIMESTAMP
+        ),
+        (
+          'e2e0ad00-0000-4000-8000-000000000002',
+          'dev@local.test',
+          '{noop}dev',
+          'Dev User',
+          'USER',
+          CURRENT_TIMESTAMP,
+          true,
+          CURRENT_TIMESTAMP
+        )
       ON CONFLICT (email) DO UPDATE SET
         password_hash = EXCLUDED.password_hash,
         name = EXCLUDED.name,
@@ -243,6 +275,8 @@ run_pytest_linux() {
     -e INTEGRATION_CLASSIFIER_URL="http://host.docker.internal:8000" \
     -e INTEGRATION_ADMIN_EMAIL="${INTEGRATION_ADMIN_EMAIL}" \
     -e INTEGRATION_ADMIN_PASSWORD="${INTEGRATION_ADMIN_PASSWORD}" \
+    -e INTEGRATION_LOGIN_EMAIL="${INTEGRATION_LOGIN_EMAIL}" \
+    -e INTEGRATION_LOGIN_PASSWORD="${INTEGRATION_LOGIN_PASSWORD}" \
     -e INTEGRATION_RAG_PRODUCT_BASE_PATH="/api/v5" \
     python:3.11-slim bash -lc \
       "pip install -r tests/integration/requirements.txt >/dev/null && python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py"
@@ -316,12 +350,12 @@ start_postgres
 ensure_network
 prepare_postgres
 start_backend
-start_classifier
 wait_for_backend
 if [[ "${INTEGRATION_REQUIRE_CLASSIFIER}" = "1" ]]; then
+  start_classifier
   wait_for_classifier
 fi
-seed_admin
+seed_integration_users
 log "Pytest log: ${PYTEST_LOG_PATH}"
 host_gateway="$(resolve_host_gateway_ip)"
 log "Pytest container host mapping: host.docker.internal -> ${host_gateway}"
@@ -340,6 +374,8 @@ docker run --rm \
   -e INTEGRATION_CLASSIFIER_URL="http://host.docker.internal:8000" \
   -e INTEGRATION_ADMIN_EMAIL="${INTEGRATION_ADMIN_EMAIL}" \
   -e INTEGRATION_ADMIN_PASSWORD="${INTEGRATION_ADMIN_PASSWORD}" \
+  -e INTEGRATION_LOGIN_EMAIL="${INTEGRATION_LOGIN_EMAIL}" \
+  -e INTEGRATION_LOGIN_PASSWORD="${INTEGRATION_LOGIN_PASSWORD}" \
   -e INTEGRATION_RAG_PRODUCT_BASE_PATH="/api/v5" \
   python:3.11-slim bash -lc \
     "pip install -r tests/integration/requirements.txt >/dev/null && python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py" \

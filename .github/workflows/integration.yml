@@ -1,11 +1,10 @@
 # Stack HTTP integration tests (pytest + httpx). No browser; no observability stack by default.
-# Classifier-specific cases skip if classifier-service is not reachable (this job starts backend only).
+# Authoritative PR gate: ci.yml → reusable-ci-core.yml (integration + integration_classifier_required).
 name: Stack integration (pytest)
 
 on:
-  # Manual tool only: the authoritative CI DAG (ci.yml → reusable-ci-core.yml)
-  # already runs stack integration on PRs and on push to main/master.
   workflow_dispatch: {}
+
 concurrency:
   group: integration-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -19,7 +18,6 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        # Do NOT use `env.*` in `services.<id>.image` (context may be unsupported).
         image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
@@ -33,14 +31,12 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     env:
-      # Path A: Postgres from GHA service (not Python Testcontainers). Pytest stays HTTP-only.
       INTEGRATION_USE_TESTCONTAINERS: "0"
       SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       RAG_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
       RAG_JWT_SECRET: e2e-ci-jwt-secret-must-be-at-least-32-chars
-      # Same DB bootstrap as ci.yml backend (prepare-postgres-for-rag-tests action).
       RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
       INTEGRATION_CHECK_OBS: "0"
@@ -48,6 +44,10 @@ jobs:
       INTEGRATION_CLASSIFIER_URL: http://127.0.0.1:8000
       INTEGRATION_ADMIN_EMAIL: admin@e2e.local
       INTEGRATION_ADMIN_PASSWORD: e2e
+      INTEGRATION_LOGIN_EMAIL: dev@local.test
+      INTEGRATION_LOGIN_PASSWORD: dev
+      INTEGRATION_STRICT: "1"
+      INTEGRATION_FAIL_ON_UNREACHABLE: "1"
       RAG_HEALTH_OLLAMA_ENABLED: "false"
       RAG_HEALTH_CLASSIFIER_ENABLED: "false"
 
@@ -72,35 +72,20 @@ jobs:
             > /tmp/spring-integration.log 2>&1 &
           echo $! > /tmp/spring-integration.pid
 
-      - name: Wait for Actuator health
-        run: |
-          for i in $(seq 1 90); do
-            if curl -fsS http://127.0.0.1:9000/actuator/health >/dev/null 2>&1; then
-              echo "Backend healthy"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "--- spring log (tail) ---"
-          tail -n 200 /tmp/spring-integration.log || true
-          exit 1
+      - name: Wait for backend readiness (fail-fast on Flyway errors)
+        run: bash ./.github/scripts/e2e-wait-readiness.sh /tmp/spring-integration.log
+        env:
+          E2E_READINESS_MAX_ATTEMPTS: "45"
 
-      - name: Seed e2e admin user (for pytest)
+      - name: Seed e2e users (for pytest)
         shell: bash
         run: |
           set -euo pipefail
           PGPASSWORD=postgres psql -h localhost -U postgres -d vectordb -v ON_ERROR_STOP=1 -c "
             INSERT INTO users (id, email, password_hash, name, role, created_at, email_verified, email_verified_at)
-            VALUES (
-              'e2e0ad00-0000-4000-8000-000000000001',
-              'admin@e2e.local',
-              '{noop}e2e',
-              'E2E Admin',
-              'ADMIN',
-              CURRENT_TIMESTAMP,
-              true,
-              CURRENT_TIMESTAMP
-            )
+            VALUES
+              ('e2e0ad00-0000-4000-8000-000000000001', 'admin@e2e.local', '{noop}e2e', 'E2E Admin', 'ADMIN', CURRENT_TIMESTAMP, true, CURRENT_TIMESTAMP),
+              ('e2e0ad00-0000-4000-8000-000000000002', 'dev@local.test', '{noop}dev', 'Dev User', 'USER', CURRENT_TIMESTAMP, true, CURRENT_TIMESTAMP)
             ON CONFLICT (email) DO UPDATE SET
               password_hash = EXCLUDED.password_hash,
               name = EXCLUDED.name,
@@ -117,18 +102,26 @@ jobs:
         run: pip install -r tests/integration/requirements.txt
 
       - name: pytest (stack integration)
-        # HTTP-only: Path B (test_tc_postgres_smoke) is local Docker optional; see tests/integration/README.md
-        run: python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py
+        run: |
+          set -o pipefail
+          python -m pytest tests/integration -v -rs --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py \
+            2>&1 | tee /tmp/pytest-integration.log
+
+      - name: Integration skip summary
+        if: always()
+        run: bash ./.github/scripts/integration-pytest-summary.sh /tmp/pytest-integration.log
 
       - name: Stop Spring Boot
         if: always()
         run: |
           if [ -f /tmp/spring-integration.pid ]; then kill "$(cat /tmp/spring-integration.pid)" 2>/dev/null || true; fi
 
-      - name: Upload Spring log on failure
+      - name: Upload artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v6
         with:
           name: spring-integration-log
-          path: /tmp/spring-integration.log
+          path: |
+            /tmp/spring-integration.log
+            /tmp/pytest-integration.log
           retention-days: 7
