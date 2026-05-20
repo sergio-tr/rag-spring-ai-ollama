@@ -85,7 +85,7 @@ public abstract class AbstractMinuteEvaluationService extends AbstractEvaluation
     }
 
     /**
-     * Ingests a PDF via {@link DocumentService} (same path as classpath loading; avoids HTTP loopback to legacy routes).
+     * Ingests a PDF via {@link DocumentService} (same path as classpath loading; no HTTP ingest loopback).
      */
     protected void sendFileToEndpoint(File file) throws IOException {
         MultipartFile multipartFile = fileToMultipartFile(file);
