@@ -15,10 +15,24 @@ test.describe("Removed routes API @api @guard", () => {
 
   test("unprefixed /api/auth and /api/admin mirrors on backend are not served", async ({ request }) => {
     const base = apiBaseUrl();
-    const auth = await request.get(`${base}/api/auth/me`, { headers: { Accept: "application/json" } });
-    expect(auth.status()).toBe(404);
+    const headers = { Accept: "application/json" };
 
-    const admin = await request.get(`${base}/api/admin/health`, { headers: { Accept: "application/json" } });
-    expect(admin.status()).toBe(404);
+    const authMe = await request.get(`${base}/api/auth/me`, { headers });
+    expect(authMe.status()).toBe(404);
+
+    const authLogin = await request.post(`${base}/api/auth/login`, {
+      headers: { ...headers, "Content-Type": "application/json" },
+      data: { email: "nobody@example.com", password: "x" },
+    });
+    expect(authLogin.status()).toBe(404);
+
+    const adminHealth = await request.get(`${base}/api/admin/health`, { headers });
+    expect(adminHealth.status()).toBe(404);
+
+    const adminPull = await request.post(`${base}/api/admin/models/pull`, {
+      headers: { ...headers, "Content-Type": "application/json" },
+      data: { model: "llama3" },
+    });
+    expect(adminPull.status()).toBe(404);
   });
 });
