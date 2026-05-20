@@ -1,8 +1,8 @@
 package com.uniovi.rag.security;
 
 import com.uniovi.rag.application.port.out.UserAccountPort;
-import com.uniovi.rag.application.usecase.auth.AuthService;
-import com.uniovi.rag.application.usecase.auth.OauthLoginService;
+import com.uniovi.rag.application.service.auth.AuthService;
+import com.uniovi.rag.application.service.auth.OauthLoginService;
 import com.uniovi.rag.configuration.SecurityConfiguration;
 import com.uniovi.rag.domain.UserRole;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
@@ -56,7 +56,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @TestPropertySource(properties = {
         "rag.jwt.secret=test-secret-key-for-jwt-signing-must-be-long-enough-32",
-        "rag.api.product-base-path=/api/v5"
+        "rag.api.product-base-path=/api/v5",
+        "spring.mvc.throw-exception-if-no-handler-found=true",
+        "spring.web.resources.add-mappings=false"
 })
 class AuthEndpointSecurityWebMvcTest {
 
@@ -124,14 +126,6 @@ class AuthEndpointSecurityWebMvcTest {
         when(oauthLoginService.googleStartUrl(any())).thenReturn("https://accounts.google.com/o/oauth2/v2/auth");
 
         mockMvc.perform(get("/api/v5/auth/oauth/google/start"))
-                .andExpect(status().is3xxRedirection());
-    }
-
-    @Test
-    void legacy_oauthStart_withoutToken_isPublicAndRedirects() throws Exception {
-        when(oauthLoginService.googleStartUrl(any())).thenReturn("https://accounts.google.com/o/oauth2/v2/auth");
-
-        mockMvc.perform(get("/api/auth/oauth/google/start"))
                 .andExpect(status().is3xxRedirection());
     }
 
@@ -218,5 +212,20 @@ class AuthEndpointSecurityWebMvcTest {
     void productEndpoint_withoutToken_stillRequiresJwt() throws Exception {
         mockMvc.perform(get("/api/v5/projects").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void unprefixedAuthMirror_me_returnsNotFound() throws Exception {
+        mockMvc.perform(get("/api/auth/me").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void unprefixedAuthMirror_login_returnsNotFound() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"u@test\",\"password\":\"secret\"}")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound());
     }
 }
