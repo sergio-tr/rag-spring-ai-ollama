@@ -21,7 +21,7 @@
         <spring-ai.version>1.0.0-M6</spring-ai.version>
         <logback.version>1.5.32</logback.version>
         <json-smart.version>2.6.0</json-smart.version>
-        <xmlunit.version>2.10.4</xmlunit.version>
+        <xmlunit.version>2.11.0</xmlunit.version>
         <commons-lang3.version>3.19.0</commons-lang3.version>
         <flyway.version>10.21.0</flyway.version>
     </properties>
