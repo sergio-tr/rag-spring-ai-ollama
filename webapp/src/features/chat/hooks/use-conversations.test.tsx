@@ -60,7 +60,7 @@ describe("use-conversations", () => {
       updatedAt: "",
     });
     const { result } = renderHook(() => useCreateConversation("p1"), { wrapper: makeWrapper(qc) });
-    await result.current.mutateAsync();
+    await result.current.mutateAsync(undefined);
     expect(apiFetch).toHaveBeenCalled();
   });
 
@@ -78,7 +78,7 @@ describe("use-conversations", () => {
     expect(apiFetch).toHaveBeenCalled();
   });
 
-  it("usePatchConversation applies optimistic documentFilter then replaces with server response", async () => {
+  it("usePatchConversation waits for server response before updating documentFilter", async () => {
     const rows: ConversationDto[] = [
       {
         id: "c1",
@@ -86,6 +86,7 @@ describe("use-conversations", () => {
         updatedAt: "",
         presetId: null,
         documentFilter: [],
+        runtimeOverride: {},
       },
     ];
     qc.setQueryData(["conversations", "p1"], rows);
@@ -101,17 +102,18 @@ describe("use-conversations", () => {
       conversationId: "c1",
       body: { documentFilter: ["d1"] },
     });
-    await waitFor(() => {
-      expect(qc.getQueryData<ConversationDto[]>(["conversations", "p1"])?.[0].documentFilter).toEqual(["d1"]);
-    });
-    resolvePatch!({
+    await waitFor(() => expect(resolvePatch).toBeTypeOf("function"));
+    expect(qc.getQueryData<ConversationDto[]>(["conversations", "p1"])?.[0].documentFilter).toEqual([]);
+    resolvePatch({
       id: "c1",
       title: "T",
       updatedAt: "2026-02-02",
       presetId: null,
       documentFilter: ["d1"],
+      runtimeOverride: {},
     });
     await pending;
+    expect(qc.getQueryData<ConversationDto[]>(["conversations", "p1"])?.[0].documentFilter).toEqual(["d1"]);
     expect(qc.getQueryData<ConversationDto[]>(["conversations", "p1"])?.[0].updatedAt).toBe("2026-02-02");
   });
 
@@ -123,6 +125,7 @@ describe("use-conversations", () => {
         updatedAt: "",
         presetId: null,
         documentFilter: [],
+        runtimeOverride: {},
       },
     ];
     qc.setQueryData(["conversations", "p1"], structuredClone(rows));

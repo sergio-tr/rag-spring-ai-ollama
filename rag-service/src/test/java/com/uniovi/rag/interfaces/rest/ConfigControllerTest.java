@@ -6,7 +6,7 @@ import com.uniovi.rag.application.config.ConfigurationSchemaProvider;
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
-import com.uniovi.rag.service.config.UserProjectConfigurationService;
+import com.uniovi.rag.application.service.config.UserProjectConfigurationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;

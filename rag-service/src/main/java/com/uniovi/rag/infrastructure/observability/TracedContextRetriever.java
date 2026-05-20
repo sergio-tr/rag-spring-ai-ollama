@@ -1,6 +1,6 @@
 package com.uniovi.rag.infrastructure.observability;
 
-import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import org.json.JSONObject;
 import org.springframework.ai.document.Document;
 

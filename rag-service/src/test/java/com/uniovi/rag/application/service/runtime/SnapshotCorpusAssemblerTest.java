@@ -71,7 +71,7 @@ class SnapshotCorpusAssemblerTest {
         RagConfig cfg =
                 RagConfig.fromFeatureConfiguration(
                         new RagFeatureConfiguration(), 5, 0.5, "m", "e", "c", "SIMPLE");
-        RagExecutionContextHolder.set(RagExecutionContext.forLegacyPipeline(cfg, "t"));
+        RagExecutionContextHolder.set(RagExecutionContext.forUnscopedExecution(cfg, "t"));
         ExecutionContext ctx = ctxWithSnapshots(List.of(UUID.randomUUID()));
         assertThat(assembler.assembleFullCorpusText(ctx)).isEmpty();
     }
@@ -134,11 +134,12 @@ class SnapshotCorpusAssemblerTest {
                 RuntimeOperationKind.CHAT_MESSAGE,
                 resolved,
                 "sys",
-                new KnowledgeSnapshotSelection(ids, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
+                new KnowledgeSnapshotSelection(ids, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
                 Optional.empty(),
                 Optional.empty(),
                 "c",
                 List.of(),
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),

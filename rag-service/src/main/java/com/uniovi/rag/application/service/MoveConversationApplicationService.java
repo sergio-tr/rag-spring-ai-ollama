@@ -6,7 +6,7 @@ import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepositor
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;

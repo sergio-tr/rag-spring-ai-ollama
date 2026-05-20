@@ -6,9 +6,9 @@ import { expect, test } from "@playwright/test";
 test.describe("Public auth pages", () => {
   test("login page shows title and form @smoke", async ({ page }) => {
     await page.goto("/en/login", { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await expect(page.locator("h1")).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator("#email")).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator("#password")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: /^Sign in$/i })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByLabel(/^Email$/i)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByLabel(/^Password$/i)).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: /show password|hide password/i })).toBeVisible({
       timeout: 30_000,
     });
@@ -16,9 +16,9 @@ test.describe("Public auth pages", () => {
 
   test("register page shows title @smoke", async ({ page }) => {
     await page.goto("/en/register", { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await expect(page.locator("h1")).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator("#email")).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator("#password")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: /^Create account$/i })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByLabel(/^Email$/i)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByLabel(/^Password$/i)).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: /show password|hide password/i })).toBeVisible({
       timeout: 30_000,
     });

@@ -9,24 +9,22 @@ import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedQueryService;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
-import com.uniovi.rag.service.analyser.MinuteNERQueryAnalyser;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
-import com.uniovi.rag.service.expand.MinuteDocumentStructureExpander;
-import com.uniovi.rag.service.expand.QueryExpander;
-import com.uniovi.rag.service.guard.DateExistenceGuard;
-import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
-import com.uniovi.rag.service.guard.QueryDateExtractor;
+import com.uniovi.rag.application.service.runtime.query.analyser.MinuteNERQueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.expand.MinuteDocumentStructureExpander;
+import com.uniovi.rag.application.service.runtime.query.expand.QueryExpander;
+import com.uniovi.rag.application.service.runtime.query.guard.DateExistenceGuard;
+import com.uniovi.rag.application.service.runtime.query.guard.DefaultDateExistenceGuard;
+import com.uniovi.rag.application.service.runtime.query.guard.QueryDateExtractor;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
-import com.uniovi.rag.service.query.ProcessQueryService;
-import com.uniovi.rag.service.query.QueryService;
-import com.uniovi.rag.service.query.ResponseValidator;
-import com.uniovi.rag.service.query.SimpleProcessQueryService;
-import com.uniovi.rag.service.query.SimpleQueryService;
-import com.uniovi.rag.service.ranker.FaithfulnessRanker;
-import com.uniovi.rag.service.ranker.LLMAsJudgeRanker;
-import com.uniovi.rag.service.reasoning.ReasoningStrategy;
-import com.uniovi.rag.service.reasoning.SelectingReasoningStrategy;
-import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.execution.QueryExecutionService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.application.service.runtime.validation.ResponseValidator;
+import com.uniovi.rag.application.service.runtime.ranking.FaithfulnessRanker;
+import com.uniovi.rag.application.service.runtime.ranking.LLMAsJudgeRanker;
+import com.uniovi.rag.application.service.runtime.reasoning.ReasoningStrategy;
+import com.uniovi.rag.application.service.runtime.reasoning.SelectingReasoningStrategy;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.test.simple.SimpleTracer;
@@ -171,86 +169,32 @@ class RagQueryConfigurationTest {
     }
 
     @Test
-    void queryService_simpleImplementationBranch() {
+    void queryService_returnsOrchestratedRuntimeQueryExecutionService() {
         RagQueryConfiguration config = new RagQueryConfiguration();
-        RagImplementationProperties impl = new RagImplementationProperties();
-        impl.setQueryServiceImpl("simple");
-        QueryService qs =
+        QueryExecutionService qs =
                 config.queryService(
-                        mock(QueryExpander.class),
-                        mock(QueryAnalyser.class),
-                        mock(ContextRetriever.class),
                         mock(ChatClient.class),
                         mock(OllamaConnectivityChecker.class),
                         mock(ExecutionContextFactory.class),
                         mock(RagExecutionOrchestrator.class),
                         mock(RuntimeTracePersistenceService.class),
                         mock(KnowledgeDocumentRepository.class),
-                        impl,
                         null);
-        assertInstanceOf(SimpleQueryService.class, qs);
-    }
-
-    @Test
-    void queryService_simpleProcessImplementationBranch() {
-        RagQueryConfiguration config = new RagQueryConfiguration();
-        RagImplementationProperties impl = new RagImplementationProperties();
-        impl.setQueryServiceImpl("simple-process");
-        QueryService qs =
-                config.queryService(
-                        mock(QueryExpander.class),
-                        mock(QueryAnalyser.class),
-                        mock(ContextRetriever.class),
-                        mock(ChatClient.class),
-                        mock(OllamaConnectivityChecker.class),
-                        mock(ExecutionContextFactory.class),
-                        mock(RagExecutionOrchestrator.class),
-                        mock(RuntimeTracePersistenceService.class),
-                        mock(KnowledgeDocumentRepository.class),
-                        impl,
-                        null);
-        assertInstanceOf(SimpleProcessQueryService.class, qs);
-    }
-
-    @Test
-    void queryService_defaultProcessImplementationBranch() {
-        RagQueryConfiguration config = new RagQueryConfiguration();
-        RagImplementationProperties impl = new RagImplementationProperties();
-        impl.setQueryServiceImpl("process");
-        QueryService qs =
-                config.queryService(
-                        mock(QueryExpander.class),
-                        mock(QueryAnalyser.class),
-                        mock(ContextRetriever.class),
-                        mock(ChatClient.class),
-                        mock(OllamaConnectivityChecker.class),
-                        mock(ExecutionContextFactory.class),
-                        mock(RagExecutionOrchestrator.class),
-                        mock(RuntimeTracePersistenceService.class),
-                        mock(KnowledgeDocumentRepository.class),
-                        impl,
-                        null);
-        assertInstanceOf(ProcessQueryService.class, qs);
+        assertInstanceOf(RuntimeQueryExecutionService.class, qs);
     }
 
     @Test
     void queryService_withObservability_wrapsTracedQueryService() {
         RagQueryConfiguration config = new RagQueryConfiguration();
-        RagImplementationProperties impl = new RagImplementationProperties();
-        impl.setQueryServiceImpl("simple");
         ObservabilitySupport obs = new ObservabilitySupport(new SimpleTracer(), new SimpleMeterRegistry());
-        QueryService qs =
+        QueryExecutionService qs =
                 config.queryService(
-                        mock(QueryExpander.class),
-                        mock(QueryAnalyser.class),
-                        mock(ContextRetriever.class),
                         mock(ChatClient.class),
                         mock(OllamaConnectivityChecker.class),
                         mock(ExecutionContextFactory.class),
                         mock(RagExecutionOrchestrator.class),
                         mock(RuntimeTracePersistenceService.class),
                         mock(KnowledgeDocumentRepository.class),
-                        impl,
                         obs);
         assertInstanceOf(TracedQueryService.class, qs);
     }

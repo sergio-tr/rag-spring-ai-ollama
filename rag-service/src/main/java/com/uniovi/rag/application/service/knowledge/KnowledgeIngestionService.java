@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.knowledge;
 
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
+import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
@@ -8,15 +9,14 @@ import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntityFactory;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
-import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.knowledge.document.ProjectDocumentIngestionService;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
-import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -33,6 +33,8 @@ import java.util.UUID;
 public class KnowledgeIngestionService {
 
     private static final String DEFAULT_ORIGINAL_FILENAME = "upload";
+
+    private static final String MIME_APPLICATION_OCTET_STREAM = "application/octet-stream";
 
     private final KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
@@ -53,7 +55,67 @@ public class KnowledgeIngestionService {
         this.resolvedConfigSnapshotApplicationService = resolvedConfigSnapshotApplicationService;
     }
 
-    @Transactional
+    /**
+     * Synchronous PROJECT_SHARED ingest from bytes (same pipeline as HTTP upload). Caller handles deduplication.
+     */
+    public ProjectDocumentDto ingestProjectSharedDocumentSynchronouslyFromBytes(
+            UUID userId,
+            UUID projectId,
+            byte[] bytes,
+            String originalFilename,
+            String contentType) throws IOException {
+        ProjectEntity project = projectAccessService.requireOwnedProject(userId, projectId);
+        if (bytes == null || bytes.length == 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "empty_bytes");
+        }
+        String original =
+                originalFilename != null && !originalFilename.isBlank() ? originalFilename : DEFAULT_ORIGINAL_FILENAME;
+        String ct = contentType != null ? contentType : MIME_APPLICATION_OCTET_STREAM;
+
+        KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newIngesting(project, original);
+        row = knowledgeDocumentRepository.save(row);
+
+        Path temp = createPrivateTempFile("rag-lab-bootstrap-", original);
+        Files.write(temp, bytes);
+
+        ingestFromTempFile(userId, projectId, row.getId(), temp, original, ct);
+
+        KnowledgeDocumentEntity done = knowledgeDocumentRepository.findById(row.getId()).orElse(row);
+        return toDto(done);
+    }
+
+    /**
+     * Re-ingest an existing project document from fresh bytes (same document id). Used by Lab classpath bootstrap retries.
+     */
+    public ProjectDocumentDto reingestProjectSharedDocumentSynchronouslyFromBytes(
+            UUID userId,
+            UUID projectId,
+            UUID projectDocumentId,
+            byte[] bytes,
+            String originalFilename,
+            String contentType) throws IOException {
+        projectAccessService.requireOwnedProject(userId, projectId);
+        KnowledgeDocumentEntity row =
+                knowledgeDocumentRepository.findByIdAndProject_Id(projectDocumentId, projectId).orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "project_document"));
+        if (bytes == null || bytes.length == 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "empty_bytes");
+        }
+        String original =
+                originalFilename != null && !originalFilename.isBlank()
+                        ? originalFilename
+                        : (row.getFileName() != null ? row.getFileName() : DEFAULT_ORIGINAL_FILENAME);
+        String ct = contentType != null ? contentType : MIME_APPLICATION_OCTET_STREAM;
+
+        Path temp = createPrivateTempFile("rag-lab-bootstrap-retry-", original);
+        Files.write(temp, bytes);
+
+        ingestFromTempFile(userId, projectId, row.getId(), temp, original, ct);
+
+        KnowledgeDocumentEntity done = knowledgeDocumentRepository.findById(row.getId()).orElse(row);
+        return toDto(done);
+    }
+
     public void ingestFromTempFile(
             UUID userId,
             UUID projectId,
@@ -69,21 +131,67 @@ public class KnowledgeIngestionService {
                 row.getCorpusScope() == CorpusScope.CHAT_LOCAL && row.getConversation() != null
                         ? Optional.of(row.getConversation().getId())
                         : Optional.empty();
-        var snap =
-                resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshot(
-                        userId, projectId, conversationId);
-        knowledgePipelineOrchestrator.ingestFromTempFile(
-                projectId,
-                projectDocumentId,
-                tempFile,
-                originalFilename,
-                contentType,
-                snap.getId(),
-                snap.getConfigHash());
+        try {
+            var snap =
+                    resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshot(
+                            userId, projectId, conversationId);
+            knowledgePipelineOrchestrator.ingestFromTempFile(
+                    projectId,
+                    projectDocumentId,
+                    tempFile,
+                    originalFilename,
+                    contentType,
+                    snap.getId(),
+                    snap.getConfigHash());
+        } catch (Exception e) {
+            KnowledgeDocumentEntity rowErr = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+            if (rowErr != null) {
+                rowErr.setStatus(ProjectDocumentStatus.ERROR);
+                rowErr.setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                knowledgeDocumentRepository.save(rowErr);
+            }
+            throw e;
+        }
+    }
+
+    public void ingestFromStoredBinary(
+            UUID userId,
+            UUID projectId,
+            UUID projectDocumentId,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash) {
+        try {
+            knowledgePipelineOrchestrator.ingestFromStoredBinary(
+                    projectId, projectDocumentId, resolvedConfigSnapshotId, resolvedConfigHash);
+        } catch (Exception e) {
+            KnowledgeDocumentEntity rowErr = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+            if (rowErr != null) {
+                rowErr.setStatus(ProjectDocumentStatus.ERROR);
+                rowErr.setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                knowledgeDocumentRepository.save(rowErr);
+            }
+            throw e;
+        }
     }
 
     public void deleteVectorChunksForDocument(UUID projectDocumentId) {
         knowledgePipelineOrchestrator.deleteVectorChunksForDocument(projectDocumentId);
+    }
+
+    public void retryIngestFromStoredBinary(UUID userId, UUID projectId, UUID projectDocumentId) {
+        KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+        if (row == null) {
+            return;
+        }
+        Optional<UUID> conversationId =
+                row.getCorpusScope() == CorpusScope.CHAT_LOCAL && row.getConversation() != null
+                        ? Optional.of(row.getConversation().getId())
+                        : Optional.empty();
+        var snap =
+                resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshot(
+                        userId, projectId, conversationId);
+        projectDocumentIngestionService.ingestFromStoredBinary(
+                userId, projectId, projectDocumentId, snap.getId(), snap.getConfigHash());
     }
 
     public ProjectDocumentDto uploadProjectDocument(UUID userId, UUID projectId, MultipartFile file) throws IOException {

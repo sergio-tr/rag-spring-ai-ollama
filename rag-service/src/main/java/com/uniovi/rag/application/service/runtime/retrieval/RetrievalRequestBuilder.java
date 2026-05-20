@@ -69,6 +69,7 @@ public class RetrievalRequestBuilder {
                 ctx.projectId(),
                 conv,
                 docFilter,
-                allDocs);
+                allDocs,
+                ctx.knowledgeSnapshotSelection().denseRetrievalEmbeddingModelId());
     }
 }

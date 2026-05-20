@@ -18,9 +18,77 @@ docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env
 
 With observability, add `-f compose.obs.yml`, **`--profile observability`**, and `--env-file ../observability/.env` (see `observability/README.md`).
 
-**Ollama (required for RAG):** set **`OLLAMA_BASE_URL`** and **`SPRING_AI_OLLAMA_BASE_URL`** in **`rag-service/.env`** to wherever the HTTP API listens (host: `http://host.docker.internal:11434`, in-stack service: `http://ollama:11434`, another machine: `http://192.168.x.x:11434`). Compose maps both into **`backend`** and **`backend-dev`**; you do **not** need extra compose files for “remote” vs “local”. If Ollama is unreachable, logs show `ResourceAccessException` on `/api/embed` and `/api/chat`. To run Ollama **in Docker** with NVIDIA GPU, use **`./docker/scripts/up.sh … --gpu`** (or **`--ollama`**) so **`--profile ollama`** starts the **`ollama`** service and point **`OLLAMA_BASE_URL=http://ollama:11434`**. To use **GPU on the host** (or any Ollama outside that container) while still passing **`--gpu`** for other services, add **`--ollama-remote`**: that **skips** the local **`ollama`** container profile but leaves the URL entirely to **`rag-service/.env`**. Classifier GPU uses **`compose.gpu.yml`** when NVIDIA is available. Pull models via `docker exec -it ollama ollama pull <model>` when Ollama runs in Docker.
+## Official demo start (health + metrics + traces)
 
-**Health checks (strict):** the backend container probes **`/actuator/health/readiness`** (HTTP **503** until ready). That group includes PostgreSQL, disk space, **Ollama** (`GET /api/tags` and both configured models present), and the **classifier** (`GET /health` with `model: loaded`). The classifier service only becomes healthy when its default model is loaded. Tune or relax checks via `rag.health.*` in `rag-service` (see `application.properties`).
+The recommended demo mode is **host-Ollama**: run Ollama on the host (or another reachable machine), keep Docker for Postgres, `rag-service`, `classifier-service`, `webapp`, `reverse-proxy`, and optional observability. In `rag-service/.env`, keep or set:
+
+```properties
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+SPRING_AI_OLLAMA_BASE_URL=http://host.docker.internal:11434
+```
+
+Prepare or refresh local env files once, then validate and start non-interactively. This is the official local/demo command set:
+
+```bash
+./docker/scripts/create-env-all.sh
+./docker/scripts/docker-compose.sh config prod --obs --no-env-prompt
+./docker/scripts/up.sh prod --obs --no-env-prompt
+```
+
+`prod --obs` exposes the observability UIs on localhost for evidence capture:
+
+- Prometheus: `http://127.0.0.1:${PROMETHEUS_PORT:-9090}`
+- Grafana: `http://127.0.0.1:${GRAFANA_PORT:-3000}`
+- Jaeger: `http://127.0.0.1:${JAEGER_UI_PORT:-16686}`
+
+For VM/private deployments where those UIs must not publish host ports, add `--obs-private`; that merges `compose.prod-obs.yml` and keeps Jaeger/Prometheus/Grafana internal.
+
+Optional local smoke after the stack is up:
+
+```bash
+./docker/scripts/local-demo-smoke.sh --obs --skip-up
+```
+
+For an end-to-end authenticated model-registry check, export demo credentials from your local seeded/test environment before running the smoke script:
+
+```bash
+DEMO_SMOKE_EMAIL=<local-user-email> DEMO_SMOKE_PASSWORD=<local-user-password> \
+  ./docker/scripts/local-demo-smoke.sh --obs --skip-up
+```
+
+Do not put real credentials in docs or committed env files.
+
+- **CI-equivalent Compose** (explicit files; same services as [`observability-integration.yml`](../.github/workflows/observability-integration.yml)):
+
+```bash
+./docker/scripts/create-env-all.sh --force
+cd docker
+docker compose -f docker-compose.yml -f compose.obs.yml \
+  --profile observability \
+  --env-file ../db/.env \
+  --env-file ../classifier-service/.env \
+  --env-file ../rag-service/.env \
+  --env-file ../webapp/.env \
+  --env-file ../observability/.env \
+  up -d --build
+```
+
+The product **continues to work** if you omit `compose.obs.yml` and `--profile observability`: no collector, no Jaeger/Grafana/Prometheus; backend uses profile `docker` only (no OTLP push to `localhost` inside the container). See `compose.obs.yml` and `rag-service` `application-infra.properties`.
+
+**Ollama (required for RAG):** set **`OLLAMA_BASE_URL`** and **`SPRING_AI_OLLAMA_BASE_URL`** in **`rag-service/.env`** to wherever the HTTP API listens (host: `http://host.docker.internal:11434`, in-stack service: `http://ollama:11434`, another machine: `http://192.168.x.x:11434`). Compose maps both into **`backend`** and **`backend-dev`**. If Ollama is unreachable, logs show `ResourceAccessException` on `/api/embed` and `/api/chat`; Docker liveness can still be green because model readiness is checked by Actuator readiness and product operations, not by the container healthcheck.
+
+**Optional in-stack Ollama:** requires NVIDIA Container Toolkit. Set `OLLAMA_BASE_URL=http://ollama:11434` and `SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434` in `rag-service/.env`, then run:
+
+```bash
+./docker/scripts/docker-compose.sh config prod --obs --ollama --no-env-prompt
+./docker/scripts/up.sh prod --obs --ollama --no-env-prompt
+```
+
+`--gpu` and `--ollama` are aliases for the in-stack Ollama path. If NVIDIA runtime is unavailable, the wrapper warns and does **not** activate the `ollama` profile. To use GPU on the host (or any Ollama outside the Compose stack) while still passing `--gpu` for other services, add `--ollama-remote`; that skips the local `ollama` profile and leaves the URL entirely to `rag-service/.env`. **Classifier GPU** requires explicit `--classifier-gpu` (merges `compose.gpu.yml`); the default demo stack uses CPU classifier even when an NVIDIA runtime is detected. Pull models via `ollama pull <model>` on the host, or `docker exec -it ollama ollama pull <model>` when Ollama runs in Docker.
+
+**Prod-local host ports:** `compose.prod-host-ports.yml` publishes backend `9000` and classifier `8000` for integration/API smoke while the browser entry remains reverse-proxy `80`.
+
+**Docker health checks:** `backend` container health uses `/actuator/health/liveness` so the stack can start before host Ollama models are ready; use `/actuator/health/readiness` and `local-demo-smoke.sh` for model readiness. `classifier-service` probes `/health` via curl. Use `/actuator/prometheus`, model-registry checks, and a real chat/LAB request for demo evidence.
 
 ## Environment files (`.env`)
 
@@ -155,28 +223,19 @@ docker compose \
 
 ### Base + Ollama (GPU, in Docker)
 
-Adds **`ollama`** built from `ollama/` with **NVIDIA GPU** (NVIDIA Container Toolkit required). Sets `SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`. The backend pulls missing models on startup (`rag.ollama.auto-pull-enabled`, default `true`); first start can take several minutes.
+Optional path for machines with **NVIDIA Container Toolkit**. Adds **`ollama`** built from `ollama/` with **NVIDIA GPU**. Before using this path, set `OLLAMA_BASE_URL=http://ollama:11434` and `SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434` in `rag-service/.env`. The backend may pull missing models on startup (`rag.ollama.auto-pull-enabled`, default `true`); first start can take several minutes.
 
 Example:
 
 ```bash
-cd docker
-docker compose \
-  -f docker-compose.yml \
-  -f compose.gpu.yml \
-  --profile ollama \
-  --env-file ../db/.env \
-  --env-file ../rag-service/.env \
-  --env-file ../classifier-service/.env \
-  --env-file ../webapp/.env \
-  --env-file ../ollama/.env \
-  up -d
+./docker/scripts/docker-compose.sh config prod --ollama --no-env-prompt
+./docker/scripts/up.sh prod --ollama --no-env-prompt
 ```
 
 ### Prod-local (hardening + reverse proxy)
 
 Includes: `reverse-proxy` (HTTP/HTTPS) and `compose.prod.yml` so internal services do not publish host ports.
-By default it also includes internal observability (no Jaeger/Prometheus/Grafana/OTEL host ports).
+Observability is opt-in with `--obs`; plain `prod` does not start Jaeger/Prometheus/Grafana/OTEL.
 
 Reverse-proxy defaults in this branch:
 
@@ -184,22 +243,48 @@ Reverse-proxy defaults in this branch:
 - App/static routes: `/` and `/_next/**` routed to webapp
 - API error contract for gateway failures: JSON body (not default HTML) on API locations
 - Upload/body defaults: `API_CLIENT_MAX_BODY_SIZE=50m` (keep aligned with Spring multipart limits)
-- HTTPS redirect: controlled with `REVERSE_PROXY_ENFORCE_HTTPS` (`1` in prod-like, optional `0` in dev debug)
+- HTTPS redirect: controlled with `REVERSE_PROXY_ENFORCE_HTTPS` (`0` by default for local/demo smoke evidence; set `1` when TLS redirect is required)
 
 Start / stop:
 
 ```bash
-./docker/scripts/up.sh prod
+./docker/scripts/docker-compose.sh config prod --no-env-prompt
+./docker/scripts/up.sh prod --no-env-prompt
 ./docker/scripts/build.sh prod   # optional: build images with same -f chain as up
-./docker/scripts/down.sh         # o: ./docker/scripts/down.sh prod [--all] ...
-# Dev (incl. backend-dev): ./docker/scripts/down.sh dev [--all|...] — mismos flags que up dev
+./docker/scripts/down.sh         # or: ./docker/scripts/down.sh prod [--all] ...
+# Dev (incl. backend-dev): ./docker/scripts/down.sh dev [--all|...] with the same flags as up dev
 ```
 
 Options:
 
-- Use `./docker/scripts/up.sh prod --obs` to include `compose.obs.yml` and **`--profile observability`** (OTEL, Jaeger, Prometheus, Grafana).
-- `--gpu` or `--ollama`: adds **`--profile ollama`** (requires `ollama/.env` and NVIDIA GPU / Container Toolkit)
+- Use `./docker/scripts/up.sh prod --obs --no-env-prompt` to include `compose.obs.yml` and **`--profile observability`** (OTEL, Jaeger, Prometheus, Grafana).
+- Use `./docker/scripts/up.sh prod --obs --obs-private --no-env-prompt` when you need observability but do not want Jaeger/Prometheus/Grafana published on host ports.
+- `--gpu` or `--ollama`: adds **`--profile ollama`** only when the NVIDIA runtime is available (requires `ollama/.env` and NVIDIA Container Toolkit).
 - `--volumes` (only `down.sh`): also remove named volumes
+
+## Demo evidence capture
+
+Use the official local/demo stack above, then capture evidence without committing secrets:
+
+```bash
+mkdir -p .cursor/context/evidence/docker-observability
+docker ps > .cursor/context/evidence/docker-observability/docker-ps.txt
+docker compose -f docker/docker-compose.yml -f docker/compose.obs.yml -f docker/compose.prod.yml \
+  --profile observability \
+  --env-file db/.env \
+  --env-file classifier-service/.env \
+  --env-file rag-service/.env \
+  --env-file webapp/.env \
+  --env-file observability/.env \
+  logs --no-color backend > .cursor/context/evidence/docker-observability/backend.log
+curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/health > .cursor/context/evidence/docker-observability/backend-health.json
+curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/prometheus > .cursor/context/evidence/docker-observability/backend-prometheus.txt
+curl -sf http://127.0.0.1:${PROMETHEUS_PORT:-9090}/-/healthy > .cursor/context/evidence/docker-observability/prometheus-health.txt
+curl -sf http://127.0.0.1:${GRAFANA_PORT:-3000}/api/health > .cursor/context/evidence/docker-observability/grafana-health.json
+curl -sf http://127.0.0.1:${JAEGER_UI_PORT:-16686}/ > .cursor/context/evidence/docker-observability/jaeger-root.html
+```
+
+For screenshots, open Grafana and Jaeger at the URLs printed by `up.sh prod --obs`. Generate at least one Chat or Lab request first, then capture the Grafana dashboard and the Jaeger trace detail. Record the trace ID shown in the UI or in backend logs. Do not store real passwords, JWTs, cookies, or OAuth secrets in evidence files.
 
 ## Deployment runbook
 

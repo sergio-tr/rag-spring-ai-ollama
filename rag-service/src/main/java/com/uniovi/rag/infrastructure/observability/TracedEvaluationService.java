@@ -1,10 +1,18 @@
 package com.uniovi.rag.infrastructure.observability;
 
+import com.uniovi.rag.application.result.evaluation.EvaluationSummary;
+import com.uniovi.rag.application.result.evaluation.JudgeSummarizableRow;
+import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
+import com.uniovi.rag.application.result.evaluation.RagPresetEvaluationBatchResult;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
-import com.uniovi.rag.service.evaluation.EvaluationService;
+import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
+import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
+import com.uniovi.rag.application.service.evaluation.EvaluationService;
 
+import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
  * Decorator that adds tracing and metrics to any {@link EvaluationService}.
@@ -33,40 +41,37 @@ public final class TracedEvaluationService implements EvaluationService {
     }
 
     @Override
-    public Map<String, Object> evaluate() {
-        observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "evaluate");
-        return observability.recordTimer("rag.evaluation.evaluate", () ->
-                observability.runWithSpan(
-                        // Domain convention: evaluation execution
-                        SPAN_EVALUATION_RUN,
-                        Map.of(),
-                        SPAN_RESULT_KEY,
-                        delegate::evaluate));
-    }
-
-    @Override
-    public Map<String, Object> evaluateWithConfiguration(
+    public LlmJudgeEvaluationBatchResult evaluateWithConfigurationForLlmReaderQuestions(
             RagFeatureConfiguration customConfig,
-            RagImplementationProperties implementationProperties) {
-        observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "evaluateWithConfiguration");
-        String configLabel = customConfig != null ? "custom" : "null";
-        return observability.recordTimer("rag.evaluation.evaluateWithConfiguration", () ->
+            RagImplementationProperties implementationProperties,
+            List<LlmReaderQuestion> questions,
+            BiConsumer<Integer, Integer> itemProgress) {
+        observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "evaluateWithConfigurationForLlmReaderQuestions");
+        return observability.recordTimer("rag.evaluation.evaluateTypedLlm", () ->
                 observability.runWithSpan(
                         SPAN_EVALUATION_RUN,
-                        Map.of("rag.evaluation.id", configLabel),
+                        Map.of(TAG_OPERATION, "typed_llm"),
                         SPAN_RESULT_KEY,
-                        () -> delegate.evaluateWithConfiguration(customConfig, implementationProperties)));
+                        () ->
+                                delegate.evaluateWithConfigurationForLlmReaderQuestions(
+                                        customConfig, implementationProperties, questions, itemProgress)));
     }
 
     @Override
-    public Map<String, Map<String, Object>> evaluateAllConfigurations() {
-        observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "evaluateAllConfigurations");
-        return observability.recordTimer("rag.evaluation.evaluateAllConfigurations", () ->
+    public RagPresetEvaluationBatchResult evaluateWithConfigurationForRagPresetQuestions(
+            RagFeatureConfiguration customConfig,
+            RagImplementationProperties implementationProperties,
+            List<RagPresetQuestion> questions,
+            BiConsumer<Integer, Integer> itemProgress) {
+        observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "evaluateWithConfigurationForRagPresetQuestions");
+        return observability.recordTimer("rag.evaluation.evaluateTypedRag", () ->
                 observability.runWithSpan(
                         SPAN_EVALUATION_RUN,
-                        Map.of("rag.evaluation.id", "all"),
+                        Map.of(TAG_OPERATION, "typed_rag_preset"),
                         SPAN_RESULT_KEY,
-                        delegate::evaluateAllConfigurations));
+                        () ->
+                                delegate.evaluateWithConfigurationForRagPresetQuestions(
+                                        customConfig, implementationProperties, questions, itemProgress)));
     }
 
     @Override
@@ -80,14 +85,23 @@ public final class TracedEvaluationService implements EvaluationService {
     }
 
     @Override
-    public Map<String, String> getQuestionsAndAnswers() {
-        observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "getQuestionsAndAnswers");
-        return observability.runWithSpan(
-                SPAN_EVALUATION_RUN, Map.of(), SPAN_RESULT_KEY, delegate::getQuestionsAndAnswers);
+    public boolean isEvaluationDataLoaded() {
+        return delegate.isEvaluationDataLoaded();
     }
 
     @Override
-    public boolean isEvaluationDataLoaded() {
-        return delegate.isEvaluationDataLoaded();
+    public String judgeQaAnswer(String question, String goldAnswer, String generatedAnswer) {
+        observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "judgeQaAnswer");
+        return observability.recordTimer(
+                "rag.evaluation.judgeQaAnswer",
+                () -> delegate.judgeQaAnswer(question, goldAnswer, generatedAnswer));
+    }
+
+    @Override
+    public EvaluationSummary summarizeJudgeResults(List<? extends JudgeSummarizableRow> resultsForPrompt) {
+        observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "summarizeJudgeResults");
+        return observability.recordTimer(
+                "rag.evaluation.summarizeJudgeResults",
+                () -> delegate.summarizeJudgeResults(resultsForPrompt));
     }
 }

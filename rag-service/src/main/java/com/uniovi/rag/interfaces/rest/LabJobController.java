@@ -1,9 +1,11 @@
 package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.application.service.ChatMessageApplicationService;
+import com.uniovi.rag.application.service.evaluation.LabJobLifecycleService;
 import com.uniovi.rag.interfaces.rest.dto.AsyncTaskStatusDto;
+import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.async.AsyncTaskService;
+import com.uniovi.rag.application.service.async.AsyncTaskService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -16,10 +18,13 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 /**
  * Poll or subscribe (SSE) to background lab/admin task status without blocking the browser.
@@ -32,15 +37,23 @@ public class LabJobController {
 
     private final AsyncTaskService asyncTaskService;
     private final ChatMessageApplicationService chatMessageApplicationService;
+    private final LabJobLifecycleService labJobLifecycleService;
     private final ScheduledExecutorService labJobSseExecutor;
 
     public LabJobController(
             AsyncTaskService asyncTaskService,
             ChatMessageApplicationService chatMessageApplicationService,
+            LabJobLifecycleService labJobLifecycleService,
             @Qualifier("labJobSseExecutor") ScheduledExecutorService labJobSseExecutor) {
         this.asyncTaskService = asyncTaskService;
         this.chatMessageApplicationService = chatMessageApplicationService;
+        this.labJobLifecycleService = labJobLifecycleService;
         this.labJobSseExecutor = labJobSseExecutor;
+    }
+
+    @GetMapping("/active")
+    public List<ActiveLabJobDto> active(@AuthenticationPrincipal RagPrincipal principal) {
+        return labJobLifecycleService.listActiveJobs(principal.userId());
     }
 
     @GetMapping("/{taskId}")
@@ -52,7 +65,15 @@ public class LabJobController {
     @PostMapping("/{taskId}/cancel")
     public ResponseEntity<Void> cancel(
             @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID taskId) {
-        chatMessageApplicationService.cancelChatTask(principal.userId(), taskId);
+        try {
+            labJobLifecycleService.cancelEvaluationJob(principal.userId(), taskId);
+        } catch (ResponseStatusException ex) {
+            if (ex.getStatusCode().value() != HttpStatus.NOT_FOUND.value()) {
+                throw ex;
+            }
+            // Fallback: chat job cancellation (Lab UI also uses /lab/jobs/* for chat tasks).
+            chatMessageApplicationService.cancelChatTask(principal.userId(), taskId);
+        }
         return ResponseEntity.noContent().build();
     }
 

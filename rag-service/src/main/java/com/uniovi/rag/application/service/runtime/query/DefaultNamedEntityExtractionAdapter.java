@@ -3,7 +3,7 @@ package com.uniovi.rag.application.service.runtime.query;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.stereotype.Service;
@@ -11,6 +11,8 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class DefaultNamedEntityExtractionAdapter implements NamedEntityExtractionAdapter {
@@ -29,13 +31,13 @@ public class DefaultNamedEntityExtractionAdapter implements NamedEntityExtractio
         }
         try {
             JSONObject json = analyser.analyse(normalizedText);
-            return map(json);
+            return map(json, normalizedText);
         } catch (Exception e) {
             return EntityExtractionResult.emptyWithNote("FALLBACK: " + safeMsg(e));
         }
     }
 
-    private static EntityExtractionResult map(JSONObject json) {
+    private static EntityExtractionResult map(JSONObject json, String normalizedText) {
         if (json == null) {
             return EntityExtractionResult.emptyWithNote("FALLBACK: null_ner_json");
         }
@@ -46,7 +48,7 @@ public class DefaultNamedEntityExtractionAdapter implements NamedEntityExtractio
         people.addAll(readArray(json, "president"));
         people.addAll(readArray(json, "secretary"));
 
-        List<String> dates = readArray(json, "date");
+        List<String> dates = normalizeDates(readArray(json, "date"), normalizedText);
         List<String> locations = readArray(json, "place");
         List<String> topics = readArray(json, "topics");
         List<String> organizations = readArray(json, "mentionedEntities");
@@ -65,6 +67,63 @@ public class DefaultNamedEntityExtractionAdapter implements NamedEntityExtractio
                 answerTypeHint,
                 comparisonTypeHint,
                 List.of());
+    }
+
+    /**
+     * The upstream analyser sometimes returns low-signal month-only tokens (e.g. "february") for Spanish queries.
+     * We ensure date-bearing queries keep the full temporal signal by extracting explicit date strings from the
+     * input text and preferring them over month-only outputs.
+     */
+    private static List<String> normalizeDates(List<String> analyserDates, String normalizedText) {
+        List<String> extracted = extractExplicitDatesFromText(normalizedText);
+        if (!extracted.isEmpty()) {
+            return extracted;
+        }
+        // Otherwise, keep analyser output but drop obvious month-only tokens (which cause QU rewrite validation noise).
+        if (analyserDates == null || analyserDates.isEmpty()) {
+            return List.of();
+        }
+        return analyserDates.stream()
+                .filter(s -> s != null && !s.isBlank())
+                .map(String::trim)
+                .filter(s -> !looksLikeMonthOnlyToken(s))
+                .distinct()
+                .toList();
+    }
+
+    private static boolean looksLikeMonthOnlyToken(String raw) {
+        if (raw == null) {
+            return false;
+        }
+        String s = raw.trim().toLowerCase();
+        return switch (s) {
+            case "january", "february", "march", "april", "may", "june", "july", "august",
+                    "september", "october", "november", "december",
+                    "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+                    "septiembre", "setiembre", "octubre", "noviembre", "diciembre" -> true;
+            default -> false;
+        };
+    }
+
+    private static final Pattern DATE_DMY_SLASH = Pattern.compile("\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}\\b");
+    private static final Pattern DATE_D_DE_M_DE_Y = Pattern.compile(
+            "\\b\\d{1,2}\\s+de\\s+[a-záéíóúñ]+\\s+de\\s+\\d{4}\\b",
+            Pattern.CASE_INSENSITIVE);
+
+    private static List<String> extractExplicitDatesFromText(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        Matcher m1 = DATE_DMY_SLASH.matcher(text);
+        while (m1.find()) {
+            out.add(m1.group());
+        }
+        Matcher m2 = DATE_D_DE_M_DE_Y.matcher(text);
+        while (m2.find()) {
+            out.add(m2.group());
+        }
+        return out.stream().distinct().toList();
     }
 
     private static List<String> readArray(JSONObject json, String key) {

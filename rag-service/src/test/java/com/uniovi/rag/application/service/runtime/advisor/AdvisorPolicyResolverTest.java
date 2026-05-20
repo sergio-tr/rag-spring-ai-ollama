@@ -123,6 +123,7 @@ class AdvisorPolicyResolverTest {
                 Optional.empty(),
                 Optional.of(plan),
                 Optional.empty(),
+                Optional.empty(),
                 "q",
                 "q",
                 Optional.empty(),

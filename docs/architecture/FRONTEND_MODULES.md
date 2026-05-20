@@ -10,4 +10,4 @@
 | Types | `src/types/` | DTOs aligned with Spring OpenAPI (maintain manually or generate) |
 | i18n | `messages/`, `next-intl` config | Locales for UI strings |
 
-**Security note:** Browser calls **product** paths with JWT (cookie or header per implementation); legacy paths may be used only for specific tooling.
+**Security note:** Browser calls **product** paths with JWT (cookie or header per implementation); non-product prefixes are not used by the shipped UI.

@@ -1,6 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.application.service.ProjectDocumentApplicationService;
+import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDebugDto;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
 import com.uniovi.rag.security.RagPrincipal;
 import org.springframework.http.HttpStatus;
@@ -34,6 +35,12 @@ public class DocumentStatusController {
         return projectDocumentApplicationService.documentStatus(principal.userId(), documentId);
     }
 
+    @GetMapping("/{documentId}/debug")
+    public ProjectDocumentDebugDto debug(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID documentId) {
+        return projectDocumentApplicationService.documentDebug(principal.userId(), documentId);
+    }
+
     /**
      * Re-ingest: requires a new file body (MVP — source files are not retained server-side).
      */
@@ -46,6 +53,16 @@ public class DocumentStatusController {
             return ResponseEntity.badRequest().build();
         }
         ProjectDocumentDto dto = projectDocumentApplicationService.reindexDocument(principal.userId(), documentId, file);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(dto);
+    }
+
+    /**
+     * Retry ingest using the stored binary already persisted for this document.
+     */
+    @PostMapping("/{documentId}/retry-ingest")
+    public ResponseEntity<ProjectDocumentDto> retryIngest(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID documentId) {
+        ProjectDocumentDto dto = projectDocumentApplicationService.retryIngestFromStoredBinary(principal.userId(), documentId);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(dto);
     }
 }

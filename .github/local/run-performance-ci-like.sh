@@ -25,6 +25,8 @@ JAVA_IMAGE="${RAG_JAVA_IMAGE:-eclipse-temurin:21-jdk}"
 PYTHON_IMAGE="${RAG_PYTHON_IMAGE:-python:3.11-slim}"
 GRADLE_CACHE_VOLUME="${RAG_GRADLE_CACHE_VOLUME:-rag-gradle-cache}"
 PIP_CACHE_VOLUME="${RAG_PIP_CACHE_VOLUME:-rag-pip-cache}"
+HOST_GATEWAY_IP="${RAG_CI_HOST_GATEWAY_IP:-}"
+RESULTS_DIR="${RAG_PERF_RESULTS_DIR:-${REPO_ROOT}/.github/local/results/performance}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -44,6 +46,24 @@ require docker
 require curl
 
 docker info >/dev/null 2>&1 || { echo "error: Docker is not running." >&2; exit 1; }
+mkdir -p "${RESULTS_DIR}"
+
+resolve_host_gateway_ip() {
+  if [[ -n "${HOST_GATEWAY_IP}" ]]; then
+    echo "${HOST_GATEWAY_IP}"
+    return
+  fi
+  local resolved
+  resolved="$(
+    docker run --rm --add-host=host-gateway.internal:host-gateway alpine:3.20 \
+      getent hosts host-gateway.internal 2>/dev/null | awk 'NR == 1 { print $1 }' || true
+  )"
+  if [[ "${resolved}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "host-gateway"
+    return
+  fi
+  echo "192.168.65.254"
+}
 
 wait_for_pg() {
   local i=0
@@ -117,6 +137,8 @@ start_backend() {
     -e RAG_JWT_SECRET="e2e-ci-jwt-secret-must-be-at-least-32-chars" \
     -e RAG_TEST_USE_TESTCONTAINERS_DATASOURCE=false \
     -e RAG_CORS_ALLOWED_ORIGINS="http://127.0.0.1:3000,http://localhost:3000" \
+    -e RAG_HEALTH_OLLAMA_ENABLED=false \
+    -e RAG_HEALTH_CLASSIFIER_ENABLED=false \
     eclipse-temurin:21-jdk bash -lc "./mvnw -B -DskipTests spring-boot:run -Dspring-boot.run.profiles=e2e" \
     >/dev/null
 }
@@ -137,7 +159,10 @@ wait_for_backend() {
 
 run_gatling_smoke() {
   log "Running Gatling smoke (ActuatorHealthSimulation) in ${JAVA_IMAGE}."
+  local host_gateway
+  host_gateway="$(resolve_host_gateway_ip)"
   docker run --rm \
+    --add-host="host.docker.internal:${host_gateway}" \
     -v "${REPO_ROOT}:/repo" \
     -w /repo/tests/gatling \
     -v "${GRADLE_CACHE_VOLUME}:/root/.gradle" \
@@ -150,12 +175,15 @@ run_gatling_smoke() {
 
 run_infra_probe() {
   log "Running infra micro-probe in ${PYTHON_IMAGE}."
+  local host_gateway
+  host_gateway="$(resolve_host_gateway_ip)"
   docker run --rm \
+    --add-host="host.docker.internal:${host_gateway}" \
     -v "${REPO_ROOT}:/repo" \
     -w /repo \
     -v "${PIP_CACHE_VOLUME}:/root/.cache/pip" \
     "${PYTHON_IMAGE}" bash -lc \
-      "pip install -r tests/performance/requirements.txt >/dev/null && python tests/performance/infra_probe.py --backend-base-url http://host.docker.internal:9000 --repetitions 5 --warmup 1 --concurrency 1 --timeout-s 30"
+      "pip install -r tests/performance/requirements.txt >/dev/null && python tests/performance/infra_probe.py --backend-base-url http://host.docker.internal:9000 --repetitions 5 --warmup 1 --concurrency 1 --timeout-s 30 --output-json /repo/.github/local/results/performance/infra-probe-local.json"
 }
 
 stop_backend() {

@@ -3,7 +3,7 @@
 # Same compose file chain and env files historically used by repository up/down entrypoints.
 #
 # Usage (from repository root):
-#   ./docker/scripts/docker-compose.sh <build|up|down> <dev|prod> [env options] [stack options]
+#   ./docker/scripts/docker-compose.sh <build|config|up|down> <dev|prod> [env options] [stack options]
 #
 #   down: second arg defaults to prod if omitted (compat with old down.sh).
 #
@@ -24,7 +24,7 @@
 #   --all  = --gpu --obs --classifier --logs --infra --rag (no --proxy; add --proxy to use nginx in dev)
 #
 # prod:
-#   [--all] [--obs] [--gpu] [--ollama] [--classifier-gpu] [--ollama-remote] [--logs] [--infra] [--volumes]
+#   [--all] [--obs] [--obs-private] [--gpu] [--ollama] [--classifier-gpu] [--ollama-remote] [--logs] [--infra] [--volumes]
 #   --volumes only applies to "down prod".
 #   --all  = --obs --gpu --logs --infra (and for down: removes volumes)
 #
@@ -35,19 +35,19 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DOCKER_DIR="$ROOT_DIR/docker"
 
 usage() {
-  echo "Usage: $0 <build|up|down> <dev|prod> [options]" >&2
+  echo "Usage: $0 <build|config|up|down> <dev|prod> [options]" >&2
   echo "  down: <dev|prod> optional (defaults to prod)" >&2
   echo "  Env: --env <db|obs|rag|classifier|ollama|all> ..., --no-env-prompt" >&2
   echo "  dev:  [--all] [--gpu|--ollama] [--ollama-remote] [--obs] [--classifier] [--classifier-gpu] [--logs] [--infra] [--rag] [--proxy] [--down] [--volumes]" >&2
-  echo "  prod: [--all] [--obs] [--gpu|--ollama] [--ollama-remote] [--classifier-gpu] [--logs] [--infra] [--volumes]" >&2
+  echo "  prod: [--all] [--obs] [--obs-private] [--gpu|--ollama] [--ollama-remote] [--classifier-gpu] [--logs] [--infra] [--volumes]" >&2
   exit 1
 }
 
 CMD="${1:-}"
 case "$CMD" in
-  build|up|down) shift ;;
+  build|config|up|down) shift ;;
   *)
-    echo "Usage: $0 <build|up|down> <dev|prod> ..." >&2
+    echo "Usage: $0 <build|config|up|down> <dev|prod> ..." >&2
     exit 1
     ;;
 esac
@@ -167,6 +167,8 @@ if [ "$MODE" = dev ]; then
     ACTION=down
   elif [ "$CMD" = build ]; then
     ACTION=build
+  elif [ "$CMD" = config ]; then
+    ACTION=config
   else
     ACTION=up
   fi
@@ -240,7 +242,9 @@ if [ "$MODE" = dev ]; then
   # webapp ordering dependency is now part of compose.dev.yml
   [ "$WITH_DEV_PROXY" = true ] && [ "$WITH_RAG_BACKEND" = true ] && COMPOSE_FILES+=(-f "compose.dev-proxy.yml")
   [ "$WITH_OBS" = true ]        && COMPOSE_FILES+=(-f "compose.obs.yml")
-  [ "$WITH_NVIDIA" = true ] && COMPOSE_FILES+=(-f "compose.gpu.yml")
+  if [ "$WITH_NVIDIA" = true ] && [ "$WITH_CLASSIFIER_GPU" = true ]; then
+    COMPOSE_FILES+=(-f "compose.gpu.yml")
+  fi
   [ "$WITH_RAG_BACKEND" = true ] && [ "$WITH_OBS" = true ] && COMPOSE_FILES+=(-f "compose.rag-dev-obs.yml")
 
   PROFILE_ARGS=()
@@ -291,6 +295,12 @@ if [ "$MODE" = dev ]; then
     BUILD_ARGS+=(build)
     docker compose "${BUILD_ARGS[@]}"
     echo "Dev images built (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, classifier=$WITH_CLASSIFIER, rag_backend=$WITH_RAG_BACKEND, dev_proxy=$WITH_DEV_PROXY, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+    exit 0
+  fi
+
+  if [ "$ACTION" = config ]; then
+    docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" config -q
+    echo "Dev compose config OK (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, classifier=$WITH_CLASSIFIER, rag_backend=$WITH_RAG_BACKEND, dev_proxy=$WITH_DEV_PROXY, logs=$WITH_LOGS, infra=$WITH_INFRA)."
     exit 0
   fi
 
@@ -366,6 +376,7 @@ fi
 
 # ---------- prod ----------
 WITH_OBS=false
+WITH_OBS_PRIVATE=false
 WITH_GPU=false
 WITH_LOGS=false
 WITH_INFRA=false
@@ -379,6 +390,7 @@ for arg in "$@"; do
   case "$arg" in
     --all) ALL=true ;;
     --obs) WITH_OBS=true ;;
+    --obs-private) WITH_OBS=true; WITH_OBS_PRIVATE=true ;;
     --gpu) WITH_GPU=true ;;
     --ollama) WITH_GPU=true ;;
     --ollama-remote) WITH_OLLAMA_REMOTE=true ;;
@@ -403,19 +415,6 @@ if [ "$ALL" = true ]; then
   fi
 fi
 
-COMPOSE_FILES=(-f "docker-compose.yml")
-[ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.obs.yml")
-COMPOSE_FILES+=(-f "compose.prod.yml")
-[ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.prod-obs.yml")
-
-PROFILE_ARGS=()
-[ "$WITH_OBS" = true ] && PROFILE_ARGS+=(--profile observability)
-[ "$WITH_LOGS" = true ] && PROFILE_ARGS+=(--profile logs)
-[ "$WITH_INFRA" = true ] && PROFILE_ARGS+=(--profile infra)
-if [ "$WITH_GPU" = true ] && [ "$WITH_NVIDIA" = true ] && [ "$WITH_OLLAMA_REMOTE" != true ]; then
-  PROFILE_ARGS+=(--profile ollama)
-fi
-
 has_nvidia_runtime() {
   docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'
 }
@@ -429,7 +428,22 @@ else
   WITH_NVIDIA=false
 fi
 
-[ "$WITH_NVIDIA" = true ] && COMPOSE_FILES+=(-f "compose.gpu.yml")
+COMPOSE_FILES=(-f "docker-compose.yml")
+[ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.obs.yml")
+COMPOSE_FILES+=(-f "compose.prod.yml")
+COMPOSE_FILES+=(-f "compose.prod-host-ports.yml")
+[ "$WITH_OBS" = true ] && [ "$WITH_OBS_PRIVATE" = true ] && COMPOSE_FILES+=(-f "compose.prod-obs.yml")
+if [ "$WITH_NVIDIA" = true ] && [ "$WITH_CLASSIFIER_GPU" = true ]; then
+  COMPOSE_FILES+=(-f "compose.gpu.yml")
+fi
+
+PROFILE_ARGS=()
+[ "$WITH_OBS" = true ] && PROFILE_ARGS+=(--profile observability)
+[ "$WITH_LOGS" = true ] && PROFILE_ARGS+=(--profile logs)
+[ "$WITH_INFRA" = true ] && PROFILE_ARGS+=(--profile infra)
+if [ "$WITH_GPU" = true ] && [ "$WITH_NVIDIA" = true ] && [ "$WITH_OLLAMA_REMOTE" != true ]; then
+  PROFILE_ARGS+=(--profile ollama)
+fi
 
 ENV_ARGS=()
 add_env_file() {
@@ -471,8 +485,21 @@ if [ "$CMD" = build ]; then
   exit 0
 fi
 
+if [ "$CMD" = config ]; then
+  docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" config -q
+  echo "Prod compose config OK (obs=$WITH_OBS, obs_private=$WITH_OBS_PRIVATE, ollama_gpu=$WITH_GPU, ollama_remote=$WITH_OLLAMA_REMOTE, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+  exit 0
+fi
+
 maybe_run_env_setup up
 docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" up -d
 
-echo "Prod local started (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, ollama_remote=$WITH_OLLAMA_REMOTE, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+echo "Prod local started (obs=$WITH_OBS, obs_private=$WITH_OBS_PRIVATE, ollama_gpu=$WITH_GPU, ollama_remote=$WITH_OLLAMA_REMOTE, logs=$WITH_LOGS, infra=$WITH_INFRA)."
 echo "Reverse-proxy HTTP: http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/ (set REVERSE_PROXY_HTTP_PORT if 80 is not free)."
+if [ "$WITH_OBS" = true ] && [ "$WITH_OBS_PRIVATE" != true ]; then
+  echo "Prometheus:         http://127.0.0.1:${PROMETHEUS_PORT:-9090}/"
+  echo "Grafana:            http://127.0.0.1:${GRAFANA_PORT:-3000}/"
+  echo "Jaeger:             http://127.0.0.1:${JAEGER_UI_PORT:-16686}/"
+elif [ "$WITH_OBS" = true ]; then
+  echo "Observability UIs are private (--obs-private); use Docker network access or port-forwarding for evidence screenshots."
+fi

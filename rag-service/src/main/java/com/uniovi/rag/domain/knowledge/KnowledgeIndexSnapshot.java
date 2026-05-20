@@ -1,6 +1,7 @@
 package com.uniovi.rag.domain.knowledge;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -16,5 +17,8 @@ public record KnowledgeIndexSnapshot(
         IndexSnapshotStatus status,
         UUID resolvedConfigSnapshotId,
         String resolvedConfigHash,
+        Map<String, Object> indexProfileJsonb,
+        String indexProfileHash,
+        Integer embeddingDimensions,
         Instant createdAt,
         Instant updatedAt) {}

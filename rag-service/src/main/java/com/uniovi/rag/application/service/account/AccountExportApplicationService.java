@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.uniovi.rag.configuration.RagAccountProperties;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
-import com.uniovi.rag.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;

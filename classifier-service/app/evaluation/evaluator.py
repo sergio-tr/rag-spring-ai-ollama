@@ -1,6 +1,6 @@
 """
 Evaluation pipeline: load model, run predictions on eval dataset, compute metrics and generate images.
-Matches the behaviour of the legacy trainer (classification report table + confusion matrix heatmaps).
+Matches the behaviour of the prior trainer (classification report table + confusion matrix heatmaps).
 """
 import io
 
@@ -93,7 +93,7 @@ class EvaluationPipeline(Loggable):
         )
 
     def _build_classification_report_image(self, report: dict, class_names: list[str]) -> bytes:
-        """Build PNG heatmap of classification report (precision, recall, f1) like the legacy trainer."""
+        """Build PNG heatmap of classification report (precision, recall, f1) like the prior trainer."""
         report_df = pd.DataFrame(report).transpose()
         rows = [r for r in class_names if r in report_df.index]
         if not rows:
@@ -113,7 +113,7 @@ class EvaluationPipeline(Loggable):
         return buf.read()
 
     def _build_confusion_matrix_image(self, conf_matrix: np.ndarray, class_names: list[str]) -> bytes:
-        """Build PNG heatmap of confusion matrix (Blues) like the legacy trainer."""
+        """Build PNG heatmap of confusion matrix (Blues) like the prior trainer."""
         _, ax = plt.subplots(figsize=(12, 8))
         sns.heatmap(
             conf_matrix,

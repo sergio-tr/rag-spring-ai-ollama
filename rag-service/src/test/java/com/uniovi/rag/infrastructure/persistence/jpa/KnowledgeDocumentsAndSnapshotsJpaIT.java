@@ -17,6 +17,7 @@ import com.uniovi.rag.infrastructure.persistence.ResolvedConfigSnapshotRepositor
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.infrastructure.persistence.mapper.KnowledgeIndexSnapshotMapper;
 import com.uniovi.rag.infrastructure.persistence.support.ResolvedConfigSnapshotTestFixtures;
+import com.uniovi.rag.infrastructure.persistence.support.KnowledgeSnapshotTestFixtures;
 import com.uniovi.rag.testsupport.TestAiStubConfiguration;
 import com.uniovi.rag.testsupport.TestEnvironment;
 import com.uniovi.rag.testsupport.TestcontainersDatasourceConfiguration;
@@ -121,6 +122,8 @@ class KnowledgeDocumentsAndSnapshotsJpaIT {
         index.setStatus(IndexSnapshotStatus.ACTIVE);
         index.setResolvedConfigSnapshotId(resSnap.getId());
         index.setResolvedConfigHash("rh-1");
+        index.setIndexProfileJsonb(KnowledgeSnapshotTestFixtures.defaultIndexProfileJsonb());
+        index.setIndexProfileHash(KnowledgeSnapshotTestFixtures.defaultIndexProfileHash());
         index.setCreatedAt(now);
         index.setUpdatedAt(now);
         index = knowledgeIndexSnapshotRepository.save(index);

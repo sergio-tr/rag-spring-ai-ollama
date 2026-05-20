@@ -2,8 +2,8 @@ package com.uniovi.rag.tool.metadata;
 
 import com.uniovi.rag.domain.model.Cluster;
 import com.uniovi.rag.domain.model.ParagraphResult;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
 import com.uniovi.rag.domain.model.Minute;

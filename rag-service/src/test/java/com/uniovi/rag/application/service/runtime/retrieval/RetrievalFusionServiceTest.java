@@ -85,7 +85,6 @@ class RetrievalFusionServiceTest {
                 List.of(sid),
                 pid,
                 Optional.empty(),
-                List.of("all"),
-                true);
+                List.of("all"), true, Optional.empty());
     }
 }

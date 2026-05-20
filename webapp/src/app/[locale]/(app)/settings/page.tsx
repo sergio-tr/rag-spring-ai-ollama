@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ProductModelRegistryCard } from "@/features/settings/components/ProductModelRegistryCard";
 import { useTranslations } from "next-intl";
 
 export default function SettingsPage() {
@@ -24,6 +25,7 @@ export default function SettingsPage() {
           <AppearanceLanguagePanel />
         </CardContent>
       </Card>
+      <ProductModelRegistryCard />
     </div>
   );
 }

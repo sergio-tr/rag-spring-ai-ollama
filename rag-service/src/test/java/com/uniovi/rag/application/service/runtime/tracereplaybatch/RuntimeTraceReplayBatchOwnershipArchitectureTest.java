@@ -10,8 +10,8 @@ import com.uniovi.rag.application.service.runtime.traceexport.RuntimeTraceExport
 import com.uniovi.rag.application.service.runtime.tracecomparisonexport.RuntimeTraceReplayComparisonExportService;
 import com.uniovi.rag.application.service.runtime.tracereplayexport.RuntimeTraceReplayExportService;
 import com.uniovi.rag.infrastructure.persistence.jpa.RuntimeExecutionTraceRepository;
-import com.uniovi.rag.service.query.ProcessQueryService;
-import com.uniovi.rag.service.query.SimpleProcessQueryService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -72,22 +72,13 @@ class RuntimeTraceReplayBatchOwnershipArchitectureTest {
                     .areAssignableTo(RuntimeTraceReplayExportService.class);
 
     @ArchTest
-    static final ArchRule batchDoesNotDependOnProcessQueryService =
+    static final ArchRule batchDoesNotDependOnRuntimeQueryExecutionService =
             noClasses()
                     .that()
                     .resideInAnyPackage("..tracereplaybatch..")
                     .should()
                     .dependOnClassesThat()
-                    .areAssignableTo(ProcessQueryService.class);
-
-    @ArchTest
-    static final ArchRule batchDoesNotDependOnSimpleProcessQueryService =
-            noClasses()
-                    .that()
-                    .resideInAnyPackage("..tracereplaybatch..")
-                    .should()
-                    .dependOnClassesThat()
-                    .areAssignableTo(SimpleProcessQueryService.class);
+                    .areAssignableTo(RuntimeQueryExecutionService.class);
 
     @ArchTest
     static final ArchRule batchDoesNotDependOnOrchestrator =

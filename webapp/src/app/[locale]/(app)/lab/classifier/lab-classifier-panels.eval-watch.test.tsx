@@ -12,6 +12,12 @@ vi.mock("@/lib/lab-job-follow", () => ({
   followLabJob: (...args: unknown[]) => followLabJobMock(...args),
 }));
 
+vi.mock("@/features/lab/hooks/use-classifier-registry", () => ({
+  classifierModelsQueryKey: ["lab", "classifier-models"],
+  useClassifierModelsQuery: () => ({ data: [], isLoading: false, isError: false }),
+  useActivateClassifierModel: () => ({ mutateAsync: vi.fn() }),
+}));
+
 import * as apiClient from "@/lib/api-client";
 import { LabJobPollTimeoutError } from "@/lib/async-task";
 import { LabClassifierEvalPanel } from "./lab-classifier-panels";

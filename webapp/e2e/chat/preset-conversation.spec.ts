@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   authHeadersFromPage,
   createAndActivateProject,
+  createNewChatConversation,
   loginAsSeedUser,
   productApiUrl,
 } from "../support/helpers";
@@ -22,8 +23,8 @@ test.describe("Preset on conversation", () => {
 
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
-    await page.getByTestId("chat-new-conversation").click();
-    const textarea = page.getByPlaceholder(/message|mensaje/i);
+    await createNewChatConversation(page);
+    const textarea = page.getByTestId("chat-message-composer");
     await expect(textarea).toBeEnabled({ timeout: 15_000 });
 
     // Avoid racing GET /conversations against POST create — UI navigates with conversationId in query.

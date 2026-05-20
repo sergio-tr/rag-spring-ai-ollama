@@ -1,4 +1,4 @@
-# Optional: re-run Playwright smoke only (same as the webapp-e2e job in ci.yml).
+# Optional: re-run Playwright smoke only (same as core_webapp_e2e in ci.yml).
 # Automated PR/push runs: .github/workflows/ci.yml (unit + build + Playwright smoke).
 name: E2E (Playwright) — manual
 
@@ -41,15 +41,18 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Run Playwright tests
-        run: npm run test:e2e
+      - name: Run Playwright smoke (@smoke, no @fullstack)
+        run: npm run test:e2e:ci-fast
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+          PLAYWRIGHT_WORKERS: "1"
+          PLAYWRIGHT_MAX_FAILURES: "1"
+          PLAYWRIGHT_RETRIES: "0"
 
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: playwright-report
+          name: playwright-smoke-report
           path: webapp/playwright-report/
           retention-days: 7

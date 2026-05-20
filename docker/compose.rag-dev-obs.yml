@@ -19,6 +19,12 @@ services:
       MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "true"
       MANAGEMENT_OTLP_METRICS_EXPORT_URL: http://otel-collector:4318/v1/metrics
       MANAGEMENT_METRICS_EXPORT_OTLP_ENABLED: "true"
+    networks:
+      default:
+        aliases:
+          # Prometheus config uses the stable hostname "backend" (observability/prometheus/prometheus.yml.template).
+          # When running the dev backend service (backend-dev), provide a compatible alias so Prometheus can scrape it.
+          - backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -29,3 +35,4 @@ services:
         required: false
       otel-collector:
         condition: service_started
+        required: false

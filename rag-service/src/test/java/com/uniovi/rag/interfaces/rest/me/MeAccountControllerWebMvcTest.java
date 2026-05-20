@@ -9,7 +9,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.AccountExportArtifactEntity
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.interfaces.rest.dto.AsyncTaskStatusDto;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.async.AsyncTaskService;
+import com.uniovi.rag.application.service.async.AsyncTaskService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

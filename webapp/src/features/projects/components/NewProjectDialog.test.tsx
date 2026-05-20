@@ -50,7 +50,17 @@ describe("NewProjectDialog", () => {
     await user.click(screen.getByRole("button", { name: /^New project$/i }));
     await user.type(screen.getByLabelText(/^Name$/i), "My project");
     await user.click(screen.getByRole("button", { name: /^Create$/i }));
-    await vi.waitFor(() => expect(createHook.mutateAsync).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(createHook.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "My project",
+          initialIndexProfile: expect.objectContaining({
+            materializationStrategy: "CHUNK_LEVEL",
+            metadataEnabled: false,
+          }),
+        }),
+      ),
+    );
   });
 
   it("shows validation error when name is empty", async () => {

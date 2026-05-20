@@ -17,13 +17,14 @@ import {
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
 import { useQueryClient } from "@tanstack/react-query";
 import { LabJobPollTimeoutError } from "@/lib/async-task";
-import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
+import { ApiError, apiFetch, apiProductPath, getSafeApiErrorMessage } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
 import type { LabJobFollowMode } from "@/lib/lab-job-follow";
 import type { AsyncTaskStatusDto, LabJobAcceptedDto } from "@/types/api";
 import { useTranslations } from "next-intl";
 import type { MutableRefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useClassifierModelsQuery } from "@/features/lab/hooks/use-classifier-registry";
 
 /** Local watchdog for classifier-eval polling — server-side runs may continue beyond this window. */
 const CLASSIFIER_EVAL_POLL_MAX_MS = 15 * 60 * 1000;
@@ -217,9 +218,21 @@ export function LabClassifierTrainPanel(
     });
   }, [resumeNonceTrain, resumeTrainFromPersisted]);
 
+  const modelNameTrimmed = modelName.trim();
+  const modelNameError =
+    modelNameTrimmed.length === 0
+      ? t("fieldRequired")
+      : modelNameTrimmed.length > 80
+        ? t("fieldTooLong")
+        : null;
+
   async function runTrain() {
     if (!trainFile) {
       setTrainErr(t("classifierTrainFileRequired"));
+      return;
+    }
+    if (modelNameError) {
+      setTrainErr(modelNameError);
       return;
     }
     trainAbortRef.current?.abort();
@@ -236,7 +249,7 @@ export function LabClassifierTrainPanel(
     try {
       const fd = new FormData();
       fd.append("file", trainFile);
-      fd.append("model_name", modelName);
+      fd.append("model_name", modelNameTrimmed);
       fd.append("epochs", "50");
       fd.append("batch_size", "8");
 
@@ -315,6 +328,7 @@ export function LabClassifierTrainPanel(
           <input
             type="checkbox"
             className="size-4 rounded border"
+            data-testid="lab-classifier-train-sync"
             checked={trainSync}
             onChange={(e) => setTrainSync(e.target.checked)}
             disabled={trainRunning}
@@ -352,14 +366,26 @@ export function LabClassifierTrainPanel(
           </div>
         </details>
         <div className="grid gap-2">
-          <Label htmlFor="cmodel">{t("classifierModelName")}</Label>
-          <Input id="cmodel" value={modelName} onChange={(e) => setModelName(e.target.value)} />
+          <Label htmlFor="cmodel">New model name</Label>
+          <Input
+            id="cmodel"
+            data-testid="lab-classifier-train-model-name"
+            value={modelName}
+            aria-invalid={modelNameError != null}
+            onChange={(e) => setModelName(e.target.value)}
+          />
+          <p className="text-muted-foreground text-xs">
+            This creates a new classifier model. To evaluate or activate an existing model, use the model selector
+            below.
+          </p>
+          {modelNameError ? <p className="text-destructive text-xs">{modelNameError}</p> : null}
         </div>
         <div className="grid gap-2">
           <Label htmlFor="cfile">{t("classifierTrainFile")}</Label>
           <Input
             id="cfile"
             type="file"
+            data-testid="lab-classifier-train-file"
             accept=".xlsx,.xls"
             onChange={(e) => setTrainFile(e.target.files?.[0] ?? null)}
           />
@@ -368,7 +394,7 @@ export function LabClassifierTrainPanel(
           <Button
             type="button"
             data-testid="lab-classifier-train"
-            disabled={trainRunning || !classifierOk}
+            disabled={trainRunning || !classifierOk || modelNameError != null}
             onClick={() => void runTrain()}
           >
             {trainRunning ? t("evalRunning") : t("classifierTrainSubmit")}
@@ -404,6 +430,7 @@ export function LabClassifierEvalPanel(
   const { classifierOk, projectId } = props;
   const t = useTranslations("Lab");
   const qc = useQueryClient();
+  const modelsQuery = useClassifierModelsQuery(classifierOk);
 
   const [evalModelId, setEvalModelId] = useState("");
   const [evalFile, setEvalFile] = useState<File | null>(null);
@@ -709,19 +736,46 @@ export function LabClassifierEvalPanel(
         </details>
         <div className="grid gap-2">
           <Label htmlFor="emodel">{t("classifierEvalModelId")}</Label>
-          <Input id="emodel" value={evalModelId} onChange={(e) => setEvalModelId(e.target.value)} />
+          <select
+            id="emodel"
+            data-testid="lab-classifier-eval-model"
+            className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            value={evalModelId}
+            disabled={evalRunning || !classifierOk || (modelsQuery.data?.length ?? 0) === 0}
+            onChange={(e) => setEvalModelId(e.target.value)}
+          >
+            {(modelsQuery.data ?? []).length === 0 ? (
+              <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
+            ) : (
+              <>
+                <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
+                {(modelsQuery.data ?? []).map((m) => (
+                  <option key={m.id} value={m.inferenceTag}>
+                    {m.name} · {m.inferenceTag}
+                    {m.active ? " · ACTIVE" : ""}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
         </div>
         <div className="grid gap-2">
           <Label htmlFor="efile">{t("classifierEvalFile")}</Label>
           <Input
             id="efile"
             type="file"
+            data-testid="lab-classifier-eval-file"
             accept=".xlsx,.xls"
             onChange={(e) => setEvalFile(e.target.files?.[0] ?? null)}
           />
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" disabled={evalRunning || !classifierOk} onClick={() => void runEval()}>
+          <Button
+            type="button"
+            data-testid="lab-classifier-evaluate"
+            disabled={evalRunning || !classifierOk}
+            onClick={() => void runEval()}
+          >
             {evalRunning ? t("evalRunning") : t("classifierEvalSubmit")}
           </Button>
           {evalRunning ? (
@@ -762,14 +816,20 @@ export function LabClassifierEvalPanel(
 export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boolean }>) {
   const { classifierOk } = props;
   const t = useTranslations("Lab");
+  const modelsQuery = useClassifierModelsQuery(classifierOk);
 
   const [clsQuery, setClsQuery] = useState("How many meetings?");
-  const [clsModelId, setClsModelId] = useState("default");
+  const [clsModelId, setClsModelId] = useState("");
   const [clsOut, setClsOut] = useState<unknown>(null);
   const [clsErr, setClsErr] = useState<string | null>(null);
   const [clsRunning, setClsRunning] = useState(false);
 
   async function runClassify() {
+    const q = clsQuery.trim();
+    if (!q) {
+      setClsErr(t("fieldRequired"));
+      return;
+    }
     setClsRunning(true);
     setClsErr(null);
     setClsOut(null);
@@ -777,11 +837,11 @@ export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boole
       const data = await apiFetch<unknown>(apiProductPath("/lab/classifier/classify"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: clsQuery, modelId: clsModelId }),
+        body: JSON.stringify({ query: q, modelId: clsModelId || null }),
       });
       setClsOut(data);
-    } catch {
-      setClsErr(t("evalError"));
+    } catch (e) {
+      setClsErr(getSafeApiErrorMessage(e));
     } finally {
       setClsRunning(false);
     }
@@ -795,13 +855,51 @@ export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boole
       <CardContent className="flex flex-col gap-3">
         <div className="grid gap-2">
           <Label htmlFor="q">{t("classifierQuery")}</Label>
-          <Input id="q" value={clsQuery} onChange={(e) => setClsQuery(e.target.value)} />
+          <Input
+            id="q"
+            data-testid="lab-classifier-classify-query"
+            value={clsQuery}
+            onChange={(e) => setClsQuery(e.target.value)}
+          />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="mid">{t("classifierModelIdField")}</Label>
-          <Input id="mid" value={clsModelId} onChange={(e) => setClsModelId(e.target.value)} />
+          <select
+            id="mid"
+            data-testid="lab-classifier-classify-model"
+            className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            value={clsModelId}
+            disabled={clsRunning || !classifierOk || (modelsQuery.data?.length ?? 0) === 0}
+            onChange={(e) => setClsModelId(e.target.value)}
+          >
+            {(modelsQuery.data ?? []).length === 0 ? (
+              <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
+            ) : (
+              <>
+                <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
+                {(modelsQuery.data ?? []).map((m) => (
+                  <option key={m.id} value={m.inferenceTag}>
+                    {m.name} · {m.inferenceTag}
+                    {m.active ? " · ACTIVE" : ""}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
+          {(modelsQuery.data ?? []).length === 0 ? (
+            <p className="text-muted-foreground text-xs">
+              {classifierOk
+                ? "No classifier models found yet. Train a model or check classifier-service connectivity."
+                : t("classifierNotConfiguredWarn")}
+            </p>
+          ) : null}
         </div>
-        <Button type="button" disabled={clsRunning || !classifierOk} onClick={() => void runClassify()}>
+        <Button
+          type="button"
+          data-testid="lab-classifier-classify"
+          disabled={clsRunning || !classifierOk || clsQuery.trim().length === 0}
+          onClick={() => void runClassify()}
+        >
           {clsRunning ? t("evalRunning") : t("classifierClassifySubmit")}
         </Button>
         {clsErr === null ? null : <p className="text-destructive text-sm">{clsErr}</p>}

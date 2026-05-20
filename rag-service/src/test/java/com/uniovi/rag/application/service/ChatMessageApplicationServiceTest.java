@@ -19,11 +19,15 @@ import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.interfaces.rest.dto.ChatMessageAcceptedDto;
 import com.uniovi.rag.interfaces.rest.dto.ConversationDraftDto;
 import com.uniovi.rag.interfaces.rest.dto.PostMessageRequest;
-import com.uniovi.rag.service.async.AsyncLabTaskRunner;
-import com.uniovi.rag.service.async.AsyncTaskMutationService;
-import com.uniovi.rag.service.async.chat.ChatJobCancellationRegistry;
-import com.uniovi.rag.service.async.chat.ChatJobPayloadKeys;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeIndexCompatibilityDto;
+import com.uniovi.rag.application.service.async.AsyncLabTaskRunner;
+import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.application.service.chat.async.ChatJobCancellationRegistry;
+import com.uniovi.rag.application.service.chat.async.ChatJobPayloadKeys;
+import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
+import com.uniovi.rag.application.service.config.ChatPresetDefaults;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -89,6 +93,12 @@ class ChatMessageApplicationServiceTest {
     @Mock
     private ChatMessageWorkService chatMessageWorkService;
 
+    @Mock
+    private RuntimeConfigValidationService runtimeConfigValidationService;
+
+    @Mock
+    private ChatPresetDefaults chatPresetDefaults;
+
     @InjectMocks
     private ChatMessageApplicationService service;
 
@@ -116,6 +126,34 @@ class ChatMessageApplicationServiceTest {
                             }
                             return m;
                         });
+    }
+
+    @BeforeEach
+    void stubRuntimeValidationAcceptsCurrentConfig() {
+        lenient()
+                .when(chatPresetDefaults.effectivePresetIdForApi(any()))
+                .thenReturn(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID);
+        lenient()
+                .when(runtimeConfigValidationService.validate(any(), any()))
+                .thenReturn(
+                        new RuntimeConfigValidateResponse(
+                                true,
+                                true,
+                                Map.of(),
+                                List.of(),
+                                List.of(),
+                                "wf",
+                                new RuntimeIndexCompatibilityDto(
+                                        null,
+                                        null,
+                                        null,
+                                        Map.of(),
+                                        false,
+                                        null,
+                                        null,
+                                        true,
+                                        "UNKNOWN"),
+                                false));
     }
 
     @BeforeEach
@@ -179,6 +217,64 @@ class ChatMessageApplicationServiceTest {
         ArgumentCaptor<UUID> taskIdCaptor = ArgumentCaptor.forClass(UUID.class);
         verify(asyncLabTaskRunner).execute(taskIdCaptor.capture());
         assertThat(taskIdCaptor.getValue()).isEqualTo(dto.jobId());
+    }
+
+    @Test
+    void enqueueMessage_payloadPrefersRequestLlmOverPersistedConversationLlm() {
+        UUID userId = UUID.randomUUID();
+        UUID conversationId = UUID.randomUUID();
+
+        ConversationEntity conv = mock(ConversationEntity.class);
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(conv.getProject()).thenReturn(project);
+        when(conv.getDocumentFilter()).thenReturn(List.of());
+        when(conv.getLlmModel()).thenReturn("persisted-llm");
+        when(projectAccessService.requireConversationForUser(userId, conversationId)).thenReturn(conv);
+
+        when(asyncTaskRepository.findByUser_IdAndTaskTypeAndStatusIn(
+                        eq(userId), eq(AsyncTaskType.CHAT_MESSAGE), any()))
+                .thenReturn(List.of());
+
+        when(messageRepository.findMaxSeqByConversationId(conversationId)).thenReturn(0);
+
+        UserEntity user = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        service.enqueueMessage(userId, conversationId, new PostMessageRequest("hi", "request-llm", null));
+
+        ArgumentCaptor<AsyncTaskEntity> taskCap = ArgumentCaptor.forClass(AsyncTaskEntity.class);
+        verify(asyncTaskRepository).save(taskCap.capture());
+        Map<String, Object> payload = taskCap.getValue().getRequestPayload();
+        assertThat(payload.get(ChatJobPayloadKeys.LLM_MODEL)).isEqualTo("request-llm");
+    }
+
+    @Test
+    void enqueueMessage_payloadUsesPersistedConversationLlmWhenRequestOmitsModel() {
+        UUID userId = UUID.randomUUID();
+        UUID conversationId = UUID.randomUUID();
+
+        ConversationEntity conv = mock(ConversationEntity.class);
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(conv.getProject()).thenReturn(project);
+        when(conv.getDocumentFilter()).thenReturn(List.of());
+        when(conv.getLlmModel()).thenReturn("persisted-llm");
+        when(projectAccessService.requireConversationForUser(userId, conversationId)).thenReturn(conv);
+
+        when(asyncTaskRepository.findByUser_IdAndTaskTypeAndStatusIn(
+                        eq(userId), eq(AsyncTaskType.CHAT_MESSAGE), any()))
+                .thenReturn(List.of());
+
+        when(messageRepository.findMaxSeqByConversationId(conversationId)).thenReturn(0);
+
+        UserEntity user = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        service.enqueueMessage(userId, conversationId, new PostMessageRequest("hi", null, null));
+
+        ArgumentCaptor<AsyncTaskEntity> taskCap = ArgumentCaptor.forClass(AsyncTaskEntity.class);
+        verify(asyncTaskRepository).save(taskCap.capture());
+        Map<String, Object> payload = taskCap.getValue().getRequestPayload();
+        assertThat(payload.get(ChatJobPayloadKeys.LLM_MODEL)).isEqualTo("persisted-llm");
     }
 
     @Test

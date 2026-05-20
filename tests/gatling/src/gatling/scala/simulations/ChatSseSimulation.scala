@@ -23,8 +23,8 @@ class ChatSseSimulation extends Simulation {
 
   private val auth =
     exec(
-      http("POST /api/auth/login")
-        .post("/api/auth/login")
+      http("POST product auth login")
+        .post(s"${RagPaths.productPrefix}/auth/login")
         .header("Content-Type", "application/json")
         .body(StringBody(loginBody))
         .check(status.is(200))

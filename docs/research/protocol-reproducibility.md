@@ -43,7 +43,7 @@ Each dataset used for thesis evidence must have one manifest row (can live in th
 | `domain_notes` | Bias / coverage statement (language, topic, legal sensitivity). |
 | `owner_scope` | User/project id if project-scoped uploads apply. |
 
-**Canonical internal reference dataset:** `evaluation/evaluation_dataset.xlsx` (classpath) — still record `content_sha256` from the built JAR or source file used in the run.
+**Canonical internal reference workbook:** `evaluation/rag_experiment_datasets_and_protocols.xlsx` (classpath in `rag-service`) — record `content_sha256` from the built artifact or source file. User-typed datasets record upload id + stored bytes hash per `evaluation_dataset` row.
 
 ---
 

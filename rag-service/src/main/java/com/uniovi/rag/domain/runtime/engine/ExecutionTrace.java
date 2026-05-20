@@ -61,7 +61,16 @@ public record ExecutionTrace(
         boolean clarificationAttempted,
         String clarificationOutcome,
         boolean clarificationPendingStateConsumed,
-        boolean clarificationQuestionAsked) {
+        boolean clarificationQuestionAsked,
+        String originalQuery,
+        String retrievalQuery,
+        String packedContextPreview,
+        int sourceCount,
+        List<String> retrievedDocumentNames,
+        String answerGroundingPolicy,
+        int promptContextCharCount,
+        boolean abstentionTriggered,
+        String abstentionReason) {
 
     public ExecutionTrace {
         stages = List.copyOf(stages);
@@ -91,6 +100,12 @@ public record ExecutionTrace(
         judgeKind = judgeKind == null ? "" : judgeKind;
         judgeDetail = judgeDetail == null ? "" : judgeDetail;
         clarificationOutcome = clarificationOutcome == null ? "" : clarificationOutcome;
+        originalQuery = originalQuery == null ? "" : originalQuery;
+        retrievalQuery = retrievalQuery == null ? "" : retrievalQuery;
+        packedContextPreview = packedContextPreview == null ? "" : packedContextPreview;
+        retrievedDocumentNames = List.copyOf(Objects.requireNonNullElseGet(retrievedDocumentNames, List::of));
+        answerGroundingPolicy = answerGroundingPolicy == null ? "" : answerGroundingPolicy;
+        abstentionReason = abstentionReason == null ? "" : abstentionReason;
     }
 
     public static ExecutionTrace placeholder() {
@@ -146,6 +161,15 @@ public record ExecutionTrace(
                 false,
                 "",
                 false,
-                false);
+                false,
+                "",
+                "",
+                "",
+                0,
+                List.of(),
+                "",
+                0,
+                false,
+                "");
     }
 }

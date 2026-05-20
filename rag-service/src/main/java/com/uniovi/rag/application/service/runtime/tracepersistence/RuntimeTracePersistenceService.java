@@ -29,6 +29,15 @@ public class RuntimeTracePersistenceService implements Loggable {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Optional<UUID> persistBestEffort(ExecutionContext ctx, ExecutionTrace trace) {
+        if (ctx == null || ctx.userId() == null) {
+            log()
+                    .info(
+                            "Runtime trace persistence skipped: null userId. correlationId={} conversationId={} messageId={}",
+                            ctx != null ? ctx.correlationId() : "?",
+                            ctx != null ? ctx.conversationId() : null,
+                            ctx != null ? ctx.originatingUserMessageId().orElse(null) : null);
+            return Optional.empty();
+        }
         try {
             RuntimeExecutionTraceEntity e =
                     mapper.toNewEntity(

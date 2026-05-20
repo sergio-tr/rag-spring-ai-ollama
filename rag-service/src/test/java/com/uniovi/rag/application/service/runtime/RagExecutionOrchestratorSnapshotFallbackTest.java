@@ -8,6 +8,8 @@ import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallin
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
+import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
@@ -54,7 +56,9 @@ class RagExecutionOrchestratorSnapshotFallbackTest {
                         clarificationPolicy,
                         clarificationStrategy,
                         routingStrategy,
-                        judgeStrategy);
+                        judgeStrategy,
+                        mock(StructuredAnswerPlanService.class),
+                        mock(AnswerVerificationService.class));
         return new OrchestratorHarness(orchestrator, direct);
     }
 
@@ -79,7 +83,7 @@ class RagExecutionOrchestratorSnapshotFallbackTest {
         UUID sid = UUID.randomUUID();
         KnowledgeSnapshotSelection sel =
                 new KnowledgeSnapshotSelection(
-                        List.of(sid), Optional.of(sid), Optional.empty(), Optional.of("ph"), Optional.empty());
+                        List.of(sid), Optional.of(sid), Optional.empty(), Optional.of("ph"), Optional.empty(), Optional.empty());
         ExecutionContext ctx = mock(ExecutionContext.class);
         when(ctx.knowledgeSnapshotSelection()).thenReturn(sel);
 

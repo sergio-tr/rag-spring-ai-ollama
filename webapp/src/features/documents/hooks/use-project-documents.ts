@@ -5,6 +5,8 @@ import { apiFetch, apiProductPath } from "@/lib/api-client";
 import type { ProjectDocumentDto } from "@/types/api";
 
 const docsKey = (projectId: string) => ["project-documents", projectId] as const;
+const docsKeyForConversation = (projectId: string, conversationId: string) =>
+  ["project-documents", projectId, "conversation", conversationId] as const;
 
 const projectsListPrefix = ["projects"] as const;
 
@@ -14,6 +16,29 @@ export function useProjectDocuments(projectId: string | undefined) {
     enabled: Boolean(projectId),
     queryFn: () =>
       apiFetch<ProjectDocumentDto[]>(apiProductPath(`/projects/${projectId}/documents`)),
+  });
+}
+
+export function useProjectDocumentsForConversation(
+  projectId: string | undefined,
+  conversationId: string | null | undefined,
+) {
+  return useQuery({
+    queryKey:
+      projectId && conversationId
+        ? docsKeyForConversation(projectId, conversationId)
+        : ["project-documents", "none", "conversation"],
+    enabled: Boolean(projectId && conversationId),
+    queryFn: () => {
+      if (!projectId || !conversationId) return Promise.resolve([]);
+      const qs = new URLSearchParams({
+        conversationId,
+        includeProjectShared: "true",
+      });
+      return apiFetch<ProjectDocumentDto[]>(
+        apiProductPath(`/projects/${projectId}/documents?${qs.toString()}`),
+      );
+    },
   });
 }
 
@@ -34,6 +59,34 @@ export function useUploadProjectDocument(projectId: string | undefined) {
         void qc.invalidateQueries({ queryKey: docsKey(projectId) });
         void qc.invalidateQueries({ queryKey: projectsListPrefix });
       }
+    },
+  });
+}
+
+export function useUploadConversationOverlayDocument(
+  projectId: string | undefined,
+  conversationId: string | null | undefined,
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      if (!projectId) throw new Error("no_project");
+      if (!conversationId) throw new Error("no_conversation");
+      const fd = new FormData();
+      fd.append("file", file);
+      return apiFetch<ProjectDocumentDto>(
+        apiProductPath(`/projects/${projectId}/conversations/${conversationId}/documents`),
+        {
+          method: "POST",
+          body: fd,
+        },
+      );
+    },
+    onSuccess: () => {
+      if (!projectId || !conversationId) return;
+      void qc.invalidateQueries({ queryKey: docsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: docsKeyForConversation(projectId, conversationId) });
+      void qc.invalidateQueries({ queryKey: projectsListPrefix });
     },
   });
 }

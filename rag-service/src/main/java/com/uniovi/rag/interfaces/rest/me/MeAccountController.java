@@ -10,7 +10,7 @@ import com.uniovi.rag.interfaces.rest.dto.AsyncTaskStatusDto;
 import com.uniovi.rag.interfaces.rest.dto.me.AccountDeletionRequest;
 import com.uniovi.rag.interfaces.rest.dto.me.AccountJobAcceptedDto;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.async.AsyncTaskService;
+import com.uniovi.rag.application.service.async.AsyncTaskService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.nio.file.Files;

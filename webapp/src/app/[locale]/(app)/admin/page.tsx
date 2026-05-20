@@ -1,27 +1,35 @@
 "use client";
 
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { pollLabJob } from "@/lib/async-task";
-import type { AdminAllowlistEntryDto, LabJobAcceptedDto } from "@/types/api";
+import type {
+  AdminModelCheckRequest,
+  AdminModelCheckResponse,
+  AdminModelEntryDto,
+  AdminModelUpsertRequest,
+  LabJobAcceptedDto,
+} from "@/types/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
-const allowlistKey = ["admin", "allowlist"] as const;
+const modelsKey = ["admin", "models"] as const;
 
 export default function AdminHomePage() {
   const t = useTranslations("Admin");
   const tLab = useTranslations("Lab");
   const qc = useQueryClient();
-  const [health, setHealth] = useState<unknown>(null);
-  const [healthErr, setHealthErr] = useState<string | null>(null);
-  const [newName, setNewName] = useState("");
+  const [newModelId, setNewModelId] = useState("");
+  const [newDisplayName, setNewDisplayName] = useState("");
   const [newType, setNewType] = useState<"LLM" | "EMBEDDING">("LLM");
-  const [newInList, setNewInList] = useState(true);
+  const [newEnabled, setNewEnabled] = useState(true);
+  const [pullIfMissing, setPullIfMissing] = useState(false);
+  const [checkRes, setCheckRes] = useState<AdminModelCheckResponse | null>(null);
+  const [checkErr, setCheckErr] = useState<string | null>(null);
   const [pullModel, setPullModel] = useState("");
   const [pullErr, setPullErr] = useState<string | null>(null);
   const [pullOk, setPullOk] = useState<string | null>(null);
@@ -29,43 +37,34 @@ export default function AdminHomePage() {
   const [pullProgress, setPullProgress] = useState<string | null>(null);
   const pullAbortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const h = await apiFetch<unknown>("/api/admin/health");
-        if (!cancelled) setHealth(h);
-      } catch {
-        if (!cancelled) setHealthErr(t("forbiddenOrError"));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [t]);
-
   const listQ = useQuery({
-    queryKey: allowlistKey,
-    queryFn: () => apiFetch<AdminAllowlistEntryDto[]>("/api/admin/allowlist"),
+    queryKey: modelsKey,
+    queryFn: () => apiFetch<AdminModelEntryDto[]>(apiProductPath("/admin/models")),
     retry: false,
   });
 
-  const createM = useMutation({
-    mutationFn: () =>
-      apiFetch<AdminAllowlistEntryDto>("/api/admin/allowlist", {
+  const checkM = useMutation({
+    mutationFn: (body: AdminModelCheckRequest) =>
+      apiFetch<AdminModelCheckResponse>(apiProductPath("/admin/models/check"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim(), type: newType, inAllowlist: newInList }),
+        body: JSON.stringify(body),
       }),
-    onSuccess: () => {
-      setNewName("");
-      void qc.invalidateQueries({ queryKey: allowlistKey });
+    onSuccess: (data) => {
+      setCheckRes(data);
+      setCheckErr(null);
     },
+    onError: (e) => setCheckErr(e instanceof Error ? e.message : t("modelCheckError")),
   });
 
-  const deleteM = useMutation({
-    mutationFn: (id: string) => apiFetch(`/api/admin/allowlist/${id}`, { method: "DELETE" }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: allowlistKey }),
+  const upsertM = useMutation({
+    mutationFn: (body: AdminModelUpsertRequest) =>
+      apiFetch<AdminModelEntryDto>(apiProductPath("/admin/models"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: modelsKey }),
   });
 
   async function runPull() {
@@ -77,7 +76,7 @@ export default function AdminHomePage() {
     setPullProgress(null);
     setPullRunning(true);
     try {
-      const accepted = await apiFetch<LabJobAcceptedDto>("/api/admin/ollama/pull", {
+      const accepted = await apiFetch<LabJobAcceptedDto>(apiProductPath("/admin/models/pull"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: pullModel.trim() }),
@@ -114,26 +113,8 @@ export default function AdminHomePage() {
         <h1 className="font-semibold text-2xl tracking-tight">{t("title")}</h1>
         <p className="text-muted-foreground text-sm">{t("subtitle")}</p>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("healthCardTitle")}</CardTitle>
-          <CardDescription>{t("healthCardDescription")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {healthErr && (
-            <p className="text-destructive text-sm" role="alert">
-              {healthErr}
-            </p>
-          )}
-          {!healthErr && health != null ? (
-            <pre className="bg-muted/40 max-h-[200px] overflow-auto rounded-md border border-border p-3 text-xs">
-              {JSON.stringify(health, null, 2)}
-            </pre>
-          ) : null}
-        </CardContent>
-      </Card>
 
-      <Card>
+      <Card data-testid="admin-models-card">
         <CardHeader>
           <CardTitle>{t("allowlistTitle")}</CardTitle>
           <CardDescription>{t("allowlistDescription")}</CardDescription>
@@ -151,26 +132,20 @@ export default function AdminHomePage() {
                 className="bg-muted/40 flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2"
               >
                 <span>
-                  <span className="font-medium">{row.name}</span>{" "}
+                  <span className="font-medium">{row.modelId}</span>{" "}
                   <span className="text-muted-foreground">
-                    ({row.type}) {row.inAllowlist ? "✓" : "—"}
+                    ({row.modelType}) {row.enabled ? "✓" : "—"} ·{" "}
+                    {row.available ? t("modelAvailable") : t("modelMissing")}
                   </span>
                 </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={deleteM.isPending}
-                  onClick={() => deleteM.mutate(row.id)}
-                >
-                  {t("allowlistDelete")}
-                </Button>
               </li>
             ))}
           </ul>
           <div className="grid gap-2 border-t border-border pt-4">
             <Label htmlFor="aname">{t("allowlistName")}</Label>
-            <Input id="aname" value={newName} onChange={(e) => setNewName(e.target.value)} />
+            <Input id="aname" value={newModelId} onChange={(e) => setNewModelId(e.target.value)} />
+            <Label htmlFor="dname">{t("modelDisplayName")}</Label>
+            <Input id="dname" value={newDisplayName} onChange={(e) => setNewDisplayName(e.target.value)} />
             <Label htmlFor="atype">{t("allowlistType")}</Label>
             <select
               id="atype"
@@ -184,17 +159,62 @@ export default function AdminHomePage() {
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={newInList}
-                onChange={(e) => setNewInList(e.target.checked)}
+                checked={newEnabled}
+                onChange={(e) => setNewEnabled(e.target.checked)}
               />
               {t("allowlistInList")}
             </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={pullIfMissing}
+                onChange={(e) => setPullIfMissing(e.target.checked)}
+              />
+              {t("pullIfMissing")}
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={checkM.isPending || !newModelId.trim()}
+                onClick={() =>
+                  checkM.mutate({
+                    modelId: newModelId.trim(),
+                    modelType: newType,
+                    pullIfMissing,
+                  })
+                }
+              >
+                {t("modelCheck")}
+              </Button>
+              <Button
+                type="button"
+                disabled={upsertM.isPending || !newModelId.trim() || (newEnabled && checkRes?.existsLocal !== true)}
+                onClick={() =>
+                  upsertM.mutate({
+                    modelId: newModelId.trim(),
+                    displayName: newDisplayName.trim() ? newDisplayName.trim() : null,
+                    modelType: newType,
+                    enabled: newEnabled,
+                    pullIfMissing,
+                    tags: [],
+                  })
+                }
+              >
+                {t("allowlistCreate")}
+              </Button>
+            </div>
+            {checkErr ? <p className="text-destructive text-sm">{checkErr}</p> : null}
+            {checkRes ? (
+              <pre className="bg-muted/40 max-h-[200px] overflow-auto rounded-md border border-border p-3 text-xs">
+                {JSON.stringify(checkRes, null, 2)}
+              </pre>
+            ) : null}
             <Button
               type="button"
-              disabled={createM.isPending || !newName.trim()}
-              onClick={() => createM.mutate()}
+              className="hidden"
             >
-              {t("allowlistCreate")}
+              noop
             </Button>
           </div>
         </CardContent>

@@ -119,6 +119,30 @@ def test_register_model_copies_and_writes_metadata(models_root):
     assert "createdAt" in meta
 
 
+def test_register_model_keeps_model_id_distinct_from_display_name(models_root):
+    reg = ModelRegistry(Config())
+    src_m = models_root / "src-name.keras"
+    src_l = models_root / "labels-name.txt"
+    src_m.write_bytes(b"modelbytes")
+    src_l.write_text("A\nB\n")
+    model_id = "unique42"
+    reg.register_model(
+        model_id=model_id,
+        name="default",
+        model_path=str(src_m),
+        labels_path=str(src_l),
+        metadata={"ownerId": "rag-user-1"},
+    )
+
+    rows = reg.list_models()
+    trained = next(m for m in rows if m["id"] == model_id)
+    assert trained["id"] == model_id
+    assert trained["name"] == "default"
+    assert rows[0]["id"] == "default"
+    meta = json.loads((models_root / model_id / METADATA_FILENAME).read_text(encoding="utf-8"))
+    assert meta["ownerId"] == "rag-user-1"
+
+
 def test_register_model_skips_copy_when_same_path(models_root):
     reg = ModelRegistry(Config())
     mid = "samepath"
@@ -142,4 +166,10 @@ def test_create_new_model_id_format():
     _reset_config()
     mid = ModelRegistry.create_new_model_id()
     assert len(mid) == 8
+
+
+def test_create_new_model_id_is_unique_across_sample():
+    _reset_config()
+    ids = {ModelRegistry.create_new_model_id() for _ in range(100)}
+    assert len(ids) == 100
 

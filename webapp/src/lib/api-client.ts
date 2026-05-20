@@ -173,6 +173,8 @@ export type ApiErrorKind = "http" | "network" | "timeout" | "abort" | "unknown";
 export type ApiErrorMeta = {
   kind: ApiErrorKind;
   safeMessage?: string;
+  /** Parsed JSON body when the response was JSON (including error responses). */
+  parsedJson?: unknown | null;
   details?: Record<string, unknown>;
   contentType?: string | null;
   /** Bounded slice of raw body for logs/debug only — never render unbounded HTML to users. */
@@ -282,8 +284,8 @@ function buildSafeMessage(args: {
 }): string {
   const { status, contentType, bodyText, parsedJson, kind } = args;
 
-  if (status === 401) return "Unauthorized.";
-  if (status === 403) return "Forbidden.";
+  if (status === 401) return "Session expired or not signed in. Please sign in and retry.";
+  if (status === 403) return "Insufficient permissions for this action. Check your account role and retry.";
   if (status === 404) return "Not found.";
 
   const fromJson = parsedJson === null ? null : extractJsonDetail(parsedJson);
@@ -367,6 +369,7 @@ export function createHttpApiError(args: {
   const meta: ApiErrorMeta = {
     kind: "http",
     safeMessage,
+    parsedJson,
     details,
     contentType: ct,
     rawBodyPreview: previewBody(args.bodyText),

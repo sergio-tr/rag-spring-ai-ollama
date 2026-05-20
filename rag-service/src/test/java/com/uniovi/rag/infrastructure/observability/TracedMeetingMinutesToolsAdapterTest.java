@@ -2,7 +2,7 @@ package com.uniovi.rag.infrastructure.observability;
 
 import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.domain.model.QueryType;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
 import com.uniovi.rag.tool.Tool;
 import com.uniovi.rag.tool.ToolResult;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;

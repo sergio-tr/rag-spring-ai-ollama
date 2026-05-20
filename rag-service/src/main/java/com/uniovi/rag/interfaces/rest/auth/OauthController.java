@@ -1,6 +1,6 @@
 package com.uniovi.rag.interfaces.rest.auth;
 
-import com.uniovi.rag.application.usecase.auth.OauthLoginService;
+import com.uniovi.rag.application.service.auth.OauthLoginService;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
 import com.uniovi.rag.interfaces.rest.auth.dto.OauthExchangeRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -17,14 +17,11 @@ import java.io.IOException;
 /**
  * Google OAuth HTTP adapter.
  *
- * <p><strong>Primary contract:</strong> {@code {productBase}/auth/oauth/**} with default {@code /api/v5/auth/oauth/**}
- * ({@code GET .../google/start}, {@code GET .../google/callback}, {@code POST .../exchange}).
- *
- * <p><strong>Transitional:</strong> {@code /api/auth/oauth/**} remains mapped for backward compatibility only; new
- * clients must use the product-base path (same handler beans).
+ * <p>Contract: {@code {productBase}/auth/oauth/**} (default {@code /api/v5/auth/oauth/**}):
+ * {@code GET .../google/start}, {@code GET .../google/callback}, {@code POST .../exchange}.
  */
 @RestController
-@RequestMapping({"${rag.api.product-base-path}/auth/oauth", "/api/auth/oauth"})
+@RequestMapping("${rag.api.product-base-path}/auth/oauth")
 public class OauthController {
 
     private final OauthLoginService oauthLoginService;

@@ -33,8 +33,8 @@ public class OpenApiSecurityConfiguration {
      *
      * <p>Rules:
      * - `${rag.api.product-base-path}/**`: authenticated product API
-     * - `/api/admin/**`: admin-only API
-     * - `/api/auth/**` (others): public
+     * - `${rag.api.product-base-path}/admin/**`: admin-only
+     * - `${rag.api.product-base-path}/auth/**` (except login/register/oauth): authenticated where applicable
      */
     @Bean
     public OpenApiCustomizer applyBearerAuthToProtectedPaths(RagApiPathProperties ragApiPathProperties) {
@@ -47,11 +47,7 @@ public class OpenApiSecurityConfiguration {
                         path != null
                                 && (path.equals(productBasePath + "/auth")
                                         || path.startsWith(productBasePath + "/auth/"));
-                boolean secured =
-                        path != null
-                                && (path.startsWith(productBasePath + "/")
-                                        || path.startsWith("/api/admin/"))
-                                && !isProductAuthPath;
+                boolean secured = path != null && path.startsWith(productBasePath + "/") && !isProductAuthPath;
                 if (!secured || item == null) return;
                 item.readOperations().forEach(op -> {
                     if (op.getSecurity() == null || op.getSecurity().isEmpty()) {

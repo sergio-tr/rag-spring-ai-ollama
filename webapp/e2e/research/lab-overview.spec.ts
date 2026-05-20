@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { loginAsSeedUser } from "../support/helpers";
 
 /**
- * Lab root: status JSON hub (merges former product-smoke E2E-07 and lab-navigation overview checks).
+ * Lab root: typed readiness hub + Raw JSON (`countsByDatasetKind`, experimental uploads panel).
  */
 test.describe("Lab overview", () => {
   test("E2E-12 lab overview loads status hub and JSON @fullstack", async ({ page }) => {

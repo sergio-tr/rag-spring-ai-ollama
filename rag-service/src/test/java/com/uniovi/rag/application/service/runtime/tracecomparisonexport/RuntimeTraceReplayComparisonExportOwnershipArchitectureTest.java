@@ -30,7 +30,7 @@ class RuntimeTraceReplayComparisonExportOwnershipArchitectureTest {
                     .haveFullyQualifiedName(RuntimeExecutionTraceRepository.class.getName());
 
     @ArchTest
-    static final ArchRule exportDoesNotDependOnTraceQueryService =
+    static final ArchRule exportDoesNotDependOnTraceQueryExecutionService =
             noClasses()
                     .that()
                     .resideInAnyPackage("..tracecomparisonexport..")

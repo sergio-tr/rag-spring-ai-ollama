@@ -17,7 +17,7 @@ The platform serves multiple **users** with **projects**, **documents**, and **c
    **Strong multi-tenancy** (e.g. dedicated deployment per customer, mandatory row-level security policies for arbitrary tenants, or cross-tenant admin without explicit support tooling) is **out of scope** unless added by a future ADR and implementation.
 
 3. **ADMIN vs USER**  
-   Role **ADMIN** can manage global policies (e.g. allowlist) via `/api/admin/**`. That is **role-based** access, not a second tenant dimension in the data model.
+   Role **ADMIN** can manage global policies (e.g. allowlist) via product admin routes under `{product}/admin/**`. That is **role-based** access, not a second tenant dimension in the data model.
 
 4. **Configuration resolution**  
    Effective RAG parameters are computed from system → user → project layers (see [DATA_MODEL.md — Section 6](../architecture/DATA_MODEL.md#6-active-configuration-resolution)); this remains **per authenticated user and owned project**, consistent with the isolation above.

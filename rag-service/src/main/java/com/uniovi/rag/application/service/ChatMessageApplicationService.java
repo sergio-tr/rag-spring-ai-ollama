@@ -5,6 +5,8 @@ import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.MessageProcessingStatus;
 import com.uniovi.rag.domain.MessageRole;
 import com.uniovi.rag.application.port.AfterCommitTaskScheduler;
+import com.uniovi.rag.application.service.chat.ChatRuntimeCompatibilitySupport;
+import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.infrastructure.persistence.ConversationDraftRepository;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
@@ -19,11 +21,15 @@ import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.interfaces.rest.dto.ChatMessageAcceptedDto;
 import com.uniovi.rag.interfaces.rest.dto.ConversationDraftDto;
 import com.uniovi.rag.interfaces.rest.dto.PostMessageRequest;
-import com.uniovi.rag.service.async.AsyncLabTaskRunner;
-import com.uniovi.rag.service.async.AsyncTaskMutationService;
-import com.uniovi.rag.service.async.chat.ChatJobCancellationRegistry;
-import com.uniovi.rag.service.async.chat.ChatJobPayloadKeys;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateRequest;
+import com.uniovi.rag.application.service.async.AsyncLabTaskRunner;
+import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.application.service.chat.async.ChatJobCancellationRegistry;
+import com.uniovi.rag.application.service.chat.async.ChatJobPayloadKeys;
+import com.uniovi.rag.application.service.config.ChatPresetDefaults;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +47,8 @@ import java.util.UUID;
 @Service
 public class ChatMessageApplicationService {
 
+    private static final Logger log = LoggerFactory.getLogger(ChatMessageApplicationService.class);
+
     private final ProjectAccessService projectAccessService;
     private final MessageRepository messageRepository;
     private final ConversationRepository conversationRepository;
@@ -52,6 +60,8 @@ public class ChatMessageApplicationService {
     private final ChatJobCancellationRegistry chatJobCancellationRegistry;
     private final AsyncTaskMutationService asyncTaskMutationService;
     private final ChatMessageWorkService chatMessageWorkService;
+    private final RuntimeConfigValidationService runtimeConfigValidationService;
+    private final ChatPresetDefaults chatPresetDefaults;
 
     public ChatMessageApplicationService(
             ProjectAccessService projectAccessService,
@@ -64,7 +74,9 @@ public class ChatMessageApplicationService {
             AfterCommitTaskScheduler afterCommitTaskScheduler,
             ChatJobCancellationRegistry chatJobCancellationRegistry,
             AsyncTaskMutationService asyncTaskMutationService,
-            ChatMessageWorkService chatMessageWorkService) {
+            ChatMessageWorkService chatMessageWorkService,
+            RuntimeConfigValidationService runtimeConfigValidationService,
+            ChatPresetDefaults chatPresetDefaults) {
         this.projectAccessService = projectAccessService;
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -76,6 +88,8 @@ public class ChatMessageApplicationService {
         this.chatJobCancellationRegistry = chatJobCancellationRegistry;
         this.asyncTaskMutationService = asyncTaskMutationService;
         this.chatMessageWorkService = chatMessageWorkService;
+        this.runtimeConfigValidationService = runtimeConfigValidationService;
+        this.chatPresetDefaults = chatPresetDefaults;
     }
 
     @Transactional
@@ -87,6 +101,16 @@ public class ChatMessageApplicationService {
         if (content.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "content is required");
         }
+        UUID presetId = conv.getPreset() != null ? conv.getPreset().getId() : null;
+        UUID effectivePresetId = chatPresetDefaults.effectivePresetIdForApi(presetId);
+        ChatRuntimeCompatibilitySupport.throwIfInvalid(
+                runtimeConfigValidationService.validate(
+                        userId,
+                        new RuntimeConfigValidateRequest(
+                                conversationId,
+                                effectivePresetId != null ? effectivePresetId.toString() : null,
+                                null,
+                                Map.of())));
         UUID continueId = body.continueAfterUserMessageId();
 
         MessageEntity userMsg;
@@ -119,12 +143,24 @@ public class ChatMessageApplicationService {
 
         conv.touchUpdated();
         conversationRepository.save(conv);
+        String persistedLlm = conv.getLlmModel() != null && !conv.getLlmModel().isBlank() ? conv.getLlmModel().trim() : null;
+        String effectiveLlm =
+                body.llmModel() != null && !body.llmModel().isBlank() ? body.llmModel().trim() : persistedLlm;
+
+        log.info(
+                "chat_enqueue conversationId={} projectId={} userId={} presetId={} documentFilterCount={} llmModelOverrideSet={}",
+                conversationId,
+                project != null ? project.getId() : null,
+                userId,
+                conv.getPreset() != null ? conv.getPreset().getId() : null,
+                conv.getDocumentFilter() != null ? conv.getDocumentFilter().size() : 0,
+                effectiveLlm != null);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put(ChatJobPayloadKeys.CONVERSATION_ID, conversationId.toString());
         payload.put(ChatJobPayloadKeys.USER_MESSAGE_ID, userMsg.getId().toString());
         payload.put(ChatJobPayloadKeys.ASSISTANT_MESSAGE_ID, asst.getId().toString());
-        payload.put(ChatJobPayloadKeys.LLM_MODEL, body.llmModel());
+        payload.put(ChatJobPayloadKeys.LLM_MODEL, effectiveLlm);
         payload.put(ChatJobPayloadKeys.USER_TEXT, content);
         payload.put(
                 ChatJobPayloadKeys.DOCUMENT_FILTER,
@@ -175,11 +211,12 @@ public class ChatMessageApplicationService {
         messageRepository.save(asst);
 
         ConversationEntity conv = conversationRepository.findById(conversationId).orElseThrow();
+        String persistedLlm = conv.getLlmModel() != null && !conv.getLlmModel().isBlank() ? conv.getLlmModel().trim() : null;
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put(ChatJobPayloadKeys.CONVERSATION_ID, conversationId.toString());
         payload.put(ChatJobPayloadKeys.USER_MESSAGE_ID, userMsg.getId().toString());
         payload.put(ChatJobPayloadKeys.ASSISTANT_MESSAGE_ID, asst.getId().toString());
-        payload.put(ChatJobPayloadKeys.LLM_MODEL, null);
+        payload.put(ChatJobPayloadKeys.LLM_MODEL, persistedLlm);
         payload.put(ChatJobPayloadKeys.USER_TEXT, userMsg.getContent());
         payload.put(
                 ChatJobPayloadKeys.DOCUMENT_FILTER,

@@ -2,6 +2,7 @@ package com.uniovi.rag.infrastructure.llm.ollama;
 
 import com.uniovi.rag.infrastructure.health.RagHealthProperties;
 import org.json.JSONObject;
+import org.json.JSONArray;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
@@ -74,6 +75,11 @@ public class OllamaApiClient {
             public void pullModel(String modelName, long pullReadTimeoutMs) {
                 // no-op
             }
+
+            @Override
+            public boolean probeEmbedding(String modelName, String text, long readTimeoutMs) {
+                return true;
+            }
         };
     }
 
@@ -142,6 +148,37 @@ public class OllamaApiClient {
                 }
                 // Non-JSON body; Ollama sometimes returns line-oriented output; if HTTP 200, assume OK
             }
+        }
+    }
+
+    /**
+     * Minimal embedding probe: POST {@code /api/embeddings} with a short prompt and checks that Ollama returns an embedding array.
+     *
+     * <p>Note: this does not validate model "quality", only that the endpoint accepts the model as an embedding-capable one.
+     */
+    public boolean probeEmbedding(String modelName, String text, long readTimeoutMs) throws IOException, InterruptedException {
+        String url = baseUrl + "/api/embeddings";
+        JSONObject body = new JSONObject();
+        body.put("model", modelName);
+        body.put("prompt", text != null ? text : "ping");
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofMillis(Math.max(1_000L, readTimeoutMs)))
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            return false;
+        }
+        String respBody = response.body();
+        if (respBody == null || respBody.isBlank()) {
+            return false;
+        }
+        try {
+            JSONObject o = new JSONObject(respBody);
+            return o.has("embedding") && o.get("embedding") instanceof JSONArray;
+        } catch (Exception e) {
+            return false;
         }
     }
 

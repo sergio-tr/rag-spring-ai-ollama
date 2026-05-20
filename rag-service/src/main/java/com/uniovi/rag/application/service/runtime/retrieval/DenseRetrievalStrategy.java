@@ -1,13 +1,16 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
+import com.uniovi.rag.configuration.RagVectorProperties;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
+import com.uniovi.rag.infrastructure.vector.PgVectorStoreRegistry;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -15,7 +18,9 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Snapshot-bound dense retrieval via pgvector similarity search and post-filtering.
@@ -23,16 +28,22 @@ import org.springframework.stereotype.Service;
 @Service
 public class DenseRetrievalStrategy {
 
-    private final PgVectorStore vectorStore;
+    private final PgVectorStoreRegistry vectorStoreRegistry;
+    private final PgVectorStore fallbackVectorStore;
+    private final RagVectorProperties ragVectorProperties;
     private final int defaultTopK;
     private final double defaultSimilarityThreshold;
 
     public DenseRetrievalStrategy(
-            PgVectorStore vectorStore,
+            PgVectorStoreRegistry vectorStoreRegistry,
+            PgVectorStore fallbackVectorStore,
+            RagVectorProperties ragVectorProperties,
             @Value("${spring.ai.ollama.top-k:10}") int defaultTopK,
             @Value("${spring.ai.ollama.similarity-threshold:0.7}")
                     double defaultSimilarityThreshold) {
-        this.vectorStore = vectorStore;
+        this.vectorStoreRegistry = vectorStoreRegistry;
+        this.fallbackVectorStore = fallbackVectorStore;
+        this.ragVectorProperties = ragVectorProperties;
         this.defaultTopK = defaultTopK;
         this.defaultSimilarityThreshold = defaultSimilarityThreshold;
     }
@@ -41,7 +52,8 @@ public class DenseRetrievalStrategy {
         double sim = effectiveSimilarityThreshold();
         SearchRequest searchReq =
                 SearchRequest.builder().query(req.queryText()).topK(req.denseFetchLimit()).similarityThreshold(sim).build();
-        List<Document> raw = vectorStore.similaritySearch(searchReq);
+        PgVectorStore store = resolveVectorStore(req);
+        List<Document> raw = store.similaritySearch(searchReq);
         Set<String> allowed = req.snapshotIds().stream().map(UUID::toString).collect(Collectors.toSet());
         List<Document> filtered = new ArrayList<>();
         for (Document d : raw) {
@@ -79,6 +91,19 @@ public class DenseRetrievalStrategy {
             }
         }
         return out;
+    }
+
+    private PgVectorStore resolveVectorStore(RetrievalRequest req) {
+        Optional<String> mid = req.denseRetrievalEmbeddingModelId();
+        if (mid.isPresent() && !mid.get().isBlank()) {
+            return vectorStoreRegistry.forEmbeddingModelId(mid.get().trim());
+        }
+        if (ragVectorProperties.requireSnapshotEmbeddingModelId()) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "DENSE_RETRIEVAL_REQUIRES_SNAPSHOT_EMBEDDING_MODEL_ID: active knowledge snapshot index profile must include embeddingModelId (rag.vector.require-snapshot-embedding-model-id=true).");
+        }
+        return fallbackVectorStore;
     }
 
     private static UUID parseSnapshotId(Document d) {
@@ -134,7 +159,8 @@ public class DenseRetrievalStrategy {
         }
         Object p = meta.get("projectId");
         if (p == null) {
-            return true;
+            // Project-scoped chat must not include chunks with missing project metadata.
+            return false;
         }
         return projectId.equals(String.valueOf(p));
     }

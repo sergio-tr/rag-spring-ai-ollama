@@ -14,8 +14,8 @@ import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
-import com.uniovi.rag.service.query.ProcessQueryService;
-import com.uniovi.rag.service.query.SimpleProcessQueryService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
 import jakarta.persistence.EntityManager;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -67,15 +67,14 @@ class RuntimeTraceRegressionSuiteRunExportServiceArchitectureTest {
                     "RuntimeTraceReplayBatchService",
                     "RuntimeTraceQueryService",
                     "RagExecutionOrchestrator",
-                    "ProcessQueryService",
-                    "SimpleProcessQueryService",
-                    "TaskExecutor",
+                    "RuntimeQueryExecutionService",
+                                        "TaskExecutor",
                     "AsyncTaskExecutor",
                     "ThreadPoolTaskExecutor",
                     "RuntimeTraceRegressionSuiteRunExportFacade",
                     "RuntimeTraceRegressionSuiteRunExportOrchestrator",
                     "RuntimeTraceRegressionSuiteRunReadService",
-                    "RuntimeTraceRegressionSuiteRunQueryService");
+                    "RuntimeTraceRegressionSuiteRunQueryExecutionService");
 
     private static ArchCondition<JavaClass> doesNotDependOnFd28Forbidden() {
         return new ArchCondition<>("not depend on FD28 forbidden types") {
@@ -147,16 +146,16 @@ class RuntimeTraceRegressionSuiteRunExportServiceArchitectureTest {
                     .areAssignableTo(RagExecutionOrchestrator.class);
 
     @ArchTest
-    static final ArchRule exportServiceDoesNotDependOnProcessQueryServices =
+    static final ArchRule exportServiceDoesNotDependOnRuntimeQueryExecutionServices =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceRegressionSuiteRunExportService")
                     .should()
                     .dependOnClassesThat()
-                    .areAssignableTo(ProcessQueryService.class)
+                    .areAssignableTo(RuntimeQueryExecutionService.class)
                     .orShould()
                     .dependOnClassesThat()
-                    .areAssignableTo(SimpleProcessQueryService.class);
+                    .areAssignableTo(RuntimeQueryExecutionService.class);
 
     @ArchTest
     static final ArchRule exportServiceDoesNotUseAsyncOrExecutors =

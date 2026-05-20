@@ -7,10 +7,13 @@ import com.uniovi.rag.domain.knowledge.IndexSignature;
 import com.uniovi.rag.domain.knowledge.KnowledgeBuildProjection;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
 import com.uniovi.rag.domain.knowledge.SnapshotSignatureHasher;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
+import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
@@ -19,7 +22,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -51,9 +56,11 @@ public class KnowledgePipelineOrchestrator {
     private final BinaryStoragePort binaryStoragePort;
     private final KnowledgeSnapshotService knowledgeSnapshotService;
     private final KnowledgeIndexingService knowledgeIndexingService;
-    private final int chunkMaxChars;
-    private final String embeddingModelId;
-    private final MaterializationStrategy materializationStrategy;
+    private final ProjectIndexProfileService projectIndexProfileService;
+    private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
+    private final EmbeddingSpaceGuard embeddingSpaceGuard;
+    private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
+    private final TransactionTemplate transactionTemplate;
     private final MeterRegistry meterRegistry;
 
     public KnowledgePipelineOrchestrator(
@@ -62,19 +69,38 @@ public class KnowledgePipelineOrchestrator {
             BinaryStoragePort binaryStoragePort,
             KnowledgeSnapshotService knowledgeSnapshotService,
             KnowledgeIndexingService knowledgeIndexingService,
-            @Value("${rag.chunk.max-chars:400}") int chunkMaxChars,
-            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large}") String embeddingModelId,
-            @Value("${rag.knowledge.materialization-strategy:CHUNK_LEVEL}") String materializationStrategyRaw,
+            ProjectIndexProfileService projectIndexProfileService,
+            LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
+            EmbeddingSpaceGuard embeddingSpaceGuard,
+            KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
+            PlatformTransactionManager transactionManager,
             @Autowired(required = false) MeterRegistry meterRegistry) {
         this.jdbcTemplate = jdbcTemplate;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.binaryStoragePort = binaryStoragePort;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.knowledgeIndexingService = knowledgeIndexingService;
-        this.chunkMaxChars = chunkMaxChars > 0 ? chunkMaxChars : 400;
-        this.embeddingModelId = embeddingModelId;
-        this.materializationStrategy = parseMaterializationStrategy(materializationStrategyRaw);
+        this.projectIndexProfileService = projectIndexProfileService;
+        this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
+        this.embeddingSpaceGuard = embeddingSpaceGuard;
+        this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.meterRegistry = meterRegistry;
+    }
+
+    private void probeAndPersistSnapshotEmbeddingDimensions(
+            ProjectIndexProfile profile, MaterializationStrategy strategy, KnowledgeIndexSnapshotEntity building) {
+        if (strategy == MaterializationStrategy.STRUCTURED_SEARCH) {
+            return;
+        }
+        Optional<String> emb = IndexProfileJsonSupport.readEmbeddingModelId(profile.toSnapshotJsonb());
+        if (emb.isEmpty() || emb.get().isBlank()) {
+            throw new IllegalStateException(
+                    "embeddingModelId is required in the project index profile for dense/hybrid vector indexing");
+        }
+        int dims = embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(emb.get().trim());
+        building.setEmbeddingDimensions(dims);
+        knowledgeIndexSnapshotRepository.save(building);
     }
 
     private void recordEtlEvent(String stage, String outcome) {
@@ -88,19 +114,83 @@ public class KnowledgePipelineOrchestrator {
                 .increment();
     }
 
-    private static MaterializationStrategy parseMaterializationStrategy(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return MaterializationStrategy.CHUNK_LEVEL;
-        }
+    private ProjectIndexProfile loadProfile(UUID projectId) {
+        // Ensure every project has a profile row (created lazily for older projects).
+        return projectIndexProfileService.ensureDefault(projectId);
+    }
+
+    public void ingestFromTempFile(
+            UUID projectId,
+            UUID projectDocumentId,
+            Path tempFile,
+            String originalFilename,
+            String contentType,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash) {
         try {
-            return MaterializationStrategy.valueOf(raw.trim());
-        } catch (IllegalArgumentException e) {
-            return MaterializationStrategy.CHUNK_LEVEL;
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "started");
+            transactionTemplate.executeWithoutResult(
+                    s ->
+                            ingestTx(
+                                    projectId,
+                                    projectDocumentId,
+                                    tempFile,
+                                    originalFilename,
+                                    contentType,
+                                    resolvedConfigSnapshotId,
+                                    resolvedConfigHash));
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "success");
+        } catch (Exception e) {
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "failure");
+            log.error("Knowledge ingest failed for project document {}: {}", projectDocumentId, e.getMessage(), e);
+            transactionTemplate.executeWithoutResult(
+                    s -> {
+                        KnowledgeDocumentEntity rowErr =
+                                knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+                        if (rowErr != null) {
+                            rowErr.setStatus(ProjectDocumentStatus.ERROR);
+                            rowErr.setErrorMessage(
+                                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                            knowledgeDocumentRepository.save(rowErr);
+                        }
+                    });
+        } finally {
+            deleteTempQuietly(tempFile);
         }
     }
 
-    @Transactional
-    public void ingestFromTempFile(
+    /**
+     * Retry ingest without a new upload by reusing the stored binary (storageUri).
+     * This guarantees the document will transition to READY or ERROR (never remain INGESTING forever).
+     */
+    public void ingestFromStoredBinary(
+            UUID projectId,
+            UUID projectDocumentId,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash) {
+        try {
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "started");
+            transactionTemplate.executeWithoutResult(
+                    s -> ingestStoredTx(projectId, projectDocumentId, resolvedConfigSnapshotId, resolvedConfigHash));
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "success");
+        } catch (Exception e) {
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "failure");
+            log.error("Knowledge ingest failed for project document {}: {}", projectDocumentId, e.getMessage(), e);
+            transactionTemplate.executeWithoutResult(
+                    s -> {
+                        KnowledgeDocumentEntity rowErr =
+                                knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+                        if (rowErr != null) {
+                            rowErr.setStatus(ProjectDocumentStatus.ERROR);
+                            rowErr.setErrorMessage(
+                                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                            knowledgeDocumentRepository.save(rowErr);
+                        }
+                    });
+        }
+    }
+
+    private void ingestTx(
             UUID projectId,
             UUID projectDocumentId,
             Path tempFile,
@@ -111,51 +201,54 @@ public class KnowledgePipelineOrchestrator {
         KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
         if (row == null) {
             log.warn("Project document {} not found, skipping ingest", projectDocumentId);
-            deleteTempQuietly(tempFile);
             return;
         }
-        KnowledgeIndexSnapshotEntity building = null;
-        try {
-            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "started");
-            persistBinaryAndUpdateRow(projectId, projectDocumentId, tempFile, contentType, row);
-            final KnowledgeDocumentEntity rowReloaded =
-                    knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
 
-            List<KnowledgeDocumentEntity> scopeDocs = resolveScopeDocuments(rowReloaded);
-            if (scopeDocs.stream().noneMatch(d -> d.getId().equals(rowReloaded.getId()))) {
-                scopeDocs = new ArrayList<>(scopeDocs);
-                scopeDocs.add(rowReloaded);
-                scopeDocs.sort(Comparator.comparing(KnowledgeDocumentEntity::getId));
-            }
-            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null);
-            String indexSigHex = sig.indexSigHex();
-            String snapshotSigHex = sig.snapshotSigHex();
+        persistBinaryAndUpdateRow(projectId, projectDocumentId, tempFile, contentType, row);
+        final KnowledgeDocumentEntity rowReloaded = knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
 
-            KnowledgeSnapshotScopeType snapScope =
-                    rowReloaded.getCorpusScope() == CorpusScope.PROJECT_SHARED
-                            ? KnowledgeSnapshotScopeType.PROJECT
-                            : KnowledgeSnapshotScopeType.CONVERSATION;
+        List<KnowledgeDocumentEntity> scopeDocs = resolveScopeDocuments(rowReloaded);
+        if (scopeDocs.stream().noneMatch(d -> d.getId().equals(rowReloaded.getId()))) {
+            scopeDocs = new ArrayList<>(scopeDocs);
+            scopeDocs.add(rowReloaded);
+            scopeDocs.sort(Comparator.comparing(KnowledgeDocumentEntity::getId));
+        }
+        ProjectIndexProfile profile = loadProfile(projectId);
+        IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null, profile);
+        String indexSigHex = sig.indexSigHex();
+        String snapshotSigHex = sig.snapshotSigHex();
 
-            Optional<KnowledgeIndexSnapshotEntity> previousActive =
-                    rowReloaded.getCorpusScope() == CorpusScope.PROJECT_SHARED
-                            ? knowledgeSnapshotService.findActiveProjectSnapshot(projectId)
-                            : knowledgeSnapshotService.findActiveConversationSnapshot(
-                                    rowReloaded.getConversation().getId());
+        KnowledgeSnapshotScopeType snapScope =
+                rowReloaded.getCorpusScope() == CorpusScope.PROJECT_SHARED
+                        ? KnowledgeSnapshotScopeType.PROJECT
+                        : KnowledgeSnapshotScopeType.CONVERSATION;
 
-            building =
-                    knowledgeSnapshotService.createBuildingSnapshot(
-                            rowReloaded.getProject(),
-                            rowReloaded.getConversation(),
-                            snapScope,
-                            snapshotSigHex,
-                            resolvedConfigSnapshotId,
-                            resolvedConfigHash);
+        Optional<KnowledgeIndexSnapshotEntity> previousActive =
+                rowReloaded.getCorpusScope() == CorpusScope.PROJECT_SHARED
+                        ? knowledgeSnapshotService.findActiveProjectSnapshot(projectId)
+                        : knowledgeSnapshotService.findActiveConversationSnapshot(
+                                rowReloaded.getConversation().getId());
 
-            previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
-            deleteVectorsForScopeDocs(scopeDocs);
+        KnowledgeIndexSnapshotEntity building =
+                knowledgeSnapshotService.createBuildingSnapshot(
+                        rowReloaded.getProject(),
+                        rowReloaded.getConversation(),
+                        snapScope,
+                        snapshotSigHex,
+                        resolvedConfigSnapshotId,
+                        resolvedConfigHash,
+                        profile.toSnapshotJsonb(),
+                        profile.profileHash());
 
-            MaterializationStrategy strategy = materializationStrategy;
-            for (KnowledgeDocumentEntity doc : scopeDocs) {
+        probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
+
+        previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
+        deleteVectorsForScopeDocs(scopeDocs);
+
+        MaterializationStrategy strategy = profile.materializationStrategy();
+        int chunkMaxChars = profile.chunkMaxChars();
+        for (KnowledgeDocumentEntity doc : scopeDocs) {
+            try {
                 knowledgeIndexingService.processDocument(
                         new KnowledgeDocumentIndexingRequest(
                                 doc,
@@ -166,36 +259,105 @@ public class KnowledgePipelineOrchestrator {
                                 indexSigHex,
                                 strategy,
                                 chunkMaxChars));
+            } catch (IOException e) {
+                throw new IllegalStateException("Document indexing failed: " + e.getMessage(), e);
             }
-
-            knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
-
-            KnowledgeDocumentEntity rowDone =
-                    knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
-            rowDone.setStatus(ProjectDocumentStatus.READY);
-            rowDone.setChunkCount(knowledgeIndexingService.computeChunkCountForDoc(rowDone.getId()));
-            rowDone.setErrorMessage(null);
-            rowDone.setReindexedAt(Instant.now());
-            knowledgeDocumentRepository.save(rowDone);
-            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "success");
-            log.info("Knowledge pipeline completed for project document {} (snapshot {})", projectDocumentId, building.getId());
-        } catch (Exception e) {
-            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "failure");
-            log.error("Knowledge ingest failed for project document {}: {}", projectDocumentId, e.getMessage(), e);
-            if (building != null) {
-                knowledgeSnapshotService.deleteVectorsForSnapshotId(building.getId());
-                knowledgeSnapshotService.failSnapshotById(building.getId());
-            }
-            KnowledgeDocumentEntity rowErr =
-                    knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
-            if (rowErr != null) {
-                rowErr.setStatus(ProjectDocumentStatus.ERROR);
-                rowErr.setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
-                knowledgeDocumentRepository.save(rowErr);
-            }
-        } finally {
-            deleteTempQuietly(tempFile);
         }
+
+        knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
+
+        KnowledgeDocumentEntity rowDone = knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
+        rowDone.setStatus(ProjectDocumentStatus.READY);
+        rowDone.setChunkCount(knowledgeIndexingService.computeChunkCountForDoc(rowDone.getId()));
+        rowDone.setErrorMessage(null);
+        rowDone.setReindexedAt(Instant.now());
+        knowledgeDocumentRepository.save(rowDone);
+        log.info(
+                "Knowledge pipeline completed for project document {} (snapshot {})",
+                projectDocumentId,
+                building.getId());
+    }
+
+    private void ingestStoredTx(
+            UUID projectId,
+            UUID projectDocumentId,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash) {
+        KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+        if (row == null) {
+            log.warn("Project document {} not found, skipping ingest", projectDocumentId);
+            return;
+        }
+        if (row.getStorageUri() == null || row.getStorageUri().isBlank()) {
+            throw new IllegalStateException("missing storage URI for stored-binary retry");
+        }
+
+        List<KnowledgeDocumentEntity> scopeDocs = resolveScopeDocuments(row);
+        if (scopeDocs.stream().noneMatch(d -> d.getId().equals(row.getId()))) {
+            scopeDocs = new ArrayList<>(scopeDocs);
+            scopeDocs.add(row);
+            scopeDocs.sort(Comparator.comparing(KnowledgeDocumentEntity::getId));
+        }
+        ProjectIndexProfile profile = loadProfile(projectId);
+        IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null, profile);
+        String indexSigHex = sig.indexSigHex();
+        String snapshotSigHex = sig.snapshotSigHex();
+
+        KnowledgeSnapshotScopeType snapScope =
+                row.getCorpusScope() == CorpusScope.PROJECT_SHARED
+                        ? KnowledgeSnapshotScopeType.PROJECT
+                        : KnowledgeSnapshotScopeType.CONVERSATION;
+
+        Optional<KnowledgeIndexSnapshotEntity> previousActive =
+                row.getCorpusScope() == CorpusScope.PROJECT_SHARED
+                        ? knowledgeSnapshotService.findActiveProjectSnapshot(projectId)
+                        : knowledgeSnapshotService.findActiveConversationSnapshot(
+                                row.getConversation().getId());
+
+        KnowledgeIndexSnapshotEntity building =
+                knowledgeSnapshotService.createBuildingSnapshot(
+                        row.getProject(),
+                        row.getConversation(),
+                        snapScope,
+                        snapshotSigHex,
+                        resolvedConfigSnapshotId,
+                        resolvedConfigHash,
+                        profile.toSnapshotJsonb(),
+                        profile.profileHash());
+
+        probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
+
+        previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
+        deleteVectorsForScopeDocs(scopeDocs);
+
+        MaterializationStrategy strategy = profile.materializationStrategy();
+        int chunkMaxChars = profile.chunkMaxChars();
+        String ct = row.getMimeType() != null ? row.getMimeType() : "application/octet-stream";
+        for (KnowledgeDocumentEntity doc : scopeDocs) {
+            try {
+                knowledgeIndexingService.processDocument(
+                        new KnowledgeDocumentIndexingRequest(
+                                doc,
+                                null,
+                                doc.getFileName(),
+                                ct,
+                                building,
+                                indexSigHex,
+                                strategy,
+                                chunkMaxChars));
+            } catch (IOException e) {
+                throw new IllegalStateException("Document indexing failed: " + e.getMessage(), e);
+            }
+        }
+
+        knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
+
+        KnowledgeDocumentEntity rowDone = knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
+        rowDone.setStatus(ProjectDocumentStatus.READY);
+        rowDone.setChunkCount(knowledgeIndexingService.computeChunkCountForDoc(rowDone.getId()));
+        rowDone.setErrorMessage(null);
+        rowDone.setReindexedAt(Instant.now());
+        knowledgeDocumentRepository.save(rowDone);
     }
 
     private void persistBinaryAndUpdateRow(
@@ -203,7 +365,7 @@ public class KnowledgePipelineOrchestrator {
             UUID projectDocumentId,
             Path tempFile,
             String contentType,
-            KnowledgeDocumentEntity row) throws IOException {
+            KnowledgeDocumentEntity row) {
         try (InputStream in = Files.newInputStream(tempFile)) {
             long size = Files.size(tempFile);
             BinaryStoragePort.StoredObject stored =
@@ -212,6 +374,8 @@ public class KnowledgePipelineOrchestrator {
             row.setContentChecksum(stored.sha256Hex());
             row.setByteSize(size);
             row.setMimeType(contentType);
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not persist binary for ingest: " + e.getMessage(), e);
         }
         knowledgeDocumentRepository.save(row);
     }
@@ -239,23 +403,27 @@ public class KnowledgePipelineOrchestrator {
      */
     public String previewSnapshotSignatureHex(UUID projectId, CorpusScope corpusScope, UUID conversationId) {
         List<KnowledgeDocumentEntity> scopeDocs = loadReadyScopeDocuments(projectId, corpusScope, conversationId);
-        return computeSignaturePair(scopeDocs, null).snapshotSigHex();
+        ProjectIndexProfile profile = loadProfile(projectId);
+        return computeSignaturePair(scopeDocs, null, profile).snapshotSigHex();
     }
 
     public String previewSnapshotSignatureHex(
             UUID projectId, CorpusScope corpusScope, UUID conversationId, KnowledgeBuildProjection projection) {
         List<KnowledgeDocumentEntity> scopeDocs = loadReadyScopeDocuments(projectId, corpusScope, conversationId);
-        return computeSignaturePair(scopeDocs, projection).snapshotSigHex();
+        ProjectIndexProfile profile = loadProfile(projectId);
+        return computeSignaturePair(scopeDocs, projection, profile).snapshotSigHex();
     }
 
     private record IndexAndSnapshotSig(String indexSigHex, String snapshotSigHex) {}
 
     private IndexAndSnapshotSig computeSignaturePair(
-            List<KnowledgeDocumentEntity> scopeDocs, KnowledgeBuildProjection projectionOrNull) {
-        String embed = projectionOrNull != null ? projectionOrNull.embeddingModelId() : embeddingModelId;
-        int chunk = projectionOrNull != null ? projectionOrNull.chunkMaxChars() : chunkMaxChars;
+            List<KnowledgeDocumentEntity> scopeDocs,
+            KnowledgeBuildProjection projectionOrNull,
+            ProjectIndexProfile profile) {
+        String embed = projectionOrNull != null ? projectionOrNull.embeddingModelId() : profile.embeddingModelId();
+        int chunk = projectionOrNull != null ? projectionOrNull.chunkMaxChars() : profile.chunkMaxChars();
         MaterializationStrategy strat =
-                projectionOrNull != null ? projectionOrNull.materializationStrategy() : materializationStrategy;
+                projectionOrNull != null ? projectionOrNull.materializationStrategy() : profile.materializationStrategy();
         IndexSignature indexSignature = IndexSignature.forStrategy(embed, chunk, strat);
         String indexSigHex = indexSignature.toHashHex();
         List<UUID> docIds = scopeDocs.stream().map(KnowledgeDocumentEntity::getId).sorted().toList();
@@ -285,7 +453,9 @@ public class KnowledgePipelineOrchestrator {
         KnowledgeIndexSnapshotEntity building = null;
         try {
             recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "started");
-            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, projection);
+            ProjectIndexProfile profile = loadProfile(projectId);
+            ProjectIndexProfile effectiveProfile = profileForProjection(profile, projection);
+            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null, effectiveProfile);
             String indexSigHex = sig.indexSigHex();
             String snapshotSigHex = sig.snapshotSigHex();
 
@@ -307,7 +477,11 @@ public class KnowledgePipelineOrchestrator {
                             snapScope,
                             snapshotSigHex,
                             resolvedConfigSnapshotId,
-                            projection.configHash());
+                            projection.configHash(),
+                            effectiveProfile.toSnapshotJsonb(),
+                            effectiveProfile.profileHash());
+
+            probeAndPersistSnapshotEmbeddingDimensions(effectiveProfile, effectiveProfile.materializationStrategy(), building);
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
             for (KnowledgeDocumentEntity d : scopeDocs) {
@@ -348,6 +522,134 @@ public class KnowledgePipelineOrchestrator {
                 knowledgeSnapshotService.failSnapshotById(building.getId());
             }
             throw new IllegalStateException(e.getMessage(), e);
+        }
+    }
+
+    private static ProjectIndexProfile profileForProjection(ProjectIndexProfile base, KnowledgeBuildProjection projection) {
+        if (projection == null) {
+            return base;
+        }
+        MaterializationStrategy strategy = projection.materializationStrategy();
+        boolean metadataEnabled = projection.metadataExtractionEnabled();
+        String embeddingModelId = projection.embeddingModelId();
+        int chunkMaxChars = projection.chunkMaxChars();
+        Integer chunkOverlap = projection.chunkOverlap();
+        String hash =
+                ProjectIndexProfile.computeProfileHash(
+                        strategy,
+                        metadataEnabled,
+                        base.metadataProfile(),
+                        embeddingModelId,
+                        chunkMaxChars,
+                        chunkOverlap);
+        Instant now = Instant.now();
+        return new ProjectIndexProfile(
+                base.projectId(),
+                strategy,
+                metadataEnabled,
+                base.metadataProfile(),
+                embeddingModelId,
+                chunkMaxChars,
+                chunkOverlap,
+                hash,
+                now,
+                now);
+    }
+
+    /**
+     * Lab-only internal rebuild using a derived profile override (materialization + metadata toggle).
+     *
+     * <p>This method intentionally does not write {@code project_index_profile}. It creates and activates a
+     * new {@code knowledge_index_snapshot} for the scope using the effective profile's capabilities.
+     *
+     * @return new knowledge snapshot id, or {@code null} when no READY documents (no snapshot created)
+     */
+    @Transactional
+    public UUID rebuildScopeWithProfileOverride(
+            UUID projectId,
+            CorpusScope corpusScope,
+            UUID conversationId,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash,
+            ProjectIndexProfile effectiveProfile) {
+        List<KnowledgeDocumentEntity> scopeDocs = loadReadyScopeDocuments(projectId, corpusScope, conversationId);
+        if (scopeDocs.isEmpty()) {
+            log.info("rebuildScopeWithProfileOverride: no READY documents in scope project={}, corpusScope={}", projectId, corpusScope);
+            return null;
+        }
+        KnowledgeIndexSnapshotEntity building = null;
+        try {
+            recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "started");
+            ProjectIndexProfile profile =
+                    effectiveProfile != null ? effectiveProfile : loadProfile(projectId);
+            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null, profile);
+            String indexSigHex = sig.indexSigHex();
+            String snapshotSigHex = sig.snapshotSigHex();
+
+            KnowledgeSnapshotScopeType snapScope =
+                    corpusScope == CorpusScope.PROJECT_SHARED
+                            ? KnowledgeSnapshotScopeType.PROJECT
+                            : KnowledgeSnapshotScopeType.CONVERSATION;
+
+            Optional<KnowledgeIndexSnapshotEntity> previousActive =
+                    corpusScope == CorpusScope.PROJECT_SHARED
+                            ? knowledgeSnapshotService.findActiveProjectSnapshot(projectId)
+                            : knowledgeSnapshotService.findActiveConversationSnapshot(conversationId);
+
+            KnowledgeDocumentEntity first = scopeDocs.getFirst();
+            building =
+                    knowledgeSnapshotService.createBuildingSnapshot(
+                            first.getProject(),
+                            first.getConversation(),
+                            snapScope,
+                            snapshotSigHex,
+                            resolvedConfigSnapshotId,
+                            resolvedConfigHash != null ? resolvedConfigHash : "lab-auto-reindex",
+                            profile.toSnapshotJsonb(),
+                            profile.profileHash());
+
+            probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
+
+            previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
+            for (KnowledgeDocumentEntity d : scopeDocs) {
+                deleteVectorChunksForDocument(d.getId());
+            }
+
+            MaterializationStrategy strategy = profile.materializationStrategy();
+            int chunkMaxChars = profile.chunkMaxChars();
+            for (KnowledgeDocumentEntity doc : scopeDocs) {
+                knowledgeIndexingService.processDocument(
+                        new KnowledgeDocumentIndexingRequest(
+                                doc,
+                                null,
+                                doc.getFileName(),
+                                doc.getMimeType(),
+                                building,
+                                indexSigHex,
+                                strategy,
+                                chunkMaxChars));
+            }
+
+            knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
+
+            Instant now = Instant.now();
+            for (KnowledgeDocumentEntity d : scopeDocs) {
+                d.setRequiresReindex(false);
+                d.setChunkCount(knowledgeIndexingService.computeChunkCountForDoc(d.getId()));
+                d.setReindexedAt(now);
+                knowledgeDocumentRepository.save(d);
+            }
+            recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "success");
+            log.info("rebuildScopeWithProfileOverride completed snapshot {} for project {}", building.getId(), projectId);
+            return building.getId();
+        } catch (Exception e) {
+            recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "failure");
+            log.error("rebuildScopeWithProfileOverride failed: {}", e.getMessage(), e);
+            if (building != null) {
+                knowledgeSnapshotService.deleteVectorsForSnapshotId(building.getId());
+                knowledgeSnapshotService.failSnapshotById(building.getId());
+            }
+            throw new IllegalStateException("AUTO_REINDEX_FAILED: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()), e);
         }
     }
 

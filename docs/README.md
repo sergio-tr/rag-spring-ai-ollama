@@ -18,7 +18,7 @@
 | Integration / auth / RAG flows | [architecture/integration-flows.md](architecture/integration-flows.md) |
 | Domain concepts | [domain/README.md](domain/README.md) |
 | Data model (ER) | [architecture/DATA_MODEL.md](architecture/DATA_MODEL.md) |
-| Testing strategy (overview) | [testing/README.md](testing/README.md), [development/e2e-testing-strategy.md](development/e2e-testing-strategy.md) (workflows vs gates), [testing/traceability-legacy-tools.md](testing/traceability-legacy-tools.md) (load-tool mapping) |
+| Testing strategy (overview) | [testing/README.md](testing/README.md), [development/e2e-testing-strategy.md](development/e2e-testing-strategy.md) (workflows vs gates), [testing/traceability-retired-tools.md](testing/traceability-retired-tools.md) (load-tool mapping) |
 | CI / PR validation and Compose pins | [devops/README.md](devops/README.md) |
 | Coverage reports (paths, Sonar) | [coverage/README.md](coverage/README.md) |
 | SonarCloud scan locally (match `sonar.yml`) | [development/sonar-local-analysis.md](development/sonar-local-analysis.md), [docker/scripts/README.md](../docker/scripts/README.md) |

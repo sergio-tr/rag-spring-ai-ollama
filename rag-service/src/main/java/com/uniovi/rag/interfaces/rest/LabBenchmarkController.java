@@ -3,6 +3,7 @@ package com.uniovi.rag.interfaces.rest;
 import com.uniovi.rag.application.service.evaluation.BenchmarkJobAccepted;
 import com.uniovi.rag.application.service.evaluation.BenchmarkRunOrchestrator;
 import com.uniovi.rag.application.service.evaluation.LabEvaluationRunService;
+import com.uniovi.rag.application.service.evaluation.LabMetricsComparisonService;
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
@@ -11,6 +12,7 @@ import com.uniovi.rag.interfaces.rest.dto.BenchmarkJobAcceptedDto;
 import com.uniovi.rag.interfaces.rest.dto.CompareRunsResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationResultItemDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationRunDetailDto;
+import com.uniovi.rag.interfaces.rest.dto.MetricsCompareRequestDto;
 import com.uniovi.rag.security.RagPrincipal;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -42,14 +44,17 @@ public class LabBenchmarkController {
 
     private final BenchmarkRunOrchestrator benchmarkRunOrchestrator;
     private final LabEvaluationRunService labEvaluationRunService;
+    private final LabMetricsComparisonService labMetricsComparisonService;
     private final RagApiPathProperties apiPathProperties;
 
     public LabBenchmarkController(
             BenchmarkRunOrchestrator benchmarkRunOrchestrator,
             LabEvaluationRunService labEvaluationRunService,
+            LabMetricsComparisonService labMetricsComparisonService,
             RagApiPathProperties apiPathProperties) {
         this.benchmarkRunOrchestrator = benchmarkRunOrchestrator;
         this.labEvaluationRunService = labEvaluationRunService;
+        this.labMetricsComparisonService = labMetricsComparisonService;
         this.apiPathProperties = apiPathProperties;
     }
 
@@ -92,7 +97,25 @@ public class LabBenchmarkController {
                         name,
                         resolvedConfigSnapshotId,
                         indexSnapshotId,
-                        presetId);
+                        presetId,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
         BenchmarkJobAccepted accepted =
                 benchmarkRunOrchestrator.startClassifierMetrics(
                         requireUserId(principal), principal.roleName(), meta, modelId, includeImages, file);
@@ -118,6 +141,63 @@ public class LabBenchmarkController {
         return labEvaluationRunService.compare(requireUserId(principal), runA, runB);
     }
 
+    /**
+     * Metrics comparison for N compatible runs (scientific leaderboard/diff).
+     */
+    @PostMapping(value = "/runs/compare/metrics", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public Map<String, Object> compareMetrics(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @RequestBody MetricsCompareRequestDto body) {
+        List<UUID> ids = body != null ? body.runIds() : null;
+        return labMetricsComparisonService.compareMetrics(
+                requireUserId(principal),
+                ids,
+                body != null ? body.queryTypes() : null,
+                body != null ? body.difficulties() : null);
+    }
+
+    @PostMapping(
+            value = "/runs/compare/metrics/export/comparison-summary.json",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public Map<String, Object> exportComparisonSummaryJson(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @RequestBody MetricsCompareRequestDto body) {
+        return compareMetrics(principal, body);
+    }
+
+    @PostMapping(
+            value = "/runs/compare/metrics/export/comparison-table.csv",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = "text/csv;charset=UTF-8")
+    public ResponseEntity<String> exportComparisonTableCsv(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @RequestBody MetricsCompareRequestDto body) {
+        String csv =
+                labMetricsComparisonService.exportComparisonTableCsv(
+                        requireUserId(principal),
+                        body != null ? body.runIds() : null,
+                        body != null ? body.queryTypes() : null,
+                        body != null ? body.difficulties() : null);
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/csv;charset=UTF-8")).body(csv);
+    }
+
+    @PostMapping(
+            value = "/runs/compare/metrics/export/comparison-items.csv",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = "text/csv;charset=UTF-8")
+    public ResponseEntity<String> exportComparisonItemsCsv(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @RequestBody MetricsCompareRequestDto body) {
+        String csv =
+                labMetricsComparisonService.exportComparisonItemsCsv(
+                        requireUserId(principal),
+                        body != null ? body.runIds() : null,
+                        body != null ? body.queryTypes() : null,
+                        body != null ? body.difficulties() : null);
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/csv;charset=UTF-8")).body(csv);
+    }
+
     @GetMapping(value = "/runs/{runId}/export")
     public ResponseEntity<Object> exportRun(
             @AuthenticationPrincipal RagPrincipal principal,
@@ -134,12 +214,37 @@ public class LabBenchmarkController {
                 .body(csv);
     }
 
+    /** MVP thesis export: nested metrics per item (JSON bundle). */
+    @GetMapping(value = "/runs/{runId}/export/mvp/items.json", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Map<String, Object> exportMvpItemsJson(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID runId) {
+        return labEvaluationRunService.exportMvpItemsJsonBundle(requireUserId(principal), runId);
+    }
+
+    /** MVP thesis export: rollups with explicit {@code outcomeCounts} (never mixes NOT_SUPPORTED into executed means). */
+    @GetMapping(value = "/runs/{runId}/export/mvp/rollups.json", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Map<String, Object> exportMvpRollupsJson(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID runId) {
+        return labEvaluationRunService.exportMvpRollupsJson(requireUserId(principal), runId);
+    }
+
+    /** MVP thesis export: flat CSV rows ({@code items.csv} semantics). */
+    @GetMapping(value = "/runs/{runId}/export/mvp/items.csv", produces = "text/csv;charset=UTF-8")
+    public ResponseEntity<String> exportMvpItemsCsv(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID runId) {
+        String csv = labEvaluationRunService.exportMvpItemsCsv(requireUserId(principal), runId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .body(csv);
+    }
+
     private BenchmarkJobAcceptedDto toAcceptedDto(BenchmarkJobAccepted accepted) {
         UUID jobId = accepted.asyncTaskId();
         String base = apiPathProperties.getProductBasePath() + "/lab/jobs/" + jobId;
         return new BenchmarkJobAcceptedDto(
                 accepted.evaluationRunId(),
                 jobId,
+                accepted.campaignId().orElse(null),
                 "ACCEPTED",
                 base,
                 base + "/events");

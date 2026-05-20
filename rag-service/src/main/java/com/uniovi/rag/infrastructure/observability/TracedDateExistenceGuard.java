@@ -1,7 +1,7 @@
 package com.uniovi.rag.infrastructure.observability;
 
 import com.uniovi.rag.domain.model.QueryType;
-import com.uniovi.rag.service.guard.DateExistenceGuard;
+import com.uniovi.rag.application.service.runtime.query.guard.DateExistenceGuard;
 import com.uniovi.rag.tool.ToolResult;
 import org.json.JSONObject;
 

@@ -7,9 +7,10 @@ import com.uniovi.rag.infrastructure.persistence.DocumentArtifactRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.DocumentArtifactEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
-import com.uniovi.rag.service.document.ByteArrayMultipartFile;
-import com.uniovi.rag.service.document.KnowledgeChunkMetadataFactory;
-import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
+import com.uniovi.rag.infrastructure.vector.PgVectorStoreRegistry;
+import com.uniovi.rag.application.service.knowledge.document.ByteArrayMultipartFile;
+import com.uniovi.rag.application.service.knowledge.document.KnowledgeChunkMetadataFactory;
+import com.uniovi.rag.application.service.knowledge.document.ProjectDocumentIngestionService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -21,10 +22,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Pipeline stages for one workspace document; invoked only from {@link KnowledgePipelineOrchestrator}.
@@ -36,17 +39,22 @@ public class KnowledgeIndexingService {
     private static final int ARTIFACT_SCHEMA_VERSION = 1;
     private static final String UNKNOWN_FILENAME_LABEL = "unknown";
 
-    private final PgVectorStore vectorStore;
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeIndexingService.class);
+
+    private final PgVectorStoreRegistry vectorStoreRegistry;
+    private final JdbcTemplate jdbcTemplate;
     private final ProjectDocumentIngestionService projectDocumentIngestionService;
     private final BinaryStoragePort binaryStoragePort;
     private final DocumentArtifactRepository documentArtifactRepository;
 
     public KnowledgeIndexingService(
-            PgVectorStore vectorStore,
+            PgVectorStoreRegistry vectorStoreRegistry,
+            JdbcTemplate jdbcTemplate,
             @Lazy ProjectDocumentIngestionService projectDocumentIngestionService,
             BinaryStoragePort binaryStoragePort,
             DocumentArtifactRepository documentArtifactRepository) {
-        this.vectorStore = vectorStore;
+        this.vectorStoreRegistry = vectorStoreRegistry;
+        this.jdbcTemplate = jdbcTemplate;
         this.projectDocumentIngestionService = projectDocumentIngestionService;
         this.binaryStoragePort = binaryStoragePort;
         this.documentArtifactRepository = documentArtifactRepository;
@@ -100,7 +108,7 @@ public class KnowledgeIndexingService {
 
         List<Document> vectorDocs = new ArrayList<>();
         String displayName = name != null ? name : UNKNOWN_FILENAME_LABEL;
-        String legacyHash = KnowledgeChunkMetadataFactory.legacyContentHashId(name, content, doc.getId());
+        String contentHash = KnowledgeChunkMetadataFactory.contentHashId(name, content, doc.getId());
         int totalVectors = computeTotalVectorCount(strategy, chunks);
 
         if (strategy == MaterializationStrategy.DOCUMENT_LEVEL) {
@@ -115,7 +123,7 @@ public class KnowledgeIndexingService {
                             displayName,
                             0,
                             1,
-                            legacyHash);
+                            contentHash);
             vectorDocs.add(new Document(chunks.getFirst(), vm));
         } else {
             for (int i = 0; i < chunks.size(); i++) {
@@ -130,7 +138,7 @@ public class KnowledgeIndexingService {
                                 displayName,
                                 i,
                                 totalVectors,
-                                legacyHash);
+                                contentHash);
                 vectorDocs.add(new Document(chunks.get(i), vm));
             }
         }
@@ -151,12 +159,32 @@ public class KnowledgeIndexingService {
                             displayName,
                             chunks.size(),
                             totalVectors,
-                            legacyHash);
+                            contentHash);
             vectorDocs.add(new Document(docSlice, vmDoc));
         }
 
         if (!vectorDocs.isEmpty()) {
-            vectorStore.add(vectorDocs);
+            String embeddingModelId =
+                    IndexProfileJsonSupport.readEmbeddingModelId(snapshot.getIndexProfileJsonb())
+                            .orElseThrow(
+                                    () -> new IllegalStateException(
+                                            "embeddingModelId missing from knowledge_index_snapshot.index_profile_jsonb; cannot embed"));
+            vectorStoreRegistry.forEmbeddingModelId(embeddingModelId).add(vectorDocs);
+            // Spring AI PgVectorStore does not automatically populate our optional `vector_store.project_id` column.
+            // We keep `metadata.projectId` as-is and also set the column for correct project-scoped retrieval.
+            int updated =
+                    backfillVectorStoreProjectIdForDocument(
+                            doc.getProject() != null ? doc.getProject().getId() : null,
+                            doc.getId(),
+                            snapshot != null ? snapshot.getId() : null,
+                            indexSigHex);
+            log.info(
+                    "vector_store_project_id_backfill projectId={} projectDocumentId={} indexSnapshotId={} vectorDocs={} updatedRows={}",
+                    doc.getProject() != null ? doc.getProject().getId() : null,
+                    doc.getId(),
+                    snapshot != null ? snapshot.getId() : null,
+                    vectorDocs.size(),
+                    updated);
         }
 
         Map<String, Object> indexPayload = new LinkedHashMap<>();
@@ -164,6 +192,36 @@ public class KnowledgeIndexingService {
         indexPayload.put("vectorChunkCount", vectorDocs.size());
         indexPayload.put("indexSignatureHash", indexSigHex);
         saveArtifact(doc, DocumentArtifactType.INDEX, indexPayload, now);
+    }
+
+    /**
+     * Repairs `vector_store.project_id` (column) for rows created by this indexing run.
+     * <p>
+     * We intentionally do not modify metadata; the system already relies on `metadata.projectId`.
+     * The column is required because several retrieval paths filter by `vector_store.project_id`.
+     */
+    private int backfillVectorStoreProjectIdForDocument(
+            UUID projectId, UUID projectDocumentId, UUID indexSnapshotId, String indexSignatureHashHex) {
+        if (projectId == null || projectDocumentId == null) {
+            return 0;
+        }
+        // Match only rows from this document (and snapshot when available) to avoid accidentally touching
+        // other projects that might share metadata keys.
+        String sql =
+                """
+                UPDATE vector_store
+                SET project_id = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE project_id IS NULL
+                  AND metadata->>'projectId' = ?
+                  AND metadata->>'projectDocumentId' = ?
+                  AND (? IS NULL OR metadata->>'indexSnapshotId' = ?)
+                  AND (? IS NULL OR metadata->>'indexSignatureHash' = ?)
+                """;
+        String pid = projectId.toString();
+        String did = projectDocumentId.toString();
+        String sid = indexSnapshotId != null ? indexSnapshotId.toString() : null;
+        String sig = (indexSignatureHashHex != null && !indexSignatureHashHex.isBlank()) ? indexSignatureHashHex : null;
+        return jdbcTemplate.update(sql, projectId, pid, did, sid, sid, sig, sig);
     }
 
     private static int computeTotalVectorCount(MaterializationStrategy strategy, List<String> chunks) {

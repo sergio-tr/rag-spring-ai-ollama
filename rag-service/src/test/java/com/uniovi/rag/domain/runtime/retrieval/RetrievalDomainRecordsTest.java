@@ -35,8 +35,15 @@ class RetrievalDomainRecordsTest {
                         2,
                         3,
                         4,
+                        4,
                         5,
-                        6);
+                        6,
+                        0,
+                        0,
+                        false,
+                        List.of(),
+                        List.of(),
+                        Optional.empty());
         assertTrue(d.fusionMode().isEmpty());
         assertEquals("", d.snapshotIdsJoined());
     }
@@ -78,7 +85,8 @@ class RetrievalDomainRecordsTest {
                         projectId,
                         Optional.of("conv-1"),
                         List.of("doc-1"),
-                        false);
+                        false,
+                        Optional.empty());
         assertEquals("query", req.queryText());
         assertTrue(req.conversationId().isPresent());
     }
@@ -97,7 +105,14 @@ class RetrievalDomainRecordsTest {
                         1,
                         1,
                         1,
-                        1);
+                        1,
+                        1,
+                        0,
+                        0,
+                        true,
+                        List.of("rc"),
+                        List.of("rc"),
+                        Optional.of("rc:0.50"));
         CuratedContextSet curated =
                 new CuratedContextSet(
                         List.of(c),

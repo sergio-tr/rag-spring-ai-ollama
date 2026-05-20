@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { loginAsSeedUser } from "../support/helpers";
 
 /**
- * E2E-06b: settings presets shell (merged from legacy product-smoke).
+ * E2E-06b: settings presets shell (merged from prior product-smoke).
  */
 test.describe("Settings presets", () => {
   test("E2E-06b settings presets page renders @fullstack", async ({ page }) => {

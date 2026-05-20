@@ -7,6 +7,8 @@ import com.uniovi.rag.infrastructure.persistence.MessageRepository;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.interfaces.rest.support.UserFacingErrorSanitizer;
+import com.uniovi.rag.application.result.chat.ChatSource;
+import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
 import io.micrometer.tracing.Tracer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -51,15 +53,40 @@ public class ChatMessageWorkService {
             UUID assistantMessageId,
             UUID conversationId,
             String answer,
-            List<Map<String, Object>> sources,
+            List<ChatSource> sources,
             String queryType,
             String traceId,
             List<Map<String, Object>> pipelineSteps,
             String llmModel,
             Duration duration) {
+        applyAssistantSuccess(
+                assistantMessageId,
+                conversationId,
+                answer,
+                sources,
+                queryType,
+                traceId,
+                pipelineSteps,
+                llmModel,
+                duration,
+                Map.of());
+    }
+
+    @Transactional
+    public void applyAssistantSuccess(
+            UUID assistantMessageId,
+            UUID conversationId,
+            String answer,
+            List<ChatSource> sources,
+            String queryType,
+            String traceId,
+            List<Map<String, Object>> pipelineSteps,
+            String llmModel,
+            Duration duration,
+            Map<String, Object> chatTelemetry) {
         MessageEntity m = messageRepository.findById(assistantMessageId).orElseThrow();
         m.setContent(answer != null ? answer : "");
-        m.setSources(sources);
+        m.setSources(ChatSourceMapper.toPersistedMapsFromInternal(sources));
         m.setQueryType(queryType);
         m.setTraceId(traceId);
         m.setPipelineSteps(pipelineSteps);
@@ -70,6 +97,9 @@ public class ChatMessageWorkService {
         }
         meta.put("durationMs", duration != null ? duration.toMillis() : null);
         meta.put("documentCount", sources != null ? sources.size() : 0);
+        if (chatTelemetry != null && !chatTelemetry.isEmpty()) {
+            meta.putAll(chatTelemetry);
+        }
         m.setExecutionMetadata(meta);
         messageRepository.save(m);
         touchConversation(conversationId);

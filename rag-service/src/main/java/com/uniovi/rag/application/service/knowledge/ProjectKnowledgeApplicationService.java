@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.knowledge;
 
 import com.uniovi.rag.domain.config.runtime.ConfigProfileType;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
+import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
 import com.uniovi.rag.domain.knowledge.KnowledgeOperationKind;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
@@ -12,9 +13,10 @@ import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildExecuteReque
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildExecuteResponse;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildPreviewRequest;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildPreviewResponse;
+import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeActiveSnapshotResponse;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeSnapshotDetailResponse;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeSnapshotSummaryResponse;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -82,27 +84,6 @@ public class ProjectKnowledgeApplicationService {
         return KnowledgeRebuildExecuteResponse.from(result);
     }
 
-    /**
-     * Legacy {@code POST /reindex}: same as execute with defaults (plan §10).
-     */
-    public void triggerReindex(UUID userId, UUID projectId, CorpusScope corpusScope, UUID conversationId) {
-        projectAccessService.requireOwnedProject(userId, projectId);
-        validateCorpusForList(userId, corpusScope, conversationId);
-        KnowledgeConfigurationOperationInput input =
-                new KnowledgeConfigurationOperationInput(
-                        projectId,
-                        corpusScope,
-                        conversationId,
-                        KnowledgeOperationKind.EXECUTE,
-                        null,
-                        null,
-                        null,
-                        Set.of(),
-                        userId,
-                        null);
-        knowledgeConfigurationIntegrationService.executeRebuild(input);
-    }
-
     public List<KnowledgeSnapshotSummaryResponse> listSnapshots(
             UUID userId, UUID projectId, CorpusScope corpusScope, UUID conversationId) {
         projectAccessService.requireOwnedProject(userId, projectId);
@@ -146,6 +127,18 @@ public class ProjectKnowledgeApplicationService {
         }
         long docCount = snapshotDocumentRepository.countBySnapshot_Id(snapshotId);
         return KnowledgeSnapshotDetailResponse.fromDomain(KnowledgeIndexSnapshotMapper.toDomain(e), docCount);
+    }
+
+    public KnowledgeActiveSnapshotResponse getActiveProjectSnapshot(UUID userId, UUID projectId) {
+        projectAccessService.requireOwnedProject(userId, projectId);
+        List<KnowledgeIndexSnapshotEntity> actives =
+                snapshotRepository.findActiveProjectSnapshots(
+                        projectId, KnowledgeSnapshotScopeType.PROJECT, IndexSnapshotStatus.ACTIVE);
+        return actives.stream()
+                .findFirst()
+                .map(KnowledgeIndexSnapshotMapper::toDomain)
+                .map(KnowledgeActiveSnapshotResponse::fromDomain)
+                .orElse(null);
     }
 
     private void validateCorpusForList(UUID userId, CorpusScope corpusScope, UUID conversationId) {

@@ -90,6 +90,26 @@ public final class ConnectivityFailureDetector {
         return false;
     }
 
+    public static boolean isContextLimitFailure(Throwable t) {
+        Throwable cur = t;
+        int depth = 0;
+        while (cur != null && depth++ < 32) {
+            String msg = cur.getMessage();
+            if (msg != null) {
+                String lower = msg.toLowerCase();
+                if (lower.contains("input length exceeds the context length")
+                        || lower.contains("exceeds the context length")
+                        || lower.contains("context length")
+                        || (lower.contains("token") && lower.contains("limit"))
+                        || (lower.contains("maximum context") && lower.contains("exceeded"))) {
+                    return true;
+                }
+            }
+            cur = cur.getCause();
+        }
+        return false;
+    }
+
     private static boolean isOllamaModelMissingMessage(String msg) {
         String u = msg.toLowerCase();
         if (!u.contains("model")) {

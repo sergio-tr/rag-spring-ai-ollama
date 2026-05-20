@@ -1,0 +1,10 @@
+# Prod-local closure: expose backend and classifier on the host for integration, API smoke, and direct actuator curls.
+# The reverse-proxy on :80 remains the primary browser entry; these ports match INTEGRATION_BACKEND_URL defaults.
+services:
+  backend:
+    ports:
+      - "${BACKEND_PORT:-9000}:${SERVER_PORT:-9000}"
+
+  classifier-service:
+    ports:
+      - "${CLASSIFIER_SERVICE_PORT:-8000}:${PORT:-8000}"

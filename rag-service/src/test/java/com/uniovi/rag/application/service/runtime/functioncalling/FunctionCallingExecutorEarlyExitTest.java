@@ -303,6 +303,7 @@ class FunctionCallingExecutorEarlyExitTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 "",
                 "",
                 Optional.empty(),

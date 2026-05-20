@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.judge;
 
+import com.uniovi.rag.application.service.runtime.RuntimePromptBudgeter;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.judge.JudgeEvaluation;
@@ -14,15 +15,21 @@ import java.util.Optional;
 public class JudgeEvaluator {
 
     private final ChatClient chatClient;
+    private final RuntimePromptBudgeter promptBudgeter;
 
-    public JudgeEvaluator(ChatClient chatClient) {
+    public JudgeEvaluator(ChatClient chatClient, RuntimePromptBudgeter promptBudgeter) {
         this.chatClient = chatClient;
+        this.promptBudgeter = promptBudgeter;
     }
 
     public JudgeEvaluation evaluate(String queryText, String candidateAnswerText, boolean retryAllowed) {
         long startNanos = System.nanoTime();
         try {
-            String prompt = buildPrompt(queryText, candidateAnswerText, retryAllowed);
+            RuntimePromptBudgeter.BudgetResult budget =
+                    promptBudgeter != null
+                            ? promptBudgeter.budgetForJudgeCandidateAnswer(candidateAnswerText)
+                            : RuntimePromptBudgeter.truncate("judge_candidate_answer", candidateAnswerText, 4_000, "default_judge_max_answer_chars");
+            String prompt = buildPrompt(queryText, budget.textUsed(), retryAllowed);
             String raw = chatClient.prompt().user(prompt).call().content();
             JudgeOutcome o = parseOutcome(raw, retryAllowed);
             String feedback = extractFeedback(raw);
@@ -34,7 +41,7 @@ public class JudgeEvaluator {
                             "judge_evaluate",
                             millisSince(startNanos),
                             ExecutionStageOutcome.SUCCESS,
-                            "outcome=" + o)));
+                            "outcome=" + o + " truncated=" + budget.truncated() + " originalChars=" + budget.originalChars())));
         } catch (Exception e) {
             return new JudgeEvaluation(
                     JudgeOutcome.FAILED_SAFE,
@@ -70,7 +77,9 @@ public class JudgeEvaluator {
                 - Output exactly one label on the first line.
                 - %s
                 - If the answer is acceptable, output ACCEPTED.
-                - If the answer contains unsupported claims or is clearly incorrect, do not invent facts.
+                - If the answer stays within retrieved context, expresses uncertainty appropriately, and avoids inventing facts, prefer ACCEPTED over rejection.
+                - If the answer contains unsupported claims or is clearly incorrect, do not invent facts; use REJECTED or RETRY only when necessary.
+                - Do not force blanket abstention when the candidate attempts a good-faith partial summary from available context.
 
                 Optionally include feedback after the first line starting with "FEEDBACK:".
                 """.formatted(

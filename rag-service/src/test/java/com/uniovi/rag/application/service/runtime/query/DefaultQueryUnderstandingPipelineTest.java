@@ -22,7 +22,7 @@ import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,6 +34,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class DefaultQueryUnderstandingPipelineTest {
@@ -158,7 +159,7 @@ class DefaultQueryUnderstandingPipelineTest {
         RagConfig rag = rag(true, true);
 
         QueryClassifier classifier = mock(QueryClassifier.class);
-        when(classifier.classify(anyString())).thenReturn(QueryType.FILTER_AND_LIST);
+        when(classifier.classify(anyString(), eq("cls"))).thenReturn(QueryType.FILTER_AND_LIST);
 
         QueryAnalyser analyser = mock(QueryAnalyser.class);
         when(analyser.analyse(anyString())).thenReturn(new JSONObject("{\"date\":[],\"place\":[],\"attendees\":[],\"topics\":[],\"mentionedEntities\":[],\"answerType\":\"unknown\",\"comparisonType\":\"none\",\"temporalContext\":\"none\"}"));
@@ -200,6 +201,8 @@ class DefaultQueryUnderstandingPipelineTest {
         // Frozen stage ordering: first seven notes correspond to the QU stages in-order.
         assertTrue(plan.pipelineNotes().get(0).startsWith("qu_normalize "));
         assertTrue(plan.pipelineNotes().get(1).startsWith("qu_classify "));
+        assertTrue(plan.pipelineNotes().get(1).contains("classifierModelId=cls"));
+        verify(classifier).classify("list all items", "cls");
         assertTrue(plan.pipelineNotes().get(2).startsWith("qu_extract_entities "));
         assertTrue(plan.pipelineNotes().get(3).startsWith("qu_rewrite "));
         assertTrue(plan.pipelineNotes().get(4).startsWith("qu_resolve_intent "));

@@ -6,7 +6,7 @@ import io.gatling.http.Predef._
 import scala.concurrent.duration.DurationInt
 
 /**
- * RBAC on {@code /api/admin}: anonymous → 401/403; USER JWT → 403; optional ADMIN JWT → 200.
+ * RBAC on product admin routes: anonymous → 401/403; USER JWT → 403; optional ADMIN JWT → 200.
  * Set {@code GATLING_ADMIN_EMAIL} (and password) when the backend runs with profile {@code e2e}.
  */
 class AdminApiSimulation extends Simulation {
@@ -26,8 +26,8 @@ class AdminApiSimulation extends Simulation {
 
   private val loginUser =
     exec(
-      http("POST /api/auth/login (USER)")
-        .post("/api/auth/login")
+      http("POST product auth login (USER)")
+        .post(s"${RagPaths.productPrefix}/auth/login")
         .body(StringBody(userLoginBody))
         .check(status.is(200))
         .check(jsonPath("$.accessToken").saveAs("userAccessToken"))
@@ -35,8 +35,8 @@ class AdminApiSimulation extends Simulation {
 
   private val loginAdmin =
     exec(
-      http("POST /api/auth/login (ADMIN)")
-        .post("/api/auth/login")
+      http("POST product auth login (ADMIN)")
+        .post(s"${RagPaths.productPrefix}/auth/login")
         .body(StringBody(optionalAdminLoginBody))
         .check(status.is(200))
         .check(jsonPath("$.accessToken").saveAs("adminAccessToken"))
@@ -44,15 +44,15 @@ class AdminApiSimulation extends Simulation {
 
   private val scn = scenario("admin_api_rbac")
     .exec(
-      http("GET /api/admin/health (no auth)")
-        .get("/api/admin/health")
+      http("GET product admin health (no auth)")
+        .get(s"${RagPaths.productPrefix}/admin/health")
         .check(status.in(401, 403))
     )
     .pause(300.millis, 800.millis)
     .exec(loginUser)
     .exec(
-      http("GET /api/admin/health (USER token)")
-        .get("/api/admin/health")
+      http("GET product admin health (USER token)")
+        .get(s"${RagPaths.productPrefix}/admin/health")
         .header("Authorization", session => "Bearer " + session("userAccessToken").as[String])
         .check(status.is(403))
     )
@@ -60,15 +60,15 @@ class AdminApiSimulation extends Simulation {
       pause(400.millis, 1.seconds)
         .exec(loginAdmin)
         .exec(
-          http("GET /api/admin/health (ADMIN token)")
-            .get("/api/admin/health")
+          http("GET product admin health (ADMIN token)")
+            .get(s"${RagPaths.productPrefix}/admin/health")
             .header("Authorization", session => "Bearer " + session("adminAccessToken").as[String])
             .check(status.is(200))
             .check(jsonPath("$.status").is("UP"))
         )
         .exec(
-          http("GET /api/admin/allowlist (ADMIN token)")
-            .get("/api/admin/allowlist")
+          http("GET product admin models (ADMIN token)")
+            .get(s"${RagPaths.productPrefix}/admin/models")
             .header("Authorization", session => "Bearer " + session("adminAccessToken").as[String])
             .check(status.is(200))
         )

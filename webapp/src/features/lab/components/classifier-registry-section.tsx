@@ -91,6 +91,7 @@ export function ClassifierRegistrySection() {
                           type="button"
                           size="sm"
                           variant="secondary"
+                          data-testid={`classifier-registry-activate-${m.id}`}
                           disabled={!activeProject || m.status !== "READY" || activate.isPending}
                           onClick={() => setConfirmModel(m)}
                         >
@@ -128,6 +129,7 @@ export function ClassifierRegistrySection() {
             </Button>
             <Button
               type="button"
+              data-testid="classifier-registry-confirm-activate"
               disabled={!activeProject || !confirmModel || activate.isPending}
               onClick={() => {
                 if (!activeProject || !confirmModel) return;

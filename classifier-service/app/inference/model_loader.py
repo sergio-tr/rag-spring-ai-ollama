@@ -65,7 +65,7 @@ class ModelLoader(Loggable):
 
     def _load_model_with_vocab_fix(self, model_path: str):
         """
-        Loads a .keras model, repairing legacy TextVectorization vocabulary assets when needed.
+        Loads a .keras model, repairing older TextVectorization vocabulary assets when needed.
 
         Some historical models were saved with latin-1 encoded vocab files inside the .keras zip.
         Keras expects UTF-8 and will fail at load time with a UnicodeDecodeError wrapped in ValueError.

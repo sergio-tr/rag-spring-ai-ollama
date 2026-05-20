@@ -28,7 +28,8 @@ export function SettingsTabQueryNormalizerInner() {
   const tabParam = searchParams.get("tab");
 
   useEffect(() => {
-    if (pathname !== "/settings") return;
+    const onSettingsRoot = pathname === "/settings" || /^\/[a-z]{2}\/settings$/.test(pathname ?? "");
+    if (!onSettingsRoot) return;
     if (tabParam === null) return;
     const target = resolveSettingsPathFromTabQuery(tabParam);
     router.replace(target);

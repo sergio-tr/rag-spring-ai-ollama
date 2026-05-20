@@ -5,7 +5,6 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
-import com.uniovi.rag.service.query.pipeline.ClassifierOverrides;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -34,7 +33,7 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
             return new ClassifierOutcome(UNCLASSIFIED, Optional.empty(), ClassifierStatus.DISABLED, modelIdUsed, "DISABLED");
         }
         try {
-            QueryType out = classifier.classify(normalizedText);
+            QueryType out = classifier.classify(normalizedText, modelIdUsed);
             out = ClassifierOverrides.apply(normalizedText, out);
             if (out == null) {
                 log.debug(

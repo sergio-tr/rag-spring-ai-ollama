@@ -117,6 +117,36 @@ class LabEvaluationRunServiceTest {
         assertThat(dto.incompatibilityReasons()).contains("index_snapshot_id mismatch");
     }
 
+    @Test
+    void mvpCsvColumns_includeRequiredLabMetricsAndEvidenceFields() {
+        assertThat(LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS())
+                .contains(
+                        "evaluationRunId",
+                        "evaluationDatasetId",
+                        "evaluationDatasetSha256",
+                        "projectId",
+                        "corpusDocumentSet",
+                        "presetCode",
+                        "modelId",
+                        "embeddingModelId",
+                        "embeddingDimensions",
+                        "embeddingCompatibilityStatus",
+                        "embeddingCompatibilityErrorCode",
+                        "embeddingCompatibilityReason",
+                        "classifierModelId",
+                        "selectedSnapshotIds",
+                        "correctness",
+                        "llmJudgeScore",
+                        "hallucinationRate",
+                        "faithfulness",
+                        "sourceSupport",
+                        "dateCorrectness",
+                        "skipReason",
+                        "failureCode",
+                        "latencyMs",
+                        "timestamp");
+    }
+
     private static void stubComparableBaseline(EvaluationRunEntity a, EvaluationRunEntity b, String benchmarkKind) {
         when(a.getDatasetSha256()).thenReturn("sha");
         when(b.getDatasetSha256()).thenReturn("sha");

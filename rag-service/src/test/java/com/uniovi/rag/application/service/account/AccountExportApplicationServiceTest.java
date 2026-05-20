@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.configuration.RagAccountProperties;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
-import com.uniovi.rag.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

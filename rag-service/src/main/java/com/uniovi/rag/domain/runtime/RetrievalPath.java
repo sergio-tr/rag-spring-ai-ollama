@@ -10,6 +10,6 @@ public enum RetrievalPath {
     NAIVE_PROMPT_FIRST,
     /** Spring AI {@code QuestionAnswerAdvisor} fast path (vector similarity in advisor). */
     ADVISOR,
-    /** Manual {@link com.uniovi.rag.service.retriever.ContextRetriever} + optional post-retrieval. */
+    /** Manual {@link com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever} + optional post-retrieval. */
     MANUAL_ONLY
 }

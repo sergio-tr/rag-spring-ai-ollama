@@ -13,8 +13,11 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -49,6 +52,16 @@ public class KnowledgeIndexSnapshotEntity {
 
     @Column(name = "resolved_config_hash", length = 128)
     private String resolvedConfigHash;
+
+    @Column(name = "index_profile_jsonb", nullable = false, columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private Map<String, Object> indexProfileJsonb;
+
+    @Column(name = "index_profile_hash", length = 128)
+    private String indexProfileHash;
+
+    @Column(name = "embedding_dimensions")
+    private Integer embeddingDimensions;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -118,6 +131,30 @@ public class KnowledgeIndexSnapshotEntity {
 
     public void setResolvedConfigHash(String resolvedConfigHash) {
         this.resolvedConfigHash = resolvedConfigHash;
+    }
+
+    public Map<String, Object> getIndexProfileJsonb() {
+        return indexProfileJsonb;
+    }
+
+    public void setIndexProfileJsonb(Map<String, Object> indexProfileJsonb) {
+        this.indexProfileJsonb = indexProfileJsonb;
+    }
+
+    public String getIndexProfileHash() {
+        return indexProfileHash;
+    }
+
+    public void setIndexProfileHash(String indexProfileHash) {
+        this.indexProfileHash = indexProfileHash;
+    }
+
+    public Integer getEmbeddingDimensions() {
+        return embeddingDimensions;
+    }
+
+    public void setEmbeddingDimensions(Integer embeddingDimensions) {
+        this.embeddingDimensions = embeddingDimensions;
     }
 
     public Instant getCreatedAt() {

@@ -41,6 +41,9 @@ PR pipeline job **`playwright_api_smoke`** in [`.github/workflows/reusable-ci-co
 
 - `fixtures/env.ts`, `fixtures/auth.ts` — URLs and login helpers.
 - `fixtures/json-contract.ts` — guards so JSON clients never accept HTML/nginx-style error bodies (`assertBodyNotHtml`, `parseJsonExpectNonHtml`).
-- `system/system-smoke.chain.spec.ts` — serial smoke: health, auth, config, **lab/status** (datasets + capability flags), optional classifier, OpenAPI, readiness.
+- `system/system-smoke.chain.spec.ts` — serial smoke: health, auth, config, **lab/status** (typed bundle fields + capability flags), optional classifier, OpenAPI, readiness.
+- `lab/lab-status.api.spec.ts` — Lab status typed readiness (`referenceBundle*`, `countsByDatasetKind`).
+- `lab/lab-typed-datasets.api.spec.ts` — templates download (magic bytes), experimental-datasets upload (valid + mismatched kind → 422), canonical benchmarks compatible/incompatible (202 vs 400).
 - `system/api-errors.api.spec.ts` — unknown routes return JSON error envelopes, not HTML.
+- `system/removed-routes.api.spec.ts` — removed `/lab/evaluations/*` and unprefixed `/api/auth|admin` mirrors are not served (404/405).
 - `auth/`, `projects/`, `documents/`, `chat/`, `lab/`, `me/`, `config/` — domain smoke specs (`@api`).

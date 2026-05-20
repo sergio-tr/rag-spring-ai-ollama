@@ -7,9 +7,11 @@ import java.time.Duration;
 import java.util.Map;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -58,6 +60,16 @@ public class ClassifierServiceClient implements QueryClassifier {
     @Override
     public QueryType classify(String query) {
         String raw = classifyWithText(query);
+        return parseQueryType(raw);
+    }
+
+    @Override
+    public QueryType classify(String query, String modelId) {
+        String raw = classifyWithText(query, modelId);
+        return parseQueryType(raw);
+    }
+
+    private QueryType parseQueryType(String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
         }
@@ -73,6 +85,11 @@ public class ClassifierServiceClient implements QueryClassifier {
 
     @Override
     public String classifyWithText(String query) {
+        return classifyWithText(query, null);
+    }
+
+    @Override
+    public String classifyWithText(String query, String modelIdOverride) {
         if (baseUrl.isEmpty()) {
             log().debug("[CLASSIFIER] Classifier-service URL not configured, returning null");
             return null;
@@ -83,22 +100,43 @@ public class ClassifierServiceClient implements QueryClassifier {
         String url = baseUrl + "/classify";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        String effectiveModelId = resolveEffectiveModelId();
+        String effectiveModelId = resolveEffectiveModelId(modelIdOverride);
         Map<String, String> body = Map.of("query", query, "modelId", effectiveModelId);
         HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
         try {
-            ResponseEntity<ClassifyResponseDto> response = restTemplate.postForEntity(url, request, ClassifyResponseDto.class);
+            ResponseEntity<ClassifyResponseDto> response =
+                    restTemplate.exchange(url, HttpMethod.POST, request, ClassifyResponseDto.class);
             if (response.getStatusCode().is2xxSuccessful()) {
                 ClassifyResponseDto responseBody = response.getBody();
                 return (responseBody != null && responseBody.queryType() != null) ? responseBody.queryType() : null;
             }
+        } catch (HttpStatusCodeException e) {
+            log().warn(
+                    "[CLASSIFIER] HTTP error status={} url={} body={}",
+                    e.getStatusCode().value(),
+                    url,
+                    safeBodyPreview(e.getResponseBodyAsString()));
         } catch (RestClientException e) {
             log().warn("[CLASSIFIER] Error calling classifier-service (LLM fallback will be used): {}", e.getMessage());
         }
         return null;
     }
 
-    private String resolveEffectiveModelId() {
+    private static String safeBodyPreview(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String t = raw.trim();
+        if (t.length() <= 500) {
+            return t;
+        }
+        return t.substring(0, 500) + "…";
+    }
+
+    private String resolveEffectiveModelId(String explicitModelId) {
+        if (explicitModelId != null && !explicitModelId.isBlank()) {
+            return explicitModelId.trim();
+        }
         RagExecutionContext ctx = RagExecutionContextHolder.get();
         if (ctx != null
                 && ctx.resolvedConfig() != null

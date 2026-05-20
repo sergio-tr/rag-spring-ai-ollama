@@ -13,14 +13,22 @@ test.describe("Lab status API @api", () => {
     expect(res.status(), await res.text()).toBe(200);
     const raw = await res.text();
     const body = parseJsonExpectNonHtml(raw, "GET lab/status") as {
-      datasets?: { enabled?: boolean; questionCount?: number };
+      datasets?: { enabled?: boolean; datasetKindsReady?: boolean };
+      datasetKindsReady?: boolean;
+      referenceBundleAvailable?: boolean;
+      referenceBundleValid?: boolean;
+      countsByDatasetKind?: Record<string, unknown>;
       evaluations?: Record<string, unknown>;
       classifier?: Record<string, unknown>;
       message?: string;
     };
     expect(body.datasets).toBeTruthy();
     expect(typeof body.datasets?.enabled).toBe("boolean");
-    expect(typeof body.datasets?.questionCount).toBe("number");
+    expect(typeof body.datasets?.datasetKindsReady).toBe("boolean");
+    expect(typeof body.datasetKindsReady).toBe("boolean");
+    expect(typeof body.referenceBundleAvailable).toBe("boolean");
+    expect(typeof body.referenceBundleValid).toBe("boolean");
+    expect(body.countsByDatasetKind).toEqual(expect.any(Object));
     expect(body.evaluations).toBeTruthy();
     expect(body.classifier).toBeTruthy();
     expect(typeof body.message).toBe("string");

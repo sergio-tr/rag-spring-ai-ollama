@@ -51,7 +51,7 @@ class RagApiExceptionHandlerTest {
         RagApiExceptionHandler handler = new RagApiExceptionHandler();
         RagServiceException ex = RagServiceException.knowledgeSnapshotUnavailable();
         MockHttpServletRequest req = new MockHttpServletRequest();
-        req.setRequestURI("/api/v5/query");
+        req.setRequestURI("/api/v5/conversations/00000000-0000-4000-8000-000000000001/messages");
         var res = handler.handleRagService(ex, req);
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, res.getStatusCode());
         assertNotNull(res.getBody());

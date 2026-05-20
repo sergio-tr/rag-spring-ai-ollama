@@ -21,7 +21,7 @@ public interface KnowledgeIndexSnapshotRepository extends JpaRepository<Knowledg
     long countByConversation_IdAndScopeTypeAndStatus(
             UUID conversationId, KnowledgeSnapshotScopeType scopeType, IndexSnapshotStatus status);
 
-    Optional<KnowledgeIndexSnapshotEntity> findByProject_IdAndSignatureHashAndStatus(
+    List<KnowledgeIndexSnapshotEntity> findByProject_IdAndSignatureHashAndStatusOrderByUpdatedAtDesc(
             UUID projectId, String signatureHash, IndexSnapshotStatus status);
 
     @Query(
@@ -31,8 +31,9 @@ public interface KnowledgeIndexSnapshotRepository extends JpaRepository<Knowledg
             AND s.scopeType = :st
             AND s.conversation IS NULL
             AND s.status = :status
+            ORDER BY s.updatedAt DESC
             """)
-    Optional<KnowledgeIndexSnapshotEntity> findActiveProjectSnapshot(
+    List<KnowledgeIndexSnapshotEntity> findActiveProjectSnapshots(
             @Param("pid") UUID projectId,
             @Param("st") KnowledgeSnapshotScopeType scopeType,
             @Param("status") IndexSnapshotStatus status);
@@ -43,8 +44,9 @@ public interface KnowledgeIndexSnapshotRepository extends JpaRepository<Knowledg
             WHERE s.conversation.id = :cid
             AND s.scopeType = :st
             AND s.status = :status
+            ORDER BY s.updatedAt DESC
             """)
-    Optional<KnowledgeIndexSnapshotEntity> findActiveConversationSnapshot(
+    List<KnowledgeIndexSnapshotEntity> findActiveConversationSnapshots(
             @Param("cid") UUID conversationId,
             @Param("st") KnowledgeSnapshotScopeType scopeType,
             @Param("status") IndexSnapshotStatus status);

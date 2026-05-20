@@ -3,7 +3,7 @@ package com.uniovi.rag.application.service.account;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
-import com.uniovi.rag.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;

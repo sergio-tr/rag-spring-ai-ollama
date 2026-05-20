@@ -15,17 +15,22 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /**
  * Snapshot lifecycle: BUILDING / ACTIVE / SUPERSEDED / FAILED and vector_store cleanup by snapshot id.
  */
 @Service
 public class KnowledgeSnapshotService {
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeSnapshotService.class);
 
     private final KnowledgeIndexSnapshotRepository snapshotRepository;
     private final KnowledgeSnapshotDocumentRepository snapshotDocumentRepository;
@@ -50,7 +55,9 @@ public class KnowledgeSnapshotService {
             KnowledgeSnapshotScopeType scopeType,
             String signatureHash,
             UUID resolvedConfigSnapshotId,
-            String resolvedConfigHash) {
+            String resolvedConfigHash,
+            Map<String, Object> indexProfileJsonb,
+            String indexProfileHash) {
         if (resolvedConfigSnapshotId == null || resolvedConfigHash == null || resolvedConfigHash.isBlank()) {
             throw new IllegalArgumentException("resolved_config_snapshot linkage required for knowledge_index_snapshot");
         }
@@ -63,6 +70,8 @@ public class KnowledgeSnapshotService {
         e.setStatus(IndexSnapshotStatus.BUILDING);
         e.setResolvedConfigSnapshotId(resolvedConfigSnapshotId);
         e.setResolvedConfigHash(resolvedConfigHash);
+        e.setIndexProfileJsonb(indexProfileJsonb != null ? indexProfileJsonb : Map.of());
+        e.setIndexProfileHash(indexProfileHash);
         e.setCreatedAt(now);
         e.setUpdatedAt(now);
         return snapshotRepository.save(e);
@@ -85,7 +94,10 @@ public class KnowledgeSnapshotService {
             KnowledgeIndexSnapshotEntity snapshot,
             List<KnowledgeDocumentEntity> documents,
             Optional<KnowledgeIndexSnapshotEntity> previousActive) {
-        assertAtMostOneActiveSnapshotInScope(snapshot);
+        // Self-heal against stale state or concurrent ingests:
+        // the DB may temporarily contain >1 ACTIVE snapshot for the same scope.
+        // Before activating the new snapshot, we mark all other ACTIVE rows as SUPERSEDED.
+        supersedeAllOtherActiveSnapshotsInScope(snapshot);
         Instant now = Instant.now();
         previousActive.ifPresent(
                 prev -> {
@@ -108,6 +120,38 @@ public class KnowledgeSnapshotService {
         }
     }
 
+    private void supersedeAllOtherActiveSnapshotsInScope(KnowledgeIndexSnapshotEntity snapshot) {
+        if (snapshot == null) return;
+        Instant now = Instant.now();
+        if (snapshot.getScopeType() == KnowledgeSnapshotScopeType.PROJECT) {
+            var pid = snapshot.getProject() != null ? snapshot.getProject().getId() : null;
+            if (pid == null) return;
+            var actives =
+                    snapshotRepository.findActiveProjectSnapshots(
+                            pid, KnowledgeSnapshotScopeType.PROJECT, IndexSnapshotStatus.ACTIVE);
+            for (KnowledgeIndexSnapshotEntity a : actives) {
+                if (a.getId() != null && !a.getId().equals(snapshot.getId())) {
+                    a.setStatus(IndexSnapshotStatus.SUPERSEDED);
+                    a.setUpdatedAt(now);
+                    snapshotRepository.save(a);
+                }
+            }
+        } else if (snapshot.getScopeType() == KnowledgeSnapshotScopeType.CONVERSATION
+                && snapshot.getConversation() != null) {
+            var cid = snapshot.getConversation().getId();
+            var actives =
+                    snapshotRepository.findActiveConversationSnapshots(
+                            cid, KnowledgeSnapshotScopeType.CONVERSATION, IndexSnapshotStatus.ACTIVE);
+            for (KnowledgeIndexSnapshotEntity a : actives) {
+                if (a.getId() != null && !a.getId().equals(snapshot.getId())) {
+                    a.setStatus(IndexSnapshotStatus.SUPERSEDED);
+                    a.setUpdatedAt(now);
+                    snapshotRepository.save(a);
+                }
+            }
+        }
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void failSnapshotById(UUID snapshotId) {
         if (snapshotId == null) {
@@ -124,13 +168,41 @@ public class KnowledgeSnapshotService {
     }
 
     public Optional<KnowledgeIndexSnapshotEntity> findActiveProjectSnapshot(UUID projectId) {
-        return snapshotRepository.findActiveProjectSnapshot(
+        List<KnowledgeIndexSnapshotEntity> rows = snapshotRepository.findActiveProjectSnapshots(
                 projectId, KnowledgeSnapshotScopeType.PROJECT, IndexSnapshotStatus.ACTIVE);
+        if (rows.size() > 1) {
+            log.warn("Multiple ACTIVE project snapshots found for project {} (count={}); using most recent", projectId, rows.size());
+        }
+        return rows.stream().findFirst();
+    }
+
+    public List<KnowledgeIndexSnapshotEntity> findProjectSnapshots(UUID projectId) {
+        if (projectId == null) {
+            return List.of();
+        }
+        return snapshotRepository.findByProjectAndScopeProjectOrderByCreatedAtDesc(
+                projectId, KnowledgeSnapshotScopeType.PROJECT);
+    }
+
+    public Optional<KnowledgeIndexSnapshotEntity> findCompatibleProjectSnapshot(
+            UUID projectId,
+            Predicate<KnowledgeIndexSnapshotEntity> compatibilityPredicate) {
+        if (compatibilityPredicate == null) {
+            return Optional.empty();
+        }
+        return findProjectSnapshots(projectId).stream().filter(compatibilityPredicate).findFirst();
     }
 
     public Optional<KnowledgeIndexSnapshotEntity> findActiveConversationSnapshot(UUID conversationId) {
-        return snapshotRepository.findActiveConversationSnapshot(
+        List<KnowledgeIndexSnapshotEntity> rows = snapshotRepository.findActiveConversationSnapshots(
                 conversationId, KnowledgeSnapshotScopeType.CONVERSATION, IndexSnapshotStatus.ACTIVE);
+        if (rows.size() > 1) {
+            log.warn(
+                    "Multiple ACTIVE conversation snapshots found for conversation {} (count={}); using most recent",
+                    conversationId,
+                    rows.size());
+        }
+        return rows.stream().findFirst();
     }
 
     /**

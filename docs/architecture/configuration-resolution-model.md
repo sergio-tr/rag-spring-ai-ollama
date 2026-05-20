@@ -66,10 +66,10 @@ The **UI** may edit underlying fields, but **canonical semantics** live under **
 
 ### What already exists
 
-- Layered effective RAG configuration (system → user → project) described in [DATA_MODEL.md](DATA_MODEL.md) and services under `service.config`, `domain.runtime`, presets (`service.preset`).
+- Layered effective RAG configuration (system → user → project) described in [DATA_MODEL.md](DATA_MODEL.md) and services under `application.service.config`, `domain.runtime`, presets (`application.service.preset`).
 - Feature flags and Spring configuration in `configuration` package; preset CRUD and sanitization.
 
-### What is partial
+### Gaps vs target model
 
 - **`ResolvedConfigSnapshot` (domain)** exists; **persisted** snapshots are written from product `POST …/config/resolved-snapshots` and from knowledge flows (`KnowledgeConfigurationIntegrationService` / ingestion default snapshot) (see [DATA_MODEL.md — Section 6.1](DATA_MODEL.md#dm-s6-1)). Lab runs continue to reference `resolved_config_snapshot.id` where the evaluation model already supports it.
 - **P18 runtime trace replay (internal only; see [rag-runtime-architecture.md](rag-runtime-architecture.md))** materializes `ResolvedRuntimeConfig` only from the persisted `resolved_config_snapshot` row referenced by `runtime_execution_trace.resolved_config_snapshot_id`. Replay does **not** call `RuntimeConfigResolutionService.resolveForOrchestratedExecute` and does **not** merge current conversation `runtime_override_jsonb` for semantic replay inputs.

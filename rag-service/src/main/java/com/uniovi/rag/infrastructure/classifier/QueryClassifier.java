@@ -12,6 +12,14 @@ public interface QueryClassifier extends ClassifierInferencePort, Loggable {
     @Override
     String classifyWithText(String query);
 
+    default String classifyWithText(String query, String modelId) {
+        return classifyWithText(query);
+    }
+
     @Override
     QueryType classify(String query);
+
+    default QueryType classify(String query, String modelId) {
+        return classify(query);
+    }
 }

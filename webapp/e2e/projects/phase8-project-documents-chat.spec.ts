@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
-import { createAndActivateProject, loginAsSeedUser, sendChatMessage } from "../support/helpers";
+import {
+  createAndActivateProject,
+  createNewChatConversation,
+  loginAsSeedUser,
+  sendChatMessage,
+  waitForDocumentReadyByName,
+} from "../support/helpers";
 
 /**
  * Phase 8C — end-to-end journey: seeded login → active project → documents → READY ingest → chat send.
@@ -10,6 +16,9 @@ test.describe("Phase 8 project documents chat journey @fullstack", () => {
   test("login, documents READY, chat shows user message without send strip error @fullstack", async ({
     page,
   }) => {
+    // This journey polls up to 120s for READY; avoid the 30s Playwright default timeout.
+    test.setTimeout(240_000);
+
     await loginAsSeedUser(page);
     const name = uniqueProjectName("e2e-p8-journey");
     await createAndActivateProject(page, name);
@@ -23,20 +32,11 @@ test.describe("Phase 8 project documents chat journey @fullstack", () => {
       mimeType: "text/plain",
       buffer: Buffer.from("phase8 journey marker for retrieval.\n"),
     });
-    await expect
-      .poll(
-        async () => {
-          const row = page.locator("tbody tr").filter({ hasText: "e2e-p8-journey.txt" });
-          if ((await row.count()) === 0) return false;
-          return (await row.getByText("READY", { exact: true }).count()) > 0;
-        },
-        { timeout: 120_000 },
-      )
-      .toBe(true);
+    await waitForDocumentReadyByName(page, "e2e-p8-journey.txt", 120_000);
 
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     await sendChatMessage(page, "Phase 8 journey ping");
     await expect(page.getByText("Phase 8 journey ping")).toBeVisible({ timeout: 20_000 });

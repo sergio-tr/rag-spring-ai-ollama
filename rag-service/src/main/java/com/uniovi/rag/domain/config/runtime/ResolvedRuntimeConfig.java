@@ -18,12 +18,10 @@ public record ResolvedRuntimeConfig(
         SystemPromptLayers systemPromptLayers,
         String effectiveSystemPrompt,
         ConfigProvenance provenance,
-        RagConfig legacyProjection) {
+        RagConfig configProjection) {
 
-    /**
-     * Same effective {@link RagConfig} as consumed by the existing RAG pipeline (transitional bridge).
-     */
+    /** Effective {@link RagConfig} for orchestrated execution (equals {@link #resolvedCoreConfig()} when unset). */
     public RagConfig toRagConfig() {
-        return legacyProjection != null ? legacyProjection : resolvedCoreConfig;
+        return configProjection != null ? configProjection : resolvedCoreConfig;
     }
 }

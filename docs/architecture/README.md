@@ -20,7 +20,7 @@
 
 | Diagram | File | What it shows |
 | --- | --- | --- |
-| Nginx path routing | [webapp-edge-routing.mmd](webapp-edge-routing.mmd) | Legacy vs product API prefixes, `/actuator`, vs default UI to Next.js |
+| Nginx path routing | [webapp-edge-routing.mmd](webapp-edge-routing.mmd) | Product API prefix vs `/actuator`, vs default UI to Next.js |
 | Build vs runtime config | [webapp-config-layers.mmd](webapp-config-layers.mmd) | `NEXT_PUBLIC_*` at image build vs `PORT` and `webapp/.env` |
 
 ### Docker and Compose
@@ -66,7 +66,7 @@ Review higher-priority diagrams first when runtime or Compose behaviour changes.
 | --- | --- | --- | --- |
 | 1 | [context-level.mmd](context-level.mmd), [deployment-compose.mmd](deployment-compose.mmd) | **Done** (orientation pass) | System context and container topology; matches Linux-first stack narrative. |
 | 2 | [service-runtime-integrations.mmd](service-runtime-integrations.mmd), [security-api-boundaries.mmd](security-api-boundaries.mmd) | **Queued** | Revisit on JWT or admin boundary changes. |
-| 3 | [rag-request-flow.mmd](rag-request-flow.mmd), [backend-logical-layers.mmd](backend-logical-layers.mmd) | **Queued** | Align with product vs legacy paths and package map. |
+| 3 | [rag-request-flow.mmd](rag-request-flow.mmd), [backend-logical-layers.mmd](backend-logical-layers.mmd) | **Done** (2026-05) | Product-only ingress; chat via async `CHAT_MESSAGE` jobs. |
 | 4 | [webapp-edge-routing.mmd](webapp-edge-routing.mmd), [docker-build-contexts.mmd](docker-build-contexts.mmd) | **Queued** | Align legends with `NEXT_PUBLIC_*` and Docker contexts. |
 | 5 | [compose-overlays.mmd](compose-overlays.mmd), [observability-pipeline.mmd](observability-pipeline.mmd), [ollama-topology.mmd](ollama-topology.mmd) | **Queued** | Revisit on Compose profiles or OTLP ports. |
 

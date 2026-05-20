@@ -39,6 +39,7 @@ class TrainingPipeline(Loggable):
         max_tokens: int = 5000,
         sequence_length: int = 40,
         early_stopping_patience: int = 5,
+        owner_id: str | None = None,
     ) -> dict:
         """
         Trains a classifier from an Excel file with columns Question and QueryType
@@ -146,6 +147,8 @@ class TrainingPipeline(Loggable):
                 "macro_avg_f1": macro_f1,
             },
         }
+        if owner_id:
+            metadata["ownerId"] = owner_id
 
         self._registry.register_model(
             model_id=model_id,
