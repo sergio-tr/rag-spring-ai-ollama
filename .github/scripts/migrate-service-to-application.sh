@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ARCHIVED (2026-05): one-off migration script — do not run in CI. Target packages (e.g. application.service.query.legacy) were removed by legacy-zero L1.
+# ARCHIVED (2026-05): one-off migration script — do not run in CI. Target packages (e.g. application.service.query.removed) were removed by architecture-final-validation L1.
 # Agent A1: move com.uniovi.rag.service.. -> application.service.. (except service.model)
 set -euo pipefail
 
@@ -94,7 +94,7 @@ move_tree "service/async/lab" "application/service/evaluation/async"
 move_tree "service/async/chat" "application/service/chat/async"
 move_tree "service/async/account" "application/service/account/async"
 move_tree "service/query/pipeline" "application/service/query/pipeline"
-move_tree "service/query" "application/service/query/legacy"
+move_tree "service/query" "application/service/query/removed"
 move_tree "service/async" "application/service/async"
 move_tree "service/admin" "application/service/admin"
 move_tree "service/classifier" "application/service/classifier"
@@ -131,7 +131,7 @@ pairs = [
     ("com.uniovi.rag.service.async.chat", "com.uniovi.rag.application.service.chat.async"),
     ("com.uniovi.rag.service.async.account", "com.uniovi.rag.application.service.account.async"),
     ("com.uniovi.rag.service.query.pipeline", "com.uniovi.rag.application.service.query.pipeline"),
-    ("com.uniovi.rag.service.query", "com.uniovi.rag.application.service.query.legacy"),
+    ("com.uniovi.rag.service.query", "com.uniovi.rag.application.service.query.removed"),
     ("com.uniovi.rag.service.postretrieval", "com.uniovi.rag.application.service.runtime.retrieval.post"),
     ("com.uniovi.rag.service.evaluation", "com.uniovi.rag.application.service.evaluation"),
     ("com.uniovi.rag.service.retriever", "com.uniovi.rag.application.service.runtime.retrieval"),
