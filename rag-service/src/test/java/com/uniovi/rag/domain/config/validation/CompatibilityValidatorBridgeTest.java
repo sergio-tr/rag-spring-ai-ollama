@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-class LegacyCompatibilityValidatorBridgeTest {
+class CompatibilityValidatorBridgeTest {
 
     @Test
     void evaluate_emptyRules_returnsOkAggregate() {
@@ -39,7 +39,7 @@ class LegacyCompatibilityValidatorBridgeTest {
         CapabilitySet caps = CapabilitySet.fromRagConfig(cfg);
 
         CompatibilityResult out =
-                LegacyCompatibilityValidatorBridge.evaluate(List.of(), caps, cfg);
+                CompatibilityValidatorBridge.evaluate(List.of(), caps, cfg);
 
         assertTrue(out.valid());
         assertTrue(out.errors().isEmpty());
@@ -99,7 +99,7 @@ class LegacyCompatibilityValidatorBridgeTest {
                 };
 
         CompatibilityResult out =
-                LegacyCompatibilityValidatorBridge.evaluate(List.of(r1, r2), caps, cfg);
+                CompatibilityValidatorBridge.evaluate(List.of(r1, r2), caps, cfg);
 
         assertEquals(1, out.errors().size());
         assertEquals(1, out.warnings().size());

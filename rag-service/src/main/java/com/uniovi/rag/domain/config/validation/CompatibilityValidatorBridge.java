@@ -11,9 +11,9 @@ import java.util.List;
 /**
  * Pure rule-engine aggregation (no Spring). Used by {@link com.uniovi.rag.application.config.CompatibilityValidator}.
  */
-public final class LegacyCompatibilityValidatorBridge {
+public final class CompatibilityValidatorBridge {
 
-    private LegacyCompatibilityValidatorBridge() {}
+    private CompatibilityValidatorBridge() {}
 
     public static CompatibilityResult evaluate(List<CompatibilityRule> rules, CapabilitySet capabilitySet, RagConfig ragConfig) {
         List<CompatibilityViolation> errors = new ArrayList<>();
