@@ -9,7 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Maps Lab/legacy evaluation POST bodies to {@link RagFeatureConfiguration} + implementation overrides.
+ * Maps Lab evaluation POST bodies to {@link RagFeatureConfiguration} + implementation overrides.
  */
 @Component
 public class EvaluationCustomConfigMapper {
@@ -46,7 +46,7 @@ public class EvaluationCustomConfigMapper {
     }
 
     /**
-     * Metadata block embedded in evaluation JSON for clients (same shape as legacy HTTP contract).
+     * Metadata block embedded in evaluation JSON for clients (same shape as removed HTTP contract).
      */
     public Map<String, Object> implementationsBlock(RagFeatureConfiguration customConfig, RagImplementationProperties impl) {
         Map<String, Object> implementationEntries = new LinkedHashMap<>();

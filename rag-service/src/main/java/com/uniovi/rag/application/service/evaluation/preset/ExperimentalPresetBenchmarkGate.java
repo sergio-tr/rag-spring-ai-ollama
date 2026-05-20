@@ -5,7 +5,7 @@ import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import java.util.Optional;
 
 /**
- * Honest NOT_SUPPORTED reasons for presets that need a Lab harness beyond single-shot legacy HTTP evaluation.
+ * Honest NOT_SUPPORTED reasons for presets that need a Lab harness beyond single-shot removed HTTP evaluation.
  */
 public final class ExperimentalPresetBenchmarkGate {
 

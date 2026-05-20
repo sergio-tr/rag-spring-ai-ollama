@@ -11,7 +11,7 @@ import java.util.UUID;
 
 /**
  * Single canonical input for {@link ConfigResolverService}. When {@code presetId} is empty, {@code presetPayload}
- * may still supply terminal JSON (same role as legacy preview). When {@code presetId} is present, preset/profile
+ * may still supply terminal JSON (same role as inline preview). When {@code presetId} is present, preset/profile
  * layers load from persistence; terminal JSON is only {@code runtimeOverride}.
  */
 public record RuntimeConfigResolutionInput(

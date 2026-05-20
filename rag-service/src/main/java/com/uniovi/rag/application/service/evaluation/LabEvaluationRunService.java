@@ -280,7 +280,7 @@ public class LabEvaluationRunService {
         return out;
     }
 
-    /** MVP flat CSV ({@code items.csv}) — UTF-8, header row only (no legacy {@code #META} line). */
+    /** MVP flat CSV ({@code items.csv}) — UTF-8, header row only (no {@code #META} line). */
     @Transactional(readOnly = true)
     public String exportMvpItemsCsv(UUID userId, UUID runId) {
         EvaluationRunEntity run = requireRun(userId, runId);

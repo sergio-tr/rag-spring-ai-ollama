@@ -259,7 +259,7 @@ public class ExperimentalDatasetLabService {
         String expKind =
                 e.getExperimentalKind() != null && !e.getExperimentalKind().isBlank()
                         ? e.getExperimentalKind()
-                        : "UNKNOWN_LEGACY";
+                        : "UNKNOWN_SOURCE";
 
         ExperimentalDatasetType experimentalType = parseExperimentalType(expKind);
         if (experimentalType == null) {

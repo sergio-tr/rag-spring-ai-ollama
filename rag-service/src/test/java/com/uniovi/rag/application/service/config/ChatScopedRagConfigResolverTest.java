@@ -36,7 +36,7 @@ import static org.mockito.Mockito.when;
 class ChatScopedRagConfigResolverTest {
 
     @Test
-    void resolveForExecutionContext_nullOverlay_usesLegacyResolver() {
+    void resolveForExecutionContext_nullOverlay_usesDefaultResolver() {
         ConfigResolver configResolver = mock(ConfigResolver.class);
         ConversationRepository repo = mock(ConversationRepository.class);
         ObjectMapper om = new ObjectMapper();

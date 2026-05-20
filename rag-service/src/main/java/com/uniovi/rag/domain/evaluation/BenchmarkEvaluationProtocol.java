@@ -23,7 +23,7 @@ public enum BenchmarkEvaluationProtocol {
         try {
             return valueOf(n);
         } catch (IllegalArgumentException ignored) {
-            // Synonyms / legacy labels
+            // Synonyms / synonym labels
             if (n.contains("FULL") && (n.contains("DOC") || n.contains("CORPUS"))) {
                 return LLM_FULL_DOCUMENT_CONTEXT;
             }

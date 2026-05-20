@@ -71,7 +71,7 @@ public class LabJobController {
             if (ex.getStatusCode().value() != HttpStatus.NOT_FOUND.value()) {
                 throw ex;
             }
-            // Fallback: legacy chat job cancellation (Lab UI also uses /lab/jobs/* for chat tasks).
+            // Fallback: chat job cancellation (Lab UI also uses /lab/jobs/* for chat tasks).
             chatMessageApplicationService.cancelChatTask(principal.userId(), taskId);
         }
         return ResponseEntity.noContent().build();

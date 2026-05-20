@@ -173,7 +173,7 @@ class EvalRagJobHandler implements LabJobHandler {
                             + " expectedItems="
                             + expectedItemCount);
 
-            // Defensive check: never allow legacy/demo question ids in RAG preset benchmark payload.
+            // Defensive check: never allow demo question ids in RAG preset benchmark payload.
             boolean hasDemoId =
                     rag.questions() != null
                             && rag.questions().stream().anyMatch(q -> q != null && "RAG_Q1".equalsIgnoreCase(q.id()));

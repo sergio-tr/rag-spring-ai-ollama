@@ -399,7 +399,7 @@
                     <!-- Keep aligned with ../sonar-project.properties sonar.coverage.exclusions (same intent). -->
                     <!-- Heavy-package <excludes> below: per-pattern unit / WebMvc / IT exit contract and prerequisites -->
                     <!-- (docs/testing/rag-service-heavy-package-coverage-exit-contracts.md). -->
-                    <!-- Wave 6.03: removed legacy no-op patterns (no matching packages in main bytecode):
+                    <!-- Wave 6.03: removed obsolete no-op patterns (no matching packages in main bytecode):
                          com.uniovi.rag.model, com.uniovi.rag.exception, com.uniovi.rag.api.v5.dto, com.uniovi.rag.api.auth.dto. -->
                     <excludes>
                         <exclude>com/uniovi/Application.class</exclude>
@@ -413,7 +413,7 @@
                         <!-- MessageStreamController: covered by MessageStreamControllerTest -->
                         <!-- v5 REST controllers: counted in JaCoCo; covered by WebMvc / integration tests (do not exclude) -->
                         <!-- Wave 6.04: removed 32 per-class JaCoCo excludes under infrastructure/persistence/jpa; coverage from unit tests + Postgres ITs in src/test/.../persistence. -->
-                        <!-- domain/entity: legacy JaCoCo exclude removed 2026-04-21 (no com.uniovi.rag.domain.entity sources). -->
+                        <!-- domain/entity: obsolete JaCoCo exclude removed 2026-04-21 (no com.uniovi.rag.domain.entity sources). -->
                         <!-- Heavy LLM/metadata/tooling + ingestion stacks: covered by focused unit tests + integration/E2E (bundle gate targets overall product coverage). -->
                         <exclude>com/uniovi/rag/application/service/knowledge/**</exclude>
                         <exclude>com/uniovi/rag/application/service/runtime/retrieval/**</exclude>

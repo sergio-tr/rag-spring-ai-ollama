@@ -55,7 +55,7 @@ public class OllamaProvisioningGateFilter extends OncePerRequestFilter {
         if (path.startsWith(productBase + "/admin/")) {
             return true;
         }
-        // Legacy tooling endpoint to pull models must remain reachable too.
+        // Model pull endpoint to pull models must remain reachable too.
         if (path.contains("/ollama/")) {
             return true;
         }

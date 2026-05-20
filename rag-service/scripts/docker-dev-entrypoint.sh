@@ -14,7 +14,7 @@ if [ -f mvnw ]; then
   chmod +x mvnw
 fi
 
-# Any .class under target/classes (legacy check — not sufficient alone)
+# Any .class under target/classes (classpath check — not sufficient alone)
 has_compiled_classes() {
   [ -d target/classes ] || return 1
   test -n "$(find target/classes -type f -name '*.class' 2>/dev/null | head -n 1)"
