@@ -404,26 +404,23 @@
                     <excludes>
                         <exclude>com/uniovi/Application.class</exclude>
                         <!-- Application orchestration: covered by WebMvc slices, integration tests, and focused unit tests -->
-                        <!-- ProcessQueryService / SimpleProcessQueryService: covered by ProcessQueryServiceTest + SimpleProcessQueryServiceTest (included in coverage) -->
+                        <!-- RuntimeQueryExecutionService: RuntimeQueryExecutionServiceTest (included in coverage) -->
                         <!-- Wave 6.05: runtime orchestration + domain engine measured; coverage from tests under src/test/.../application/service/runtime and .../domain/runtime/engine -->
                         <!-- MinuteDocumentStructureExpander: MinuteDocumentStructureExpanderTest + AbstractQueryExpanderTest -->
                         <!-- Async lab worker: long I/O + LLM/classifier branches; covered via async service tests + E2E -->
                         <!-- ChatMessageApplicationService: ChatMessageApplicationServiceTest + WebMvc slices; afterCommit via AfterCommitTaskScheduler -->
                         <!-- Chat async worker and stream chunk types: long I/O paths; covered via async integration + E2E -->
-                        <!-- AnswerGenerationKernel: AnswerGenerationKernelTest -->
                         <!-- MessageStreamController: covered by MessageStreamControllerTest -->
                         <!-- v5 REST controllers: counted in JaCoCo; covered by WebMvc / integration tests (do not exclude) -->
                         <!-- Wave 6.04: removed 32 per-class JaCoCo excludes under infrastructure/persistence/jpa; coverage from unit tests + Postgres ITs in src/test/.../persistence. -->
                         <!-- domain/entity: legacy JaCoCo exclude removed 2026-04-21 (no com.uniovi.rag.domain.entity sources). -->
                         <!-- Heavy LLM/metadata/tooling + ingestion stacks: covered by focused unit tests + integration/E2E (bundle gate targets overall product coverage). -->
-                        <exclude>com/uniovi/rag/service/document/**</exclude>
                         <exclude>com/uniovi/rag/application/service/knowledge/**</exclude>
-                        <exclude>com/uniovi/rag/service/retriever/**</exclude>
+                        <exclude>com/uniovi/rag/application/service/runtime/retrieval/**</exclude>
                         <!-- LLM/judge + persistence-heavy evaluation stack; bundle gate fails if fully included before broader tests. -->
-                        <exclude>com/uniovi/rag/service/evaluation/**</exclude>
                         <exclude>com/uniovi/rag/tool/**</exclude>
-                        <exclude>com/uniovi/rag/service/extraction/**</exclude>
-                        <exclude>com/uniovi/rag/service/ranker/**</exclude>
+                        <exclude>com/uniovi/rag/application/service/runtime/document/extraction/**</exclude>
+                        <exclude>com/uniovi/rag/application/service/runtime/ranking/**</exclude>
                         <exclude>com/uniovi/rag/application/service/evaluation/**</exclude>
                         <!-- Trace regression suite JSON persistence adapters: covered via WebMvc/architecture tests; low ROI for bundle gate. -->
                         <exclude>com/uniovi/rag/infrastructure/persistence/traceregressionsuitedefinition/**</exclude>
