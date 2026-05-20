@@ -479,16 +479,19 @@ function ChatPageInner() {
     if (!activeConv?.id) return;
     const fromConv = activeConv.llmModel?.trim() ?? "";
     const fromProject = projectId ? readProjectLlmModelPreference(projectId) : "";
-    setLlmModelChoiceDraft({
-      conversationId: activeConv.id,
-      value: fromConv || fromProject,
-    });
     const clfConv = activeConv.classifierModelId?.trim() ?? "";
     const clfProject = projectId ? readProjectClassifierModelPreference(projectId) : "";
-    setClassifierModelChoiceDraft({
-      conversationId: activeConv.id,
-      value: clfConv || clfProject,
-    });
+    const syncTimer = setTimeout(() => {
+      setLlmModelChoiceDraft({
+        conversationId: activeConv.id,
+        value: fromConv || fromProject,
+      });
+      setClassifierModelChoiceDraft({
+        conversationId: activeConv.id,
+        value: clfConv || clfProject,
+      });
+    }, 0);
+    return () => clearTimeout(syncTimer);
   }, [activeConv?.id, activeConv?.llmModel, activeConv?.classifierModelId, projectId]);
 
   useEffect(() => {
@@ -867,6 +870,7 @@ function ChatPageInner() {
     llmModelChoice,
     refetchMessages,
     runChatJob,
+    runtimeBlockingCode,
     runtimeBlockingMessage,
     selectConversation,
     t,
