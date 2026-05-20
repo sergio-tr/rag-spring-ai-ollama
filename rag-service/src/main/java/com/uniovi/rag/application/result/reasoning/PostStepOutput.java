@@ -1,4 +1,4 @@
-package com.uniovi.rag.application.model;
+package com.uniovi.rag.application.result.reasoning;
 
 /**
  * Output of the reasoning post-step (verified or refined text, optional flag).

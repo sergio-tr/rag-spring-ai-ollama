@@ -1,6 +1,11 @@
-package com.uniovi.rag.application.model;
+package com.uniovi.rag.application.result;
 
 import com.uniovi.rag.application.result.chat.QueryResponse;
+import com.uniovi.rag.application.result.chat.StreamConversationContext;
+import com.uniovi.rag.application.result.query.CandidateResponse;
+import com.uniovi.rag.application.result.query.DraftAndContext;
+import com.uniovi.rag.application.result.reasoning.PostStepOutput;
+import com.uniovi.rag.application.result.reasoning.ReasoningPreOutput;
 import com.uniovi.rag.domain.model.QueryType;
 import org.junit.jupiter.api.Test;
 
@@ -12,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ApplicationModelTest {
+class ApplicationResultModelsTest {
 
     @Test
     void queryResponse_fromToolAndFromLlm() {

@@ -1,4 +1,4 @@
-package com.uniovi.rag.application.model;
+package com.uniovi.rag.application.result.reasoning;
 
 /**
  * Output of the reasoning pre-step (thought, plan, or extra context for execution).

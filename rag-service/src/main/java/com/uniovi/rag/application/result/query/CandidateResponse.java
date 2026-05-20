@@ -1,4 +1,4 @@
-package com.uniovi.rag.application.model;
+package com.uniovi.rag.application.result.query;
 
 /**
  * Wrapper for a candidate response text (and optional source) to be ranked.

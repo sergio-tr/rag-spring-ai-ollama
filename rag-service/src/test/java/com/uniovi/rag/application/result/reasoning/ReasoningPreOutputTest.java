@@ -1,4 +1,4 @@
-package com.uniovi.rag.application.model;
+package com.uniovi.rag.application.result.reasoning;
 
 import org.junit.jupiter.api.Test;
 
