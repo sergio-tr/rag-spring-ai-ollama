@@ -35,6 +35,6 @@ Counts are **`rg '/api/v5'`** occurrence counts per file (not unique test cases)
 1. **New tests:** mandatory **`RagApiTestPaths`** + property-driven base; **no** new literals.
 2. **Webapp unit tests:** when editing a file, replace hard-coded paths with a single **`DEFAULT_PREFIX`** constant imported from a small test helper or `process.env` mock consistent with [`api-client.ts`](../../webapp/src/lib/api-client.ts).
 3. **Stack integration / perf YAML:** keep env-aware defaults; document overrides in [../testing/baseline-runbook.md](../testing/baseline-runbook.md) if commands change.
-4. **Legacy exceptions:** if a test **must** assert cross-version routing, name the class/method (e.g. `...LegacyPrefixCompatibilityTest`) and link an issue in the class-level Javadoc.
+4. **Historical routing exceptions:** if a test **must** assert cross-version routing, name the class/method (e.g. `...HistoricalPrefixCompatibilityTest`) and link an issue in the class-level Javadoc.
 
 Deep history: [../coverage/jacoco-coverage-target-ledger.md](../coverage/jacoco-coverage-target-ledger.md) (Wave 6.08 inventory command).

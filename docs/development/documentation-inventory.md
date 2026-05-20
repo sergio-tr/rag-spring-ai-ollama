@@ -14,7 +14,7 @@
 | [`docs/development/`](README.md) | Guidelines + strategy | — | Older drafts that cited tooling-only paths | Normative policy lives in [`documentation-guidelines.md`](documentation-guidelines.md) |
 | [`docs/adr/`](../adr/) | Index + accepted ADRs | Individual ADRs if implementation drifts | The word “multitenancy” alone can overstate SaaS isolation | Preferred terminology in [ADR 0002](../adr/0002-multitenancy-assumption.md) |
 | [`docs/architecture/`](../architecture/) | `DATA_MODEL`, diagram catalogue, `BACKEND_PACKAGES` | `implementation-roadmap` “alignment” bullets age with the repo | Roadmap must not imply unpublished branch policy | Backend logical diagram: [`backend-logical-layers.mmd`](../architecture/backend-logical-layers.mmd) |
-| [`docs/operations/`](../operations/) | Runbooks, deploy audit | Gate wording vs current workflows | Legacy cross-reference style (clean up toward Markdown anchors) | — |
+| [`docs/operations/`](../operations/) | Runbooks, deploy audit | Gate wording vs current workflows | Outdated cross-reference style (clean up toward Markdown anchors) | — |
 | [`docs/overview/`](../overview/) | `thesis-scope`, `product-context` | — | Informal “multi-tenant-style” wording without ADR 0002 nuance | — |
 | [`docs/ai/`](../ai/) | Hub, inventory, pipeline contracts | — | — | — |
 | [`docs/backend/`](../backend/) | Backend norms index (`README`), refactoring pointer | — | — | Previously missing `README` / refactoring pointer — restored for ADR 0012 links |

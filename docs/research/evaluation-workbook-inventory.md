@@ -40,7 +40,7 @@ This note records sheet structure and row counts for parser design (Phase 1). It
 - **embedding_retrieval_queries:** `EMB-001` — COUNT_DOCUMENTS, gold chunks `ACTA_1_ELEVATOR_PAINT;ACTA_6_ELEVATOR`.
 - **rag_preset_catalog_P0_P14:** P0 — Direct LLM, retrieval NONE; P14 — judges column references sufficiency/faithfulness/stop/continue.
 
-## Legacy classpath workbook (removed from prod)
+## Removed classpath workbook (removed from prod)
 
 The historical single-sheet **`evaluation/evaluation_dataset.xlsx`** is **not** shipped under `rag-service/src/main/resources` for runtime Lab benchmarks (**Phase L**, 2026-05-04). Typed evaluation uses the internal reference workbook only + user uploads validated against templates; see [`rag-service/README.md`](../../rag-service/README.md) Lab section.
 
@@ -48,4 +48,4 @@ The historical single-sheet **`evaluation/evaluation_dataset.xlsx`** is **not** 
 
 ## Phase 2 / Phase L (2026-05-04)
 
-[`EvaluationReferenceBundleLoader`](../../rag-service/src/main/java/com/uniovi/rag/application/evaluation/workbook/EvaluationReferenceBundleLoader.java) parses `REFERENCE_BUNDLE`, exposes counts and validation for `/lab/status`. Legacy Map projection via **`DatasetMinuteEvaluationService`** and its adapter utilities has been removed.
+[`EvaluationReferenceBundleLoader`](../../rag-service/src/main/java/com/uniovi/rag/application/evaluation/workbook/EvaluationReferenceBundleLoader.java) parses `REFERENCE_BUNDLE`, exposes counts and validation for `/lab/status`. Removed Map projection via **`DatasetMinuteEvaluationService`** and its adapter utilities has been removed.

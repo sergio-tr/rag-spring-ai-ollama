@@ -9,7 +9,7 @@ The **db/init/** directory contains scripts run on **first container init** (mou
 - **00-extensions.sql**: creates extensions (`vector`, `hstore`, `uuid-ossp`), ensures the **`postgres_exporter`** login exists (default password, idempotent), and grants **`pg_monitor`** so the OTEL collector can scrape even before Flyway runs.
 - **01-monitor-user.sh**: aligns the monitoring role with **`POSTGRES_MONITOR_*`** from **db/.env** (create or `ALTER ROLE` password) and grants **`pg_monitor`** for the OpenTelemetry Collector `postgresql` receiver.
 
-**db/legacy/** holds an alternate reference schema (`prev_init.sql`) for comparison; it is not run by Docker.
+**db/archive/** holds an alternate reference schema (`prev_init.sql`) for comparison; it is not run by Docker.
 
 ## Variables (db/.env)
 

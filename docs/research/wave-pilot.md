@@ -6,7 +6,7 @@
 
 **Primary hypothesis under test:** H1 (see [`experimental-design-matrix.md`](experimental-design-matrix.md)) on a **pilot subset** of items only after Lab execution is available.
 
-**Dataset (pilot, historical):** `EVAL-XLSX-CLASSPATH-V1` pointed at a **legacy** single-sheet workbook (`evaluation_dataset.xlsx`) removed from prod classpath in **Phase L** (2026-05-04). Current waves should anchor on `rag_experiment_datasets_and_protocols.xlsx` + typed uploads; keep this pilot row as **frozen historical** evidence only.
+**Dataset (pilot, historical):** `EVAL-XLSX-CLASSPATH-V1` pointed at a **removed** single-sheet workbook (`evaluation_dataset.xlsx`) removed from prod classpath in **Phase L** (2026-05-04). Current waves should anchor on `rag_experiment_datasets_and_protocols.xlsx` + typed uploads; keep this pilot row as **frozen historical** evidence only.
 
 **Gates before Lab metrics:**
 

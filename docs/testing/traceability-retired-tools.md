@@ -13,7 +13,7 @@
 | Authenticated product API | Gatling: `ProductAuthenticatedSimulation`; Playwright: `webapp/e2e/api/**/*.spec.ts` |
 | Auth negative paths | Gatling: `AuthLoginNegativeSimulation`; Playwright: `webapp/e2e/api/auth/login.api.spec.ts` |
 | Admin API | Gatling: `AdminApiSimulation`; Playwright: `webapp/e2e/admin/*.spec.ts` |
-| Historical query load (comparison only) | Gatling: `LegacyQueryLoadSimulation`, `LegacyQuerySpikeSimulation`, mixed realistic |
+| Historical query load (comparison only) | Gatling: `MixedRealisticLoadSimulation`, `MixedRealisticSpikeSimulation`, mixed realistic |
 | UI journeys | Playwright: `webapp/e2e/**` (see [`webapp/e2e/README.md`](../../webapp/e2e/README.md)) |
 | Observability checks | Optional pytest stack; Gatling health simulations |
 

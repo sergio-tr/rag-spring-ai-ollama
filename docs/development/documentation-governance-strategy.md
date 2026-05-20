@@ -40,7 +40,7 @@ docs/
   overview/
   adr/
   development/              # Contributor + governance (guidelines, this strategy)
-  testing/                  # README + topic pages (e.g. legacy tool traceability)
+  testing/                  # README + topic pages (e.g. retired tool traceability)
   performance/              # README — load / micro-benchmark overview
   coverage/
 ```

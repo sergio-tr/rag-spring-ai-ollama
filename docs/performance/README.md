@@ -16,7 +16,7 @@ This document states **goals and entry points**. Tool-specific commands, environ
 | **Python micro-benchmarks** | Low-concurrency product Chat latency + **estimated** tokens (schema v1 JSON); **not** load | [../../tests/performance/README.md](../../tests/performance/README.md) |
 | **Python infra probe** | Simple GET KPIs (e.g. `/actuator/health`) — cold/warm infra | `tests/performance/infra_probe.py` |
 
-Gatling coverage and related pointers: [../testing/traceability-legacy-tools.md](../testing/traceability-legacy-tools.md).
+Gatling coverage and related pointers: [../testing/traceability-retired-tools.md](../testing/traceability-retired-tools.md).
 
 ### Gatling vs Python helpers
 
@@ -31,7 +31,7 @@ The Gatling workflow **skips** when `GATLING_BASE_URL` is unset.
 
 - **Scripts:** `tests/performance/retrieval_benchmark.py` (`product_chat` with JWT + project + conversation; optional historical `GET …/query` baseline when explicitly labelled in scenario YAML), `llm_benchmark.py` (wrapper, `--family llm` default), `infra_probe.py` (non-RAG GET probe). See `tests/performance/` for any additional helper scripts.
 - **Report:** JSON `schemaVersion: "1.0"` — see `tests/performance/schema/benchmark-report-v1.schema.json` and `tests/performance/API_RESPONSE_AUDIT.md` (no tokenizer fields in API responses; benchmarks use a **chars/4** heuristic, `estimated: true`).
-- **Scenarios:** `tests/performance/scenarios/*.yaml` — final evidence should use `product_chat` (PUT project RAG config + chat job polling) when `BENCHMARK_BEARER_TOKEN`, `BENCHMARK_PROJECT_ID`, `BENCHMARK_CONVERSATION_ID` are set. `transport: historical_query` (YAML key may still read `legacy`) is for explicitly labelled pre-product `/query` comparisons only.
+- **Scenarios:** `tests/performance/scenarios/*.yaml` — final evidence should use `product_chat` (PUT project RAG config + chat job polling) when `BENCHMARK_BEARER_TOKEN`, `BENCHMARK_PROJECT_ID`, `BENCHMARK_CONVERSATION_ID` are set. `transport: historical_query` (use `historical_query` transport key) is for explicitly labelled pre-product `/query` comparisons only.
 - **CI:** [.github/workflows/micro-benchmark.yml](../../.github/workflows/micro-benchmark.yml) — `workflow_dispatch` + weekly schedule; requires repository variable `BENCHMARK_BASE_URL` (or dispatch input). **No gates** — artifacts for observation only. Does **not** run on every commit.
 
 ## Evidence Labels
@@ -64,7 +64,7 @@ Load against **real LLM** endpoints is environment-dependent. For **comparable**
 
 ## Related
 
-- Retired load-tool mapping (k6 → Gatling): [../testing/traceability-legacy-tools.md](../testing/traceability-legacy-tools.md)
+- Retired load-tool mapping (k6 → Gatling): [../testing/traceability-retired-tools.md](../testing/traceability-retired-tools.md)
 - Documentation hub: [../README.md](../README.md)
 - Root README (quick links): [../../README.md](../../README.md)
 - Gatling mix configuration (percentages, users CSV): [../../tests/gatling/README.md](../../tests/gatling/README.md)
