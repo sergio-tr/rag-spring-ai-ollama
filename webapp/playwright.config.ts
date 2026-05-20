@@ -9,9 +9,7 @@ const apiBaseURL =
 const ignoreHTTPSErrors = process.env.PLAYWRIGHT_IGNORE_HTTPS_ERRORS === "1";
 const retries = process.env.PLAYWRIGHT_RETRIES
   ? Number.parseInt(process.env.PLAYWRIGHT_RETRIES, 10)
-  : process.env.CI
-    ? 1
-    : 0;
+  : 0;
 const testTimeout = Number.parseInt(process.env.PLAYWRIGHT_TEST_TIMEOUT_MS ?? "30000", 10);
 const expectTimeout = Number.parseInt(process.env.PLAYWRIGHT_EXPECT_TIMEOUT_MS ?? "10000", 10);
 const maxFailures = process.env.PLAYWRIGHT_MAX_FAILURES
@@ -46,6 +44,7 @@ export default defineConfig({
   use: {
     trace,
     screenshot: "only-on-failure",
+    video: process.env.CI ? "off" : "on-first-retry",
     ignoreHTTPSErrors,
   },
   projects: [
