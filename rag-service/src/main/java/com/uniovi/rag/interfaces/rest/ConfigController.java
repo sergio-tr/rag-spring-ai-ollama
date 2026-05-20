@@ -137,18 +137,18 @@ public class ConfigController {
     }
 
     @Operation(
-            summary = "Effective user RAG config (deprecated)",
-            deprecated = true,
-            description = "Prefer GET/PUT /me/preferences and /me/personalization for UI prefs; this merges rag_configuration USER_DEFAULT.")
+            summary = "Effective user-default RAG configuration",
+            description =
+                    "Canonical USER_DEFAULT rag_configuration values (schema-driven). "
+                            + "Distinct from GET/PUT /me/preferences (UI locale/theme) and /me/personalization.")
     @GetMapping("/user")
     public Map<String, Object> getUserConfig(@AuthenticationPrincipal RagPrincipal principal) {
         return userProjectConfigurationService.getEffectiveUserConfig(principal.userId());
     }
 
     @Operation(
-            summary = "Replace user-default RAG configuration (deprecated)",
-            deprecated = true,
-            description = "Prefer /me/preferences and /me/personalization for canonical JSON stores.")
+            summary = "Replace user-default RAG configuration",
+            description = "Persists USER_DEFAULT rag_configuration for the authenticated user.")
     @PutMapping("/user")
     public Map<String, Object> putUserConfig(
             @AuthenticationPrincipal RagPrincipal principal, @RequestBody Map<String, Object> body) {
