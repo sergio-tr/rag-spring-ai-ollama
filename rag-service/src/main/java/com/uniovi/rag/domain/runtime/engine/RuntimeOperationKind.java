@@ -5,6 +5,6 @@ package com.uniovi.rag.domain.runtime.engine;
  */
 public enum RuntimeOperationKind {
     CHAT_MESSAGE,
-    LEGACY_HTTP,
+    STATELESS_HTTP,
     LAB_PROCESS
 }

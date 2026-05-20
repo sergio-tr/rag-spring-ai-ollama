@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ResolvedRuntimeConfigResponseDtoTest {
 
     @Test
-    void fromDomain_blankPromptWhenNullAndUsesCoreWhenLegacyAbsent() {
+    void fromDomain_blankPromptWhenNullAndUsesCoreWhenProjectionAbsent() {
         RagFeatureConfiguration fc = new RagFeatureConfiguration();
         RagConfig core = RagConfig.fromFeatureConfiguration(fc, 10, 0.7, "a", "b", "c", "simple");
         ResolvedRuntimeConfig resolved = new ResolvedRuntimeConfig(
@@ -33,17 +33,17 @@ class ResolvedRuntimeConfigResponseDtoTest {
         ResolvedRuntimeConfigResponseDto dto = ResolvedRuntimeConfigResponseDto.fromDomain(resolved);
 
         assertThat(dto.effectiveSystemPrompt()).isEmpty();
-        Map<String, Object> legacy = dto.configProjection();
-        assertThat(legacy).isEqualTo(core.toValueMap());
+        Map<String, Object> projection = dto.configProjection();
+        assertThat(projection).isEqualTo(core.toValueMap());
     }
 
     @Test
-    void fromDomain_usesLegacyProjectionMapWhenPresent() {
+    void fromDomain_usesExplicitProjectionMapWhenPresent() {
         RagFeatureConfiguration fc = new RagFeatureConfiguration();
         RagConfig core = RagConfig.fromFeatureConfiguration(fc, 10, 0.7, "a", "b", "c", "simple");
-        RagFeatureConfiguration fcLegacy = new RagFeatureConfiguration();
-        RagConfig legacy =
-                RagConfig.fromFeatureConfiguration(fcLegacy, 11, 0.8, "la", "lb", "lc", "dense");
+        RagFeatureConfiguration fcProjection = new RagFeatureConfiguration();
+        RagConfig projection =
+                RagConfig.fromFeatureConfiguration(fcProjection, 11, 0.8, "la", "lb", "lc", "dense");
         ResolvedRuntimeConfig resolved = new ResolvedRuntimeConfig(
                 core,
                 CapabilitySet.fromRagConfig(core),
@@ -52,11 +52,11 @@ class ResolvedRuntimeConfigResponseDtoTest {
                 SystemPromptLayers.empty(),
                 "prompt",
                 new ConfigProvenance(null, null, null, List.of(), null, null),
-                legacy);
+                projection);
 
         ResolvedRuntimeConfigResponseDto dto = ResolvedRuntimeConfigResponseDto.fromDomain(resolved);
 
         assertThat(dto.effectiveSystemPrompt()).isEqualTo("prompt");
-        assertThat(dto.configProjection()).isEqualTo(legacy.toValueMap());
+        assertThat(dto.configProjection()).isEqualTo(projection.toValueMap());
     }
 }

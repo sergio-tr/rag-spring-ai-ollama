@@ -20,7 +20,7 @@ public class RagConfiguration {
 
     /**
      * Single ChatClient with no tools/advisor to avoid circular dependency.
-     * {@link com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator} applies deterministic tools; legacy advisor wiring is configuration-only.
+     * {@link com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator} applies deterministic tools; optional advisor wiring is configuration-only.
      */
     @Bean
     public ChatClient chatClient(ChatModel chatModel) {

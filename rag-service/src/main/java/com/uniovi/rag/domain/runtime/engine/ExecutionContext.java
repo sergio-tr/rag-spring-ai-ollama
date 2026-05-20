@@ -180,7 +180,7 @@ public record ExecutionContext(
     }
 
     /**
-     * Stateless legacy HTTP path: no conversation id.
+     * Stateless removed HTTP path: no conversation id.
      */
     public boolean stateless() {
         return conversationId == null;

@@ -21,7 +21,7 @@ public record RagExecutionResult(
         List<UUID> usedKnowledgeSnapshotIds,
         ExecutionTrace executionTrace,
         String toolUsedLabel,
-        QueryType queryTypeForLegacy,
+        QueryType resolvedQueryType,
         boolean usedTool,
         List<ExecutionStageTrace> workflowStageTraces,
         Optional<RetrievalDiagnostics> retrievalDiagnostics,
@@ -38,7 +38,7 @@ public record RagExecutionResult(
             List<UUID> usedKnowledgeSnapshotIds,
             ExecutionTrace executionTrace,
             String toolUsedLabel,
-            QueryType queryTypeForLegacy,
+            QueryType resolvedQueryType,
             boolean usedTool,
             List<ExecutionStageTrace> workflowStageTraces,
             Optional<RetrievalDiagnostics> retrievalDiagnostics,
@@ -53,7 +53,7 @@ public record RagExecutionResult(
         this.usedKnowledgeSnapshotIds = List.copyOf(usedKnowledgeSnapshotIds);
         this.executionTrace = executionTrace;
         this.toolUsedLabel = toolUsedLabel;
-        this.queryTypeForLegacy = queryTypeForLegacy;
+        this.resolvedQueryType = resolvedQueryType;
         this.usedTool = usedTool;
         this.workflowStageTraces = List.copyOf(workflowStageTraces);
         this.retrievalDiagnostics = Objects.requireNonNullElseGet(retrievalDiagnostics, Optional::empty);
@@ -116,7 +116,7 @@ public record RagExecutionResult(
                 usedKnowledgeSnapshotIds,
                 finalTrace,
                 toolUsedLabel,
-                queryTypeForLegacy,
+                resolvedQueryType,
                 usedTool,
                 workflowStageTraces,
                 retrievalDiagnostics,
@@ -134,7 +134,7 @@ public record RagExecutionResult(
                 usedKnowledgeSnapshotIds,
                 executionTrace,
                 toolUsedLabel,
-                queryTypeForLegacy,
+                resolvedQueryType,
                 usedTool,
                 workflowStageTraces,
                 retrievalDiagnostics,

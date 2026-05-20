@@ -35,21 +35,21 @@ public class SnapshotCorpusAssembler {
         if (snapshotIds.isEmpty()) {
             throw new IllegalStateException("SnapshotCorpusAssembler requires non-empty orderedSnapshotIds");
         }
-        RagExecutionContext legacy = RagExecutionContextHolder.get();
-        if (legacy == null || legacy.resolvedConfig() == null) {
+        RagExecutionContext holder = RagExecutionContextHolder.get();
+        if (holder == null || holder.resolvedConfig() == null) {
             throw new IllegalStateException("RagExecutionContextHolder must be set for corpus assembly");
         }
-        if (!legacy.restrictsByProject()) {
+        if (!holder.restrictsByProject()) {
             return "";
         }
         UUID projectId;
         try {
-            projectId = UUID.fromString(legacy.projectId().trim());
+            projectId = UUID.fromString(holder.projectId().trim());
         } catch (Exception e) {
             return "";
         }
-        int maxChars = Math.max(1024, legacy.resolvedConfig().naiveFullCorpusMaxChars());
-        List<String> contents = fetchContents(projectId, legacy, snapshotIds);
+        int maxChars = Math.max(1024, holder.resolvedConfig().naiveFullCorpusMaxChars());
+        List<String> contents = fetchContents(projectId, holder, snapshotIds);
         if (contents.isEmpty()) {
             return "";
         }

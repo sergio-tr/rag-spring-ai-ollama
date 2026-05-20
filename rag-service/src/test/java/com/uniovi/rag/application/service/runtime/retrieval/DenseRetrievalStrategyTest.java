@@ -51,7 +51,7 @@ class DenseRetrievalStrategyTest {
     private DenseRetrievalStrategy denseRetrievalStrategy;
 
     @BeforeEach
-    void setLegacyContext() {
+    void setUnscopedProjectContext() {
         RagConfig rag =
                 new RagConfig(
                         false,
@@ -253,7 +253,7 @@ class DenseRetrievalStrategyTest {
         RetrievalRequest req = baseRequest(sid, 10);
         Document noProjectMeta =
                 new Document(
-                        "legacy",
+                        "historical_query",
                         Map.of(
                                 "indexSnapshotId", sid.toString(),
                                 "document_id", "d1",

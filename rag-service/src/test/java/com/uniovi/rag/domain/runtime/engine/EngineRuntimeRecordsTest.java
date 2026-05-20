@@ -73,7 +73,7 @@ class EngineRuntimeRecordsTest {
                         null,
                         null,
                         "q",
-                        RuntimeOperationKind.LEGACY_HTTP,
+                        RuntimeOperationKind.STATELESS_HTTP,
                         resolved,
                         "sys",
                         KnowledgeSnapshotSelection.empty(),
@@ -123,7 +123,7 @@ class EngineRuntimeRecordsTest {
     }
 
     @Test
-    void executionContext_legacyConstructor_defaultsRoutingFields() {
+    void executionContext_minimalConstructor_defaultsRoutingFields() {
         ResolvedRuntimeConfig resolved = mock(ResolvedRuntimeConfig.class);
         UUID cid = UUID.randomUUID();
         ExecutionContext ctx =

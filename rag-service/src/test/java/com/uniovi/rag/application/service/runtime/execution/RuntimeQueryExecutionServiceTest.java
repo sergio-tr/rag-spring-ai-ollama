@@ -83,7 +83,7 @@ class RuntimeQueryExecutionServiceTest {
                 rag);
     }
 
-    private static ExecutionContext legacyCtx() {
+    private static ExecutionContext statelessCtx() {
         RagConfig rag =
                 RagConfig.fromFeatureConfiguration(
                         new RagFeatureConfiguration(),
@@ -98,7 +98,7 @@ class RuntimeQueryExecutionServiceTest {
                 null,
                 null,
                 "hello",
-                RuntimeOperationKind.LEGACY_HTTP,
+                RuntimeOperationKind.STATELESS_HTTP,
                 minimalResolved(rag),
                 "system",
                 KnowledgeSnapshotSelection.empty(),
@@ -128,7 +128,7 @@ class RuntimeQueryExecutionServiceTest {
 
     @Test
     void generateResponse_delegatesToOrchestrator() {
-        ExecutionContext ctx = legacyCtx();
+        ExecutionContext ctx = statelessCtx();
         when(executionContextFactory.buildForHttpQuery(any(), any())).thenReturn(ctx);
         RagExecutionResult result =
                 RagExecutionResult.withPlaceholderTrace(
@@ -155,7 +155,7 @@ class RuntimeQueryExecutionServiceTest {
 
     @Test
     void generateResponse_ragServiceExceptionPropagates() {
-        ExecutionContext ctx = legacyCtx();
+        ExecutionContext ctx = statelessCtx();
         when(executionContextFactory.buildForHttpQuery(any(), any())).thenReturn(ctx);
         when(ragExecutionOrchestrator.execute(ctx)).thenThrow(RagServiceException.unsupportedRuntimeConfiguration("x"));
         assertThrows(RagServiceException.class, () -> service.generateResponse("q", null));
@@ -163,7 +163,7 @@ class RuntimeQueryExecutionServiceTest {
 
     @Test
     void generateResponse_connectivityFailure_throwsRagServiceException() {
-        ExecutionContext ctx = legacyCtx();
+        ExecutionContext ctx = statelessCtx();
         when(executionContextFactory.buildForHttpQuery(any(), any())).thenReturn(ctx);
         when(ragExecutionOrchestrator.execute(ctx))
                 .thenThrow(new ResourceAccessException("I/O error", new ConnectException()));

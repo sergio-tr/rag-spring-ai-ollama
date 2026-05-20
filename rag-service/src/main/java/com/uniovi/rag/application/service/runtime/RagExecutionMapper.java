@@ -11,7 +11,7 @@ public final class RagExecutionMapper {
     }
 
     public static QueryResponse toQueryResponse(RagExecutionResult result) {
-        QueryType qt = result.queryTypeForLegacy();
+        QueryType qt = result.resolvedQueryType();
         Map<String, Object> telemetry = ChatExecutionTelemetryMapper.fromTrace(result.executionTrace());
         if (result.usedTool()) {
             return QueryResponse.fromToolWithSources(

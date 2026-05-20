@@ -139,7 +139,7 @@ public class ExecutionContextFactory {
                 projectId,
                 null,
                 rawUserQuery,
-                RuntimeOperationKind.LEGACY_HTTP,
+                RuntimeOperationKind.STATELESS_HTTP,
                 resolved,
                 snapshots,
                 correlationId,

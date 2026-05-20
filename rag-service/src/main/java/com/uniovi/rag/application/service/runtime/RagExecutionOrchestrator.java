@@ -590,7 +590,7 @@ public class RagExecutionOrchestrator {
         ExecutionWorkflow workflow =
                 selectExecutableWorkflow(effectiveCtx, workflowSelector.select(effectiveCtx));
         String wname = workflow.workflowName();
-        RagExecutionContextHolder.set(toLegacy(effectiveCtx));
+        RagExecutionContextHolder.set(toRagExecutionContextHolder(effectiveCtx));
         try {
             RagExecutionResult partial = workflow.execute(effectiveCtx);
 
@@ -755,7 +755,7 @@ public class RagExecutionOrchestrator {
                     base.usedKnowledgeSnapshotIds(),
                     base.executionTrace(),
                     base.toolUsedLabel(),
-                    base.queryTypeForLegacy(),
+                    base.resolvedQueryType(),
                     base.usedTool(),
                     base.workflowStageTraces(),
                     base.retrievalDiagnostics(),
@@ -864,7 +864,7 @@ public class RagExecutionOrchestrator {
                 || "ChunkDenseMetadataWorkflow".equals(workflowName);
     }
 
-    private static RagExecutionContext toLegacy(ExecutionContext ctx) {
+    private static RagExecutionContext toRagExecutionContextHolder(ExecutionContext ctx) {
         return new RagExecutionContext(
                 ctx.conversationId() != null ? ctx.conversationId().toString() : null,
                 ctx.userId() != null ? ctx.userId().toString() : null,

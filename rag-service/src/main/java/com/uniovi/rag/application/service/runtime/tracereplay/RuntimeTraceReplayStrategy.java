@@ -92,7 +92,7 @@ public class RuntimeTraceReplayStrategy {
         }
 
         ExecutionContext ctxAfterQu = buildContextAndRunQu(trace, inputs, pin);
-        RagExecutionContextHolder.set(toLegacy(ctxAfterQu));
+        RagExecutionContextHolder.set(toRagExecutionContextHolder(ctxAfterQu));
         try {
             RagExecutionResult partial = workflow.execute(ctxAfterQu);
             return RuntimeTraceReplayResult.success(
@@ -298,7 +298,7 @@ public class RuntimeTraceReplayStrategy {
                 ctx.routingStageTraces());
     }
 
-    private static RagExecutionContext toLegacy(ExecutionContext ctx) {
+    private static RagExecutionContext toRagExecutionContextHolder(ExecutionContext ctx) {
         return new RagExecutionContext(
                 ctx.conversationId() != null ? ctx.conversationId().toString() : null,
                 ctx.userId() != null ? ctx.userId().toString() : null,
