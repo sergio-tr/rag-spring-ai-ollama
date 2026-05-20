@@ -234,13 +234,17 @@ chmod +x rag-service/mvnw
 echo "==> Classifier: pytest + coverage.xml"
 (
   cd classifier-service
-  python -m pip install -r requirements.txt
+  CLASSIFIER_PYTHON="python3"
+  if command -v python3.11 >/dev/null 2>&1; then
+    CLASSIFIER_PYTHON="python3.11"
+  fi
+  "${CLASSIFIER_PYTHON}" -m pip install -r requirements.txt
   export MODELS_DIR=./models
   export DATA_DIR=./data
-  python -m pytest tests/unit tests/regression/test_baseline_lib.py \
+  "${CLASSIFIER_PYTHON}" -m pytest tests/unit tests/regression/test_baseline_lib.py \
     -m "not integration and not slow" \
     -v
-  python scripts/patch_coverage_xml_for_sonar.py
+  "${CLASSIFIER_PYTHON}" scripts/patch_coverage_xml_for_sonar.py
 )
 
 echo "==> Webapp: Vitest coverage (lcov.info)"

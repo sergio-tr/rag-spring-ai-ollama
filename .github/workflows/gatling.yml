@@ -18,6 +18,7 @@ on:
           - simulations.ActuatorThroughputTiersSimulation
           - simulations.LegacyQueryLoadSimulation
           - simulations.LegacyQuerySpikeSimulation
+          # LegacyQuery* = historical GET /query only — not product Chat evidence; prefer Product* / MixedRealistic*.
           - simulations.ProductAuthenticatedSimulation
           - simulations.ProductUnauthenticatedSimulation
           - simulations.AuthLoginNegativeSimulation

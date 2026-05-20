@@ -230,5 +230,17 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: playwright-fullstack-report
-          path: webapp/playwright-report/
+          path: |
+            webapp/playwright-report/
+            webapp/test-results/preflight-results.json
+            webapp/test-results/fullstack-critical-results.json
           retention-days: 7
+          if-no-files-found: warn
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-fullstack-traces
+          path: webapp/test-results/
+          retention-days: 7
+          if-no-files-found: warn

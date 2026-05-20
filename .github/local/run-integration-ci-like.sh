@@ -49,6 +49,8 @@ PYTEST_LOG_PATH="${PYTEST_LOG_PATH:-/tmp/pytest-integration-ci-like.log}"
 export INTEGRATION_STRICT="${INTEGRATION_STRICT:-1}"
 export INTEGRATION_FAIL_ON_UNREACHABLE="${INTEGRATION_FAIL_ON_UNREACHABLE:-${INTEGRATION_STRICT}}"
 export INTEGRATION_REQUIRE_CLASSIFIER="${INTEGRATION_REQUIRE_CLASSIFIER:-0}"
+export INTEGRATION_ADMIN_EMAIL="${INTEGRATION_ADMIN_EMAIL:-admin@e2e.local}"
+export INTEGRATION_ADMIN_PASSWORD="${INTEGRATION_ADMIN_PASSWORD:-e2e}"
 
 if [[ ! -f "${REPO_ROOT}/.github/local/ci-postgres-extensions.sql" ]]; then
   echo "error: missing .github/local/ci-postgres-extensions.sql" >&2
@@ -64,6 +66,23 @@ if [[ ! -f "${RAG_SERVICE}/mvnw" && ! -f "${RAG_SERVICE}/mvnw.cmd" ]]; then
 fi
 
 docker info >/dev/null 2>&1 || { echo "error: Docker is not running." >&2; exit 1; }
+
+resolve_host_gateway_ip() {
+  if [[ -n "${HOST_GATEWAY_IP:-}" ]]; then
+    echo "${HOST_GATEWAY_IP}"
+    return
+  fi
+  local resolved
+  resolved="$(
+    docker run --rm --add-host=host-gateway.internal:host-gateway alpine:3.20 \
+      getent hosts host-gateway.internal 2>/dev/null | awk 'NR == 1 { print $1 }' || true
+  )"
+  if [[ "${resolved}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "host-gateway"
+    return
+  fi
+  echo "172.17.0.1"
+}
 
 ensure_network() {
   docker network inspect "${CI_NETWORK}" >/dev/null 2>&1 || docker network create "${CI_NETWORK}" >/dev/null
@@ -155,6 +174,20 @@ wait_for_backend() {
   done
   echo "--- backend log (tail) ---" >&2
   docker logs --tail 200 "${BACKEND_CONTAINER}" >&2 || true
+  return 1
+}
+
+wait_for_classifier() {
+  log "Waiting for classifier health: http://127.0.0.1:8000/health"
+  for _ in $(seq 1 120); do
+    if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+      log "Classifier healthy."
+      return 0
+    fi
+    sleep 2
+  done
+  echo "--- classifier log (tail) ---" >&2
+  docker logs --tail 200 "${CLASSIFIER_CONTAINER}" >&2 || true
   return 1
 }
 
@@ -285,10 +318,16 @@ prepare_postgres
 start_backend
 start_classifier
 wait_for_backend
+if [[ "${INTEGRATION_REQUIRE_CLASSIFIER}" = "1" ]]; then
+  wait_for_classifier
+fi
 seed_admin
 log "Pytest log: ${PYTEST_LOG_PATH}"
+host_gateway="$(resolve_host_gateway_ip)"
+log "Pytest container host mapping: host.docker.internal -> ${host_gateway}"
 set -o pipefail
 docker run --rm \
+  --add-host="host.docker.internal:${host_gateway}" \
   -v "${REPO_ROOT}:/repo" \
   -w /repo \
   -v "${PIP_CACHE_VOLUME}:/root/.cache/pip" \
