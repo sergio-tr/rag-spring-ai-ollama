@@ -236,7 +236,7 @@ class EvalEmbeddingRetrievalJobHandlerTest {
     }
 
     @Test
-    void run_withRunId_resolvesTypedDataset_neverLegacyQaMap() {
+    void run_withRunId_resolvesTypedDataset_neverRemovedQaMap() {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
         stubBaselineForCanonicalRun(runId);

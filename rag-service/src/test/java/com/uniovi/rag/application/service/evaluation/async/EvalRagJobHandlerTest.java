@@ -94,7 +94,7 @@ class EvalRagJobHandlerTest {
     }
 
     @Test
-    void run_withRunId_usesTypedRag_neverLegacyEvaluate() {
+    void run_withRunId_usesTypedRag_neverRemovedEvaluateApi() {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
         RagPresetQuestion q =

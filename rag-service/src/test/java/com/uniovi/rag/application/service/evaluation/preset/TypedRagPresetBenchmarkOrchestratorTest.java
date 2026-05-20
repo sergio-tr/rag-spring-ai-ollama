@@ -655,7 +655,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     }
 
     @Test
-    void legacyNoActiveIndexExceptionIsExportedAsReindexRequired() {
+    void noActiveIndexExceptionIsExportedAsReindexRequired() {
         when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
         when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any()))

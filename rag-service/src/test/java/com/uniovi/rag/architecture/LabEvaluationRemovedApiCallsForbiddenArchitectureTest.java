@@ -17,7 +17,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
  * Ensures Lab async handlers and {@code LabController} never call removed {@code EvaluationService#getQuestionsAndAnswers()}.
  */
 @AnalyzeClasses(packages = "com.uniovi.rag", importOptions = ImportOption.DoNotIncludeTests.class)
-class LabEvaluationLegacyCallsForbiddenArchitectureTest {
+class LabEvaluationRemovedApiCallsForbiddenArchitectureTest {
 
     @ArchTest
     static final ArchRule lab_async_handlers_must_not_call_evaluation_service_getQuestionsAndAnswers =

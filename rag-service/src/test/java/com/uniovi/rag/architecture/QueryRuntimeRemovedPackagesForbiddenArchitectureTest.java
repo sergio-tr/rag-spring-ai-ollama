@@ -11,12 +11,12 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
- * Guards against reintroduction of deleted query/synthesis legacy packages and facades (Agent J5).
+ * Guards against reintroduction of deleted query/synthesis removed packages and facades (Agent J5).
  */
 @AnalyzeClasses(packages = "com.uniovi.rag", importOptions = ImportOption.DoNotIncludeTests.class)
-class QueryRuntimeLegacyForbiddenArchitectureTest {
+class QueryRuntimeRemovedPackagesForbiddenArchitectureTest {
 
-    private static final String FORBIDDEN_LEGACY_TYPE_NAME_PATTERN =
+    private static final String FORBIDDEN_REMOVED_TYPE_NAME_PATTERN =
             "ProcessQueryService|SimpleProcessQueryService|SimpleQueryService|QueryInputPreparer|"
                     + "ResponseSynthesisPipeline|AnswerGenerationKernel|QueryRuntimeComponents|"
                     + "QueryRuntimeComponentsFactory";
@@ -26,8 +26,8 @@ class QueryRuntimeLegacyForbiddenArchitectureTest {
             noClasses().should().resideInAnyPackage("com.uniovi.rag.application.service.query..");
 
     @ArchTest
-    static final ArchRule deleted_legacy_query_types_must_not_exist =
-            noClasses().should().haveNameMatching(FORBIDDEN_LEGACY_TYPE_NAME_PATTERN);
+    static final ArchRule deleted_removed_query_types_must_not_exist =
+            noClasses().should().haveNameMatching(FORBIDDEN_REMOVED_TYPE_NAME_PATTERN);
 
     @ArchTest
     static final ArchRule chat_message_handler_uses_runtime_query_execution =

@@ -77,7 +77,7 @@ class BenchmarkMvpMetricsCalculatorIndexPlanTest {
     }
 
     @Test
-    void csv_row_with_legacy_metrics_payload_does_not_fail_and_emits_empty_fields() {
+    void csv_row_with_obsolete_metrics_payload_does_not_fail_and_emits_empty_fields() {
         EvaluationRunEntity run = new EvaluationRunEntity();
         EvaluationResultEntity item = new EvaluationResultEntity();
         item.setBenchmarkKind("RAG_PRESET_END_TO_END");
@@ -177,8 +177,8 @@ class BenchmarkMvpMetricsCalculatorIndexPlanTest {
         item.setBenchmarkKind("RAG_PRESET_END_TO_END");
         Map<String, Object> mp = new LinkedHashMap<>();
         mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.SKIPPED.name());
-        mp.put(BenchmarkResultRowKeys.ERROR_CODE, "LEGACY_ROW_CODE");
-        mp.put(BenchmarkResultRowKeys.REASON, "Legacy human reason.");
+        mp.put(BenchmarkResultRowKeys.ERROR_CODE, "OBSOLETE_ROW_CODE");
+        mp.put(BenchmarkResultRowKeys.REASON, "Obsolete human reason.");
         mp.put("skippedReasonCode", "CORPUS_EVIDENCE_UNAVAILABLE");
         mp.put("skippedReason", "Canonical skip explanation.");
         item.setMetricsPayload(mp);

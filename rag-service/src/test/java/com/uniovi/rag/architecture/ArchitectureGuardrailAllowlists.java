@@ -55,7 +55,7 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.preset.PresetService", // ARCH-DEBT-ADMIN-MODEL
             "com.uniovi.rag.application.service.project.ProjectAccessService", // ARCH-DEBT-ADMIN-MODEL
             "com.uniovi.rag.application.service.project.ProjectService", // ARCH-DEBT-ADMIN-MODEL
-            "com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService", // ARCH-DEBT-QUERY-LEGACY
+            "com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService", // ARCH-DEBT-QUERY-RUNTIME
             "com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService", // ARCH-DEBT-RUNTIME-CONFIG
             "com.uniovi.rag.application.service.runtime.tracecomparison.RuntimeTraceReplayComparator", // ARCH-DEBT-TRACE
             "com.uniovi.rag.application.service.runtime.tracecomparison.RuntimeTraceReplayComparisonService", // ARCH-DEBT-TRACE

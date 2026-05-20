@@ -50,7 +50,7 @@ class ReferenceBundleClasspathResourceTest {
                         assertThat(q.difficulty()).isPresent();
                     });
 
-            // Guardrail: ensure stable question ids are the canonical RAG-001..RAG-060 (no legacy demo ids).
+            // Guardrail: ensure stable question ids are the canonical RAG-001..RAG-060 (no demo ids).
             assertThat(parsed.workbook().ragPresetQuestionsEnriched())
                     .hasSize(60)
                     .allSatisfy(q -> assertThat(q.id()).startsWith("RAG-"));
