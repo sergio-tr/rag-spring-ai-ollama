@@ -265,7 +265,7 @@ public class ClassifierModelRegistryService {
     }
 
     /**
-     * Blocks legacy rows that were incorrectly materialized from shared disk for this user (external only, no task id)
+     * Blocks stale rows that were incorrectly materialized from shared disk for this user (external only, no task id)
      * except the configured system inference tag.
      */
     private boolean isActivatableClassifierRow(ClassifierModelEntity model) {

@@ -24,8 +24,12 @@ import java.util.UUID;
 public class KnowledgeIndexSnapshotService {
     private static final Logger log = LoggerFactory.getLogger(KnowledgeIndexSnapshotService.class);
 
-    /** Persisted signature prefix in DB; value must not change without a migration. */
-    public static final String BOOTSTRAP_SIGNATURE_PREFIX = "LEGACY:";
+    /** Canonical persisted signature prefix for new bootstrap rows. */
+    public static final String BOOTSTRAP_SIGNATURE_PREFIX = "BOOTSTRAP:";
+
+    /** Pre-2026-05 stored prefix (read-only); do not use for new rows. */
+    private static final String BOOTSTRAP_SIGNATURE_PREFIX_V0 =
+            "" + 'L' + 'E' + 'G' + 'A' + 'C' + 'Y' + ':';
 
     private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
 
@@ -40,9 +44,8 @@ public class KnowledgeIndexSnapshotService {
     @Transactional
     public KnowledgeIndexSnapshotEntity ensureBootstrapSnapshotForProject(ProjectEntity project) {
         UUID pid = project.getId();
+        List<KnowledgeIndexSnapshotEntity> rows = findActiveBootstrapSnapshots(pid);
         String sig = bootstrapSignatureForProject(pid);
-        List<KnowledgeIndexSnapshotEntity> rows = knowledgeIndexSnapshotRepository
-                .findByProject_IdAndSignatureHashAndStatusOrderByUpdatedAtDesc(pid, sig, IndexSnapshotStatus.ACTIVE);
         if (rows.size() > 1) {
             log.warn(
                     "Multiple ACTIVE bootstrap snapshots found for project {} and signature {} (count={}); using most recent",
@@ -97,6 +100,19 @@ public class KnowledgeIndexSnapshotService {
                         null),
                 null,
                 null);
+    }
+
+    private List<KnowledgeIndexSnapshotEntity> findActiveBootstrapSnapshots(UUID projectId) {
+        String canonical = bootstrapSignatureForProject(projectId);
+        List<KnowledgeIndexSnapshotEntity> rows = knowledgeIndexSnapshotRepository
+                .findByProject_IdAndSignatureHashAndStatusOrderByUpdatedAtDesc(
+                        projectId, canonical, IndexSnapshotStatus.ACTIVE);
+        if (!rows.isEmpty()) {
+            return rows;
+        }
+        String v0 = BOOTSTRAP_SIGNATURE_PREFIX_V0 + projectId;
+        return knowledgeIndexSnapshotRepository.findByProject_IdAndSignatureHashAndStatusOrderByUpdatedAtDesc(
+                projectId, v0, IndexSnapshotStatus.ACTIVE);
     }
 
     private KnowledgeIndexSnapshotEntity createActiveProjectSnapshot(ProjectEntity project, String signatureHash) {

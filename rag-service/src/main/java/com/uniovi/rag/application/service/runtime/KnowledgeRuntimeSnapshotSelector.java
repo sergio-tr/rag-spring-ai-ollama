@@ -31,7 +31,7 @@ public class KnowledgeRuntimeSnapshotSelector {
     }
 
     /**
-     * @param conversationId {@code null} for stateless (legacy HTTP) requests
+     * @param conversationId {@code null} for stateless (removed HTTP) requests
      */
     public KnowledgeSnapshotSelection select(UUID projectId, UUID conversationId) {
         if (projectId == null) {

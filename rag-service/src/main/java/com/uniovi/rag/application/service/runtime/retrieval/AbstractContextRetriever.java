@@ -101,7 +101,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
 
     /**
      * When {@link RagExecutionContext} scopes by project or document ids, drop chunks that do not match.
-     * Legacy chunks without {@code projectId} metadata remain visible (backward compatible).
+     * Unscoped chunks without {@code projectId} metadata remain visible (backward compatible).
      */
     protected List<Document> applyProjectAndDocumentFilter(List<Document> docs) {
         RagExecutionContext ctx = RagExecutionContextHolder.get();
@@ -133,7 +133,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         }
         Object p = meta.get("projectId");
         if (p == null) {
-            // Project-scoped chat must not be contaminated by legacy chunks with no project metadata.
+            // Project-scoped chat must not be contaminated by unscoped chunks with no project metadata.
             return false;
         }
         return projectId.equals(String.valueOf(p));
@@ -586,7 +586,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             }
         }
         // Defensive: do not allow combined per-document content to grow without bound, otherwise
-        // legacy prompt assembly can exceed LLM context window and fail with 400.
+        // unbounded prompt assembly can exceed LLM context window and fail with 400.
         String combinedText =
                 RuntimePromptBudgeter.truncate(
                         "combined_document",

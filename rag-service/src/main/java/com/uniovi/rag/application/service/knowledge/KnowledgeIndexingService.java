@@ -108,7 +108,7 @@ public class KnowledgeIndexingService {
 
         List<Document> vectorDocs = new ArrayList<>();
         String displayName = name != null ? name : UNKNOWN_FILENAME_LABEL;
-        String legacyHash = KnowledgeChunkMetadataFactory.legacyContentHashId(name, content, doc.getId());
+        String contentHash = KnowledgeChunkMetadataFactory.contentHashId(name, content, doc.getId());
         int totalVectors = computeTotalVectorCount(strategy, chunks);
 
         if (strategy == MaterializationStrategy.DOCUMENT_LEVEL) {
@@ -123,7 +123,7 @@ public class KnowledgeIndexingService {
                             displayName,
                             0,
                             1,
-                            legacyHash);
+                            contentHash);
             vectorDocs.add(new Document(chunks.getFirst(), vm));
         } else {
             for (int i = 0; i < chunks.size(); i++) {
@@ -138,7 +138,7 @@ public class KnowledgeIndexingService {
                                 displayName,
                                 i,
                                 totalVectors,
-                                legacyHash);
+                                contentHash);
                 vectorDocs.add(new Document(chunks.get(i), vm));
             }
         }
@@ -159,7 +159,7 @@ public class KnowledgeIndexingService {
                             displayName,
                             chunks.size(),
                             totalVectors,
-                            legacyHash);
+                            contentHash);
             vectorDocs.add(new Document(docSlice, vmDoc));
         }
 

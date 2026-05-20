@@ -115,7 +115,7 @@ public class KnowledgePipelineOrchestrator {
     }
 
     private ProjectIndexProfile loadProfile(UUID projectId) {
-        // Ensure every project has a profile row (created lazily for legacy projects).
+        // Ensure every project has a profile row (created lazily for older projects).
         return projectIndexProfileService.ensureDefault(projectId);
     }
 

@@ -24,7 +24,7 @@ public final class KnowledgeChunkMetadataFactory {
             String filename,
             int chunkIndex,
             int totalChunks,
-            String legacyDocumentIdHash) {
+            String documentIdHash) {
         Map<String, Object> m = new HashMap<>();
         m.put("corpusScope", corpusScope.name());
         m.put("documentId", documentId.toString());
@@ -42,13 +42,13 @@ public final class KnowledgeChunkMetadataFactory {
         m.put("chunkIndex", chunkIndex);
         m.put("totalChunks", totalChunks);
         m.put("projectDocumentId", documentId.toString());
-        if (legacyDocumentIdHash != null) {
-            m.put("document_id", legacyDocumentIdHash);
+        if (documentIdHash != null) {
+            m.put("document_id", documentIdHash);
         }
         return m;
     }
 
-    public static String legacyContentHashId(String filename, String content, UUID projectDocumentId) {
+    public static String contentHashId(String filename, String content, UUID projectDocumentId) {
         String base = (filename != null ? filename : "unknown") + "_" + projectDocumentId + "_"
                 + (content != null ? String.valueOf(content.hashCode()) : "0");
         return Integer.toUnsignedString(base.hashCode());
