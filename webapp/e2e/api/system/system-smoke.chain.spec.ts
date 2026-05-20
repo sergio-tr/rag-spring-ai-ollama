@@ -88,5 +88,5 @@ test.describe.serial("System smoke chain @api @system", () => {
     expect([200, 503]).toContain(res.status());
   });
 
-  // Legacy query smoke intentionally removed (product-only).
+  // Removed query smoke intentionally removed (product-only).
 });

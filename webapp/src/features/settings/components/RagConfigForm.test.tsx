@@ -147,7 +147,7 @@ describe("RagConfigForm", () => {
     expect(screen.getByText(/no configurable fields/i)).toBeInTheDocument();
   });
 
-  it("shows product-oriented project description without legacy HTTP copy in the card body", async () => {
+  it("shows product-oriented project description without removed HTTP copy in the card body", async () => {
     mockSchemaState.data = { fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }] };
     mockProjectState.data = { topK: 3 };
     render(

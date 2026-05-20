@@ -18,7 +18,7 @@ export function resolveConversationPresetSelectValue(conversation: ConversationD
 
 /**
  * Resolves `<select value>` for chat: conversation fields first, then catalog fallbacks when API omitted
- * effective id (legacy rows), then configured default id. Avoids empty string / bogus "None" states.
+ * effective id (stale rows), then configured default id. Avoids empty string / bogus "None" states.
  */
 export function resolveChatPresetSelectValue(
   conversation: ConversationDto | undefined,

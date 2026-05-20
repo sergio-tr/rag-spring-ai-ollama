@@ -10,7 +10,7 @@ vi.mock("@/features/lab/components/lab-evaluation-run-card", () => ({
 }));
 
 describe("LabRagEvalPage", () => {
-  it("renders guided steps for P0-P14 and avoids legacy endpoint copy", () => {
+  it("renders guided steps for P0-P14 and avoids removed endpoint copy", () => {
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>

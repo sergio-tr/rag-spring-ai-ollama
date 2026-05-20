@@ -183,7 +183,7 @@ describe("LabEvaluationRunCard", () => {
         ...presetCodesFixture(),
         {
           productPresetId: "cafe0001-0001-4001-8001-000000000021",
-          code: "PX_LEGACY",
+          code: "PX_OBSOLETE",
           family: "conversational",
           label: "Clarification loop",
           description: "",
@@ -324,7 +324,7 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
     expect(screen.getByTestId("lab-experimental-presets-list")).toBeInTheDocument();
-    expect(screen.getByText(/PX_LEGACY — Clarification loop/i)).toBeInTheDocument();
+    expect(screen.getByText(/PX_OBSOLETE — Clarification loop/i)).toBeInTheDocument();
     expect(screen.getByText(/PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED/i)).toBeInTheDocument();
     expect(screen.getByTestId("lab-experimental-presets-select-core")).toBeInTheDocument();
   });

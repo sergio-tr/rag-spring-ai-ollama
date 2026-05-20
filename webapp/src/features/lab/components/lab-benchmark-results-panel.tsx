@@ -121,7 +121,7 @@ export type LabBenchmarkResultsPanelProps = {
 };
 
 /**
- * After a successful benchmark async task, loads run metadata, MVP rollups, and per-item MVP rows for UX (not the legacy CSV).
+ * After a successful benchmark async task, loads run metadata, MVP rollups, and per-item MVP rows for UX (not the removed CSV).
  */
 export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnabled }: LabBenchmarkResultsPanelProps) {
   const t = useTranslations("Lab");

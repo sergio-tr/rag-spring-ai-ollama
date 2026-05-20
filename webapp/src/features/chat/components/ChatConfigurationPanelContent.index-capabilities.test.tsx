@@ -286,7 +286,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
         runtimeState: {
           ...s.api!.runtimeState!,
           selectedPresetId: "preset-missing-id",
-          preset: { ...s.api!.runtimeState!.preset!, label: "Legacy Preset Label" },
+          preset: { ...s.api!.runtimeState!.preset!, label: "Prior Preset Label" },
         },
       },
     }));
@@ -294,7 +294,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     const sel = screen.getByRole("combobox", { name: /preset/i }) as HTMLSelectElement;
     expect(sel.value).toBe("preset-missing-id");
     // The synthetic option should be present so UI doesn't appear blank.
-    expect(screen.getByRole("option", { name: "Legacy Preset Label" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Prior Preset Label" })).toBeInTheDocument();
   });
 
   it("renders experimental preset option labels for multi-turn and not selectable presets", () => {

@@ -17,7 +17,7 @@ test.describe("Lab typed datasets UI @fullstack", () => {
     });
   });
 
-  test("overview shows bundle/status JSON without legacy workbook filename", async ({ page }) => {
+  test("overview shows bundle/status JSON without removed workbook filename", async ({ page }) => {
     await page.getByText("Raw JSON", { exact: true }).click();
     const raw = page.locator("pre").filter({ hasText: /referenceBundleAvailable/ });
     await expect(raw).toBeVisible({ timeout: 15_000 });

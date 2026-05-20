@@ -12,7 +12,7 @@ export function labEvaluationDraftStorageKey(kind: LabEvaluationDraftKind): stri
   return `${LAB_EVALUATION_DRAFT_STORAGE_PREFIX}${kind}`;
 }
 
-const LEGACY_FORM_PREFIX = "rag-lab-form-v1:";
+const V1_FORM_STORAGE_PREFIX = "rag-lab-form-v1:";
 
 export type LabEvaluationDraftStored = {
   v: 1;
@@ -51,9 +51,9 @@ function coerceFollowMode(raw: unknown): LabJobFollowMode {
 }
 
 /**
- * Migrates legacy flat JSON saved under {@code rag-lab-form-v1:{kind}}.
+ * Migrates v1 flat JSON saved under {@code rag-lab-form-v1:{kind}}.
  */
-function migrateLegacyParsed(kind: LabEvaluationDraftKind, parsed: Record<string, unknown>): Omit<LabEvaluationDraftStored, "v"> {
+function migrateV1FormParsed(kind: LabEvaluationDraftKind, parsed: Record<string, unknown>): Omit<LabEvaluationDraftStored, "v"> {
   const base = defaultLabEvaluationDraft();
   const userDatasetId = parsed.userDatasetId;
   if (typeof userDatasetId === "string") base.datasetId = userDatasetId;
@@ -125,14 +125,14 @@ export function loadLabEvaluationDraft(kind: LabEvaluationDraftKind): LabEvaluat
       }
     }
 
-    const legacyKey = `${LEGACY_FORM_PREFIX}${kind}`;
-    const rawLegacy = localStorage.getItem(legacyKey);
-    if (rawLegacy) {
-      const parsed = JSON.parse(rawLegacy) as Record<string, unknown>;
-      const migrated = migrateLegacyParsed(kind, parsed);
+    const v1StorageKey = `${V1_FORM_STORAGE_PREFIX}${kind}`;
+    const rawV1 = localStorage.getItem(v1StorageKey);
+    if (rawV1) {
+      const parsed = JSON.parse(rawV1) as Record<string, unknown>;
+      const migrated = migrateV1FormParsed(kind, parsed);
       const stored: LabEvaluationDraftStored = { v: 1, ...migrated };
       localStorage.setItem(key, JSON.stringify(stored));
-      localStorage.removeItem(legacyKey);
+      localStorage.removeItem(v1StorageKey);
       return stored;
     }
   } catch {
@@ -152,7 +152,7 @@ export function saveLabEvaluationDraft(kind: LabEvaluationDraftKind, draft: Omit
 export function clearLabEvaluationDraftStorage(kind: LabEvaluationDraftKind): void {
   try {
     localStorage.removeItem(labEvaluationDraftStorageKey(kind));
-    localStorage.removeItem(`${LEGACY_FORM_PREFIX}${kind}`);
+    localStorage.removeItem(`${V1_FORM_STORAGE_PREFIX}${kind}`);
   } catch {
     /* noop */
   }

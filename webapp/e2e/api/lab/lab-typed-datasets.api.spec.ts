@@ -10,7 +10,7 @@ function assertOpenXmlMagic(buffer: Buffer) {
 }
 
 test.describe("Lab typed datasets & benchmarks API @api", () => {
-  test("GET lab/status exposes reference bundle + counts (no legacy classpath workbook key)", async ({
+  test("GET lab/status exposes reference bundle + counts (no removed classpath workbook key)", async ({
     request,
   }) => {
     const { email, password } = integrationCredentials();

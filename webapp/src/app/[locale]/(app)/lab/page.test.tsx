@@ -171,7 +171,7 @@ describe("LabOverviewPage", () => {
       </QueryClientProvider>,
     );
     expect(screen.getByText(/LLM rows: 12/i)).toBeInTheDocument();
-    expect(screen.queryByText(/legacy fallback/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/obsolete fallback/i)).not.toBeInTheDocument();
     expect(screen.getAllByText(/Internal reference workbook/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Packaged workbook present/i)).toBeInTheDocument();
   });

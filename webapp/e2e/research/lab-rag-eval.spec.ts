@@ -4,7 +4,7 @@ import { loginAsSeedUser } from "../support/helpers";
 /**
  * E2E-07: Lab RAG preset benchmark — canonical {@link lab-evaluation-run-card} flow:
  * POST `{product}/lab/benchmarks/RAG_PRESET_END_TO_END/runs` with a typed dataset, poll job, optional MVP panel +
- * raw async payload in a collapsible details block (no legacy sync checkbox).
+ * raw async payload in a collapsible details block (no removed sync checkbox).
  */
 test.describe("Lab RAG benchmark", () => {
   test("E2E-07 RAG benchmark shows raw async JSON after terminal job @fullstack", async ({ page }) => {

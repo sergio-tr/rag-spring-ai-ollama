@@ -38,12 +38,12 @@ describe("lab-evaluation-draft", () => {
     expect(d.followMode).toBe("poll");
   });
 
-  it("migrates legacy rag-lab-form-v1 storage and removes legacy key", () => {
-    const legacyKey = "rag-lab-form-v1:LLM_JUDGE_QA";
+  it("migrates rag-lab-form-v1-v1 storage and removes v1 storage key", () => {
+    const v1StorageKey = "rag-lab-form-v1:LLM_JUDGE_QA";
     localStorage.setItem(
-      legacyKey,
+      v1StorageKey,
       JSON.stringify({
-        userDatasetId: "legacy-ds",
+        userDatasetId: "v1-ds",
         llmModelId: "llm-1",
         llmModelIds: ["llm-a", "llm-b"],
         embeddingModelId: "emb-1",
@@ -55,7 +55,7 @@ describe("lab-evaluation-draft", () => {
       }),
     );
     const d = loadLabEvaluationDraft("LLM_JUDGE_QA");
-    expect(d.datasetId).toBe("legacy-ds");
+    expect(d.datasetId).toBe("v1-ds");
     expect(d.llmModelId).toBe("llm-1");
     expect(d.llmModelIds).toEqual(["llm-a", "llm-b"]);
     expect(d.embeddingModelId).toBe("emb-1");
@@ -64,7 +64,7 @@ describe("lab-evaluation-draft", () => {
     expect(d.selectedExperimentalPresetCodes).toEqual(["P0"]);
     expect(d.followMode).toBe("sse");
     expect(d.explicitDraftClear).toBe(true);
-    expect(localStorage.getItem(legacyKey)).toBeNull();
+    expect(localStorage.getItem(v1StorageKey)).toBeNull();
     // migrated key should exist
     expect(localStorage.getItem(labEvaluationDraftStorageKey("LLM_JUDGE_QA"))).toContain("\"v\":1");
   });
