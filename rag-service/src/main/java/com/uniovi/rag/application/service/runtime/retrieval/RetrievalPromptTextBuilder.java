@@ -1,8 +1,8 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
-import com.uniovi.rag.service.retriever.BasicContextRetriever;
-import com.uniovi.rag.service.retriever.RetrievalChunkGroupingHelper;
+import com.uniovi.rag.application.service.runtime.retrieval.BasicContextRetriever;
+import com.uniovi.rag.application.service.runtime.retrieval.RetrievalChunkGroupingHelper;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;

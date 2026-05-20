@@ -1,7 +1,7 @@
 package com.uniovi.rag.application.service.runtime.config;
 
-import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigCapabilitiesResponse;
-import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigCapabilityDto;
+import com.uniovi.rag.application.result.runtime.RuntimeConfigCapabilities;
+import com.uniovi.rag.application.result.runtime.RuntimeConfigCapability;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -18,8 +18,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class RuntimeConfigCapabilitiesService {
 
-    public RuntimeConfigCapabilitiesResponse getCapabilities() {
-        List<RuntimeConfigCapabilityDto> out = new ArrayList<>();
+    public RuntimeConfigCapabilities getCapabilities() {
+        List<RuntimeConfigCapability> out = new ArrayList<>();
 
         out.add(runtimeToggle(
                 "useRetrieval",
@@ -62,7 +62,7 @@ public class RuntimeConfigCapabilitiesService {
                 List.of()));
 
         out.add(
-                new RuntimeConfigCapabilityDto(
+                new RuntimeConfigCapability(
                         "functionCallingEnabled",
                         "Function calling",
                         "Spring AI function calling path for tools (ChatClient.tools(adapter)); takes precedence over deterministic tools when both are enabled.",
@@ -195,7 +195,7 @@ public class RuntimeConfigCapabilitiesService {
 
         // Lab-only: not exposed as Chat toggles (benchmark harness / evaluation overlays).
         out.add(
-                new RuntimeConfigCapabilityDto(
+                new RuntimeConfigCapability(
                         "experimentalBenchmarkOverlay",
                         "Experimental benchmark overlay",
                         "Reserved for Lab benchmark orchestration overlays; not user-tunable from Chat.",
@@ -215,7 +215,7 @@ public class RuntimeConfigCapabilitiesService {
 
         // Internal plumbing surfaced for observability only (never Chat-configurable).
         out.add(
-                new RuntimeConfigCapabilityDto(
+                new RuntimeConfigCapability(
                         "corpusGroundedDirectWorkflow",
                         "Corpus-grounded direct workflow routing",
                         "Internal routing flag selected when naive full-corpus mode uses the documentary workflow path.",
@@ -233,10 +233,10 @@ public class RuntimeConfigCapabilitiesService {
                         null,
                         "Internal routing; not user-configurable."));
 
-        return new RuntimeConfigCapabilitiesResponse(out);
+        return new RuntimeConfigCapabilities(out);
     }
 
-    private static RuntimeConfigCapabilityDto runtimeToggle(
+    private static RuntimeConfigCapability runtimeToggle(
             String key,
             String label,
             String description,
@@ -246,7 +246,7 @@ public class RuntimeConfigCapabilitiesService {
         return runtimeToggle(key, label, description, displayOrder, requires, excludes, null);
     }
 
-    private static RuntimeConfigCapabilityDto runtimeToggle(
+    private static RuntimeConfigCapability runtimeToggle(
             String key,
             String label,
             String description,
@@ -254,7 +254,7 @@ public class RuntimeConfigCapabilitiesService {
             List<String> requires,
             List<String> excludes,
             String supportMode) {
-        return new RuntimeConfigCapabilityDto(
+        return new RuntimeConfigCapability(
                 key,
                 label,
                 description,
@@ -273,7 +273,7 @@ public class RuntimeConfigCapabilitiesService {
                 null);
     }
 
-    private static RuntimeConfigCapabilityDto advancedRuntimeToggle(
+    private static RuntimeConfigCapability advancedRuntimeToggle(
             String key,
             String label,
             String description,
@@ -281,7 +281,7 @@ public class RuntimeConfigCapabilitiesService {
             List<String> requires,
             List<String> excludes,
             String supportMode) {
-        return new RuntimeConfigCapabilityDto(
+        return new RuntimeConfigCapability(
                 key,
                 label,
                 description,
@@ -300,7 +300,7 @@ public class RuntimeConfigCapabilitiesService {
                 null);
     }
 
-    private static RuntimeConfigCapabilityDto indexBound(
+    private static RuntimeConfigCapability indexBound(
             String key,
             String label,
             String description,
@@ -308,7 +308,7 @@ public class RuntimeConfigCapabilitiesService {
             List<String> requires,
             List<String> excludes,
             String reasonIfDisabled) {
-        return new RuntimeConfigCapabilityDto(
+        return new RuntimeConfigCapability(
                 key,
                 label,
                 description,

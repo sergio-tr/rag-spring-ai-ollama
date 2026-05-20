@@ -27,11 +27,11 @@ public class RuntimePromptBudgeter {
         return truncate("full_corpus", corpusText, applied, "full_corpus_max_chars");
     }
 
-    public BudgetResult budgetForLegacyContext(String contextText) {
-        int max = Math.max(0, safeContext().getLegacyContextMaxChars());
+    public BudgetResult budgetForWorkflowContext(String contextText) {
+        int max = Math.max(0, safeContext().getWorkflowContextMaxChars());
         int global = Math.max(0, safeContext().getMaxPromptChars());
         int applied = Math.min(max, global);
-        return truncate("legacy_context", contextText, applied, "legacy_context_max_chars");
+        return truncate("workflow_context", contextText, applied, "workflow_context_max_chars");
     }
 
     public BudgetResult budgetForCombinedDocument(String text) {

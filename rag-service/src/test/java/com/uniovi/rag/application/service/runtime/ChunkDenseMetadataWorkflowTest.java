@@ -153,6 +153,56 @@ class ChunkDenseMetadataWorkflowTest {
     }
 
     @Test
+    void execute_question25Feb2026_withOnly2025Source_abstainsWithoutCallingLlm() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        clearInvocations(chatClient);
+
+        AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
+        when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
+                .thenReturn(
+                        new CuratedContextSet(
+                                List.of(
+                                        dummyCandidateWithFilename(
+                                                "ACTA2.pdf", "Fecha: 25 de febrero de 2025. Presidente: Carlos.")),
+                                "ACTA2.pdf — Fecha: 25 de febrero de 2025",
+                                new CompressionOutcome(1, 1, 0, List.of()),
+                                List.of(),
+                                new RetrievalDiagnostics(
+                                        RetrievalMode.DENSE_ONLY,
+                                        Optional.empty(),
+                                        "",
+                                        1,
+                                        0,
+                                        1,
+                                        1,
+                                        1,
+                                        1,
+                                        1,
+                                        0,
+                                        0,
+                                        false,
+                                        List.of(),
+                                        List.of(),
+                                        Optional.empty()),
+                                List.of(),
+                                List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
+
+        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(chatClient, pipeline, null);
+        ExecutionContext ctx =
+                minimalCtx(Optional.empty(), "¿Quién fue el presidente del acta del 25/02/2026?");
+        RagExecutionResult out = wf.execute(ctx);
+
+        assertThat(out.answerText())
+                .contains("2026-02-25")
+                .doesNotContain("Presidente: Carlos");
+        assertThat(out.answerText()).contains("2025-02-25");
+        assertThat(out.workflowStageTraces())
+                .anyMatch(s -> "date_grounding_answer_policy".equals(s.stageName())
+                        && s.message().contains("dateMismatchDetected=true"));
+        verify(chatClient, never()).prompt();
+    }
+
+    @Test
     void execute_whenDocBoundDateMismatch_abstainsWithoutCallingLlm() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("llm_summary");

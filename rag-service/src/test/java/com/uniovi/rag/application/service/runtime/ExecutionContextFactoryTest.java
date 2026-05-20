@@ -19,8 +19,8 @@ import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
-import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
-import com.uniovi.rag.service.evaluation.preset.BenchmarkPresetEvaluationContext;
+import com.uniovi.rag.application.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
@@ -62,7 +62,7 @@ class ExecutionContextFactoryTest {
 
     @AfterEach
     void clearBenchmarkContext() {
-        BenchmarkPresetEvaluationContext.clear();
+        LabBenchmarkExecutionContext.clear();
     }
 
     @BeforeEach
@@ -168,7 +168,7 @@ class ExecutionContextFactoryTest {
     }
 
     @Test
-    void buildForLegacyHttp_usesAllDocumentsFilter() {
+    void buildForHttpQuery_usesAllDocumentsFilter() {
         RagConfig rag =
                 new RagConfig(
                         false,
@@ -215,12 +215,12 @@ class ExecutionContextFactoryTest {
                                 "q",
                                 List.of()));
 
-        ExecutionContext ctx = factory.buildForLegacyHttp("q", null);
+        ExecutionContext ctx = factory.buildForHttpQuery("q", null);
         assertThat(ctx.documentFilter()).containsExactly(RagExecutionContext.ALL_DOCUMENTS);
     }
 
     @Test
-    void buildForLegacyHttp_passes_benchmark_terminal_override_when_present() throws Exception {
+    void buildForHttpQuery_passes_benchmark_terminal_override_when_present() throws Exception {
         RagConfig rag =
                 new RagConfig(
                         false,
@@ -251,7 +251,7 @@ class ExecutionContextFactoryTest {
         when(resolvedRuntimeConfig.effectiveSystemPrompt()).thenReturn("sys");
         ObjectNode terminal = JsonNodeFactory.instance.objectNode();
         terminal.put("useRetrieval", false);
-        try (AutoCloseable ignored = BenchmarkPresetEvaluationContext.open(terminal)) {
+        try (AutoCloseable ignored = LabBenchmarkExecutionContext.open(terminal)) {
             when(runtimeConfigResolutionService.resolveForOrchestratedExecute(
                             isNull(), isNull(), eq(terminal), anyString()))
                     .thenReturn(resolvedRuntimeConfig);
@@ -270,12 +270,12 @@ class ExecutionContextFactoryTest {
                                     "q",
                                     List.of()));
 
-            factory.buildForLegacyHttp("q", null);
+            factory.buildForHttpQuery("q", null);
         }
     }
 
     @Test
-    void buildForLegacyHttp_labContext_forces_explicit_snapshot_ids_over_active_selection() throws Exception {
+    void buildForHttpQuery_labContext_forces_explicit_snapshot_ids_over_active_selection() throws Exception {
         RagConfig rag =
                 RagConfig.fromFeatureConfiguration(
                         new RagFeatureConfiguration(), 5, 0.5, "m", "e", "c", "SIMPLE");
@@ -304,9 +304,9 @@ class ExecutionContextFactoryTest {
                 .thenReturn(resolvedRuntimeConfig);
 
         try (AutoCloseable ignored =
-                BenchmarkPresetEvaluationContext.openLab(
+                LabBenchmarkExecutionContext.openLab(
                         null, UUID.randomUUID(), projectId, List.of(s1), "HYBRID_METADATA", "P8", true)) {
-            ExecutionContext ctx = factory.buildForLegacyHttp("q", null);
+            ExecutionContext ctx = factory.buildForHttpQuery("q", null);
             assertThat(ctx.projectId()).isEqualTo(projectId);
             assertThat(ctx.knowledgeSnapshotSelection().orderedSnapshotIds()).containsExactly(s1);
         }

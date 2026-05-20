@@ -3,16 +3,16 @@ package com.uniovi.rag.configuration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * RAG runtime: workflow versioning, legacy switches, and memory caps for product chat.
+ * RAG runtime: workflow versioning, optional advisor override, and memory caps for product chat.
  */
 @ConfigurationProperties(prefix = "rag.runtime")
 public class RagRuntimeProperties {
 
     /**
-     * When {@code true}, restores pre-B3 behaviour where {@link org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor}
-     * could run even if post-retrieval was enabled (not recommended). Default {@code false}: post-retrieval forces manual retrieval.
+     * When {@code true}, allows {@link org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor}
+     * even if post-retrieval is enabled (not recommended). Default {@code false}: post-retrieval forces manual retrieval.
      */
-    private boolean legacyAdvisorWithPostRetrieval = false;
+    private boolean advisorWithPostRetrieval = false;
 
     /**
      * Semver of the execution stage graph; included in Lab/eval payloads for reproducibility.
@@ -37,9 +37,9 @@ public class RagRuntimeProperties {
         private int maxPromptChars = 24_000;
         /** Max context chars allowed for full-corpus (P1) context block before prompt wrapping. */
         private int fullCorpusMaxChars = 20_000;
-        /** Max context chars for legacy (non-orchestrated) RAG prompt assembly. */
-        private int legacyContextMaxChars = 12_000;
-        /** Max chars per combined document when grouping chunks into a single Document for legacy retrieval. */
+        /** Max context chars for workflow prompt assembly (packed context budget). */
+        private int workflowContextMaxChars = 12_000;
+        /** Max chars per combined document when grouping chunks into a single Document for retrieval. */
         private int combinedDocumentMaxChars = 12_000;
         /** Max chars of candidate answer text injected into judge prompts. */
         private int judgeMaxAnswerChars = 4_000;
@@ -60,12 +60,12 @@ public class RagRuntimeProperties {
             this.fullCorpusMaxChars = fullCorpusMaxChars;
         }
 
-        public int getLegacyContextMaxChars() {
-            return legacyContextMaxChars;
+        public int getWorkflowContextMaxChars() {
+            return workflowContextMaxChars;
         }
 
-        public void setLegacyContextMaxChars(int legacyContextMaxChars) {
-            this.legacyContextMaxChars = legacyContextMaxChars;
+        public void setWorkflowContextMaxChars(int workflowContextMaxChars) {
+            this.workflowContextMaxChars = workflowContextMaxChars;
         }
 
         public int getCombinedDocumentMaxChars() {
@@ -85,12 +85,12 @@ public class RagRuntimeProperties {
         }
     }
 
-    public boolean isLegacyAdvisorWithPostRetrieval() {
-        return legacyAdvisorWithPostRetrieval;
+    public boolean isAdvisorWithPostRetrieval() {
+        return advisorWithPostRetrieval;
     }
 
-    public void setLegacyAdvisorWithPostRetrieval(boolean legacyAdvisorWithPostRetrieval) {
-        this.legacyAdvisorWithPostRetrieval = legacyAdvisorWithPostRetrieval;
+    public void setAdvisorWithPostRetrieval(boolean advisorWithPostRetrieval) {
+        this.advisorWithPostRetrieval = advisorWithPostRetrieval;
     }
 
     public String getWorkflowSchemaVersion() {

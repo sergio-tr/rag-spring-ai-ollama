@@ -22,12 +22,12 @@ class RuntimePromptBudgeterTest {
     }
 
     @Test
-    void legacy_budget_doesNotTruncateWhenUnderBudget() {
+    void workflowContext_budget_doesNotTruncateWhenUnderBudget() {
         RagRuntimeProperties props = new RagRuntimeProperties();
-        props.getContext().setLegacyContextMaxChars(128);
+        props.getContext().setWorkflowContextMaxChars(128);
         RuntimePromptBudgeter b = new RuntimePromptBudgeter(props);
 
-        RuntimePromptBudgeter.BudgetResult r = b.budgetForLegacyContext("short context");
+        RuntimePromptBudgeter.BudgetResult r = b.budgetForWorkflowContext("short context");
         assertThat(r.truncated()).isFalse();
         assertThat(r.textUsed()).isEqualTo("short context");
     }

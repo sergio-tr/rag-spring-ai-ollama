@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 final class RuntimeRetrievedSourceMapper {
 
@@ -15,9 +16,17 @@ final class RuntimeRetrievedSourceMapper {
     private RuntimeRetrievedSourceMapper() {}
 
     static List<ChatSource> toChatSources(List<RetrievalCandidate> candidates) {
+        return toChatSources(candidates, Optional.empty(), null);
+    }
+
+    static List<ChatSource> toChatSources(
+            List<RetrievalCandidate> candidates,
+            Optional<DateGroundingSupport.RequestedDate> requestedDate,
+            DateGroundingSupport.DateGroundingDecision dateDecision) {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
+        boolean globalMismatch = dateDecision != null && dateDecision.dateMismatchDetected();
         List<ChatSource> out = new ArrayList<>();
         int n = Math.min(MAX_SOURCES, candidates.size());
         for (int i = 0; i < n; i++) {
@@ -41,7 +50,19 @@ final class RuntimeRetrievedSourceMapper {
                 snippet = t.length() > SNIPPET_MAX ? t.substring(0, SNIPPET_MAX) + "…" : t;
             }
 
-            Map<String, Object> allowlisted = allowlistMetadata(meta);
+            Map<String, Object> allowlisted = new LinkedHashMap<>(allowlistMetadata(meta));
+            boolean supporting =
+                    !globalMismatch
+                            && (requestedDate.isEmpty()
+                                    || DateGroundingSupport.candidateMatchesRequestedDate(c, requestedDate.get()));
+            allowlisted.put("supportingAnswer", supporting);
+            if (globalMismatch) {
+                allowlisted.put("alternativeOnly", true);
+            } else if (requestedDate.isPresent()
+                    && detectedDate != null
+                    && !DateGroundingSupport.candidateMatchesRequestedDate(c, requestedDate.get())) {
+                allowlisted.put("dateMismatchWithRequest", true);
+            }
             out.add(new ChatSource(
                     documentId,
                     projectDocumentId,

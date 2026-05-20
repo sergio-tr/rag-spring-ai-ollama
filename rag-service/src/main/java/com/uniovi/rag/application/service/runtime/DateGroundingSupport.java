@@ -129,6 +129,23 @@ public final class DateGroundingSupport {
         return candidates.stream().sorted(Comparator.comparingInt(c -> mismatchDistance(c, requested))).toList();
     }
 
+    /**
+     * Candidates that may be passed to the LLM or treated as answer support. On date mismatch, returns none; when the
+     * question requests a day/month/year and exact sources exist, returns only exact matches.
+     */
+    public static List<RetrievalCandidate> candidatesForGroundedAnswer(
+            DateGroundingDecision decision, List<RetrievalCandidate> candidates) {
+        List<RetrievalCandidate> safe = candidates != null ? candidates : List.of();
+        if (decision == null || decision.requestedDate() == null) {
+            return safe;
+        }
+        if (decision.dateMismatchDetected()) {
+            return List.of();
+        }
+        List<RetrievalCandidate> exact = exactDateCandidates(safe, decision.requestedDate());
+        return exact.isEmpty() ? safe : exact;
+    }
+
     public static DateGroundingDecision decision(String rawQuestion, List<RetrievalCandidate> candidates) {
         Optional<RequestedDate> requested = requestedDate(rawQuestion);
         return decision(requested, candidates);

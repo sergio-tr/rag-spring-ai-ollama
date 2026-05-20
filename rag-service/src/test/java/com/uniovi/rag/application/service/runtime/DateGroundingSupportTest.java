@@ -103,6 +103,30 @@ class DateGroundingSupportTest {
     }
 
     @Test
+    void regression_question25Feb2026_mustNotTreatActa2025AsExactMatch() {
+        RetrievalCandidate acta2025 = candidate("ACTA2.pdf", "Presidente: Carlos.", Map.of("date_iso", "2025-02-25"));
+        RetrievalCandidate acta2026 = candidate("ACTA5.pdf", "Presidente: Ana.", Map.of("date_iso", "2026-02-25"));
+
+        var requested = DateGroundingSupport.requestedDate("¿Presidente del acta del 25/02/2026?").orElseThrow();
+        var decision =
+                DateGroundingSupport.decision("¿Presidente del acta del 25/02/2026?", List.of(acta2025, acta2026));
+
+        assertThat(DateGroundingSupport.candidatesForGroundedAnswer(decision, List.of(acta2025, acta2026)))
+                .containsExactly(acta2026);
+        assertThat(DateGroundingSupport.candidateMatchesRequestedDate(acta2025, requested)).isFalse();
+        assertThat(DateGroundingSupport.candidateMatchesRequestedDate(acta2026, requested)).isTrue();
+    }
+
+    @Test
+    void candidatesForGroundedAnswer_emptyOnMismatch() {
+        RetrievalCandidate acta2025 = candidate("ACTA2.pdf", "Fecha 25/02/2025", Map.of("date_iso", "2025-02-25"));
+        var decision = DateGroundingSupport.decision("acta del 25/02/2026", List.of(acta2025));
+
+        assertThat(decision.dateMismatchDetected()).isTrue();
+        assertThat(DateGroundingSupport.candidatesForGroundedAnswer(decision, List.of(acta2025))).isEmpty();
+    }
+
+    @Test
     void unsupportedSourcesTriggerAbstentionReasonForExactDateQuestion() {
         var decision = DateGroundingSupport.decision("¿Qué dice el acta del 25/02/2026 sobre X?", List.of());
 

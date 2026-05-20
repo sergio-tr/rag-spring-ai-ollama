@@ -18,7 +18,7 @@ import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
 import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;

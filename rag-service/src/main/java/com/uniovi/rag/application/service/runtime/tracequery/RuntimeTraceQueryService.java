@@ -8,7 +8,7 @@ import com.uniovi.rag.domain.MessageRole;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceDetailDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceSummaryDto;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

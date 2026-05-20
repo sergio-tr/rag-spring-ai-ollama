@@ -2,8 +2,8 @@ package com.uniovi.rag.application.service.runtime.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigCapabilityDto;
-import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigCapabilitiesResponse;
+import com.uniovi.rag.application.result.runtime.RuntimeConfigCapability;
+import com.uniovi.rag.application.result.runtime.RuntimeConfigCapabilities;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -17,46 +17,46 @@ class RuntimeConfigCapabilitiesServiceTest {
 
     @Test
     void advancedInteractionCapabilities_areImplemented_andConfigurable() {
-        RuntimeConfigCapabilitiesResponse resp = cut.getCapabilities();
-        Map<String, RuntimeConfigCapabilityDto> byKey =
-                resp.capabilities().stream().collect(Collectors.toMap(RuntimeConfigCapabilityDto::key, Function.identity()));
+        RuntimeConfigCapabilities resp = cut.getCapabilities();
+        Map<String, RuntimeConfigCapability> byKey =
+                resp.capabilities().stream().collect(Collectors.toMap(RuntimeConfigCapability::key, Function.identity()));
 
-        RuntimeConfigCapabilityDto clarification = byKey.get("clarificationEnabled");
+        RuntimeConfigCapability clarification = byKey.get("clarificationEnabled");
         assertThat(clarification.implemented()).isTrue();
         assertThat(clarification.supportMode()).isEqualTo("MULTI_TURN_REQUIRED");
         assertThat(clarification.reasonIfNotImplemented()).isNull();
         assertThat(clarification.category()).isEqualTo("ADVANCED_RUNTIME");
 
-        RuntimeConfigCapabilityDto memory = byKey.get("memoryEnabled");
+        RuntimeConfigCapability memory = byKey.get("memoryEnabled");
         assertThat(memory.implemented()).isTrue();
         assertThat(memory.supportMode()).isEqualTo("MULTI_TURN_REQUIRED");
         assertThat(memory.category()).isEqualTo("ADVANCED_RUNTIME");
 
-        RuntimeConfigCapabilityDto routing = byKey.get("adaptiveRoutingEnabled");
+        RuntimeConfigCapability routing = byKey.get("adaptiveRoutingEnabled");
         assertThat(routing.implemented()).isTrue();
         assertThat(routing.supportMode()).isNull();
         assertThat(routing.category()).isEqualTo("RUNTIME_HOT_SWAPPABLE");
 
-        RuntimeConfigCapabilityDto judge = byKey.get("judgeEnabled");
+        RuntimeConfigCapability judge = byKey.get("judgeEnabled");
         assertThat(judge.implemented()).isTrue();
         assertThat(judge.category()).isEqualTo("RUNTIME_HOT_SWAPPABLE");
 
-        RuntimeConfigCapabilityDto reasoning = byKey.get("reasoningEnabled");
+        RuntimeConfigCapability reasoning = byKey.get("reasoningEnabled");
         assertThat(reasoning.implemented()).isTrue();
         assertThat(reasoning.requires()).isEmpty();
         assertThat(reasoning.category()).isEqualTo("RUNTIME_HOT_SWAPPABLE");
 
-        RuntimeConfigCapabilityDto ranker = byKey.get("rankerEnabled");
+        RuntimeConfigCapability ranker = byKey.get("rankerEnabled");
         assertThat(ranker.implemented()).isTrue();
         assertThat(ranker.requires()).containsExactly("useRetrieval");
 
-        RuntimeConfigCapabilityDto post = byKey.get("postRetrievalEnabled");
+        RuntimeConfigCapability post = byKey.get("postRetrievalEnabled");
         assertThat(post.implemented()).isTrue();
         assertThat(post.requires()).containsExactly("useRetrieval");
 
         // R2 additions: ensure missing keys are present and engine-wired.
         for (String k : List.of("expansionEnabled", "toolsEnabled", "functionCallingEnabled", "nerEnabled")) {
-            RuntimeConfigCapabilityDto c = byKey.get(k);
+            RuntimeConfigCapability c = byKey.get(k);
             assertThat(c).as("capability present: " + k).isNotNull();
             assertThat(c.implemented()).isTrue();
             assertThat(c.engineWired()).isTrue();
@@ -66,7 +66,7 @@ class RuntimeConfigCapabilitiesServiceTest {
         // Index-bound capabilities must not be configurable in Chat.
         for (String k :
                 Set.of("materializationStrategy", "metadataEnabled", "embeddingModel", "chunkMaxChars", "chunkOverlap")) {
-            RuntimeConfigCapabilityDto c = byKey.get(k);
+            RuntimeConfigCapability c = byKey.get(k);
             assertThat(c).as("capability present: " + k).isNotNull();
             assertThat(c.category()).isEqualTo("INDEX_BOUND");
             assertThat(c.configurableInChat()).isFalse();
@@ -74,11 +74,11 @@ class RuntimeConfigCapabilitiesServiceTest {
             assertThat(c.requiresIndexSnapshot()).isTrue();
         }
 
-        RuntimeConfigCapabilityDto lab = byKey.get("experimentalBenchmarkOverlay");
+        RuntimeConfigCapability lab = byKey.get("experimentalBenchmarkOverlay");
         assertThat(lab.category()).isEqualTo("LAB_ONLY");
         assertThat(lab.visibleInChat()).isFalse();
 
-        RuntimeConfigCapabilityDto internal = byKey.get("corpusGroundedDirectWorkflow");
+        RuntimeConfigCapability internal = byKey.get("corpusGroundedDirectWorkflow");
         assertThat(internal.category()).isEqualTo("INTERNAL");
         assertThat(internal.visibleInChat()).isFalse();
     }

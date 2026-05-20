@@ -3,7 +3,7 @@ package com.uniovi.rag.application.service.runtime.query;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.stereotype.Service;

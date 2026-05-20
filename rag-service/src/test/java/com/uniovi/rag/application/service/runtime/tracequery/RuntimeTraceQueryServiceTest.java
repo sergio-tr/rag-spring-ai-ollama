@@ -7,7 +7,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RuntimeExecutionTraceEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RuntimeExecutionTraceRepository;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;

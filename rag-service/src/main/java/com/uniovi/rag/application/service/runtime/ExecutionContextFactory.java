@@ -21,8 +21,8 @@ import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
-import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
-import com.uniovi.rag.service.evaluation.preset.BenchmarkPresetEvaluationContext;
+import com.uniovi.rag.application.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
 import io.micrometer.tracing.Tracer;
 import java.util.List;
 import java.util.Optional;
@@ -110,15 +110,16 @@ public class ExecutionContextFactory {
                 originatingUserMessageId);
     }
 
-    public ExecutionContext buildForLegacyHttp(String rawUserQuery, String chatModelOverride) {
+    /** Lab evaluation and other HTTP-scoped turns without a conversation (uses thread-local lab context when set). */
+    public ExecutionContext buildForHttpQuery(String rawUserQuery, String chatModelOverride) {
         String correlationId =
                 Optional.ofNullable(TraceMdcBridge.currentCorrelationTraceId(tracer))
                         .orElseGet(() -> UUID.randomUUID().toString());
         Optional<String> model = validateAndNormalizeChatModel(chatModelOverride);
         JsonNode benchmarkTerminal =
-                BenchmarkPresetEvaluationContext.currentTerminalOverride().orElse(null);
-        BenchmarkPresetEvaluationContext.LabRuntimeContext labCtx =
-                BenchmarkPresetEvaluationContext.currentLabRuntimeContext().orElse(null);
+                LabBenchmarkExecutionContext.currentTerminalOverride().orElse(null);
+        LabBenchmarkExecutionContext.LabRuntimeContext labCtx =
+                LabBenchmarkExecutionContext.currentLabRuntimeContext().orElse(null);
         UUID projectId = labCtx != null ? labCtx.projectId() : null;
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(

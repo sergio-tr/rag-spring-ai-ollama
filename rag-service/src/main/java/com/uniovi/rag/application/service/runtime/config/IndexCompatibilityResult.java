@@ -1,6 +1,6 @@
 package com.uniovi.rag.application.service.runtime.config;
 
-import com.uniovi.rag.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
+import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 
 public record IndexCompatibilityResult(
         boolean compatible,

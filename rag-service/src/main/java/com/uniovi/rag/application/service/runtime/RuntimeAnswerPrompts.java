@@ -171,6 +171,26 @@ public final class RuntimeAnswerPrompts {
         return fallbackContextFromCandidates(candidates, 24_000);
     }
 
+    /**
+     * Builds LLM context for date-bound questions from {@linkplain DateGroundingSupport#candidatesForGroundedAnswer
+     * grounded candidates} only, so wrong-year actas are not injected when an exact date was requested.
+     */
+    public static String effectivePromptContextForDateGrounding(
+            String promptContextText,
+            List<RetrievalCandidate> allCandidates,
+            DateGroundingSupport.DateGroundingDecision decision) {
+        if (decision == null || decision.requestedDate() == null) {
+            return effectivePromptContext(promptContextText, allCandidates);
+        }
+        List<RetrievalCandidate> grounded =
+                DateGroundingSupport.candidatesForGroundedAnswer(decision, allCandidates);
+        String rebuilt = fallbackContextFromCandidates(grounded, 24_000);
+        if (!rebuilt.isBlank()) {
+            return rebuilt;
+        }
+        return effectivePromptContext(promptContextText, grounded);
+    }
+
     public static String fallbackContextFromCandidates(List<RetrievalCandidate> candidates, int maxChars) {
         if (candidates == null || candidates.isEmpty() || maxChars <= 0) {
             return "";

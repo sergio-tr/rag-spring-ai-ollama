@@ -76,7 +76,7 @@ class DenseRetrievalStrategyTest {
                         RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
                         RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
                         MaterializationStrategy.CHUNK_LEVEL);
-        RagExecutionContextHolder.set(RagExecutionContext.forLegacyPipeline(rag, "t"));
+        RagExecutionContextHolder.set(RagExecutionContext.forUnscopedExecution(rag, "t"));
         lenient().when(ragVectorProperties.requireSnapshotEmbeddingModelId()).thenReturn(false);
         lenient().when(vectorStoreRegistry.forEmbeddingModelId(anyString())).thenReturn(vectorStore);
         denseRetrievalStrategy = new DenseRetrievalStrategy(vectorStoreRegistry, vectorStore, ragVectorProperties, 10, 0.7);
@@ -185,7 +185,7 @@ class DenseRetrievalStrategyTest {
                         RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
                         RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
                         MaterializationStrategy.CHUNK_LEVEL);
-        RagExecutionContextHolder.set(RagExecutionContext.forLegacyPipeline(rag, "t"));
+        RagExecutionContextHolder.set(RagExecutionContext.forUnscopedExecution(rag, "t"));
         denseRetrievalStrategy = new DenseRetrievalStrategy(vectorStoreRegistry, vectorStore, ragVectorProperties, 10, 0.7);
 
         UUID sid = UUID.randomUUID();

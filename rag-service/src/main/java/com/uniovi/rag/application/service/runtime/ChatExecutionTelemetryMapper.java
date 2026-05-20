@@ -68,6 +68,7 @@ public final class ChatExecutionTelemetryMapper {
             m.put("judgeCandidateSource", trace.judgeCandidateSource());
         }
 
+        putClassifierTelemetry(trace, m);
         putReasoningTelemetry(trace, m);
         trace.retrievalDiagnostics().ifPresent(d -> putRetrievalDiagnosticsTelemetry(d, m));
         putDateGroundingTelemetry(trace, m);
@@ -120,6 +121,51 @@ public final class ChatExecutionTelemetryMapper {
             }
             return;
         }
+    }
+
+    private static void putClassifierTelemetry(ExecutionTrace trace, Map<String, Object> m) {
+        String classifierStatus = trace.classifierStatus();
+        if (classifierStatus != null && !classifierStatus.isBlank()) {
+            m.put("classifierStatus", classifierStatus);
+        }
+        String classifierLabel = trace.classifierLabel();
+        if (classifierLabel != null && !classifierLabel.isBlank()) {
+            m.put("classifierLabel", classifierLabel);
+        }
+        if (trace.stages() == null) {
+            return;
+        }
+        for (ExecutionStageTrace stage : trace.stages()) {
+            if (stage == null || !"qu_classify".equals(stage.stageName())) {
+                continue;
+            }
+            String msg = stage.message();
+            if (msg == null || msg.isBlank()) {
+                return;
+            }
+            String modelId = classifierModelIdFromQuClassifyMessage(msg);
+            if (!modelId.isBlank()) {
+                m.put("classifierModelId", modelId);
+                m.put("classifierModelIdUsed", modelId);
+            }
+            return;
+        }
+    }
+
+    private static String classifierModelIdFromQuClassifyMessage(String msg) {
+        int start = msg.indexOf("classifierModelId=");
+        if (start < 0) {
+            return "";
+        }
+        start += "classifierModelId=".length();
+        int end = msg.length();
+        for (String next : List.of(" classifierLabel=", " classifierStatus=", " note=")) {
+            int idx = msg.indexOf(next, start);
+            if (idx > start && idx < end) {
+                end = idx;
+            }
+        }
+        return msg.substring(start, end).trim();
     }
 
     private static void putReasoningTelemetry(ExecutionTrace trace, Map<String, Object> m) {

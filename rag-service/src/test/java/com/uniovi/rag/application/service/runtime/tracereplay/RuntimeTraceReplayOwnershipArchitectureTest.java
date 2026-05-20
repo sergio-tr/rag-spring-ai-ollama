@@ -53,6 +53,6 @@ class RuntimeTraceReplayOwnershipArchitectureTest {
                     .resideInAnyPackage("..tracereplay..")
                     .should()
                     .dependOnClassesThat()
-                    .resideInAnyPackage("com.uniovi.rag.service.query..")
-                    .because("P18 replay must not invoke ProcessQueryService / SimpleProcessQueryService");
+                    .resideInAnyPackage("com.uniovi.rag.application.service.query..")
+                    .because("P18 replay must not invoke RuntimeQueryExecutionService / RuntimeQueryExecutionService");
 }

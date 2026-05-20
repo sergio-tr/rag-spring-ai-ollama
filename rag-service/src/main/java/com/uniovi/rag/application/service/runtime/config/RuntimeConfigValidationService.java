@@ -21,7 +21,7 @@ import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeSnapshotCapabilitiesDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
 import com.uniovi.rag.application.service.runtime.WorkflowSelector;
-import com.uniovi.rag.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
+import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

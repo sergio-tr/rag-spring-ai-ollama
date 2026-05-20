@@ -81,19 +81,20 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
         CuratedContextSet curated = advancedRetrievalPipeline.retrieve(ctx, plan, workflowName());
         List<ExecutionStageTrace> stages = new ArrayList<>(curated.retrievalStageTraces());
         String rawPromptContext = curated.promptContextText();
+        boolean docBound = RuntimeAnswerPrompts.requiresStrictDocumentGrounding(q);
+        DateGroundingSupport.DateGroundingDecision dateDecision =
+                docBound
+                        ? DateGroundingSupport.decision(q, plan.entityExtractionResult().dates(), curated.finalCandidates())
+                        : DateGroundingSupport.decision("", curated.finalCandidates());
         String effectivePromptContext =
-                RuntimeAnswerPrompts.effectivePromptContext(rawPromptContext, curated.finalCandidates());
+                RuntimeAnswerPrompts.effectivePromptContextForDateGrounding(
+                        rawPromptContext, curated.finalCandidates(), dateDecision);
         stages.add(new ExecutionStageTrace(
                 "packed_context_preview",
                 0L,
                 ExecutionStageOutcome.SUCCESS,
                 "preview=" + preview(effectivePromptContext)));
 
-        boolean docBound = RuntimeAnswerPrompts.requiresStrictDocumentGrounding(q);
-        DateGroundingSupport.DateGroundingDecision dateDecision =
-                docBound
-                        ? DateGroundingSupport.decision(q, plan.entityExtractionResult().dates(), curated.finalCandidates())
-                        : DateGroundingSupport.decision("", curated.finalCandidates());
         stages.add(new ExecutionStageTrace(
                 "date_grounding_answer_policy",
                 0L,
@@ -134,6 +135,9 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                         abstention,
                         abstentionReason));
 
+        Optional<DateGroundingSupport.RequestedDate> requestedForSources =
+                dateDecision.requestedDate() != null ? Optional.of(dateDecision.requestedDate()) : Optional.empty();
+
         return RagExecutionResult.withPlaceholderTrace(
                         answer,
                         workflowName(),
@@ -145,7 +149,8 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                         stages)
                 .withResponseSources(
                         ChatSourceMapper.toPersistedMapsFromInternal(
-                                RuntimeRetrievedSourceMapper.toChatSources(curated.finalCandidates())));
+                                RuntimeRetrievedSourceMapper.toChatSources(
+                                        curated.finalCandidates(), requestedForSources, dateDecision)));
     }
 
     private static String preview(String s) {
