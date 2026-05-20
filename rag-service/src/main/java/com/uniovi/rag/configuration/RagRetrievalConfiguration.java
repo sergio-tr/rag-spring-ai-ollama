@@ -7,18 +7,18 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import com.uniovi.rag.service.extraction.DefaultDocumentContentExtractor;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.postretrieval.DefaultPostRetrievalProcessor;
-import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
+import com.uniovi.rag.application.service.runtime.document.extraction.DefaultDocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.retrieval.post.DefaultPostRetrievalProcessor;
+import com.uniovi.rag.application.service.runtime.retrieval.post.PostRetrievalProcessor;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedContextRetriever;
 import com.uniovi.rag.infrastructure.observability.TracedDocumentContentExtractor;
 import com.uniovi.rag.infrastructure.observability.TracedPostRetrievalProcessor;
-import com.uniovi.rag.service.retriever.BasicContextRetriever;
-import com.uniovi.rag.service.retriever.ContextRetriever;
-import com.uniovi.rag.service.retriever.FilteredContextRetriever;
-import com.uniovi.rag.service.retriever.MinuteDocumentContextRetriever;
+import com.uniovi.rag.application.service.runtime.retrieval.BasicContextRetriever;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.retrieval.FilteredContextRetriever;
+import com.uniovi.rag.application.service.runtime.retrieval.MinuteDocumentContextRetriever;
 
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;

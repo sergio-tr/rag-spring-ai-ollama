@@ -20,7 +20,7 @@ public class RagConfiguration {
 
     /**
      * Single ChatClient with no tools/advisor to avoid circular dependency.
-     * ProcessQueryService applies tools and QuestionAnswerAdvisor at call time via .tools() and .advisors().
+     * {@link com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator} applies deterministic tools; legacy advisor wiring is configuration-only.
      */
     @Bean
     public ChatClient chatClient(ChatModel chatModel) {

@@ -74,13 +74,9 @@ public class SecurityConfiguration {
                                 productAuthBase + "/oauth/google/callback",
                                 productAuthBase + "/oauth/exchange")
                         .permitAll()
-                        // Transitional legacy auth + OAuth under /api/auth/** (scheduled for removal; mirror v5 rules).
-                        .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus")
                         .permitAll()
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        // Product-scoped admin (e.g. /api/v5/admin/models) must not fall through as "any authenticated user".
                         .requestMatchers(productBasePath + "/admin/**").hasRole("ADMIN")
                         .requestMatchers(productBasePath + "/**").authenticated()
                         .anyRequest().permitAll())

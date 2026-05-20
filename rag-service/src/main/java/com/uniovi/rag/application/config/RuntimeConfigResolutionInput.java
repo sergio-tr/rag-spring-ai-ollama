@@ -46,7 +46,7 @@ public record RuntimeConfigResolutionInput(
 
     /**
      * Chat / orchestrated execute: terminal JSON is the merged conversation layer (same as {@link
-     * com.uniovi.rag.service.config.ChatScopedRagConfigResolver#mergedConversationConfigAsJson(UUID)}).
+     * com.uniovi.rag.application.service.config.ChatScopedRagConfigResolver#mergedConversationConfigAsJson(UUID)}).
      */
     public static RuntimeConfigResolutionInput forOrchestratedResolve(
             UUID userId, UUID projectId, JsonNode terminalConversationMergedOverride, String correlationId) {
