@@ -9,13 +9,12 @@ import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
-import com.uniovi.rag.service.evaluation.EvaluationService;
+import com.uniovi.rag.application.service.evaluation.EvaluationService;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 
 /**
- * Ensures Lab async handlers and {@code LabController} never call {@link EvaluationService#getQuestionsAndAnswers()} (no
- * legacy Map dataset path).
+ * Ensures Lab async handlers and {@code LabController} never call removed {@code EvaluationService#getQuestionsAndAnswers()}.
  */
 @AnalyzeClasses(packages = "com.uniovi.rag", importOptions = ImportOption.DoNotIncludeTests.class)
 class LabEvaluationLegacyCallsForbiddenArchitectureTest {
