@@ -6,8 +6,8 @@ import com.uniovi.rag.interfaces.rest.support.ApiGlobalExceptionHandler;
 import com.uniovi.rag.interfaces.rest.support.RagApiExceptionHandler;
 import com.uniovi.rag.security.JwtAuthenticationFilter;
 import com.uniovi.rag.security.JwtService;
-import com.uniovi.rag.service.admin.AdminModelsService;
-import com.uniovi.rag.service.async.AsyncTaskService;
+import com.uniovi.rag.application.service.admin.model.AdminModelsService;
+import com.uniovi.rag.application.service.async.AsyncTaskService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import java.util.List;
 import java.util.UUID;
@@ -62,6 +62,18 @@ class AdminV5ModelsSecurityWebMvcTest {
 
     @MockitoBean
     private AsyncTaskService asyncTaskService;
+
+    @Test
+    void unprefixedAdminMirror_health_returnsNotFound() throws Exception {
+        mockMvc.perform(get("/api/admin/health").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void unprefixedAdminMirror_models_returnsNotFound() throws Exception {
+        mockMvc.perform(get("/api/admin/models").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound());
+    }
 
     @Test
     void adminHealth_withUserToken_returns403() throws Exception {

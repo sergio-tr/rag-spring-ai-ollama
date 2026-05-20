@@ -3,6 +3,7 @@ package com.uniovi.rag.interfaces.rest;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigCapabilitiesService;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigCapabilitiesResponse;
+import com.uniovi.rag.interfaces.rest.mapper.RuntimeConfigRestMapper;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateRequest;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
 import com.uniovi.rag.security.RagPrincipal;
@@ -30,7 +31,7 @@ public class RuntimeConfigController {
     @GetMapping("/capabilities")
     public RuntimeConfigCapabilitiesResponse capabilities(@AuthenticationPrincipal RagPrincipal principal) {
         // User-specific capabilities may be added later (e.g. role-gated tools). For now this is global.
-        return capabilitiesService.getCapabilities();
+        return RuntimeConfigRestMapper.toCapabilitiesResponse(capabilitiesService.getCapabilities());
     }
 
     @PostMapping("/validate")

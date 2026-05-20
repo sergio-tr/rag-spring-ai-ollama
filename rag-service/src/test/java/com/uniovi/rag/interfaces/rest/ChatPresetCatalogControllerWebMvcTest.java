@@ -13,7 +13,7 @@ import com.uniovi.rag.interfaces.rest.dto.RagPresetDto;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
-import com.uniovi.rag.service.preset.PresetService;
+import com.uniovi.rag.application.service.preset.PresetService;
 import java.time.Instant;
 import java.util.List;
 import java.util.ArrayList;

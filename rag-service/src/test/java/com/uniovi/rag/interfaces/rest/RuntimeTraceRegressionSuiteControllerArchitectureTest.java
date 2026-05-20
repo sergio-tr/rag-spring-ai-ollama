@@ -16,8 +16,8 @@ import com.uniovi.rag.application.service.runtime.tracereplay.RuntimeTraceReplay
 import com.uniovi.rag.application.service.runtime.tracereplaybatchexport.RuntimeTraceReplayBatchExportService;
 import com.uniovi.rag.application.service.runtime.tracereplayexport.RuntimeTraceReplayExportService;
 import com.uniovi.rag.infrastructure.persistence.jpa.RuntimeExecutionTraceRepository;
-import com.uniovi.rag.service.query.ProcessQueryService;
-import com.uniovi.rag.service.query.SimpleProcessQueryService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.scheduling.annotation.Async;
@@ -61,7 +61,7 @@ class RuntimeTraceRegressionSuiteControllerArchitectureTest {
                     .areAssignableTo(RuntimeTraceReplayComparisonService.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnTraceQueryService =
+    static final ArchRule controllerDoesNotDependOnTraceQueryExecutionService =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceRegressionSuiteController")
@@ -142,22 +142,13 @@ class RuntimeTraceRegressionSuiteControllerArchitectureTest {
                     .areAssignableTo(RuntimeTraceReplayBatchExportService.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnProcessQueryService =
+    static final ArchRule controllerDoesNotDependOnRuntimeQueryExecutionService =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceRegressionSuiteController")
                     .should()
                     .dependOnClassesThat()
-                    .areAssignableTo(ProcessQueryService.class);
-
-    @ArchTest
-    static final ArchRule controllerDoesNotDependOnSimpleProcessQueryService =
-            noClasses()
-                    .that()
-                    .haveSimpleName("RuntimeTraceRegressionSuiteController")
-                    .should()
-                    .dependOnClassesThat()
-                    .areAssignableTo(SimpleProcessQueryService.class);
+                    .areAssignableTo(RuntimeQueryExecutionService.class);
 
     @ArchTest
     static final ArchRule controllerDoesNotDependOnOrchestrator =

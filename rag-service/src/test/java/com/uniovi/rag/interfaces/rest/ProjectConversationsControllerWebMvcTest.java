@@ -4,7 +4,7 @@ package com.uniovi.rag.interfaces.rest;
 import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.ConversationApplicationService;
 import com.uniovi.rag.application.service.MoveConversationApplicationService;
-import com.uniovi.rag.service.config.ChatPresetDefaults;
+import com.uniovi.rag.application.service.config.ChatPresetDefaults;
 import com.uniovi.rag.interfaces.rest.dto.ConversationDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;

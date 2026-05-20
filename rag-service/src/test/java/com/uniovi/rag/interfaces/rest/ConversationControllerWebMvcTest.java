@@ -8,7 +8,7 @@ import com.uniovi.rag.interfaces.rest.dto.ChatMessageAcceptedDto;
 import com.uniovi.rag.interfaces.rest.dto.ConversationDto;
 import com.uniovi.rag.interfaces.rest.dto.PatchUserMessageRequest;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.config.ChatPresetDefaults;
+import com.uniovi.rag.application.service.config.ChatPresetDefaults;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

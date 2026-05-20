@@ -3,7 +3,7 @@ package com.uniovi.rag.interfaces.rest;
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
 import com.uniovi.rag.interfaces.rest.dto.ChatPresetCatalogDto;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.preset.PresetService;
+import com.uniovi.rag.application.service.preset.PresetService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;

@@ -3,8 +3,8 @@ package com.uniovi.rag.interfaces.rest.admin;
 import com.uniovi.rag.interfaces.rest.admin.dto.AdminAllowlistEntryDto;
 import com.uniovi.rag.interfaces.rest.admin.dto.CreateAllowlistEntryRequest;
 import com.uniovi.rag.interfaces.rest.admin.dto.UpdateAllowlistEntryRequest;
-import com.uniovi.rag.service.admin.AdminSystemDefaultsService;
-import com.uniovi.rag.service.admin.AllowlistAdminService;
+import com.uniovi.rag.application.service.admin.AdminSystemDefaultsService;
+import com.uniovi.rag.application.service.admin.AllowlistAdminService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -22,10 +22,10 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Legacy admin-only operations retained for transitional maintenance paths.
+ * Admin maintenance: system defaults and allowlist CRUD (product API prefix).
  */
 @RestController
-@RequestMapping("/api/admin")
+@RequestMapping("${rag.api.product-base-path}/admin")
 public class AdminController {
 
     private final AllowlistAdminService allowlistAdminService;
@@ -36,11 +36,6 @@ public class AdminController {
             AdminSystemDefaultsService adminSystemDefaultsService) {
         this.allowlistAdminService = allowlistAdminService;
         this.adminSystemDefaultsService = adminSystemDefaultsService;
-    }
-
-    @GetMapping("/health")
-    public Map<String, String> health() {
-        return Map.of("status", "UP", "scope", "admin");
     }
 
     @GetMapping("/system-defaults")

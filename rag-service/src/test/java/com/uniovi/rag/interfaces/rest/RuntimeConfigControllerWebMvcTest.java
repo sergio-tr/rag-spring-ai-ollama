@@ -11,8 +11,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigCapabilitiesService;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
+import com.uniovi.rag.application.result.runtime.RuntimeConfigCapabilities;
+import com.uniovi.rag.application.result.runtime.RuntimeConfigCapability;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigCapabilitiesResponse;
-import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigCapabilityDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateRequest;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
@@ -65,9 +66,9 @@ class RuntimeConfigControllerWebMvcTest {
     void capabilities_returnsMatrix() throws Exception {
         when(capabilitiesService.getCapabilities())
                 .thenReturn(
-                        new RuntimeConfigCapabilitiesResponse(
+                        new RuntimeConfigCapabilities(
                                 List.of(
-                                        new RuntimeConfigCapabilityDto(
+                                        new RuntimeConfigCapability(
                                                 "useRetrieval",
                                                 "Use retrieval",
                                                 "desc",

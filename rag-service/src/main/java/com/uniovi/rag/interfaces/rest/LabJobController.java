@@ -5,7 +5,7 @@ import com.uniovi.rag.application.service.evaluation.LabJobLifecycleService;
 import com.uniovi.rag.interfaces.rest.dto.AsyncTaskStatusDto;
 import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.async.AsyncTaskService;
+import com.uniovi.rag.application.service.async.AsyncTaskService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;

@@ -9,7 +9,7 @@ import com.uniovi.rag.interfaces.rest.dto.CreateResolvedConfigSnapshotRequest;
 import com.uniovi.rag.interfaces.rest.dto.ResolvedConfigSnapshotCreatedResponse;
 import com.uniovi.rag.interfaces.rest.dto.ResolvedConfigSnapshotResponse;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.config.UserProjectConfigurationService;
+import com.uniovi.rag.application.service.config.UserProjectConfigurationService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import java.time.Instant;
 import java.util.List;

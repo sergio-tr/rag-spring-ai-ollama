@@ -1,6 +1,6 @@
 package com.uniovi.rag.interfaces.rest.auth;
 
-import com.uniovi.rag.application.usecase.auth.AuthService;
+import com.uniovi.rag.application.service.auth.AuthService;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
@@ -300,19 +300,4 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.code").value("PASSWORD_RESET_DISABLED"));
     }
 
-    @Test
-    void login_legacyPathStillAccepted_forTransition() throws Exception {
-        UUID id = UUID.randomUUID();
-        when(authService.login(any()))
-                .thenReturn(new LoginResponse(
-                        "access",
-                        "refresh",
-                        new AuthUserDto(id, "a@b.com", "User", "USER")));
-
-        mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"a@b.com\",\"password\":\"secret\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").value("access"));
-    }
 }

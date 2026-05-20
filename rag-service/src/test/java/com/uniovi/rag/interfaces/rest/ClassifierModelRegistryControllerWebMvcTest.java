@@ -5,7 +5,7 @@ import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.interfaces.rest.dto.ClassifierModelResponseDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.classifier.ClassifierModelRegistryService;
+import com.uniovi.rag.application.service.classifier.ClassifierModelRegistryService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

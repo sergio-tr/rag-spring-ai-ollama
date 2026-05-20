@@ -9,7 +9,7 @@ import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleCounts;
 import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleSnapshot;
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationIssue;
-import com.uniovi.rag.service.async.AsyncTaskService;
+import com.uniovi.rag.application.service.async.AsyncTaskService;
 import com.uniovi.rag.application.port.ClassifierLabPort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -120,7 +120,7 @@ public class LabController {
 
     /**
      * Experimental preset catalog aligned with Chat ({@code GET …/chat/presets/catalog}) via {@link LabExperimentalPresetCatalogService}.
-     * Rows derive semantics from {@link com.uniovi.rag.service.evaluation.preset.ExperimentalPresetCanonicalCatalog}; DB-backed labels come from the workbook snapshot when present.
+     * Rows derive semantics from {@link com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog}; DB-backed labels come from the workbook snapshot when present.
      */
     @GetMapping("/experimental-presets")
     public List<ExperimentalPresetCatalogItemDto> experimentalPresets() {

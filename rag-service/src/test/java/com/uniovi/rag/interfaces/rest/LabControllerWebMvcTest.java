@@ -14,7 +14,7 @@ import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationSeverity;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.async.AsyncTaskService;
+import com.uniovi.rag.application.service.async.AsyncTaskService;
 import com.uniovi.rag.infrastructure.classifier.ClassifierLabClient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

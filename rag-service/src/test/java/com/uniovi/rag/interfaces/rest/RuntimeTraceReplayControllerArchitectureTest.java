@@ -12,7 +12,7 @@ import com.uniovi.rag.application.service.runtime.traceexport.RuntimeTraceExport
 import com.uniovi.rag.application.service.runtime.tracequery.RuntimeTraceQueryService;
 import com.uniovi.rag.application.service.runtime.tracereplay.RuntimeTraceReplayService;
 import com.uniovi.rag.infrastructure.persistence.jpa.RuntimeExecutionTraceRepository;
-import com.uniovi.rag.service.query.ProcessQueryService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
@@ -34,7 +34,7 @@ class RuntimeTraceReplayControllerArchitectureTest {
                     .areAssignableTo(RuntimeTraceReplayService.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnTraceQueryService =
+    static final ArchRule controllerDoesNotDependOnTraceQueryExecutionService =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceReplayController")
@@ -88,13 +88,13 @@ class RuntimeTraceReplayControllerArchitectureTest {
                     .areAssignableTo(RuntimeTraceReplayExportService.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnProcessQueryService =
+    static final ArchRule controllerDoesNotDependOnRuntimeQueryExecutionService =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceReplayController")
                     .should()
                     .dependOnClassesThat()
-                    .areAssignableTo(ProcessQueryService.class);
+                    .areAssignableTo(RuntimeQueryExecutionService.class);
 
     @ArchTest
     static final ArchRule controllerDoesNotDependOnOrchestrator =

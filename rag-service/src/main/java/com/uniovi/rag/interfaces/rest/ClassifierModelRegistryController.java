@@ -3,7 +3,7 @@ package com.uniovi.rag.interfaces.rest;
 import com.uniovi.rag.interfaces.rest.dto.ActivateClassifierModelRequest;
 import com.uniovi.rag.interfaces.rest.dto.ClassifierModelResponseDto;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.classifier.ClassifierModelRegistryService;
+import com.uniovi.rag.application.service.classifier.ClassifierModelRegistryService;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;

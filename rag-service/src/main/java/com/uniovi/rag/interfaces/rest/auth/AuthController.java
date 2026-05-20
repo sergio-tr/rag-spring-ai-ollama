@@ -1,6 +1,6 @@
 package com.uniovi.rag.interfaces.rest.auth;
 
-import com.uniovi.rag.application.usecase.auth.AuthService;
+import com.uniovi.rag.application.service.auth.AuthService;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.interfaces.rest.auth.dto.ConfirmEmailRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordRequest;
@@ -27,7 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping({ "${rag.api.product-base-path}/auth", "/api/auth" })
+@RequestMapping("${rag.api.product-base-path}/auth")
 public class AuthController {
 
     private final AuthService authService;

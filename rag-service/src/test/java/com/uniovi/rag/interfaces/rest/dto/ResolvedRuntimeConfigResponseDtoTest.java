@@ -33,7 +33,7 @@ class ResolvedRuntimeConfigResponseDtoTest {
         ResolvedRuntimeConfigResponseDto dto = ResolvedRuntimeConfigResponseDto.fromDomain(resolved);
 
         assertThat(dto.effectiveSystemPrompt()).isEmpty();
-        Map<String, Object> legacy = dto.legacyProjection();
+        Map<String, Object> legacy = dto.configProjection();
         assertThat(legacy).isEqualTo(core.toValueMap());
     }
 
@@ -57,6 +57,6 @@ class ResolvedRuntimeConfigResponseDtoTest {
         ResolvedRuntimeConfigResponseDto dto = ResolvedRuntimeConfigResponseDto.fromDomain(resolved);
 
         assertThat(dto.effectiveSystemPrompt()).isEqualTo("prompt");
-        assertThat(dto.legacyProjection()).isEqualTo(legacy.toValueMap());
+        assertThat(dto.configProjection()).isEqualTo(legacy.toValueMap());
     }
 }

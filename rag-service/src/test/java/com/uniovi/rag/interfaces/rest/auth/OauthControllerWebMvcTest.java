@@ -1,6 +1,6 @@
 package com.uniovi.rag.interfaces.rest.auth;
 
-import com.uniovi.rag.application.usecase.auth.OauthLoginService;
+import com.uniovi.rag.application.service.auth.OauthLoginService;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
@@ -134,39 +134,4 @@ class OauthControllerWebMvcTest {
                 .andExpect(redirectedUrl("http://localhost:3000/en/login?oauth=invalid_state"));
     }
 
-    @Test
-    void callbackGoogle_legacyRoute_keptAsTransitionalCompatibility() throws Exception {
-        when(oauthLoginService.handleGoogleCallback(eq("c"), eq("s"), isNull()))
-                .thenReturn("http://localhost:3000/en/oauth/callback/google?code=x");
-
-        mockMvc.perform(get("/api/auth/oauth/google/callback")
-                        .param("code", "c")
-                        .param("state", "s"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("http://localhost:3000/en/oauth/callback/google?code=x"));
-    }
-
-    @Test
-    void startGoogle_legacyRoute_redirectsSameAsV5() throws Exception {
-        when(oauthLoginService.googleStartUrl(any())).thenReturn("https://accounts.google.com/o/oauth2/v2/auth");
-
-        mockMvc.perform(get("/api/auth/oauth/google/start")).andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("https://accounts.google.com/o/oauth2/v2/auth"));
-    }
-
-    @Test
-    void exchange_legacyRoute_returnsLoginResponse() throws Exception {
-        UUID id = UUID.randomUUID();
-        when(oauthLoginService.exchange("raw-code"))
-                .thenReturn(new LoginResponse(
-                        "access",
-                        "refresh",
-                        new AuthUserDto(id, "u@test.com", "U", "USER")));
-
-        mockMvc.perform(post("/api/auth/oauth/exchange")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"code\":\"raw-code\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").value("access"));
-    }
 }

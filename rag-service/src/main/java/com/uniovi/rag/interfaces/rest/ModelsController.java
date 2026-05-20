@@ -2,7 +2,7 @@ package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.interfaces.rest.dto.ModelsCatalogResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.SelectableModelDto;
-import com.uniovi.rag.service.model.ModelsCatalogService;
+import com.uniovi.rag.application.service.model.ModelsCatalogService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;

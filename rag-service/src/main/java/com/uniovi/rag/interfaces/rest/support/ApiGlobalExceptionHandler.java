@@ -9,7 +9,7 @@ import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetValidati
 import com.uniovi.rag.application.service.evaluation.LabDatasetGateException;
 import com.uniovi.rag.application.service.evaluation.LabJobConcurrencyException;
 import com.uniovi.rag.application.service.chat.RuntimeConfigurationInvalidException;
-import com.uniovi.rag.service.admin.AdminModelCheckException;
+import com.uniovi.rag.application.service.admin.model.AdminModelCheckException;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetValidationFailedDto;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetValidationReportDto;
@@ -272,11 +272,15 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
                             return m;
                         })
                         .toList());
-        return ResponseEntity.status(ex.status())
+        HttpStatus status = HttpStatus.resolve(ex.httpStatus());
+        if (status == null) {
+            status = HttpStatus.UNPROCESSABLE_ENTITY;
+        }
+        return ResponseEntity.status(status)
                 .body(
                         new ApiErrorResponse(
                                 Instant.now(),
-                                ex.status().value(),
+                                status.value(),
                                 trimOrFallback(ex.code(), "RUNTIME_CONFIGURATION_INVALID"),
                                 trimOrFallback(ex.getMessage(), "Runtime configuration is invalid"),
                                 request != null ? request.getRequestURI() : null,
