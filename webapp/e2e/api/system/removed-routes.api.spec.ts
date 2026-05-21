@@ -1,13 +1,19 @@
 import { expect, test } from "@playwright/test";
-import { apiBaseUrl, productUrl } from "../fixtures/env";
+import { authHeaders, loginAndGetToken } from "../fixtures/auth";
+import { apiBaseUrl, integrationCredentials, productUrl } from "../fixtures/env";
 
 /**
  * Guard: removed Lab evaluation HTTP paths and unprefixed backend auth/admin mirrors must not return 200.
  */
 test.describe("Removed routes API @api @guard", () => {
   test("removed /lab/evaluations/* paths are not served", async ({ request }) => {
+    const { email, password } = integrationCredentials();
+    const token = await loginAndGetToken(request, email, password);
+    const headers = authHeaders(token);
+
+    // Product API is authenticated; unauthenticated GET would 401 even for unknown paths.
     for (const path of ["/lab/evaluations/llm", "/lab/evaluations/rag", "/lab/evaluations/embedding"]) {
-      const res = await request.get(productUrl(path), { headers: { Accept: "application/json" } });
+      const res = await request.get(productUrl(path), { headers });
       expect(res.status(), `${path} must not be available`).not.toBe(200);
       expect([404, 405], `${path} status`).toContain(res.status());
     }

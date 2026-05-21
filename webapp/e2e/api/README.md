@@ -45,5 +45,5 @@ PR pipeline job **`playwright_api_smoke`** in [`.github/workflows/reusable-ci-co
 - `lab/lab-status.api.spec.ts` — Lab status typed readiness (`referenceBundle*`, `countsByDatasetKind`).
 - `lab/lab-typed-datasets.api.spec.ts` — templates download (magic bytes), experimental-datasets upload (valid + mismatched kind → 422), canonical benchmarks compatible/incompatible (202 vs 400).
 - `system/api-errors.api.spec.ts` — unknown routes return JSON error envelopes, not HTML.
-- `system/removed-routes.api.spec.ts` — removed `/lab/evaluations/*` and unprefixed `/api/auth|admin` mirrors are not served (404/405).
+- `system/removed-routes.api.spec.ts` — removed `/lab/evaluations/*` (authenticated GET → 404/405) and unprefixed `/api/auth|admin` mirrors are not served (404).
 - `auth/`, `projects/`, `documents/`, `chat/`, `lab/`, `me/`, `config/` — domain smoke specs (`@api`).
