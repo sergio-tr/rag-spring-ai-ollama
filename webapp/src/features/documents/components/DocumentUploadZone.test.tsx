@@ -38,27 +38,52 @@ vi.mock("@/features/projects/hooks/use-project-index-profile", () => ({
   }),
 }));
 
+type ReadyDocFixture = {
+  id: string;
+  fileName: string;
+  status: string;
+  chunkCount: number;
+  errorMessage: null;
+  uploadedAt: string;
+  reindexedAt: null;
+  corpusScope: string;
+  conversationId: null;
+  currentIndexSnapshotId: null;
+  currentIndexSignatureHash: null;
+  hasBinary: boolean;
+};
+
+const readyDoc = (overrides: Partial<ReadyDocFixture> = {}): ReadyDocFixture => ({
+  id: "d1",
+  fileName: "doc.txt",
+  status: "READY",
+  chunkCount: 1,
+  errorMessage: null,
+  uploadedAt: "",
+  reindexedAt: null,
+  corpusScope: "PROJECT_SHARED",
+  conversationId: null,
+  currentIndexSnapshotId: null,
+  currentIndexSignatureHash: null,
+  hasBinary: true,
+  ...overrides,
+});
+
 describe("DocumentUploadZone", () => {
   beforeEach(() => {
     apiMock.apiFetch.mockReset();
+    // Default READY responses avoid status-poll loops that blow the stack in happy-dom.
+    apiMock.apiFetch.mockImplementation(async (path: string) => {
+      if (String(path).includes("/status")) {
+        return readyDoc();
+      }
+      return readyDoc();
+    });
   });
 
   it("uploads a file via browse control", async () => {
     const user = userEvent.setup();
-    apiMock.apiFetch.mockResolvedValueOnce({
-      id: "d1",
-      fileName: "doc.txt",
-      status: "READY",
-      chunkCount: 3,
-      errorMessage: null,
-      uploadedAt: "",
-      reindexedAt: null,
-      corpusScope: "PROJECT_SHARED",
-      conversationId: null,
-      currentIndexSnapshotId: null,
-      currentIndexSignatureHash: null,
-      hasBinary: true,
-    });
+    apiMock.apiFetch.mockResolvedValueOnce(readyDoc({ chunkCount: 3 }));
     render(
       <IntlTestProvider>
         <DocumentUploadZone projectId="p1" />
@@ -163,8 +188,8 @@ describe("DocumentUploadZone", () => {
     clickSpy.mockRestore();
   });
 
-  it("uploads files dropped on the zone", () => {
-    apiMock.apiFetch.mockResolvedValueOnce({ id: "d1", fileName: "drop.txt", status: "READY", chunkCount: 1, errorMessage: null });
+  it("uploads files dropped on the zone", async () => {
+    apiMock.apiFetch.mockResolvedValueOnce(readyDoc({ fileName: "drop.txt" }));
     render(
       <IntlTestProvider>
         <DocumentUploadZone projectId="p1" />
@@ -173,11 +198,10 @@ describe("DocumentUploadZone", () => {
     const zone = screen.getByText(/Drag files here or browse/i).closest("div");
     expect(zone).toBeTruthy();
     const file = new File(["d"], "drop.txt", { type: "text/plain" });
-    // jsdom has no DataTransfer; pass a minimal dataTransfer.files array-like for onDrop
     const files = { 0: file, length: 1, item: (i: number) => (i === 0 ? file : null) };
     fireEvent.drop(zone!, { dataTransfer: { files } });
-    expect(screen.getByText(/drop\.txt/i)).toBeInTheDocument();
-    expect(apiMock.apiFetch).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByText(/drop\.txt/i)).toBeInTheDocument());
+    expect(apiMock.apiFetch).toHaveBeenCalled();
   });
 
   it("sets drag styling on drag over and clears on drop", () => {

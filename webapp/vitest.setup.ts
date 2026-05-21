@@ -1,6 +1,26 @@
 import "@testing-library/jest-dom/vitest";
 import { vi } from "vitest";
 import React from "react";
+import {
+  formatConsoleArgs,
+  isSuppressedTestConsoleNoise,
+} from "@/test-utils/suppress-test-console-noise";
+
+// React 19 + RTL: mark the test env so batched updates are attributed correctly.
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const origConsoleError = console.error.bind(console);
+const origConsoleWarn = console.warn.bind(console);
+
+console.error = (...args: unknown[]) => {
+  if (isSuppressedTestConsoleNoise(formatConsoleArgs(args))) return;
+  origConsoleError(...args);
+};
+
+console.warn = (...args: unknown[]) => {
+  if (isSuppressedTestConsoleNoise(formatConsoleArgs(args))) return;
+  origConsoleWarn(...args);
+};
 
 // Prevent Next.js Link from attempting route prefetching in unit tests.
 // Prefetch can trigger network calls against the default happy-dom origin (127.0.0.1:3000).

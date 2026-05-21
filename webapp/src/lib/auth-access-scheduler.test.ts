@@ -57,4 +57,22 @@ describe("auth-access-scheduler", () => {
     await vi.runAllTimersAsync();
     expect(tryRefreshAccessToken).not.toHaveBeenCalled();
   });
+
+  it("no-ops for empty or missing access tokens", () => {
+    scheduleAccessTokenRefreshFromJwt(null);
+    scheduleAccessTokenRefreshFromJwt("   ");
+    expect(tryRefreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("no-ops when JWT cannot be decoded", () => {
+    scheduleAccessTokenRefreshFromJwt("not-a-jwt");
+    scheduleAccessTokenRefreshFromJwt("only.two.parts");
+    expect(tryRefreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("no-ops when JWT payload has no exp claim", () => {
+    const payload = globalThis.btoa(JSON.stringify({ sub: "user" }));
+    scheduleAccessTokenRefreshFromJwt(`h.${payload}.sig`);
+    expect(tryRefreshAccessToken).not.toHaveBeenCalled();
+  });
 });

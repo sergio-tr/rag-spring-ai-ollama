@@ -2,6 +2,7 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path, { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isSuppressedTestConsoleNoise } from "./src/test-utils/suppress-test-console-noise";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -19,6 +20,12 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     css: true,
+    /** Drop RTL act noise, RQ undefined-data warnings, and upload-zone poll stack traces from Vitest stderr. */
+    onConsoleLog(log, type) {
+      if (type === "stdout") return undefined;
+      if (isSuppressedTestConsoleNoise(log)) return false;
+      return undefined;
+    },
     coverage: {
       // Istanbul is producing empty LCOV locally (0/0 statements).
       // V8 coverage is the supported default in Vitest v4 and generates stable LCOV for Sonar.

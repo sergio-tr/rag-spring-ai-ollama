@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { countListedTests, summarizePlaywrightJson } from "./e2e-report-summary.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
+/** Playwright 1.59+ JSON reporter shape (stats root); no on-disk test-results artifact required. */
+const FAILED_PREFLIGHT_JSON = {
+  stats: {
+    expected: 0,
+    unexpected: 1,
+    skipped: 0,
+    flaky: 0,
+  },
+  suites: [],
+};
 
 describe("e2e-report-summary", () => {
   it("parses Total from --list output", () => {
@@ -14,10 +20,8 @@ describe("e2e-report-summary", () => {
     assert.equal(Number.isNaN(countListedTests("no tests")), true);
   });
 
-  it("counts failed preflight JSON via stats (Playwright 1.59)", () => {
-    const samplePath = resolve(here, "../test-results/preflight-results.json");
-    const json = JSON.parse(readFileSync(samplePath, "utf8"));
-    const summary = summarizePlaywrightJson(json);
+  it("counts failed preflight JSON via stats (Playwright 1.59+)", () => {
+    const summary = summarizePlaywrightJson(FAILED_PREFLIGHT_JSON);
     assert.equal(summary.total, 1);
     assert.equal(summary.failed, 1);
     assert.equal(summary.passed, 0);
