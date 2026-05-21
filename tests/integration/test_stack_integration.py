@@ -11,6 +11,10 @@ Observability (Jaeger, Prometheus, OTEL collector, Grafana):
   - INTEGRATION_CHECK_OBS=1: fail if the observability stack is not reachable (CI with obs).
   - INTEGRATION_CHECK_OBS=0: skip all observability tests.
 
+Classifier (CI split):
+  - PR job ``integration``: Spring only — classifier tests **skip** when :8000 is down (INTEGRATION_STRICT still applies to backend/auth).
+  - Job ``integration_classifier_required``: sets INTEGRATION_REQUIRE_CLASSIFIER=1 and starts uvicorn — classifier connectivity failures **fail** the run.
+
 API path drift (aligned with Spring `rag.api.*`):
   - INTEGRATION_RAG_PRODUCT_BASE_PATH (default `/api/v5`) for JWT product tests.
   - INTEGRATION_LOGIN_EMAIL / INTEGRATION_LOGIN_PASSWORD — seed user for `POST {product}/auth/login` flows
@@ -68,11 +72,25 @@ def integration_require_classifier_model() -> bool:
     return _truthy_env("INTEGRATION_REQUIRE_CLASSIFIER_MODEL")
 
 
-def _skip_if_unreachable(exc: Exception) -> None:
-    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
-        if integration_strict():
-            pytest.fail(f"Service unreachable (strict mode): {exc}")
-        pytest.skip(f"Service unreachable: {exc}")
+def _skip_if_unreachable(exc: Exception, *, service: str = "backend") -> None:
+    """
+    Map connectivity errors to skip (optional stack) or fail (strict CI).
+
+    Classifier tests skip when the service is down unless INTEGRATION_REQUIRE_CLASSIFIER=1
+    (integration_classifier_required job). Backend/product tests still honor INTEGRATION_STRICT.
+    """
+    if not isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+        return
+    if service == "classifier":
+        if integration_require_classifier():
+            pytest.fail(
+                "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
+                f"{exc}"
+            )
+        pytest.skip(f"classifier-service unreachable: {exc}")
+    if integration_strict():
+        pytest.fail(f"Service unreachable (strict mode): {exc}")
+    pytest.skip(f"Service unreachable: {exc}")
 
 
 def _jaeger_service_names(http_client: httpx.Client, jaeger_base: str) -> list[str]:
@@ -170,12 +188,7 @@ class TestClassifierService:
         try:
             r = http_client.get(f"{classifier_base}/models")
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-            if integration_require_classifier():
-                pytest.fail(
-                    "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
-                    f"{classifier_base} ({e})"
-                )
-            _skip_if_unreachable(e)
+            _skip_if_unreachable(e, service="classifier")
             raise
         assert r.status_code == 200, r.text
         data = r.json()
@@ -191,12 +204,7 @@ class TestClassifierService:
                 headers={"Content-Type": "application/json"},
             )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-            if integration_require_classifier():
-                pytest.fail(
-                    "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
-                    f"{classifier_base} ({e})"
-                )
-            _skip_if_unreachable(e)
+            _skip_if_unreachable(e, service="classifier")
             raise
         assert r.status_code == 400, r.text
 
@@ -204,12 +212,7 @@ class TestClassifierService:
         try:
             r = http_client.get(f"{classifier_base}/health")
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-            if integration_require_classifier():
-                pytest.fail(
-                    "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
-                    f"{classifier_base} ({e})"
-                )
-            _skip_if_unreachable(e)
+            _skip_if_unreachable(e, service="classifier")
             raise
         assert r.status_code == 200, r.text
         data = r.json()
@@ -219,12 +222,7 @@ class TestClassifierService:
         try:
             h = http_client.get(f"{classifier_base}/health")
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-            if integration_require_classifier():
-                pytest.fail(
-                    "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
-                    f"{classifier_base} ({e})"
-                )
-            _skip_if_unreachable(e)
+            _skip_if_unreachable(e, service="classifier")
             raise
         assert h.status_code == 200
         if h.json().get("model") != "loaded":
@@ -243,7 +241,7 @@ class TestClassifierService:
                 headers={"Content-Type": "application/json"},
             )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-            _skip_if_unreachable(e)
+            _skip_if_unreachable(e, service="classifier")
             raise
         assert r.status_code == 200, r.text
         data = r.json()
@@ -814,6 +812,10 @@ class TestCrossService:
         """Smoke: both services reachable in sequence (no strict queryType equality)."""
         try:
             h = http_client.get(f"{classifier_base}/health")
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e, service="classifier")
+            raise
+        try:
             b = http_client.get(f"{backend_base}/actuator/health")
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _skip_if_unreachable(e)

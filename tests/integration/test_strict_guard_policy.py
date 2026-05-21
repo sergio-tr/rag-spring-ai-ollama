@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import httpx
+import pytest
+
 import conftest
+from test_stack_integration import _skip_if_unreachable
 
 
 def test_classifier_reachability_required_allows_model_not_loaded_skip_when_model_not_required(
@@ -62,3 +66,19 @@ def test_strict_guard_does_not_treat_observability_skip_as_auth_skip() -> None:
     assert not conftest._auth_skip_requires_failure(
         "Skipped: Observability stack not reachable (OTEL collector metrics)."
     )
+
+
+def test_skip_if_unreachable_classifier_skips_under_strict_without_require_classifier(
+    monkeypatch,
+) -> None:
+    """integration job: INTEGRATION_STRICT=1 but classifier optional → skip, not fail."""
+    monkeypatch.setenv("INTEGRATION_STRICT", "1")
+    monkeypatch.delenv("INTEGRATION_REQUIRE_CLASSIFIER", raising=False)
+    with pytest.raises(pytest.skip.Exception, match="classifier-service unreachable"):
+        _skip_if_unreachable(httpx.ConnectError("connection refused"), service="classifier")
+
+
+def test_skip_if_unreachable_classifier_fails_when_required(monkeypatch) -> None:
+    monkeypatch.setenv("INTEGRATION_REQUIRE_CLASSIFIER", "1")
+    with pytest.raises(pytest.fail.Exception, match="INTEGRATION_REQUIRE_CLASSIFIER"):
+        _skip_if_unreachable(httpx.ConnectError("connection refused"), service="classifier")
