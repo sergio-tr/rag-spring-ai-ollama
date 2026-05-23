@@ -133,7 +133,7 @@ describe("SettingsDataPanel", () => {
     expect(alerts[1]).toHaveTextContent(/couldn't load your documents/i);
   });
 
-  it("mounts API path reference only after opening the technical details section", async () => {
+  it("shows human technical reference copy without REST path literals after opening details", async () => {
     apiFetchMock.mockImplementation(async (url: string | URL) => {
       const u = String(url);
       if (u.includes("/me/summary")) {
@@ -155,12 +155,15 @@ describe("SettingsDataPanel", () => {
     await waitFor(() => expect(screen.getByTestId("data-inventory-empty")).toBeInTheDocument());
 
     expect(screen.queryByText(/GET `\/me\/summary`/)).toBeNull();
+    expect(screen.queryByText(/GET `\/me\/documents`/)).toBeNull();
 
     fireEvent.click(screen.getByText("Technical reference (API)"));
 
     await waitFor(() => {
-      expect(screen.getByText(/GET `\/me\/summary`/)).toBeInTheDocument();
+      expect(screen.getByText(/Summary counts use the summary/i)).toBeInTheDocument();
     });
-    expect(screen.getByText(/GET `\/me\/documents`/)).toBeInTheDocument();
+    expect(screen.getByText(/document library \(paginated\)/i)).toBeInTheDocument();
+    expect(screen.queryByText(/GET `\/me\/summary`/)).toBeNull();
+    expect(screen.queryByText(/GET `\/me\/documents`/)).toBeNull();
   });
 });
