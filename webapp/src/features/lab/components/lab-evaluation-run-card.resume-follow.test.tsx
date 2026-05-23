@@ -7,7 +7,7 @@ import { IntlTestProvider } from "@/test-utils/intl";
 import type { LabJobAcceptedDto } from "@/types/api";
 
 const { useLabJobLiveEventsMock } = vi.hoisted(() => ({
-  useLabJobLiveEventsMock: vi.fn((_options?: unknown) => ({
+  useLabJobLiveEventsMock: vi.fn(() => ({
     connectionState: "live" as const,
     taskStatus: null,
     lastEventId: null,

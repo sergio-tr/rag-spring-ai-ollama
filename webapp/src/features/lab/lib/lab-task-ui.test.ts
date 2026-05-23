@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AsyncTaskStatusDto } from "@/types/api";
-import { getLabJobUiPhase, labPhaseToTraceStatus } from "./lab-task-ui";
+import { getLabJobStatusLabel, getLabJobUiPhase, labPhaseToTraceStatus } from "./lab-task-ui";
 
 function task(partial: Partial<AsyncTaskStatusDto> & Pick<AsyncTaskStatusDto, "status" | "terminal">): AsyncTaskStatusDto {
   return {
@@ -81,6 +81,90 @@ describe("getLabJobUiPhase", () => {
       }),
     ).toBe("queued");
   });
+
+  it("maps live connection without task as queued when hinted", () => {
+    expect(
+      getLabJobUiPhase({
+        taskStatus: null,
+        queuedHint: true,
+        connectionState: "live",
+      }),
+    ).toBe("queued");
+  });
+
+  it("maps live connection with unknown terminal status to failed", () => {
+    expect(
+      getLabJobUiPhase({
+        taskStatus: task({ status: "UNKNOWN", terminal: true }),
+        connectionState: "live",
+      }),
+    ).toBe("failed");
+  });
+
+  it("maps live connection with terminal CANCELED spelling", () => {
+    expect(
+      getLabJobUiPhase({
+        taskStatus: task({ status: "CANCELED", terminal: true }),
+        connectionState: "live",
+      }),
+    ).toBe("cancelled");
+  });
+
+  it("maps connectionState finished_away and terminal fallbacks", () => {
+    expect(getLabJobUiPhase({ taskStatus: null, connectionState: "finished_away" })).toBe("finished_away");
+    expect(getLabJobUiPhase({ taskStatus: null, connectionState: "completed" })).toBe("completed");
+    expect(getLabJobUiPhase({ taskStatus: null, connectionState: "failed" })).toBe("failed");
+    expect(getLabJobUiPhase({ taskStatus: null, connectionState: "cancelled" })).toBe("cancelled");
+    expect(getLabJobUiPhase({ taskStatus: null, connectionState: "connecting" })).toBe("connecting");
+    expect(getLabJobUiPhase({ taskStatus: null, connectionState: "resumed" })).toBe("resumed");
+  });
+
+  it("treats missing status string as unknown_running", () => {
+    expect(
+      getLabJobUiPhase({
+        taskStatus: { ...task({ status: "RUNNING", terminal: false }), status: undefined as unknown as string },
+        queuedHint: false,
+        stoppedWaiting: false,
+      }),
+    ).toBe("unknown_running");
+  });
+
+  it("maps unknown non-terminal status to unknown_running", () => {
+    expect(
+      getLabJobUiPhase({
+        taskStatus: task({ status: "CUSTOM", terminal: false }),
+        connectionState: "live",
+      }),
+    ).toBe("unknown_running");
+  });
+});
+
+const labels = {
+  connecting: "Connecting",
+  live: "Live",
+  reconnecting: "Reconnecting",
+  resumed: "Resumed",
+  finishedAway: "Finished away",
+  queued: "Queued",
+  running: "Running",
+  completed: "Completed",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  stoppedWaiting: "Stopped",
+  unknownRunning: "Unknown",
+};
+
+describe("getLabJobStatusLabel", () => {
+  it("returns labels for each phase branch", () => {
+    expect(getLabJobStatusLabel("connecting", labels)).toBe("Connecting");
+    expect(getLabJobStatusLabel("live", labels)).toBe("Live");
+    expect(getLabJobStatusLabel("reconnecting", labels)).toBe("Reconnecting");
+    expect(getLabJobStatusLabel("stopped_waiting", labels)).toBe("Reconnecting");
+    expect(getLabJobStatusLabel("resumed", labels)).toBe("Resumed");
+    expect(getLabJobStatusLabel("finished_away", labels)).toBe("Finished away");
+    expect(getLabJobStatusLabel("unknown_running", labels)).toBe("Unknown");
+    expect(getLabJobStatusLabel("idle", labels)).toBe("Queued");
+  });
 });
 
 describe("labPhaseToTraceStatus", () => {
@@ -90,5 +174,15 @@ describe("labPhaseToTraceStatus", () => {
 
   it("maps reconnecting to warning", () => {
     expect(labPhaseToTraceStatus("reconnecting")).toBe("warning");
+  });
+
+  it("maps remaining phases", () => {
+    expect(labPhaseToTraceStatus("failed")).toBe("error");
+    expect(labPhaseToTraceStatus("cancelled")).toBe("warning");
+    expect(labPhaseToTraceStatus("finished_away")).toBe("warning");
+    expect(labPhaseToTraceStatus("resumed")).toBe("warning");
+    expect(labPhaseToTraceStatus("stopped_waiting")).toBe("warning");
+    expect(labPhaseToTraceStatus("running")).toBe("in_progress");
+    expect(labPhaseToTraceStatus("idle")).toBe("info");
   });
 });

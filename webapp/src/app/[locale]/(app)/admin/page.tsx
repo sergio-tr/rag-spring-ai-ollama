@@ -33,7 +33,6 @@ function ModelTableSection({
   rows,
   emptyLabel,
   t,
-  tLab,
   onProbe,
   onPull,
   onToggle,
@@ -44,7 +43,6 @@ function ModelTableSection({
   rows: AdminModelEntryDto[];
   emptyLabel: string;
   t: ReturnType<typeof useTranslations<"Admin">>;
-  tLab: ReturnType<typeof useTranslations<"Lab">>;
   onProbe: (row: AdminModelEntryDto) => void;
   onPull: (row: AdminModelEntryDto) => void;
   onToggle: (row: AdminModelEntryDto) => void;
@@ -345,7 +343,6 @@ export default function AdminHomePage() {
             rows={grouped.llm}
             emptyLabel={t("allowlistEmptySection")}
             t={t}
-            tLab={tLab}
             busyId={busyRowId}
             onProbe={(row) => void handleRowProbe(row)}
             onPull={(row) => void handleRowPull(row)}
@@ -358,7 +355,6 @@ export default function AdminHomePage() {
             rows={grouped.embedding}
             emptyLabel={t("allowlistEmptySection")}
             t={t}
-            tLab={tLab}
             busyId={busyRowId}
             onProbe={(row) => void handleRowProbe(row)}
             onPull={(row) => void handleRowPull(row)}

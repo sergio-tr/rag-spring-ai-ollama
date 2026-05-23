@@ -17,6 +17,10 @@ export type LabJobUiPhase =
   | "stopped_waiting"
   | "unknown_running";
 
+function taskStatusUpper(status: string | null | undefined): string {
+  return (status ?? "").trim().toUpperCase();
+}
+
 /**
  * Map async task DTO + live connection state to a single visible phase.
  */
@@ -34,13 +38,13 @@ export function getLabJobUiPhase(input: {
   if (connectionState === "live") {
     if (!taskStatus) return queuedHint ? "queued" : "running";
     if (taskStatus.terminal) {
-      const s = taskStatus.status.toUpperCase();
+      const s = taskStatusUpper(taskStatus.status);
       if (s === "SUCCEEDED") return "completed";
       if (s === "FAILED") return "failed";
       if (s === "CANCELLED" || s === "CANCELED") return "cancelled";
       return "failed";
     }
-    const s = taskStatus.status.toUpperCase();
+    const s = taskStatusUpper(taskStatus.status);
     if (s === "QUEUED" || s === "PENDING") return "queued";
     if (s === "RUNNING") return "running";
     return "unknown_running";
@@ -57,13 +61,13 @@ export function getLabJobUiPhase(input: {
     return queuedHint ? "queued" : "idle";
   }
   if (taskStatus.terminal) {
-    const s = taskStatus.status.toUpperCase();
+    const s = taskStatusUpper(taskStatus.status);
     if (s === "SUCCEEDED") return "completed";
     if (s === "FAILED") return "failed";
     if (s === "CANCELLED" || s === "CANCELED") return "cancelled";
     return "failed";
   }
-  const s = taskStatus.status.toUpperCase();
+  const s = taskStatusUpper(taskStatus.status);
   if (s === "QUEUED" || s === "PENDING") return "queued";
   if (s === "RUNNING") return "running";
   return "unknown_running";

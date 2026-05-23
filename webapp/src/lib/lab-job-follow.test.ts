@@ -22,6 +22,10 @@ describe("followLabJob", () => {
       terminal: true,
       status: "SUCCEEDED",
     } as never);
+    vi.spyOn(labJobSse, "streamLabJobLive").mockResolvedValue({
+      terminal: true,
+      status: "SUCCEEDED",
+    } as never);
   });
 
   afterEach(() => {
@@ -93,6 +97,35 @@ describe("followLabJob", () => {
       "job-1",
       expect.any(Function),
       expect.objectContaining({ maxWaitMs: 120_000 }),
+    );
+  });
+
+  it("uses streamLabJobLive when liveReconnect is enabled", async () => {
+    const onTick = vi.fn();
+    const callbacks = { onReconnecting: vi.fn() };
+    await followLabJob(accepted, onTick, {
+      mode: "sse",
+      liveReconnect: true,
+      sinceEventId: 3,
+      callbacks,
+    });
+
+    expect(labJobSse.streamLabJobLive).toHaveBeenCalledWith(
+      accepted.streamPath,
+      expect.objectContaining({
+        sinceEventId: 3,
+        callbacks: expect.objectContaining({ onTaskTick: onTick, onReconnecting: callbacks.onReconnecting }),
+      }),
+    );
+    expect(labJobSse.streamLabJob).not.toHaveBeenCalled();
+  });
+
+  it("forwards sinceEventId to streamLabJob in sse mode", async () => {
+    await followLabJob(accepted, () => {}, { mode: "sse", sinceEventId: 9 });
+    expect(labJobSse.streamLabJob).toHaveBeenCalledWith(
+      accepted.streamPath,
+      expect.any(Function),
+      expect.objectContaining({ sinceEventId: 9 }),
     );
   });
 });

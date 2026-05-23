@@ -27,6 +27,10 @@ export type UseLabJobLiveEventsResult = Readonly<{
 
 const RESUMED_FLASH_MS = 2_500;
 
+function taskStatusUpper(status: string | null | undefined): string {
+  return (status ?? "").trim().toUpperCase();
+}
+
 /**
  * Canonical Lab job live stream: SSE by default, auto reconnect with backoff,
  * resume via persisted backend events (`?since=eventId`), poll as internal fallback only.
@@ -43,17 +47,20 @@ export function useLabJobLiveEvents(options: UseLabJobLiveEventsOptions): UseLab
   const lastEventIdRef = useRef<number | null>(null);
   const taskStatusRef = useRef<AsyncTaskStatusDto | null>(null);
   const callbacksRef = useRef({ onTick, onTerminal, onStreamError });
-  callbacksRef.current = { onTick, onTerminal, onStreamError };
 
-  const stop = useCallback(() => {
+  const abortStreamOnly = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     if (resumedTimerRef.current) {
       clearTimeout(resumedTimerRef.current);
       resumedTimerRef.current = null;
     }
-    setConnectionState("idle");
   }, []);
+
+  const stop = useCallback(() => {
+    abortStreamOnly();
+    setConnectionState("idle");
+  }, [abortStreamOnly]);
 
   const resume = useCallback(() => {
     setResumeNonce((n) => n + 1);
@@ -68,8 +75,21 @@ export function useLabJobLiveEvents(options: UseLabJobLiveEventsOptions): UseLab
   }, [lastEventId]);
 
   useEffect(() => {
-    if (!enabled || !accepted?.jobId?.trim()) {
-      stop();
+    callbacksRef.current = { onTick, onTerminal, onStreamError };
+  }, [onTick, onTerminal, onStreamError]);
+
+  const streamActive = enabled && Boolean(accepted?.jobId?.trim());
+
+  useEffect(() => {
+    if (!streamActive) {
+      abortStreamOnly();
+      return;
+    }
+
+    const jobId = accepted?.jobId?.trim();
+    const streamPath = accepted?.streamPath?.trim();
+    if (!jobId || !streamPath) {
+      abortStreamOnly();
       return;
     }
 
@@ -129,13 +149,13 @@ export function useLabJobLiveEvents(options: UseLabJobLiveEventsOptions): UseLab
     void (async () => {
       try {
         setConnectionState("connecting");
-        const snapshot = await fetchLabJobStatusOnce(accepted.jobId, { signal: controller.signal });
+        const snapshot = await fetchLabJobStatusOnce(jobId, { signal: controller.signal });
         if (cancelled) return;
         taskStatusRef.current = snapshot;
         setTaskStatus(snapshot);
         callbacksRef.current.onTick?.(snapshot);
         if (snapshot.terminal) {
-          const st = snapshot.status.toUpperCase();
+          const st = taskStatusUpper(snapshot.status);
           if (st === "SUCCEEDED") setConnectionState("completed");
           else if (st === "FAILED") setConnectionState("failed");
           else if (st === "CANCELLED" || st === "CANCELED") setConnectionState("cancelled");
@@ -144,7 +164,7 @@ export function useLabJobLiveEvents(options: UseLabJobLiveEventsOptions): UseLab
           return;
         }
 
-        const terminal = await streamLabJobLive(accepted.streamPath, {
+        const terminal = await streamLabJobLive(streamPath, {
           signal: controller.signal,
           sinceEventId: lastEventIdRef.current,
           callbacks,
@@ -153,7 +173,7 @@ export function useLabJobLiveEvents(options: UseLabJobLiveEventsOptions): UseLab
         taskStatusRef.current = terminal;
         setTaskStatus(terminal);
         callbacksRef.current.onTick?.(terminal);
-        const st = terminal.status.toUpperCase();
+        const st = taskStatusUpper(terminal.status);
         if (st === "SUCCEEDED") setConnectionState("completed");
         else if (st === "FAILED") setConnectionState("failed");
         else if (st === "CANCELLED" || st === "CANCELED") setConnectionState("cancelled");
@@ -171,17 +191,14 @@ export function useLabJobLiveEvents(options: UseLabJobLiveEventsOptions): UseLab
 
     return () => {
       cancelled = true;
-      controller.abort();
-      if (resumedTimerRef.current) {
-        clearTimeout(resumedTimerRef.current);
-        resumedTimerRef.current = null;
-      }
+      abortStreamOnly();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- resumeNonce intentionally retriggers reconnect
-  }, [accepted?.jobId, accepted?.streamPath, enabled, resumeNonce, stop]);
+  }, [accepted?.jobId, accepted?.streamPath, abortStreamOnly, resumeNonce, streamActive]);
+
+  const connectionStateOut: LabJobLiveConnectionState = streamActive ? connectionState : "idle";
 
   return {
-    connectionState,
+    connectionState: connectionStateOut,
     taskStatus,
     lastEventId,
     resume,

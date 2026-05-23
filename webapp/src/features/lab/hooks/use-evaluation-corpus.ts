@@ -2,59 +2,53 @@
 
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import type { EvaluationCorpusSummaryDto } from "@/types/api";
-import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+
+export function evaluationCorpusQueryKey(corpusId: string | null) {
+  return ["lab", "evaluation-corpus", corpusId] as const;
+}
+
+async function fetchEvaluationCorpus(id: string): Promise<EvaluationCorpusSummaryDto> {
+  return apiFetch<EvaluationCorpusSummaryDto>(apiProductPath(`/lab/evaluation-corpora/${id}`));
+}
 
 export function useEvaluationCorpus(corpusId: string | null) {
-  const [summary, setSummary] = useState<EvaluationCorpusSummaryDto | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const qc = useQueryClient();
 
-  const refresh = useCallback(async (id: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiFetch<EvaluationCorpusSummaryDto>(apiProductPath(`/lab/evaluation-corpora/${id}`));
-      setSummary(data);
-      return data;
-    } catch (e) {
-      const msg = e instanceof ApiError ? e.message : "Failed to load evaluation corpus";
-      setError(msg);
-      throw e;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const query = useQuery({
+    queryKey: evaluationCorpusQueryKey(corpusId),
+    enabled: Boolean(corpusId),
+    queryFn: () => fetchEvaluationCorpus(corpusId!),
+  });
 
-  useEffect(() => {
-    if (!corpusId) {
-      setSummary(null);
-      return;
-    }
-    void refresh(corpusId).catch(() => undefined);
-  }, [corpusId, refresh]);
+  const refresh = useCallback(
+    async (id: string) => {
+      return qc.fetchQuery({
+        queryKey: evaluationCorpusQueryKey(id),
+        queryFn: () => fetchEvaluationCorpus(id),
+      });
+    },
+    [qc],
+  );
 
   const ensureCorpus = useCallback(async () => {
     if (corpusId) {
       return refresh(corpusId);
     }
-    setLoading(true);
-    setError(null);
     try {
       const created = await apiFetch<EvaluationCorpusSummaryDto>(apiProductPath("/lab/evaluation-corpora"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ name: "Lab evaluation corpus" }),
       });
-      setSummary(created);
+      qc.setQueryData(evaluationCorpusQueryKey(created.id), created);
       return created;
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "Failed to create evaluation corpus";
-      setError(msg);
-      throw e;
-    } finally {
-      setLoading(false);
+      throw new Error(msg, { cause: e });
     }
-  }, [corpusId, refresh]);
+  }, [corpusId, qc, refresh]);
 
   const uploadDocument = useCallback(
     async (id: string, file: File) => {
@@ -64,10 +58,10 @@ export function useEvaluationCorpus(corpusId: string | null) {
         apiProductPath(`/lab/evaluation-corpora/${id}/documents/upload`),
         { method: "POST", body: form },
       );
-      setSummary(data);
+      qc.setQueryData(evaluationCorpusQueryKey(id), data);
       return data;
     },
-    [],
+    [qc],
   );
 
   const attachFromProject = useCallback(
@@ -80,11 +74,28 @@ export function useEvaluationCorpus(corpusId: string | null) {
           body: JSON.stringify({ projectId, documentIds }),
         },
       );
-      setSummary(data);
+      qc.setQueryData(evaluationCorpusQueryKey(id), data);
       return data;
     },
-    [],
+    [qc],
   );
 
-  return { summary, loading, error, refresh, ensureCorpus, uploadDocument, attachFromProject };
+  const error =
+    query.error instanceof ApiError
+      ? query.error.message
+      : query.error instanceof Error
+        ? query.error.message
+        : query.error
+          ? "Failed to load evaluation corpus"
+          : null;
+
+  return {
+    summary: corpusId ? (query.data ?? null) : null,
+    loading: query.isFetching,
+    error,
+    refresh,
+    ensureCorpus,
+    uploadDocument,
+    attachFromProject,
+  };
 }

@@ -3,7 +3,7 @@
 import { authApiPath, oauthGoogleStartHref } from "@/lib/api-client";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 type Props = Readonly<{
   /** Active next-intl locale (sent as query param to the backend OAuth start endpoint). */
@@ -57,13 +57,17 @@ function GoogleGIcon({ className }: GoogleGIconProps) {
  * Uses {@link oauthGoogleStartHref} so reverse-proxy HTTPS entrypoints work even when a stale build
  * baked {@code NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:9000}.
  */
-export function GoogleOAuthButton({ locale, label }: Props) {
-  const relativeFallback = `${authApiPath("/oauth/google/start")}?locale=${encodeURIComponent(locale)}`;
-  const [href, setHref] = useState(relativeFallback);
+function subscribeNoop() {
+  return () => {};
+}
 
-  useEffect(() => {
-    setHref(oauthGoogleStartHref(locale));
-  }, [locale]);
+export function GoogleOAuthButton({ locale, label }: Props) {
+  const serverFallback = `${authApiPath("/oauth/google/start")}?locale=${encodeURIComponent(locale)}`;
+  const href = useSyncExternalStore(
+    subscribeNoop,
+    () => oauthGoogleStartHref(locale),
+    () => serverFallback,
+  );
 
   return (
     <a

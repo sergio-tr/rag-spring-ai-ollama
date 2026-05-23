@@ -168,7 +168,7 @@ export const useLabJobSessionStore = create<LabJobSessionStore>()(
         set((s) => ({
           records: s.records.filter((r) => !(r.sectionKey === sectionKey && r.jobId !== keepJobId)),
           pendingResume:
-            s.pendingResume?.sectionKey === sectionKey && s.pendingResume.jobId !== keepJobId
+            s.pendingResume?.sectionKey === sectionKey && s.pendingResume?.jobId !== keepJobId
               ? null
               : s.pendingResume,
         }));

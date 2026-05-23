@@ -10,7 +10,7 @@ import {
 import type { AsyncTaskStatusDto, LabJobAcceptedDto, LabJobLiveConnectionState } from "@/types/api";
 import { useTranslations } from "next-intl";
 
-type LabJobPanelProps = {
+type LabJobPanelProps = Readonly<{
   accepted: LabJobAcceptedDto | null;
   taskStatus: AsyncTaskStatusDto | null;
   /** Shown while waiting for first SSE tick */
@@ -22,7 +22,7 @@ type LabJobPanelProps = {
   /** Monotonic seconds since async watch began (local UI clock). */
   watchElapsedSeconds?: number;
   onResumeLive?: () => void;
-};
+}>;
 
 /**
  * Shared job progress UI: friendly status (Phase 3D) + collapsible technical details.
@@ -38,7 +38,7 @@ export function LabJobPanel({
 }: LabJobPanelProps) {
   const t = useTranslations("Lab");
 
-  if (!accepted && !taskStatus && !stoppedWaiting && !connectionState) {
+  if (!accepted && !taskStatus && !stoppedWaiting && connectionState == null) {
     return null;
   }
 
@@ -77,7 +77,7 @@ export function LabJobPanel({
 
   return (
     <div className="bg-muted/30 space-y-3 rounded-md border p-3 text-sm" data-testid="lab-job-panel">
-      {phase !== "idle" ? (
+      {phase === "idle" ? null : (
         <div className="flex flex-col gap-2">
           <InlineHelpStatus status={traceStatus} label={statusLabel} className="max-w-full" />
           {friendlyFailure ? (
@@ -102,7 +102,7 @@ export function LabJobPanel({
             </p>
           ) : null}
         </div>
-      ) : null}
+      )}
 
       {accepted ? (
         <details className="text-xs">

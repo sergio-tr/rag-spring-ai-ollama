@@ -222,13 +222,14 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
   });
 
   const benchmarkKind = query.data?.run.benchmarkKind ?? null;
+  const campaignComparison = query.data?.campaignComparison;
 
   const comparisonRows = useMemo(() => {
-    if (!query.data?.campaignComparison) {
+    if (!campaignComparison) {
       return [] as ComparisonRow[];
     }
-    return sortComparisonRows(parseComparisonRows(query.data.campaignComparison));
-  }, [query.data?.campaignComparison]);
+    return sortComparisonRows(parseComparisonRows(campaignComparison));
+  }, [campaignComparison]);
 
   if (!enabled) {
     return null;
