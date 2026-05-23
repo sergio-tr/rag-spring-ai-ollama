@@ -1,10 +1,8 @@
 package com.uniovi.rag.application.service.evaluation.preset;
 
-import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
 import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
 import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileService;
-import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
 import com.uniovi.rag.application.service.runtime.config.IndexCompatibilityResult;
@@ -73,7 +71,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
     private final EvaluationService evaluationService;
     private final EvaluationRunRepository evaluationRunRepository;
     private final ExperimentalSnapshotFactory experimentalSnapshotFactory;
-    private final KnowledgeSnapshotService knowledgeSnapshotService;
+    private final LabEvaluationSnapshotService labEvaluationSnapshotService;
     private final LabPresetRunPlanService labPresetRunPlanService;
     private final KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
     private final ProjectIndexProfileService projectIndexProfileService;
@@ -84,7 +82,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
             EvaluationService evaluationService,
             EvaluationRunRepository evaluationRunRepository,
             ExperimentalSnapshotFactory experimentalSnapshotFactory,
-            KnowledgeSnapshotService knowledgeSnapshotService,
+            LabEvaluationSnapshotService labEvaluationSnapshotService,
             LabPresetRunPlanService labPresetRunPlanService,
             KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
             ProjectIndexProfileService projectIndexProfileService,
@@ -93,7 +91,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
         this.evaluationService = evaluationService;
         this.evaluationRunRepository = evaluationRunRepository;
         this.experimentalSnapshotFactory = experimentalSnapshotFactory;
-        this.knowledgeSnapshotService = knowledgeSnapshotService;
+        this.labEvaluationSnapshotService = labEvaluationSnapshotService;
         this.labPresetRunPlanService = labPresetRunPlanService;
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
         this.projectIndexProfileService = projectIndexProfileService;
@@ -173,7 +171,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
             codesForPlan = labPresetRunPlanService.sortDefinitionsOrder(new ArrayList<>(requestedPresets));
         }
         LabPresetRunPlanModels.LabPresetRunPlan runPlan = labPresetRunPlanService.build(run, codesForPlan);
-        AutoReindexPolicy autoReindexPolicy = AutoReindexPolicy.fromRun(run);
+        LabEvaluationSnapshotService.AutoReindexPolicy autoReindexPolicy =
+                LabEvaluationSnapshotService.AutoReindexPolicy.fromRun(run);
+        labEvaluationSnapshotService.ensureRunIndexProject(run);
 
         Map<RagExperimentalPresetCode, RagPresetDefinition> defByPreset =
                 catalog.stream()
@@ -359,9 +359,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 }
 
                 PreflightIndexCompatibility gate = checkPresetIndexCompatibility(run, preset);
-                UUID projectId = run != null && run.getProject() != null ? run.getProject().getId() : null;
                 UUID resolvedSnapId = resolvePresetSnapshotId(exec, gate);
-                CorpusDiagnostics corpusDiagnostics = corpusDiagnosticsFor(projectId, resolvedSnapId, preset);
+                CorpusDiagnostics corpusDiagnostics = corpusDiagnosticsFor(run, resolvedSnapId, preset);
                 if (!gate.compatible()) {
                     for (RagPresetQuestion q : questions) {
                         bump.run();
@@ -384,7 +383,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     continue;
                 }
 
-                if (corpusDiagnostics.blocking()) {
+                if (corpusDiagnostics.blocking() && !allowsCorpusBypass(preset)) {
                     for (RagPresetQuestion q : questions) {
                         bump.run();
                         allRows.add(
@@ -516,13 +515,17 @@ public class TypedRagPresetBenchmarkOrchestrator {
     }
 
     private CorpusDiagnostics corpusDiagnosticsFor(
-            UUID projectId, UUID snapshotId, RagExperimentalPresetCode preset) {
+            EvaluationRunEntity run, UUID snapshotId, RagExperimentalPresetCode preset) {
         if (preset == null || !ExperimentalPresetCanonicalCatalog.corpusRequired(preset)) {
             return CorpusDiagnostics.notRequired();
         }
+        UUID userId = run != null && run.getUser() != null ? run.getUser().getId() : null;
+        UUID corpusId =
+                run != null && run.getEvaluationCorpus() != null ? run.getEvaluationCorpus().getId() : null;
+        UUID projectId = run != null && run.getProject() != null ? run.getProject().getId() : null;
         List<UUID> snapshotIds = resolveCorpusSnapshotIds(projectId, snapshotId, preset);
-        CorpusAvailabilityGate.Result result = corpusAvailabilityGate.evaluate(projectId, snapshotIds);
-        Map<String, Object> metrics = corpusAvailabilityGate.probe(projectId, snapshotIds);
+        CorpusAvailabilityGate.Result result = corpusAvailabilityGate.evaluate(userId, corpusId, snapshotIds);
+        Map<String, Object> metrics = corpusAvailabilityGate.probe(userId, corpusId, snapshotIds);
         return new CorpusDiagnostics(result, metrics);
     }
 
@@ -535,13 +538,14 @@ public class TypedRagPresetBenchmarkOrchestrator {
         if (snapshotId != null) {
             return List.of(snapshotId);
         }
-        if (projectId == null || !ExperimentalPresetCanonicalCatalog.requiresSnapshotAssembledCorpusEvidence(preset)) {
+        if (!ExperimentalPresetCanonicalCatalog.requiresSnapshotAssembledCorpusEvidence(preset)) {
             return List.of();
         }
-        return knowledgeSnapshotService
-                .findActiveProjectSnapshot(projectId)
-                .map(s -> s.getId() != null ? List.of(s.getId()) : List.<UUID>of())
-                .orElse(List.of());
+        return List.of();
+    }
+
+    private static boolean allowsCorpusBypass(RagExperimentalPresetCode preset) {
+        return preset == RagExperimentalPresetCode.P0;
     }
 
     private static GroupExecution seedCorpusEvidenceSnapshot(
@@ -612,6 +616,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 plan.resolvedSnapshotId(),
                 plan.resolvedIndexProfileHash(),
                 plan.hasActiveSnapshot(),
+                plan.corpusId(),
                 plan.strategyVersion(),
                 plan.createdAt());
     }
@@ -639,7 +644,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                         exec.startedAt(),
                         exec.completedAt(),
                         exec.errorCode(),
-                        exec.errorReason());
+                        exec.errorReason(),
+                        g.corpusId());
     }
 
     private void persistRunPlanBestEffort(UUID runId, LabPresetRunPlanModels.LabPresetRunPlan runPlan) {
@@ -665,68 +671,31 @@ public class TypedRagPresetBenchmarkOrchestrator {
             EvaluationRunEntity run,
             LabPresetRunPlanModels.LabPresetRunGroup group,
             GroupExecution exec,
-            AutoReindexPolicy policy) {
+            LabEvaluationSnapshotService.AutoReindexPolicy policy) {
         if (run == null || group == null || exec == null || !policy.enabled()) {
             return exec;
         }
-        ProjectEntity project = run.getProject();
-        if (project == null || project.getId() == null) {
-            throw new IllegalStateException("AUTO_REINDEX_REQUIRES_PROJECT_CONTEXT");
-        }
-        UUID projectId = project.getId();
+        labEvaluationSnapshotService.ensureRunIndexProject(run);
 
         ExperimentalPresetCanonicalCatalog.IndexRequirements req = groupRequirements(group);
-        KnowledgeIndexSnapshotEntity snap = resolveSnapshot(run, req);
-        boolean hasSnapshot = snap != null && snap.getId() != null;
-        Map<String, Object> profile = hasSnapshot && snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
-        String profileHash = hasSnapshot ? snap.getIndexProfileHash() : null;
-        IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
-        IndexCompatibilityResult idx = labIndexCompatibility(req, hasSnapshot, caps);
+        LabEvaluationSnapshotService.PrepareResult prepared =
+                labEvaluationSnapshotService.prepareSnapshotIfNeeded(
+                        run, group.groupKey(), req, policy, run.getEmbeddingModelId());
 
-        if (idx.compatible()) {
-            return exec.withReindexAction("REUSE_COMPATIBLE_SNAPSHOT")
-                    .withReindexStatus("REUSED")
-                    .withGroupSnapshotId(hasSnapshot ? snap.getId() : null)
-                    .withGroupIndexProfileHash(profileHash);
+        if (prepared.snapshot() != null && prepared.snapshot().hasUsableSnapshot()) {
+            return exec.withReindexAction(prepared.action())
+                    .withReindexStatus(prepared.status())
+                    .withGroupSnapshotId(prepared.snapshot().snapshotId())
+                    .withGroupIndexProfileHash(prepared.snapshot().indexProfileHash())
+                    .withSnapshotPreparedDuringRun(prepared.snapshot().preparedDuringRun());
         }
-
-        if (!idx.requiresReindex() || !policy.allowActiveSnapshotMutation()) {
-            return exec.withReindexAction("NONE")
-                    .withReindexStatus("INCOMPATIBLE")
-                    .withErrorCode(idx.reasonCode())
-                    .withErrorReason(idx.message());
+        if (prepared.errorCode() != null) {
+            return exec.withReindexAction(prepared.action())
+                    .withReindexStatus(prepared.status())
+                    .withErrorCode(prepared.errorCode())
+                    .withErrorReason(prepared.errorReason());
         }
-
-        exec = exec.withReindexAction("BUILD_AND_ACTIVATE").withReindexStatus("BUILDING");
-        // Build effective profile derived from requirements + group key; keep embedding/chunking from current profile.
-        var current = projectIndexProfileService.ensureDefault(projectId);
-        var effective = labIndexProfileOverrideFactory.buildEffectiveProfile(current, req, group.groupKey());
-
-        UUID resolvedConfigSnapshotId =
-                run.getResolvedConfigSnapshot() != null ? run.getResolvedConfigSnapshot().getId() : null;
-        String resolvedConfigHash =
-                run.getResolvedConfigSnapshot() != null ? run.getResolvedConfigSnapshot().getConfigHash() : null;
-        UUID newSnapId =
-                knowledgePipelineOrchestrator.rebuildScopeWithProfileOverride(
-                        projectId,
-                        CorpusScope.PROJECT_SHARED,
-                        null,
-                        resolvedConfigSnapshotId,
-                        resolvedConfigHash,
-                        effective);
-
-        KnowledgeIndexSnapshotEntity after = knowledgeSnapshotService.findActiveProjectSnapshot(projectId).orElse(null);
-        UUID activeId = after != null ? after.getId() : newSnapId;
-        String afterHash = after != null ? after.getIndexProfileHash() : effective.profileHash();
-        Map<String, Object> afterProfile = after != null && after.getIndexProfileJsonb() != null ? after.getIndexProfileJsonb() : effective.toSnapshotJsonb();
-        IndexSnapshotCapabilities afterCaps = IndexSnapshotCapabilities.fromIndexProfile(afterProfile);
-        IndexCompatibilityResult afterIdx = IndexCompatibilityResult.check(req, activeId != null, afterCaps);
-        if (!afterIdx.compatible()) {
-            throw new IllegalStateException(afterIdx.reasonCode() != null ? afterIdx.reasonCode() : "SNAPSHOT_BUILD_FAILED");
-        }
-        return exec.withReindexStatus("BUILT")
-                .withGroupSnapshotId(activeId)
-                .withGroupIndexProfileHash(afterHash);
+        return exec;
     }
 
     private static ExperimentalPresetCanonicalCatalog.IndexRequirements groupRequirements(
@@ -743,28 +712,6 @@ public class TypedRagPresetBenchmarkOrchestrator {
         return ExperimentalPresetCanonicalCatalog.IndexRequirements.none();
     }
 
-    private record AutoReindexPolicy(
-            boolean enabled,
-            boolean allowActiveSnapshotMutation,
-            boolean reuseCompatibleActiveSnapshot,
-            boolean failOnReindexFailure) {
-        @SuppressWarnings("unchecked")
-        static AutoReindexPolicy fromRun(EvaluationRunEntity run) {
-            if (run == null || run.getAggregatesJson() == null) {
-                return new AutoReindexPolicy(false, false, true, true);
-            }
-            Object o = run.getAggregatesJson().get("autoReindexPolicy");
-            if (!(o instanceof Map<?, ?> m)) {
-                return new AutoReindexPolicy(false, false, true, true);
-            }
-            boolean enabled = Boolean.TRUE.equals(m.get("enabled"));
-            boolean allowMut = Boolean.TRUE.equals(m.get("allowActiveSnapshotMutation"));
-            boolean reuse = m.get("reuseCompatibleActiveSnapshot") == null || Boolean.TRUE.equals(m.get("reuseCompatibleActiveSnapshot"));
-            boolean fail = m.get("failOnReindexFailure") == null || Boolean.TRUE.equals(m.get("failOnReindexFailure"));
-            return new AutoReindexPolicy(enabled, allowMut, reuse, fail);
-        }
-    }
-
     private record GroupExecution(
             LabPresetRunGroupKey groupKey,
             String reindexAction,
@@ -775,20 +722,22 @@ public class TypedRagPresetBenchmarkOrchestrator {
             Instant startedAt,
             Instant completedAt,
             String errorCode,
-            String errorReason) {
+            String errorReason,
+            boolean snapshotPreparedDuringRun) {
         static GroupExecution initial(LabPresetRunGroupKey key) {
-            return new GroupExecution(key, null, null, null, null, null, null, null, null, null);
+            return new GroupExecution(key, null, null, null, null, null, null, null, null, null, false);
         }
 
-        GroupExecution withReindexAction(String v) { return new GroupExecution(groupKey, v, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, completedAt, errorCode, errorReason); }
-        GroupExecution withReindexStatus(String v) { return new GroupExecution(groupKey, reindexAction, v, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, completedAt, errorCode, errorReason); }
-        GroupExecution withGroupSnapshotId(UUID v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, v, groupIndexProfileHash, reindexEventId, startedAt, completedAt, errorCode, errorReason); }
-        GroupExecution withGroupIndexProfileHash(String v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, v, reindexEventId, startedAt, completedAt, errorCode, errorReason); }
-        GroupExecution withReindexEventId(UUID v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, v, startedAt, completedAt, errorCode, errorReason); }
-        GroupExecution withStartedAt(Instant v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, v, completedAt, errorCode, errorReason); }
-        GroupExecution withCompletedAt(Instant v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, v, errorCode, errorReason); }
-        GroupExecution withErrorCode(String v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, completedAt, v, errorReason); }
-        GroupExecution withErrorReason(String v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, completedAt, errorCode, v); }
+        GroupExecution withReindexAction(String v) { return new GroupExecution(groupKey, v, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, completedAt, errorCode, errorReason, snapshotPreparedDuringRun); }
+        GroupExecution withReindexStatus(String v) { return new GroupExecution(groupKey, reindexAction, v, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, completedAt, errorCode, errorReason, snapshotPreparedDuringRun); }
+        GroupExecution withGroupSnapshotId(UUID v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, v, groupIndexProfileHash, reindexEventId, startedAt, completedAt, errorCode, errorReason, snapshotPreparedDuringRun); }
+        GroupExecution withGroupIndexProfileHash(String v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, v, reindexEventId, startedAt, completedAt, errorCode, errorReason, snapshotPreparedDuringRun); }
+        GroupExecution withReindexEventId(UUID v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, v, startedAt, completedAt, errorCode, errorReason, snapshotPreparedDuringRun); }
+        GroupExecution withStartedAt(Instant v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, v, completedAt, errorCode, errorReason, snapshotPreparedDuringRun); }
+        GroupExecution withCompletedAt(Instant v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, v, errorCode, errorReason, snapshotPreparedDuringRun); }
+        GroupExecution withErrorCode(String v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, completedAt, v, errorReason, snapshotPreparedDuringRun); }
+        GroupExecution withErrorReason(String v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, completedAt, errorCode, v, snapshotPreparedDuringRun); }
+        GroupExecution withSnapshotPreparedDuringRun(boolean v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, completedAt, errorCode, errorReason, v); }
     }
 
     private PreflightIndexCompatibility checkPresetIndexCompatibility(
@@ -802,12 +751,14 @@ public class TypedRagPresetBenchmarkOrchestrator {
             return PreflightIndexCompatibility.compatible(req, null, null, null);
         }
 
-        KnowledgeIndexSnapshotEntity snap = resolveSnapshot(run, req);
-        boolean hasSnapshot = snap != null && snap.getId() != null;
-        Map<String, Object> profile = hasSnapshot && snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
-        String profileHash = hasSnapshot ? snap.getIndexProfileHash() : null;
-        IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
-        IndexCompatibilityResult idx = labIndexCompatibility(req, hasSnapshot, caps);
+        LabEvaluationSnapshotService.ResolvedSnapshot resolved =
+                labEvaluationSnapshotService.resolveCompatibleSnapshot(run, req);
+        boolean hasSnapshot = resolved.hasUsableSnapshot();
+        IndexSnapshotCapabilities caps =
+                resolved.capabilities() != null
+                        ? resolved.capabilities()
+                        : IndexSnapshotCapabilities.fromIndexProfile(Map.of());
+        IndexCompatibilityResult idx = labIndexCompatibility(req, hasSnapshot, caps, preset);
         return new PreflightIndexCompatibility(
                 idx.compatible(),
                 idx.requiresReindex(),
@@ -816,52 +767,21 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 idx.message(),
                 req,
                 caps,
-                hasSnapshot ? snap.getId() : null,
-                profileHash);
-    }
-
-    private KnowledgeIndexSnapshotEntity resolveSnapshot(
-            EvaluationRunEntity run,
-            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
-        if (run == null) {
-            return null;
-        }
-        KnowledgeIndexSnapshotEntity explicit = run.getIndexSnapshot();
-        if (isCompatibleSnapshot(explicit, requirements)) {
-            return explicit;
-        }
-        ProjectEntity p = run.getProject();
-        if (p == null || p.getId() == null) {
-            return explicit != null && explicit.getId() != null ? explicit : null;
-        }
-        KnowledgeIndexSnapshotEntity active = knowledgeSnapshotService.findActiveProjectSnapshot(p.getId()).orElse(null);
-        if (isCompatibleSnapshot(active, requirements)) {
-            return active;
-        }
-        Optional<KnowledgeIndexSnapshotEntity> compatible =
-                knowledgeSnapshotService.findCompatibleProjectSnapshot(p.getId(), s -> isCompatibleSnapshot(s, requirements));
-        return (compatible != null ? compatible : Optional.<KnowledgeIndexSnapshotEntity>empty())
-                .orElse(explicit != null && explicit.getId() != null ? explicit : active);
-    }
-
-    private static boolean isCompatibleSnapshot(
-            KnowledgeIndexSnapshotEntity snapshot,
-            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
-        if (snapshot == null || snapshot.getId() == null) {
-            return false;
-        }
-        Map<String, Object> profile = snapshot.getIndexProfileJsonb() != null ? snapshot.getIndexProfileJsonb() : Map.of();
-        IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
-        return IndexCompatibilityResult.check(requirements, true, caps).compatible();
+                resolved.snapshotId(),
+                resolved.indexProfileHash());
     }
 
     private static IndexCompatibilityResult labIndexCompatibility(
             ExperimentalPresetCanonicalCatalog.IndexRequirements req,
             boolean hasSnapshot,
-            IndexSnapshotCapabilities caps) {
+            IndexSnapshotCapabilities caps,
+            RagExperimentalPresetCode preset) {
         if (req == null
                 || req.requiredMaterialization() == null
                 || req.requiredMaterialization() == ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE) {
+            return IndexCompatibilityResult.ok();
+        }
+        if (ExperimentalPresetCanonicalCatalog.canRunWithoutRetrieval(preset)) {
             return IndexCompatibilityResult.ok();
         }
         if (!hasSnapshot) {
@@ -905,10 +825,17 @@ public class TypedRagPresetBenchmarkOrchestrator {
             Map<String, Object> metrics =
                     buildLabMetricsPayload(presetLabel, preset, gk, indexGate, runPlanVersion, exec, applicationDefaults);
             mergeEvaluationTelemetryIntoMetrics(row, metrics);
-            if (extraLabMetrics != null && !extraLabMetrics.isEmpty()) {
-                metrics.putAll(extraLabMetrics);
-            }
-            mergeSelectedSnapshotIds(metrics, exec, indexGate, extraLabMetrics);
+        if (extraLabMetrics != null && !extraLabMetrics.isEmpty()) {
+            metrics.putAll(extraLabMetrics);
+        }
+        if (preset != null) {
+            metrics.putIfAbsent("presetCode", preset.name());
+            metrics.putIfAbsent(
+                    "materializationStrategy",
+                    ExperimentalPresetCanonicalCatalog.requiredMaterialization(preset).name());
+            metrics.putIfAbsent("metadataEnabled", ExperimentalPresetCanonicalCatalog.metadataRequired(preset));
+        }
+        mergeSelectedSnapshotIds(metrics, exec, indexGate, extraLabMetrics);
             applyExecutionEvidenceSemantics(metrics, preset);
             row.put(JSON_KEY_METRICS_PAYLOAD, metrics);
         }
@@ -1182,8 +1109,10 @@ public class TypedRagPresetBenchmarkOrchestrator {
             metrics.put("reindexCompletedAt", exec.completedAt() != null ? exec.completedAt().toString() : null);
             metrics.put("reindexErrorCode", exec.errorCode());
             metrics.put("reindexErrorReason", exec.errorReason());
+            metrics.put("snapshotPreparedDuringRun", exec.snapshotPreparedDuringRun());
         } else {
             metrics.put("forcedSnapshotSelection", Boolean.FALSE);
+            metrics.put("snapshotPreparedDuringRun", Boolean.FALSE);
         }
         if (gate != null) {
             metrics.put("indexCompatibilityStatus", gate.status());

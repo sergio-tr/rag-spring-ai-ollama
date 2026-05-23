@@ -97,10 +97,16 @@ public class LabClasspathCorpusBootstrapService {
         }
 
         if (run.getProject() == null || run.getProject().getId() == null) {
-            throw new IllegalStateException(
-                    LabCorpusBootstrapErrors.REQUIRES_PROJECT
-                            + ": Classpath corpus bootstrap requires evaluation_run.project_id (PROJECT_SHARED documents are project-scoped).");
+            if (run.getEvaluationCorpus() == null
+                    || run.getEvaluationCorpus().getIndexProject() == null
+                    || run.getEvaluationCorpus().getIndexProject().getId() == null) {
+                throw new IllegalStateException(
+                        LabCorpusBootstrapErrors.REQUIRES_PROJECT
+                                + ": Classpath corpus bootstrap requires evaluation corpus index scope.");
+            }
+            run.setProject(run.getEvaluationCorpus().getIndexProject());
         }
+        UUID projectId = run.getProject().getId();
         String corpusScopeName = String.valueOf(policy.getOrDefault("corpusScope", CorpusScope.PROJECT_SHARED.name()));
         if (!CorpusScope.PROJECT_SHARED.name().equalsIgnoreCase(corpusScopeName)) {
             throw new IllegalStateException(
@@ -115,7 +121,6 @@ public class LabClasspathCorpusBootstrapService {
                 policy.get("failOnDocumentError") == null || Boolean.TRUE.equals(policy.get("failOnDocumentError"));
 
         String pattern = normalizeClasspathPattern(location);
-        UUID projectId = run.getProject().getId();
         projectAccessService.requireOwnedProject(userId, projectId);
 
         List<Resource> rawFiles;

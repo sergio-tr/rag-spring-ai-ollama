@@ -38,6 +38,10 @@ public class EvaluationRunEntity {
     private ProjectEntity project;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "evaluation_corpus_id")
+    private EvaluationCorpusEntity evaluationCorpus;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "campaign_id")
     private EvaluationCampaignEntity campaign;
 
@@ -156,6 +160,14 @@ public class EvaluationRunEntity {
 
     public void setProject(ProjectEntity project) {
         this.project = project;
+    }
+
+    public EvaluationCorpusEntity getEvaluationCorpus() {
+        return evaluationCorpus;
+    }
+
+    public void setEvaluationCorpus(EvaluationCorpusEntity evaluationCorpus) {
+        this.evaluationCorpus = evaluationCorpus;
     }
 
     public EvaluationCampaignEntity getCampaign() {

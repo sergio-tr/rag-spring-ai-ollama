@@ -103,6 +103,27 @@ class LabBenchmarkControllerWebMvcTest {
     }
 
     @Test
+    void postRagBenchmark_withCorpusIdAndNoProjectId_returns202() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID ds = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
+        when(benchmarkRunOrchestrator.startJsonBenchmark(
+                        eq(userId), eq("USER"), eq(BenchmarkKind.RAG_PRESET_END_TO_END), any(StartBenchmarkRunRequest.class)))
+                .thenReturn(BenchmarkJobAccepted.of(runId, taskId));
+
+        String body = String.format(
+                "{\"datasetId\":\"%s\",\"corpusId\":\"%s\",\"runKind\":\"PRODUCT_EXPLORATION\"}", ds, corpusId);
+
+        mockMvc.perform(
+                        post(path("/lab/benchmarks/RAG_PRESET_END_TO_END/runs"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(body))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.evaluationRunId").value(runId.toString()));
+    }
+
+    @Test
     void postBenchmark_rejectedByDatasetGate_returns422WithStructuredError() throws Exception {
         UUID ds = UUID.randomUUID();
         when(benchmarkRunOrchestrator.startJsonBenchmark(

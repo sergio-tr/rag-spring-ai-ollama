@@ -1,12 +1,10 @@
 package com.uniovi.rag.application.service.evaluation.preset;
 
-import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.runtime.config.IndexCompatibilityResult;
 import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
-import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -14,13 +12,12 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * Builds {@link LabPresetRunPlanModels.LabPresetRunPlan} from canonical index requirements and active snapshot.
+ * Builds {@link LabPresetRunPlanModels.LabPresetRunPlan} from canonical index requirements and corpus-scoped snapshots.
  */
 @Service
 public class LabPresetRunPlanService {
@@ -28,10 +25,10 @@ public class LabPresetRunPlanService {
     private static final Comparator<LabPresetRunGroupKey> GROUP_ORDER =
             Comparator.comparingInt(Enum::ordinal);
 
-    private final KnowledgeSnapshotService knowledgeSnapshotService;
+    private final LabEvaluationSnapshotService labEvaluationSnapshotService;
 
-    public LabPresetRunPlanService(KnowledgeSnapshotService knowledgeSnapshotService) {
-        this.knowledgeSnapshotService = knowledgeSnapshotService;
+    public LabPresetRunPlanService(LabEvaluationSnapshotService labEvaluationSnapshotService) {
+        this.labEvaluationSnapshotService = labEvaluationSnapshotService;
     }
 
     /**
@@ -39,6 +36,7 @@ public class LabPresetRunPlanService {
      */
     public LabPresetRunPlanModels.LabPresetRunPlan build(EvaluationRunEntity run, List<RagExperimentalPresetCode> requested) {
         List<RagExperimentalPresetCode> ordered = dedupePreserveOrder(requested);
+        labEvaluationSnapshotService.ensureRunIndexProject(run);
 
         Map<String, String> skipped = new LinkedHashMap<>();
         List<String> executable = new ArrayList<>();
@@ -64,9 +62,10 @@ public class LabPresetRunPlanService {
         }
 
         SnapshotContext snapCtx =
-                resolveSnapshotContext(run, ExperimentalPresetCanonicalCatalog.IndexRequirements.none());
+                resolveSnapshotContext(run, ExperimentalPresetCanonicalCatalog.IndexRequirements.none(), null);
 
         List<String> requestedStr = ordered.stream().map(RagExperimentalPresetCode::name).toList();
+        UUID corpusId = labEvaluationSnapshotService.resolveCorpusId(run);
         return new LabPresetRunPlanModels.LabPresetRunPlan(
                 groups,
                 items,
@@ -76,6 +75,7 @@ public class LabPresetRunPlanService {
                 snapCtx.snapshotId,
                 snapCtx.profileHash,
                 snapCtx.hasUsableSnapshot,
+                corpusId,
                 LabPresetRunPlanModels.STRATEGY_VERSION,
                 Instant.now());
     }
@@ -104,7 +104,8 @@ public class LabPresetRunPlanService {
         ExperimentalPresetCanonicalCatalog.IndexRequirements mergedAgg = codes.stream()
                 .map(ExperimentalPresetCanonicalCatalog::effectiveIndexRequirements)
                 .reduce(ExperimentalPresetCanonicalCatalog.IndexRequirements.none(), this::mergeRequirements);
-        SnapshotContext snapCtx = resolveSnapshotContext(run, mergedAgg);
+        SnapshotContext snapCtx = resolveSnapshotContext(run, mergedAgg, run != null ? run.getEmbeddingModelId() : null);
+        UUID corpusId = labEvaluationSnapshotService.resolveCorpusId(run);
         if (gk == LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN) {
             for (RagExperimentalPresetCode c : codes) {
                 skipped.put(c.name(), "MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED");
@@ -123,6 +124,8 @@ public class LabPresetRunPlanService {
                                 snapCtx.snapshotId,
                                 snapCtx.profileHash,
                                 snapshotCapsMap(snapCtx.caps),
+                                corpusId,
+                                false,
                                 LabPresetRunPlanModels.STRATEGY_VERSION));
             }
             return new LabPresetRunPlanModels.LabPresetRunGroup(
@@ -144,7 +147,8 @@ public class LabPresetRunPlanService {
                     null,
                     null,
                     null,
-                    null);
+                    null,
+                    corpusId);
         }
 
         boolean allCompatible = true;
@@ -155,7 +159,7 @@ public class LabPresetRunPlanService {
         for (RagExperimentalPresetCode c : codes) {
             ExperimentalPresetCanonicalCatalog.IndexRequirements req =
                     ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(c);
-            IndexCompatibilityResult idx = labIndexCompatibility(req, snapCtx);
+            IndexCompatibilityResult idx = labIndexCompatibility(req, snapCtx, c);
             if (!idx.compatible()) {
                 allCompatible = false;
             }
@@ -187,6 +191,8 @@ public class LabPresetRunPlanService {
                                 snapCtx.snapshotId,
                                 snapCtx.profileHash,
                                 snapshotCapsMap(snapCtx.caps),
+                                corpusId,
+                                false,
                                 LabPresetRunPlanModels.STRATEGY_VERSION));
             }
         } else {
@@ -195,7 +201,7 @@ public class LabPresetRunPlanService {
                 boolean requiresReindex = IndexCompatibilityResult
                         .check(ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(c), snapCtx.hasUsableSnapshot, snapCtx.caps)
                         .requiresReindex();
-                if (!snapCtx.hasUsableSnapshot) {
+                if (!snapCtx.hasUsableSnapshot && ExperimentalPresetCanonicalCatalog.needsVectorIndex(c)) {
                     requiresReindex = true;
                 }
                 items.add(
@@ -213,6 +219,8 @@ public class LabPresetRunPlanService {
                                 snapCtx.snapshotId,
                                 snapCtx.profileHash,
                                 snapshotCapsMap(snapCtx.caps),
+                                corpusId,
+                                false,
                                 LabPresetRunPlanModels.STRATEGY_VERSION));
             }
         }
@@ -237,7 +245,8 @@ public class LabPresetRunPlanService {
                 null,
                 null,
                 null,
-                null);
+                null,
+                corpusId);
     }
 
     private ExperimentalPresetCanonicalCatalog.IndexRequirements mergeRequirements(
@@ -310,63 +319,33 @@ public class LabPresetRunPlanService {
 
     private SnapshotContext resolveSnapshotContext(
             EvaluationRunEntity run,
-            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
-        KnowledgeIndexSnapshotEntity snap = resolveSnapshot(run, requirements);
-        boolean hasUsableSnapshot = snap != null && snap.getId() != null;
-        Map<String, Object> profile =
-                hasUsableSnapshot && snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
-        IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
-        UUID id = hasUsableSnapshot ? snap.getId() : null;
-        String hash = hasUsableSnapshot ? snap.getIndexProfileHash() : null;
-        return new SnapshotContext(hasUsableSnapshot, caps, id, hash);
-    }
-
-    private KnowledgeIndexSnapshotEntity resolveSnapshot(
-            EvaluationRunEntity run,
-            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
-        if (run == null) {
-            return null;
-        }
-        KnowledgeIndexSnapshotEntity explicit = run.getIndexSnapshot();
-        if (isCompatibleSnapshot(explicit, requirements)) {
-            return explicit;
-        }
-        ProjectEntity p = run.getProject();
-        if (p == null || p.getId() == null) {
-            return explicit != null && explicit.getId() != null ? explicit : null;
-        }
-        KnowledgeIndexSnapshotEntity active = knowledgeSnapshotService.findActiveProjectSnapshot(p.getId()).orElse(null);
-        if (isCompatibleSnapshot(active, requirements)) {
-            return active;
-        }
-        Optional<KnowledgeIndexSnapshotEntity> compatible =
-                knowledgeSnapshotService.findCompatibleProjectSnapshot(p.getId(), s -> isCompatibleSnapshot(s, requirements));
-        return (compatible != null ? compatible : Optional.<KnowledgeIndexSnapshotEntity>empty())
-                .orElse(explicit != null && explicit.getId() != null ? explicit : active);
-    }
-
-    private static boolean isCompatibleSnapshot(
-            KnowledgeIndexSnapshotEntity snapshot,
-            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
-        if (snapshot == null || snapshot.getId() == null) {
-            return false;
-        }
-        Map<String, Object> profile = snapshot.getIndexProfileJsonb() != null ? snapshot.getIndexProfileJsonb() : Map.of();
-        IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
-        return IndexCompatibilityResult.check(requirements, true, caps).compatible();
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements,
+            String embeddingModelId) {
+        LabEvaluationSnapshotService.ResolvedSnapshot resolved =
+                labEvaluationSnapshotService.resolveCompatibleSnapshot(run, requirements, embeddingModelId);
+        boolean hasUsableSnapshot = resolved.hasUsableSnapshot();
+        IndexSnapshotCapabilities caps =
+                resolved.capabilities() != null
+                        ? resolved.capabilities()
+                        : IndexSnapshotCapabilities.fromIndexProfile(Map.of());
+        return new SnapshotContext(hasUsableSnapshot, caps, resolved.snapshotId(), resolved.indexProfileHash());
     }
 
     private static IndexCompatibilityResult labIndexCompatibility(
             ExperimentalPresetCanonicalCatalog.IndexRequirements req,
-            SnapshotContext snapCtx) {
+            SnapshotContext snapCtx,
+            RagExperimentalPresetCode preset) {
         if (req == null
                 || req.requiredMaterialization() == null
                 || req.requiredMaterialization() == ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE) {
             return IndexCompatibilityResult.ok();
         }
+        if (ExperimentalPresetCanonicalCatalog.canRunWithoutRetrieval(preset)) {
+            return IndexCompatibilityResult.ok();
+        }
         if (snapCtx == null || !snapCtx.hasUsableSnapshot()) {
             return IndexCompatibilityResult.requiresReindex(
-                    "REINDEX_REQUIRED",
+                    LabEvaluationSnapshotService.REINDEX_REQUIRED,
                     "Documents may exist, but no compatible snapshot was selected for this preset.");
         }
         IndexCompatibilityResult idx = IndexCompatibilityResult.check(req, true, snapCtx.caps());
@@ -374,7 +353,7 @@ public class LabPresetRunPlanService {
             return idx;
         }
         return IndexCompatibilityResult.requiresReindex(
-                "NO_COMPATIBLE_SNAPSHOT",
+                LabEvaluationSnapshotService.NO_COMPATIBLE_SNAPSHOT,
                 idx.message() != null ? idx.message() : "No compatible snapshot satisfies this preset.");
     }
 

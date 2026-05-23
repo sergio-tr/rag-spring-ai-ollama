@@ -14,7 +14,7 @@ public final class LabPresetRunPlanModels {
     private LabPresetRunPlanModels() {}
 
     /** Version tag for deterministic thesis run-plan semantics (grouping + compatibility rules). */
-    public static final int STRATEGY_VERSION = 1;
+    public static final int STRATEGY_VERSION = 2;
 
     public record LabPresetRunPlan(
             List<LabPresetRunGroup> groups,
@@ -25,6 +25,7 @@ public final class LabPresetRunPlanModels {
             UUID resolvedSnapshotId,
             String resolvedIndexProfileHash,
             boolean hasActiveSnapshot,
+            UUID corpusId,
             int strategyVersion,
             Instant createdAt
     ) {
@@ -38,6 +39,7 @@ public final class LabPresetRunPlanModels {
             m.put("resolvedSnapshotId", resolvedSnapshotId != null ? resolvedSnapshotId.toString() : null);
             m.put("resolvedIndexProfileHash", resolvedIndexProfileHash);
             m.put("hasActiveSnapshot", hasActiveSnapshot);
+            m.put("corpusId", corpusId != null ? corpusId.toString() : null);
             m.put("strategyVersion", strategyVersion);
             m.put("createdAt", createdAt != null ? createdAt.toString() : null);
             return m;
@@ -63,7 +65,8 @@ public final class LabPresetRunPlanModels {
             Instant startedAt,
             Instant completedAt,
             String errorCode,
-            String errorReason
+            String errorReason,
+            UUID corpusId
     ) {
         public Map<String, Object> toMap() {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -86,6 +89,7 @@ public final class LabPresetRunPlanModels {
             m.put("completedAt", completedAt != null ? completedAt.toString() : null);
             m.put("errorCode", errorCode);
             m.put("errorReason", errorReason);
+            m.put("corpusId", corpusId != null ? corpusId.toString() : null);
             return m;
         }
     }
@@ -104,6 +108,8 @@ public final class LabPresetRunPlanModels {
             UUID resolvedSnapshotId,
             String resolvedIndexProfileHash,
             Map<String, Object> activeSnapshotCapabilities,
+            UUID corpusId,
+            boolean snapshotPreparedDuringRun,
             int runPlanVersion
     ) {
         public Map<String, Object> toMap() {
@@ -121,6 +127,8 @@ public final class LabPresetRunPlanModels {
             m.put("resolvedSnapshotId", resolvedSnapshotId != null ? resolvedSnapshotId.toString() : null);
             m.put("resolvedIndexProfileHash", resolvedIndexProfileHash);
             m.put("activeSnapshotCapabilities", activeSnapshotCapabilities);
+            m.put("corpusId", corpusId != null ? corpusId.toString() : null);
+            m.put("snapshotPreparedDuringRun", snapshotPreparedDuringRun);
             m.put("runPlanVersion", runPlanVersion);
             return m;
         }

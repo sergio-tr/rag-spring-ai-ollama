@@ -1,16 +1,19 @@
 package com.uniovi.rag.application.service.evaluation.preset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 
-import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
+import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
+import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -19,14 +22,9 @@ class LabPresetRunPlanServiceTest {
 
     @Test
     void plan_p0_p12_groups_expected_keys() {
-        KnowledgeSnapshotService snapshotService = Mockito.mock(KnowledgeSnapshotService.class);
-        when(snapshotService.findActiveProjectSnapshot(Mockito.any())).thenReturn(Optional.empty());
-        LabPresetRunPlanService sut = new LabPresetRunPlanService(snapshotService);
+        LabPresetRunPlanService sut = sutWithResolved(LabEvaluationSnapshotService.ResolvedSnapshot.missing());
 
-        EvaluationRunEntity run = new EvaluationRunEntity();
-        ProjectEntity p = Mockito.mock(ProjectEntity.class);
-        when(p.getId()).thenReturn(UUID.randomUUID());
-        run.setProject(p);
+        EvaluationRunEntity run = runWithProject();
 
         List<RagExperimentalPresetCode> requested =
                 List.of(
@@ -68,15 +66,10 @@ class LabPresetRunPlanServiceTest {
 
     @Test
     void snapshot_hybrid_with_metadata_marks_p2_p12_compatible() {
-        KnowledgeSnapshotService snapshotService = Mockito.mock(KnowledgeSnapshotService.class);
-        when(snapshotService.findActiveProjectSnapshot(Mockito.any()))
-                .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "h", UUID.randomUUID())));
-        LabPresetRunPlanService sut = new LabPresetRunPlanService(snapshotService);
+        LabPresetRunPlanService sut =
+                sutWithResolved(resolvedFromMockEntity(mockSnapshot("HYBRID", true, "h", UUID.randomUUID())));
 
-        EvaluationRunEntity run = new EvaluationRunEntity();
-        ProjectEntity p = Mockito.mock(ProjectEntity.class);
-        when(p.getId()).thenReturn(UUID.randomUUID());
-        run.setProject(p);
+        EvaluationRunEntity run = runWithProject();
 
         List<RagExperimentalPresetCode> requested =
                 List.of(
@@ -99,15 +92,10 @@ class LabPresetRunPlanServiceTest {
 
     @Test
     void snapshot_chunk_with_metadata_marks_p8_p12_requires_reindex() {
-        KnowledgeSnapshotService snapshotService = Mockito.mock(KnowledgeSnapshotService.class);
-        when(snapshotService.findActiveProjectSnapshot(Mockito.any()))
-                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", true, "h", UUID.randomUUID())));
-        LabPresetRunPlanService sut = new LabPresetRunPlanService(snapshotService);
+        LabPresetRunPlanService sut =
+                sutWithResolved(resolvedFromMockEntity(mockSnapshot("CHUNK_LEVEL", true, "h", UUID.randomUUID())));
 
-        EvaluationRunEntity run = new EvaluationRunEntity();
-        ProjectEntity p = Mockito.mock(ProjectEntity.class);
-        when(p.getId()).thenReturn(UUID.randomUUID());
-        run.setProject(p);
+        EvaluationRunEntity run = runWithProject();
 
         LabPresetRunPlanModels.LabPresetRunPlan plan =
                 sut.build(run, List.of(RagExperimentalPresetCode.P8, RagExperimentalPresetCode.P9, RagExperimentalPresetCode.P12));
@@ -121,15 +109,10 @@ class LabPresetRunPlanServiceTest {
 
     @Test
     void snapshot_chunk_without_metadata_marks_p4_p12_requires_reindex() {
-        KnowledgeSnapshotService snapshotService = Mockito.mock(KnowledgeSnapshotService.class);
-        when(snapshotService.findActiveProjectSnapshot(Mockito.any()))
-                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", false, "h", UUID.randomUUID())));
-        LabPresetRunPlanService sut = new LabPresetRunPlanService(snapshotService);
+        LabPresetRunPlanService sut =
+                sutWithResolved(resolvedFromMockEntity(mockSnapshot("CHUNK_LEVEL", false, "h", UUID.randomUUID())));
 
-        EvaluationRunEntity run = new EvaluationRunEntity();
-        ProjectEntity p = Mockito.mock(ProjectEntity.class);
-        when(p.getId()).thenReturn(UUID.randomUUID());
-        run.setProject(p);
+        EvaluationRunEntity run = runWithProject();
 
         LabPresetRunPlanModels.LabPresetRunPlan plan =
                 sut.build(run, List.of(RagExperimentalPresetCode.P4, RagExperimentalPresetCode.P8, RagExperimentalPresetCode.P12));
@@ -140,19 +123,11 @@ class LabPresetRunPlanServiceTest {
 
     @Test
     void compatible_non_active_snapshot_is_selected_instead_of_incompatible_active_snapshot() {
-        UUID projectId = UUID.randomUUID();
         UUID compatibleSnapshotId = UUID.randomUUID();
-        KnowledgeSnapshotService snapshotService = Mockito.mock(KnowledgeSnapshotService.class);
-        when(snapshotService.findActiveProjectSnapshot(projectId))
-                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", false, "active", UUID.randomUUID())));
-        when(snapshotService.findCompatibleProjectSnapshot(Mockito.eq(projectId), Mockito.any()))
-                .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "compatible", compatibleSnapshotId)));
-        LabPresetRunPlanService sut = new LabPresetRunPlanService(snapshotService);
+        LabPresetRunPlanService sut =
+                sutWithResolved(resolvedFromMockEntity(mockSnapshot("HYBRID", true, "compatible", compatibleSnapshotId)));
 
-        EvaluationRunEntity run = new EvaluationRunEntity();
-        ProjectEntity p = Mockito.mock(ProjectEntity.class);
-        when(p.getId()).thenReturn(projectId);
-        run.setProject(p);
+        EvaluationRunEntity run = runWithProject();
 
         LabPresetRunPlanModels.LabPresetRunPlan plan = sut.build(run, List.of(RagExperimentalPresetCode.P8));
 
@@ -164,14 +139,9 @@ class LabPresetRunPlanServiceTest {
 
     @Test
     void no_snapshot_keeps_p0_p1_index_compatible_and_marks_p2_requires_reindex() {
-        KnowledgeSnapshotService snapshotService = Mockito.mock(KnowledgeSnapshotService.class);
-        when(snapshotService.findActiveProjectSnapshot(Mockito.any())).thenReturn(Optional.empty());
-        LabPresetRunPlanService sut = new LabPresetRunPlanService(snapshotService);
+        LabPresetRunPlanService sut = sutWithResolved(LabEvaluationSnapshotService.ResolvedSnapshot.missing());
 
-        EvaluationRunEntity run = new EvaluationRunEntity();
-        ProjectEntity p = Mockito.mock(ProjectEntity.class);
-        when(p.getId()).thenReturn(UUID.randomUUID());
-        run.setProject(p);
+        EvaluationRunEntity run = runWithProject();
 
         LabPresetRunPlanModels.LabPresetRunPlan plan =
                 sut.build(run, List.of(RagExperimentalPresetCode.P0, RagExperimentalPresetCode.P1, RagExperimentalPresetCode.P2));
@@ -183,14 +153,9 @@ class LabPresetRunPlanServiceTest {
 
     @Test
     void p13_p14_are_multiturn_unsupported_in_single_turn_plan() {
-        KnowledgeSnapshotService snapshotService = Mockito.mock(KnowledgeSnapshotService.class);
-        when(snapshotService.findActiveProjectSnapshot(Mockito.any())).thenReturn(Optional.empty());
-        LabPresetRunPlanService sut = new LabPresetRunPlanService(snapshotService);
+        LabPresetRunPlanService sut = sutWithResolved(LabEvaluationSnapshotService.ResolvedSnapshot.missing());
 
-        EvaluationRunEntity run = new EvaluationRunEntity();
-        ProjectEntity p = Mockito.mock(ProjectEntity.class);
-        when(p.getId()).thenReturn(UUID.randomUUID());
-        run.setProject(p);
+        EvaluationRunEntity run = runWithProject();
 
         LabPresetRunPlanModels.LabPresetRunPlan plan =
                 sut.build(run, List.of(RagExperimentalPresetCode.P13, RagExperimentalPresetCode.P14));
@@ -201,15 +166,10 @@ class LabPresetRunPlanServiceTest {
 
     @Test
     void p0_to_p14_all_receive_run_plan_items() {
-        KnowledgeSnapshotService snapshotService = Mockito.mock(KnowledgeSnapshotService.class);
-        when(snapshotService.findActiveProjectSnapshot(Mockito.any()))
-                .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "h", UUID.randomUUID())));
-        LabPresetRunPlanService sut = new LabPresetRunPlanService(snapshotService);
+        LabPresetRunPlanService sut =
+                sutWithResolved(resolvedFromMockEntity(mockSnapshot("HYBRID", true, "h", UUID.randomUUID())));
 
-        EvaluationRunEntity run = new EvaluationRunEntity();
-        ProjectEntity p = Mockito.mock(ProjectEntity.class);
-        when(p.getId()).thenReturn(UUID.randomUUID());
-        run.setProject(p);
+        EvaluationRunEntity run = runWithProject();
 
         List<RagExperimentalPresetCode> requested = List.of(RagExperimentalPresetCode.values());
         LabPresetRunPlanModels.LabPresetRunPlan plan = sut.build(run, requested);
@@ -221,6 +181,36 @@ class LabPresetRunPlanServiceTest {
                         .filter(i -> "P13".equals(i.presetCode()) || "P14".equals(i.presetCode()))
                         .allMatch(LabPresetRunPlanModels.LabPresetRunPlanItem::requiresMultiTurn))
                 .isTrue();
+    }
+
+    private static LabPresetRunPlanService sutWithResolved(LabEvaluationSnapshotService.ResolvedSnapshot resolved) {
+        LabEvaluationSnapshotService labSnap = Mockito.mock(LabEvaluationSnapshotService.class);
+        doNothing().when(labSnap).ensureRunIndexProject(any());
+        when(labSnap.resolveCorpusId(any())).thenReturn(null);
+        when(labSnap.resolveCompatibleSnapshot(any(), any())).thenReturn(resolved);
+        when(labSnap.resolveCompatibleSnapshot(any(), any(), nullable(String.class))).thenReturn(resolved);
+        return new LabPresetRunPlanService(labSnap);
+    }
+
+    private static LabEvaluationSnapshotService.ResolvedSnapshot resolvedFromMockEntity(
+            KnowledgeIndexSnapshotEntity snap) {
+        Map<String, Object> profile = snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
+        return new LabEvaluationSnapshotService.ResolvedSnapshot(
+                true,
+                snap.getId(),
+                snap.getIndexProfileHash(),
+                IndexSnapshotCapabilities.fromIndexProfile(profile),
+                false,
+                KnowledgeSnapshotOwnerType.PROJECT,
+                UUID.randomUUID());
+    }
+
+    private static EvaluationRunEntity runWithProject() {
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        ProjectEntity p = Mockito.mock(ProjectEntity.class);
+        when(p.getId()).thenReturn(UUID.randomUUID());
+        run.setProject(p);
+        return run;
     }
 
     private static KnowledgeIndexSnapshotEntity mockSnapshot(
@@ -247,4 +237,3 @@ class LabPresetRunPlanServiceTest {
         return snap;
     }
 }
-

@@ -11,6 +11,8 @@ import java.util.UUID;
  */
 public record StartBenchmarkRunRequest(
         UUID datasetId,
+        /** Required for RAG/embedding benchmarks that need document-backed corpus evidence. */
+        UUID corpusId,
         UUID projectId,
         EvaluationRunKind runKind,
         String name,

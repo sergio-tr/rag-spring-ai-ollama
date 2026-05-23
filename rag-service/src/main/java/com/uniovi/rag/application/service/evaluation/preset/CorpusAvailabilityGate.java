@@ -1,9 +1,8 @@
 package com.uniovi.rag.application.service.evaluation.preset;
 
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
-import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
-import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,25 +36,25 @@ public class CorpusAvailabilityGate {
     public static final String REASON_MESSAGE =
             "This preset requires corpus evidence, but usable evidence could not be assembled.";
 
-    private final KnowledgeDocumentRepository knowledgeDocumentRepository;
+    private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
     private final NamedParameterJdbcTemplate namedParameterJdbcTemplate;
 
     public CorpusAvailabilityGate(
-            KnowledgeDocumentRepository knowledgeDocumentRepository,
+            EvaluationCorpusApplicationService evaluationCorpusApplicationService,
             NamedParameterJdbcTemplate namedParameterJdbcTemplate) {
-        this.knowledgeDocumentRepository = knowledgeDocumentRepository;
+        this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
         this.namedParameterJdbcTemplate = namedParameterJdbcTemplate;
     }
 
     /** Structured diagnostics merged into Lab metrics payloads (never blocks callers beyond gate semantics). */
-    public Map<String, Object> probe(UUID projectId, List<UUID> snapshotIds) {
+    public Map<String, Object> probe(UUID userId, UUID corpusId, List<UUID> snapshotIds) {
         LinkedHashMap<String, Object> m = new LinkedHashMap<>();
-        Result r = evaluate(projectId, snapshotIds);
+        Result r = evaluate(userId, corpusId, snapshotIds);
         m.put("corpusRequired", true);
         m.put("corpusAvailable", r.satisfied());
-        m.put("evaluationCorpusProjectId", projectId != null ? projectId.toString() : null);
+        m.put("evaluationCorpusId", corpusId != null ? corpusId.toString() : null);
         m.put("evaluationCorpusDocumentIds", r.readyDocumentIds().stream().map(UUID::toString).toList());
-        m.put("projectDocumentCount", r.projectDocumentCount());
+        m.put("corpusDocumentCount", r.corpusDocumentCount());
         m.put("readySharedDocsWithStorageUriCount", r.readySharedDocsWithUriCount());
         m.put("vectorChunkRowCount", r.vectorChunkRowCount());
         List<String> selectedSnapshotIds =
@@ -75,20 +74,21 @@ public class CorpusAvailabilityGate {
         return Map.copyOf(m);
     }
 
-    public Result evaluate(UUID projectId, List<UUID> snapshotIds) {
-        if (projectId == null) {
-            return failed(0, List.of(), 0, NO_CORPUS_SELECTED, "No evaluation corpus/project was selected.");
+    public Result evaluate(UUID userId, UUID corpusId, List<UUID> snapshotIds) {
+        if (corpusId == null) {
+            return failed(0, List.of(), 0, NO_CORPUS_SELECTED, "No evaluation corpus was selected.");
         }
-        List<KnowledgeDocumentEntity> docs = knowledgeDocumentRepository.findByProject_IdAndCorpusScopeOrderByIdAsc(
-                projectId, CorpusScope.PROJECT_SHARED);
+        EvaluationCorpusApplicationService.EvaluationCorpusContext context;
+        try {
+            context = evaluationCorpusApplicationService.requireContext(userId, corpusId);
+        } catch (Exception ex) {
+            return failed(0, List.of(), 0, NO_CORPUS_SELECTED, "No evaluation corpus was selected.");
+        }
+        List<KnowledgeDocumentEntity> docs = context.documents();
         if (docs == null || docs.isEmpty()) {
             return failed(0, List.of(), 0, NO_DOCUMENTS, "The selected evaluation corpus has no documents.");
         }
-        List<UUID> readyDocIds =
-                docs.stream()
-                        .filter(CorpusAvailabilityGate::readyWithUri)
-                        .map(KnowledgeDocumentEntity::getId)
-                        .toList();
+        List<UUID> readyDocIds = context.readyDocumentIds();
         int docsReady = readyDocIds.size();
         if (docsReady <= 0) {
             return failed(
@@ -97,6 +97,15 @@ public class CorpusAvailabilityGate {
                     0,
                     NO_READY_DOCUMENTS,
                     "The selected evaluation corpus has documents, but none are READY with stored content.");
+        }
+        UUID indexProjectId = context.indexProjectId();
+        if (indexProjectId == null) {
+            return failed(
+                    docs.size(),
+                    readyDocIds,
+                    0,
+                    NO_CORPUS_SELECTED,
+                    "The selected evaluation corpus has no index scope.");
         }
         if (snapshotIds == null || snapshotIds.isEmpty()) {
             return failed(
@@ -107,7 +116,7 @@ public class CorpusAvailabilityGate {
                     "Documents are READY, but no snapshot was selected for corpus evidence.");
         }
         MapSqlParameterSource p = new MapSqlParameterSource();
-        p.addValue("projectId", projectId);
+        p.addValue("projectId", indexProjectId);
         p.addValue("snapshotIds", snapshotIds.stream().map(UUID::toString).toList());
         Long cnt =
                 namedParameterJdbcTemplate.queryForObject(
@@ -131,14 +140,14 @@ public class CorpusAvailabilityGate {
     }
 
     private static Result failed(
-            int projectDocumentCount,
+            int corpusDocumentCount,
             List<UUID> readyDocumentIds,
             long vectorRows,
             String reasonCode,
             String reasonMessage) {
         return new Result(
                 false,
-                projectDocumentCount,
+                corpusDocumentCount,
                 readyDocumentIds != null ? List.copyOf(readyDocumentIds) : List.of(),
                 readyDocumentIds != null ? readyDocumentIds.size() : 0,
                 vectorRows,
@@ -146,16 +155,9 @@ public class CorpusAvailabilityGate {
                 reasonMessage);
     }
 
-    private static boolean readyWithUri(KnowledgeDocumentEntity d) {
-        return d != null
-                && d.getStatus() == ProjectDocumentStatus.READY
-                && d.getStorageUri() != null
-                && !d.getStorageUri().isBlank();
-    }
-
     public record Result(
             boolean satisfied,
-            int projectDocumentCount,
+            int corpusDocumentCount,
             List<UUID> readyDocumentIds,
             int readySharedDocsWithUriCount,
             long vectorChunkRowCount,

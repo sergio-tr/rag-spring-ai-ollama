@@ -15,18 +15,21 @@ import com.uniovi.rag.domain.evaluation.workbook.WorkbookParseResult;
 import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.evaluation.workbook.LabDatasetGateValidator;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
 import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
 import com.uniovi.rag.infrastructure.persistence.EvaluationDatasetRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationCampaignRepository;
+import com.uniovi.rag.infrastructure.persistence.EvaluationCorpusRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.RagPresetRepository;
 import com.uniovi.rag.infrastructure.persistence.ResolvedConfigSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCorpusEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
@@ -89,6 +92,8 @@ public class BenchmarkRunOrchestrator {
     private final EvaluationDatasetStorePort evaluationDatasetStorePort;
     private final EvaluationWorkbookParser evaluationWorkbookParser;
     private final EmbeddingSpaceGuard embeddingSpaceGuard;
+    private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+    private final EvaluationCorpusRepository evaluationCorpusRepository;
 
     public BenchmarkRunOrchestrator(
             UserRepository userRepository,
@@ -105,7 +110,9 @@ public class BenchmarkRunOrchestrator {
             RagRuntimeProperties ragRuntimeProperties,
             EvaluationDatasetStorePort evaluationDatasetStorePort,
             EvaluationWorkbookParser evaluationWorkbookParser,
-            EmbeddingSpaceGuard embeddingSpaceGuard) {
+            EmbeddingSpaceGuard embeddingSpaceGuard,
+            EvaluationCorpusApplicationService evaluationCorpusApplicationService,
+            EvaluationCorpusRepository evaluationCorpusRepository) {
         this.userRepository = userRepository;
         this.evaluationDatasetRepository = evaluationDatasetRepository;
         this.evaluationCampaignRepository = evaluationCampaignRepository;
@@ -121,6 +128,8 @@ public class BenchmarkRunOrchestrator {
         this.evaluationDatasetStorePort = evaluationDatasetStorePort;
         this.evaluationWorkbookParser = evaluationWorkbookParser;
         this.embeddingSpaceGuard = embeddingSpaceGuard;
+        this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
+        this.evaluationCorpusRepository = evaluationCorpusRepository;
     }
 
     @Transactional
@@ -145,7 +154,8 @@ public class BenchmarkRunOrchestrator {
         validateRunKind(roleName, request.runKind());
         validateAutoReindexRequest(kind, request);
         validateClasspathCorpusBootstrapRequest(kind, request);
-        requireNoActiveLabJob(userId, request.projectId());
+        validateDocumentBackedCorpus(userId, kind, request);
+        requireNoActiveLabJob(userId, resolveConcurrencyScopeId(userId, request));
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
         validateDatasetPreRunEligibility(kind, dataset);
@@ -153,17 +163,19 @@ public class BenchmarkRunOrchestrator {
 
         EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, request);
         run.setName(request.name() != null ? request.name() : kind.name());
+        applyCorpusLinks(userId, run, request);
         applyOptionalLinks(run, request);
         finalizeEmbeddingRetrievalRuntimeBinding(kind, run);
 
         run = evaluationRunRepository.save(run);
 
+        UUID scopeProjectId = run.getProject() != null ? run.getProject().getId() : null;
         UUID taskId =
                 switch (kind) {
-                    case LLM_JUDGE_QA -> asyncTaskService.submitEvalLlm(userId, request.projectId(), run.getId());
-                    case RAG_PRESET_END_TO_END -> asyncTaskService.submitEvalRag(userId, request.projectId(), run.getId());
+                    case LLM_JUDGE_QA -> asyncTaskService.submitEvalLlm(userId, scopeProjectId, run.getId());
+                    case RAG_PRESET_END_TO_END -> asyncTaskService.submitEvalRag(userId, scopeProjectId, run.getId());
                     case EMBEDDING_RETRIEVAL -> asyncTaskService.submitEvalEmbeddingRetrieval(
-                            userId, request.projectId(), run.getId());
+                            userId, scopeProjectId, run.getId());
                     case CLASSIFIER_METRICS ->
                             throw new ResponseStatusException(
                                     HttpStatus.BAD_REQUEST, "Use multipart endpoint for CLASSIFIER_METRICS");
@@ -211,11 +223,13 @@ public class BenchmarkRunOrchestrator {
         validateRunKind(roleName, request.runKind());
         validateAutoReindexRequest(kind, request);
         validateClasspathCorpusBootstrapRequest(kind, request);
-        requireNoActiveLabJob(userId, request.projectId());
+        validateDocumentBackedCorpus(userId, kind, request);
+        requireNoActiveLabJob(userId, resolveConcurrencyScopeId(userId, request));
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
         validateScienceFields(kind, request);
-        if (request.experimentalPresetCodes() == null || request.experimentalPresetCodes().isEmpty()) {
+        List<String> presetCodes = request.experimentalPresetCodes();
+        if (presetCodes == null || presetCodes.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "experimentalPresetCodes is empty");
         }
 
@@ -226,7 +240,7 @@ public class BenchmarkRunOrchestrator {
         camp.setStudyType(EvaluationStudyType.RAG_PRESET_BENCHMARK.name());
         camp.setName(request.campaignName() != null && !request.campaignName().isBlank()
                 ? request.campaignName().trim()
-                : "RAG preset sweep");
+                : "RAG preset comparison");
         if (request.projectId() != null) {
             ProjectEntity p = projectAccessService.requireOwnedProject(userId, request.projectId());
             camp.setProject(p);
@@ -234,26 +248,67 @@ public class BenchmarkRunOrchestrator {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("datasetId", dataset.getId().toString());
         meta.put("benchmarkKind", kind.name());
-        meta.put("experimentalPresetCodes", request.experimentalPresetCodes());
+        meta.put("experimentalPresetCodes", presetCodes);
+        meta.put("comparativeMode", presetCodes.size() >= 2);
         camp.setMetaJson(meta);
         camp = evaluationCampaignRepository.save(camp);
 
-        EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, request);
-        run.setCampaign(camp);
-        run.setName(request.name() != null && !request.name().isBlank() ? request.name().trim() : "RAG preset sweep");
-        applyOptionalLinks(run, request);
-        run = evaluationRunRepository.save(run);
+        UUID firstRunId = null;
+        UUID lastTaskId = null;
+        for (String presetCode : presetCodes) {
+            StartBenchmarkRunRequest childReq =
+                    new StartBenchmarkRunRequest(
+                            request.datasetId(),
+                            request.corpusId(),
+                            request.projectId(),
+                            request.runKind(),
+                            request.name(),
+                            request.resolvedConfigSnapshotId(),
+                            request.indexSnapshotId(),
+                            request.presetId(),
+                            request.embeddingDownstreamRag(),
+                            List.of(presetCode),
+                            request.llmModelId(),
+                            request.embeddingModelId(),
+                            List.of(),
+                            List.of(),
+                            false,
+                            null,
+                            request.autoReindex(),
+                            request.allowActiveSnapshotMutation(),
+                            request.reuseCompatibleActiveSnapshot(),
+                            request.failOnReindexFailure(),
+                            request.bootstrapCorpusFromClasspathDocs(),
+                            request.classpathDocsLocation(),
+                            request.bootstrapCorpusScope(),
+                            request.bootstrapSkipExisting(),
+                            request.bootstrapFailOnDocumentError(),
+                            List.of());
+            EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
+            run.setCampaign(camp);
+            run.setName(childRunName(request.name(), kind, presetCode));
+            applyCorpusLinks(userId, run, childReq);
+            applyOptionalLinks(run, childReq);
+            run = evaluationRunRepository.save(run);
 
-        UUID taskId = asyncTaskService.submitEvalRag(userId, request.projectId(), run.getId());
-        attachTaskAndRunning(run, taskId);
-        return BenchmarkJobAccepted.ofCampaign(run.getId(), taskId, camp.getId());
+            UUID scopeProjectId = run.getProject() != null ? run.getProject().getId() : null;
+            UUID taskId = asyncTaskService.submitEvalRag(userId, scopeProjectId, run.getId());
+            attachTaskAndRunning(run, taskId);
+
+            if (firstRunId == null) {
+                firstRunId = run.getId();
+            }
+            lastTaskId = taskId;
+        }
+
+        return BenchmarkJobAccepted.ofCampaign(firstRunId, lastTaskId, camp.getId());
     }
 
     private BenchmarkJobAccepted startLlmCampaign(
             UUID userId, String roleName, BenchmarkKind kind, StartBenchmarkRunRequest request) {
         validateRunKind(roleName, request.runKind());
         validateClasspathCorpusBootstrapRequest(kind, request);
-        requireNoActiveLabJob(userId, request.projectId());
+        requireNoActiveLabJob(userId, resolveConcurrencyScopeId(userId, request));
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
         validateScienceFields(kind, request);
@@ -282,6 +337,7 @@ public class BenchmarkRunOrchestrator {
         meta.put("benchmarkKind", kind.name());
         meta.put("llmModelIds", modelIds);
         meta.put("useWorkbookCandidates", request.useWorkbookCandidatesEffective());
+        meta.put("comparativeMode", modelIds.size() >= 2);
         camp.setMetaJson(meta);
         camp = evaluationCampaignRepository.save(camp);
 
@@ -291,6 +347,7 @@ public class BenchmarkRunOrchestrator {
             StartBenchmarkRunRequest childReq =
                     new StartBenchmarkRunRequest(
                             request.datasetId(),
+                            request.corpusId(),
                             request.projectId(),
                             request.runKind(),
                             request.name(),
@@ -318,10 +375,12 @@ public class BenchmarkRunOrchestrator {
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, modelId));
+            applyCorpusLinks(userId, run, childReq);
             applyOptionalLinks(run, childReq);
             run = evaluationRunRepository.save(run);
 
-            UUID taskId = asyncTaskService.submitEvalLlm(userId, request.projectId(), run.getId());
+            UUID scopeProjectId = run.getProject() != null ? run.getProject().getId() : null;
+            UUID taskId = asyncTaskService.submitEvalLlm(userId, scopeProjectId, run.getId());
             attachTaskAndRunning(run, taskId);
 
             if (firstRunId == null) {
@@ -339,7 +398,8 @@ public class BenchmarkRunOrchestrator {
             UUID userId, String roleName, BenchmarkKind kind, StartBenchmarkRunRequest request) {
         validateRunKind(roleName, request.runKind());
         validateClasspathCorpusBootstrapRequest(kind, request);
-        requireNoActiveLabJob(userId, request.projectId());
+        validateDocumentBackedCorpus(userId, kind, request);
+        requireNoActiveLabJob(userId, resolveConcurrencyScopeId(userId, request));
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
         validateDatasetPreRunEligibility(kind, dataset);
@@ -375,6 +435,7 @@ public class BenchmarkRunOrchestrator {
         meta.put("embeddingModelIds", modelIds);
         meta.put("indexSnapshotIds", request.indexSnapshotIds().stream().map(UUID::toString).toList());
         meta.put("useWorkbookCandidates", request.useWorkbookCandidatesEffective());
+        meta.put("comparativeMode", modelIds.size() >= 2);
         camp.setMetaJson(meta);
         camp = evaluationCampaignRepository.save(camp);
 
@@ -386,6 +447,7 @@ public class BenchmarkRunOrchestrator {
             StartBenchmarkRunRequest childReq =
                     new StartBenchmarkRunRequest(
                             request.datasetId(),
+                            request.corpusId(),
                             request.projectId(),
                             request.runKind(),
                             request.name(),
@@ -413,12 +475,14 @@ public class BenchmarkRunOrchestrator {
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, modelId));
+            applyCorpusLinks(userId, run, childReq);
             applyOptionalLinks(run, childReq);
             finalizeEmbeddingRetrievalRuntimeBinding(kind, run);
             run = evaluationRunRepository.save(run);
 
+            UUID scopeProjectId = run.getProject() != null ? run.getProject().getId() : null;
             UUID taskId =
-                    asyncTaskService.submitEvalEmbeddingRetrieval(userId, request.projectId(), run.getId());
+                    asyncTaskService.submitEvalEmbeddingRetrieval(userId, scopeProjectId, run.getId());
             attachTaskAndRunning(run, taskId);
 
             if (firstRunId == null) {
@@ -537,10 +601,7 @@ public class BenchmarkRunOrchestrator {
     }
 
     private static boolean wantsRagPresetCampaign(StartBenchmarkRunRequest request) {
-        return request.campaignName() != null
-                && !request.campaignName().isBlank()
-                && request.experimentalPresetCodes() != null
-                && !request.experimentalPresetCodes().isEmpty();
+        return request.experimentalPresetCodes() != null && request.experimentalPresetCodes().size() >= 2;
     }
 
     private List<String> resolveLlmCandidateModelIds(EvaluationDatasetEntity dataset, StartBenchmarkRunRequest request) {
@@ -591,9 +652,13 @@ public class BenchmarkRunOrchestrator {
         return evaluationDatasetStorePort.openStream(trimmed);
     }
 
-    private static String childRunName(String baseName, BenchmarkKind kind, String modelId) {
+    private static String childRunName(String baseName, BenchmarkKind kind, String axisValue) {
         String prefix = baseName != null && !baseName.isBlank() ? baseName.trim() : kind.name();
-        return prefix + " — model " + modelId;
+        return switch (kind) {
+            case RAG_PRESET_END_TO_END -> prefix + " — preset " + axisValue;
+            case EMBEDDING_RETRIEVAL -> prefix + " — embedding " + axisValue;
+            default -> prefix + " — model " + axisValue;
+        };
     }
 
     @Transactional
@@ -778,12 +843,13 @@ public class BenchmarkRunOrchestrator {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, LabCorpusBootstrapErrors.UNSUPPORTED_BENCHMARK_KIND);
         }
-        if (request.projectId() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, LabCorpusBootstrapErrors.REQUIRES_PROJECT);
+        if (request.corpusId() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, EvaluationCorpusApplicationService.NO_CORPUS_SELECTED);
         }
     }
 
-    private static void validateAutoReindexRequest(BenchmarkKind kind, StartBenchmarkRunRequest request) {
+    private void validateAutoReindexRequest(BenchmarkKind kind, StartBenchmarkRunRequest request) {
         if (request == null || !request.autoReindexEffective()) {
             return;
         }
@@ -792,16 +858,62 @@ public class BenchmarkRunOrchestrator {
                     HttpStatus.BAD_REQUEST,
                     "AUTO_REINDEX_UNSUPPORTED_FOR_BENCHMARK_KIND: autoReindex is only supported for RAG_PRESET_END_TO_END");
         }
-        if (request.projectId() == null) {
+        if (request.corpusId() == null) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "AUTO_REINDEX_REQUIRES_PROJECT_CONTEXT: autoReindex requires projectId");
+                    EvaluationCorpusApplicationService.NO_CORPUS_SELECTED + ": autoReindex requires corpusId");
         }
         if (!request.allowActiveSnapshotMutationEffective()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "AUTO_REINDEX_REQUIRES_ACTIVE_SNAPSHOT_MUTATION: autoReindex requires allowActiveSnapshotMutation=true");
         }
+    }
+
+    private void validateDocumentBackedCorpus(UUID userId, BenchmarkKind kind, StartBenchmarkRunRequest request) {
+        if (kind != BenchmarkKind.RAG_PRESET_END_TO_END && kind != BenchmarkKind.EMBEDDING_RETRIEVAL) {
+            return;
+        }
+        if (request == null || request.corpusId() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, EvaluationCorpusApplicationService.NO_CORPUS_SELECTED);
+        }
+        EvaluationCorpusApplicationService.EvaluationCorpusContext context =
+                evaluationCorpusApplicationService.requireContext(userId, request.corpusId());
+        if (context.documents() == null || context.documents().isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, EvaluationCorpusApplicationService.NO_DOCUMENTS);
+        }
+    }
+
+    private void applyCorpusLinks(UUID userId, EvaluationRunEntity run, StartBenchmarkRunRequest request) {
+        if (request == null || request.corpusId() == null) {
+            return;
+        }
+        EvaluationCorpusEntity corpus =
+                evaluationCorpusRepository
+                        .findByIdAndOwner_Id(request.corpusId(), userId)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.BAD_REQUEST,
+                                                EvaluationCorpusApplicationService.NO_CORPUS_SELECTED));
+        run.setEvaluationCorpus(corpus);
+        if (corpus.getIndexProject() != null) {
+            run.setProject(corpus.getIndexProject());
+        }
+    }
+
+    private UUID resolveConcurrencyScopeId(UUID userId, StartBenchmarkRunRequest request) {
+        if (request == null) {
+            return null;
+        }
+        if (request.corpusId() != null) {
+            EvaluationCorpusApplicationService.EvaluationCorpusContext context =
+                    evaluationCorpusApplicationService.requireContext(userId, request.corpusId());
+            return context.indexProjectId();
+        }
+        return request.projectId();
     }
 
     private void attachTaskAndRunning(EvaluationRunEntity run, UUID taskId) {

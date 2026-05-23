@@ -16,11 +16,15 @@ import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleLoader;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
+import com.uniovi.rag.infrastructure.persistence.EvaluationCorpusRepository;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCorpusEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
@@ -33,6 +37,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -59,7 +65,10 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class BenchmarkRunOrchestratorTest {
+
+    private static final UUID TEST_CORPUS_ID = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
 
     @Mock private UserRepository userRepository;
     @Mock private EvaluationDatasetRepository evaluationDatasetRepository;
@@ -76,10 +85,30 @@ class BenchmarkRunOrchestratorTest {
     @Mock private EvaluationDatasetStorePort evaluationDatasetStorePort;
     private final EvaluationWorkbookParser evaluationWorkbookParser = new EvaluationWorkbookParser();
     @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
+    @Mock private EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+    @Mock private EvaluationCorpusRepository evaluationCorpusRepository;
 
     @BeforeEach
     void lenientEmbeddingGuard() {
         lenient().when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(anyString())).thenReturn(1024);
+    }
+
+    @BeforeEach
+    void stubEvaluationCorpus() {
+        KnowledgeDocumentEntity doc = Mockito.mock(KnowledgeDocumentEntity.class);
+        lenient()
+                .when(evaluationCorpusApplicationService.requireContext(any(), any()))
+                .thenReturn(
+                        new EvaluationCorpusApplicationService.EvaluationCorpusContext(
+                                TEST_CORPUS_ID, UUID.randomUUID(), List.of(UUID.randomUUID()), List.of(doc)));
+        EvaluationCorpusEntity corpus = Mockito.mock(EvaluationCorpusEntity.class);
+        ProjectEntity indexProject = Mockito.mock(ProjectEntity.class);
+        lenient().when(corpus.getIndexProject()).thenReturn(indexProject);
+        lenient().when(indexProject.getId()).thenReturn(UUID.randomUUID());
+        lenient()
+                .when(evaluationCorpusRepository.findByIdAndOwner_Id(any(), any()))
+                .thenReturn(Optional.of(corpus));
+        lenient().when(asyncTaskRepository.findById(any())).thenReturn(Optional.of(Mockito.mock(AsyncTaskEntity.class)));
     }
 
     @Test
@@ -100,11 +129,14 @@ class BenchmarkRunOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         evaluationWorkbookParser,
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         UUID.randomUUID(),
+                        null,
                         UUID.randomUUID(),
                         EvaluationRunKind.ADMIN_BASELINE,
                         "n",
@@ -156,7 +188,9 @@ class BenchmarkRunOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         evaluationWorkbookParser,
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -179,6 +213,7 @@ class BenchmarkRunOrchestratorTest {
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         UUID.randomUUID(),
+                        null,
                         projectId,
                         EvaluationRunKind.SCIENCE,
                         "n",
@@ -226,13 +261,16 @@ class BenchmarkRunOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         evaluationWorkbookParser,
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
         when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.empty());
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         dsId,
+                        null,
                         UUID.randomUUID(),
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "n",
@@ -284,7 +322,9 @@ class BenchmarkRunOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         evaluationWorkbookParser,
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -298,6 +338,7 @@ class BenchmarkRunOrchestratorTest {
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         dsId,
+                        null,
                         null,
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "n",
@@ -349,7 +390,9 @@ class BenchmarkRunOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         evaluationWorkbookParser,
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -370,6 +413,7 @@ class BenchmarkRunOrchestratorTest {
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         dsId,
+                        TEST_CORPUS_ID,
                         projectId,
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "emb-campaign",
@@ -425,7 +469,9 @@ class BenchmarkRunOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         evaluationWorkbookParser,
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -457,6 +503,7 @@ class BenchmarkRunOrchestratorTest {
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         dsId,
+                        TEST_CORPUS_ID,
                         projectId,
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "emb-single",
@@ -511,7 +558,9 @@ class BenchmarkRunOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         evaluationWorkbookParser,
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -568,13 +617,14 @@ class BenchmarkRunOrchestratorTest {
                         });
 
         UUID taskId = UUID.randomUUID();
-        when(asyncTaskService.submitEvalEmbeddingRetrieval(eq(userId), eq(projectId), any(UUID.class)))
+        when(asyncTaskService.submitEvalEmbeddingRetrieval(eq(userId), any(), any(UUID.class)))
                 .thenReturn(taskId);
         when(asyncTaskRepository.findById(taskId)).thenReturn(Optional.of(Mockito.mock(AsyncTaskEntity.class)));
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         dsId,
+                        TEST_CORPUS_ID,
                         projectId,
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "emb-campaign",
@@ -605,7 +655,7 @@ class BenchmarkRunOrchestratorTest {
         verify(knowledgeIndexSnapshotRepository).findById(snapA);
         verify(knowledgeIndexSnapshotRepository).findById(snapB);
         ArgumentCaptor<UUID> runIdCaptor = ArgumentCaptor.forClass(UUID.class);
-        verify(asyncTaskService, times(2)).submitEvalEmbeddingRetrieval(eq(userId), eq(projectId), runIdCaptor.capture());
+        verify(asyncTaskService, times(2)).submitEvalEmbeddingRetrieval(eq(userId), any(), runIdCaptor.capture());
         assertThat(runIdCaptor.getAllValues()).doesNotHaveDuplicates();
     }
 
@@ -627,7 +677,9 @@ class BenchmarkRunOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         evaluationWorkbookParser,
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -674,13 +726,14 @@ class BenchmarkRunOrchestratorTest {
                             return r;
                         });
         UUID taskId = UUID.randomUUID();
-        when(asyncTaskService.submitEvalEmbeddingRetrieval(eq(userId), eq(projectId), any(UUID.class)))
+        when(asyncTaskService.submitEvalEmbeddingRetrieval(eq(userId), any(), any(UUID.class)))
                 .thenReturn(taskId);
         when(asyncTaskRepository.findById(taskId)).thenReturn(Optional.of(Mockito.mock(AsyncTaskEntity.class)));
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         dsId,
+                        TEST_CORPUS_ID,
                         projectId,
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "emb-campaign",
@@ -713,7 +766,7 @@ class BenchmarkRunOrchestratorTest {
         assertThat(savedRun.getAggregatesJson())
                 .containsEntry("embeddingCompatibilityStatus", "INCOMPATIBLE")
                 .containsEntry("embeddingCompatibilityErrorCode", "EMBEDDING_DIMENSION_MISMATCH");
-        verify(asyncTaskService).submitEvalEmbeddingRetrieval(eq(userId), eq(projectId), any(UUID.class));
+        verify(asyncTaskService).submitEvalEmbeddingRetrieval(eq(userId), any(), any(UUID.class));
     }
 
     private static byte[] canonicalReferenceBundleBytes() throws Exception {
@@ -741,7 +794,9 @@ class BenchmarkRunOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         evaluationWorkbookParser,
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -762,6 +817,7 @@ class BenchmarkRunOrchestratorTest {
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         dsId,
+                        TEST_CORPUS_ID,
                         null,
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "n",
@@ -813,11 +869,14 @@ class BenchmarkRunOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         evaluationWorkbookParser,
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         UUID.randomUUID(),
+                        null,
                         null,
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "n",
@@ -869,11 +928,14 @@ class BenchmarkRunOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         evaluationWorkbookParser,
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         UUID.randomUUID(),
+                        null,
                         UUID.randomUUID(),
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "n",
@@ -925,11 +987,14 @@ class BenchmarkRunOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         evaluationWorkbookParser,
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         UUID.randomUUID(),
+                        null,
                         UUID.randomUUID(),
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "n",
@@ -964,7 +1029,7 @@ class BenchmarkRunOrchestratorTest {
     }
 
     @Test
-    void startJsonBenchmark_classpathBootstrap_requiresProjectForRag() {
+    void startJsonBenchmark_classpathBootstrap_requiresCorpusForRag() {
         BenchmarkRunOrchestrator orch =
                 new BenchmarkRunOrchestrator(
                         userRepository,
@@ -981,11 +1046,14 @@ class BenchmarkRunOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         evaluationWorkbookParser,
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         UUID.randomUUID(),
+                        null,
                         null,
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "n",
@@ -1016,7 +1084,7 @@ class BenchmarkRunOrchestratorTest {
                 .satisfies(
                         ex ->
                                 assertThat(((ResponseStatusException) ex).getReason())
-                                        .isEqualTo(LabCorpusBootstrapErrors.REQUIRES_PROJECT));
+                                        .isEqualTo(EvaluationCorpusApplicationService.NO_CORPUS_SELECTED));
     }
 
     private static byte[] demoReferenceBundleBytes() throws Exception {

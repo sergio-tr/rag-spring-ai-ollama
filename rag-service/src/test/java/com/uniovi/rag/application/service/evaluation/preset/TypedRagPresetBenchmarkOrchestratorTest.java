@@ -17,6 +17,7 @@ import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.evaluation.workbook.DifficultyLevel;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
@@ -58,6 +59,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     @Mock private EvaluationRunRepository evaluationRunRepository;
     @Mock private ExperimentalSnapshotFactory experimentalSnapshotFactory;
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
+    @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
     @Mock private KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
     @Mock private ProjectIndexProfileService projectIndexProfileService;
     @Mock private LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
@@ -66,10 +68,10 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     @BeforeEach
     void defaultCorpusAvailabilityGate() {
         Mockito.lenient()
-                .when(corpusAvailabilityGate.evaluate(ArgumentMatchers.any(), ArgumentMatchers.any()))
+                .when(corpusAvailabilityGate.evaluate(ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn(new CorpusAvailabilityGate.Result(true, 1, List.of(UUID.randomUUID()), 1, 3L, null, null));
         Mockito.lenient()
-                .when(corpusAvailabilityGate.probe(ArgumentMatchers.any(), ArgumentMatchers.any()))
+                .when(corpusAvailabilityGate.probe(ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn(Map.of());
     }
 
@@ -83,12 +85,19 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     }
 
     private TypedRagPresetBenchmarkOrchestrator orchestrator() {
+        LabEvaluationSnapshotService labEvaluationSnapshotService =
+                new LabEvaluationSnapshotService(
+                        knowledgeSnapshotService,
+                        knowledgePipelineOrchestrator,
+                        projectIndexProfileService,
+                        labIndexProfileOverrideFactory,
+                        knowledgeIndexSnapshotRepository);
         return new TypedRagPresetBenchmarkOrchestrator(
                 evaluationService,
                 evaluationRunRepository,
                 experimentalSnapshotFactory,
-                knowledgeSnapshotService,
-                new LabPresetRunPlanService(knowledgeSnapshotService),
+                labEvaluationSnapshotService,
+                new LabPresetRunPlanService(labEvaluationSnapshotService),
                 knowledgePipelineOrchestrator,
                 projectIndexProfileService,
                 labIndexProfileOverrideFactory,
@@ -441,7 +450,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         run.setProject(project);
         when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
         when(corpusAvailabilityGate.evaluate(
-                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.argThat(List::isEmpty)))
                 .thenReturn(
                         new CorpusAvailabilityGate.Result(
@@ -453,7 +463,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 CorpusAvailabilityGate.REINDEX_REQUIRED,
                                 "Documents are READY, but no snapshot was selected for corpus evidence."));
         when(corpusAvailabilityGate.probe(
-                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.argThat(List::isEmpty)))
                 .thenReturn(
                         Map.of(
@@ -509,7 +520,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         run.setProject(project);
         when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
         when(corpusAvailabilityGate.evaluate(
-                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.argThat(List::isEmpty)))
                 .thenReturn(
                         new CorpusAvailabilityGate.Result(
@@ -521,7 +533,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 CorpusAvailabilityGate.NO_DOCUMENTS,
                                 "The selected evaluation corpus has no documents."));
         when(corpusAvailabilityGate.probe(
-                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.argThat(List::isEmpty)))
                 .thenReturn(
                         Map.of(
@@ -608,12 +621,14 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         run.setProject(project);
         when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
         when(corpusAvailabilityGate.evaluate(
-                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.argThat(ids -> ids != null && ids.size() == 1 && snapshotId.equals(ids.get(0)))))
                 .thenReturn(
                         new CorpusAvailabilityGate.Result(true, 1, List.of(documentId), 1, 7L, null, null));
         when(corpusAvailabilityGate.probe(
-                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.argThat(ids -> ids != null && ids.size() == 1 && snapshotId.equals(ids.get(0)))))
                 .thenReturn(
                         Map.of(
@@ -704,7 +719,10 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         UUID runId = UUID.randomUUID();
         when(evaluationRunRepository.findById(runId)).thenReturn(Optional.of(run));
         when(knowledgeSnapshotService.findActiveProjectSnapshot(projectId)).thenReturn(Optional.empty());
-        when(corpusAvailabilityGate.evaluate(ArgumentMatchers.eq(projectId), ArgumentMatchers.eq(List.of())))
+        when(corpusAvailabilityGate.evaluate(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.eq(List.of())))
                 .thenReturn(
                         new CorpusAvailabilityGate.Result(
                                 false,
@@ -714,7 +732,10 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 0L,
                                 CorpusAvailabilityGate.REINDEX_REQUIRED,
                                 "Documents are READY, but no snapshot was selected for corpus evidence."));
-        when(corpusAvailabilityGate.probe(ArgumentMatchers.eq(projectId), ArgumentMatchers.eq(List.of())))
+        when(corpusAvailabilityGate.probe(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.eq(List.of())))
                 .thenReturn(
                         Map.of(
                                 "skippedReasonCode",
@@ -768,7 +789,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", false, "hSnap", snapshotId)));
 
         when(corpusAvailabilityGate.evaluate(
-                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.argThat(ids -> ids != null && ids.size() == 1 && snapshotId.equals(ids.get(0)))))
                 .thenReturn(
                         new CorpusAvailabilityGate.Result(
@@ -780,7 +802,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 CorpusAvailabilityGate.NO_READY_DOCUMENTS,
                                 "No READY documents"));
         when(corpusAvailabilityGate.probe(
-                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.argThat(ids -> ids != null && ids.size() == 1 && snapshotId.equals(ids.get(0)))))
                 .thenReturn(
                         Map.of(

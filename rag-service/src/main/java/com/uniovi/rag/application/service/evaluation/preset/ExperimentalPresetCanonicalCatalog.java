@@ -376,6 +376,43 @@ public final class ExperimentalPresetCanonicalCatalog {
         return code != null && code.ordinal() <= RagExperimentalPresetCode.P12.ordinal();
     }
 
+    /** Whether the preset requires a document-backed evaluation corpus. */
+    public static boolean needsCorpus(RagExperimentalPresetCode code) {
+        return corpusRequired(code);
+    }
+
+    /** Whether dense/structured vector retrieval index rows are required (P2+ materialization). */
+    public static boolean needsVectorIndex(RagExperimentalPresetCode code) {
+        if (code == null) {
+            return false;
+        }
+        RequiredMaterialization mat = effectiveIndexRequirements(code).requiredMaterialization();
+        return mat != null && mat != RequiredMaterialization.NONE;
+    }
+
+    /** Whether an embedding model must be present in the index profile for execution. */
+    public static boolean embeddingRequired(RagExperimentalPresetCode code) {
+        return needsVectorIndex(code);
+    }
+
+    /** Presets that can execute without retrieval (P0/P1 direct / full-corpus prompt paths). */
+    public static boolean canRunWithoutRetrieval(RagExperimentalPresetCode code) {
+        if (code == null) {
+            return false;
+        }
+        return code == RagExperimentalPresetCode.P0 || code == RagExperimentalPresetCode.P1;
+    }
+
+    /** Effective materialization for catalog / run-plan export. */
+    public static RequiredMaterialization requiredMaterialization(RagExperimentalPresetCode code) {
+        IndexRequirements req = effectiveIndexRequirements(code);
+        return req.requiredMaterialization() != null ? req.requiredMaterialization() : RequiredMaterialization.NONE;
+    }
+
+    public static boolean metadataRequired(RagExperimentalPresetCode code) {
+        return effectiveIndexRequirements(code).requiresMetadataSupport();
+    }
+
     public static RagExperimentalPresetCode tryResolveCodeByProductPresetId(UUID presetId) {
         if (presetId == null) {
             return null;

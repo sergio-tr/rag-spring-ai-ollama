@@ -64,4 +64,8 @@ public interface EvaluationRunRepository extends JpaRepository<EvaluationRunEnti
     @Query(
             "SELECT r FROM EvaluationRunEntity r WHERE r.campaign.id = :campaignId AND r.user.id = :userId ORDER BY r.createdAt ASC")
     List<EvaluationRunEntity> findByCampaignIdAndUserId(@Param("campaignId") UUID campaignId, @Param("userId") UUID userId);
+
+    boolean existsByLlmModelId(String llmModelId);
+
+    boolean existsByEmbeddingModelId(String embeddingModelId);
 }
