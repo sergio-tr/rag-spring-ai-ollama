@@ -281,6 +281,12 @@ if [ "$MODE" = dev ]; then
   [ "$WITH_RAG_BACKEND" = true ] && add_env_file "$ROOT_DIR/rag-service/.env"
   [ "$WITH_RAG_BACKEND" = true ] && add_env_file "$ROOT_DIR/webapp/.env"
 
+  # Same-origin API via nginx: empty NEXT_PUBLIC_API_BASE_URL (overrides webapp/.env :9000 cross-origin).
+  if [ "$WITH_DEV_PROXY" = true ] && [ "$WITH_RAG_BACKEND" = true ]; then
+    export WEBAPP_NEXT_PUBLIC_API_BASE_URL=""
+    export NEXT_PUBLIC_API_BASE_URL=""
+  fi
+
   cd "$DOCKER_DIR"
 
   if [ "$ACTION" = down ]; then
@@ -346,7 +352,13 @@ if [ "$MODE" = dev ]; then
   if [ "$WITH_RAG_BACKEND" = true ]; then
     echo "  Backend:     in Docker (backend-dev) — hot reload via DevTools. Container port ${SERVER_PORT:-9000}."
     if [ "$WITH_DEV_PROXY" = true ]; then
-      echo "               API + Actuator via nginx on host port ${REVERSE_PROXY_DEV_HTTP_PORT:-80} (same origin as webapp)."
+      _https_port="${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}"
+      if [ "${REVERSE_PROXY_ENFORCE_HTTPS:-0}" = "1" ]; then
+        echo "               Entry: https://127.0.0.1:${_https_port}/ (self-signed; HTTP :${REVERSE_PROXY_DEV_HTTP_PORT:-80} redirects)."
+      else
+        echo "               Entry: http://127.0.0.1:${REVERSE_PROXY_DEV_HTTP_PORT:-80}/ (HTTPS optional: https://127.0.0.1:${_https_port}/)."
+      fi
+      echo "               API + BFF via nginx (NEXT_PUBLIC_API_BASE_URL empty = same-origin ${NEXT_PUBLIC_RAG_API_PREFIX:-/api/v5})."
     else
       echo "               API on host: http://127.0.0.1:${BACKEND_PORT:-9000} — set WEBAPP_NEXT_PUBLIC_API_BASE_URL accordingly in webapp/.env for the browser."
     fi
