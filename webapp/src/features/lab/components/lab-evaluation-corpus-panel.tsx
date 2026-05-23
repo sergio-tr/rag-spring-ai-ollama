@@ -1,0 +1,139 @@
+"use client";
+
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { useEvaluationCorpus } from "@/features/lab/hooks/use-evaluation-corpus";
+import { apiFetch, apiProductPath } from "@/lib/api-client";
+import type { ProjectDocumentDto } from "@/types/api";
+import { useTranslations } from "next-intl";
+import { useCallback, useRef, useState } from "react";
+
+export type LabEvaluationCorpusPanelProps = {
+  corpusId: string | null;
+  onCorpusIdChange: (corpusId: string | null) => void;
+  /** Optional project to reuse documents from (not required). */
+  optionalProjectId?: string | null;
+  disabled?: boolean;
+};
+
+export function LabEvaluationCorpusPanel({
+  corpusId,
+  onCorpusIdChange,
+  optionalProjectId,
+  disabled = false,
+}: LabEvaluationCorpusPanelProps) {
+  const t = useTranslations("Lab");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [localErr, setLocalErr] = useState<string | null>(null);
+  const { summary, loading, error, ensureCorpus, uploadDocument, attachFromProject } = useEvaluationCorpus(corpusId);
+
+  const ensureReady = useCallback(async () => {
+    if (corpusId) return corpusId;
+    const created = await ensureCorpus();
+    onCorpusIdChange(created.id);
+    return created.id;
+  }, [corpusId, ensureCorpus, onCorpusIdChange]);
+
+  async function onUploadSelected(file: File | undefined) {
+    if (!file || disabled) return;
+    setBusy(true);
+    setLocalErr(null);
+    try {
+      const id = await ensureReady();
+      await uploadDocument(id, file);
+    } catch {
+      setLocalErr(t("labCorpusUploadFailed"));
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function attachAllFromOptionalProject() {
+    if (!optionalProjectId || disabled) return;
+    setBusy(true);
+    setLocalErr(null);
+    try {
+      const id = await ensureReady();
+      const docs = await apiFetch<ProjectDocumentDto[]>(
+        apiProductPath(`/projects/${optionalProjectId}/documents`),
+      );
+      const sharedIds = docs.filter((d) => d.corpusScope === "PROJECT_SHARED").map((d) => d.id);
+      if (sharedIds.length === 0) {
+        setLocalErr(t("labCorpusNoProjectDocuments"));
+        return;
+      }
+      await attachFromProject(id, optionalProjectId, sharedIds);
+    } catch {
+      setLocalErr(t("labCorpusAttachFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const displayErr = localErr ?? error;
+  const docCount = summary?.documentCount ?? 0;
+  const readyCount = summary?.readyCount ?? 0;
+
+  return (
+    <div
+      className="space-y-3 rounded-md border bg-muted/20 p-3 text-sm"
+      data-testid="lab-evaluation-corpus-panel"
+    >
+      <div>
+        <p className="font-medium text-foreground">{t("labCorpusTitle")}</p>
+        <p className="text-muted-foreground mt-1 text-xs leading-relaxed">{t("labCorpusHelp")}</p>
+      </div>
+
+      <p className="text-muted-foreground text-xs" data-testid="lab-corpus-summary">
+        {t("labCorpusSelectedSummary", { total: docCount, ready: readyCount })}
+      </p>
+
+      {summary?.documents && summary.documents.length > 0 ? (
+        <ul className="text-muted-foreground max-h-28 list-inside list-disc overflow-y-auto text-xs">
+          {summary.documents.map((d) => (
+            <li key={d.id}>
+              {d.fileName} — {d.status}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div>
+          <Label htmlFor="lab-corpus-upload" className="sr-only">
+            {t("labCorpusUploadLabel")}
+          </Label>
+          <input
+            ref={fileRef}
+            id="lab-corpus-upload"
+            data-testid="lab-corpus-upload-input"
+            type="file"
+            className="text-xs"
+            disabled={disabled || busy || loading}
+            onChange={(e) => void onUploadSelected(e.target.files?.[0])}
+          />
+        </div>
+        {optionalProjectId ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            data-testid="lab-corpus-attach-project"
+            disabled={disabled || busy || loading}
+            onClick={() => void attachAllFromOptionalProject()}
+          >
+            {t("labCorpusAttachFromProject")}
+          </Button>
+        ) : null}
+      </div>
+
+      {displayErr ? (
+        <output role="alert" className="block text-destructive text-xs">
+          {displayErr}
+        </output>
+      ) : null}
+    </div>
+  );
+}

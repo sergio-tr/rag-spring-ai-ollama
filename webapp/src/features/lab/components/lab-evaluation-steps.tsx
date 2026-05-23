@@ -24,9 +24,7 @@ export function LabEvaluationSteps({ kind }: Readonly<{ kind: BenchmarkKind }>) 
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-          <p>
-            This page requires an authenticated session. If you see a permissions error, sign in again and retry.
-          </p>
+          <p>{t("guidedStepAuthHint")}</p>
         </div>
         <ol className="list-decimal space-y-1 pl-5">
           <li>

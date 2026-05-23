@@ -28,6 +28,8 @@ export type LabEvaluationDraftStored = {
   runName: string;
   followMode: LabJobFollowMode;
   lastEvaluationRunId: string | null;
+  /** Lab evaluation corpus for RAG/embedding document-backed runs. */
+  corpusId: string | null;
 };
 
 export function defaultLabEvaluationDraft(): Omit<LabEvaluationDraftStored, "v"> {
@@ -41,13 +43,14 @@ export function defaultLabEvaluationDraft(): Omit<LabEvaluationDraftStored, "v">
     embeddingDownstreamRag: false,
     selectedExperimentalPresetCodes: [],
     runName: "",
-    followMode: "poll",
+    followMode: "sse",
     lastEvaluationRunId: null,
+    corpusId: null,
   };
 }
 
 function coerceFollowMode(raw: unknown): LabJobFollowMode {
-  return raw === "sse" ? "sse" : "poll";
+  return raw === "poll" ? "poll" : "sse";
 }
 
 /**
@@ -121,6 +124,12 @@ export function loadLabEvaluationDraft(kind: LabEvaluationDraftKind): LabEvaluat
               : parsed.lastEvaluationRunId === null
                 ? null
                 : d.lastEvaluationRunId,
+          corpusId:
+            typeof parsed.corpusId === "string"
+              ? parsed.corpusId
+              : parsed.corpusId === null
+                ? null
+                : d.corpusId,
         };
       }
     }

@@ -35,7 +35,7 @@ describe("lab-evaluation-draft", () => {
     const d = loadLabEvaluationDraft("LLM_JUDGE_QA");
     expect(d.v).toBe(1);
     expect(d.datasetId).toBeNull();
-    expect(d.followMode).toBe("poll");
+    expect(d.followMode).toBe("sse");
   });
 
   it("migrates rag-lab-form-v1-v1 storage and removes v1 storage key", () => {
@@ -69,12 +69,12 @@ describe("lab-evaluation-draft", () => {
     expect(localStorage.getItem(labEvaluationDraftStorageKey("LLM_JUDGE_QA"))).toContain("\"v\":1");
   });
 
-  it("coerces unknown followMode values to poll on load", () => {
+  it("coerces unknown followMode values to sse on load", () => {
     localStorage.setItem(
       labEvaluationDraftStorageKey("LLM_JUDGE_QA"),
       JSON.stringify({ v: 1, ...defaultLabEvaluationDraft(), followMode: "wat" }),
     );
-    expect(loadLabEvaluationDraft("LLM_JUDGE_QA").followMode).toBe("poll");
+    expect(loadLabEvaluationDraft("LLM_JUDGE_QA").followMode).toBe("sse");
   });
 
   it("flags presets unknown vs catalog", () => {

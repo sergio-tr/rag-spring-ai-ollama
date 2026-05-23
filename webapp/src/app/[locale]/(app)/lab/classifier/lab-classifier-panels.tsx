@@ -363,6 +363,10 @@ export function LabClassifierTrainPanel(
               </div>
             )}
             <p className="text-muted-foreground leading-relaxed">{t("labAdvancedClassifierJobHelp")}</p>
+            <details className="rounded-md border bg-muted/20 p-2">
+              <summary className="cursor-pointer text-muted-foreground">{t("labDeveloperDetailsSummary")}</summary>
+              <p className="text-muted-foreground mt-2 leading-relaxed">{t("labDeveloperClassifierHelp")}</p>
+            </details>
           </div>
         </details>
         <div className="grid gap-2">
@@ -732,6 +736,10 @@ export function LabClassifierEvalPanel(
               </div>
             )}
             <p className="text-muted-foreground leading-relaxed">{t("labAdvancedClassifierJobHelp")}</p>
+            <details className="rounded-md border bg-muted/20 p-2">
+              <summary className="cursor-pointer text-muted-foreground">{t("labDeveloperDetailsSummary")}</summary>
+              <p className="text-muted-foreground mt-2 leading-relaxed">{t("labDeveloperClassifierHelp")}</p>
+            </details>
           </div>
         </details>
         <div className="grid gap-2">

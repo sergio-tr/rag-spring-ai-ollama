@@ -41,6 +41,7 @@ function withoutStorageVersion(stored: LabEvaluationDraftStored): Omit<LabEvalua
     runName: stored.runName,
     followMode: stored.followMode,
     lastEvaluationRunId: stored.lastEvaluationRunId,
+    corpusId: stored.corpusId,
   };
 }
 
