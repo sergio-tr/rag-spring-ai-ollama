@@ -616,7 +616,8 @@ export type LabJobLiveConnectionState =
   | "completed"
   | "failed"
   | "cancelled"
-  | "finished_away";
+  | "finished_away"
+  | "fallback_polling";
 
 export type ChatSourceDto = {
   documentId: string | null;

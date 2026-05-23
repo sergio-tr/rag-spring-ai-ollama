@@ -9,6 +9,7 @@ export type LabJobStreamCallbacks = {
   onLive?: () => void;
   onResumed?: () => void;
   onReconnecting?: () => void;
+  onFallbackPolling?: () => void;
   onTaskTick?: (status: AsyncTaskStatusDto) => void;
   onJobEvent?: (event: LabJobEventDto) => void;
   onFinishedAway?: (status: AsyncTaskStatusDto) => void;
@@ -311,6 +312,7 @@ export async function streamLabJobLive(
   }
 
   options.callbacks?.onReconnecting?.();
+  options.callbacks?.onFallbackPolling?.();
   return pollLabJob(
     jobId,
     (status) => {

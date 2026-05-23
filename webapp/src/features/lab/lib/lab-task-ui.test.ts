@@ -116,6 +116,7 @@ describe("getLabJobUiPhase", () => {
     expect(getLabJobUiPhase({ taskStatus: null, connectionState: "failed" })).toBe("failed");
     expect(getLabJobUiPhase({ taskStatus: null, connectionState: "cancelled" })).toBe("cancelled");
     expect(getLabJobUiPhase({ taskStatus: null, connectionState: "connecting" })).toBe("connecting");
+    expect(getLabJobUiPhase({ taskStatus: null, connectionState: "fallback_polling" })).toBe("fallback_polling");
     expect(getLabJobUiPhase({ taskStatus: null, connectionState: "resumed" })).toBe("resumed");
   });
 
@@ -143,6 +144,7 @@ const labels = {
   connecting: "Connecting",
   live: "Live",
   reconnecting: "Reconnecting",
+  fallbackPolling: "Fallback",
   resumed: "Resumed",
   finishedAway: "Finished away",
   queued: "Queued",

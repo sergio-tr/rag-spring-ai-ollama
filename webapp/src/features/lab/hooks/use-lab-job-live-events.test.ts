@@ -274,7 +274,7 @@ describe("useLabJobLiveEvents", () => {
     unmount();
   });
 
-  it("maps onConnecting to reconnecting when stream was already live", async () => {
+  it("maps onConnecting to reconnecting when stream was live without recent events", async () => {
     let streamCallbacks: LabJobStreamCallbacks | undefined;
     let releaseStream: (() => void) | undefined;
     vi.spyOn(labJobSse, "streamLabJobLive").mockImplementation((_path, options) => {
@@ -294,6 +294,33 @@ describe("useLabJobLiveEvents", () => {
       streamCallbacks?.onConnecting?.();
     });
     expect(result.current.connectionState).toBe("reconnecting");
+    releaseStream?.();
+    unmount();
+  });
+
+  it("stays live on reconnecting callbacks when events arrived recently", async () => {
+    let streamCallbacks: LabJobStreamCallbacks | undefined;
+    let releaseStream: (() => void) | undefined;
+    vi.spyOn(labJobSse, "streamLabJobLive").mockImplementation((_path, options) => {
+      streamCallbacks = options?.callbacks;
+      return new Promise((resolve) => {
+        releaseStream = () => resolve(terminalStatus);
+      });
+    });
+
+    const { result, unmount } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    await waitFor(() => expect(streamCallbacks).toBeDefined());
+    act(() => {
+      streamCallbacks?.onLive?.();
+      streamCallbacks?.onTaskTick?.({
+        ...terminalStatus,
+        terminal: false,
+        status: "RUNNING",
+      });
+      streamCallbacks?.onReconnecting?.();
+      streamCallbacks?.onConnecting?.();
+    });
+    expect(result.current.connectionState).toBe("live");
     releaseStream?.();
     unmount();
   });

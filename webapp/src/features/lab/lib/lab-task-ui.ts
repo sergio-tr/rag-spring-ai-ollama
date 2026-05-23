@@ -7,6 +7,7 @@ export type LabJobUiPhase =
   | "connecting"
   | "live"
   | "reconnecting"
+  | "fallback_polling"
   | "resumed"
   | "queued"
   | "running"
@@ -34,6 +35,7 @@ export function getLabJobUiPhase(input: {
 
   if (connectionState === "connecting") return "connecting";
   if (connectionState === "reconnecting") return "reconnecting";
+  if (connectionState === "fallback_polling") return "fallback_polling";
   if (connectionState === "resumed") return "resumed";
   if (connectionState === "live") {
     if (!taskStatus) return queuedHint ? "queued" : "running";
@@ -84,6 +86,7 @@ export function labPhaseToTraceStatus(phase: LabJobUiPhase): TraceStatus {
     case "finished_away":
       return "warning";
     case "reconnecting":
+    case "fallback_polling":
     case "resumed":
     case "stopped_waiting":
       return "warning";
@@ -102,6 +105,7 @@ export type LabJobUiLabels = {
   connecting: string;
   live: string;
   reconnecting: string;
+  fallbackPolling: string;
   resumed: string;
   finishedAway: string;
   queued: string;
@@ -122,6 +126,8 @@ export function getLabJobStatusLabel(phase: LabJobUiPhase, labels: LabJobUiLabel
     case "reconnecting":
     case "stopped_waiting":
       return labels.reconnecting;
+    case "fallback_polling":
+      return labels.fallbackPolling;
     case "resumed":
       return labels.resumed;
     case "finished_away":

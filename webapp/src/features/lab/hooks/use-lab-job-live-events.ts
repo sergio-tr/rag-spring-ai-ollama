@@ -26,9 +26,20 @@ export type UseLabJobLiveEventsResult = Readonly<{
 }>;
 
 const RESUMED_FLASH_MS = 2_500;
+/** Recent SSE/poll activity suppresses reconnecting UI. */
+const RECENT_EVENT_MS = 3_000;
 
 function taskStatusUpper(status: string | null | undefined): string {
   return (status ?? "").trim().toUpperCase();
+}
+
+function isTerminalConnectionState(state: LabJobLiveConnectionState): boolean {
+  return (
+    state === "completed" ||
+    state === "failed" ||
+    state === "cancelled" ||
+    state === "finished_away"
+  );
 }
 
 /**
@@ -45,6 +56,7 @@ export function useLabJobLiveEvents(options: UseLabJobLiveEventsOptions): UseLab
   const abortRef = useRef<AbortController | null>(null);
   const resumedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastEventIdRef = useRef<number | null>(null);
+  const lastEventAtRef = useRef<number | null>(null);
   const taskStatusRef = useRef<AsyncTaskStatusDto | null>(null);
   const callbacksRef = useRef({ onTick, onTerminal, onStreamError });
 
@@ -55,6 +67,23 @@ export function useLabJobLiveEvents(options: UseLabJobLiveEventsOptions): UseLab
       clearTimeout(resumedTimerRef.current);
       resumedTimerRef.current = null;
     }
+  }, []);
+
+  const markRecentActivity = useCallback(() => {
+    lastEventAtRef.current = Date.now();
+  }, []);
+
+  const hasRecentActivity = useCallback(() => {
+    const last = lastEventAtRef.current;
+    if (last == null) return false;
+    return Date.now() - last <= RECENT_EVENT_MS;
+  }, []);
+
+  const promoteToLive = useCallback(() => {
+    setConnectionState((prev) => {
+      if (isTerminalConnectionState(prev)) return prev;
+      return "live";
+    });
   }, []);
 
   const stop = useCallback(() => {
@@ -101,14 +130,20 @@ export function useLabJobLiveEvents(options: UseLabJobLiveEventsOptions): UseLab
     const callbacks: LabJobStreamCallbacks = {
       onConnecting: () => {
         if (!cancelled) {
-          setConnectionState((prev) => (prev === "live" || prev === "resumed" ? "reconnecting" : "connecting"));
+          setConnectionState((prev) => {
+            if (prev === "live" || prev === "resumed") {
+              return hasRecentActivity() ? "live" : "reconnecting";
+            }
+            return "connecting";
+          });
         }
       },
       onLive: () => {
-        if (!cancelled) setConnectionState("live");
+        if (!cancelled) promoteToLive();
       },
       onResumed: () => {
         if (!cancelled) {
+          markRecentActivity();
           setConnectionState("resumed");
           if (resumedTimerRef.current) clearTimeout(resumedTimerRef.current);
           resumedTimerRef.current = setTimeout(() => {
@@ -117,16 +152,25 @@ export function useLabJobLiveEvents(options: UseLabJobLiveEventsOptions): UseLab
         }
       },
       onReconnecting: () => {
-        if (!cancelled) setConnectionState("reconnecting");
+        if (!cancelled && !hasRecentActivity()) {
+          setConnectionState("reconnecting");
+        }
+      },
+      onFallbackPolling: () => {
+        if (!cancelled) setConnectionState("fallback_polling");
       },
       onTaskTick: (status) => {
         if (cancelled) return;
+        markRecentActivity();
+        promoteToLive();
         taskStatusRef.current = status;
         setTaskStatus(status);
         callbacksRef.current.onTick?.(status);
       },
       onJobEvent: (event: LabJobEventDto) => {
         if (cancelled || event.eventId <= 0) return;
+        markRecentActivity();
+        promoteToLive();
         const next = lastEventIdRef.current == null ? event.eventId : Math.max(lastEventIdRef.current, event.eventId);
         lastEventIdRef.current = next;
         setLastEventId(next);
@@ -185,7 +229,9 @@ export function useLabJobLiveEvents(options: UseLabJobLiveEventsOptions): UseLab
           return;
         }
         callbacksRef.current.onStreamError?.(e);
-        if (!cancelled) setConnectionState("reconnecting");
+        if (!cancelled && !hasRecentActivity()) {
+          setConnectionState("reconnecting");
+        }
       }
     })();
 
@@ -193,7 +239,16 @@ export function useLabJobLiveEvents(options: UseLabJobLiveEventsOptions): UseLab
       cancelled = true;
       abortStreamOnly();
     };
-  }, [accepted?.jobId, accepted?.streamPath, abortStreamOnly, resumeNonce, streamActive]);
+  }, [
+    accepted?.jobId,
+    accepted?.streamPath,
+    abortStreamOnly,
+    hasRecentActivity,
+    markRecentActivity,
+    promoteToLive,
+    resumeNonce,
+    streamActive,
+  ]);
 
   const connectionStateOut: LabJobLiveConnectionState = streamActive ? connectionState : "idle";
 

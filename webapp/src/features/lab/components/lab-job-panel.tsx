@@ -47,6 +47,7 @@ export function LabJobPanel({
     connecting: t("jobUiConnecting"),
     live: t("jobUiLive"),
     reconnecting: t("jobUiReconnecting"),
+    fallbackPolling: t("jobUiFallbackPolling"),
     resumed: t("jobUiResumed"),
     finishedAway: t("jobUiFinishedAway"),
     queued: t("jobUiQueued"),
