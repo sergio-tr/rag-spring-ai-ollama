@@ -1,15 +1,18 @@
 package com.uniovi.rag.application.service.evaluation;
 
+import com.uniovi.rag.domain.evaluation.BenchmarkKind;
+import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
+import com.uniovi.rag.domain.evaluation.EvaluationStudyType;
 import com.uniovi.rag.infrastructure.persistence.EvaluationCampaignRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCorpusEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpMetricsCalculator;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpRollupCalculator;
-import com.uniovi.rag.domain.evaluation.BenchmarkKind;
-import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
 import com.uniovi.rag.interfaces.rest.dto.StartCampaignRequestDto;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -17,7 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-import java.util.Collections;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,6 +28,10 @@ import java.util.UUID;
 
 @Service
 public class LabCampaignService {
+
+    static final String COMPARISON_AXIS_LLM = "LLM_MODEL";
+    static final String COMPARISON_AXIS_EMBEDDING = "EMBEDDING_MODEL";
+    static final String COMPARISON_AXIS_PRESET = "PRESET_CODE";
 
     private final EvaluationCampaignRepository evaluationCampaignRepository;
     private final EvaluationRunRepository evaluationRunRepository;
@@ -43,11 +49,7 @@ public class LabCampaignService {
     /**
      * Starts a campaign by delegating to the canonical benchmark orchestrator.
      * <p>
-     * Notes:
-     * - LLM sweeps are supported and create multiple child runs.
-     * - Embedding sweeps create one run per model when {@code embeddingModelIds} is set; align {@code indexSnapshotIds}
-     *   for multi-model embedding campaigns.
-     * - RAG preset sweeps are modeled as a single run that iterates preset codes (still exported per-preset).
+     * LLM, embedding, and RAG preset sweeps fan out into one child run per comparison axis value.
      */
     @Transactional
     public Map<String, Object> startCampaign(
@@ -61,6 +63,7 @@ public class LabCampaignService {
         StartBenchmarkRunRequest body =
                 new StartBenchmarkRunRequest(
                         req.datasetId(),
+                        req.corpusId(),
                         req.projectId(),
                         null,
                         req.name(),
@@ -89,7 +92,6 @@ public class LabCampaignService {
         BenchmarkJobAccepted accepted = orchestrator.startJsonBenchmark(userId, "USER", kind, body);
         UUID campaignId = accepted.campaignId().orElse(null);
         if (campaignId == null) {
-            // Defensive: multi-model LLM starts always create a campaign; other kinds require explicit wiring.
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Campaign was not created");
         }
         return Map.of(
@@ -102,8 +104,13 @@ public class LabCampaignService {
     public Map<String, Object> summary(UUID userId, UUID campaignId) {
         EvaluationCampaignEntity c = requireCampaign(userId, campaignId);
         List<EvaluationRunEntity> runs = evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId);
+        CampaignContext ctx = resolveCampaignContext(c, runs);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("campaignId", c.getId());
+        out.put("campaignType", ctx.campaignType());
+        out.put("comparisonAxis", ctx.comparisonAxis());
+        out.put("comparativeMode", ctx.comparativeMode());
+        out.put("axisCount", ctx.axisCount());
         out.put("studyType", c.getStudyType());
         out.put("name", c.getName());
         out.put("createdAt", c.getCreatedAt());
@@ -116,30 +123,36 @@ public class LabCampaignService {
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> listRuns(UUID userId, UUID campaignId) {
-        requireCampaign(userId, campaignId);
+        EvaluationCampaignEntity c = requireCampaign(userId, campaignId);
+        CampaignContext ctx = resolveCampaignContext(c, evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId));
         List<EvaluationRunEntity> runs = evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId);
         List<Map<String, Object>> out = new ArrayList<>();
         for (EvaluationRunEntity r : runs) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("runId", r.getId());
-            row.put("name", r.getName());
+            row.put("runName", r.getName());
             row.put("benchmarkKind", r.getBenchmarkKind());
             row.put("status", r.getStatus() != null ? r.getStatus().name() : null);
             row.put("createdAt", r.getCreatedAt());
             row.put("completedAt", r.getCompletedAt());
             row.put("llmModelId", r.getLlmModelId());
             row.put("embeddingModelId", r.getEmbeddingModelId());
+            row.put("presetCode", resolvePresetCode(r));
+            row.put("modelLabel", humanModelLabel(r));
+            row.put("presetLabel", humanPresetLabel(r));
+            row.put("corpusName", humanCorpusName(r));
+            row.put("datasetName", humanDatasetName(r));
+            row.put("comparisonAxis", ctx.comparisonAxis());
+            row.put("axisValue", resolveAxisValue(ctx, r));
             out.add(row);
         }
         return out;
     }
 
-    /**
-     * Campaign MVP items (JSON) — concatenates all child-run items and preserves modelId/embeddingModelId per row.
-     */
     @Transactional(readOnly = true)
     public Map<String, Object> exportCampaignMvpItemsJson(UUID userId, UUID campaignId) {
-        requireCampaign(userId, campaignId);
+        EvaluationCampaignEntity c = requireCampaign(userId, campaignId);
+        CampaignContext ctx = resolveCampaignContext(c, evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId));
         List<EvaluationRunEntity> runs = evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId);
         List<Map<String, Object>> items = new ArrayList<>();
         for (EvaluationRunEntity run : runs) {
@@ -148,7 +161,12 @@ public class LabCampaignService {
                 Map<String, Object> mvp = BenchmarkMvpMetricsCalculator.computeMvpMetrics(it, run);
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("campaignId", campaignId);
+                row.put("campaignType", ctx.campaignType());
+                row.put("comparisonAxis", ctx.comparisonAxis());
                 row.put("runId", run.getId());
+                row.put("runName", run.getName());
+                row.put("modelLabel", humanModelLabel(run));
+                row.put("presetLabel", humanPresetLabel(run));
                 row.put("evaluatedAt", it.getEvaluatedAt());
                 row.put("mvp", mvp);
                 items.add(row);
@@ -156,6 +174,9 @@ public class LabCampaignService {
         }
         return Map.of(
                 "campaignId", campaignId,
+                "campaignType", ctx.campaignType(),
+                "comparisonAxis", ctx.comparisonAxis(),
+                "comparativeMode", ctx.comparativeMode(),
                 "exportedAt", Instant.now().toString(),
                 "items", items);
     }
@@ -164,54 +185,40 @@ public class LabCampaignService {
     public Map<String, Object> campaignComparison(UUID userId, UUID campaignId) {
         EvaluationCampaignEntity c = requireCampaign(userId, campaignId);
         List<EvaluationRunEntity> runs = evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId);
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (EvaluationRunEntity run : runs) {
-            List<EvaluationResultEntity> items = evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId());
-            Map<String, Object> rollups = BenchmarkMvpRollupCalculator.build(items, run);
-            // LLM sweep: each run is one model (simplest, stable)
-            if ("LLM_MODEL_BASELINE".equalsIgnoreCase(c.getStudyType()) || "LLM_MODEL_SWEEP".equalsIgnoreCase(c.getStudyType())) {
-                rows.add(rowFromRollupBucket("modelId", run.getLlmModelId(), rollupBucket(rollups, "globalMacro")));
-                continue;
-            }
-            // RAG preset sweep: one run; break down by presetCode rollups
-            if ("RAG_PRESET_SWEEP".equalsIgnoreCase(c.getStudyType()) || BenchmarkKind.RAG_PRESET_END_TO_END.name().equals(run.getBenchmarkKind())) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> byPreset = (Map<String, Object>) rollups.getOrDefault("byPreset", Map.of());
-                for (Map.Entry<String, Object> e : byPreset.entrySet()) {
-                    if (e.getValue() instanceof Map<?, ?> bucket) {
-                        //noinspection unchecked
-                        rows.add(rowFromRollupBucket("presetCode", e.getKey(), (Map<String, Object>) bucket));
-                    }
-                }
-                continue;
-            }
-            // Embedding sweep: currently unsupported at orchestrator level; if present, still export by embedding id.
-            @SuppressWarnings("unchecked")
-            Map<String, Object> byEmb = (Map<String, Object>) rollups.getOrDefault("byEmbeddingModel", Map.of());
-            if (!byEmb.isEmpty()) {
-                for (Map.Entry<String, Object> e : byEmb.entrySet()) {
-                    if (e.getValue() instanceof Map<?, ?> bucket) {
-                        //noinspection unchecked
-                        rows.add(rowFromRollupBucket("embeddingModelId", e.getKey(), (Map<String, Object>) bucket));
-                    }
-                }
-            } else {
-                rows.add(rowFromRollupBucket("runId", run.getId().toString(), rollupBucket(rollups, "globalMacro")));
-            }
-        }
-        return Map.of(
-                "campaignId", campaignId,
-                "studyType", c.getStudyType(),
-                "rows", rows);
+        CampaignContext ctx = resolveCampaignContext(c, runs);
+        List<Map<String, Object>> rows = buildComparisonRows(ctx, runs);
+        long failedRuns = runs.stream().filter(r -> r.getStatus() != null && "ERROR".equals(r.getStatus().name())).count();
+        long skippedRuns = runs.stream().filter(r -> r.getStatus() != null && "SKIPPED".equals(r.getStatus().name())).count();
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("campaignId", campaignId);
+        out.put("campaignType", ctx.campaignType());
+        out.put("comparisonAxis", ctx.comparisonAxis());
+        out.put("comparativeMode", ctx.comparativeMode());
+        out.put("axisCount", ctx.axisCount());
+        out.put("studyType", c.getStudyType());
+        out.put("runs", runs.stream().map(this::runSummaryRow).toList());
+        out.put("rows", rows);
+        out.put("failedRuns", failedRuns);
+        out.put("skippedRuns", skippedRuns);
+        return out;
     }
 
     @Transactional(readOnly = true)
     public String exportCampaignItemsCsv(UUID userId, UUID campaignId) {
-        requireCampaign(userId, campaignId);
+        EvaluationCampaignEntity c = requireCampaign(userId, campaignId);
+        CampaignContext ctx = resolveCampaignContext(c, evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId));
         List<EvaluationRunEntity> runs = evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId);
         List<String> cols = new ArrayList<>();
         cols.add("campaignId");
+        cols.add("campaign_type");
+        cols.add("comparison_axis");
         cols.add("runId");
+        cols.add("run_name");
+        cols.add("model_label");
+        cols.add("preset_label");
+        cols.add("corpus_name");
+        cols.add("dataset_name");
         cols.addAll(LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS());
         StringBuilder sb = new StringBuilder();
         sb.append(String.join(",", cols)).append('\n');
@@ -221,7 +228,14 @@ public class LabCampaignService {
                 Map<String, String> row = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(it, run);
                 List<String> cells = new ArrayList<>();
                 cells.add(csvEscape(campaignId.toString()));
+                cells.add(csvEscape(ctx.campaignType()));
+                cells.add(csvEscape(ctx.comparisonAxis()));
                 cells.add(csvEscape(run.getId().toString()));
+                cells.add(csvEscape(nullToEmpty(run.getName())));
+                cells.add(csvEscape(humanModelLabel(run)));
+                cells.add(csvEscape(humanPresetLabel(run)));
+                cells.add(csvEscape(humanCorpusName(run)));
+                cells.add(csvEscape(humanDatasetName(run)));
                 for (String h : LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS()) {
                     cells.add(csvEscape(row.getOrDefault(h, "")));
                 }
@@ -238,12 +252,23 @@ public class LabCampaignService {
         List<Map<String, Object>> rows = (List<Map<String, Object>>) cmp.getOrDefault("rows", List.of());
         List<String> cols = List.of(
                 "campaignId",
-                "groupKey",
-                "groupValue",
+                "campaign_type",
+                "comparison_axis",
+                "comparative_mode",
+                "runId",
+                "run_name",
+                "model_label",
+                "preset_label",
+                "corpus_name",
+                "dataset_name",
+                "axis_value",
+                "status",
+                "failure_reason",
                 "totalItems",
                 "executed",
                 "notSupported",
                 "failed",
+                "skipped",
                 "meanExactMatch",
                 "meanSemanticScore",
                 "meanRecallAt1",
@@ -253,10 +278,11 @@ public class LabCampaignService {
         sb.append(String.join(",", cols)).append('\n');
         for (Map<String, Object> r : rows) {
             List<String> cells = new ArrayList<>();
-            cells.add(csvEscape(String.valueOf(campaignId)));
-            cells.add(csvEscape(String.valueOf(r.getOrDefault("groupKey", ""))));
-            cells.add(csvEscape(String.valueOf(r.getOrDefault("groupValue", ""))));
-            for (String k : cols.subList(3, cols.size())) {
+            cells.add(csvEscape(String.valueOf(cmp.getOrDefault("campaignId", ""))));
+            cells.add(csvEscape(String.valueOf(cmp.getOrDefault("campaignType", ""))));
+            cells.add(csvEscape(String.valueOf(cmp.getOrDefault("comparisonAxis", ""))));
+            cells.add(csvEscape(String.valueOf(cmp.getOrDefault("comparativeMode", ""))));
+            for (String k : cols.subList(4, cols.size())) {
                 cells.add(csvEscape(String.valueOf(r.getOrDefault(k, ""))));
             }
             sb.append(String.join(",", cells)).append('\n');
@@ -272,6 +298,145 @@ public class LabCampaignService {
         bundle.put("itemsBundle", exportCampaignMvpItemsJson(userId, campaignId));
         bundle.put("exportedAt", Instant.now().toString());
         return bundle;
+    }
+
+    private List<Map<String, Object>> buildComparisonRows(CampaignContext ctx, List<EvaluationRunEntity> runs) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (EvaluationRunEntity run : runs) {
+            List<EvaluationResultEntity> items = evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId());
+            Map<String, Object> rollups = BenchmarkMvpRollupCalculator.build(items, run);
+            String axisValue = resolveAxisValue(ctx, run);
+            Map<String, Object> bucket = rollupBucket(rollups, "globalMacro");
+            Map<String, Object> row = rowFromRollupBucket(ctx.comparisonAxis(), axisValue, bucket);
+            row.put("runId", run.getId());
+            row.put("runName", run.getName());
+            row.put("modelLabel", humanModelLabel(run));
+            row.put("presetLabel", humanPresetLabel(run));
+            row.put("corpusName", humanCorpusName(run));
+            row.put("datasetName", humanDatasetName(run));
+            row.put("status", run.getStatus() != null ? run.getStatus().name() : "");
+            row.put("failureReason", resolveFailureReason(run, bucket));
+            rows.add(row);
+        }
+        return rows;
+    }
+
+    private Map<String, Object> runSummaryRow(EvaluationRunEntity run) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("runId", run.getId());
+        m.put("runName", run.getName());
+        m.put("status", run.getStatus() != null ? run.getStatus().name() : null);
+        m.put("llmModelId", run.getLlmModelId());
+        m.put("embeddingModelId", run.getEmbeddingModelId());
+        m.put("presetCode", resolvePresetCode(run));
+        m.put("modelLabel", humanModelLabel(run));
+        m.put("presetLabel", humanPresetLabel(run));
+        m.put("corpusName", humanCorpusName(run));
+        m.put("datasetName", humanDatasetName(run));
+        return m;
+    }
+
+    private static CampaignContext resolveCampaignContext(EvaluationCampaignEntity c, List<EvaluationRunEntity> runs) {
+        String studyType = c.getStudyType() != null ? c.getStudyType().trim() : "";
+        String campaignType;
+        String comparisonAxis;
+        if (EvaluationStudyType.LLM_MODEL_BASELINE.name().equalsIgnoreCase(studyType)
+                || "LLM_MODEL_SWEEP".equalsIgnoreCase(studyType)) {
+            campaignType = "LLM";
+            comparisonAxis = COMPARISON_AXIS_LLM;
+        } else if (EvaluationStudyType.EMBEDDING_MODEL_BASELINE.name().equalsIgnoreCase(studyType)
+                || "EMBEDDING_MODEL_SWEEP".equalsIgnoreCase(studyType)) {
+            campaignType = "EMBEDDING";
+            comparisonAxis = COMPARISON_AXIS_EMBEDDING;
+        } else {
+            campaignType = "RAG_PRESET";
+            comparisonAxis = COMPARISON_AXIS_PRESET;
+        }
+        int axisCount = countDistinctAxisValues(comparisonAxis, runs);
+        boolean comparativeMode = readComparativeMode(c) || axisCount >= 2;
+        return new CampaignContext(campaignType, comparisonAxis, comparativeMode, axisCount);
+    }
+
+    private static boolean readComparativeMode(EvaluationCampaignEntity c) {
+        if (c.getMetaJson() == null) {
+            return false;
+        }
+        Object v = c.getMetaJson().get("comparativeMode");
+        return Boolean.TRUE.equals(v);
+    }
+
+    private static int countDistinctAxisValues(String comparisonAxis, List<EvaluationRunEntity> runs) {
+        return (int) runs.stream().map(r -> resolveAxisValueStatic(comparisonAxis, r)).distinct().count();
+    }
+
+    private static String resolveAxisValue(CampaignContext ctx, EvaluationRunEntity run) {
+        return resolveAxisValueStatic(ctx.comparisonAxis(), run);
+    }
+
+    private static String resolveAxisValueStatic(String comparisonAxis, EvaluationRunEntity run) {
+        return switch (comparisonAxis) {
+            case COMPARISON_AXIS_EMBEDDING -> nullToEmpty(run.getEmbeddingModelId());
+            case COMPARISON_AXIS_PRESET -> resolvePresetCode(run);
+            default -> nullToEmpty(run.getLlmModelId());
+        };
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String resolvePresetCode(EvaluationRunEntity run) {
+        if (run.getAggregatesJson() != null) {
+            Object codes = run.getAggregatesJson().get(BenchmarkRunOrchestrator.AGG_KEY_REQUESTED_PRESET_CODES);
+            if (codes instanceof List<?> list && !list.isEmpty()) {
+                Object first = list.getFirst();
+                if (first != null) {
+                    return String.valueOf(first).trim();
+                }
+            }
+        }
+        return "";
+    }
+
+    private static String humanModelLabel(EvaluationRunEntity run) {
+        if (run.getLlmModelId() != null && !run.getLlmModelId().isBlank()) {
+            return run.getLlmModelId().trim();
+        }
+        if (run.getEmbeddingModelId() != null && !run.getEmbeddingModelId().isBlank()) {
+            return run.getEmbeddingModelId().trim();
+        }
+        return "";
+    }
+
+    private static String humanPresetLabel(EvaluationRunEntity run) {
+        String code = resolvePresetCode(run);
+        return code.isBlank() ? "" : code;
+    }
+
+    private static String humanCorpusName(EvaluationRunEntity run) {
+        EvaluationCorpusEntity corpus = run.getEvaluationCorpus();
+        if (corpus != null && corpus.getName() != null && !corpus.getName().isBlank()) {
+            return corpus.getName().trim();
+        }
+        return "";
+    }
+
+    private static String humanDatasetName(EvaluationRunEntity run) {
+        EvaluationDatasetEntity dataset = run.getDataset();
+        if (dataset != null && dataset.getName() != null && !dataset.getName().isBlank()) {
+            return dataset.getName().trim();
+        }
+        return "";
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String resolveFailureReason(EvaluationRunEntity run, Map<String, Object> bucket) {
+        if (run.getStatus() != null && "ERROR".equals(run.getStatus().name())) {
+            return run.getStatus().name();
+        }
+        Map<String, Object> outcomeCounts = (Map<String, Object>) bucket.getOrDefault("outcomeCounts", Map.of());
+        long failed = longNum(outcomeCounts.get(BenchmarkItemOutcome.FAILED.name()));
+        if (failed > 0) {
+            return "ITEMS_FAILED";
+        }
+        return "";
     }
 
     private EvaluationCampaignEntity requireCampaign(UUID userId, UUID campaignId) {
@@ -293,16 +458,19 @@ public class LabCampaignService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("groupKey", groupKey);
         out.put("groupValue", groupValue != null ? groupValue : "");
+        out.put("axisValue", groupValue != null ? groupValue : "");
         @SuppressWarnings("unchecked")
         Map<String, Object> outcomeCounts = (Map<String, Object>) bucket.getOrDefault("outcomeCounts", Map.of());
         long executed = longNum(outcomeCounts.get(BenchmarkItemOutcome.EXECUTED.name()));
         long failed = longNum(outcomeCounts.get(BenchmarkItemOutcome.FAILED.name()));
         long notSupported = longNum(outcomeCounts.get(BenchmarkItemOutcome.NOT_SUPPORTED.name()));
+        long skipped = longNum(outcomeCounts.get(BenchmarkItemOutcome.SKIPPED.name()));
         long total = outcomeCounts.values().stream().mapToLong(LabCampaignService::longNum).sum();
         out.put("totalItems", total);
         out.put("executed", executed);
         out.put("failed", failed);
         out.put("notSupported", notSupported);
+        out.put("skipped", skipped);
         @SuppressWarnings("unchecked")
         Map<String, Object> onExecuted = (Map<String, Object>) bucket.getOrDefault("onExecuted", Map.of());
         out.put("meanExactMatch", onExecuted.get("meanNormalizedExactMatch"));
@@ -328,6 +496,10 @@ public class LabCampaignService {
         }
     }
 
+    private static String nullToEmpty(String s) {
+        return s == null ? "" : s;
+    }
+
     private static String csvEscape(String s) {
         if (s == null) {
             return "";
@@ -336,5 +508,6 @@ public class LabCampaignService {
         boolean needsQuotes = t.contains(",") || t.contains("\n") || t.contains("\r") || t.contains("\"");
         return needsQuotes ? "\"" + t + "\"" : t;
     }
-}
 
+    private record CampaignContext(String campaignType, String comparisonAxis, boolean comparativeMode, int axisCount) {}
+}

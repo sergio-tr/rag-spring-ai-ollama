@@ -13,6 +13,7 @@ public record StartCampaignRequestDto(
         String name,
         String campaignKind,
         UUID datasetId,
+        UUID corpusId,
         UUID projectId,
         List<String> llmModelIds,
         List<String> embeddingModelIds,

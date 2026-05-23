@@ -68,6 +68,16 @@ class LabCampaignControllerWebMvcTest {
     }
 
     @Test
+    void exportSummaryCsv_returns200() throws Exception {
+        UUID cid = UUID.randomUUID();
+        when(labCampaignService.exportCampaignSummaryCsv(eq(userId), eq(cid)))
+                .thenReturn("campaignId,campaign_type,comparison_axis\n" + cid + ",LLM,LLM_MODEL\n");
+        mockMvc.perform(get(path("/lab/campaigns/" + cid + "/export/summary.csv")))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(org.hamcrest.Matchers.containsString("comparison_axis")));
+    }
+
+    @Test
     void exportItemsJson_returns200() throws Exception {
         UUID cid = UUID.randomUUID();
         when(labCampaignService.exportCampaignMvpItemsJson(eq(userId), eq(cid)))

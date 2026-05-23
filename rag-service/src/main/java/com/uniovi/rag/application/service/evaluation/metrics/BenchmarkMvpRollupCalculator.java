@@ -89,11 +89,13 @@ public final class BenchmarkMvpRollupCalculator {
 
             if (BenchmarkItemOutcome.NOT_SUPPORTED.name().equals(oc)) {
                 String reason = str(op.get("unsupportedReason"));
-                unsupportedReasons.merge(reason.isBlank() ? "_UNKNOWN" : reason, 1L, Long::sum);
+                unsupportedReasons.merge(
+                        reason.isBlank() ? LabBenchmarkExportLabels.MISSING_METADATA : reason, 1L, Long::sum);
             }
             if (BenchmarkItemOutcome.FAILED.name().equals(oc)) {
                 String fc = str(op.get("failureCode"));
-                failureCodes.merge(fc.isBlank() ? "_UNKNOWN" : fc, 1L, Long::sum);
+                failureCodes.merge(
+                        fc.isBlank() ? LabBenchmarkExportLabels.MISSING_METADATA : fc, 1L, Long::sum);
             }
 
             if (!BenchmarkItemOutcome.EXECUTED.name().equals(oc)) {
@@ -178,8 +180,7 @@ public final class BenchmarkMvpRollupCalculator {
     }
 
     private static String keyOrUnknown(String raw) {
-        String t = raw != null ? raw.trim() : "";
-        return t.isEmpty() ? "_UNKNOWN" : t;
+        return LabBenchmarkExportLabels.normalizeGroupKey(raw);
     }
 
     private static void acceptMetric(Object raw, DoubleSummaryStatistics stats) {

@@ -20,7 +20,9 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
+import com.uniovi.rag.infrastructure.persistence.EvaluationCorpusRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -57,6 +59,8 @@ class LlmCampaignOrchestratorTest {
     @Mock private RagRuntimeProperties ragRuntimeProperties;
     @Mock private EvaluationDatasetStorePort evaluationDatasetStorePort;
     @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
+    @Mock private EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+    @Mock private EvaluationCorpusRepository evaluationCorpusRepository;
 
     @Test
     void startJsonBenchmark_llmCampaign_createsCampaignAndChildRuns_andReturnsCampaignId() {
@@ -76,7 +80,9 @@ class LlmCampaignOrchestratorTest {
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
                         new EvaluationWorkbookParser(),
-                        embeddingSpaceGuard);
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
 
         UUID userId = UUID.randomUUID();
         UserEntity user = mock(UserEntity.class);
@@ -117,6 +123,7 @@ class LlmCampaignOrchestratorTest {
                 new StartBenchmarkRunRequest(
                         datasetId,
                         null,
+                        null,
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "My run",
                         null,
@@ -148,7 +155,97 @@ class LlmCampaignOrchestratorTest {
 
         ArgumentCaptor<EvaluationRunEntity> runCaptor = ArgumentCaptor.forClass(EvaluationRunEntity.class);
         verify(evaluationRunRepository, atLeast(2)).save(runCaptor.capture());
+        assertThat(runCaptor.getAllValues()).hasSizeGreaterThanOrEqualTo(2);
         assertThat(runCaptor.getAllValues().stream().anyMatch(r -> r.getCampaign() != null)).isTrue();
+    }
+
+    @Test
+    void startJsonBenchmark_llmCampaign_threeModels_createsThreeChildRuns() {
+        BenchmarkRunOrchestrator orch =
+                new BenchmarkRunOrchestrator(
+                        userRepository,
+                        evaluationDatasetRepository,
+                        evaluationCampaignRepository,
+                        evaluationRunRepository,
+                        resolvedConfigSnapshotRepository,
+                        knowledgeIndexSnapshotRepository,
+                        ragPresetRepository,
+                        asyncTaskRepository,
+                        asyncTaskService,
+                        labJobLifecycleService,
+                        projectAccessService,
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        new EvaluationWorkbookParser(),
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
+
+        UUID userId = UUID.randomUUID();
+        UserEntity user = mock(UserEntity.class);
+        when(user.getId()).thenReturn(userId);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        UUID datasetId = UUID.randomUUID();
+        EvaluationDatasetEntity ds = mock(EvaluationDatasetEntity.class);
+        when(ds.getId()).thenReturn(datasetId);
+        when(ds.getOwner()).thenReturn(user);
+        when(ds.getDatasetScope()).thenReturn("USER_DATASET");
+        when(ds.getExperimentalKind()).thenReturn("LLM_MODEL_BASELINE");
+        when(evaluationDatasetRepository.findById(datasetId)).thenReturn(Optional.of(ds));
+
+        when(evaluationCampaignRepository.save(any())).thenAnswer(inv -> {
+            EvaluationCampaignEntity c = inv.getArgument(0);
+            c.setId(UUID.randomUUID());
+            c.setCreatedAt(Instant.now());
+            return c;
+        });
+
+        when(evaluationRunRepository.save(any())).thenAnswer(inv -> {
+            EvaluationRunEntity r = inv.getArgument(0);
+            if (r.getId() == null) {
+                r.setId(UUID.randomUUID());
+            }
+            return r;
+        });
+
+        UUID taskId = UUID.randomUUID();
+        when(asyncTaskService.submitEvalLlm(any(), any(), any())).thenReturn(taskId);
+        AsyncTaskEntity task = mock(AsyncTaskEntity.class);
+        when(asyncTaskRepository.findById(taskId)).thenReturn(Optional.of(task));
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        datasetId,
+                        null,
+                        null,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "My run",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of("m1", "m2", "m3"),
+                        List.of(),
+                        false,
+                        "Three-model campaign",
+                        false,
+                        false,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
+
+        BenchmarkJobAccepted accepted = orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req);
+        assertThat(accepted.campaignId()).isPresent();
+        verify(asyncTaskService, times(3)).submitEvalLlm(any(), any(), any());
     }
 }
 
