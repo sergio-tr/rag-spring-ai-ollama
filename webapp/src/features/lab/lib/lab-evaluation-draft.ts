@@ -15,7 +15,7 @@ export function labEvaluationDraftStorageKey(kind: LabEvaluationDraftKind): stri
 const V1_FORM_STORAGE_PREFIX = "rag-lab-form-v1:";
 
 /** Product default embedding tag (matches backend `spring.ai.ollama.embedding.model`). */
-export const LAB_DEFAULT_EMBEDDING_MODEL_ID = "mxbai-embed-large";
+export const LAB_DEFAULT_EMBEDDING_MODEL_ID = "mxbai-embed-large:latest";
 
 export type LabEvaluationDraftStored = {
   v: 1;
@@ -52,8 +52,8 @@ export function defaultLabEvaluationDraft(): Omit<LabEvaluationDraftStored, "v">
   };
 }
 
-function coerceFollowMode(raw: unknown): LabJobFollowMode {
-  return raw === "poll" ? "poll" : "sse";
+function coerceFollowMode(_raw: unknown): LabJobFollowMode {
+  return "sse";
 }
 
 /**

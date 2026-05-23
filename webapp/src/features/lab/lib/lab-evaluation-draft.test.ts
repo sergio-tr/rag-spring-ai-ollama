@@ -16,7 +16,7 @@ describe("lab-evaluation-draft", () => {
     localStorage.clear();
   });
 
-  it("defaults embedding model to product standard mxbai-embed-large", () => {
+  it("defaults embedding model to product standard mxbai-embed-large:latest", () => {
     expect(defaultLabEvaluationDraft().embeddingModelId).toBe(LAB_DEFAULT_EMBEDDING_MODEL_ID);
   });
 
@@ -78,6 +78,14 @@ describe("lab-evaluation-draft", () => {
     localStorage.setItem(
       labEvaluationDraftStorageKey("LLM_JUDGE_QA"),
       JSON.stringify({ v: 1, ...defaultLabEvaluationDraft(), followMode: "wat" }),
+    );
+    expect(loadLabEvaluationDraft("LLM_JUDGE_QA").followMode).toBe("sse");
+  });
+
+  it("coerces legacy poll followMode to sse on load", () => {
+    localStorage.setItem(
+      labEvaluationDraftStorageKey("LLM_JUDGE_QA"),
+      JSON.stringify({ v: 1, ...defaultLabEvaluationDraft(), followMode: "poll" }),
     );
     expect(loadLabEvaluationDraft("LLM_JUDGE_QA").followMode).toBe("sse");
   });

@@ -19,15 +19,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { LabJobPollTimeoutError } from "@/lib/async-task";
 import { ApiError, apiFetch, apiProductPath, getSafeApiErrorMessage } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
-import type { LabJobFollowMode } from "@/lib/lab-job-follow";
 import type { AsyncTaskStatusDto, LabJobAcceptedDto } from "@/types/api";
 import { useTranslations } from "next-intl";
 import type { MutableRefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useClassifierModelsQuery } from "@/features/lab/hooks/use-classifier-registry";
-
-/** Local watchdog for classifier-eval polling — server-side runs may continue beyond this window. */
-const CLASSIFIER_EVAL_POLL_MAX_MS = 15 * 60 * 1000;
 
 function classifierTrainApiPath(trainSync: boolean, projectId: string | undefined): string {
   const params = new URLSearchParams();
@@ -125,7 +121,6 @@ export function LabClassifierTrainPanel(
   const [modelName, setModelName] = useState("lab-model");
   const [trainFile, setTrainFile] = useState<File | null>(null);
   const [trainSync, setTrainSync] = useState(false);
-  const [trainFollowMode, setTrainFollowMode] = useState<LabJobFollowMode>("poll");
   const [trainOut, setTrainOut] = useState<unknown>(null);
   const [trainErr, setTrainErr] = useState<string | null>(null);
   const [trainRunning, setTrainRunning] = useState(false);
@@ -152,7 +147,6 @@ export function LabClassifierTrainPanel(
     if (!rec || rec.staleNotFound) return;
     queueMicrotask(() => {
       setTrainAccepted(rec.accepted);
-      setTrainFollowMode(rec.followMode);
       if (rec.lastStatus) {
         setTrainStatus(asyncTaskDtoFromSnapshot(rec.jobId, rec.lastStatus));
       }
@@ -168,7 +162,6 @@ export function LabClassifierTrainPanel(
       trainAbortRef.current = new AbortController();
       const signal = trainAbortRef.current.signal;
       setTrainAccepted(rec.accepted);
-      setTrainFollowMode(rec.followMode);
       trainTraceDedupeRef.current = createLabJobTraceDedupe();
       traceLabJobResumedWatching(rec.jobId, t("traceJobResumedWatching"));
       setTrainRunning(true);
@@ -189,7 +182,7 @@ export function LabClassifierTrainPanel(
             useLabJobSessionStore.getState().patchLabJobFromTick(rec.jobId, s);
             emitLabJobTraceForTick(trainTraceDedupeRef.current, s, rec.jobId, traceMessages);
           },
-          { mode: rec.followMode, signal },
+          { mode: "sse", signal },
         );
         setTrainOut(done.result);
         void qc.invalidateQueries({ queryKey: classifierModelsQueryKey });
@@ -275,7 +268,7 @@ export function LabClassifierTrainPanel(
       useLabJobSessionStore.getState().upsertLabJobOnAccepted({
         accepted,
         sectionKey: "classifier-train",
-        followMode: trainFollowMode,
+        followMode: "sse",
         taskTypeHint: "CLASSIFIER_TRAIN",
       });
       if (!trainTraceDedupeRef.current.acceptedEmitted) {
@@ -296,10 +289,7 @@ export function LabClassifierTrainPanel(
           useLabJobSessionStore.getState().patchLabJobFromTick(accepted.jobId, s);
           emitLabJobTraceForTick(trainTraceDedupeRef.current, s, accepted.jobId, traceMessages);
         },
-        {
-          mode: trainFollowMode,
-          signal,
-        },
+        { mode: "sse", signal },
       );
       setTrainOut(done.result);
       void qc.invalidateQueries({ queryKey: classifierModelsQueryKey });
@@ -335,40 +325,9 @@ export function LabClassifierTrainPanel(
           />
           {t("syncModeLabel")}
         </label>
-        <details className="text-xs">
-          <summary className="cursor-pointer text-muted-foreground">{t("labAdvancedOptionsSummary")}</summary>
-          <div className="mt-2 space-y-3">
-            {trainSync ? null : (
-              <div className="flex flex-wrap gap-3 text-sm">
-                <label className="flex items-center gap-1.5">
-                  <input
-                    type="radio"
-                    name="follow-train"
-                    checked={trainFollowMode === "poll"}
-                    onChange={() => setTrainFollowMode("poll")}
-                    disabled={trainRunning}
-                  />
-                  {t("followModePoll")}
-                </label>
-                <label className="flex items-center gap-1.5">
-                  <input
-                    type="radio"
-                    name="follow-train"
-                    checked={trainFollowMode === "sse"}
-                    onChange={() => setTrainFollowMode("sse")}
-                    disabled={trainRunning}
-                  />
-                  {t("followModeSse")}
-                </label>
-              </div>
-            )}
-            <p className="text-muted-foreground leading-relaxed">{t("labAdvancedClassifierJobHelp")}</p>
-            <details className="rounded-md border bg-muted/20 p-2">
-              <summary className="cursor-pointer text-muted-foreground">{t("labDeveloperDetailsSummary")}</summary>
-              <p className="text-muted-foreground mt-2 leading-relaxed">{t("labDeveloperClassifierHelp")}</p>
-            </details>
-          </div>
-        </details>
+        {!trainSync ? (
+          <p className="text-muted-foreground text-xs leading-relaxed">{t("labAdvancedClassifierJobHelp")}</p>
+        ) : null}
         <div className="grid gap-2">
           <Label htmlFor="cmodel">New model name</Label>
           <Input
@@ -439,7 +398,6 @@ export function LabClassifierEvalPanel(
   const [evalModelId, setEvalModelId] = useState("");
   const [evalFile, setEvalFile] = useState<File | null>(null);
   const [evalSync, setEvalSync] = useState(false);
-  const [evalFollowMode, setEvalFollowMode] = useState<LabJobFollowMode>("poll");
   const [evalOut, setEvalOut] = useState<unknown>(null);
   const [evalErr, setEvalErr] = useState<string | null>(null);
   const [evalRunning, setEvalRunning] = useState(false);
@@ -474,7 +432,7 @@ export function LabClassifierEvalPanel(
     watchStartedAtMs != null && evalSync === false
       ? Math.max(
           0,
-          // eslint-disable-next-line react-hooks/purity -- bump-driven clock display between Lab polls
+          // eslint-disable-next-line react-hooks/purity -- bump-driven clock display while SSE is active
           Math.floor((Date.now() - watchStartedAtMs) / 1000),
         ) +
           elapsedClockTick * 0
@@ -488,7 +446,6 @@ export function LabClassifierEvalPanel(
     if (!rec || rec.staleNotFound) return;
     queueMicrotask(() => {
       setEvalAccepted(rec.accepted);
-      setEvalFollowMode(rec.followMode);
       if (rec.lastStatus) {
         setEvalStatus(asyncTaskDtoFromSnapshot(rec.jobId, rec.lastStatus));
       }
@@ -502,11 +459,7 @@ export function LabClassifierEvalPanel(
 
   const resumeNonceEval = useLabJobSessionStore((s) => s.resumeNonce);
 
-  async function followClassifierEvalAccepted(
-    accepted: LabJobAcceptedDto,
-    signal: AbortSignal,
-    modeOverride?: LabJobFollowMode,
-  ) {
+  async function followClassifierEvalAccepted(accepted: LabJobAcceptedDto, signal: AbortSignal) {
     const traceMessages = {
       queued: t("traceJobQueued"),
       running: t("traceJobRunning"),
@@ -514,7 +467,6 @@ export function LabClassifierEvalPanel(
       failed: t("traceJobFailed"),
       cancelled: t("traceJobCancelled"),
     };
-    const mode = modeOverride ?? evalFollowMode;
     return followLabJob(
       accepted,
       (s) => {
@@ -522,11 +474,7 @@ export function LabClassifierEvalPanel(
         useLabJobSessionStore.getState().patchLabJobFromTick(accepted.jobId, s);
         emitLabJobTraceForTick(evalTraceDedupeRef.current, s, accepted.jobId, traceMessages);
       },
-      {
-        mode,
-        signal,
-        maxWaitMs: CLASSIFIER_EVAL_POLL_MAX_MS,
-      },
+      { mode: "sse", signal },
     );
   }
 
@@ -542,7 +490,6 @@ export function LabClassifierEvalPanel(
     evalAbortRef.current = new AbortController();
     const signal = evalAbortRef.current.signal;
     setEvalAccepted(rec.accepted);
-    setEvalFollowMode(rec.followMode);
     evalTraceDedupeRef.current = createLabJobTraceDedupe();
     traceLabJobResumedWatching(rec.jobId, t("traceJobResumedWatching"));
     setEvalPollTimedOut(false);
@@ -551,7 +498,7 @@ export function LabClassifierEvalPanel(
     setWatchStartedAtMs(Date.now());
     setEvalRunning(true);
     try {
-      const done = await followClassifierEvalAccepted(rec.accepted, signal, rec.followMode);
+      const done = await followClassifierEvalAccepted(rec.accepted, signal);
       finalizeSuccessfulClassifierEval(done);
     } catch (e) {
       handleClassifierEvalFollowCatch(e, {
@@ -665,7 +612,7 @@ export function LabClassifierEvalPanel(
       useLabJobSessionStore.getState().upsertLabJobOnAccepted({
         accepted,
         sectionKey: "classifier-eval",
-        followMode: evalFollowMode,
+        followMode: "sse",
         taskTypeHint: "CLASSIFIER_EVAL",
       });
       setWatchStartedAtMs(Date.now());
@@ -708,40 +655,9 @@ export function LabClassifierEvalPanel(
           />
           {t("syncModeLabel")}
         </label>
-        <details className="text-xs">
-          <summary className="cursor-pointer text-muted-foreground">{t("labAdvancedOptionsSummary")}</summary>
-          <div className="mt-2 space-y-3">
-            {evalSync ? null : (
-              <div className="flex flex-wrap gap-3 text-sm">
-                <label className="flex items-center gap-1.5">
-                  <input
-                    type="radio"
-                    name="follow-eval"
-                    checked={evalFollowMode === "poll"}
-                    onChange={() => setEvalFollowMode("poll")}
-                    disabled={evalRunning}
-                  />
-                  {t("followModePoll")}
-                </label>
-                <label className="flex items-center gap-1.5">
-                  <input
-                    type="radio"
-                    name="follow-eval"
-                    checked={evalFollowMode === "sse"}
-                    onChange={() => setEvalFollowMode("sse")}
-                    disabled={evalRunning}
-                  />
-                  {t("followModeSse")}
-                </label>
-              </div>
-            )}
-            <p className="text-muted-foreground leading-relaxed">{t("labAdvancedClassifierJobHelp")}</p>
-            <details className="rounded-md border bg-muted/20 p-2">
-              <summary className="cursor-pointer text-muted-foreground">{t("labDeveloperDetailsSummary")}</summary>
-              <p className="text-muted-foreground mt-2 leading-relaxed">{t("labDeveloperClassifierHelp")}</p>
-            </details>
-          </div>
-        </details>
+        {!evalSync ? (
+          <p className="text-muted-foreground text-xs leading-relaxed">{t("labAdvancedClassifierJobHelp")}</p>
+        ) : null}
         <div className="grid gap-2">
           <Label htmlFor="emodel">{t("classifierEvalModelId")}</Label>
           <select

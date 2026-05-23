@@ -41,7 +41,7 @@ describe("lab-benchmark-labels", () => {
   it("formats missing metadata group labels", () => {
     expect(formatGroupLabel("modelId", "_UNKNOWN", t)).toBe("benchmarkLabelMissingMetadata");
     expect(formatGroupLabel("presetCode", "P1", t)).toBe("P1");
-    expect(formatGroupLabel("embeddingModelId", "bge-m3", t)).toBe("bge-m3");
+    expect(formatGroupLabel("embeddingModelId", "qwen3-embedding:latest", t)).toBe("qwen3-embedding:latest");
     expect(formatGroupLabel("presetCode", "", t)).toBe("benchmarkLabelMissingMetadata");
   });
 
