@@ -33,10 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Research Lab: async-first long operations (202 + job polling/SSE); canonical benchmarks use
- * {@code POST …/lab/benchmarks/{kind}/runs}.
- */
+/** Research Lab REST surface: environment status, classifier train/eval, and async job acceptance. */
 @RestController
 @RequestMapping("${rag.api.product-base-path}/lab")
 public class LabController {
@@ -110,11 +107,9 @@ public class LabController {
                         "evaluate", classifierLabClient.isConfigured()));
         m.put(
                 "message",
-                "Lab API — canonical benchmarks: POST "
-                        + apiPathProperties.getProductBasePath()
-                        + "/lab/benchmarks/{kind}/runs with a typed evaluation_dataset. Async jobs: GET "
-                        + apiPathProperties.getProductBasePath()
-                        + "/lab/jobs/{id} or SSE …/events.");
+                "Research Lab is ready. Pick a workbook on the overview or evaluation pages, choose models or"
+                        + " presets, and run a benchmark. Long evaluations run in the background; open the"
+                        + " matching evaluation page to follow live progress and results.");
         return m;
     }
 

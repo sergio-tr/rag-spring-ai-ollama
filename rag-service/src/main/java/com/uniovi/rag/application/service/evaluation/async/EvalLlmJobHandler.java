@@ -49,8 +49,8 @@ class EvalLlmJobHandler implements LabJobHandler {
         try {
             if (evaluationRunId == null) {
                 throw new IllegalStateException(
-                        "EVAL_LLM jobs require evaluation_run_id on the async payload; "
-                                + "enqueue via POST /lab/benchmarks/LLM_JUDGE_QA/runs with a typed evaluation_dataset.");
+                        "This LLM evaluation job is missing its run reference — start a new LLM benchmark from the"
+                                + " Lab evaluation page with a compatible workbook.");
             }
             mutation.appendProgressLine(taskId, "Resolving typed dataset for LLM_JUDGE_QA…");
             TypedBenchmarkDataset typed = experimentalDatasetResolver.resolve(evaluationRunId);

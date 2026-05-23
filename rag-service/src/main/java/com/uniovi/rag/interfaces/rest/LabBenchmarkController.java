@@ -67,7 +67,8 @@ public class LabBenchmarkController {
         if (bk == BenchmarkKind.CLASSIFIER_METRICS) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Use POST /lab/benchmarks/CLASSIFIER_METRICS/runs with multipart/form-data");
+                    "Classifier metrics benchmarks require a spreadsheet upload — use the classifier evaluation"
+                            + " form with an Excel file instead of a JSON request.");
         }
         BenchmarkJobAccepted accepted =
                 benchmarkRunOrchestrator.startJsonBenchmark(

@@ -34,6 +34,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -87,6 +89,8 @@ class LabControllerWebMvcTest {
     void status_returnsOk_whenReferenceBundleAbsent_datasetKindsNotReady() throws Exception {
         mockMvc.perform(get(path("/lab/status")))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message", containsString("Research Lab is ready")))
+                .andExpect(jsonPath("$.message").value(not(containsString("POST"))))
                 .andExpect(jsonPath("$.referenceBundleAvailable").value(false))
                 .andExpect(jsonPath("$.referenceBundleValid").value(false))
                 .andExpect(jsonPath("$.datasetKindsReady").value(false))

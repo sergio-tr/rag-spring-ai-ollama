@@ -81,8 +81,8 @@ class EvalRagJobHandler implements LabJobHandler {
         try {
             if (evaluationRunId == null) {
                 throw new IllegalStateException(
-                        "EVAL_RAG jobs require evaluation_run_id on the async payload; "
-                                + "enqueue via POST /lab/benchmarks/RAG_PRESET_END_TO_END/runs with a typed evaluation_dataset.");
+                        "This RAG evaluation job is missing its run reference — start a new RAG preset benchmark"
+                                + " from the Lab evaluation page with a compatible workbook.");
             }
             mutation.appendProgressLine(taskId, "Resolving typed dataset for RAG_PRESET_END_TO_END…");
             var runWithDataset = evaluationRunRepository.findByIdFetchDataset(evaluationRunId).orElse(null);

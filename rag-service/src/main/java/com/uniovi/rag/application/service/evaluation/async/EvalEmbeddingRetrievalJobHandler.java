@@ -110,8 +110,8 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
 
             if (evaluationRunId == null) {
                 throw new IllegalStateException(
-                        "EVAL_EMBEDDING_RETRIEVAL jobs require evaluation_run_id on the async payload; "
-                                + "enqueue via POST /lab/benchmarks/EMBEDDING_RETRIEVAL/runs with a typed evaluation_dataset.");
+                        "This embedding evaluation job is missing its run reference — start a new embedding"
+                                + " benchmark from the Lab evaluation page with a compatible workbook.");
             }
             mutation.appendProgressLine(taskId, "Resolving typed dataset for EMBEDDING_RETRIEVAL…");
             TypedBenchmarkDataset typed = experimentalDatasetResolver.resolve(evaluationRunId);
