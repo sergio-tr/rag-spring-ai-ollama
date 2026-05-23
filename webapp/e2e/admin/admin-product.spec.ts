@@ -33,6 +33,9 @@ test.describe("Admin product API", () => {
     await expect(modelAdmin.getByText(/model allowlist/i)).toBeVisible();
     await expect(modelAdmin.getByLabel(/model name/i).first()).toBeVisible();
     await expect(modelAdmin.getByRole("button", { name: /check/i })).toBeVisible();
+    await expect(modelAdmin.getByText(/llm models/i)).toBeVisible();
+    await expect(modelAdmin.getByText(/embedding models/i)).toBeVisible();
+    await expect(modelAdmin.getByRole("button", { name: /delete/i }).first()).toBeVisible();
     await expect(page.getByText(/could not load allowlist/i)).toHaveCount(0);
   });
 });
