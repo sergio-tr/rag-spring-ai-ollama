@@ -30,6 +30,11 @@ const FORBIDDEN_IN_LAB_MESSAGES = [
   /Stopped waiting — the server job/i,
   /corpus and snapshot preparation are project-scoped/i,
   /Select an active project before running a RAG preset benchmark/i,
+  /Status poll:/i,
+  /Live stream:/i,
+  /Lab API —/i,
+  /POST \/api/i,
+  /nomic-embed-text/i,
 ];
 
 describe("LAB closure i18n guards", () => {
