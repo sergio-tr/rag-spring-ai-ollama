@@ -129,9 +129,20 @@ class EvalRagJobHandler implements LabJobHandler {
                 }
             }
             if (runWithDataset != null && Boolean.TRUE.equals(autoReindexEnabled(runWithDataset))) {
-                UUID projectId = runWithDataset.getProject() != null ? runWithDataset.getProject().getId() : null;
+                UUID projectId =
+                        runWithDataset.getProject() != null ? runWithDataset.getProject().getId() : null;
                 if (projectId == null) {
-                    throw new IllegalStateException("AUTO_REINDEX_REQUIRES_PROJECT_CONTEXT");
+                    EvaluationRunEntity linked = runWithDataset;
+                    if (linked != null
+                            && linked.getEvaluationCorpus() != null
+                            && linked.getEvaluationCorpus().getIndexProject() != null) {
+                        projectId = linked.getEvaluationCorpus().getIndexProject().getId();
+                        linked.setProject(linked.getEvaluationCorpus().getIndexProject());
+                        evaluationRunRepository.save(linked);
+                    }
+                }
+                if (projectId == null) {
+                    throw new IllegalStateException("AUTO_REINDEX_REQUIRES_CORPUS_INDEX_CONTEXT");
                 }
                 lockedProjectId = projectId;
                 var attempt =

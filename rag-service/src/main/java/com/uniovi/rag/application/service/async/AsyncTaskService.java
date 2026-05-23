@@ -8,7 +8,9 @@ import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.application.port.AfterCommitTaskScheduler;
+import com.uniovi.rag.application.service.evaluation.LabJobEventService;
 import com.uniovi.rag.application.service.evaluation.async.LabJobPayloadKeys;
+import com.uniovi.rag.domain.LabJobEventType;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -32,18 +34,21 @@ public class AsyncTaskService {
     private final ProjectAccessService projectAccessService;
     private final AsyncLabTaskRunner asyncLabTaskRunner;
     private final AfterCommitTaskScheduler afterCommitTaskScheduler;
+    private final LabJobEventService labJobEventService;
 
     public AsyncTaskService(
             AsyncTaskRepository asyncTaskRepository,
             UserRepository userRepository,
             ProjectAccessService projectAccessService,
             AsyncLabTaskRunner asyncLabTaskRunner,
-            AfterCommitTaskScheduler afterCommitTaskScheduler) {
+            AfterCommitTaskScheduler afterCommitTaskScheduler,
+            LabJobEventService labJobEventService) {
         this.asyncTaskRepository = asyncTaskRepository;
         this.userRepository = userRepository;
         this.projectAccessService = projectAccessService;
         this.asyncLabTaskRunner = asyncLabTaskRunner;
         this.afterCommitTaskScheduler = afterCommitTaskScheduler;
+        this.labJobEventService = labJobEventService;
     }
 
     @Transactional
@@ -235,6 +240,7 @@ public class AsyncTaskService {
         AsyncTaskEntity e = AsyncTaskEntity.queued(user, project, type, payload, Instant.now());
         asyncTaskRepository.save(e);
         UUID taskId = e.getId();
+        labJobEventService.recordEvent(taskId, LabJobEventType.ACCEPTED, "Job accepted");
         // Same pattern as ChatMessageApplicationService: @Async runner must see committed QUEUED row.
         afterCommitTaskScheduler.scheduleAfterCommit(() -> asyncLabTaskRunner.execute(taskId));
         return taskId;

@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.async;
 
+import com.uniovi.rag.application.service.evaluation.LabJobEventService;
 import com.uniovi.rag.domain.AsyncTaskStatus;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
@@ -28,6 +29,9 @@ class AsyncTaskMutationServiceTest {
 
     @Mock
     private AsyncTaskRepository asyncTaskRepository;
+
+    @Mock
+    private LabJobEventService labJobEventService;
 
     @InjectMocks
     private AsyncTaskMutationService mutationService;

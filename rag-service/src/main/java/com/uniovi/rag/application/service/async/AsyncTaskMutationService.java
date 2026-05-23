@@ -1,6 +1,8 @@
 package com.uniovi.rag.application.service.async;
 
+import com.uniovi.rag.application.service.evaluation.LabJobEventService;
 import com.uniovi.rag.domain.AsyncTaskStatus;
+import com.uniovi.rag.domain.LabJobEventType;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.interfaces.rest.support.UserFacingErrorSanitizer;
@@ -17,9 +19,11 @@ public class AsyncTaskMutationService {
     private static final int USER_ERROR_MESSAGE_MAX_LEN = 600;
 
     private final AsyncTaskRepository asyncTaskRepository;
+    private final LabJobEventService labJobEventService;
 
-    public AsyncTaskMutationService(AsyncTaskRepository asyncTaskRepository) {
+    public AsyncTaskMutationService(AsyncTaskRepository asyncTaskRepository, LabJobEventService labJobEventService) {
         this.asyncTaskRepository = asyncTaskRepository;
+        this.labJobEventService = labJobEventService;
     }
 
     @Transactional
@@ -31,6 +35,7 @@ public class AsyncTaskMutationService {
         e.setUpdatedAt(now);
         appendProgress(e, "Running…");
         asyncTaskRepository.save(e);
+        recordEvent(e, LabJobEventType.STARTED, "Job started");
     }
 
     @Transactional
@@ -39,6 +44,7 @@ public class AsyncTaskMutationService {
         appendProgress(e, line);
         e.setUpdatedAt(Instant.now());
         asyncTaskRepository.save(e);
+        recordEvent(e, LabJobEventType.PROGRESS, line);
     }
 
     @Transactional
@@ -51,6 +57,7 @@ public class AsyncTaskMutationService {
         e.setUpdatedAt(now);
         appendProgress(e, "Finished successfully.");
         asyncTaskRepository.save(e);
+        recordEvent(e, LabJobEventType.COMPLETED, "Job completed successfully");
     }
 
     @Transactional
@@ -79,6 +86,7 @@ public class AsyncTaskMutationService {
         e.setUpdatedAt(now);
         appendProgress(e, "Failed: " + safeMsg);
         asyncTaskRepository.save(e);
+        recordEvent(e, LabJobEventType.FAILED, safeMsg);
     }
 
     @Transactional
@@ -96,6 +104,7 @@ public class AsyncTaskMutationService {
         e.setUpdatedAt(now);
         appendProgress(e, "Cancelled: " + (reason != null ? reason : ""));
         asyncTaskRepository.save(e);
+        recordEvent(e, LabJobEventType.CANCELLED, reason != null ? reason : "Cancelled");
     }
 
     @Transactional
@@ -116,6 +125,7 @@ public class AsyncTaskMutationService {
         e.setErrorMessage(msg);
         appendProgress(e, msg);
         asyncTaskRepository.save(e);
+        recordEvent(e, LabJobEventType.PROGRESS, msg);
     }
 
     /**
@@ -131,6 +141,10 @@ public class AsyncTaskMutationService {
         e.setResultJson(r);
         e.setUpdatedAt(Instant.now());
         asyncTaskRepository.save(e);
+    }
+
+    private void recordEvent(AsyncTaskEntity e, LabJobEventType type, String message) {
+        labJobEventService.recordEvent(e.getId(), type, message);
     }
 
     private static void appendProgress(AsyncTaskEntity e, String line) {

@@ -3,9 +3,11 @@ package com.uniovi.rag.interfaces.rest;
 
 import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.ChatMessageApplicationService;
+import com.uniovi.rag.application.service.evaluation.LabJobEventService;
 import com.uniovi.rag.application.service.evaluation.LabJobLifecycleService;
 import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
 import com.uniovi.rag.interfaces.rest.dto.AsyncTaskStatusDto;
+import com.uniovi.rag.interfaces.rest.dto.LabJobEventDto;
 import com.uniovi.rag.configuration.LabAsyncConfiguration;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
@@ -29,8 +31,10 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -51,6 +55,9 @@ class LabJobControllerWebMvcTest {
 
     @MockitoBean
     private LabJobLifecycleService labJobLifecycleService;
+
+    @MockitoBean
+    private LabJobEventService labJobEventService;
 
     private UUID userId;
     private UUID taskId;
@@ -118,5 +125,65 @@ class LabJobControllerWebMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].jobId").value(taskId.toString()))
                 .andExpect(jsonPath("$[0].status").value("RUNNING"));
+    }
+
+    @Test
+    void eventsHistory_returnsPersistedEventsSinceCursor() throws Exception {
+        when(asyncTaskService.getStatus(eq(taskId), eq(userId)))
+                .thenReturn(
+                        new AsyncTaskStatusDto(
+                                taskId,
+                                "EVAL_RAG",
+                                "RUNNING",
+                                "x",
+                                null,
+                                null,
+                                false,
+                                Instant.parse("2025-01-01T00:00:00Z"),
+                                Instant.parse("2025-01-01T00:00:01Z"),
+                                Instant.parse("2025-01-01T00:00:02Z"),
+                                null,
+                                null));
+        when(labJobEventService.listEvents(eq(taskId), eq(userId), eq(1L)))
+                .thenReturn(List.of(new LabJobEventDto(
+                        2L,
+                        taskId,
+                        "PROGRESS",
+                        "RUNNING",
+                        "step 2",
+                        "step 2",
+                        Instant.parse("2025-01-01T00:00:03Z"),
+                        java.util.Map.of())));
+
+        mockMvc.perform(get(path("/lab/jobs/{id}/events"), taskId).param("stream", "false").param("since", "1"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(jsonPath("$[0].eventId").value(2))
+                .andExpect(jsonPath("$[0].type").value("PROGRESS"));
+    }
+
+    @Test
+    void eventsStream_opensSse() throws Exception {
+        when(asyncTaskService.getStatus(eq(taskId), eq(userId)))
+                .thenReturn(
+                        new AsyncTaskStatusDto(
+                                taskId,
+                                "EVAL_RAG",
+                                "SUCCEEDED",
+                                "done",
+                                java.util.Map.of("ok", true),
+                                null,
+                                true,
+                                Instant.parse("2025-01-01T00:00:00Z"),
+                                Instant.parse("2025-01-01T00:00:01Z"),
+                                Instant.parse("2025-01-01T00:00:02Z"),
+                                Instant.parse("2025-01-01T00:00:05Z"),
+                                null));
+        when(labJobEventService.listEvents(eq(taskId), eq(userId), isNull()))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get(path("/lab/jobs/{id}/events"), taskId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/event-stream"));
     }
 }
