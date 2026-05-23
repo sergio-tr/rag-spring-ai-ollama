@@ -1,6 +1,7 @@
 package com.uniovi.rag.infrastructure.persistence.jpa;
 
 import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
+import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -34,6 +35,13 @@ public class KnowledgeIndexSnapshotEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "scope_type", nullable = false, length = 32)
     private KnowledgeSnapshotScopeType scopeType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "owner_type", length = 32)
+    private KnowledgeSnapshotOwnerType ownerType;
+
+    @Column(name = "owner_id")
+    private UUID ownerId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id")
@@ -91,6 +99,22 @@ public class KnowledgeIndexSnapshotEntity {
 
     public void setScopeType(KnowledgeSnapshotScopeType scopeType) {
         this.scopeType = scopeType;
+    }
+
+    public KnowledgeSnapshotOwnerType getOwnerType() {
+        return ownerType;
+    }
+
+    public void setOwnerType(KnowledgeSnapshotOwnerType ownerType) {
+        this.ownerType = ownerType;
+    }
+
+    public UUID getOwnerId() {
+        return ownerId;
+    }
+
+    public void setOwnerId(UUID ownerId) {
+        this.ownerId = ownerId;
     }
 
     public ProjectEntity getProject() {

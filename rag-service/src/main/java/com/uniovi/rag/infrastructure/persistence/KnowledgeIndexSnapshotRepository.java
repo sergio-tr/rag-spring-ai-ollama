@@ -72,6 +72,30 @@ public interface KnowledgeIndexSnapshotRepository extends JpaRepository<Knowledg
     List<KnowledgeIndexSnapshotEntity> findByConversationAndScopeOrderByCreatedAtDesc(
             @Param("cid") UUID conversationId, @Param("st") KnowledgeSnapshotScopeType scopeType);
 
+    @Query(
+            """
+            SELECT s FROM KnowledgeIndexSnapshotEntity s
+            WHERE s.ownerType = :ownerType
+            AND s.ownerId = :ownerId
+            ORDER BY s.createdAt DESC
+            """)
+    List<KnowledgeIndexSnapshotEntity> findByOwnerOrderByCreatedAtDesc(
+            @Param("ownerType") com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType ownerType,
+            @Param("ownerId") UUID ownerId);
+
+    @Query(
+            """
+            SELECT s FROM KnowledgeIndexSnapshotEntity s
+            WHERE s.ownerType = :ownerType
+            AND s.ownerId = :ownerId
+            AND s.status = :status
+            ORDER BY s.updatedAt DESC
+            """)
+    List<KnowledgeIndexSnapshotEntity> findActiveByOwner(
+            @Param("ownerType") com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType ownerType,
+            @Param("ownerId") UUID ownerId,
+            @Param("status") IndexSnapshotStatus status);
+
     /**
      * Keeps {@code knowledge_index_snapshot.project_id} aligned with the conversation's project after a move.
      */

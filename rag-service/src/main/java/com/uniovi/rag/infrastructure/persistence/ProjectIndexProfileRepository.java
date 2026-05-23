@@ -5,5 +5,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.UUID;
 
-public interface ProjectIndexProfileRepository extends JpaRepository<ProjectIndexProfileEntity, UUID> {}
+public interface ProjectIndexProfileRepository extends JpaRepository<ProjectIndexProfileEntity, UUID> {
+
+    boolean existsByEmbeddingModelId(String embeddingModelId);
+}
 

@@ -34,6 +34,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -572,6 +573,32 @@ public class KnowledgePipelineOrchestrator {
             UUID resolvedConfigSnapshotId,
             String resolvedConfigHash,
             ProjectIndexProfile effectiveProfile) {
+        return rebuildScopeWithProfileOverride(
+                projectId,
+                corpusScope,
+                conversationId,
+                null,
+                null,
+                resolvedConfigSnapshotId,
+                resolvedConfigHash,
+                effectiveProfile);
+    }
+
+    /**
+     * Lab rebuild with optional evaluation-corpus ownership (does not mutate persisted project index profile).
+     *
+     * @return new knowledge snapshot id, or {@code null} when no READY documents (no snapshot created)
+     */
+    @Transactional
+    public UUID rebuildScopeWithProfileOverride(
+            UUID projectId,
+            CorpusScope corpusScope,
+            UUID conversationId,
+            com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType ownerType,
+            UUID ownerId,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash,
+            ProjectIndexProfile effectiveProfile) {
         List<KnowledgeDocumentEntity> scopeDocs = loadReadyScopeDocuments(projectId, corpusScope, conversationId);
         if (scopeDocs.isEmpty()) {
             log.info("rebuildScopeWithProfileOverride: no READY documents in scope project={}, corpusScope={}", projectId, corpusScope);
@@ -592,9 +619,17 @@ public class KnowledgePipelineOrchestrator {
                             : KnowledgeSnapshotScopeType.CONVERSATION;
 
             Optional<KnowledgeIndexSnapshotEntity> previousActive =
-                    corpusScope == CorpusScope.PROJECT_SHARED
-                            ? knowledgeSnapshotService.findActiveProjectSnapshot(projectId)
-                            : knowledgeSnapshotService.findActiveConversationSnapshot(conversationId);
+                    ownerType == com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType.EVALUATION_CORPUS
+                                    && ownerId != null
+                            ? knowledgeSnapshotService.findCompatibleCorpusSnapshot(
+                                    ownerId,
+                                    s ->
+                                            s.getStatus() == com.uniovi.rag.domain.knowledge.IndexSnapshotStatus.ACTIVE
+                                                    && Objects.equals(
+                                                            s.getIndexProfileHash(), profile.profileHash()))
+                            : corpusScope == CorpusScope.PROJECT_SHARED
+                                    ? knowledgeSnapshotService.findActiveProjectSnapshot(projectId)
+                                    : knowledgeSnapshotService.findActiveConversationSnapshot(conversationId);
 
             KnowledgeDocumentEntity first = scopeDocs.getFirst();
             building =
@@ -602,6 +637,8 @@ public class KnowledgePipelineOrchestrator {
                             first.getProject(),
                             first.getConversation(),
                             snapScope,
+                            ownerType,
+                            ownerId,
                             snapshotSigHex,
                             resolvedConfigSnapshotId,
                             resolvedConfigHash != null ? resolvedConfigHash : "lab-auto-reindex",

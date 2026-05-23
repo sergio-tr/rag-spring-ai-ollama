@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.knowledge;
 
 import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
+import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
@@ -21,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Predicate;
@@ -58,6 +60,31 @@ public class KnowledgeSnapshotService {
             String resolvedConfigHash,
             Map<String, Object> indexProfileJsonb,
             String indexProfileHash) {
+        return createBuildingSnapshot(
+                project,
+                conversation,
+                scopeType,
+                null,
+                null,
+                signatureHash,
+                resolvedConfigSnapshotId,
+                resolvedConfigHash,
+                indexProfileJsonb,
+                indexProfileHash);
+    }
+
+    @Transactional
+    public KnowledgeIndexSnapshotEntity createBuildingSnapshot(
+            ProjectEntity project,
+            ConversationEntity conversation,
+            KnowledgeSnapshotScopeType scopeType,
+            KnowledgeSnapshotOwnerType ownerType,
+            UUID ownerId,
+            String signatureHash,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash,
+            Map<String, Object> indexProfileJsonb,
+            String indexProfileHash) {
         if (resolvedConfigSnapshotId == null || resolvedConfigHash == null || resolvedConfigHash.isBlank()) {
             throw new IllegalArgumentException("resolved_config_snapshot linkage required for knowledge_index_snapshot");
         }
@@ -65,6 +92,8 @@ public class KnowledgeSnapshotService {
         KnowledgeIndexSnapshotEntity e = new KnowledgeIndexSnapshotEntity();
         e.setSignatureHash(signatureHash);
         e.setScopeType(scopeType);
+        e.setOwnerType(ownerType);
+        e.setOwnerId(ownerId);
         e.setProject(project);
         e.setConversation(conversation);
         e.setStatus(IndexSnapshotStatus.BUILDING);
@@ -121,7 +150,13 @@ public class KnowledgeSnapshotService {
     }
 
     private void supersedeAllOtherActiveSnapshotsInScope(KnowledgeIndexSnapshotEntity snapshot) {
-        if (snapshot == null) return;
+        if (snapshot == null) {
+            return;
+        }
+        if (snapshot.getOwnerType() == KnowledgeSnapshotOwnerType.EVALUATION_CORPUS && snapshot.getOwnerId() != null) {
+            supersedeOtherActiveCorpusSnapshots(snapshot);
+            return;
+        }
         Instant now = Instant.now();
         if (snapshot.getScopeType() == KnowledgeSnapshotScopeType.PROJECT) {
             var pid = snapshot.getProject() != null ? snapshot.getProject().getId() : null;
@@ -152,6 +187,24 @@ public class KnowledgeSnapshotService {
         }
     }
 
+    private void supersedeOtherActiveCorpusSnapshots(KnowledgeIndexSnapshotEntity snapshot) {
+        Instant now = Instant.now();
+        List<KnowledgeIndexSnapshotEntity> actives =
+                snapshotRepository.findActiveByOwner(
+                        KnowledgeSnapshotOwnerType.EVALUATION_CORPUS,
+                        snapshot.getOwnerId(),
+                        IndexSnapshotStatus.ACTIVE);
+        for (KnowledgeIndexSnapshotEntity a : actives) {
+            if (a.getId() != null
+                    && !a.getId().equals(snapshot.getId())
+                    && Objects.equals(a.getIndexProfileHash(), snapshot.getIndexProfileHash())) {
+                a.setStatus(IndexSnapshotStatus.SUPERSEDED);
+                a.setUpdatedAt(now);
+                snapshotRepository.save(a);
+            }
+        }
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void failSnapshotById(UUID snapshotId) {
         if (snapshotId == null) {
@@ -165,6 +218,29 @@ public class KnowledgeSnapshotService {
                             snapshot.setUpdatedAt(Instant.now());
                             snapshotRepository.save(snapshot);
                         });
+    }
+
+    public List<KnowledgeIndexSnapshotEntity> findCorpusSnapshots(UUID corpusId) {
+        if (corpusId == null) {
+            return List.of();
+        }
+        return snapshotRepository.findByOwnerOrderByCreatedAtDesc(
+                KnowledgeSnapshotOwnerType.EVALUATION_CORPUS, corpusId);
+    }
+
+    public Optional<KnowledgeIndexSnapshotEntity> findActiveCorpusSnapshot(UUID corpusId) {
+        List<KnowledgeIndexSnapshotEntity> rows =
+                snapshotRepository.findActiveByOwner(
+                        KnowledgeSnapshotOwnerType.EVALUATION_CORPUS, corpusId, IndexSnapshotStatus.ACTIVE);
+        return rows.stream().findFirst();
+    }
+
+    public Optional<KnowledgeIndexSnapshotEntity> findCompatibleCorpusSnapshot(
+            UUID corpusId, Predicate<KnowledgeIndexSnapshotEntity> compatibilityPredicate) {
+        if (compatibilityPredicate == null || corpusId == null) {
+            return Optional.empty();
+        }
+        return findCorpusSnapshots(corpusId).stream().filter(compatibilityPredicate).findFirst();
     }
 
     public Optional<KnowledgeIndexSnapshotEntity> findActiveProjectSnapshot(UUID projectId) {

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
 import com.uniovi.rag.domain.knowledge.KnowledgeIndexSnapshot;
+import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import java.time.Instant;
 import java.util.Map;
@@ -21,6 +22,8 @@ class KnowledgeSnapshotResponseDtoTest {
                 id,
                 "sig-hash",
                 KnowledgeSnapshotScopeType.PROJECT,
+                KnowledgeSnapshotOwnerType.PROJECT,
+                projId,
                 projId,
                 convId,
                 IndexSnapshotStatus.ACTIVE,

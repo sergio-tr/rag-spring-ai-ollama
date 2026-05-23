@@ -12,6 +12,8 @@ public record KnowledgeIndexSnapshot(
         UUID id,
         String signatureHash,
         KnowledgeSnapshotScopeType scopeType,
+        KnowledgeSnapshotOwnerType ownerType,
+        UUID ownerId,
         UUID projectId,
         UUID conversationId,
         IndexSnapshotStatus status,

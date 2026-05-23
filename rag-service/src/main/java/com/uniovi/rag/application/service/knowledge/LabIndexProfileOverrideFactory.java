@@ -67,5 +67,31 @@ public class LabIndexProfileOverrideFactory {
                 now,
                 now);
     }
+
+    /** Copy profile with a different embedding model id (Lab embedding campaigns). */
+    public ProjectIndexProfile withEmbeddingModelId(ProjectIndexProfile current, String embeddingModelId) {
+        Objects.requireNonNull(current, "current");
+        String model = embeddingModelId != null && !embeddingModelId.isBlank() ? embeddingModelId.trim() : current.embeddingModelId();
+        String hash =
+                ProjectIndexProfile.computeProfileHash(
+                        current.materializationStrategy(),
+                        current.metadataEnabled(),
+                        current.metadataProfile(),
+                        model,
+                        current.chunkMaxChars(),
+                        current.chunkOverlap());
+        Instant now = Instant.now();
+        return new ProjectIndexProfile(
+                current.projectId(),
+                current.materializationStrategy(),
+                current.metadataEnabled(),
+                current.metadataProfile(),
+                model,
+                current.chunkMaxChars(),
+                current.chunkOverlap(),
+                hash,
+                now,
+                now);
+    }
 }
 
