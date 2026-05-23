@@ -6,12 +6,18 @@ import { initialSnapshotFromAccepted, type PersistedLabJobRecord } from "@/featu
 import { IntlTestProvider } from "@/test-utils/intl";
 import type { LabJobAcceptedDto } from "@/types/api";
 
-const { followLabJob } = vi.hoisted(() => ({
-  followLabJob: vi.fn(),
+const { useLabJobLiveEventsMock } = vi.hoisted(() => ({
+  useLabJobLiveEventsMock: vi.fn((_options?: unknown) => ({
+    connectionState: "live" as const,
+    taskStatus: null,
+    lastEventId: null,
+    resume: vi.fn(),
+    stop: vi.fn(),
+  })),
 }));
 
-vi.mock("@/lib/lab-job-follow", () => ({
-  followLabJob: (...args: unknown[]) => followLabJob(...args),
+vi.mock("@/features/lab/hooks/use-lab-job-live-events", () => ({
+  useLabJobLiveEvents: useLabJobLiveEventsMock,
 }));
 
 vi.mock("@/features/help/HelpPopover", () => ({
@@ -70,32 +76,26 @@ function baseAccepted(jobId: string): LabJobAcceptedDto {
 
 describe("LabEvaluationRunCard resume follow", () => {
   beforeEach(() => {
-    followLabJob.mockReset();
+    useLabJobLiveEventsMock.mockReset();
+    useLabJobLiveEventsMock.mockReturnValue({
+      connectionState: "live",
+      taskStatus: null,
+      lastEventId: null,
+      resume: vi.fn(),
+      stop: vi.fn(),
+    });
     sessionStorage.removeItem("rag-lab-jobs");
     useLabJobSessionStore.persist.clearStorage();
     useLabJobSessionStore.setState({ records: [], pendingResume: null, resumeNonce: 0 });
-    followLabJob.mockResolvedValue({
-      id: "resume-job",
-      taskType: "LAB",
-      status: "SUCCEEDED",
-      progressText: null,
-      result: {},
-      errorMessage: null,
-      terminal: true,
-      createdAt: "",
-      updatedAt: "",
-      startedAt: null,
-      completedAt: null,
-    });
   });
 
-  it("consumes pending resume and calls followLabJob with persisted acceptance", async () => {
+  it("consumes pending resume and enables live SSE watch with persisted acceptance", async () => {
     const acceptedDto = baseAccepted("resume-job");
     const persisted: PersistedLabJobRecord = {
       jobId: acceptedDto.jobId,
       sectionKey: "evaluation-llm",
       accepted: acceptedDto,
-      followMode: "poll",
+      followMode: "sse",
       startedAtMs: Date.now(),
       lastUpdatedMs: Date.now(),
       lastStatus: initialSnapshotFromAccepted(acceptedDto, "LLM_EVALUATION"),
@@ -111,19 +111,25 @@ describe("LabEvaluationRunCard resume follow", () => {
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>
           <LabEvaluationRunCard
-          benchmarkKind="LLM_JUDGE_QA"
-          sectionKey="evaluation-llm"
-          taskTypeHint="LLM_EVALUATION"
-          cardTitle="LLM evaluation"
-          cardDescription="desc"
-          runButtonTestId="lab-llm-run"
-          radioGroupName="follow-resume"
-        />
+            benchmarkKind="LLM_JUDGE_QA"
+            sectionKey="evaluation-llm"
+            taskTypeHint="LLM_EVALUATION"
+            cardTitle="LLM evaluation"
+            cardDescription="desc"
+            runButtonTestId="lab-llm-run"
+            radioGroupName="follow-resume"
+          />
         </IntlTestProvider>
       </QueryClientProvider>,
     );
 
-    await waitFor(() => expect(followLabJob).toHaveBeenCalledTimes(1));
-    expect(followLabJob.mock.calls[0][0]).toEqual(acceptedDto);
+    await waitFor(() =>
+      expect(useLabJobLiveEventsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accepted: acceptedDto,
+          enabled: true,
+        }),
+      ),
+    );
   });
 });

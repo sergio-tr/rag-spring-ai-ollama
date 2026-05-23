@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { HelpPopover } from "@/features/help/HelpPopover";
 import { Label } from "@/components/ui/label";
+import { LabEvaluationCorpusPanel } from "@/features/lab/components/lab-evaluation-corpus-panel";
 import { LabBenchmarkResultsPanel } from "@/features/lab/components/lab-benchmark-results-panel";
 import { LabJobPanel } from "@/features/lab/components/lab-job-panel";
 import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
@@ -12,6 +13,7 @@ import { activeJobMatchesCard, useLabActiveJobRecovery } from "@/features/lab/ho
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
 import { useLabEvaluationDraft } from "@/features/lab/hooks/use-lab-evaluation-draft";
+import { useLabJobLiveEvents } from "@/features/lab/hooks/use-lab-job-live-events";
 import type { LabEvaluationDraftKind } from "@/features/lab/lib/lab-evaluation-draft";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 import { useModelsByType } from "@/features/chat/hooks/use-models-by-type";
@@ -25,11 +27,9 @@ import {
   emitLabJobTraceForTick,
   traceLabJobQueued,
   traceLabJobResumedWatching,
-  traceLabJobStoppedWaiting,
 } from "@/features/lab/lib/lab-job-trace";
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
-import { followLabJob } from "@/lib/lab-job-follow";
 import { fetchLabJobStatusOnce } from "@/lib/async-task";
 import { useAppStore } from "@/store/app.store";
 import type {
@@ -167,6 +167,7 @@ export function LabEvaluationRunCard({
   const [taskStatus, setTaskStatus] = useState<AsyncTaskStatusDto | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [stoppedWaiting, setStoppedWaiting] = useState(false);
+  const [watchLive, setWatchLive] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const traceDedupeRef = useRef(createLabJobTraceDedupe());
   const mountedEvalCardRef = useRef(true);
@@ -223,6 +224,43 @@ export function LabEvaluationRunCard({
 
   const { draft, patchDraft, clearDraft, resetToRecommended, setLastEvaluationRunId, warnings } =
     useLabEvaluationDraft(benchmarkKind as LabEvaluationDraftKind, draftValidation);
+
+  const liveJob = useLabJobLiveEvents({
+    accepted,
+    enabled: watchLive && !!accepted,
+    onTick: (s) => {
+      if (!accepted?.jobId) return;
+      setTaskStatus(s);
+      useLabJobSessionStore.getState().patchLabJobFromTick(accepted.jobId, s);
+      emitLabJobTraceForTick(traceDedupeRef.current, s, accepted.jobId, {
+        queued: t("traceJobQueued"),
+        running: t("traceJobRunning"),
+        completed: t("traceJobCompleted"),
+        failed: t("traceJobFailed"),
+        cancelled: t("traceJobCancelled"),
+      });
+    },
+    onTerminal: (s) => {
+      if (!mountedEvalCardRef.current) return;
+      setResult(s.result);
+      setRunning(false);
+      setWatchLive(false);
+      setStoppedWaiting(false);
+    },
+    onStreamError: (e) => {
+      if (!mountedEvalCardRef.current) return;
+      if (e instanceof ApiError && e.status === 404 && accepted?.jobId) {
+        useLabJobSessionStore.getState().markLabJobStaleNotFound(accepted.jobId);
+        setErr(t("jobRecoveryStaleShort"));
+      } else if (e instanceof Error) {
+        setErr(e.message || t("evalError"));
+      } else {
+        setErr(t("evalError"));
+      }
+      setRunning(false);
+      setWatchLive(false);
+    },
+  });
 
   const sessionRecords = useLabJobSessionStore((s) => s.records);
   const clearOtherLabJobsForSection = useLabJobSessionStore((s) => s.clearOtherLabJobsForSection);
@@ -308,10 +346,7 @@ export function LabEvaluationRunCard({
 
   const resumeNonceEvalCard = useLabJobSessionStore((s) => s.resumeNonce);
 
-  async function resumeEvalFromPersisted(rec: PersistedLabJobRecord) {
-    abortRef.current?.abort();
-    abortRef.current = new AbortController();
-    const signal = abortRef.current.signal;
+  async function beginLiveWatch(rec: PersistedLabJobRecord) {
     traceDedupeRef.current = createLabJobTraceDedupe();
     traceLabJobResumedWatching(rec.jobId, t("traceJobResumedWatching"));
     setAccepted(rec.accepted);
@@ -320,44 +355,11 @@ export function LabEvaluationRunCard({
     setRunning(true);
     setErr(null);
     setStoppedWaiting(false);
-    try {
-      const traceMessages = {
-        queued: t("traceJobQueued"),
-        running: t("traceJobRunning"),
-        completed: t("traceJobCompleted"),
-        failed: t("traceJobFailed"),
-        cancelled: t("traceJobCancelled"),
-      };
-      const done = await followLabJob(
-        rec.accepted,
-        (s) => {
-          setTaskStatus(s);
-          useLabJobSessionStore.getState().patchLabJobFromTick(rec.jobId, s);
-          emitLabJobTraceForTick(traceDedupeRef.current, s, rec.jobId, traceMessages);
-        },
-        { mode: rec.followMode, signal },
-      );
-      setResult(done.result);
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") {
-        if (!mountedEvalCardRef.current) return;
-        setErr(t("jobCancelled"));
-        setStoppedWaiting(true);
-        traceLabJobStoppedWaiting(rec.jobId, t("traceStoppedWaiting"));
-        useLabJobSessionStore.getState().setLabJobStoppedWatching(rec.jobId, true);
-      } else if (e instanceof ApiError && e.status === 404) {
-        if (!mountedEvalCardRef.current) return;
-        useLabJobSessionStore.getState().markLabJobStaleNotFound(rec.jobId);
-        setErr(t("jobRecoveryStaleShort"));
-      } else {
-        if (!mountedEvalCardRef.current) return;
-        setErr(e instanceof Error ? e.message : t("evalError"));
-      }
-    } finally {
-      if (mountedEvalCardRef.current) {
-        setRunning(false);
-      }
-    }
+    setWatchLive(true);
+  }
+
+  async function resumeEvalFromPersisted(rec: PersistedLabJobRecord) {
+    await beginLiveWatch(rec);
   }
 
   useEffect(() => {
@@ -400,7 +402,7 @@ export function LabEvaluationRunCard({
         useLabJobSessionStore.getState().patchLabJobFromTick(candidate.jobId, status);
         const rec = useLabJobSessionStore.getState().pickLatestForSection(sectionKey);
         if (!rec) return;
-        await resumeEvalFromPersisted(rec);
+        await beginLiveWatch(rec);
       } catch (e) {
         backendAutoFollowHandledRef.current = null;
         if (!mountedEvalCardRef.current) return;
@@ -496,7 +498,8 @@ export function LabEvaluationRunCard({
     }
     if (benchmarkKind === "EMBEDDING_RETRIEVAL") {
       const q = selectedDataset.questionCounts.embeddingQueries ?? 0;
-      return t("benchmarkExpectedItemsEmbedding", { q, items: q });
+      const models = draft.embeddingModelIds.length > 0 ? draft.embeddingModelIds.length : 1;
+      return t("benchmarkExpectedItemsEmbedding", { q, items: q * models });
     }
     if (benchmarkKind === "RAG_PRESET_END_TO_END") {
       const q = selectedDataset.questionCounts.ragPresetQuestions ?? 0;
@@ -507,7 +510,52 @@ export function LabEvaluationRunCard({
       return t("benchmarkExpectedItemsRag", { q, presets: catalog > 0 ? presets : 1, items });
     }
     return "";
-  }, [benchmarkKind, draft.llmModelIds.length, draft.selectedExperimentalPresetCodes.length, selectedDataset, t]);
+  }, [benchmarkKind, draft.embeddingModelIds.length, draft.llmModelIds.length, draft.selectedExperimentalPresetCodes.length, selectedDataset, t]);
+
+  const comparisonSelectionCount = useMemo(() => {
+    if (benchmarkKind === "LLM_JUDGE_QA") {
+      return draft.llmModelIds.map((x) => x.trim()).filter(Boolean).length;
+    }
+    if (benchmarkKind === "EMBEDDING_RETRIEVAL") {
+      return draft.embeddingModelIds.map((x) => x.trim()).filter(Boolean).length;
+    }
+    if (benchmarkKind === "RAG_PRESET_END_TO_END") {
+      return draft.selectedExperimentalPresetCodes.length;
+    }
+    return 0;
+  }, [benchmarkKind, draft.embeddingModelIds, draft.llmModelIds, draft.selectedExperimentalPresetCodes]);
+
+  const runButtonLabel = useMemo(() => {
+    if (running) return t("evalRunning");
+    if (benchmarkKind === "LLM_JUDGE_QA" && comparisonSelectionCount >= 2) {
+      return t("runEvalComparisonLlm");
+    }
+    if (benchmarkKind === "RAG_PRESET_END_TO_END" && comparisonSelectionCount >= 2) {
+      return t("runEvalComparisonPreset");
+    }
+    if (benchmarkKind === "EMBEDDING_RETRIEVAL" && comparisonSelectionCount >= 2) {
+      return t("runEvalComparisonEmbedding");
+    }
+    return t("runEval");
+  }, [benchmarkKind, comparisonSelectionCount, running, t]);
+
+  const comparisonHint = useMemo(() => {
+    if (comparisonSelectionCount >= 2) {
+      if (benchmarkKind === "LLM_JUDGE_QA") {
+        return t("benchmarkComparingModels", { count: comparisonSelectionCount });
+      }
+      if (benchmarkKind === "RAG_PRESET_END_TO_END") {
+        return t("benchmarkComparingPresets", { count: comparisonSelectionCount });
+      }
+      if (benchmarkKind === "EMBEDDING_RETRIEVAL") {
+        return t("benchmarkComparingEmbeddings", { count: comparisonSelectionCount });
+      }
+    }
+    if (comparisonSelectionCount === 1) {
+      return t("benchmarkSingleRunNote");
+    }
+    return null;
+  }, [benchmarkKind, comparisonSelectionCount, t]);
 
   async function run() {
     abortRef.current?.abort();
@@ -521,28 +569,37 @@ export function LabEvaluationRunCard({
     setCampaignId(null);
     setTaskStatus(null);
     setStoppedWaiting(false);
+    setWatchLive(false);
+    liveJob.stop();
     traceDedupeRef.current = createLabJobTraceDedupe();
     let asyncAccepted: LabJobAcceptedDto | null = null;
     try {
       if (!selectedDataset) {
         setErr(t("benchmarkNeedsCompatibleDataset"));
+        setRunning(false);
         return;
       }
-      if (benchmarkKind === "RAG_PRESET_END_TO_END" && !activeProject?.id) {
-        setErr(t("benchmarkNeedsActiveProject"));
-        return;
+      if (benchmarkKind === "RAG_PRESET_END_TO_END" || benchmarkKind === "EMBEDDING_RETRIEVAL") {
+        if (!draft.corpusId) {
+          setErr(t("benchmarkNeedsCorpus"));
+          setRunning(false);
+          return;
+        }
       }
       if (selectedDataset.validationStatus !== "VALID") {
         setErr(t("benchmarkNeedsValidDataset"));
+        setRunning(false);
         return;
       }
       if (otherActiveJobExists) {
         setErr(t("jobAlreadyRunning"));
+        setRunning(false);
         return;
       }
       const body: StartBenchmarkRunRequest = {
         datasetId: selectedDataset.id,
         projectId: activeProject?.id ?? undefined,
+        corpusId: draft.corpusId ?? undefined,
       };
       if (benchmarkKind === "RAG_PRESET_END_TO_END" && draft.selectedExperimentalPresetCodes.length > 0) {
         body.experimentalPresetCodes = draft.selectedExperimentalPresetCodes;
@@ -559,6 +616,7 @@ export function LabEvaluationRunCard({
       const em = draft.embeddingModelId.trim();
       const lmList = draft.llmModelIds.map((x) => x.trim()).filter(Boolean);
       const emList = draft.embeddingModelIds.map((x) => x.trim()).filter(Boolean);
+      const presetList = draft.selectedExperimentalPresetCodes.map((x) => x.trim()).filter(Boolean);
       if (lmList.length > 0) {
         body.llmModelIds = lmList;
         body.campaignName = body.campaignName ?? `LLM campaign (${lmList.length})`;
@@ -567,8 +625,12 @@ export function LabEvaluationRunCard({
       }
       if (emList.length > 0) {
         body.embeddingModelIds = emList;
+        body.campaignName = body.campaignName ?? `Embedding campaign (${emList.length})`;
       } else if (em) {
         body.embeddingModelId = em;
+      }
+      if (benchmarkKind === "RAG_PRESET_END_TO_END" && presetList.length >= 2) {
+        body.campaignName = body.campaignName ?? `RAG preset campaign (${presetList.length})`;
       }
       if (benchmarkKind === "EMBEDDING_RETRIEVAL") {
         body.embeddingDownstreamRag = draft.embeddingDownstreamRag;
@@ -600,56 +662,34 @@ export function LabEvaluationRunCard({
         traceDedupeRef.current.acceptedEmitted = true;
         traceLabJobQueued(acc.jobId, t("traceJobQueued"));
       }
-      const traceMessages = {
-        queued: t("traceJobQueued"),
-        running: t("traceJobRunning"),
-        completed: t("traceJobCompleted"),
-        failed: t("traceJobFailed"),
-        cancelled: t("traceJobCancelled"),
-      };
-      const done = await followLabJob(
-        acc,
-        (s) => {
-          setTaskStatus(s);
-          useLabJobSessionStore.getState().patchLabJobFromTick(acc.jobId, s);
-          emitLabJobTraceForTick(traceDedupeRef.current, s, acc.jobId, traceMessages);
-        },
-        {
-          mode: draft.followMode,
-          signal,
-        },
-      );
-      setResult(done.result);
+      setWatchLive(true);
     } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") {
-        if (!mountedEvalCardRef.current) return;
-        setErr(t("jobCancelled"));
-        setStoppedWaiting(true);
-        if (asyncAccepted?.jobId) {
-          traceLabJobStoppedWaiting(asyncAccepted.jobId, t("traceStoppedWaiting"));
-          useLabJobSessionStore.getState().setLabJobStoppedWatching(asyncAccepted.jobId, true);
-        }
-      } else if (e instanceof ApiError && e.status === 404 && asyncAccepted?.jobId) {
+      if (e instanceof ApiError && e.status === 404 && asyncAccepted?.jobId) {
         if (!mountedEvalCardRef.current) return;
         useLabJobSessionStore.getState().markLabJobStaleNotFound(asyncAccepted.jobId);
         setErr(t("jobRecoveryStaleShort"));
+        setRunning(false);
+        setWatchLive(false);
       } else if (e instanceof ApiError && e.status === 409) {
         if (!mountedEvalCardRef.current) return;
         setErr(t("jobAlreadyRunning"));
+        setRunning(false);
+        setWatchLive(false);
       } else {
         if (!mountedEvalCardRef.current) return;
         setErr(e instanceof Error ? e.message : t("evalError"));
-      }
-    } finally {
-      if (mountedEvalCardRef.current) {
         setRunning(false);
+        setWatchLive(false);
       }
     }
   }
 
   async function cancelBackendJob() {
+    liveJob.stop();
+    setWatchLive(false);
     if (!accepted?.jobId) {
       abortRef.current?.abort();
+      setRunning(false);
       return;
     }
     try {
@@ -659,7 +699,8 @@ export function LabEvaluationRunCard({
     }
   }
 
-  const showResultsPanel = taskSucceeded(taskStatus) && !!evaluationRunId?.trim();
+  const showResultsPanel =
+    taskSucceeded(watchLive ? (liveJob.taskStatus ?? taskStatus) : taskStatus) && !!evaluationRunId?.trim();
 
   const staleDatasetRow =
     draft.datasetId != null
@@ -714,6 +755,12 @@ export function LabEvaluationRunCard({
                 </div>
               </div>
               <p className="text-muted-foreground leading-relaxed">{t("labAdvancedEvalHelp")}</p>
+              <details className="rounded-md border bg-muted/20 p-2">
+                <summary className="cursor-pointer text-muted-foreground">{t("labDeveloperDetailsSummary")}</summary>
+                <p className="text-muted-foreground mt-2 leading-relaxed">
+                  {t("labDeveloperEvalEndpoint", { kind: benchmarkKind })}
+                </p>
+              </details>
             </div>
           </details>
 
@@ -724,6 +771,15 @@ export function LabEvaluationRunCard({
               <p className="text-muted-foreground mt-2 leading-relaxed">{t("benchmarkRagPresetCatalogInfo")}</p>
             ) : null}
           </details>
+
+          {benchmarkKind === "RAG_PRESET_END_TO_END" || benchmarkKind === "EMBEDDING_RETRIEVAL" ? (
+            <LabEvaluationCorpusPanel
+              corpusId={draft.corpusId}
+              optionalProjectId={activeProject?.id ?? null}
+              disabled={running}
+              onCorpusIdChange={(id) => patchDraft({ corpusId: id })}
+            />
+          ) : null}
 
           {activeProject ? (
             <p className="text-muted-foreground text-xs">
@@ -866,9 +922,16 @@ export function LabEvaluationRunCard({
           {experimentalDatasets.isFetched && compatibleRows.length === 0 ? (
             <output
               data-testid="lab-benchmark-needs-dataset-warn"
-              className="block text-amber-600 text-sm dark:text-amber-500"
+              className="block rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-amber-800 text-sm dark:text-amber-200"
             >
-              {t("benchmarkNeedsCompatibleDataset")}
+              <p className="font-medium">{t("benchmarkNeedsCompatibleDataset")}</p>
+              <p className="text-muted-foreground mt-1 text-xs" data-testid="lab-eval-empty-state">
+                {benchmarkKind === "LLM_JUDGE_QA"
+                  ? t("llmEvalEmptyHint")
+                  : benchmarkKind === "EMBEDDING_RETRIEVAL"
+                    ? t("embeddingEvalEmptyHint")
+                    : t("ragEvalEmptyHint")}
+              </p>
             </output>
           ) : null}
 
@@ -964,9 +1027,7 @@ export function LabEvaluationRunCard({
                     ))}
                   </select>
                   {availableLlmModels.length === 0 ? (
-                    <output className="text-muted-foreground block text-xs">
-                      Model catalog is unavailable. Configure the classifier service registry to expose LLM models.
-                    </output>
+                    <output className="text-muted-foreground block text-xs">{t("noLlmModelsAvailable")}</output>
                   ) : null}
                 </>
               )}
@@ -1004,7 +1065,7 @@ export function LabEvaluationRunCard({
                     ))}
                   </select>
                   <output className="text-muted-foreground block text-xs">
-                    {t("benchmarkEmbeddingMultiUnsupportedHint")}
+                    {t("benchmarkEmbeddingMultiHint")}
                   </output>
                 </>
               ) : (
@@ -1144,7 +1205,7 @@ export function LabEvaluationRunCard({
               disabled={running || !canStart || otherActiveJobExists}
               onClick={() => void run()}
             >
-              {running ? t("evalRunning") : t("runEval")}
+              {runButtonLabel}
             </Button>
             {running ? (
               <Button type="button" variant="outline" onClick={() => void cancelBackendJob()}>
@@ -1159,10 +1220,16 @@ export function LabEvaluationRunCard({
             </p>
           ) : null}
 
-          {err ? (
+          {err && !watchLive ? (
             <p className="text-destructive text-sm" role="alert">
               {err}
             </p>
+          ) : null}
+
+          {watchLive && liveJob.connectionState === "reconnecting" ? (
+            <output role="status" className="block text-amber-700 text-sm dark:text-amber-300">
+              {t("jobUiReconnecting")}
+            </output>
           ) : null}
 
           {hardBlocked ? (
@@ -1174,6 +1241,12 @@ export function LabEvaluationRunCard({
           {!hardBlocked && canStart && expectedSummary ? (
             <p className="text-muted-foreground text-xs" data-testid="lab-expected-items-summary">
               {expectedSummary}
+            </p>
+          ) : null}
+
+          {comparisonHint ? (
+            <p className="text-muted-foreground text-xs" data-testid="lab-comparison-selection-hint">
+              {comparisonHint}
             </p>
           ) : null}
 
@@ -1216,9 +1289,11 @@ export function LabEvaluationRunCard({
           {!accepted && !taskStatus ? null : (
             <LabJobPanel
               accepted={accepted}
-              taskStatus={taskStatus}
-              queuedHint={!!accepted && !taskStatus}
+              taskStatus={watchLive ? (liveJob.taskStatus ?? taskStatus) : taskStatus}
+              queuedHint={!!accepted && !taskStatus && !liveJob.taskStatus}
               stoppedWaiting={stoppedWaiting}
+              connectionState={watchLive ? liveJob.connectionState : null}
+              onResumeLive={watchLive ? () => liveJob.resume() : undefined}
             />
           )}
 

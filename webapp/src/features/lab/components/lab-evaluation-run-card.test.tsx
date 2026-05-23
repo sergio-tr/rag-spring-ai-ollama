@@ -15,6 +15,18 @@ function LabEvalHarness({ children }: Readonly<{ children: ReactNode }>) {
   );
 }
 
+vi.mock("@/features/lab/hooks/use-evaluation-corpus", () => ({
+  useEvaluationCorpus: () => ({
+    summary: { documentCount: 2, readyCount: 2, documents: [] },
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+    ensureCorpus: vi.fn(),
+    uploadDocument: vi.fn(),
+    attachFromProject: vi.fn(),
+  }),
+}));
+
 vi.mock("@/features/help/HelpPopover", () => ({
   HelpPopover: () => <button type="button">Help</button>,
 }));
@@ -43,11 +55,21 @@ vi.mock("@/store/app.store", () => ({
     selector({ activeProject: null }),
 }));
 
+vi.mock("@/lib/api-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api-client")>();
+  return {
+    ...actual,
+    apiFetch: vi.fn(),
+    apiProductPath: (p: string) => p,
+  };
+});
+
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
 import { useModelsByType } from "@/features/chat/hooks/use-models-by-type";
+import { apiFetch } from "@/lib/api-client";
 
 const llmDataset = {
   id: "550e8400-e29b-41d4-a716-446655440000",
@@ -105,6 +127,7 @@ function storedLlmDraft(overrides: Record<string, unknown>) {
     runName: "",
     followMode: "poll",
     lastEvaluationRunId: null,
+    corpusId: null,
     ...overrides,
   });
 }
@@ -123,6 +146,7 @@ function storedRagDraft(overrides: Record<string, unknown>) {
     runName: "",
     followMode: "poll",
     lastEvaluationRunId: null,
+    corpusId: "corpus-1111-1111-1111-111111111111",
     ...overrides,
   });
 }
@@ -213,11 +237,19 @@ describe("LabEvaluationRunCard", () => {
     vi.mocked(useModelsByType).mockImplementation(((type: string) => ({
       data:
         type === "LLM"
-          ? [{ modelId: "llama:judge", displayName: "llama:judge", type: "LLM" }]
-          : [{ modelId: "nomic-embed-test", displayName: "nomic-embed-test", type: "EMBEDDING" }],
+          ? [
+              { modelId: "llama:judge", displayName: "llama:judge", type: "LLM" },
+              { modelId: "llama:fast", displayName: "llama:fast", type: "LLM" },
+              { modelId: "llama:quality", displayName: "llama:quality", type: "LLM" },
+            ]
+          : [
+              { modelId: "nomic-embed-test", displayName: "nomic-embed-test", type: "EMBEDDING" },
+              { modelId: "bge-m3", displayName: "bge-m3", type: "EMBEDDING" },
+            ],
       isLoading: false,
       isSuccess: true,
     })) as never);
+    vi.mocked(apiFetch).mockReset();
   });
 
   it("shows user-facing description without HTTP 202 jargon on the card surface", () => {
@@ -287,7 +319,7 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.getByRole("button", { name: /Run evaluation/i })).toBeDisabled();
   });
 
-  it("keeps canonical benchmark transport hint inside advanced disclosure by default", async () => {
+  it("keeps developer endpoint hint inside nested disclosure by default", async () => {
     const user = userEvent.setup();
     render(
       <LabEvalHarness>
@@ -303,10 +335,12 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
     const advancedDetails = screen.getByText(/Advanced options/i).closest("details");
+    const developerDetails = screen.getByText(/Developer details/i).closest("details");
     expect(advancedDetails).not.toHaveAttribute("open");
-    expect(advancedDetails).toHaveTextContent(/\/lab\/benchmarks/i);
+    expect(developerDetails).not.toHaveAttribute("open");
     await user.click(screen.getByText(/Advanced options/i));
-    expect(advancedDetails).toHaveAttribute("open");
+    await user.click(screen.getByText(/Developer details/i));
+    expect(advancedDetails).toHaveTextContent(/\/lab\/benchmarks/i);
   });
 
   it("shows experimental preset catalog with unsupported reason in RAG benchmark mode", () => {
@@ -471,6 +505,32 @@ describe("LabEvaluationRunCard", () => {
     }
   });
 
+  it("shows evaluation corpus panel for RAG without active project", () => {
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+      data: [ragDataset],
+      isLoading: false,
+      isFetched: true,
+      isSuccess: true,
+    } as never);
+    render(
+      <LabEvalHarness>
+        <LabEvaluationRunCard
+          benchmarkKind="RAG_PRESET_END_TO_END"
+          sectionKey="evaluation-rag"
+          taskTypeHint="RAG_EVALUATION"
+          cardTitle="RAG evaluation"
+          cardDescription="Benchmark retrieval presets."
+          runButtonTestId="lab-rag-run"
+          radioGroupName="follow-corpus-rag"
+        />
+      </LabEvalHarness>,
+    );
+    expect(screen.getByTestId("lab-evaluation-corpus-panel")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Select an active project before running a RAG preset benchmark/i),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows draft warning when stored dataset id no longer exists", () => {
     localStorage.setItem(
       "lab:evaluation-draft:v1:LLM_JUDGE_QA",
@@ -491,5 +551,48 @@ describe("LabEvaluationRunCard", () => {
     );
     expect(screen.getByTestId("lab-evaluation-draft-warnings")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Run evaluation/i })).toBeDisabled();
+  });
+
+  it("shows comparison button label and submits llmModelIds array when multiple models selected", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      "lab:evaluation-draft:v1:LLM_JUDGE_QA",
+      storedLlmDraft({
+        llmModelIds: ["llama:judge", "llama:fast", "llama:quality"],
+        corpusId: "corpus-1111-1111-1111-111111111111",
+      }),
+    );
+    vi.mocked(apiFetch).mockResolvedValue({
+      evaluationRunId: "run-0000-0000-0000-000000000001",
+      asyncTaskId: "job-0000-0000-0000-000000000001",
+      campaignId: "camp-0000-0000-0000-000000000001",
+    });
+
+    render(
+      <LabEvalHarness>
+        <LabEvaluationRunCard
+          benchmarkKind="LLM_JUDGE_QA"
+          sectionKey="evaluation-llm"
+          taskTypeHint="LLM_EVALUATION"
+          cardTitle="LLM evaluation"
+          cardDescription="Benchmark the configured LLM against loaded evaluation questions."
+          runButtonTestId="lab-llm-run"
+          radioGroupName="follow-campaign"
+        />
+      </LabEvalHarness>,
+    );
+
+    expect(screen.getByRole("button", { name: /Run model comparison/i })).toBeInTheDocument();
+    expect(screen.getByTestId("lab-comparison-selection-hint")).toHaveTextContent(/Comparing 3 models/i);
+
+    await user.click(screen.getByTestId("lab-llm-run"));
+
+    expect(vi.mocked(apiFetch)).toHaveBeenCalled();
+    const call = vi.mocked(apiFetch).mock.calls.find((c) => c[0]?.includes("/lab/benchmarks/LLM_JUDGE_QA/runs"));
+    expect(call).toBeTruthy();
+    const init = call?.[1] as RequestInit | undefined;
+    const body = JSON.parse(String(init?.body ?? "{}")) as { llmModelIds?: string[]; campaignName?: string };
+    expect(body.llmModelIds).toEqual(["llama:judge", "llama:fast", "llama:quality"]);
+    expect(body.campaignName).toBeTruthy();
   });
 });
