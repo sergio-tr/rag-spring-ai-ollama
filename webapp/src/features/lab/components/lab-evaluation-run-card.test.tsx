@@ -340,7 +340,7 @@ describe("LabEvaluationRunCard", () => {
     expect(developerDetails).not.toHaveAttribute("open");
     await user.click(screen.getByText(/Advanced options/i));
     await user.click(screen.getByText(/Developer details/i));
-    expect(advancedDetails).toHaveTextContent(/\/lab\/benchmarks/i);
+    expect(advancedDetails).toHaveTextContent(/Developer:.*benchmark start/i);
   });
 
   it("shows experimental preset catalog with unsupported reason in RAG benchmark mode", () => {
@@ -457,7 +457,7 @@ describe("LabEvaluationRunCard", () => {
     );
     expect(screen.getByTestId("lab-eval-run-name")).toHaveValue("Regression May");
     expect(screen.getByTestId("lab-benchmark-dataset-select")).toHaveValue(llmDataset.id);
-    expect(screen.getByTestId("lab-benchmark-llm-models-multi")).toHaveValue(["llama:judge"]);
+    expect(screen.getByTestId("lab-benchmark-llm-models-llama:judge")).toBeChecked();
 
     first.unmount();
 
@@ -476,7 +476,7 @@ describe("LabEvaluationRunCard", () => {
     );
     expect(screen.getByTestId("lab-eval-run-name")).toHaveValue("Regression May");
     expect(screen.getByTestId("lab-benchmark-dataset-select")).toHaveValue(llmDataset.id);
-    expect(screen.getByTestId("lab-benchmark-llm-models-multi")).toHaveValue(["llama:judge"]);
+    expect(screen.getByTestId("lab-benchmark-llm-models-llama:judge")).toBeChecked();
   });
 
   it("restores RAG preset picks P0–P14 from localStorage", () => {

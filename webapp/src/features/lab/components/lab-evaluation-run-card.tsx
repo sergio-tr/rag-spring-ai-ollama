@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { HelpPopover } from "@/features/help/HelpPopover";
 import { Label } from "@/components/ui/label";
 import { LabEvaluationCorpusPanel } from "@/features/lab/components/lab-evaluation-corpus-panel";
+import { ModelCheckboxGroup } from "@/features/lab/components/model-checkbox-group";
 import { LabBenchmarkResultsPanel } from "@/features/lab/components/lab-benchmark-results-panel";
 import { LabJobPanel } from "@/features/lab/components/lab-job-panel";
 import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
@@ -14,7 +15,10 @@ import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimen
 import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
 import { useLabEvaluationDraft } from "@/features/lab/hooks/use-lab-evaluation-draft";
 import { useLabJobLiveEvents } from "@/features/lab/hooks/use-lab-job-live-events";
-import type { LabEvaluationDraftKind } from "@/features/lab/lib/lab-evaluation-draft";
+import {
+  LAB_DEFAULT_EMBEDDING_MODEL_ID,
+  type LabEvaluationDraftKind,
+} from "@/features/lab/lib/lab-evaluation-draft";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 import { useModelsByType } from "@/features/chat/hooks/use-models-by-type";
 import {
@@ -302,9 +306,22 @@ export function LabEvaluationRunCard({
   const recommendedDraftPartial = useMemo(
     () => ({
       datasetId: defaultDataset?.id ?? null,
+      embeddingModelId: availableEmbeddingModels.includes(LAB_DEFAULT_EMBEDDING_MODEL_ID)
+        ? LAB_DEFAULT_EMBEDDING_MODEL_ID
+        : (availableEmbeddingModels[0] ?? ""),
+      embeddingModelIds: availableEmbeddingModels.includes(LAB_DEFAULT_EMBEDDING_MODEL_ID)
+        ? [LAB_DEFAULT_EMBEDDING_MODEL_ID]
+        : [],
     }),
-    [defaultDataset?.id],
+    [defaultDataset?.id, availableEmbeddingModels],
   );
+
+  useEffect(() => {
+    if (benchmarkKind !== "EMBEDDING_RETRIEVAL" && benchmarkKind !== "RAG_PRESET_END_TO_END") return;
+    if (draft.embeddingModelId.trim() !== "") return;
+    if (!availableEmbeddingModels.includes(LAB_DEFAULT_EMBEDDING_MODEL_ID)) return;
+    patchDraft({ embeddingModelId: LAB_DEFAULT_EMBEDDING_MODEL_ID });
+  }, [benchmarkKind, draft.embeddingModelId, availableEmbeddingModels, patchDraft]);
 
   useEffect(() => {
     if (draft.datasetId != null || draft.explicitDraftClear) return;
@@ -972,34 +989,16 @@ export function LabEvaluationRunCard({
             <div className="space-y-2">
               <Label htmlFor={`lab-llm-model-${sectionKey}`}>{t("benchmarkLlmModelOptional")}</Label>
               {benchmarkKind === "LLM_JUDGE_QA" && availableLlmModels.length > 0 ? (
-                <>
-                  <select
-                    multiple
-                    data-testid="lab-benchmark-llm-models-multi"
-                    className="border-input bg-background ring-offset-background focus-visible:ring-ring min-h-28 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                    value={draft.llmModelIds}
-                    disabled={running}
-                    onChange={(e) =>
-                      patchDraft({
-                        llmModelIds: Array.from(e.target.selectedOptions).map((o) => o.value),
-                      })
-                    }
-                  >
-                    {draft.llmModelIds
-                      .filter((id) => id.trim() !== "" && !availableLlmModels.includes(id))
-                      .map((name) => (
-                        <option key={`stale-${name}`} value={name} disabled>
-                          {name}
-                        </option>
-                      ))}
-                    {availableLlmModels.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-muted-foreground text-xs">{t("benchmarkLlmMultiHint")}</p>
-                </>
+                <ModelCheckboxGroup
+                  id={`lab-llm-model-${sectionKey}`}
+                  label={t("benchmarkLlmModelOptional")}
+                  availableModelIds={availableLlmModels}
+                  selectedIds={draft.llmModelIds}
+                  disabled={running}
+                  testIdPrefix="lab-benchmark-llm-models"
+                  hint={t("benchmarkLlmMultiHint")}
+                  onChange={(llmModelIds) => patchDraft({ llmModelIds })}
+                />
               ) : (
                 <>
                   <select
@@ -1038,36 +1037,16 @@ export function LabEvaluationRunCard({
             <div className="space-y-2">
               <Label htmlFor={`lab-emb-model-${sectionKey}`}>{t("benchmarkEmbeddingModelOptional")}</Label>
               {benchmarkKind === "EMBEDDING_RETRIEVAL" && availableEmbeddingModels.length > 0 ? (
-                <>
-                  <select
-                    multiple
-                    data-testid="lab-benchmark-embedding-models-multi"
-                    className="border-input bg-background ring-offset-background focus-visible:ring-ring min-h-28 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                    value={draft.embeddingModelIds}
-                    disabled={running}
-                    onChange={(e) =>
-                      patchDraft({
-                        embeddingModelIds: Array.from(e.target.selectedOptions).map((o) => o.value),
-                      })
-                    }
-                  >
-                    {draft.embeddingModelIds
-                      .filter((id) => id.trim() !== "" && !availableEmbeddingModels.includes(id))
-                      .map((name) => (
-                        <option key={`stale-${name}`} value={name} disabled>
-                          {name}
-                        </option>
-                      ))}
-                    {availableEmbeddingModels.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                  <output className="text-muted-foreground block text-xs">
-                    {t("benchmarkEmbeddingMultiHint")}
-                  </output>
-                </>
+                <ModelCheckboxGroup
+                  id={`lab-emb-model-${sectionKey}`}
+                  label={t("benchmarkEmbeddingModelOptional")}
+                  availableModelIds={availableEmbeddingModels}
+                  selectedIds={draft.embeddingModelIds}
+                  disabled={running}
+                  testIdPrefix="lab-benchmark-embedding-models"
+                  hint={t("benchmarkEmbeddingMultiHint")}
+                  onChange={(embeddingModelIds) => patchDraft({ embeddingModelIds })}
+                />
               ) : (
                 <>
                   <select
@@ -1224,12 +1203,6 @@ export function LabEvaluationRunCard({
             <p className="text-destructive text-sm" role="alert">
               {err}
             </p>
-          ) : null}
-
-          {watchLive && liveJob.connectionState === "reconnecting" ? (
-            <output role="status" className="block text-amber-700 text-sm dark:text-amber-300">
-              {t("jobUiReconnecting")}
-            </output>
           ) : null}
 
           {hardBlocked ? (
