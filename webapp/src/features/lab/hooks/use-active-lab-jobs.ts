@@ -10,12 +10,8 @@ export function useActiveLabJobs() {
   return useQuery({
     queryKey: activeLabJobsQueryKey,
     queryFn: () => apiFetch<ActiveLabJobDto[]>(apiProductPath("/lab/jobs/active")),
-    staleTime: 0,
+    staleTime: 30_000,
     refetchOnWindowFocus: true,
-    refetchInterval: (query) => {
-      const jobs = query.state.data;
-      return jobs != null && jobs.length > 0 ? 5_000 : false;
-    },
   });
 }
 

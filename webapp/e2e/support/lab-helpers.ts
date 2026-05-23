@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { authHeadersFromPage, productApiUrl } from "./helpers";
 
-/** Clears persisted active project so LAB runs are projectless. */
+/** Clears persisted active project and LAB draft/session state so runs are projectless and deterministic. */
 export async function clearActiveProjectForLab(page: Page): Promise<void> {
   await page.addInitScript(() => {
     try {
@@ -13,6 +13,22 @@ export async function clearActiveProjectForLab(page: Page): Promise<void> {
           localStorage.setItem("rag-app", JSON.stringify(o));
         }
       }
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (
+          key &&
+          (key.startsWith("lab:evaluation-draft:v1:") ||
+            key.startsWith("rag-lab-form-v1:") ||
+            key.startsWith("rag-lab-"))
+        ) {
+          keysToRemove.push(key);
+        }
+      }
+      for (const key of keysToRemove) {
+        localStorage.removeItem(key);
+      }
+      sessionStorage.removeItem("rag-lab-jobs");
     } catch {
       /* ignore */
     }
@@ -42,10 +58,17 @@ export async function labDatasetRunnable(page: Page): Promise<boolean> {
 export const FORBIDDEN_LAB_UI_PATTERNS: RegExp[] = [
   /POST JSON/i,
   /canonical benchmark API/i,
+  /Lab API —/i,
+  /POST \/api/i,
+  /GET \/api/i,
   /Stopped watching here/i,
-  /Stopped waiting/i,
+  /Stopped waiting — the server job/i,
+  /Status poll:/i,
+  /Live stream:/i,
   /datasetId.*projectId.*llmModelId/i,
+  /embeddingDownstreamRag/i,
   /SSE:\s*\/lab/i,
+  /\/api\/v5\/lab\/jobs\//i,
 ];
 
 export async function assertNoForbiddenLabCopy(page: Page): Promise<void> {
@@ -107,36 +130,48 @@ export async function pollLabTerminalOutcome(
   return outcome;
 }
 
+/** Checks the first N models in the LLM checkbox group (comparison runs). */
 export async function selectLlmModelsForComparison(page: Page, count: number): Promise<boolean> {
-  const multi = page.getByTestId("lab-benchmark-llm-models-multi");
-  if (!(await multi.isVisible().catch(() => false))) return false;
-  const options = multi.locator("option");
-  const n = await options.count();
+  const group = page.getByTestId("lab-benchmark-llm-models-group");
+  if (!(await group.isVisible().catch(() => false))) return false;
+  const boxes = group.locator('input[type="checkbox"]:not(:disabled)');
+  const n = await boxes.count();
   if (n < count) return false;
-  const values: string[] = [];
-  for (let i = 0; i < n && values.length < count; i += 1) {
-    const v = await options.nth(i).getAttribute("value");
-    if (v && v.trim()) values.push(v);
+  for (let i = 0; i < count; i += 1) {
+    await boxes.nth(i).check();
   }
-  if (values.length < Math.min(count, 2)) return false;
-  await multi.selectOption(values.slice(0, count));
   return true;
 }
 
+/** Checks the first N models in the embedding checkbox group (comparison runs). */
 export async function selectEmbeddingModelsForComparison(page: Page, count: number): Promise<boolean> {
-  const multi = page.getByTestId("lab-benchmark-embedding-models-multi");
-  if (!(await multi.isVisible().catch(() => false))) return false;
-  const options = multi.locator("option");
-  const n = await options.count();
+  const group = page.getByTestId("lab-benchmark-embedding-models-group");
+  if (!(await group.isVisible().catch(() => false))) return false;
+  const boxes = group.locator('input[type="checkbox"]:not(:disabled)');
+  const n = await boxes.count();
   if (n < count) return false;
-  const values: string[] = [];
-  for (let i = 0; i < n && values.length < count; i += 1) {
-    const v = await options.nth(i).getAttribute("value");
-    if (v && v.trim()) values.push(v);
+  for (let i = 0; i < count; i += 1) {
+    await boxes.nth(i).check();
   }
-  if (values.length < Math.min(count, 2)) return false;
-  await multi.selectOption(values.slice(0, count));
   return true;
+}
+
+/** Ensures at least one LLM model is selected when the checkbox group is shown (avoids stale-draft blocks). */
+export async function ensureFirstLlmModelSelectedForRun(page: Page): Promise<void> {
+  const group = page.getByTestId("lab-benchmark-llm-models-group");
+  if (!(await group.isVisible().catch(() => false))) return;
+  const checked = group.locator('input[type="checkbox"]:checked:not(:disabled)');
+  if ((await checked.count()) > 0) return;
+  const first = group.locator('input[type="checkbox"]:not(:disabled)').first();
+  if (await first.isVisible().catch(() => false)) {
+    await first.check();
+  }
+}
+
+/** Fails fast when a Lab run POST returns a permission error instead of opening the job panel. */
+export async function assertLabRunStarted(page: Page): Promise<void> {
+  await expect(page.getByText(/Insufficient permissions for this action/i)).toHaveCount(0);
+  await expect(page.getByTestId("lab-job-panel")).toBeVisible({ timeout: 30_000 });
 }
 
 export async function fetchActiveLabJobs(page: Page): Promise<unknown[]> {

@@ -386,28 +386,17 @@ describe("useLabJobLiveEvents", () => {
     }
   });
 
-  it("handles finishedAway callback", async () => {
-    let streamCallbacks: LabJobStreamCallbacks | undefined;
-    let releaseStream: (() => void) | undefined;
-    vi.spyOn(labJobSse, "streamLabJobLive").mockImplementation((_path, options) => {
-      streamCallbacks = options?.callbacks;
-      return new Promise((resolve) => {
-        releaseStream = () => resolve(terminalStatus);
-      });
+  it("coerces legacy poll followMode drafts to sse-only recovery", () => {
+    const decision = computeLabActiveJobRecovery({
+      sectionKey: "evaluation-llm",
+      benchmarkKind: "LLM_JUDGE_QA",
+      activeProjectId: null,
+      draftFollowMode: "poll",
+      backendActiveJobs: [],
+      backendActiveJobsLoading: false,
+      backendActiveJobsError: null,
+      sessionRecords: [],
     });
-    const onTerminal = vi.fn();
-    const { result, unmount } = renderHook(() =>
-      useLabJobLiveEvents({ accepted, onTerminal }),
-    );
-
-    await waitFor(() => expect(streamCallbacks).toBeDefined());
-    act(() => {
-      streamCallbacks?.onFinishedAway?.(terminalStatus);
-    });
-
-    expect(result.current.connectionState).toBe("finished_away");
-    expect(onTerminal).toHaveBeenCalled();
-    releaseStream?.();
-    unmount();
+    expect(decision.kind).toBe("none");
   });
 });

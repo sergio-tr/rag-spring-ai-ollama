@@ -144,7 +144,7 @@ export function computeLabActiveJobRecovery(params: LabActiveJobRecoveryInputs):
     return { kind: "none" };
   }
 
-  const resolvedFollowMode: LabJobFollowMode = params.draftFollowMode === "poll" ? "poll" : "sse";
+  const resolvedFollowMode: LabJobFollowMode = "sse";
 
   if (params.backendActiveJobsLoading) {
     return { kind: "none" };
@@ -229,7 +229,7 @@ export function useLabActiveJobRecovery(params: LabActiveJobRecoveryInputs): Lab
       backendActiveJobsError,
       sessionRecords,
     });
-    const resolvedFollowMode: LabJobFollowMode = draftFollowMode === "poll" ? "poll" : "sse";
+    const resolvedFollowMode: LabJobFollowMode = "sse";
     return { decision, resolvedFollowMode };
   }, [
     sectionKey,

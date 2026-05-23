@@ -54,7 +54,7 @@ describe("LabJobPanel", () => {
         <LabJobPanel accepted={accepted} taskStatus={runningTask} stoppedWaiting />
       </IntlTestProvider>,
     );
-    expect(screen.getByRole("status")).toHaveTextContent(/Reconnecting to live updates/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/Reconnecting/i);
   });
 
   it("shows queued chip before first poll tick", () => {
@@ -111,14 +111,16 @@ describe("LabJobPanel", () => {
     expect(screen.getByTestId("lab-job-elapsed")).toHaveTextContent(/42/);
   });
 
-  it("shows technical details inside disclosure", async () => {
+  it("shows technical details inside disclosure without endpoint paths", async () => {
     const user = userEvent.setup();
     render(
       <IntlTestProvider>
         <LabJobPanel accepted={accepted} taskStatus={runningTask} />
       </IntlTestProvider>,
     );
-    await user.click(screen.getByText(/Developer details/i));
-    expect(screen.getByText("/p")).toBeInTheDocument();
+    await user.click(screen.getByText(/Technical details/i));
+    expect(screen.getByText("j1")).toBeInTheDocument();
+    expect(screen.queryByText("/p")).not.toBeInTheDocument();
+    expect(screen.queryByText("/s")).not.toBeInTheDocument();
   });
 });

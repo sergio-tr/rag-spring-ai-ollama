@@ -56,7 +56,7 @@ function bannerTraceStatus(job: PersistedLabJobRecord): TraceStatus {
 }
 
 /**
- * Session banner for Lab async jobs: stale server state, reconnecting stream, in-flight recovery, and completed/failed summaries.
+ * Session banner for in-flight Lab evaluations: stale server state, reconnecting stream, recovery, and summaries.
  */
 export function LabBackgroundJobBanner() {
   const t = useTranslations("Lab");

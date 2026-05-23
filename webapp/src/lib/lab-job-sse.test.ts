@@ -471,41 +471,45 @@ describe("streamLabJobLive", () => {
     vi.restoreAllMocks();
   });
 
-  it("falls back to poll after SSE retries are exhausted", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network")));
-    const terminal = {
-      id: "job-1",
-      taskType: "LAB",
-      status: "SUCCEEDED",
-      terminal: true,
-      progressText: null,
-      result: null,
-      errorMessage: null,
-      createdAt: "",
-      updatedAt: "",
-      startedAt: null,
-      completedAt: null,
-      failureCode: null,
-    };
-    const poll = vi.spyOn(asyncTask, "pollLabJob").mockImplementation(async (_id, onTick) => {
-      onTick(terminal);
-      return terminal;
-    });
-    const onFinishedAway = vi.fn();
+  it("retries SSE without polling after transient failures", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        calls += 1;
+        if (calls < 3) {
+          return Promise.reject(new Error("network"));
+        }
+        return Promise.resolve(
+          mockFetchWithStream([
+            encodeLines(['event: task', 'data: {"terminal":true,"status":"SUCCEEDED"}', ""]),
+          ]),
+        );
+      }),
+    );
+    const poll = vi.spyOn(asyncTask, "pollLabJob");
+    const onReconnecting = vi.fn();
 
     const out = await streamLabJobLive(apiProductPath("/lab/jobs/job-1/events"), {
-      callbacks: { onFinishedAway },
+      callbacks: { onReconnecting },
     });
 
     expect(out.status).toBe("SUCCEEDED");
-    expect(poll).toHaveBeenCalled();
-    expect(onFinishedAway).toHaveBeenCalled();
+    expect(poll).not.toHaveBeenCalled();
+    expect(onReconnecting).toHaveBeenCalled();
+    expect(calls).toBeGreaterThanOrEqual(3);
   });
 
-  it("throws when stream path has no job id for poll fallback", async () => {
+  it("aborts retry loop when signal is aborted", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network")));
+    const ac = new AbortController();
+    ac.abort();
+    const poll = vi.spyOn(asyncTask, "pollLabJob");
 
-    await expect(streamLabJobLive("/lab/unknown", {})).rejects.toThrow("Live stream unavailable");
+    await expect(streamLabJobLive("/lab/unknown", { signal: ac.signal })).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(poll).not.toHaveBeenCalled();
   });
 
   it("rethrows AbortError without polling", async () => {

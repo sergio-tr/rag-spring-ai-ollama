@@ -14,7 +14,7 @@ import { activeJobMatchesCard, useLabActiveJobRecovery } from "@/features/lab/ho
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
 import { useLabEvaluationDraft } from "@/features/lab/hooks/use-lab-evaluation-draft";
-import { useLabJobLiveEvents } from "@/features/lab/hooks/use-lab-job-live-events";
+import { useLabJobSse } from "@/features/lab/hooks/use-lab-job-sse";
 import {
   LAB_DEFAULT_EMBEDDING_MODEL_ID,
   type LabEvaluationDraftKind,
@@ -141,7 +141,7 @@ function taskSucceeded(taskStatus: AsyncTaskStatusDto | null): boolean {
 }
 
 /**
- * Shared lab benchmark runner (canonical async POST + poll/SSE) for LLM, embedding retrieval, and RAG preset benchmarks.
+ * Shared lab benchmark runner (async POST + SSE live progress) for LLM, embedding retrieval, and RAG preset benchmarks.
  */
 export function LabEvaluationRunCard({
   benchmarkKind,
@@ -229,7 +229,7 @@ export function LabEvaluationRunCard({
   const { draft, patchDraft, clearDraft, resetToRecommended, setLastEvaluationRunId, warnings } =
     useLabEvaluationDraft(benchmarkKind as LabEvaluationDraftKind, draftValidation);
 
-  const liveJob = useLabJobLiveEvents({
+  const liveJob = useLabJobSse({
     accepted,
     enabled: watchLive && !!accepted,
     onTick: (s) => {
@@ -272,7 +272,7 @@ export function LabEvaluationRunCard({
     sectionKey,
     benchmarkKind,
     activeProjectId: activeProject?.id ?? null,
-    draftFollowMode: draft.followMode,
+    draftFollowMode: "sse",
     backendActiveJobs: activeJobs.data ?? null,
     backendActiveJobsLoading: !activeJobs.isFetched,
     backendActiveJobsError: activeJobs.isError ? activeJobs.error : null,
@@ -353,7 +353,6 @@ export function LabEvaluationRunCard({
     queueMicrotask(() => {
       setAccepted(rec.accepted);
       setEvaluationRunId(rec.evaluationRunId ?? null);
-      patchDraft({ followMode: rec.followMode });
       if (rec.lastStatus) {
         setTaskStatus(asyncTaskDtoFromSnapshot(rec.jobId, rec.lastStatus));
       }
@@ -368,7 +367,6 @@ export function LabEvaluationRunCard({
     traceLabJobResumedWatching(rec.jobId, t("traceJobResumedWatching"));
     setAccepted(rec.accepted);
     setEvaluationRunId(rec.evaluationRunId ?? null);
-    patchDraft({ followMode: rec.followMode });
     setRunning(true);
     setErr(null);
     setStoppedWaiting(false);
@@ -410,7 +408,7 @@ export function LabEvaluationRunCard({
         useLabJobSessionStore.getState().upsertLabJobOnAccepted({
           accepted: candidate.accepted,
           sectionKey,
-          followMode: candidate.resolvedFollowMode,
+          followMode: "sse",
           taskTypeHint,
           evaluationRunId: candidate.evaluationRunId,
         });
@@ -671,7 +669,7 @@ export function LabEvaluationRunCard({
       useLabJobSessionStore.getState().upsertLabJobOnAccepted({
         accepted: acc,
         sectionKey,
-        followMode: draft.followMode,
+        followMode: "sse",
         taskTypeHint,
         evaluationRunId: accRaw.evaluationRunId,
       });
@@ -746,31 +744,6 @@ export function LabEvaluationRunCard({
           <details className="text-xs">
             <summary className="cursor-pointer text-muted-foreground">{t("labAdvancedOptionsSummary")}</summary>
             <div className="mt-2 space-y-3">
-              <div className="flex flex-col gap-1">
-                <span className="text-muted-foreground text-xs">{t("followModeLabel")}</span>
-                <div className="flex gap-3 text-sm">
-                  <label className="flex items-center gap-1.5">
-                    <input
-                      type="radio"
-                      name={radioGroupName}
-                      checked={draft.followMode === "poll"}
-                      onChange={() => patchDraft({ followMode: "poll" })}
-                      disabled={running}
-                    />
-                    {t("followModePoll")}
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    <input
-                      type="radio"
-                      name={radioGroupName}
-                      checked={draft.followMode === "sse"}
-                      onChange={() => patchDraft({ followMode: "sse" })}
-                      disabled={running}
-                    />
-                    {t("followModeSse")}
-                  </label>
-                </div>
-              </div>
               <p className="text-muted-foreground leading-relaxed">{t("labAdvancedEvalHelp")}</p>
               <details className="rounded-md border bg-muted/20 p-2">
                 <summary className="cursor-pointer text-muted-foreground">{t("labDeveloperDetailsSummary")}</summary>
@@ -987,7 +960,6 @@ export function LabEvaluationRunCard({
             benchmarkKind === "RAG_PRESET_END_TO_END" ||
             (benchmarkKind === "EMBEDDING_RETRIEVAL" && draft.embeddingDownstreamRag)) && (
             <div className="space-y-2">
-              <Label htmlFor={`lab-llm-model-${sectionKey}`}>{t("benchmarkLlmModelOptional")}</Label>
               {benchmarkKind === "LLM_JUDGE_QA" && availableLlmModels.length > 0 ? (
                 <ModelCheckboxGroup
                   id={`lab-llm-model-${sectionKey}`}
@@ -1035,7 +1007,6 @@ export function LabEvaluationRunCard({
 
           {(benchmarkKind === "EMBEDDING_RETRIEVAL" || benchmarkKind === "RAG_PRESET_END_TO_END") && (
             <div className="space-y-2">
-              <Label htmlFor={`lab-emb-model-${sectionKey}`}>{t("benchmarkEmbeddingModelOptional")}</Label>
               {benchmarkKind === "EMBEDDING_RETRIEVAL" && availableEmbeddingModels.length > 0 ? (
                 <ModelCheckboxGroup
                   id={`lab-emb-model-${sectionKey}`}
@@ -1049,6 +1020,7 @@ export function LabEvaluationRunCard({
                 />
               ) : (
                 <>
+                  <Label htmlFor={`lab-emb-model-${sectionKey}`}>{t("benchmarkEmbeddingModelOptional")}</Label>
                   <select
                     id={`lab-emb-model-${sectionKey}`}
                     data-testid="lab-benchmark-embedding-model"
@@ -1245,7 +1217,7 @@ export function LabEvaluationRunCard({
                       useLabJobSessionStore.getState().upsertLabJobOnAccepted({
                         accepted: c.accepted,
                         sectionKey,
-                        followMode: c.resolvedFollowMode,
+                        followMode: "sse",
                         taskTypeHint,
                         evaluationRunId: c.evaluationRunId,
                       });

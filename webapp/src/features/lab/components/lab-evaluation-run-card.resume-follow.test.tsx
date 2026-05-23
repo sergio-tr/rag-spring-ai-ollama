@@ -6,8 +6,8 @@ import { initialSnapshotFromAccepted, type PersistedLabJobRecord } from "@/featu
 import { IntlTestProvider } from "@/test-utils/intl";
 import type { LabJobAcceptedDto } from "@/types/api";
 
-const { useLabJobLiveEventsMock } = vi.hoisted(() => ({
-  useLabJobLiveEventsMock: vi.fn(() => ({
+const { useLabJobSseMock } = vi.hoisted(() => ({
+  useLabJobSseMock: vi.fn(() => ({
     connectionState: "live" as const,
     taskStatus: null,
     lastEventId: null,
@@ -16,8 +16,8 @@ const { useLabJobLiveEventsMock } = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("@/features/lab/hooks/use-lab-job-live-events", () => ({
-  useLabJobLiveEvents: useLabJobLiveEventsMock,
+vi.mock("@/features/lab/hooks/use-lab-job-sse", () => ({
+  useLabJobSse: useLabJobSseMock,
 }));
 
 vi.mock("@/features/help/HelpPopover", () => ({
@@ -76,8 +76,8 @@ function baseAccepted(jobId: string): LabJobAcceptedDto {
 
 describe("LabEvaluationRunCard resume follow", () => {
   beforeEach(() => {
-    useLabJobLiveEventsMock.mockReset();
-    useLabJobLiveEventsMock.mockReturnValue({
+    useLabJobSseMock.mockReset();
+    useLabJobSseMock.mockReturnValue({
       connectionState: "live",
       taskStatus: null,
       lastEventId: null,
@@ -124,7 +124,7 @@ describe("LabEvaluationRunCard resume follow", () => {
     );
 
     await waitFor(() =>
-      expect(useLabJobLiveEventsMock).toHaveBeenCalledWith(
+      expect(useLabJobSseMock).toHaveBeenCalledWith(
         expect.objectContaining({
           accepted: acceptedDto,
           enabled: true,

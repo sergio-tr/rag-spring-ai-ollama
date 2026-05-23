@@ -239,19 +239,19 @@ describe("LabBenchmarkResultsPanel", () => {
       ],
     });
     vi.mocked(fetchLabCampaignRuns).mockResolvedValue([
-      { runId: "r1", embeddingModelId: "bge-m3", status: "SUCCEEDED" },
+      { runId: "r1", embeddingModelId: "qwen3-embedding:latest", status: "SUCCEEDED" },
     ]);
     vi.mocked(fetchCampaignComparison).mockResolvedValue({
       comparisonAxis: "EMBEDDING_MODEL",
       comparisonAxisLabel: "Embedding model",
-      rows: [{ comparisonLabel: "bge-m3", totalItems: 1, failed: 1, executed: 0 }],
+      rows: [{ comparisonLabel: "qwen3-embedding:latest", totalItems: 1, failed: 1, executed: 0 }],
     } as never);
 
     renderPanel({ evaluationRunId: baseRun.id, campaignId: "emb-campaign" });
 
     await waitFor(() => expect(screen.getByTestId("lab-failed-skipped-section")).toBeInTheDocument());
     expect(screen.queryByText(/_UNKNOWN/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/bge-m3/i)).toBeInTheDocument();
+    expect(screen.getByText(/qwen3-embedding/i)).toBeInTheDocument();
   });
 
   it("shows RAG preset labels in the item table", async () => {

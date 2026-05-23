@@ -3,6 +3,8 @@ import { loginAsSeedUser } from "../support/helpers";
 import {
   assertLabDatasetControlsVisible,
   clearActiveProjectForLab,
+  assertLabRunStarted,
+  ensureFirstLlmModelSelectedForRun,
   fetchActiveLabJobs,
   gotoLabEvaluationPage,
   labDatasetRunnable,
@@ -19,12 +21,14 @@ test.describe("LAB live job and refresh resume @fullstack", () => {
     await assertLabDatasetControlsVisible(page);
     test.skip(!(await labDatasetRunnable(page)), "No VALID LLM dataset.");
 
+    await ensureFirstLlmModelSelectedForRun(page);
+
     const runButton = page.getByTestId("lab-llm-run");
     await expect(runButton).toBeEnabled({ timeout: 30_000 });
     await runButton.click();
+    await assertLabRunStarted(page);
 
     const jobPanel = page.getByTestId("lab-job-panel");
-    await expect(jobPanel).toBeVisible({ timeout: 30_000 });
 
     await expect
       .poll(

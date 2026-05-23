@@ -606,7 +606,7 @@ export type LabJobEventDto = {
   payload: Record<string, unknown> | null;
 };
 
-/** Live stream UX states for Lab job panels and banners. */
+/** Live progress UX states for Lab job panels and banners. */
 export type LabJobLiveConnectionState =
   | "idle"
   | "connecting"
@@ -616,8 +616,7 @@ export type LabJobLiveConnectionState =
   | "completed"
   | "failed"
   | "cancelled"
-  | "finished_away"
-  | "fallback_polling";
+  | "finished_away";
 
 export type ChatSourceDto = {
   documentId: string | null;

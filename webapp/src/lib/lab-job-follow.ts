@@ -20,13 +20,13 @@ export async function followLabJob(
     maxWaitMs?: number;
     /** SSE resume cursor for reconnect (`?since=eventId`). */
     sinceEventId?: number | null;
-    /** When true, SSE uses auto reconnect/backoff with poll fallback. */
+    /** When true (default for SSE), uses auto reconnect/backoff until terminal. */
     liveReconnect?: boolean;
     callbacks?: LabJobStreamCallbacks;
   },
 ): Promise<AsyncTaskStatusDto> {
   const mode = options?.mode ?? "sse";
-  if (mode === "sse" && options?.liveReconnect) {
+  if (mode === "sse" && (options?.liveReconnect ?? true)) {
     return streamLabJobLive(accepted.streamPath, {
       signal: options?.signal,
       sinceEventId: options?.sinceEventId,

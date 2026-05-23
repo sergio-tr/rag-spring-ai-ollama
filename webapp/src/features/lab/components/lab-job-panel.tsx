@@ -17,7 +17,7 @@ type LabJobPanelProps = Readonly<{
   queuedHint?: boolean;
   /** Legacy local abort flag — mapped to reconnecting copy, not a destructive error */
   stoppedWaiting?: boolean;
-  /** Canonical live stream connection state from {@link useLabJobLiveEvents}. */
+  /** Canonical SSE connection state from {@link useLabJobSse}. */
   connectionState?: LabJobLiveConnectionState | null;
   /** Monotonic seconds since async watch began (local UI clock). */
   watchElapsedSeconds?: number;
@@ -47,7 +47,6 @@ export function LabJobPanel({
     connecting: t("jobUiConnecting"),
     live: t("jobUiLive"),
     reconnecting: t("jobUiReconnecting"),
-    fallbackPolling: t("jobUiFallbackPolling"),
     resumed: t("jobUiResumed"),
     finishedAway: t("jobUiFinishedAway"),
     queued: t("jobUiQueued"),
@@ -115,16 +114,6 @@ export function LabJobPanel({
               <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={copyJobId}>
                 {t("jobCopyId")}
               </Button>
-            </div>
-            <div className="text-muted-foreground space-y-1">
-              <div>
-                <span className="font-medium text-foreground">{t("jobPollPath")}</span>{" "}
-                <code className="break-all">{accepted.pollPath}</code>
-              </div>
-              <div>
-                <span className="font-medium text-foreground">{t("jobStreamPath")}</span>{" "}
-                <code className="break-all">{accepted.streamPath}</code>
-              </div>
             </div>
             {taskStatus ? (
               <div className="text-muted-foreground space-y-1 border-border border-t pt-2">

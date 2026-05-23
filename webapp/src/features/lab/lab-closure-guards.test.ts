@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -26,6 +26,7 @@ function flattenStrings(node: unknown, out: string[] = []): string[] {
 const FORBIDDEN_IN_LAB_MESSAGES = [
   /POST JSON/i,
   /canonical benchmark API/i,
+  /canonical benchmarks/i,
   /Stopped watching here/i,
   /Stopped waiting — the server job/i,
   /corpus and snapshot preparation are project-scoped/i,
@@ -34,8 +35,36 @@ const FORBIDDEN_IN_LAB_MESSAGES = [
   /Live stream:/i,
   /Lab API —/i,
   /POST \/api/i,
+  /typed evaluation_dataset/i,
+  /Async jobs:/i,
+  /SSE endpoint:/i,
+  /Poll endpoint:/i,
   /nomic-embed-text/i,
 ];
+
+const FORBIDDEN_IN_LAB_SRC = [
+  /Lab API —/i,
+  /canonical benchmarks/i,
+  /POST \/api\/v\d/i,
+  /GET \/api\/v\d/i,
+  /typed evaluation_dataset/i,
+  /Async jobs:/i,
+  /Status poll:/i,
+  /Live stream:/i,
+];
+
+function walkTsFiles(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name);
+    const st = statSync(full);
+    if (st.isDirectory()) {
+      walkTsFiles(full, out);
+    } else if (/\.(ts|tsx)$/.test(name) && !/\.test\.(ts|tsx)$/.test(name)) {
+      out.push(full);
+    }
+  }
+  return out;
+}
 
 describe("LAB closure i18n guards", () => {
   for (const locale of ["en", "es"] as const) {
@@ -51,4 +80,26 @@ describe("LAB closure i18n guards", () => {
       }
     });
   }
+});
+
+describe("LAB UX-001 source guards", () => {
+  it("lab feature sources avoid forbidden technical copy in user paths", () => {
+    const labRoot = dirname(fileURLToPath(import.meta.url));
+    const appLab = join(root, "src/app/[locale]/(app)/lab");
+    const dirs = [labRoot, appLab].filter((d) => {
+      try {
+        return statSync(d).isDirectory();
+      } catch {
+        return false;
+      }
+    });
+    const files = dirs.flatMap((d) => walkTsFiles(d));
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const src = readFileSync(file, "utf8");
+      for (const re of FORBIDDEN_IN_LAB_SRC) {
+        expect(src, `Forbidden pattern ${re} in ${file}`).not.toMatch(re);
+      }
+    }
+  });
 });

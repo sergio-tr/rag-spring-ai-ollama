@@ -6,6 +6,7 @@ import {
   clearActiveProjectForLab,
   gotoLabEvaluationPage,
   labDatasetRunnable,
+  assertLabRunStarted,
   pollLabTerminalOutcome,
 } from "../support/lab-helpers";
 
@@ -42,8 +43,7 @@ test.describe("LAB RAG projectless corpus @fullstack", () => {
     await expect(runButton).toBeEnabled({ timeout: 30_000 });
 
     await runButton.click();
-
-    await expect(page.getByTestId("lab-job-panel")).toBeVisible({ timeout: 30_000 });
+    await assertLabRunStarted(page);
     await expect(page.getByText(/Stopped watching here/i)).toHaveCount(0);
     await expect(page.getByText(/Stopped waiting/i)).toHaveCount(0);
 

@@ -199,7 +199,7 @@ describe("LabOverviewPage", () => {
     expect(screen.getByText(/See what is ready to run/i)).toBeInTheDocument();
     expect(screen.queryByText(/Feature flags from GET/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\{product\}/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/operators should ship/i)).toBeInTheDocument();
+    expect(screen.getByText(/packaged reference workbook is missing/i)).toBeInTheDocument();
   });
 
   it("renders locale-aware links for the datasets anchor", () => {
@@ -270,7 +270,8 @@ describe("LabOverviewPage", () => {
         countsByDatasetKind: { llmReaderQuestions: 1, embeddingRetrievalQueries: 1, ragPresetQuestions: 1 },
         evaluations: { llm: true, rag: true, classifierProxy: false, asyncJobs: true },
         classifier: { configured: true, train: true, evaluate: true },
-        message: "Lab API — default async worker GET /lab/status",
+        message:
+          "Research Lab is ready. Pick a workbook on the overview or evaluation pages and run a benchmark.",
       },
       isError: false,
       isLoading: false,
@@ -285,9 +286,38 @@ describe("LabOverviewPage", () => {
     );
     const serverDetails = screen.getByText(/Server note/i).closest("details");
     expect(serverDetails).not.toHaveAttribute("open");
-    expect(serverDetails).toHaveTextContent(/Lab API — default async worker/i);
+    expect(serverDetails).toHaveTextContent(/Research Lab is ready/i);
     await user.click(screen.getByText(/Server note/i));
     expect(serverDetails).toHaveAttribute("open");
+  });
+
+  it("does not surface forbidden technical API copy on the overview when status loads", () => {
+    vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
+      data: {
+        datasetKindsReady: true,
+        datasets: { enabled: true, datasetKindsReady: true },
+        countsByDatasetKind: { llmReaderQuestions: 1, embeddingRetrievalQueries: 1, ragPresetQuestions: 1 },
+        evaluations: { llm: true, rag: true, classifierProxy: false, asyncJobs: true },
+        classifier: { configured: true, train: true, evaluate: true },
+        message:
+          "Research Lab is ready. Pick a workbook on the overview or evaluation pages and run a benchmark.",
+      },
+      isError: false,
+      isLoading: false,
+      refetch: vi.fn(),
+    }));
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <IntlTestProvider>
+          <LabOverviewPage />
+        </IntlTestProvider>
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByText(/Lab API —/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/POST \/api/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/canonical benchmarks/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Status poll:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Live stream:/i)).not.toBeInTheDocument();
   });
 
   it("does not surface compose observability filenames in the Lab overview cards", () => {

@@ -49,19 +49,21 @@ describe("followLabJob", () => {
     expect(labJobSse.streamLabJob).not.toHaveBeenCalled();
   });
 
-  it("delegates to streamLabJob by default (sse)", async () => {
+  it("delegates to streamLabJobLive by default (sse)", async () => {
     const onTick = vi.fn();
     await followLabJob(accepted, onTick);
 
-    expect(labJobSse.streamLabJob).toHaveBeenCalledWith(
+    expect(labJobSse.streamLabJobLive).toHaveBeenCalledWith(
       accepted.streamPath,
-      onTick,
-      expect.objectContaining({ signal: undefined }),
+      expect.objectContaining({
+        callbacks: expect.objectContaining({ onTaskTick: onTick }),
+      }),
     );
+    expect(labJobSse.streamLabJob).not.toHaveBeenCalled();
     expect(asyncTask.pollLabJob).not.toHaveBeenCalled();
   });
 
-  it("delegates to streamLabJob when mode is sse", async () => {
+  it("delegates to streamLabJobLive when mode is sse", async () => {
     const onTick = vi.fn();
     const ac = new AbortController();
     await followLabJob(accepted, onTick, {
@@ -69,7 +71,11 @@ describe("followLabJob", () => {
       signal: ac.signal,
     });
 
-    expect(labJobSse.streamLabJob).toHaveBeenCalledWith(accepted.streamPath, onTick, { signal: ac.signal });
+    expect(labJobSse.streamLabJobLive).toHaveBeenCalledWith(
+      accepted.streamPath,
+      expect.objectContaining({ signal: ac.signal, callbacks: expect.objectContaining({ onTaskTick: onTick }) }),
+    );
+    expect(labJobSse.streamLabJob).not.toHaveBeenCalled();
     expect(asyncTask.pollLabJob).not.toHaveBeenCalled();
   });
 
@@ -100,7 +106,7 @@ describe("followLabJob", () => {
     );
   });
 
-  it("uses streamLabJobLive when liveReconnect is enabled", async () => {
+  it("uses streamLabJobLive when liveReconnect is explicitly enabled", async () => {
     const onTick = vi.fn();
     const callbacks = { onReconnecting: vi.fn() };
     await followLabJob(accepted, onTick, {
@@ -120,12 +126,18 @@ describe("followLabJob", () => {
     expect(labJobSse.streamLabJob).not.toHaveBeenCalled();
   });
 
-  it("forwards sinceEventId to streamLabJob in sse mode", async () => {
+  it("forwards sinceEventId to streamLabJobLive in sse mode", async () => {
     await followLabJob(accepted, () => {}, { mode: "sse", sinceEventId: 9 });
-    expect(labJobSse.streamLabJob).toHaveBeenCalledWith(
+    expect(labJobSse.streamLabJobLive).toHaveBeenCalledWith(
       accepted.streamPath,
-      expect.any(Function),
       expect.objectContaining({ sinceEventId: 9 }),
     );
+  });
+
+  it("uses single-shot streamLabJob when liveReconnect is false", async () => {
+    const onTick = vi.fn();
+    await followLabJob(accepted, onTick, { mode: "sse", liveReconnect: false });
+    expect(labJobSse.streamLabJob).toHaveBeenCalledWith(accepted.streamPath, onTick, expect.any(Object));
+    expect(labJobSse.streamLabJobLive).not.toHaveBeenCalled();
   });
 });

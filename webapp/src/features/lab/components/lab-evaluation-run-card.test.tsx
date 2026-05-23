@@ -244,7 +244,7 @@ describe("LabEvaluationRunCard", () => {
             ]
           : [
               { modelId: "nomic-embed-test", displayName: "nomic-embed-test", type: "EMBEDDING" },
-              { modelId: "bge-m3", displayName: "bge-m3", type: "EMBEDDING" },
+              { modelId: "qwen3-embedding:latest", displayName: "qwen3-embedding", type: "EMBEDDING" },
             ],
       isLoading: false,
       isSuccess: true,
@@ -335,12 +335,12 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
     const advancedDetails = screen.getByText(/Advanced options/i).closest("details");
-    const developerDetails = screen.getByText(/Developer details/i).closest("details");
+    const developerDetails = screen.getByText(/Technical details/i).closest("details");
     expect(advancedDetails).not.toHaveAttribute("open");
     expect(developerDetails).not.toHaveAttribute("open");
     await user.click(screen.getByText(/Advanced options/i));
-    await user.click(screen.getByText(/Developer details/i));
-    expect(advancedDetails).toHaveTextContent(/Developer:.*benchmark start/i);
+    await user.click(screen.getByText(/Technical details/i));
+    expect(advancedDetails).toHaveTextContent(/Benchmark kind/i);
   });
 
   it("shows experimental preset catalog with unsupported reason in RAG benchmark mode", () => {

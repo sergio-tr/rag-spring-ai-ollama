@@ -1,4 +1,4 @@
-import { pollLabJob, sleep } from "@/lib/async-task";
+import { sleep } from "@/lib/async-task";
 import { getApiBaseUrl, sanitizePlainErrorTextForUi } from "@/lib/api-client";
 import { getAccessToken } from "@/lib/access-token";
 import { createTraceparent } from "@/lib/traceparent";
@@ -9,14 +9,12 @@ export type LabJobStreamCallbacks = {
   onLive?: () => void;
   onResumed?: () => void;
   onReconnecting?: () => void;
-  onFallbackPolling?: () => void;
   onTaskTick?: (status: AsyncTaskStatusDto) => void;
   onJobEvent?: (event: LabJobEventDto) => void;
-  onFinishedAway?: (status: AsyncTaskStatusDto) => void;
 };
 
-const MAX_SSE_RETRIES = 8;
 const SSE_RETRY_BASE_MS = 800;
+const SSE_RETRY_MAX_MS = 15_000;
 
 function toAbsoluteUrl(pathOrUrl: string): string {
   if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
@@ -102,11 +100,6 @@ export function eventToAsyncTaskStatus(
     completedAt: terminal ? event.timestamp : previous?.completedAt ?? null,
     failureCode: (payload.failureCode as string | undefined) ?? previous?.failureCode ?? null,
   };
-}
-
-function extractJobIdFromStreamPath(streamPath: string): string | null {
-  const match = streamPath.match(/\/lab\/jobs\/([^/]+)\/events/);
-  return match?.[1] ?? null;
 }
 
 async function consumeSseStream(
@@ -253,8 +246,12 @@ export async function streamLabJob(
   });
 }
 
+function sseRetryDelayMs(attempt: number): number {
+  return Math.min(SSE_RETRY_BASE_MS * Math.max(attempt, 1), SSE_RETRY_MAX_MS);
+}
+
 /**
- * SSE with auto reconnect/backoff and internal poll fallback when the stream cannot be restored.
+ * SSE with auto reconnect/backoff until the job reaches a terminal state or the signal aborts.
  */
 export async function streamLabJobLive(
   streamPath: string,
@@ -266,9 +263,8 @@ export async function streamLabJobLive(
 ): Promise<AsyncTaskStatusDto> {
   let attempt = 0;
   let since = options.sinceEventId ?? null;
-  let lastStatus: AsyncTaskStatusDto | null = null;
 
-  while (attempt <= MAX_SSE_RETRIES) {
+  while (true) {
     if (options.signal?.aborted) {
       throw new DOMException("Aborted", "AbortError");
     }
@@ -276,15 +272,11 @@ export async function streamLabJobLive(
       if (attempt > 0) {
         options.callbacks?.onReconnecting?.();
       }
-      const terminal = await consumeSseStream(streamPath, {
+      return await consumeSseStream(streamPath, {
         signal: options.signal,
         sinceEventId: since,
         callbacks: {
           ...options.callbacks,
-          onTaskTick: (status) => {
-            lastStatus = status;
-            options.callbacks?.onTaskTick?.(status);
-          },
           onJobEvent: (event) => {
             if (event.eventId > 0) {
               since = since == null ? event.eventId : Math.max(since, event.eventId);
@@ -293,37 +285,12 @@ export async function streamLabJobLive(
           },
         },
       });
-      return terminal;
     } catch (e) {
       if (options.signal?.aborted || (e instanceof DOMException && e.name === "AbortError")) {
         throw e;
       }
       attempt += 1;
-      if (attempt > MAX_SSE_RETRIES) {
-        break;
-      }
-      await sleep(SSE_RETRY_BASE_MS * attempt);
+      await sleep(sseRetryDelayMs(attempt));
     }
   }
-
-  const jobId = extractJobIdFromStreamPath(streamPath);
-  if (!jobId) {
-    throw new Error("Live stream unavailable");
-  }
-
-  options.callbacks?.onReconnecting?.();
-  options.callbacks?.onFallbackPolling?.();
-  return pollLabJob(
-    jobId,
-    (status) => {
-      lastStatus = status;
-      options.callbacks?.onTaskTick?.(status);
-    },
-    { signal: options.signal, throwOnFailed: true },
-  ).then((terminal) => {
-    if (lastStatus && !options.signal?.aborted) {
-      options.callbacks?.onFinishedAway?.(terminal);
-    }
-    return terminal;
-  });
 }
