@@ -107,7 +107,7 @@ class OllamaApiClientTest {
 
     @Test
     void probeEmbeddingDetailed_fallsBackToLegacyEmbeddingsEndpoint() throws Exception {
-        try (AutoCloseableServer s = serverWithEmbedAndLegacy(404, "{\"embedding\":[0.1,0.2]}")) {
+        try (AutoCloseableServer s = serverWithEmbedAndLegacy(200, "{\"embedding\":[0.1,0.2]}")) {
             OllamaApiClient client = new OllamaApiClient(s.baseUrl(), healthProps());
             var result = client.probeEmbeddingDetailed("e:latest", "ping", 5_000L);
             assertTrue(result.ok());

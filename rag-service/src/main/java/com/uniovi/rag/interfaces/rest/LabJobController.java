@@ -21,7 +21,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledExecutorService;
@@ -188,8 +190,8 @@ public class LabJobController {
                 null,
                 null,
                 null,
-                java.time.Instant.now(),
-                java.util.Map.of());
+                Instant.now(),
+                Map.of());
         emitter.send(SseEmitter.event().name("heartbeat").data(heartbeat, MediaType.APPLICATION_JSON));
     }
 

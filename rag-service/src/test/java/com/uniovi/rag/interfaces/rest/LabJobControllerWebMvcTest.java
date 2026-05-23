@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.eq;
@@ -153,7 +154,7 @@ class LabJobControllerWebMvcTest {
                         "step 2",
                         "step 2",
                         Instant.parse("2025-01-01T00:00:03Z"),
-                        java.util.Map.of())));
+                        Map.of())));
 
         mockMvc.perform(get(path("/lab/jobs/{id}/events"), taskId).param("stream", "false").param("since", "1"))
                 .andExpect(status().isOk())
@@ -171,7 +172,7 @@ class LabJobControllerWebMvcTest {
                                 "EVAL_RAG",
                                 "SUCCEEDED",
                                 "done",
-                                java.util.Map.of("ok", true),
+                                Map.of("ok", true),
                                 null,
                                 true,
                                 Instant.parse("2025-01-01T00:00:00Z"),

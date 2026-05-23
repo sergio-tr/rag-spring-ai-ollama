@@ -41,7 +41,9 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.evaluation.LabEvaluationRunService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabJobConcurrencyException", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.LabJobEventService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabJobLifecycleService", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.lab.LabClasspathCorpusBootstrapService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.knowledge.ProjectIndexProfileApplicationService", // ARCH-DEBT-KNOWLEDGE
@@ -110,6 +112,7 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.admin.AdminSystemDefaultsService", // ARCH-DEBT-ADMIN-MODEL
             "com.uniovi.rag.application.service.admin.AllowlistAdminService", // ARCH-DEBT-ADMIN-MODEL
             "com.uniovi.rag.application.service.admin.model.AdminModelsService", // ARCH-DEBT-ADMIN-MODEL
+            "com.uniovi.rag.application.service.admin.model.AllowedModelReferenceGuard", // ARCH-DEBT-ADMIN-MODEL
             "com.uniovi.rag.application.service.async.AsyncLabTaskRunner", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.async.AsyncTaskCancellationService", // ARCH-DEBT-ASYNC
             "com.uniovi.rag.application.service.async.AsyncTaskMutationService", // ARCH-DEBT-ASYNC
@@ -130,8 +133,10 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.evaluation.ExperimentalDatasetResolver", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabCampaignService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabEvaluationRunService", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.LabJobEventService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabJobLifecycleService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabMetricsComparisonService", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.async.ClassifierEvalJobHandler", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.async.ClassifierTrainJobHandler", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.async.EvalEmbeddingRetrievalJobHandler", // ARCH-DEBT-LAB
@@ -147,6 +152,7 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpMetricsCalculator", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpRollupCalculator", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.preset.CorpusAvailabilityGate", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.preset.LabEvaluationSnapshotService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.preset.LabPresetRunPlanService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.preset.TypedRagPresetBenchmarkOrchestrator", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.knowledge.DocumentIngestionWatchdog", // ARCH-DEBT-KNOWLEDGE

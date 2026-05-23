@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.knowledge;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -92,6 +93,8 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
                 eq(project),
                 eq(null),
                 eq(KnowledgeSnapshotScopeType.PROJECT),
+                isNull(),
+                isNull(),
                 any(),
                 eq(runConfigSnapId),
                 eq("hash"),
@@ -133,6 +136,8 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
                         eq(project),
                         eq(null),
                         eq(KnowledgeSnapshotScopeType.PROJECT),
+                        isNull(),
+                        isNull(),
                         any(),
                         eq(runConfigSnapId),
                         eq("hash"),

@@ -105,16 +105,20 @@ public class LabEvaluationSnapshotService {
 
         UUID projectId = resolveIndexProjectId(run);
         if (projectId != null && corpusId == null) {
-            KnowledgeIndexSnapshotEntity active =
-                    knowledgeSnapshotService.findActiveProjectSnapshot(projectId).orElse(null);
-            if (isCompatibleSnapshot(active, requirements, embeddingModelIdOverride)) {
-                return resolved(active, false);
+            Optional<KnowledgeIndexSnapshotEntity> activeOpt =
+                    knowledgeSnapshotService.findActiveProjectSnapshot(projectId);
+            if (activeOpt.isPresent()
+                    && isCompatibleSnapshot(activeOpt.get(), requirements, embeddingModelIdOverride)) {
+                return resolved(activeOpt.get(), false);
             }
             Optional<KnowledgeIndexSnapshotEntity> compatible =
                     knowledgeSnapshotService.findCompatibleProjectSnapshot(
                             projectId, s -> isCompatibleSnapshot(s, requirements, embeddingModelIdOverride));
             if (compatible.isPresent()) {
                 return resolved(compatible.get(), false);
+            }
+            if (activeOpt.isPresent()) {
+                return incompatible(activeOpt.get());
             }
         }
 
@@ -187,26 +191,24 @@ public class LabEvaluationSnapshotService {
 
         KnowledgeIndexSnapshotEntity built =
                 knowledgeIndexSnapshotRepository.findById(newSnapId).orElse(null);
-        if (built == null) {
-            built = new KnowledgeIndexSnapshotEntity();
-            built.setIndexProfileHash(effective.profileHash());
-            built.setIndexProfileJsonb(effective.toSnapshotJsonb());
-            built.setOwnerType(ownerType);
-            built.setOwnerId(ownerId);
-        }
-        if (built.getId() == null) {
-            // Fallback when repository read is unavailable in the same persistence context.
-            try {
-                var idField = KnowledgeIndexSnapshotEntity.class.getDeclaredField("id");
-                idField.setAccessible(true);
-                idField.set(built, newSnapId);
-            } catch (ReflectiveOperationException ignored) {
-                // resolved() will treat missing id as unusable
-            }
+        Map<String, Object> profileJson =
+                built != null && built.getIndexProfileJsonb() != null
+                        ? built.getIndexProfileJsonb()
+                        : effective.toSnapshotJsonb();
+        if (built == null || built.getId() == null) {
+            IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profileJson);
+            return PrepareResult.built(
+                    new ResolvedSnapshot(
+                            true,
+                            newSnapId,
+                            effective.profileHash(),
+                            caps,
+                            true,
+                            ownerType,
+                            ownerId));
         }
 
-        IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(
-                built.getIndexProfileJsonb() != null ? built.getIndexProfileJsonb() : effective.toSnapshotJsonb());
+        IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profileJson);
         IndexCompatibilityResult afterIdx = IndexCompatibilityResult.check(requirements, true, caps);
         if (!afterIdx.compatible()) {
             throw new IllegalStateException(
@@ -245,6 +247,23 @@ public class LabEvaluationSnapshotService {
                 snap.getIndexProfileHash(),
                 caps,
                 preparedDuringRun,
+                snap.getOwnerType(),
+                snap.getOwnerId());
+    }
+
+    /** Active snapshot exists but does not satisfy preset index requirements (distinct from no snapshot). */
+    private static ResolvedSnapshot incompatible(KnowledgeIndexSnapshotEntity snap) {
+        if (snap == null || snap.getId() == null) {
+            return ResolvedSnapshot.missing();
+        }
+        Map<String, Object> profile = snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
+        IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
+        return new ResolvedSnapshot(
+                false,
+                snap.getId(),
+                snap.getIndexProfileHash(),
+                caps,
+                false,
                 snap.getOwnerType(),
                 snap.getOwnerId());
     }

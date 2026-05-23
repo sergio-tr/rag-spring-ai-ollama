@@ -3,7 +3,9 @@ package com.uniovi.rag.application.service.knowledge;
 import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
+import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
 import com.uniovi.rag.domain.knowledge.IndexSignature;
+import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
 import com.uniovi.rag.domain.knowledge.KnowledgeBuildProjection;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
@@ -594,7 +596,7 @@ public class KnowledgePipelineOrchestrator {
             UUID projectId,
             CorpusScope corpusScope,
             UUID conversationId,
-            com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType ownerType,
+            KnowledgeSnapshotOwnerType ownerType,
             UUID ownerId,
             UUID resolvedConfigSnapshotId,
             String resolvedConfigHash,
@@ -619,12 +621,12 @@ public class KnowledgePipelineOrchestrator {
                             : KnowledgeSnapshotScopeType.CONVERSATION;
 
             Optional<KnowledgeIndexSnapshotEntity> previousActive =
-                    ownerType == com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType.EVALUATION_CORPUS
+                    ownerType == KnowledgeSnapshotOwnerType.EVALUATION_CORPUS
                                     && ownerId != null
                             ? knowledgeSnapshotService.findCompatibleCorpusSnapshot(
                                     ownerId,
                                     s ->
-                                            s.getStatus() == com.uniovi.rag.domain.knowledge.IndexSnapshotStatus.ACTIVE
+                                            s.getStatus() == IndexSnapshotStatus.ACTIVE
                                                     && Objects.equals(
                                                             s.getIndexProfileHash(), profile.profileHash()))
                             : corpusScope == CorpusScope.PROJECT_SHARED

@@ -13,6 +13,7 @@ import org.mockito.quality.Strictness;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -94,7 +95,7 @@ class CorpusAvailabilityGateTest {
         when(evaluationCorpusApplicationService.requireContext(userId, corpusId))
                 .thenReturn(new EvaluationCorpusApplicationService.EvaluationCorpusContext(
                         corpusId, indexProjectId, List.of(documentId), List.of(doc)));
-        when(jdbc.queryForObject(any(String.class), any(org.springframework.jdbc.core.namedparam.SqlParameterSource.class), eq(Long.class))).thenReturn(0L);
+        when(jdbc.queryForObject(any(String.class), any(SqlParameterSource.class), eq(Long.class))).thenReturn(0L);
 
         CorpusAvailabilityGate.Result result = gate.evaluate(userId, corpusId, List.of(snapshotId));
         assertThat(result.satisfied()).isFalse();
@@ -109,7 +110,7 @@ class CorpusAvailabilityGateTest {
         when(evaluationCorpusApplicationService.requireContext(userId, corpusId))
                 .thenReturn(new EvaluationCorpusApplicationService.EvaluationCorpusContext(
                         corpusId, indexProjectId, List.of(documentId), List.of(doc)));
-        when(jdbc.queryForObject(any(String.class), any(org.springframework.jdbc.core.namedparam.SqlParameterSource.class), eq(Long.class))).thenReturn(3L);
+        when(jdbc.queryForObject(any(String.class), any(SqlParameterSource.class), eq(Long.class))).thenReturn(3L);
 
         CorpusAvailabilityGate.Result result = gate.evaluate(userId, corpusId, List.of(snapshotId));
         assertThat(result.satisfied()).isTrue();

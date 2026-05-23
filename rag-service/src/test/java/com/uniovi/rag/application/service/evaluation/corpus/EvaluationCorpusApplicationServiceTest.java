@@ -12,10 +12,13 @@ import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
+import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusAttachFromProjectRequest;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusCreateRequest;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusSummaryDto;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -44,7 +47,7 @@ class EvaluationCorpusApplicationServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private ProjectAccessService projectAccessService;
     @Mock private KnowledgeIngestionService knowledgeIngestionService;
-    @Mock private com.uniovi.rag.application.port.BinaryStoragePort binaryStoragePort;
+    @Mock private BinaryStoragePort binaryStoragePort;
 
     private EvaluationCorpusApplicationService service;
     private final UUID userId = UUID.randomUUID();
@@ -77,8 +80,8 @@ class EvaluationCorpusApplicationServiceTest {
         when(saved.getName()).thenReturn("Lab evaluation corpus");
         when(saved.getSourceType()).thenReturn(EvaluationCorpusSourceType.UPLOADED);
         when(saved.getIndexProject()).thenReturn(indexProject);
-        when(saved.getCreatedAt()).thenReturn(java.time.Instant.now());
-        when(saved.getUpdatedAt()).thenReturn(java.time.Instant.now());
+        when(saved.getCreatedAt()).thenReturn(Instant.now());
+        when(saved.getUpdatedAt()).thenReturn(Instant.now());
         when(evaluationCorpusRepository.save(any(EvaluationCorpusEntity.class))).thenReturn(saved);
         when(evaluationCorpusDocumentRepository.findDocumentsByCorpusId(corpusId)).thenReturn(List.of());
 
@@ -141,8 +144,7 @@ class EvaluationCorpusApplicationServiceTest {
                 service.attachFromProject(
                         userId,
                         corpusId,
-                        new com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusAttachFromProjectRequest(
-                                projectId, List.of(docId)));
+                        new EvaluationCorpusAttachFromProjectRequest(projectId, List.of(docId)));
 
         assertThat(summary.documentCount()).isEqualTo(1);
         verify(evaluationCorpusDocumentRepository).save(any());

@@ -101,7 +101,7 @@ class RagPresetCampaignOrchestratorTest {
         when(ds.getId()).thenReturn(datasetId);
         when(ds.getOwner()).thenReturn(user);
         when(ds.getDatasetScope()).thenReturn("USER_DATASET");
-        when(ds.getExperimentalKind()).thenReturn("RAG_PRESET_END_TO_END");
+        when(ds.getExperimentalKind()).thenReturn("RAG_PRESET_BENCHMARK");
         when(evaluationDatasetRepository.findById(datasetId)).thenReturn(Optional.of(ds));
 
         when(evaluationCampaignRepository.save(any())).thenAnswer(inv -> {

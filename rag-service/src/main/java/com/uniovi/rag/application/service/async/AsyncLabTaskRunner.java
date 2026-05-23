@@ -39,6 +39,8 @@ public class AsyncLabTaskRunner {
     private static final Logger log = LoggerFactory.getLogger(AsyncLabTaskRunner.class);
 
     private static final int SHORT_FAILURE_MESSAGE_MAX_LEN = 600;
+    private static final String METER_TAG_SUBSYSTEM = "subsystem";
+    private static final String METER_TAG_TASK_TYPE = "task_type";
 
     private final AsyncTaskRepository asyncTaskRepository;
     private final AsyncTaskMutationService mutation;
@@ -129,9 +131,9 @@ public class AsyncLabTaskRunner {
                 meterRegistry
                         .counter(
                                 "rag.async_task.started",
-                                "subsystem",
+                                METER_TAG_SUBSYSTEM,
                                 AsyncTaskObservability.subsystem(type),
-                                "task_type",
+                                METER_TAG_TASK_TYPE,
                                 type.name())
                         .increment();
             }
@@ -166,18 +168,18 @@ public class AsyncLabTaskRunner {
             meterRegistry
                     .counter(
                             "rag.async_task.completed",
-                            "subsystem",
+                            METER_TAG_SUBSYSTEM,
                             sub,
-                            "task_type",
+                            METER_TAG_TASK_TYPE,
                             type.name())
                     .increment();
         } else {
             meterRegistry
                     .counter(
                             "rag.async_task.failed",
-                            "subsystem",
+                            METER_TAG_SUBSYSTEM,
                             sub,
-                            "task_type",
+                            METER_TAG_TASK_TYPE,
                             type.name())
                     .increment();
         }

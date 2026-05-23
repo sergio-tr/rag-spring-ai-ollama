@@ -98,9 +98,6 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 experimentalSnapshotFactory,
                 labEvaluationSnapshotService,
                 new LabPresetRunPlanService(labEvaluationSnapshotService),
-                knowledgePipelineOrchestrator,
-                projectIndexProfileService,
-                labIndexProfileOverrideFactory,
                 corpusAvailabilityGate);
     }
 
@@ -296,8 +293,12 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.any()))
                 .thenReturn(newSnapId);
+        when(knowledgeIndexSnapshotRepository.findById(newSnapId))
+                .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "hNew", newSnapId)));
 
         RagPresetQuestion q = sampleQuestion();
         RagPresetDefinition p8 = preset(RagExperimentalPresetCode.P8);
@@ -338,6 +339,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         verify(knowledgePipelineOrchestrator, Mockito.times(1))
                 .rebuildScopeWithProfileOverride(
                         ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any(),

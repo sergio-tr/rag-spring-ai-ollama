@@ -1,6 +1,7 @@
 package com.uniovi.rag.infrastructure.persistence;
 
 import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
+import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -80,7 +81,7 @@ public interface KnowledgeIndexSnapshotRepository extends JpaRepository<Knowledg
             ORDER BY s.createdAt DESC
             """)
     List<KnowledgeIndexSnapshotEntity> findByOwnerOrderByCreatedAtDesc(
-            @Param("ownerType") com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType ownerType,
+            @Param("ownerType") KnowledgeSnapshotOwnerType ownerType,
             @Param("ownerId") UUID ownerId);
 
     @Query(
@@ -92,7 +93,7 @@ public interface KnowledgeIndexSnapshotRepository extends JpaRepository<Knowledg
             ORDER BY s.updatedAt DESC
             """)
     List<KnowledgeIndexSnapshotEntity> findActiveByOwner(
-            @Param("ownerType") com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType ownerType,
+            @Param("ownerType") KnowledgeSnapshotOwnerType ownerType,
             @Param("ownerId") UUID ownerId,
             @Param("status") IndexSnapshotStatus status);
 

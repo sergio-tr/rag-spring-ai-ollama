@@ -7,6 +7,7 @@ import com.uniovi.rag.interfaces.rest.support.RagApiExceptionHandler;
 import com.uniovi.rag.security.JwtAuthenticationFilter;
 import com.uniovi.rag.security.JwtService;
 import com.uniovi.rag.application.service.admin.model.AdminModelsService;
+import com.uniovi.rag.domain.AllowedModelType;
 import com.uniovi.rag.application.service.async.AsyncTaskService;
 import com.uniovi.rag.interfaces.rest.admin.dto.AdminModelDeleteResponse;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
@@ -174,7 +175,7 @@ class AdminV5ModelsSecurityWebMvcTest {
     void deleteModel_withAdminToken_returns200() throws Exception {
         UUID id = UUID.randomUUID();
         when(adminModelsService.delete(id))
-                .thenReturn(new AdminModelDeleteResponse(id, "m", com.uniovi.rag.domain.AllowedModelType.LLM, "DELETED", "ok"));
+                .thenReturn(new AdminModelDeleteResponse(id, "m", AllowedModelType.LLM, "DELETED", "ok"));
         String token = jwtService.createAccessToken(UUID.randomUUID(), "a@test", "ADMIN");
         mockMvc.perform(delete("/api/v5/admin/models/" + id)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)

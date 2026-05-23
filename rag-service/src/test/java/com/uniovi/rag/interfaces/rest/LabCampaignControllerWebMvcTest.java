@@ -23,10 +23,12 @@ import java.util.Map;
 import java.util.UUID;
 
 import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -74,7 +76,7 @@ class LabCampaignControllerWebMvcTest {
                 .thenReturn("campaignId,campaign_type,comparison_axis\n" + cid + ",LLM,LLM_MODEL\n");
         mockMvc.perform(get(path("/lab/campaigns/" + cid + "/export/summary.csv")))
                 .andExpect(status().isOk())
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(org.hamcrest.Matchers.containsString("comparison_axis")));
+                .andExpect(content().string(containsString("comparison_axis")));
     }
 
     @Test
