@@ -64,11 +64,18 @@ RAG (Retrieval-Augmented Generation) system with Spring Boot, Spring AI, Ollama 
 
 Run the full **`rag-service`** suite with working directory **`rag-service/`**: **`mvn test`** exits **0**. From a parent Maven reactor that lists **`rag-service`** as a module, **`mvn test -pl rag-service`** is equivalent. **T-P61-carry-p56-p60** requires **no weakening** of any test or Arch rule from **P56** through **P60**.
 
+## Lab benchmark — evaluation corpus (RAG / embedding)
+
+- **Scope:** RAG preset and embedding benchmarks use a Lab **evaluation corpus** (`evaluation_corpus` + `evaluation_corpus_document`), not the global active project from navigation.
+- **API:** `POST {product-base}/lab/evaluation-corpora` creates a corpus; `POST …/{corpusId}/documents/upload` and `POST …/{corpusId}/documents/from-project` attach documents; `GET …/{corpusId}` returns counts and document status.
+- **Runs:** `POST {product-base}/lab/benchmarks/RAG_PRESET_END_TO_END/runs` and `…/EMBEDDING_RETRIEVAL/runs` require **`corpusId`** when document-backed evidence is needed; **`projectId` is optional** (legacy linkage only).
+- **Validation codes:** `NO_CORPUS_SELECTED`, `NO_DOCUMENTS`, `NO_READY_DOCUMENTS`, `NO_COMPATIBLE_SNAPSHOT` — messages refer to corpus/documents, not missing active project.
+
 ## Lab benchmark — classpath corpus (thesis / reproducible runs)
 
 - **Location in this module:** add PDF or text actas under `src/main/resources/docs/`. Maven packages `src/main/resources` into the backend JAR, so the default pattern `classpath*:docs/**/*` resolves at runtime.
 - **Docker image:** `rag-service/Dockerfile` copies `src` and runs `./mvnw package`, so the same resources are present in the container JAR (no extra volume is required for shipped actas).
-- **API:** set `bootstrapCorpusFromClasspathDocs: true` (and optional `classpathDocsLocation`, `bootstrapCorpusScope`, `bootstrapSkipExisting`, `bootstrapFailOnDocumentError`) on `POST {product-base}/lab/benchmarks/RAG_PRESET_END_TO_END/runs` — see `StartBenchmarkRunRequest`.
+- **API:** set `corpusId` (required for document-backed runs), `bootstrapCorpusFromClasspathDocs: true` (and optional `classpathDocsLocation`, `bootstrapCorpusScope`, `bootstrapSkipExisting`, `bootstrapFailOnDocumentError`) on `POST {product-base}/lab/benchmarks/RAG_PRESET_END_TO_END/runs` — see `StartBenchmarkRunRequest`.
 - **Order of operations:** the async `EVAL_RAG` job runs classpath bootstrap **before** typed dataset resolution and **before** acquiring the auto-reindex project lock, so `PROJECT_SHARED` documents exist prior to index rebuilds.
 - **Audit trail:** counters and scope are logged at INFO and persisted on the run as `evaluation_run.aggregates_json.corpusBootstrap` (and a structured failure map if bootstrap aborts).
 
