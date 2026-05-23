@@ -25,8 +25,10 @@ export function LabEvaluationCorpusPanel({
   const t = useTranslations("Lab");
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [localErr, setLocalErr] = useState<string | null>(null);
-  const { summary, loading, error, ensureCorpus, uploadDocument, attachFromProject } = useEvaluationCorpus(corpusId);
+  const { summary, loading, error, ensureCorpus, uploadDocuments, attachFromProject } =
+    useEvaluationCorpus(corpusId);
 
   const ensureReady = useCallback(async () => {
     if (corpusId) return corpusId;
@@ -35,17 +37,22 @@ export function LabEvaluationCorpusPanel({
     return created.id;
   }, [corpusId, ensureCorpus, onCorpusIdChange]);
 
-  async function onUploadSelected(file: File | undefined) {
-    if (!file || disabled) return;
+  async function onUploadSelected(files: FileList | null | undefined) {
+    const list = files ? Array.from(files).filter((f) => f.size > 0) : [];
+    if (list.length === 0 || disabled) return;
     setBusy(true);
     setLocalErr(null);
+    setUploadProgress(t("labCorpusUploadProgress", { current: 0, total: list.length }));
     try {
       const id = await ensureReady();
-      await uploadDocument(id, file);
+      await uploadDocuments(id, list, (current, total) => {
+        setUploadProgress(t("labCorpusUploadProgress", { current, total }));
+      });
     } catch {
       setLocalErr(t("labCorpusUploadFailed"));
     } finally {
       setBusy(false);
+      setUploadProgress(null);
       if (fileRef.current) fileRef.current.value = "";
     }
   }
@@ -110,9 +117,10 @@ export function LabEvaluationCorpusPanel({
             id="lab-corpus-upload"
             data-testid="lab-corpus-upload-input"
             type="file"
+            multiple
             className="text-xs"
             disabled={disabled || busy || loading}
-            onChange={(e) => void onUploadSelected(e.target.files?.[0])}
+            onChange={(e) => void onUploadSelected(e.target.files)}
           />
         </div>
         {optionalProjectId ? (
@@ -128,6 +136,12 @@ export function LabEvaluationCorpusPanel({
           </Button>
         ) : null}
       </div>
+
+      {uploadProgress ? (
+        <output className="text-muted-foreground block text-xs" data-testid="lab-corpus-upload-progress">
+          {uploadProgress}
+        </output>
+      ) : null}
 
       {displayErr ? (
         <output role="alert" className="block text-destructive text-xs">

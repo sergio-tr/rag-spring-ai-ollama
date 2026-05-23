@@ -64,6 +64,22 @@ export function useEvaluationCorpus(corpusId: string | null) {
     [qc],
   );
 
+  const uploadDocuments = useCallback(
+    async (id: string, files: File[], onProgress?: (current: number, total: number) => void) => {
+      let latest: EvaluationCorpusSummaryDto | null = null;
+      const total = files.length;
+      for (let i = 0; i < files.length; i += 1) {
+        onProgress?.(i + 1, total);
+        latest = await uploadDocument(id, files[i]!);
+      }
+      if (!latest) {
+        throw new Error("No files to upload");
+      }
+      return latest;
+    },
+    [uploadDocument],
+  );
+
   const attachFromProject = useCallback(
     async (id: string, projectId: string, documentIds: string[]) => {
       const data = await apiFetch<EvaluationCorpusSummaryDto>(
@@ -96,6 +112,7 @@ export function useEvaluationCorpus(corpusId: string | null) {
     refresh,
     ensureCorpus,
     uploadDocument,
+    uploadDocuments,
     attachFromProject,
   };
 }

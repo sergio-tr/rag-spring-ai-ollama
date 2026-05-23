@@ -21,6 +21,7 @@ vi.mock("next-intl", () => ({
 const refresh = vi.fn();
 const ensureCorpus = vi.fn().mockResolvedValue({ id: "corpus-1", documentCount: 0, readyCount: 0, documents: [] });
 const uploadDocument = vi.fn().mockResolvedValue(undefined);
+const uploadDocuments = vi.fn().mockResolvedValue(undefined);
 const attachFromProject = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/lib/api-client", () => ({
@@ -38,6 +39,7 @@ vi.mock("@/features/lab/hooks/use-evaluation-corpus", () => ({
     refresh,
     ensureCorpus,
     uploadDocument,
+    uploadDocuments,
     attachFromProject,
   }),
 }));
@@ -49,7 +51,7 @@ describe("LabEvaluationCorpusPanel", () => {
     );
     expect(screen.getByTestId("lab-evaluation-corpus-panel")).toBeInTheDocument();
     expect(screen.getByTestId("lab-corpus-summary")).toHaveTextContent(/2 documents/i);
-    expect(screen.getByTestId("lab-corpus-upload-input")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-corpus-upload-input")).toHaveAttribute("multiple");
   });
 
   it("shows attach-from-project only when optional project is set", async () => {
