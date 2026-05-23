@@ -77,4 +77,19 @@ class ModelRegistryServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .hasFieldOrPropertyWithValue("statusCode", HttpStatus.BAD_REQUEST);
     }
+
+    @Test
+    void assertPullAllowed_acceptsQwen3Embedding() {
+        modelRegistryService.assertPullAllowed(ProductDemoModel.QWEN3_EMBEDDING.modelId());
+    }
+
+    @Test
+    void snapshot_listsQwen3EmbeddingInCuratedRegistry() throws Exception {
+        when(ollamaApiClient.listModelNames()).thenReturn(Set.of());
+        ModelRegistryResponseDto dto = modelRegistryService.snapshot();
+        assertThat(dto.embeddingModels().stream().map(r -> r.modelId()))
+                .contains(ProductDemoModel.QWEN3_EMBEDDING.modelId());
+        assertThat(dto.embeddingModels().stream().map(r -> r.modelId()))
+                .doesNotContain("bge-m3");
+    }
 }

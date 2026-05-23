@@ -53,11 +53,11 @@ class EmbeddingSpaceGuardTest {
 
     @Test
     void assertFitsPhysicalVectorColumnReturning_acceptsBgeM3WhenStoreIs1024Wide() {
-        when(embeddingModelFactory.forModel("bge-m3")).thenReturn(new FixedWidthEmbeddingModel(1024));
+        when(embeddingModelFactory.forModel("qwen3-embedding:latest")).thenReturn(new FixedWidthEmbeddingModel(1024));
         RagVectorProperties props = new RagVectorProperties(1024, true);
         EmbeddingSpaceGuard guard = new EmbeddingSpaceGuard(embeddingModelFactory, props);
 
-        assertThat(guard.assertFitsPhysicalVectorColumnReturning("bge-m3")).isEqualTo(1024);
+        assertThat(guard.assertFitsPhysicalVectorColumnReturning("qwen3-embedding:latest")).isEqualTo(1024);
     }
 
     /** Minimal {@link EmbeddingModel} that reports a fixed vector width for every embed/call path. */

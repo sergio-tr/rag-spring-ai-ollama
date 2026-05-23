@@ -19,7 +19,7 @@ public class ExperimentalSnapshotFactory {
 
     public ExperimentalSnapshotFactory(
             @Value("${spring.ai.ollama.chat.model:gemma3:4b}") String defaultChatModel,
-            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large}") String defaultEmbeddingModel,
+            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large:latest}") String defaultEmbeddingModel,
             @Value("${spring.ai.ollama.top-k:10}") int defaultTopK) {
         this.defaultChatModel = defaultChatModel;
         this.defaultEmbeddingModel = defaultEmbeddingModel;

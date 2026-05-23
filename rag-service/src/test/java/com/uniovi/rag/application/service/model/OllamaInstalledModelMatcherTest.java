@@ -22,9 +22,11 @@ class OllamaInstalledModelMatcherTest {
 
     @Test
     void findMatchingInstalledNames_normalizesBgeM3BaseName() {
-        assertThat(OllamaInstalledModelMatcher.findMatchingInstalledNames("bge-m3", Set.of("bge-m3:latest")))
-                .containsExactly("bge-m3:latest");
-        assertThat(OllamaInstalledModelMatcher.pickBestInstalledName("bge-m3", List.of("bge-m3:latest")))
-                .isEqualTo("bge-m3:latest");
+        assertThat(OllamaInstalledModelMatcher.findMatchingInstalledNames(
+                        "qwen3-embedding", Set.of("qwen3-embedding:latest")))
+                .containsExactly("qwen3-embedding:latest");
+        assertThat(OllamaInstalledModelMatcher.pickBestInstalledName(
+                        "qwen3-embedding", List.of("qwen3-embedding:latest")))
+                .isEqualTo("qwen3-embedding:latest");
     }
 }

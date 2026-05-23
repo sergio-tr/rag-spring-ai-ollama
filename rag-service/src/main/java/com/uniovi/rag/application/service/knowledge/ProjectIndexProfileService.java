@@ -20,7 +20,7 @@ public class ProjectIndexProfileService {
 
     public ProjectIndexProfileService(
             ProjectIndexProfileRepository repository,
-            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large}") String defaultEmbeddingModelId,
+            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large:latest}") String defaultEmbeddingModelId,
             @Value("${rag.chunk.max-chars:400}") int defaultChunkMaxChars,
             @Value("${rag.knowledge.materialization-strategy:CHUNK_LEVEL}") String defaultMaterializationStrategyRaw) {
         this.repository = repository;

@@ -21,19 +21,19 @@ class AllowedModelReferenceGuardTest {
 
     @Test
     void isReferenced_trueWhenEvaluationRunUsesModel() {
-        when(evaluationRunRepository.existsByEmbeddingModelId("bge-m3:latest")).thenReturn(true);
+        when(evaluationRunRepository.existsByEmbeddingModelId("qwen3-embedding:latest")).thenReturn(true);
         AllowedModelReferenceGuard guard =
                 new AllowedModelReferenceGuard(evaluationRunRepository, projectIndexProfileRepository);
-        assertThat(guard.isReferenced("bge-m3:latest")).isTrue();
+        assertThat(guard.isReferenced("qwen3-embedding:latest")).isTrue();
     }
 
     @Test
     void isReferenced_checksLatestSuffixForBaseName() {
-        when(evaluationRunRepository.existsByLlmModelId("bge-m3")).thenReturn(false);
-        when(evaluationRunRepository.existsByEmbeddingModelId("bge-m3")).thenReturn(false);
-        when(evaluationRunRepository.existsByLlmModelId("bge-m3:latest")).thenReturn(true);
+        when(evaluationRunRepository.existsByLlmModelId("qwen3-embedding")).thenReturn(false);
+        when(evaluationRunRepository.existsByEmbeddingModelId("qwen3-embedding")).thenReturn(false);
+        when(evaluationRunRepository.existsByLlmModelId("qwen3-embedding:latest")).thenReturn(true);
         AllowedModelReferenceGuard guard =
                 new AllowedModelReferenceGuard(evaluationRunRepository, projectIndexProfileRepository);
-        assertThat(guard.isReferenced("bge-m3")).isTrue();
+        assertThat(guard.isReferenced("qwen3-embedding")).isTrue();
     }
 }

@@ -19,8 +19,8 @@ public enum ProductDemoModel {
     MXBAI_EMBED_LARGE("mxbai-embed-large", AllowedModelType.EMBEDDING, 1024),
     /** Ollama nomic-embed-text outputs 768-dimensional vectors (incompatible with default 1024-wide pgvector store). */
     NOMIC_EMBED_TEXT("nomic-embed-text", AllowedModelType.EMBEDDING, 768),
-    /** Ollama bge-m3 outputs 1024-dimensional vectors in this deployment. */
-    BGE_M3("bge-m3", AllowedModelType.EMBEDDING, 1024);
+    /** Ollama qwen3-embedding outputs 1024-dimensional vectors in this deployment. */
+    QWEN3_EMBEDDING("qwen3-embedding", AllowedModelType.EMBEDDING, 1024);
 
     private final String modelId;
     private final AllowedModelType modelType;

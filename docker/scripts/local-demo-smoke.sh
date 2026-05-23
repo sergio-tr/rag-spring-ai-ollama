@@ -204,7 +204,7 @@ PROMETHEUS_URL="${DEMO_SMOKE_PROMETHEUS_URL:-http://127.0.0.1:${PROMETHEUS_PORT:
 GRAFANA_URL="${DEMO_SMOKE_GRAFANA_URL:-http://127.0.0.1:${GRAFANA_PORT:-3000}}"
 JAEGER_URL="${DEMO_SMOKE_JAEGER_URL:-http://127.0.0.1:${JAEGER_UI_PORT:-16686}}"
 OLLAMA_URL="${DEMO_SMOKE_OLLAMA_URL:-}"
-REQUIRED_OLLAMA_MODELS="${DEMO_SMOKE_REQUIRED_OLLAMA_MODELS:-gemma3:4b,mistral:7b,llama3.1:8b,mxbai-embed-large,nomic-embed-text,bge-m3}"
+REQUIRED_OLLAMA_MODELS="${DEMO_SMOKE_REQUIRED_OLLAMA_MODELS:-gemma3:4b,mistral:7b,llama3.1:8b,mxbai-embed-large:latest,nomic-embed-text:latest,qwen3-embedding:latest}"
 
 check_ollama_models() {
   echo -n "backend -> Ollama /api/tags required models ... "

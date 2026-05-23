@@ -100,7 +100,7 @@ class OllamaApiClientTest {
     void probeEmbeddingDetailed_usesModernEmbedEndpoint() throws Exception {
         try (AutoCloseableServer s = serverWithEmbed(200, "{\"embeddings\":[[0.1,0.2]]}")) {
             OllamaApiClient client = new OllamaApiClient(s.baseUrl(), healthProps());
-            var result = client.probeEmbeddingDetailed("bge-m3:latest", "ping", 5_000L);
+            var result = client.probeEmbeddingDetailed("qwen3-embedding:latest", "ping", 5_000L);
             assertTrue(result.ok());
         }
     }

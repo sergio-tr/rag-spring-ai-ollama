@@ -111,20 +111,20 @@ class AdminModelsServiceTest {
 
     @Test
     void embedding_check_normalizesBaseNameToLatestTag() throws Exception {
-        when(ollamaApiClient.listModelNames()).thenReturn(Set.of("bge-m3:latest"));
-        when(ollamaApiClient.probeEmbeddingDetailed(eq("bge-m3:latest"), any(), anyLong()))
+        when(ollamaApiClient.listModelNames()).thenReturn(Set.of("qwen3-embedding:latest"));
+        when(ollamaApiClient.probeEmbeddingDetailed(eq("qwen3-embedding:latest"), any(), anyLong()))
                 .thenReturn(OllamaEmbeddingProbeResult.success());
-        var res = svc().check(new AdminModelCheckRequest("bge-m3", AllowedModelType.EMBEDDING, false));
-        assertThat(res.modelId()).isEqualTo("bge-m3:latest");
+        var res = svc().check(new AdminModelCheckRequest("qwen3-embedding", AllowedModelType.EMBEDDING, false));
+        assertThat(res.modelId()).isEqualTo("qwen3-embedding:latest");
         assertThat(res.embeddingProbeOk()).isTrue();
     }
 
     @Test
     void embedding_check_probeFailure_returnsResponseInsteadOfThrowing() throws Exception {
-        when(ollamaApiClient.listModelNames()).thenReturn(Set.of("bge-m3:latest"));
-        when(ollamaApiClient.probeEmbeddingDetailed(eq("bge-m3:latest"), any(), anyLong()))
+        when(ollamaApiClient.listModelNames()).thenReturn(Set.of("qwen3-embedding:latest"));
+        when(ollamaApiClient.probeEmbeddingDetailed(eq("qwen3-embedding:latest"), any(), anyLong()))
                 .thenReturn(OllamaEmbeddingProbeResult.failure("HTTP 404", "Embedding endpoint rejected the model"));
-        var res = svc().check(new AdminModelCheckRequest("bge-m3", AllowedModelType.EMBEDDING, false));
+        var res = svc().check(new AdminModelCheckRequest("qwen3-embedding", AllowedModelType.EMBEDDING, false));
         assertThat(res.existsLocal()).isTrue();
         assertThat(res.embeddingProbeOk()).isFalse();
         assertThat(res.errorCode()).isEqualTo("MODEL_EMBEDDING_PROBE_FAILED");
@@ -133,17 +133,17 @@ class AdminModelsServiceTest {
 
     @Test
     void upsert_embeddingProbeFailed_butDisabled_savesUnavailableRow() throws Exception {
-        when(ollamaApiClient.listModelNames()).thenReturn(Set.of("bge-m3:latest"));
-        when(ollamaApiClient.probeEmbeddingDetailed(eq("bge-m3:latest"), any(), anyLong()))
+        when(ollamaApiClient.listModelNames()).thenReturn(Set.of("qwen3-embedding:latest"));
+        when(ollamaApiClient.probeEmbeddingDetailed(eq("qwen3-embedding:latest"), any(), anyLong()))
                 .thenReturn(OllamaEmbeddingProbeResult.failure("HTTP 500", "Embedding endpoint rejected the model"));
-        when(allowedModelRepository.findByNameAndType(eq("bge-m3:latest"), eq(AllowedModelType.EMBEDDING)))
+        when(allowedModelRepository.findByNameAndType(eq("qwen3-embedding:latest"), eq(AllowedModelType.EMBEDDING)))
                 .thenReturn(Optional.empty());
         when(allowedModelRepository.save(any(AllowedModelEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        var out = svc().upsert(new AdminModelUpsertRequest("bge-m3", null, AllowedModelType.EMBEDDING, false, false, List.of()));
+        var out = svc().upsert(new AdminModelUpsertRequest("qwen3-embedding", null, AllowedModelType.EMBEDDING, false, false, List.of()));
         assertThat(out.enabled()).isFalse();
         assertThat(out.available()).isFalse();
-        assertThat(out.modelId()).isEqualTo("bge-m3:latest");
+        assertThat(out.modelId()).isEqualTo("qwen3-embedding:latest");
     }
 
     @Test

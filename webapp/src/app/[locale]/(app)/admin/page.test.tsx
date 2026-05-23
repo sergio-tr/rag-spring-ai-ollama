@@ -34,10 +34,10 @@ const llmRow: AdminModelEntryDto = {
 
 const embRow: AdminModelEntryDto = {
   id: "22222222-2222-2222-2222-222222222222",
-  modelId: "bge-m3:latest",
-  displayName: "BGE-M3",
+  modelId: "qwen3-embedding:latest",
+  displayName: "Qwen3 Embedding",
   modelType: "EMBEDDING",
-  enabled: false,
+  enabled: true,
   available: false,
   lastCheckedAt: null,
   lastPullStatus: "PROBE_FAILED",
@@ -66,13 +66,13 @@ describe("AdminHomePage", () => {
       }
       if (path === "/api/v5/admin/models/check" && init?.method === "POST") {
         return {
-          modelId: "bge-m3:latest",
+          modelId: "qwen3-embedding:latest",
           requestedType: "EMBEDDING",
           existsLocal: true,
           canPull: true,
           pulled: false,
           embeddingProbeOk: false,
-          matchedLocalIds: ["bge-m3:latest"],
+          matchedLocalIds: ["qwen3-embedding:latest"],
           checkedAt: new Date().toISOString(),
           errorCode: "MODEL_EMBEDDING_PROBE_FAILED",
           errorMessage: "Embedding endpoint rejected the model",
@@ -99,14 +99,14 @@ describe("AdminHomePage", () => {
     expect(await screen.findByText("LLM models")).toBeInTheDocument();
     expect(screen.getByText("Embedding models")).toBeInTheDocument();
     expect(await screen.findByTestId("admin-model-row-LLM-llama3:latest")).toBeInTheDocument();
-    expect(await screen.findByTestId("admin-model-row-EMBEDDING-bge-m3:latest")).toBeInTheDocument();
+    expect(await screen.findByTestId("admin-model-row-EMBEDDING-qwen3-embedding:latest")).toBeInTheDocument();
   });
 
   it("shows friendly embedding probe failure on check", async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByTestId("admin-model-row-EMBEDDING-bge-m3:latest");
-    await user.type(screen.getByLabelText("Model name", { selector: "#aname" }), "bge-m3");
+    await screen.findByTestId("admin-model-row-EMBEDDING-qwen3-embedding:latest");
+    await user.type(screen.getByLabelText("Model name", { selector: "#aname" }), "qwen3-embedding");
     await user.selectOptions(screen.getByLabelText("Type"), "EMBEDDING");
     await user.click(screen.getByRole("button", { name: /^check$/i }));
     expect(await screen.findByText(/did not pass the embedding check/i)).toBeInTheDocument();
@@ -116,7 +116,7 @@ describe("AdminHomePage", () => {
   it("wires delete action to admin models endpoint", async () => {
     const user = userEvent.setup();
     renderPage();
-    const row = await screen.findByTestId("admin-model-row-EMBEDDING-bge-m3:latest");
+    const row = await screen.findByTestId("admin-model-row-EMBEDDING-qwen3-embedding:latest");
     await user.click(within(row).getByRole("button", { name: /^delete$/i }));
     expect(apiFetch).toHaveBeenCalledWith(
       `/api/v5/admin/models/${embRow.id}`,

@@ -41,7 +41,7 @@ public class ConfigResolver implements RagConfigurationResolver {
             @Value("${spring.ai.ollama.top-k:10}") int topK,
             @Value("${spring.ai.ollama.similarity-threshold:0.7}") double similarityThreshold,
             @Value("${spring.ai.ollama.chat.model:gemma3:4b}") String chatModel,
-            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large}") String embeddingModel) {
+            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large:latest}") String embeddingModel) {
         this.featureConfig = featureConfig;
         this.reasoningProperties = reasoningProperties;
         this.configurationSource = configurationSource;
