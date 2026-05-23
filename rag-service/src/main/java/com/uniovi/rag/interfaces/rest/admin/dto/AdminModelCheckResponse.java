@@ -15,5 +15,7 @@ public record AdminModelCheckResponse(
         Instant checkedAt,
         String errorCode,
         String errorMessage,
+        /** Operator detail (HTTP body snippet, endpoint); not for default UI copy. */
+        String technicalDetail,
         String pullSummary) {}
 

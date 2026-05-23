@@ -70,14 +70,18 @@ public class ModelRegistryService {
                     null);
         }
         if (model.modelType() == AllowedModelType.EMBEDDING && probe) {
+            List<String> matches = OllamaInstalledModelMatcher.findMatchingInstalledNames(model.modelId(), tags.installed());
+            String probeName = OllamaInstalledModelMatcher.pickBestInstalledName(model.modelId(), matches);
             try {
-                boolean ok = ollamaApiClient.probeEmbedding(model.modelId(), "ping", EMBEDDING_PROBE_TIMEOUT_MS);
-                if (!ok) {
+                var probeResult = ollamaApiClient.probeEmbeddingDetailed(probeName, "ping", EMBEDDING_PROBE_TIMEOUT_MS);
+                if (!probeResult.ok()) {
                     return new ModelRegistryItemDto(
                             model.modelId(),
                             model.modelType(),
                             ModelRegistryAvailabilityStatus.ERROR,
-                            "Embedding probe failed (model present but did not return embeddings)",
+                            probeResult.userMessage() != null
+                                    ? probeResult.userMessage()
+                                    : "Embedding probe failed (model present but did not return embeddings)",
                             false);
                 }
                 return new ModelRegistryItemDto(

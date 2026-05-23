@@ -8,6 +8,7 @@ import com.uniovi.rag.security.JwtAuthenticationFilter;
 import com.uniovi.rag.security.JwtService;
 import com.uniovi.rag.application.service.admin.model.AdminModelsService;
 import com.uniovi.rag.application.service.async.AsyncTaskService;
+import com.uniovi.rag.interfaces.rest.admin.dto.AdminModelDeleteResponse;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import java.util.List;
 import java.util.UUID;
@@ -26,8 +27,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -155,5 +158,39 @@ class AdminV5ModelsSecurityWebMvcTest {
                 .andExpect(jsonPath("$.pollPath").value("/api/v5/lab/jobs/" + jobId));
 
         verify(asyncTaskService).submitOllamaPull(userId, "m2");
+    }
+
+    @Test
+    void deleteModel_withUserToken_returns403() throws Exception {
+        String token = jwtService.createAccessToken(UUID.randomUUID(), "u@test", "USER");
+        mockMvc.perform(delete("/api/v5/admin/models/" + UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void deleteModel_withAdminToken_returns200() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(adminModelsService.delete(id))
+                .thenReturn(new AdminModelDeleteResponse(id, "m", com.uniovi.rag.domain.AllowedModelType.LLM, "DELETED", "ok"));
+        String token = jwtService.createAccessToken(UUID.randomUUID(), "a@test", "ADMIN");
+        mockMvc.perform(delete("/api/v5/admin/models/" + id)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outcome").value("DELETED"));
+    }
+
+    @Test
+    void updateModel_withUserToken_returns403() throws Exception {
+        String token = jwtService.createAccessToken(UUID.randomUUID(), "u@test", "USER");
+        mockMvc.perform(put("/api/v5/admin/models/" + UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":false}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
 }

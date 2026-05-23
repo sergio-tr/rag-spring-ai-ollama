@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.admin;
 
+import com.uniovi.rag.application.service.admin.model.AllowedModelReferenceGuard;
 import com.uniovi.rag.domain.AllowedModelType;
 import com.uniovi.rag.infrastructure.persistence.AllowedModelRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AllowedModelEntity;
@@ -18,9 +19,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class AllowlistAdminService {
 
     private final AllowedModelRepository allowedModelRepository;
+    private final AllowedModelReferenceGuard referenceGuard;
 
-    public AllowlistAdminService(AllowedModelRepository allowedModelRepository) {
+    public AllowlistAdminService(
+            AllowedModelRepository allowedModelRepository, AllowedModelReferenceGuard referenceGuard) {
         this.allowedModelRepository = allowedModelRepository;
+        this.referenceGuard = referenceGuard;
     }
 
     @Transactional(readOnly = true)
@@ -80,8 +84,15 @@ public class AllowlistAdminService {
 
     @Transactional
     public void delete(UUID id) {
-        if (!allowedModelRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Allowlist entry not found");
+        AllowedModelEntity e = allowedModelRepository
+                .findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Allowlist entry not found"));
+        if (referenceGuard.isReferenced(e.getName())) {
+            e.setInAllowlist(false);
+            allowedModelRepository.save(e);
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Model is referenced by historical runs; entry was disabled instead of deleted");
         }
         allowedModelRepository.deleteById(id);
     }

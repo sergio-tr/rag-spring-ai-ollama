@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.admin;
 
+import com.uniovi.rag.application.service.admin.model.AllowedModelReferenceGuard;
 import com.uniovi.rag.interfaces.rest.admin.dto.CreateAllowlistEntryRequest;
 import com.uniovi.rag.interfaces.rest.admin.dto.UpdateAllowlistEntryRequest;
 import com.uniovi.rag.domain.AllowedModelType;
@@ -28,6 +29,9 @@ class AllowlistAdminServiceTest {
 
     @Mock
     private AllowedModelRepository allowedModelRepository;
+
+    @Mock
+    private AllowedModelReferenceGuard referenceGuard;
 
     @InjectMocks
     private AllowlistAdminService allowlistAdminService;
@@ -102,15 +106,31 @@ class AllowlistAdminServiceTest {
     @Test
     void delete_notFound() {
         UUID id = UUID.randomUUID();
-        when(allowedModelRepository.existsById(id)).thenReturn(false);
+        when(allowedModelRepository.findById(id)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> allowlistAdminService.delete(id)).isInstanceOf(ResponseStatusException.class);
     }
 
     @Test
+    void delete_referenced_softDisablesInsteadOfDelete() {
+        UUID id = UUID.randomUUID();
+        AllowedModelEntity row = AllowedModelEntity.newRow("hist", AllowedModelType.EMBEDDING, true, null);
+        ReflectionTestUtils.setField(row, "id", id);
+        when(allowedModelRepository.findById(id)).thenReturn(Optional.of(row));
+        when(referenceGuard.isReferenced("hist")).thenReturn(true);
+
+        assertThatThrownBy(() -> allowlistAdminService.delete(id)).isInstanceOf(ResponseStatusException.class);
+        assertThat(row.isInAllowlist()).isFalse();
+        verify(allowedModelRepository).save(row);
+    }
+
+    @Test
     void delete_removesRow() {
         UUID id = UUID.randomUUID();
-        when(allowedModelRepository.existsById(id)).thenReturn(true);
+        AllowedModelEntity row = AllowedModelEntity.newRow("m", AllowedModelType.LLM, true, null);
+        ReflectionTestUtils.setField(row, "id", id);
+        when(allowedModelRepository.findById(id)).thenReturn(Optional.of(row));
+        when(referenceGuard.isReferenced("m")).thenReturn(false);
 
         allowlistAdminService.delete(id);
 

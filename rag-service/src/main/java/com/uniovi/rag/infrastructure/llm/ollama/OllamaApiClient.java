@@ -77,6 +77,11 @@ public class OllamaApiClient {
             }
 
             @Override
+            public OllamaEmbeddingProbeResult probeEmbeddingDetailed(String modelName, String text, long readTimeoutMs) {
+                return OllamaEmbeddingProbeResult.success();
+            }
+
+            @Override
             public boolean probeEmbedding(String modelName, String text, long readTimeoutMs) {
                 return true;
             }
@@ -152,31 +157,99 @@ public class OllamaApiClient {
     }
 
     /**
-     * Minimal embedding probe: POST {@code /api/embeddings} with a short prompt and checks that Ollama returns an embedding array.
-     *
-     * <p>Note: this does not validate model "quality", only that the endpoint accepts the model as an embedding-capable one.
+     * Probes embedding support via modern {@code POST /api/embed} first, then legacy {@code POST /api/embeddings}.
+     */
+    public OllamaEmbeddingProbeResult probeEmbeddingDetailed(String modelName, String text, long readTimeoutMs)
+            throws IOException, InterruptedException {
+        String sample = text != null && !text.isBlank() ? text : "ping";
+        long timeoutMs = Math.max(1_000L, readTimeoutMs);
+
+        OllamaEmbeddingProbeResult embed = probeEmbedEndpoint(modelName, sample, timeoutMs);
+        if (embed.ok()) {
+            return embed;
+        }
+        OllamaEmbeddingProbeResult legacy = probeLegacyEmbeddingsEndpoint(modelName, sample, timeoutMs);
+        if (legacy.ok()) {
+            return legacy;
+        }
+        String detail = "embed: " + embed.technicalDetail() + "; legacy: " + legacy.technicalDetail();
+        return OllamaEmbeddingProbeResult.failure(
+                detail, "Model is installed but did not return embeddings from Ollama");
+    }
+
+    /**
+     * Minimal embedding probe: delegates to {@link #probeEmbeddingDetailed(String, String, long)}.
      */
     public boolean probeEmbedding(String modelName, String text, long readTimeoutMs) throws IOException, InterruptedException {
-        String url = baseUrl + "/api/embeddings";
+        return probeEmbeddingDetailed(modelName, text, readTimeoutMs).ok();
+    }
+
+    private OllamaEmbeddingProbeResult probeEmbedEndpoint(String modelName, String sample, long timeoutMs)
+            throws IOException, InterruptedException {
+        String url = baseUrl + "/api/embed";
         JSONObject body = new JSONObject();
         body.put("model", modelName);
-        body.put("prompt", text != null ? text : "ping");
+        body.put("input", sample);
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                 .header("Content-Type", "application/json")
-                .timeout(Duration.ofMillis(Math.max(1_000L, readTimeoutMs)))
+                .timeout(Duration.ofMillis(timeoutMs))
                 .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            return false;
+            return OllamaEmbeddingProbeResult.failure(
+                    "POST /api/embed HTTP " + response.statusCode() + " body=" + truncate(response.body(), 400),
+                    "Embedding endpoint rejected the model");
         }
-        String respBody = response.body();
+        if (!responseHasEmbeddingVector(response.body())) {
+            return OllamaEmbeddingProbeResult.failure(
+                    "POST /api/embed HTTP 200 but no embedding vector in body="
+                            + truncate(response.body(), 400),
+                    "Embedding endpoint returned an unexpected response");
+        }
+        return OllamaEmbeddingProbeResult.success();
+    }
+
+    private OllamaEmbeddingProbeResult probeLegacyEmbeddingsEndpoint(String modelName, String sample, long timeoutMs)
+            throws IOException, InterruptedException {
+        String url = baseUrl + "/api/embeddings";
+        JSONObject body = new JSONObject();
+        body.put("model", modelName);
+        body.put("prompt", sample);
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofMillis(timeoutMs))
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            return OllamaEmbeddingProbeResult.failure(
+                    "POST /api/embeddings HTTP " + response.statusCode() + " body=" + truncate(response.body(), 400),
+                    "Legacy embedding endpoint rejected the model");
+        }
+        if (!responseHasEmbeddingVector(response.body())) {
+            return OllamaEmbeddingProbeResult.failure(
+                    "POST /api/embeddings HTTP 200 but no embedding vector in body="
+                            + truncate(response.body(), 400),
+                    "Legacy embedding endpoint returned an unexpected response");
+        }
+        return OllamaEmbeddingProbeResult.success();
+    }
+
+    private static boolean responseHasEmbeddingVector(String respBody) {
         if (respBody == null || respBody.isBlank()) {
             return false;
         }
         try {
             JSONObject o = new JSONObject(respBody);
-            return o.has("embedding") && o.get("embedding") instanceof JSONArray;
+            if (o.has("embedding") && o.get("embedding") instanceof JSONArray arr && arr.length() > 0) {
+                return true;
+            }
+            if (o.has("embeddings") && o.get("embeddings") instanceof JSONArray outer && outer.length() > 0) {
+                Object first = outer.get(0);
+                return first instanceof JSONArray inner && inner.length() > 0;
+            }
+            return false;
         } catch (Exception e) {
             return false;
         }
