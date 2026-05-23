@@ -13,7 +13,7 @@ import { usePathname, useRouter } from "@/navigation";
 import { useTranslations } from "next-intl";
 
 /**
- * Session banner for Lab async jobs: stale server state, stopped waiting, in-flight recovery, and completed/failed summaries.
+ * Session banner for Lab async jobs: stale server state, reconnecting stream, in-flight recovery, and completed/failed summaries.
  */
 export function LabBackgroundJobBanner() {
   const t = useTranslations("Lab");
@@ -84,12 +84,7 @@ export function LabBackgroundJobBanner() {
                 {t("jobRecoveryDismiss")}
               </Button>
             ) : null}
-            {job.stoppedWatching ? (
-              <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => clearRecord(job.jobId)}>
-                {t("jobRecoveryDismiss")}
-              </Button>
-            ) : null}
-            {!isTerminal && !job.stoppedWatching ? (
+            {!isTerminal ? (
               <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => clearRecord(job.jobId)}>
                 {t("jobRecoveryForget")}
               </Button>

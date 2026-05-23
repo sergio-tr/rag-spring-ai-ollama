@@ -28,9 +28,9 @@ describe("followLabJob", () => {
     vi.restoreAllMocks();
   });
 
-  it("delegates to pollLabJob by default", async () => {
+  it("delegates to pollLabJob when mode is poll", async () => {
     const onTick = vi.fn();
-    await followLabJob(accepted, onTick);
+    await followLabJob(accepted, onTick, { mode: "poll" });
 
     expect(asyncTask.pollLabJob).toHaveBeenCalledWith(
       "job-1",
@@ -43,6 +43,18 @@ describe("followLabJob", () => {
       }),
     );
     expect(labJobSse.streamLabJob).not.toHaveBeenCalled();
+  });
+
+  it("delegates to streamLabJob by default (sse)", async () => {
+    const onTick = vi.fn();
+    await followLabJob(accepted, onTick);
+
+    expect(labJobSse.streamLabJob).toHaveBeenCalledWith(
+      accepted.streamPath,
+      onTick,
+      expect.objectContaining({ signal: undefined }),
+    );
+    expect(asyncTask.pollLabJob).not.toHaveBeenCalled();
   });
 
   it("delegates to streamLabJob when mode is sse", async () => {
@@ -60,6 +72,7 @@ describe("followLabJob", () => {
   it("forwards poll options", async () => {
     const ac = new AbortController();
     await followLabJob(accepted, () => {}, {
+      mode: "poll",
       signal: ac.signal,
       intervalMs: 100,
       throwOnFailed: false,
@@ -74,7 +87,7 @@ describe("followLabJob", () => {
   });
 
   it("forwards maxWaitMs for classifier poll watchdog (Phase 6C)", async () => {
-    await followLabJob(accepted, () => {}, { maxWaitMs: 120_000 });
+    await followLabJob(accepted, () => {}, { mode: "poll", maxWaitMs: 120_000 });
 
     expect(asyncTask.pollLabJob).toHaveBeenCalledWith(
       "job-1",

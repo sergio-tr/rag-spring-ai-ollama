@@ -54,7 +54,7 @@ export type PersistedLabJobRecord = Readonly<{
   jobId: string;
   sectionKey: LabJobSectionKey;
   accepted: LabJobAcceptedDto;
-  /** Present for canonical benchmark runs ({@code POST /lab/benchmarks/…/runs}). */
+  /** Present for typed benchmark runs ({@code /lab/benchmarks/…/runs}). */
   evaluationRunId?: string | null;
   followMode: LabJobFollowMode;
   startedAtMs: number;

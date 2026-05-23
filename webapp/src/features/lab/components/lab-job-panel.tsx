@@ -7,18 +7,21 @@ import {
   getLabJobUiPhase,
   labPhaseToTraceStatus,
 } from "@/features/lab/lib/lab-task-ui";
-import type { AsyncTaskStatusDto, LabJobAcceptedDto } from "@/types/api";
+import type { AsyncTaskStatusDto, LabJobAcceptedDto, LabJobLiveConnectionState } from "@/types/api";
 import { useTranslations } from "next-intl";
 
 type LabJobPanelProps = {
   accepted: LabJobAcceptedDto | null;
   taskStatus: AsyncTaskStatusDto | null;
-  /** Shown while waiting for first poll/SSE tick */
+  /** Shown while waiting for first SSE tick */
   queuedHint?: boolean;
-  /** User aborted local wait; server job may still run */
+  /** Legacy local abort flag — mapped to reconnecting copy, not a destructive error */
   stoppedWaiting?: boolean;
+  /** Canonical live stream connection state from {@link useLabJobLiveEvents}. */
+  connectionState?: LabJobLiveConnectionState | null;
   /** Monotonic seconds since async watch began (local UI clock). */
   watchElapsedSeconds?: number;
+  onResumeLive?: () => void;
 };
 
 /**
@@ -29,22 +32,29 @@ export function LabJobPanel({
   taskStatus,
   queuedHint = false,
   stoppedWaiting = false,
+  connectionState = null,
   watchElapsedSeconds,
+  onResumeLive,
 }: LabJobPanelProps) {
   const t = useTranslations("Lab");
 
-  if (!accepted && !taskStatus && !stoppedWaiting) {
+  if (!accepted && !taskStatus && !stoppedWaiting && !connectionState) {
     return null;
   }
 
-  const phase = getLabJobUiPhase({ taskStatus, queuedHint, stoppedWaiting });
+  const phase = getLabJobUiPhase({ taskStatus, queuedHint, stoppedWaiting, connectionState });
   const labels = {
+    connecting: t("jobUiConnecting"),
+    live: t("jobUiLive"),
+    reconnecting: t("jobUiReconnecting"),
+    resumed: t("jobUiResumed"),
+    finishedAway: t("jobUiFinishedAway"),
     queued: t("jobUiQueued"),
     running: t("jobUiRunning"),
     completed: t("jobUiCompleted"),
     failed: t("jobUiFailed"),
     cancelled: t("jobUiCancelled"),
-    stoppedWaiting: t("jobUiStoppedWaiting"),
+    stoppedWaiting: t("jobUiReconnecting"),
     unknownRunning: t("jobUiUnknownRunning"),
   };
   const statusLabel = getLabJobStatusLabel(phase, labels);
@@ -61,6 +71,10 @@ export function LabJobPanel({
       ? taskStatus.errorMessage.trim().slice(0, 280)
       : null;
 
+  const showResumeCta =
+    onResumeLive != null &&
+    (phase === "reconnecting" || phase === "stopped_waiting" || phase === "finished_away");
+
   return (
     <div className="bg-muted/30 space-y-3 rounded-md border p-3 text-sm" data-testid="lab-job-panel">
       {phase !== "idle" ? (
@@ -69,12 +83,20 @@ export function LabJobPanel({
           {friendlyFailure ? (
             <output className="text-muted-foreground block text-xs">{friendlyFailure}</output>
           ) : null}
+          {showResumeCta ? (
+            <Button type="button" variant="outline" size="sm" className="h-7 w-fit text-xs" onClick={onResumeLive}>
+              {t("jobRecoveryResumeHere")}
+            </Button>
+          ) : null}
           {watchElapsedSeconds != null &&
           watchElapsedSeconds >= 0 &&
-          (phase === "queued" ||
+          (phase === "connecting" ||
+            phase === "live" ||
+            phase === "queued" ||
             phase === "running" ||
             phase === "unknown_running" ||
-            phase === "stopped_waiting") ? (
+            phase === "reconnecting" ||
+            phase === "resumed") ? (
             <p className="text-muted-foreground text-xs" data-testid="lab-job-elapsed">
               {t("jobElapsedWatching", { sec: watchElapsedSeconds })}
             </p>
@@ -116,8 +138,6 @@ export function LabJobPanel({
             ) : null}
           </div>
         </details>
-      ) : stoppedWaiting ? (
-        <p className="text-muted-foreground text-xs">{t("jobStoppedWaitingNoId")}</p>
       ) : null}
 
       {taskStatus?.progressText ? (

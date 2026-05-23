@@ -22,14 +22,14 @@ describe("getLabJobUiPhase", () => {
     expect(getLabJobUiPhase({ taskStatus: null, queuedHint: true, stoppedWaiting: false })).toBe("queued");
   });
 
-  it("prefers stopped_waiting over task status", () => {
+  it("maps legacy stoppedWaiting flag to reconnecting phase", () => {
     expect(
       getLabJobUiPhase({
         taskStatus: task({ status: "RUNNING", terminal: false }),
         queuedHint: false,
         stoppedWaiting: true,
       }),
-    ).toBe("stopped_waiting");
+    ).toBe("reconnecting");
   });
 
   it("maps terminal SUCCEEDED", () => {
@@ -88,7 +88,7 @@ describe("labPhaseToTraceStatus", () => {
     expect(labPhaseToTraceStatus("completed")).toBe("success");
   });
 
-  it("maps stopped_waiting to warning", () => {
-    expect(labPhaseToTraceStatus("stopped_waiting")).toBe("warning");
+  it("maps reconnecting to warning", () => {
+    expect(labPhaseToTraceStatus("reconnecting")).toBe("warning");
   });
 });

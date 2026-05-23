@@ -1,5 +1,5 @@
 import { pollLabJob } from "@/lib/async-task";
-import { streamLabJob } from "@/lib/lab-job-sse";
+import { streamLabJob, streamLabJobLive, type LabJobStreamCallbacks } from "@/lib/lab-job-sse";
 import type { AsyncTaskStatusDto, LabJobAcceptedDto } from "@/types/api";
 
 export type LabJobFollowMode = "poll" | "sse";
@@ -18,11 +18,29 @@ export async function followLabJob(
     throwOnFailed?: boolean;
     /** Polling mode only — caps local watch duration; server job may continue. */
     maxWaitMs?: number;
+    /** SSE resume cursor for reconnect (`?since=eventId`). */
+    sinceEventId?: number | null;
+    /** When true, SSE uses auto reconnect/backoff with poll fallback. */
+    liveReconnect?: boolean;
+    callbacks?: LabJobStreamCallbacks;
   },
 ): Promise<AsyncTaskStatusDto> {
-  const mode = options?.mode ?? "poll";
+  const mode = options?.mode ?? "sse";
+  if (mode === "sse" && options?.liveReconnect) {
+    return streamLabJobLive(accepted.streamPath, {
+      signal: options?.signal,
+      sinceEventId: options?.sinceEventId,
+      callbacks: {
+        ...options?.callbacks,
+        onTaskTick: onTick,
+      },
+    });
+  }
   if (mode === "sse") {
-    return streamLabJob(accepted.streamPath, onTick, { signal: options?.signal });
+    return streamLabJob(accepted.streamPath, onTick, {
+      signal: options?.signal,
+      sinceEventId: options?.sinceEventId,
+    });
   }
   return pollLabJob(accepted.jobId, onTick, {
     signal: options?.signal,

@@ -141,7 +141,7 @@ describe("computeLabActiveJobRecovery", () => {
     }
   });
 
-  it("defaults follow mode to poll when draft has no preference", () => {
+  it("defaults follow mode to sse when draft has no preference", () => {
     const job = activeJob({ jobId: "job-2", benchmarkKind: "EMBEDDING_RETRIEVAL" });
     const d = computeLabActiveJobRecovery({
       sectionKey: "evaluation-embedding",
@@ -155,7 +155,7 @@ describe("computeLabActiveJobRecovery", () => {
     });
     expect(d.kind).toBe("auto_follow");
     if (d.kind === "auto_follow") {
-      expect(d.candidate.resolvedFollowMode).toBe("poll");
+      expect(d.candidate.resolvedFollowMode).toBe("sse");
     }
   });
 
@@ -304,14 +304,14 @@ describe("activeJobMatchesCard", () => {
     expect(activeJobMatchesCard(j, "LLM_JUDGE_QA", null)).toBe(true);
   });
 
-  it("rejects project-scoped job when card has no project", () => {
+  it("rejects project-scoped job when card active project differs", () => {
     const j = activeJob({ jobId: "x", benchmarkKind: "LLM_JUDGE_QA", projectId: "550e8400-e29b-41d4-a716-446655440099" });
-    expect(activeJobMatchesCard(j, "LLM_JUDGE_QA", null)).toBe(false);
+    expect(activeJobMatchesCard(j, "LLM_JUDGE_QA", "550e8400-e29b-41d4-a716-446655440001")).toBe(false);
   });
 
-  it("rejects global job when card is project-scoped", () => {
-    const j = activeJob({ jobId: "x", benchmarkKind: "LLM_JUDGE_QA", projectId: null });
-    expect(activeJobMatchesCard(j, "LLM_JUDGE_QA", "550e8400-e29b-41d4-a716-446655440099")).toBe(false);
+  it("accepts project-scoped job when card has no active project", () => {
+    const j = activeJob({ jobId: "x", benchmarkKind: "LLM_JUDGE_QA", projectId: "550e8400-e29b-41d4-a716-446655440099" });
+    expect(activeJobMatchesCard(j, "LLM_JUDGE_QA", null)).toBe(true);
   });
 
   it("accepts when both have same project id regardless of casing/whitespace", () => {

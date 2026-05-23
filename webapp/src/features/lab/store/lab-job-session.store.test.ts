@@ -92,7 +92,7 @@ describe("useLabJobSessionStore", () => {
     expect(useLabJobSessionStore.getState().records.length).toBeLessThanOrEqual(5);
   });
 
-  it("stores evaluationRunId when canonical benchmark accepts", () => {
+  it("stores evaluationRunId when typed benchmark accepts", () => {
     useLabJobSessionStore.getState().upsertLabJobOnAccepted({
       accepted: acc("bench-1"),
       sectionKey: "evaluation-embedding",

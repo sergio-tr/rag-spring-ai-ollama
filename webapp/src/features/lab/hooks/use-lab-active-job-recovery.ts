@@ -72,10 +72,11 @@ export function activeJobMatchesCard(
 
   const jp = norm(job.projectId);
   const cp = norm(activeProjectId);
-  if (cp && jp) return cp === jp;
-  if (cp && !jp) return false;
-  if (!cp && jp) return false;
-  return true;
+  // Lab-only jobs (no project) always match — LAB must not require an active project.
+  if (!jp) return true;
+  // Project-scoped job: match when card has no active project or the same project.
+  if (!cp) return true;
+  return cp === jp;
 }
 
 function parseInstantMs(iso: string | null | undefined): number | null {
@@ -143,7 +144,7 @@ export function computeLabActiveJobRecovery(params: LabActiveJobRecoveryInputs):
     return { kind: "none" };
   }
 
-  const resolvedFollowMode: LabJobFollowMode = params.draftFollowMode === "sse" ? "sse" : "poll";
+  const resolvedFollowMode: LabJobFollowMode = params.draftFollowMode === "poll" ? "poll" : "sse";
 
   if (params.backendActiveJobsLoading) {
     return { kind: "none" };
@@ -228,7 +229,7 @@ export function useLabActiveJobRecovery(params: LabActiveJobRecoveryInputs): Lab
       backendActiveJobsError,
       sessionRecords,
     });
-    const resolvedFollowMode: LabJobFollowMode = draftFollowMode === "sse" ? "sse" : "poll";
+    const resolvedFollowMode: LabJobFollowMode = draftFollowMode === "poll" ? "poll" : "sse";
     return { decision, resolvedFollowMode };
   }, [
     sectionKey,

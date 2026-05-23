@@ -54,7 +54,7 @@ describe("LabJobPanel", () => {
         <LabJobPanel accepted={accepted} taskStatus={runningTask} stoppedWaiting />
       </IntlTestProvider>,
     );
-    expect(screen.getByRole("status")).toHaveTextContent(/Stopped waiting/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/Reconnecting to live updates/i);
   });
 
   it("shows queued chip before first poll tick", () => {
@@ -118,7 +118,7 @@ describe("LabJobPanel", () => {
         <LabJobPanel accepted={accepted} taskStatus={runningTask} />
       </IntlTestProvider>,
     );
-    await user.click(screen.getByText(/Technical details/i));
+    await user.click(screen.getByText(/Developer details/i));
     expect(screen.getByText("/p")).toBeInTheDocument();
   });
 });
