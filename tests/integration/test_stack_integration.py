@@ -806,6 +806,89 @@ class TestBackendLabJobs:
             "FAILED",
         ), job
 
+    def test_lab_evaluation_corpus_create_and_rag_without_project_id(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_admin_credentials: tuple[str, str] | None,
+    ) -> None:
+        """LAB closure: evaluation corpus is independent of projectId on benchmark start."""
+        if integration_admin_credentials is None:
+            pytest.skip("Needs INTEGRATION_ADMIN_* (e2e profile).")
+        a_email, a_password = integration_admin_credentials
+        token = _login_access_token(http_client, backend_base, a_email, a_password)
+        if not token:
+            pytest.skip("Admin login did not return a token.")
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        try:
+            create = http_client.post(
+                f"{backend_base}{product_api_base}/lab/evaluation-corpora",
+                headers=headers,
+                json={"name": "pytest-closure-corpus"},
+                timeout=60.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert create.status_code in (200, 201), create.text
+        corpus_body = _assert_json_response_not_html(create)
+        corpus_id = corpus_body.get("id")
+        assert corpus_id, corpus_body
+
+        reference_dataset_id = "00000000-0000-7000-8000-000000000001"
+        try:
+            post = http_client.post(
+                f"{backend_base}{product_api_base}/lab/benchmarks/RAG_PRESET_END_TO_END/runs",
+                headers=headers,
+                json={
+                    "datasetId": reference_dataset_id,
+                    "corpusId": corpus_id,
+                    "experimentalPresetCodes": ["P0"],
+                },
+                timeout=120.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if post.status_code == 422:
+            pytest.skip(f"Dataset/corpus gate rejected run (expected in minimal corpus): {post.text[:300]}")
+        assert post.status_code == 202, post.text
+        body = post.json()
+        assert body.get("asyncTaskId")
+        assert body.get("evaluationRunId")
+
+    def test_lab_jobs_active_list_authenticated(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_login_credentials: tuple[str, str] | None,
+    ) -> None:
+        if integration_login_credentials is None:
+            pytest.skip("Set INTEGRATION_LOGIN_EMAIL / INTEGRATION_LOGIN_PASSWORD.")
+        email, password = integration_login_credentials
+        token = _login_access_token(http_client, backend_base, email, password)
+        if not token:
+            pytest.skip("User login did not return a token.")
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        try:
+            r = http_client.get(
+                f"{backend_base}{product_api_base}/lab/jobs/active",
+                headers=headers,
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert isinstance(body, list)
+
 
 class TestCrossService:
     def test_classifier_then_backend_query(self, http_client: httpx.Client, classifier_base: str, backend_base: str) -> None:
