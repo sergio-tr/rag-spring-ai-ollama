@@ -11,6 +11,7 @@ import {
   getRagApiProductPrefix,
   getSafeApiErrorMessage,
   onApiUnauthorized,
+  oauthGoogleStartHref,
   resolveBrowserProductApiUrl,
   sanitizePlainErrorTextForUi,
 } from "./api-client";
@@ -170,6 +171,59 @@ describe("apiFetch", () => {
   it("resolveBrowserProductApiUrl prefixes trimmed absolute base", () => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://127.0.0.1:9000/");
     expect(resolveBrowserProductApiUrl("/api/v5/me")).toBe("http://127.0.0.1:9000/api/v5/me");
+    vi.unstubAllEnvs();
+  });
+
+  it("resolveBrowserProductApiUrl uses same-origin path on reverse-proxy TLS port despite baked :9000", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://127.0.0.1:9000");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "https:",
+        port: "8444",
+        origin: "https://localhost:8444",
+        pathname: "/en/login",
+      },
+    });
+    expect(resolveBrowserProductApiUrl("/api/v5/auth/login")).toBe("/api/v5/auth/login");
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("resolveBrowserProductApiUrl keeps absolute backend URL for direct webapp port without proxy", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://127.0.0.1:9000");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "http:",
+        port: "8081",
+        origin: "http://localhost:8081",
+        pathname: "/en/login",
+      },
+    });
+    expect(resolveBrowserProductApiUrl("/api/v5/auth/login")).toBe(
+      "http://127.0.0.1:9000/api/v5/auth/login",
+    );
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("oauthGoogleStartHref uses same-origin path when API base unset", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
+    expect(oauthGoogleStartHref("en")).toBe("/api/v5/auth/oauth/google/start?locale=en");
+    vi.unstubAllEnvs();
+  });
+
+  it("oauthGoogleStartHref uses same-origin path on reverse-proxy TLS port despite baked :9000 base", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://127.0.0.1:9000");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "https:",
+        port: "8444",
+        origin: "https://localhost:8444",
+        pathname: "/en/login",
+      },
+    });
+    expect(oauthGoogleStartHref("en")).toBe("/api/v5/auth/oauth/google/start?locale=en");
+    vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
 

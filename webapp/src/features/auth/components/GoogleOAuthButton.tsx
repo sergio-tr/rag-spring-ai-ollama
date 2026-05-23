@@ -1,8 +1,9 @@
 "use client";
 
-import { authApiPath, resolveBrowserProductApiUrl } from "@/lib/api-client";
+import { authApiPath, oauthGoogleStartHref } from "@/lib/api-client";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
 
 type Props = Readonly<{
   /** Active next-intl locale (sent as query param to the backend OAuth start endpoint). */
@@ -53,11 +54,16 @@ function GoogleGIcon({ className }: GoogleGIconProps) {
  * backend route that returns 302 to Google. Locale-aware {@code Link} would prepend {@code /{locale}/}
  * to internal-looking paths and break with {@code /en/api/v5/...} (404).
  *
- * Uses {@link resolveBrowserProductApiUrl}: path-only when {@code NEXT_PUBLIC_API_BASE_URL} is empty (nginx same-origin),
- * absolute backend URL when that env points at Spring (needed if you browse {@code WEBAPP_HTTP_PORT} alone).
+ * Uses {@link oauthGoogleStartHref} so reverse-proxy HTTPS entrypoints work even when a stale build
+ * baked {@code NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:9000}.
  */
 export function GoogleOAuthButton({ locale, label }: Props) {
-  const href = `${resolveBrowserProductApiUrl(authApiPath("/oauth/google/start"))}?locale=${encodeURIComponent(locale)}`;
+  const relativeFallback = `${authApiPath("/oauth/google/start")}?locale=${encodeURIComponent(locale)}`;
+  const [href, setHref] = useState(relativeFallback);
+
+  useEffect(() => {
+    setHref(oauthGoogleStartHref(locale));
+  }, [locale]);
 
   return (
     <a

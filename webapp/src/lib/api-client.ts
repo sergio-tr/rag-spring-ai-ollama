@@ -48,18 +48,48 @@ export function authApiPath(path: string): string {
   return `${RAG_API_PRODUCT_PREFIX}/auth${p}`;
 }
 
+/** Host ports where nginx terminates TLS/HTTP and routes ${RAG_API_PRODUCT_PREFIX} to Spring. */
+const REVERSE_PROXY_BROWSER_PORTS = new Set(["80", "8080", "443", "8443", "8444"]);
+
+function browserUsesReverseProxyProductApi(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const port =
+    window.location.port || (window.location.protocol === "https:" ? "443" : "80");
+  return REVERSE_PROXY_BROWSER_PORTS.has(port);
+}
+
 /**
- * Full browser URL for product API paths (e.g. OAuth redirects using `<a href>`).
- * When `NEXT_PUBLIC_API_BASE_URL` is empty/whitespace, returns a same-origin path for nginx reverse-proxy.
- * When set (e.g. `http://127.0.0.1:9000`), prefixes so navigation works if the UI is opened on the webapp port only.
+ * Full browser URL for product API paths (`fetch`, OAuth `<a href>`, etc.).
+ * Same-origin path when `NEXT_PUBLIC_API_BASE_URL` is empty or the UI is on a reverse-proxy port,
+ * even if an older Docker image baked `http://127.0.0.1:9000` (avoids mixed content / CORS noise).
  */
 export function resolveBrowserProductApiUrl(path: string): string {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const trimmed = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
-  if (!trimmed) {
+  const baked = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+  if (!baked) {
     return normalizedPath;
   }
-  return `${trimmed}${normalizedPath}`;
+  if (typeof window !== "undefined") {
+    try {
+      if (new URL(baked).origin === window.location.origin) {
+        return normalizedPath;
+      }
+    } catch {
+      return normalizedPath;
+    }
+    if (browserUsesReverseProxyProductApi()) {
+      return normalizedPath;
+    }
+  }
+  return `${baked}${normalizedPath}`;
+}
+
+/** Full-page navigation URL for Google OAuth start (`<a href>`, not `fetch`). */
+export function oauthGoogleStartHref(locale: string): string {
+  const path = authApiPath("/oauth/google/start");
+  return `${resolveBrowserProductApiUrl(path)}?locale=${encodeURIComponent(locale)}`;
 }
 
 function resolveApiUrl(path: string): string {
