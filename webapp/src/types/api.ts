@@ -108,6 +108,18 @@ export type ProjectDocumentDto = {
   storagePresent: boolean;
 };
 
+export type EvaluationCorpusSummaryDto = {
+  id: string;
+  name: string;
+  sourceType: string;
+  documentCount: number;
+  readyCount: number;
+  failedCount: number;
+  documents: ProjectDocumentDto[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ConversationDto = {
   id: string;
   title: string;
@@ -246,7 +258,23 @@ export type AdminModelCheckResponse = {
   checkedAt: string;
   errorCode: string | null;
   errorMessage: string | null;
+  technicalDetail: string | null;
   pullSummary: string | null;
+};
+
+export type AdminModelUpdateRequest = {
+  displayName?: string | null;
+  modelType?: "LLM" | "EMBEDDING";
+  enabled?: boolean;
+  tags?: string[] | null;
+};
+
+export type AdminModelDeleteResponse = {
+  id: string;
+  modelId: string;
+  modelType: "LLM" | "EMBEDDING";
+  outcome: "DELETED" | "DISABLED";
+  message: string;
 };
 
 export type AdminModelUpsertRequest = {
@@ -378,6 +406,8 @@ export type BenchmarkJobAcceptedDto = {
 
 export type StartBenchmarkRunRequest = {
   datasetId: string;
+  /** Required for RAG/embedding benchmarks that need attached evaluation documents. */
+  corpusId?: string | null;
   projectId?: string | null;
   runKind?: "SCIENCE" | "PRODUCT_EXPLORATION" | "ADMIN_BASELINE";
   name?: string | null;
@@ -563,6 +593,30 @@ export type AsyncTaskStatusDto = {
   /** Stable backend error code when a job fails (e.g. CHAT_DOCUMENT_SCOPE_EMPTY). */
   failureCode?: string | null;
 };
+
+/** Canonical Lab job SSE event (`GET …/lab/jobs/{id}/events`). */
+export type LabJobEventDto = {
+  eventId: number;
+  jobId: string;
+  type: string;
+  status: string | null;
+  progress: string | null;
+  message: string | null;
+  timestamp: string;
+  payload: Record<string, unknown> | null;
+};
+
+/** Live stream UX states for Lab job panels and banners. */
+export type LabJobLiveConnectionState =
+  | "idle"
+  | "connecting"
+  | "live"
+  | "reconnecting"
+  | "resumed"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "finished_away";
 
 export type ChatSourceDto = {
   documentId: string | null;
