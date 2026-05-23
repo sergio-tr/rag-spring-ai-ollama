@@ -38,6 +38,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import httpx
 import pytest
@@ -181,6 +182,65 @@ def _login_access_token(
         return None
     token = data.get("accessToken")
     return str(token) if token else None
+
+
+# Shipped with rag-service unit tests; small PDF for Lab evaluation corpus upload.
+_LAB_CORPUS_FIXTURE_PDF = (
+    Path(__file__).resolve().parents[2]
+    / "rag-service"
+    / "src"
+    / "test"
+    / "resources"
+    / "docs"
+    / "bootstrap-acta.pdf"
+)
+
+
+def _lab_auth_headers(token: str, *, json_body: bool = True) -> dict[str, str]:
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    if json_body:
+        headers["Content-Type"] = "application/json"
+    return headers
+
+
+def _lab_create_evaluation_corpus_with_document(
+    http_client: httpx.Client,
+    backend_base: str,
+    product_api_base: str,
+    token: str,
+    *,
+    corpus_name: str,
+) -> str:
+    """
+    Create a Lab evaluation corpus and attach one document (required for RAG_PRESET_END_TO_END runs).
+    """
+    headers = _lab_auth_headers(token)
+    create = http_client.post(
+        f"{backend_base}{product_api_base}/lab/evaluation-corpora",
+        headers=headers,
+        json={"name": corpus_name},
+        timeout=60.0,
+    )
+    assert create.status_code in (200, 201), create.text
+    corpus_body = _assert_json_response_not_html(create)
+    corpus_id = corpus_body.get("id")
+    assert corpus_id, corpus_body
+
+    if not _LAB_CORPUS_FIXTURE_PDF.is_file():
+        pytest.skip(f"Lab corpus fixture missing: {_LAB_CORPUS_FIXTURE_PDF}")
+
+    upload_headers = _lab_auth_headers(token, json_body=False)
+    with _LAB_CORPUS_FIXTURE_PDF.open("rb") as pdf:
+        upload = http_client.post(
+            f"{backend_base}{product_api_base}/lab/evaluation-corpora/{corpus_id}/documents/upload",
+            headers=upload_headers,
+            files={"file": ("bootstrap-acta.pdf", pdf, "application/pdf")},
+            timeout=120.0,
+        )
+    assert upload.status_code == 200, upload.text
+    upload_body = _assert_json_response_not_html(upload)
+    assert (upload_body.get("documentCount") or 0) >= 1, upload_body
+    return str(corpus_id)
 
 
 class TestClassifierService:
@@ -764,18 +824,29 @@ class TestBackendLabJobs:
             raise
         if not token:
             pytest.skip("Admin login did not return a token (check INTEGRATION_ADMIN_* / e2e seeder).")
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
+        headers = _lab_auth_headers(token)
         # V42__seed_reference_evaluation_dataset.sql — REFERENCE_BUNDLE, SYSTEM_DATASET (ADMIN scope).
         reference_dataset_id = "00000000-0000-7000-8000-000000000001"
+        try:
+            corpus_id = _lab_create_evaluation_corpus_with_document(
+                http_client,
+                backend_base,
+                product_api_base,
+                token,
+                corpus_name="pytest-rag-preset-corpus",
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
         try:
             post = http_client.post(
                 f"{backend_base}{product_api_base}/lab/benchmarks/RAG_PRESET_END_TO_END/runs",
                 headers=headers,
-                json={"datasetId": reference_dataset_id},
+                json={
+                    "datasetId": reference_dataset_id,
+                    "corpusId": corpus_id,
+                    "experimentalPresetCodes": ["P0"],
+                },
                 timeout=120.0,
             )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
@@ -820,25 +891,18 @@ class TestBackendLabJobs:
         token = _login_access_token(http_client, backend_base, a_email, a_password)
         if not token:
             pytest.skip("Admin login did not return a token.")
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
+        headers = _lab_auth_headers(token)
         try:
-            create = http_client.post(
-                f"{backend_base}{product_api_base}/lab/evaluation-corpora",
-                headers=headers,
-                json={"name": "pytest-closure-corpus"},
-                timeout=60.0,
+            corpus_id = _lab_create_evaluation_corpus_with_document(
+                http_client,
+                backend_base,
+                product_api_base,
+                token,
+                corpus_name="pytest-closure-corpus",
             )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _skip_if_unreachable(e)
             raise
-        assert create.status_code in (200, 201), create.text
-        corpus_body = _assert_json_response_not_html(create)
-        corpus_id = corpus_body.get("id")
-        assert corpus_id, corpus_body
 
         reference_dataset_id = "00000000-0000-7000-8000-000000000001"
         try:
@@ -867,11 +931,9 @@ class TestBackendLabJobs:
         http_client: httpx.Client,
         backend_base: str,
         product_api_base: str,
-        integration_login_credentials: tuple[str, str] | None,
+        integration_seed_credentials: tuple[str, str],
     ) -> None:
-        if integration_login_credentials is None:
-            pytest.skip("Set INTEGRATION_LOGIN_EMAIL / INTEGRATION_LOGIN_PASSWORD.")
-        email, password = integration_login_credentials
+        email, password = integration_seed_credentials
         token = _login_access_token(http_client, backend_base, email, password)
         if not token:
             pytest.skip("User login did not return a token.")
