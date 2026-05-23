@@ -25,9 +25,36 @@ public final class KnowledgeChunkMetadataFactory {
             int chunkIndex,
             int totalChunks,
             String documentIdHash) {
+        return buildV2(
+                corpusScope,
+                documentId,
+                projectId,
+                conversationId,
+                indexSnapshotId,
+                indexSignatureHashHex,
+                filename,
+                chunkIndex,
+                totalChunks,
+                documentIdHash,
+                false);
+    }
+
+    public static Map<String, Object> buildV2(
+            CorpusScope corpusScope,
+            UUID documentId,
+            UUID projectId,
+            UUID conversationId,
+            UUID indexSnapshotId,
+            String indexSignatureHashHex,
+            String filename,
+            int chunkIndex,
+            int totalChunks,
+            String documentIdHash,
+            boolean truncatedForEmbed) {
         Map<String, Object> m = new HashMap<>();
         m.put("corpusScope", corpusScope.name());
         m.put("documentId", documentId.toString());
+        m.put("sourceDocumentId", documentId.toString());
         if (projectId != null) {
             m.put("projectId", projectId.toString());
         }
@@ -42,6 +69,9 @@ public final class KnowledgeChunkMetadataFactory {
         m.put("chunkIndex", chunkIndex);
         m.put("totalChunks", totalChunks);
         m.put("projectDocumentId", documentId.toString());
+        if (truncatedForEmbed) {
+            m.put("truncated", true);
+        }
         if (documentIdHash != null) {
             m.put("document_id", documentIdHash);
         }

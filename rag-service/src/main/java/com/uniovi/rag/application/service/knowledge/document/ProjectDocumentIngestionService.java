@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.knowledge.document;
 
+import com.uniovi.rag.application.service.knowledge.IndexingEmbeddingGuard;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
@@ -22,16 +23,24 @@ public class ProjectDocumentIngestionService extends AbstractDocumentService {
 
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final KnowledgeIngestionService knowledgeIngestionService;
+    private final IndexingEmbeddingGuard indexingEmbeddingGuard;
 
     public ProjectDocumentIngestionService(
             PgVectorStore vectorStore,
             ChatClient chatClient,
             JdbcTemplate jdbcTemplate,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
-            KnowledgeIngestionService knowledgeIngestionService) {
+            KnowledgeIngestionService knowledgeIngestionService,
+            IndexingEmbeddingGuard indexingEmbeddingGuard) {
         super(vectorStore, chatClient, jdbcTemplate);
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.knowledgeIngestionService = knowledgeIngestionService;
+        this.indexingEmbeddingGuard = indexingEmbeddingGuard;
+    }
+
+    /** Profile chunk size capped for safe embedding (see {@code rag.indexing.embedding.*}). */
+    public int resolveEmbeddingChunkMaxChars(int profileChunkMaxChars) {
+        return indexingEmbeddingGuard.effectiveEmbedMaxChars(profileChunkMaxChars);
     }
 
     @Override

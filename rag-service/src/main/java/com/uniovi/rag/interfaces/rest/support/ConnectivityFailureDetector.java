@@ -1,5 +1,6 @@
 package com.uniovi.rag.interfaces.rest.support;
 
+import com.uniovi.rag.application.service.knowledge.EmbeddingContextLimitFailures;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -91,23 +92,7 @@ public final class ConnectivityFailureDetector {
     }
 
     public static boolean isContextLimitFailure(Throwable t) {
-        Throwable cur = t;
-        int depth = 0;
-        while (cur != null && depth++ < 32) {
-            String msg = cur.getMessage();
-            if (msg != null) {
-                String lower = msg.toLowerCase();
-                if (lower.contains("input length exceeds the context length")
-                        || lower.contains("exceeds the context length")
-                        || lower.contains("context length")
-                        || (lower.contains("token") && lower.contains("limit"))
-                        || (lower.contains("maximum context") && lower.contains("exceeded"))) {
-                    return true;
-                }
-            }
-            cur = cur.getCause();
-        }
-        return false;
+        return EmbeddingContextLimitFailures.isContextLimitFailure(t);
     }
 
     private static boolean isOllamaModelMissingMessage(String msg) {

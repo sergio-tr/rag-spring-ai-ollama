@@ -22,6 +22,7 @@ import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepositor
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
+import com.uniovi.rag.configuration.RagIndexingEmbeddingProperties;
 import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import java.time.Instant;
 import java.util.List;
@@ -59,6 +60,7 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
                 projectIndexProfileService,
                 new LabIndexProfileOverrideFactory(),
                 embeddingSpaceGuard,
+                new IndexingEmbeddingGuard(new RagIndexingEmbeddingProperties(2048, 400, true, 0.85)),
                 knowledgeIndexSnapshotRepository,
                 transactionManager,
                 null);
@@ -186,7 +188,7 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
                                 Instant.now(),
                                 Instant.now()));
         when(knowledgeSnapshotService.findActiveProjectSnapshot(projectId)).thenReturn(Optional.empty());
-        when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning("bge-m3")).thenReturn(1024);
+        when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning("qwen3-embedding:latest")).thenReturn(1024);
         when(knowledgeIndexSnapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         KnowledgeIndexSnapshotEntity building = mock(KnowledgeIndexSnapshotEntity.class);
@@ -208,7 +210,7 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
                         MaterializationStrategy.HYBRID,
                         800,
                         20,
-                        "bge-m3",
+                        "qwen3-embedding:latest",
                         true,
                         new ReindexImpact(ReindexImpactLevel.HARD_REINDEX, List.of("embedding change")),
                         runConfigSnapId,
@@ -234,7 +236,7 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
                         profileJsonb.capture(),
                         profileHash.capture());
         assertThat(profileJsonb.getValue())
-                .containsEntry("embeddingModelId", "bge-m3")
+                .containsEntry("embeddingModelId", "qwen3-embedding:latest")
                 .containsEntry("materializationStrategy", "HYBRID")
                 .containsEntry("supportsMetadata", true)
                 .containsEntry("chunkMaxChars", 800)
@@ -242,8 +244,8 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
         assertThat(profileHash.getValue())
                 .isEqualTo(
                         ProjectIndexProfile.computeProfileHash(
-                                MaterializationStrategy.HYBRID, true, "meta-v1", "bge-m3", 800, 20));
-        verify(embeddingSpaceGuard).assertFitsPhysicalVectorColumnReturning("bge-m3");
+                                MaterializationStrategy.HYBRID, true, "meta-v1", "qwen3-embedding:latest", 800, 20));
+        verify(embeddingSpaceGuard).assertFitsPhysicalVectorColumnReturning("qwen3-embedding:latest");
     }
 }
 

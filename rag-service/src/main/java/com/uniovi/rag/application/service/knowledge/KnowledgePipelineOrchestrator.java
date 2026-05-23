@@ -62,6 +62,7 @@ public class KnowledgePipelineOrchestrator {
     private final ProjectIndexProfileService projectIndexProfileService;
     private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     private final EmbeddingSpaceGuard embeddingSpaceGuard;
+    private final IndexingEmbeddingGuard indexingEmbeddingGuard;
     private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
     private final TransactionTemplate transactionTemplate;
     private final MeterRegistry meterRegistry;
@@ -75,6 +76,7 @@ public class KnowledgePipelineOrchestrator {
             ProjectIndexProfileService projectIndexProfileService,
             LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
             EmbeddingSpaceGuard embeddingSpaceGuard,
+            IndexingEmbeddingGuard indexingEmbeddingGuard,
             KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
             PlatformTransactionManager transactionManager,
             @Autowired(required = false) MeterRegistry meterRegistry) {
@@ -86,6 +88,7 @@ public class KnowledgePipelineOrchestrator {
         this.projectIndexProfileService = projectIndexProfileService;
         this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
         this.embeddingSpaceGuard = embeddingSpaceGuard;
+        this.indexingEmbeddingGuard = indexingEmbeddingGuard;
         this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.meterRegistry = meterRegistry;
@@ -250,6 +253,12 @@ public class KnowledgePipelineOrchestrator {
 
         MaterializationStrategy strategy = profile.materializationStrategy();
         int chunkMaxChars = profile.chunkMaxChars();
+        int embedMaxChars = indexingEmbeddingGuard.effectiveEmbedMaxChars(chunkMaxChars);
+        log.debug(
+                "Knowledge ingest embed caps projectId={} profileChunkMax={} embedMax={}",
+                projectId,
+                chunkMaxChars,
+                embedMaxChars);
         for (KnowledgeDocumentEntity doc : scopeDocs) {
             try {
                 knowledgeIndexingService.processDocument(

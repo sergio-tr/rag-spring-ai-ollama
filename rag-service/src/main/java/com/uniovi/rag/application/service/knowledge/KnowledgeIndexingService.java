@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -46,18 +47,21 @@ public class KnowledgeIndexingService {
     private final ProjectDocumentIngestionService projectDocumentIngestionService;
     private final BinaryStoragePort binaryStoragePort;
     private final DocumentArtifactRepository documentArtifactRepository;
+    private final IndexingEmbeddingGuard indexingEmbeddingGuard;
 
     public KnowledgeIndexingService(
             PgVectorStoreRegistry vectorStoreRegistry,
             JdbcTemplate jdbcTemplate,
             @Lazy ProjectDocumentIngestionService projectDocumentIngestionService,
             BinaryStoragePort binaryStoragePort,
-            DocumentArtifactRepository documentArtifactRepository) {
+            DocumentArtifactRepository documentArtifactRepository,
+            IndexingEmbeddingGuard indexingEmbeddingGuard) {
         this.vectorStoreRegistry = vectorStoreRegistry;
         this.jdbcTemplate = jdbcTemplate;
         this.projectDocumentIngestionService = projectDocumentIngestionService;
         this.binaryStoragePort = binaryStoragePort;
         this.documentArtifactRepository = documentArtifactRepository;
+        this.indexingEmbeddingGuard = indexingEmbeddingGuard;
     }
 
     /**
@@ -91,6 +95,8 @@ public class KnowledgeIndexingService {
             return;
         }
 
+        int embedMaxChars = indexingEmbeddingGuard.effectiveEmbedMaxChars(effectiveChunkMaxChars);
+
         List<String> chunks;
         if (strategy == MaterializationStrategy.DOCUMENT_LEVEL) {
             chunks = List.of(content);
@@ -112,6 +118,8 @@ public class KnowledgeIndexingService {
         int totalVectors = computeTotalVectorCount(strategy, chunks);
 
         if (strategy == MaterializationStrategy.DOCUMENT_LEVEL) {
+            IndexingEmbeddingGuard.SafeEmbedText safe =
+                    indexingEmbeddingGuard.prepareForEmbedding(content, embedMaxChars);
             Map<String, Object> vm =
                     KnowledgeChunkMetadataFactory.buildV2(
                             doc.getCorpusScope(),
@@ -123,10 +131,13 @@ public class KnowledgeIndexingService {
                             displayName,
                             0,
                             1,
-                            contentHash);
-            vectorDocs.add(new Document(chunks.getFirst(), vm));
+                            contentHash,
+                            safe.truncated());
+            vectorDocs.add(new Document(safe.text(), vm));
         } else {
             for (int i = 0; i < chunks.size(); i++) {
+                IndexingEmbeddingGuard.SafeEmbedText safe =
+                        indexingEmbeddingGuard.prepareForEmbedding(chunks.get(i), embedMaxChars);
                 Map<String, Object> vm =
                         KnowledgeChunkMetadataFactory.buildV2(
                                 doc.getCorpusScope(),
@@ -138,16 +149,16 @@ public class KnowledgeIndexingService {
                                 displayName,
                                 i,
                                 totalVectors,
-                                contentHash);
-                vectorDocs.add(new Document(chunks.get(i), vm));
+                                contentHash,
+                                safe.truncated());
+                vectorDocs.add(new Document(safe.text(), vm));
             }
         }
 
         if (strategy == MaterializationStrategy.HYBRID) {
-            String docSlice =
-                    content.length() > effectiveChunkMaxChars * 4
-                            ? content.substring(0, effectiveChunkMaxChars * 4)
-                            : content;
+            // Dense leg uses embed-safe text; full corpus text remains in CHUNK artifact for audit/lexical context.
+            IndexingEmbeddingGuard.SafeEmbedText safeDoc =
+                    indexingEmbeddingGuard.prepareForEmbedding(content, embedMaxChars);
             Map<String, Object> vmDoc =
                     KnowledgeChunkMetadataFactory.buildV2(
                             doc.getCorpusScope(),
@@ -159,8 +170,9 @@ public class KnowledgeIndexingService {
                             displayName,
                             chunks.size(),
                             totalVectors,
-                            contentHash);
-            vectorDocs.add(new Document(docSlice, vmDoc));
+                            contentHash,
+                            safeDoc.truncated());
+            vectorDocs.add(new Document(safeDoc.text(), vmDoc));
         }
 
         if (!vectorDocs.isEmpty()) {
@@ -169,7 +181,8 @@ public class KnowledgeIndexingService {
                             .orElseThrow(
                                     () -> new IllegalStateException(
                                             "embeddingModelId missing from knowledge_index_snapshot.index_profile_jsonb; cannot embed"));
-            vectorStoreRegistry.forEmbeddingModelId(embeddingModelId).add(vectorDocs);
+            PgVectorStore vectorStore = vectorStoreRegistry.forEmbeddingModelId(embeddingModelId);
+            addVectorsWithEmbedSafety(vectorStore, vectorDocs, effectiveChunkMaxChars);
             // Spring AI PgVectorStore does not automatically populate our optional `vector_store.project_id` column.
             // We keep `metadata.projectId` as-is and also set the column for correct project-scoped retrieval.
             int updated =
@@ -222,6 +235,62 @@ public class KnowledgeIndexingService {
         String sid = indexSnapshotId != null ? indexSnapshotId.toString() : null;
         String sig = (indexSignatureHashHex != null && !indexSignatureHashHex.isBlank()) ? indexSignatureHashHex : null;
         return jdbcTemplate.update(sql, projectId, pid, did, sid, sid, sig, sig);
+    }
+
+    private void addVectorsWithEmbedSafety(
+            PgVectorStore vectorStore, List<Document> vectorDocs, int profileChunkMaxChars) {
+        int embedMaxChars = indexingEmbeddingGuard.effectiveEmbedMaxChars(profileChunkMaxChars);
+        try {
+            vectorStore.add(vectorDocs);
+        } catch (RuntimeException e) {
+            if (!indexingEmbeddingGuard.retryOnContextLength()
+                    || !indexingEmbeddingGuard.isContextLengthFailure(e)) {
+                throw new IllegalStateException(
+                        "Vector embedding failed: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()),
+                        e);
+            }
+            int reducedMax = Math.max(64, embedMaxChars / 2);
+            log.warn(
+                    "Embedding context length exceeded (maxChars={}); retrying with max {} chars per fragment",
+                    embedMaxChars,
+                    reducedMax);
+            List<Document> retried = rebuildDocumentsForReducedEmbedMax(vectorDocs, reducedMax);
+            try {
+                vectorStore.add(retried);
+            } catch (RuntimeException retryEx) {
+                throw new IllegalStateException(
+                        "Vector embedding failed after context-length retry: "
+                                + (retryEx.getMessage() != null ? retryEx.getMessage() : retryEx.getClass().getSimpleName()),
+                        retryEx);
+            }
+        }
+    }
+
+    private List<Document> rebuildDocumentsForReducedEmbedMax(List<Document> vectorDocs, int reducedMax) {
+        List<Document> retried = new ArrayList<>();
+        for (Document doc : vectorDocs) {
+            String raw = doc.getText() != null ? doc.getText() : "";
+            List<String> parts =
+                    raw.length() <= reducedMax
+                            ? List.of(raw)
+                            : projectDocumentIngestionService.splitContentIntoChunks(raw, reducedMax);
+            int partIndex = 0;
+            for (String part : parts) {
+                IndexingEmbeddingGuard.SafeEmbedText safe =
+                        indexingEmbeddingGuard.prepareForEmbedding(part, reducedMax);
+                Map<String, Object> meta = new LinkedHashMap<>(doc.getMetadata());
+                if (safe.truncated() || parts.size() > 1) {
+                    meta.put("truncated", true);
+                }
+                if (parts.size() > 1) {
+                    meta.put("chunkIndex", partIndex);
+                    meta.put("totalChunks", parts.size());
+                }
+                retried.add(new Document(safe.text(), meta));
+                partIndex++;
+            }
+        }
+        return retried;
     }
 
     private static int computeTotalVectorCount(MaterializationStrategy strategy, List<String> chunks) {

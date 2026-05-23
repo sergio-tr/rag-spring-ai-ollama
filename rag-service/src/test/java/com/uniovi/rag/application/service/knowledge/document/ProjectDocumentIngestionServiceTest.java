@@ -1,6 +1,8 @@
 package com.uniovi.rag.application.service.knowledge.document;
 
+import com.uniovi.rag.application.service.knowledge.IndexingEmbeddingGuard;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
+import com.uniovi.rag.configuration.RagIndexingEmbeddingProperties;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import java.nio.file.Files;
@@ -33,7 +35,7 @@ class ProjectDocumentIngestionServiceTest {
         KnowledgeIngestionService ingestion = mock(KnowledgeIngestionService.class);
 
         ProjectDocumentIngestionService sut =
-                new ProjectDocumentIngestionService(vs, chatClient, jdbc, repo, ingestion);
+                new ProjectDocumentIngestionService(vs, chatClient, jdbc, repo, ingestion, new IndexingEmbeddingGuard(new RagIndexingEmbeddingProperties(2048, 400, true, 0.85)));
 
         UUID docId = UUID.randomUUID();
         Path temp = Files.createTempFile("projdoc-", ".txt");
@@ -56,7 +58,7 @@ class ProjectDocumentIngestionServiceTest {
         KnowledgeIngestionService ingestion = mock(KnowledgeIngestionService.class);
 
         ProjectDocumentIngestionService sut =
-                new ProjectDocumentIngestionService(vs, chatClient, jdbc, repo, ingestion);
+                new ProjectDocumentIngestionService(vs, chatClient, jdbc, repo, ingestion, new IndexingEmbeddingGuard(new RagIndexingEmbeddingProperties(2048, 400, true, 0.85)));
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -81,7 +83,7 @@ class ProjectDocumentIngestionServiceTest {
         KnowledgeIngestionService ingestion = mock(KnowledgeIngestionService.class);
 
         ProjectDocumentIngestionService sut =
-                new ProjectDocumentIngestionService(vs, chatClient, jdbc, repo, ingestion);
+                new ProjectDocumentIngestionService(vs, chatClient, jdbc, repo, ingestion, new IndexingEmbeddingGuard(new RagIndexingEmbeddingProperties(2048, 400, true, 0.85)));
 
         UUID docId = UUID.randomUUID();
         sut.deleteVectorChunksForProjectDocument(docId);
@@ -98,7 +100,7 @@ class ProjectDocumentIngestionServiceTest {
         KnowledgeIngestionService ingestion = mock(KnowledgeIngestionService.class);
 
         ProjectDocumentIngestionService sut =
-                new ProjectDocumentIngestionService(vs, chatClient, jdbc, repo, ingestion);
+                new ProjectDocumentIngestionService(vs, chatClient, jdbc, repo, ingestion, new IndexingEmbeddingGuard(new RagIndexingEmbeddingProperties(2048, 400, true, 0.85)));
 
         MultipartFile file = mock(MultipartFile.class);
         assertThatThrownBy(() -> sut.processDocument(file)).isInstanceOf(UnsupportedOperationException.class);

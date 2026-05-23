@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
 @Configuration
-@EnableConfigurationProperties(RagVectorProperties.class)
+@EnableConfigurationProperties({RagVectorProperties.class, RagIndexingEmbeddingProperties.class})
 @Import({
     RagRetrievalConfiguration.class,
     RagToolsBeanConfiguration.class,

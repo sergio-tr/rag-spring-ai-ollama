@@ -34,9 +34,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
+import com.uniovi.rag.configuration.RagIndexingEmbeddingProperties;
 
 @ExtendWith(MockitoExtension.class)
 class KnowledgePipelineOrchestratorTest {
+
+    private static IndexingEmbeddingGuard defaultEmbeddingGuard() {
+        return new IndexingEmbeddingGuard(new RagIndexingEmbeddingProperties(2048, 400, true, 0.85));
+    }
 
     @Mock private JdbcTemplate jdbcTemplate;
     @Mock private KnowledgeDocumentRepository knowledgeDocumentRepository;
@@ -77,6 +82,7 @@ class KnowledgePipelineOrchestratorTest {
                         projectIndexProfileService,
                         mock(LabIndexProfileOverrideFactory.class),
                         embeddingSpaceGuard,
+                        defaultEmbeddingGuard(),
                         knowledgeIndexSnapshotRepository,
                         transactionManager,
                         null);
@@ -102,6 +108,7 @@ class KnowledgePipelineOrchestratorTest {
                         projectIndexProfileService,
                         mock(LabIndexProfileOverrideFactory.class),
                         embeddingSpaceGuard,
+                        defaultEmbeddingGuard(),
                         knowledgeIndexSnapshotRepository,
                         transactionManager,
                         null);
@@ -132,6 +139,7 @@ class KnowledgePipelineOrchestratorTest {
                         projectIndexProfileService,
                         mock(LabIndexProfileOverrideFactory.class),
                         embeddingSpaceGuard,
+                        defaultEmbeddingGuard(),
                         knowledgeIndexSnapshotRepository,
                         transactionManager,
                         null);
