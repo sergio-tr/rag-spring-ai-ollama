@@ -240,6 +240,9 @@ if [ "$MODE" = dev ]; then
     COMPOSE_FILES+=(-f "compose.dev.yml")
   fi
   # webapp ordering dependency is now part of compose.dev.yml
+  if [ "$WITH_RAG_BACKEND" = true ] && [ "$WITH_DEV_PROXY" != true ]; then
+    COMPOSE_FILES+=(-f "compose.dev-direct-ports.yml")
+  fi
   [ "$WITH_DEV_PROXY" = true ] && [ "$WITH_RAG_BACKEND" = true ] && COMPOSE_FILES+=(-f "compose.dev-proxy.yml")
   [ "$WITH_OBS" = true ]        && COMPOSE_FILES+=(-f "compose.obs.yml")
   if [ "$WITH_NVIDIA" = true ] && [ "$WITH_CLASSIFIER_GPU" = true ]; then

@@ -2,12 +2,6 @@
 # Enable with ./docker/scripts/docker-compose.sh up dev --rag --proxy (adds --profile proxy).
 
 services:
-  backend-dev:
-    ports: []
-
-  webapp:
-    ports: []
-
   reverse-proxy:
     profiles:
       - proxy

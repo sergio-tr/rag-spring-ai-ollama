@@ -50,8 +50,7 @@ services:
     env_file:
       - ../db/.env
       - ../rag-service/.env
-    ports:
-      - "${BACKEND_PORT:-9000}:${SERVER_PORT:-9000}"
+    # Host ports: compose.dev-direct-ports.yml when not using --proxy.
     environment:
       SERVER_PORT: ${SERVER_PORT:-9000}
       RAG_DEV_POLL_INTERVAL: ${RAG_DEV_POLL_INTERVAL:-2}
