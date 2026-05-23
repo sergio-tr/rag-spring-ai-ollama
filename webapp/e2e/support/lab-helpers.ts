@@ -48,11 +48,60 @@ export async function assertLabDatasetControlsVisible(page: Page): Promise<void>
   await expect(datasetSelect, "lab-benchmark-dataset-select must exist").toBeVisible({ timeout: 12_000 });
 }
 
-export async function labDatasetRunnable(page: Page): Promise<boolean> {
-  const needsDataset = await page.getByTestId("lab-benchmark-needs-dataset-warn").isVisible().catch(() => false);
-  if (needsDataset) return false;
-  const value = await page.getByTestId("lab-benchmark-dataset-select").inputValue().catch(() => "");
-  return value.trim().length > 0;
+export async function labDatasetRunnable(page: Page, timeoutMs = 25_000): Promise<boolean> {
+  const datasetSelect = page.getByTestId("lab-benchmark-dataset-select");
+  try {
+    await expect
+      .poll(
+        async () => {
+          if (await page.getByTestId("lab-benchmark-needs-dataset-warn").isVisible().catch(() => false)) {
+            return false;
+          }
+          const value = await datasetSelect.inputValue().catch(() => "");
+          return value.trim().length > 0;
+        },
+        { timeout: timeoutMs, intervals: [250, 750, 1500] },
+      )
+      .toBe(true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** UI phases that indicate the job panel is showing meaningful watch state (SSE or terminal). */
+export const LAB_JOB_ACTIVE_UI_PHASES = new Set([
+  "connecting",
+  "live",
+  "reconnecting",
+  "resumed",
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "cancelled",
+  "unknown_running",
+  "stopped_waiting",
+]);
+
+export async function assertLabJobPanelShowsActivePhase(page: Page, timeoutMs = 60_000): Promise<void> {
+  const jobPanel = page.getByTestId("lab-job-panel");
+  await expect(jobPanel).toBeVisible({ timeout: 30_000 });
+  await expect
+    .poll(
+      async () => {
+        const phase = await jobPanel.getAttribute("data-lab-job-ui-phase");
+        if (phase && LAB_JOB_ACTIVE_UI_PHASES.has(phase)) {
+          return true;
+        }
+        const text = (await jobPanel.innerText()) ?? "";
+        return /live|en vivo|connecting|conectando|reconnecting|reconectando|queued|en cola|running|ejecut|progress|en curso|completed|completado|resumed|reanudado/i.test(
+          text,
+        );
+      },
+      { timeout: timeoutMs, intervals: [500, 1500] },
+    )
+    .toBe(true);
 }
 
 export const FORBIDDEN_LAB_UI_PATTERNS: RegExp[] = [

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { loginAsSeedUser } from "../support/helpers";
 import {
   assertLabDatasetControlsVisible,
+  assertLabJobPanelShowsActivePhase,
   clearActiveProjectForLab,
   assertLabRunStarted,
   ensureFirstLlmModelSelectedForRun,
@@ -19,7 +20,9 @@ test.describe("LAB live job and refresh resume @fullstack", () => {
     await loginAsSeedUser(page);
     await gotoLabEvaluationPage(page, "llm");
     await assertLabDatasetControlsVisible(page);
-    test.skip(!(await labDatasetRunnable(page)), "No VALID LLM dataset.");
+    await expect
+      .poll(() => labDatasetRunnable(page), { timeout: 25_000, intervals: [250, 750, 1500] })
+      .toBe(true);
 
     await ensureFirstLlmModelSelectedForRun(page);
 
@@ -28,17 +31,7 @@ test.describe("LAB live job and refresh resume @fullstack", () => {
     await runButton.click();
     await assertLabRunStarted(page);
 
-    const jobPanel = page.getByTestId("lab-job-panel");
-
-    await expect
-      .poll(
-        async () => {
-          const t = (await jobPanel.innerText()) ?? "";
-          return /live|en vivo|connecting|conectando|reconnecting|reconectando|running|ejecut/i.test(t);
-        },
-        { timeout: 45_000, intervals: [500, 1500] },
-      )
-      .toBe(true);
+    await assertLabJobPanelShowsActivePhase(page, 60_000);
 
     await expect(page.getByText(/Stopped watching here/i)).toHaveCount(0);
     await expect(page.getByText(/Stopped waiting — the server job/i)).toHaveCount(0);

@@ -709,6 +709,10 @@ public class BenchmarkRunOrchestrator {
                 evaluationDatasetRepository.findById(datasetId).orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Dataset not found"));
         if (EvaluationDatasetScope.SYSTEM_DATASET.name().equals(ds.getDatasetScope())) {
+            // Packaged reference workbook is listed for all authenticated LAB users; only other system datasets stay ADMIN-only.
+            if (ExperimentalDatasetType.REFERENCE_BUNDLE.name().equals(ds.getExperimentalKind())) {
+                return ds;
+            }
             if (!UserRole.ADMIN.name().equalsIgnoreCase(roleName != null ? roleName : "")) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "SYSTEM_DATASET requires ADMIN");
             }

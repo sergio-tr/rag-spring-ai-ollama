@@ -57,6 +57,15 @@ describe("LabJobPanel", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/Reconnecting/i);
   });
 
+  it("exposes data-lab-job-ui-phase for e2e watch assertions", () => {
+    render(
+      <IntlTestProvider>
+        <LabJobPanel accepted={accepted} taskStatus={runningTask} connectionState="live" />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByTestId("lab-job-panel")).toHaveAttribute("data-lab-job-ui-phase", "running");
+  });
+
   it("shows queued chip before first poll tick", () => {
     render(
       <IntlTestProvider>

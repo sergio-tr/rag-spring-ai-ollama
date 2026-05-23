@@ -2,7 +2,9 @@ package com.uniovi.rag.application.service.evaluation;
 
 import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
+import com.uniovi.rag.domain.evaluation.EvaluationDatasetScope;
 import com.uniovi.rag.domain.evaluation.EvaluationRunKind;
+import com.uniovi.rag.domain.evaluation.workbook.ExperimentalDatasetType;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
@@ -168,6 +170,74 @@ class BenchmarkRunOrchestratorTest {
                         ex ->
                                 assertThat(((ResponseStatusException) ex).getStatusCode())
                                         .isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
+    @Test
+    void startJsonBenchmark_allowsUserForPackagedReferenceBundleDataset() {
+        BenchmarkRunOrchestrator orch =
+                new BenchmarkRunOrchestrator(
+                        userRepository,
+                        evaluationDatasetRepository,
+                        evaluationCampaignRepository,
+                        evaluationRunRepository,
+                        resolvedConfigSnapshotRepository,
+                        knowledgeIndexSnapshotRepository,
+                        ragPresetRepository,
+                        asyncTaskRepository,
+                        asyncTaskService,
+                        labJobLifecycleService,
+                        projectAccessService,
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
+
+        UUID dsId = UUID.randomUUID();
+        EvaluationDatasetEntity ds = Mockito.mock(EvaluationDatasetEntity.class);
+        Mockito.when(ds.getDatasetScope()).thenReturn(EvaluationDatasetScope.SYSTEM_DATASET.name());
+        Mockito.when(ds.getExperimentalKind()).thenReturn(ExperimentalDatasetType.REFERENCE_BUNDLE.name());
+        Mockito.when(ds.getOwner()).thenReturn(null);
+        when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.of(ds));
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        dsId,
+                        null,
+                        UUID.randomUUID(),
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "n",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of("gemma3:4b"),
+                        List.of(),
+                        false,
+                        null,
+                        false,
+                        false,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
+
+        try {
+            orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.LLM_JUDGE_QA, req);
+        } catch (ResponseStatusException ex) {
+            assertThat(ex.getStatusCode()).isNotEqualTo(HttpStatus.FORBIDDEN);
+            assertThat(ex.getReason()).isNotEqualTo("SYSTEM_DATASET requires ADMIN");
+        } catch (RuntimeException ex) {
+            // Passed dataset authorization; downstream orchestration is not fully mocked here.
+        }
     }
 
     @Test

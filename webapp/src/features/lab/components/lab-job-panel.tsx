@@ -76,7 +76,11 @@ export function LabJobPanel({
     (phase === "reconnecting" || phase === "stopped_waiting" || phase === "finished_away");
 
   return (
-    <div className="bg-muted/30 space-y-3 rounded-md border p-3 text-sm" data-testid="lab-job-panel">
+    <div
+      className="bg-muted/30 space-y-3 rounded-md border p-3 text-sm"
+      data-testid="lab-job-panel"
+      data-lab-job-ui-phase={phase === "idle" ? undefined : phase}
+    >
       {phase === "idle" ? null : (
         <div className="flex flex-col gap-2">
           <InlineHelpStatus status={traceStatus} label={statusLabel} className="max-w-full" />

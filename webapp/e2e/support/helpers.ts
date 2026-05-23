@@ -211,9 +211,36 @@ export async function loginAsSeedUser(page: Page): Promise<void> {
   ).toBeVisible({ timeout: loginTimeoutMs });
 }
 
+/** Surfaces dialog role=alert errors when Create does not close the modal. */
+async function assertProjectCreateDialogClosedOrSurfaceError(dialog: Locator): Promise<void> {
+  const closed = await dialog
+    .waitFor({ state: "hidden", timeout: 30_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (closed) {
+    return;
+  }
+  const alerts = dialog.getByRole("alert");
+  const alertCount = await alerts.count();
+  const messages: string[] = [];
+  for (let i = 0; i < alertCount; i += 1) {
+    const text = (await alerts.nth(i).textContent())?.trim();
+    if (text) {
+      messages.push(text);
+    }
+  }
+  throw new Error(
+    messages.length > 0
+      ? `Project create dialog still open; role=alert: ${messages.join(" | ")}`
+      : "Project create dialog still open after Create (no role=alert text found).",
+  );
+}
+
 /**
  * Creates a project via dialog; backend activate + client store mark it active.
  * Waits until the new card shows the Active / Activo state (no extra click).
+ *
+ * Uses form defaults (empty embedding → backend canonical tag; metadata index off).
  */
 export async function createAndActivateProject(page: Page, projectName: string): Promise<string> {
   const mainNewProject = page.locator("main").getByRole("button", { name: /new project|nuevo proyecto/i }).first();
@@ -225,16 +252,8 @@ export async function createAndActivateProject(page: Page, projectName: string):
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await dialog.locator("#proj-name").fill(projectName);
-  const metadataIndex = dialog.getByLabel(/metadata index/i);
-  if (await metadataIndex.isVisible().catch(() => false)) {
-    await metadataIndex.check();
-  }
-  const embeddingModelInput = dialog.getByLabel(/embedding model id/i);
-  if (await embeddingModelInput.isVisible().catch(() => false)) {
-    await embeddingModelInput.fill("mxbai-embed-large");
-  }
   await dialog.getByRole("button", { name: /^(create|crear)$/i }).click();
-  await expect(dialog).not.toBeVisible({ timeout: 20_000 });
+  await assertProjectCreateDialogClosedOrSurfaceError(dialog);
   const projectCard = page.locator('[data-slot="card"]').filter({ hasText: projectName }).first();
   await expect(projectCard).toBeVisible({ timeout: 20_000 });
   // Require the actual active marker — not "Set active only", which also contains the substring "active".
