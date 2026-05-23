@@ -85,7 +85,7 @@ describe("lab-benchmark-results-api", () => {
   });
 
   it("downloadCampaignExport downloads summary and bundle exports by selected kind", async () => {
-    vi.mocked(apiDownloadBlob).mockResolvedValueOnce(new Blob(["summary"]));
+    vi.mocked(apiDownloadBlob).mockResolvedValueOnce(new Blob(["Campaign ID,Compared item"]));
     vi.mocked(apiDownloadBlob).mockResolvedValueOnce(new Blob(["bundle"]));
 
     await downloadCampaignExport("campaign-2", "summary.csv");
@@ -102,6 +102,18 @@ describe("lab-benchmark-results-api", () => {
       2,
       expect.any(Blob),
       "lab-campaign-campaign-2-bundle.json",
+    );
+  });
+
+  it("downloadCampaignExport downloads human-readable items csv", async () => {
+    vi.mocked(apiDownloadBlob).mockResolvedValueOnce(new Blob(["Campaign ID,Run ID,LLM model"]));
+
+    await downloadCampaignExport("campaign-3", "items.csv");
+
+    expect(apiDownloadBlob).toHaveBeenCalledWith(expect.stringContaining("/export/items.csv"));
+    expect(experimentalApi.triggerBrowserBlobDownload).toHaveBeenCalledWith(
+      expect.any(Blob),
+      "lab-campaign-campaign-3-items.csv",
     );
   });
 
