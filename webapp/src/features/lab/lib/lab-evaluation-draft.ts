@@ -14,6 +14,9 @@ export function labEvaluationDraftStorageKey(kind: LabEvaluationDraftKind): stri
 
 const V1_FORM_STORAGE_PREFIX = "rag-lab-form-v1:";
 
+/** Product default embedding tag (matches backend `spring.ai.ollama.embedding.model`). */
+export const LAB_DEFAULT_EMBEDDING_MODEL_ID = "mxbai-embed-large";
+
 export type LabEvaluationDraftStored = {
   v: 1;
   datasetId: string | null;
@@ -38,7 +41,7 @@ export function defaultLabEvaluationDraft(): Omit<LabEvaluationDraftStored, "v">
     explicitDraftClear: false,
     llmModelId: "",
     llmModelIds: [],
-    embeddingModelId: "",
+    embeddingModelId: LAB_DEFAULT_EMBEDDING_MODEL_ID,
     embeddingModelIds: [],
     embeddingDownstreamRag: false,
     selectedExperimentalPresetCodes: [],

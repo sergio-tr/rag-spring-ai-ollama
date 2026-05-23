@@ -90,7 +90,7 @@ describe("useLabEvaluationDraft", () => {
         validation({
           compatibleDatasetRows: [],
           allDatasetRows: [datasetRow("ds-known")],
-          availableEmbeddingModelIds: ["nomic-embed-text"],
+          availableEmbeddingModelIds: ["mxbai-embed-large", "nomic-embed-text"],
           catalogPresetCodes: ["P0"],
         }),
       ),
@@ -126,12 +126,12 @@ describe("useLabEvaluationDraft", () => {
     act(() => {
       result.current.resetToRecommended({
         datasetId: "ds-known",
-        embeddingModelId: "nomic-embed-text",
+        embeddingModelId: "mxbai-embed-large",
         selectedExperimentalPresetCodes: ["P0"],
       });
     });
     expect(result.current.draft.explicitDraftClear).toBe(false);
-    expect(result.current.draft.embeddingModelId).toBe("nomic-embed-text");
+    expect(result.current.draft.embeddingModelId).toBe("mxbai-embed-large");
     expect(result.current.warnings.embeddingModelInvalid).toBe(false);
   });
 });

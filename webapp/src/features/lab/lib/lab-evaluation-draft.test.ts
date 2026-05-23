@@ -5,6 +5,7 @@ import {
   clearLabEvaluationDraftStorage,
   computeLabEvaluationDraftWarnings,
   defaultLabEvaluationDraft,
+  LAB_DEFAULT_EMBEDDING_MODEL_ID,
   labEvaluationDraftStorageKey,
   loadLabEvaluationDraft,
   saveLabEvaluationDraft,
@@ -13,6 +14,10 @@ import {
 describe("lab-evaluation-draft", () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+
+  it("defaults embedding model to product standard mxbai-embed-large", () => {
+    expect(defaultLabEvaluationDraft().embeddingModelId).toBe(LAB_DEFAULT_EMBEDDING_MODEL_ID);
   });
 
   it("uses versioned storage keys per benchmark kind", () => {
