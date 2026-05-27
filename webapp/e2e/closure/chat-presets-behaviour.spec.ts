@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { uniqueProjectName } from "../fixtures/projects";
 import { fixtureFilesDir } from "../fixtures/documents";
+import type { MessageDto } from "@/types/api";
 import {
   authHeadersFromPage,
   createAndActivateProject,
@@ -14,6 +15,18 @@ import {
   sendChatMessage,
   waitForDocumentReadyByName,
 } from "../support/helpers";
+
+function classifierStatusFromMetadata(meta: Record<string, unknown> | null | undefined): string | null {
+  if (!meta) {
+    return null;
+  }
+  const primary = meta.classifierStatus;
+  if (typeof primary === "string") {
+    return primary;
+  }
+  const legacy = meta.classifier_status;
+  return typeof legacy === "string" ? legacy : null;
+}
 
 const EVIDENCE_DIR = path.resolve(__dirname, "../../../.cursor/evidence/wave-3-current/chat-rag/presets");
 
@@ -81,7 +94,7 @@ test.describe("Closure Chat presets behaviour @closure @fullstack @wave3", () =>
         headers,
       });
       expect(messagesRes.status(), await messagesRes.text()).toBe(200);
-      const messages = (await messagesRes.json()) as Array<any>;
+      const messages = (await messagesRes.json()) as MessageDto[];
       const assistant = [...messages].reverse().find((m) => m.role === "ASSISTANT");
       expect(assistant).toBeTruthy();
       const hasSources = Array.isArray(assistant?.sources) && assistant.sources.length > 0;
@@ -90,7 +103,7 @@ test.describe("Closure Chat presets behaviour @closure @fullstack @wave3", () =>
         presetValue: match.value,
         assistantHasSources: hasSources,
         assistantContentPreview: String(assistant?.content ?? "").slice(0, 200),
-        classifierStatus: assistant?.executionMetadata?.classifierStatus ?? assistant?.executionMetadata?.classifier_status ?? null,
+        classifierStatus: classifierStatusFromMetadata(assistant?.executionMetadata),
       });
     }
 

@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type APIResponse, type Locator, type Page } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
@@ -95,6 +95,23 @@ type ProjectDto = {
   name: string;
 };
 
+function projectRowsFromListBody(raw: string): ProjectDto[] {
+  const body: unknown = JSON.parse(raw);
+  if (Array.isArray(body)) {
+    return body as ProjectDto[];
+  }
+  if (body && typeof body === "object") {
+    const record = body as { items?: ProjectDto[]; content?: ProjectDto[] };
+    if (Array.isArray(record.items)) {
+      return record.items;
+    }
+    if (Array.isArray(record.content)) {
+      return record.content;
+    }
+  }
+  return [];
+}
+
 async function findProjectIdByName(page: Page, projectName: string): Promise<string> {
   const headers = await authHeadersFromPage(page);
   const deadline = Date.now() + 25_000;
@@ -105,15 +122,8 @@ async function findProjectIdByName(page: Page, projectName: string): Promise<str
     const res = await page.request.get(directProductApiUrl(`/projects?page=${pageIdx}&size=100`), { headers });
     lastBodyText = await res.text();
     expect(res.status(), lastBodyText).toBe(200);
-    const body = JSON.parse(lastBodyText) as any;
-    const rows = Array.isArray(body)
-      ? body
-      : Array.isArray(body?.items)
-        ? body.items
-        : Array.isArray(body?.content)
-          ? body.content
-          : [];
-    const project = (rows as ProjectDto[]).find((p) => p?.name === projectName);
+    const rows = projectRowsFromListBody(lastBodyText);
+    const project = rows.find((p) => p?.name === projectName);
     if (project?.id) return project.id;
 
     // If this page had fewer than size results, we reached the end; restart from page 0 after a short delay.
@@ -199,7 +209,7 @@ export async function loginAsSeedUser(page: Page): Promise<void> {
     }
   }
   if (!/\/en\/projects/.test(page.url())) {
-    let loginRes: any = null;
+    let loginRes: APIResponse | null = null;
     let loginBody = "";
     for (let attempt = 0; attempt < 5; attempt += 1) {
       loginRes = await page.request.post(productApiUrl("/auth/login"), {
@@ -214,6 +224,9 @@ export async function loginAsSeedUser(page: Page): Promise<void> {
         continue;
       }
       break;
+    }
+    if (!loginRes) {
+      throw new Error("seed API login request missing");
     }
     expect(loginRes.ok(), `seed API login failed: ${loginRes.status()} ${loginBody}`).toBeTruthy();
     const tokens = JSON.parse(loginBody) as LoginResponse;

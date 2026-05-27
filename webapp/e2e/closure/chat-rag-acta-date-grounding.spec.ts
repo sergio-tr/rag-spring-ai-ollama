@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import { uniqueProjectName } from "../fixtures/projects";
 import { fixtureFilesDir } from "../fixtures/documents";
+import type { MessageDto } from "@/types/api";
 import {
   authHeadersFromPage,
   createAndActivateProject,
@@ -76,12 +77,12 @@ test.describe("Closure Chat RAG acta date grounding @closure @fullstack @wave3",
     const headers = await authHeadersFromPage(page);
     const messagesRes = await page.request.get(productApiUrl(`/conversations/${conversationId}/messages`), { headers });
     expect(messagesRes.status(), await messagesRes.text()).toBe(200);
-    const messages = (await messagesRes.json()) as Array<any>;
+    const messages = (await messagesRes.json()) as MessageDto[];
     const assistant = [...messages].reverse().find((m) => m.role === "ASSISTANT");
     expect(assistant, "assistant message should be persisted").toBeTruthy();
 
     // Contract: exactDocumentMatch true and acta file is used as source support.
-    const exact = Boolean(assistant?.executionMetadata?.exactDocumentMatch);
+    const exact = assistant?.executionMetadata?.exactDocumentMatch === true;
     expect(exact, JSON.stringify(assistant?.executionMetadata ?? {}, null, 2)).toBe(true);
     expect(String(assistant?.content ?? "")).toMatch(/Juan\s+Pérez/i);
     const sources = Array.isArray(assistant?.sources) ? assistant.sources : [];
