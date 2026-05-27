@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.async;
 
 import com.uniovi.rag.application.service.evaluation.LabJobEventService;
+import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.domain.AsyncTaskStatus;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
@@ -32,6 +33,9 @@ class AsyncTaskMutationServiceTest {
 
     @Mock
     private LabJobEventService labJobEventService;
+
+    @Mock
+    private LabJobProgressTracker labJobProgressTracker;
 
     @InjectMocks
     private AsyncTaskMutationService mutationService;
@@ -128,6 +132,51 @@ class AsyncTaskMutationServiceTest {
         mutationService.markFailed(id, big);
 
         assertThat(e.getProgressText()).hasSizeLessThanOrEqualTo(12_000);
+    }
+
+    @Test
+    void requestCancellation_setsCancellingAndProgress() {
+        UUID id = UUID.randomUUID();
+        AsyncTaskEntity e = queuedEntity();
+        assignId(e, id);
+        when(asyncTaskRepository.findById(id)).thenReturn(Optional.of(e));
+
+        mutationService.requestCancellation(id, "user stop");
+
+        assertThat(e.getStatus()).isEqualTo(AsyncTaskStatus.CANCELLING);
+        assertThat(e.getErrorMessage()).isEqualTo("user stop");
+        assertThat(e.getProgressText()).contains("user stop");
+        verify(asyncTaskRepository).save(e);
+    }
+
+    @Test
+    void requestCancellation_terminal_isNoop() {
+        UUID id = UUID.randomUUID();
+        AsyncTaskEntity e = queuedEntity();
+        assignId(e, id);
+        e.setStatus(AsyncTaskStatus.SUCCEEDED);
+        when(asyncTaskRepository.findById(id)).thenReturn(Optional.of(e));
+
+        mutationService.requestCancellation(id, "late");
+
+        assertThat(e.getStatus()).isEqualTo(AsyncTaskStatus.SUCCEEDED);
+        verify(asyncTaskRepository).findById(id);
+    }
+
+    @Test
+    void markCancelled_setsTerminalCancelled() {
+        UUID id = UUID.randomUUID();
+        AsyncTaskEntity e = queuedEntity();
+        assignId(e, id);
+        e.setStatus(AsyncTaskStatus.CANCELLING);
+        when(asyncTaskRepository.findById(id)).thenReturn(Optional.of(e));
+
+        mutationService.markCancelled(id, "stopped");
+
+        assertThat(e.getStatus()).isEqualTo(AsyncTaskStatus.CANCELLED);
+        assertThat(e.getCompletedAt()).isNotNull();
+        assertThat(e.getProgressText()).contains("Cancelled");
+        verify(asyncTaskRepository).save(e);
     }
 
     @Test

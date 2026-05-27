@@ -71,6 +71,15 @@ public class AsyncTaskService {
     }
 
     @Transactional
+    public UUID submitEvalLlmCampaign(UUID userId, UUID projectId, UUID campaignId, UUID coordinatorRunId) {
+        return enqueue(
+                userId,
+                projectId,
+                AsyncTaskType.EVAL_LLM,
+                withCampaignPayload(campaignId, coordinatorRunId));
+    }
+
+    @Transactional
     public UUID submitEvalRag(UUID userId) {
         return submitEvalRag(userId, null);
     }
@@ -90,12 +99,31 @@ public class AsyncTaskService {
     }
 
     @Transactional
+    public UUID submitEvalRagCampaign(UUID userId, UUID projectId, UUID campaignId, UUID coordinatorRunId) {
+        return enqueue(
+                userId,
+                projectId,
+                AsyncTaskType.EVAL_RAG,
+                withCampaignPayload(campaignId, coordinatorRunId));
+    }
+
+    @Transactional
     public UUID submitEvalEmbeddingRetrieval(UUID userId, UUID projectId, UUID evaluationRunId) {
         return enqueue(
                 userId,
                 projectId,
                 AsyncTaskType.EVAL_EMBEDDING_RETRIEVAL,
                 withEvaluationRunPayload(evaluationRunId));
+    }
+
+    @Transactional
+    public UUID submitEvalEmbeddingCampaign(
+            UUID userId, UUID projectId, UUID campaignId, UUID coordinatorRunId) {
+        return enqueue(
+                userId,
+                projectId,
+                AsyncTaskType.EVAL_EMBEDDING_RETRIEVAL,
+                withCampaignPayload(campaignId, coordinatorRunId));
     }
 
     @Transactional
@@ -229,6 +257,17 @@ public class AsyncTaskService {
             return Map.of();
         }
         return Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, evaluationRunId.toString());
+    }
+
+    private static Map<String, Object> withCampaignPayload(UUID campaignId, UUID coordinatorRunId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        if (campaignId != null) {
+            payload.put(LabJobPayloadKeys.CAMPAIGN_ID, campaignId.toString());
+        }
+        if (coordinatorRunId != null) {
+            payload.put(LabJobPayloadKeys.EVALUATION_RUN_ID, coordinatorRunId.toString());
+        }
+        return Map.copyOf(payload);
     }
 
     private UUID enqueue(UUID userId, UUID projectIdOrNull, AsyncTaskType type, Map<String, Object> payload) {

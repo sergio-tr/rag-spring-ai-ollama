@@ -1,6 +1,9 @@
 package com.uniovi.rag.application.service.async;
 
+import com.uniovi.rag.application.service.evaluation.LabJobEventRequest;
 import com.uniovi.rag.application.service.evaluation.LabJobEventService;
+import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
+import com.uniovi.rag.application.service.evaluation.async.LabJobPayloadKeys;
 import com.uniovi.rag.domain.AsyncTaskStatus;
 import com.uniovi.rag.domain.LabJobEventType;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
@@ -20,10 +23,15 @@ public class AsyncTaskMutationService {
 
     private final AsyncTaskRepository asyncTaskRepository;
     private final LabJobEventService labJobEventService;
+    private final LabJobProgressTracker labJobProgressTracker;
 
-    public AsyncTaskMutationService(AsyncTaskRepository asyncTaskRepository, LabJobEventService labJobEventService) {
+    public AsyncTaskMutationService(
+            AsyncTaskRepository asyncTaskRepository,
+            LabJobEventService labJobEventService,
+            LabJobProgressTracker labJobProgressTracker) {
         this.asyncTaskRepository = asyncTaskRepository;
         this.labJobEventService = labJobEventService;
+        this.labJobProgressTracker = labJobProgressTracker;
     }
 
     @Transactional
@@ -44,12 +52,14 @@ public class AsyncTaskMutationService {
         appendProgress(e, line);
         e.setUpdatedAt(Instant.now());
         asyncTaskRepository.save(e);
-        recordEvent(e, LabJobEventType.PROGRESS, line);
     }
 
     @Transactional
     public void markSucceeded(UUID taskId, Map<String, Object> result) {
         AsyncTaskEntity e = asyncTaskRepository.findById(taskId).orElseThrow();
+        if (e.getStatus() == AsyncTaskStatus.CANCELLED || e.getStatus() == AsyncTaskStatus.CANCELLING) {
+            return;
+        }
         Instant now = Instant.now();
         e.setStatus(AsyncTaskStatus.SUCCEEDED);
         e.setResultJson(result);
@@ -57,7 +67,16 @@ public class AsyncTaskMutationService {
         e.setUpdatedAt(now);
         appendProgress(e, "Finished successfully.");
         asyncTaskRepository.save(e);
-        recordEvent(e, LabJobEventType.COMPLETED, "Job completed successfully");
+        UUID runId = evaluationRunId(e);
+        if (runId != null) {
+            labJobProgressTracker.emitRunCompleted(taskId, runId, "Run completed successfully");
+        } else {
+            recordEvent(
+                    e,
+                    LabJobEventType.RUN_COMPLETED,
+                    "Job completed successfully",
+                    terminalPayload(result, null));
+        }
     }
 
     @Transactional
@@ -65,12 +84,12 @@ public class AsyncTaskMutationService {
         markFailed(taskId, message, null);
     }
 
-    /**
-     * @param failureCode stable ErrorCode enum name (or similar) for API consumers; optional.
-     */
     @Transactional
     public void markFailed(UUID taskId, String message, String failureCode) {
         AsyncTaskEntity e = asyncTaskRepository.findById(taskId).orElseThrow();
+        if (e.getStatus() == AsyncTaskStatus.CANCELLED) {
+            return;
+        }
         Instant now = Instant.now();
         e.setStatus(AsyncTaskStatus.FAILED);
         String safeMsg =
@@ -86,7 +105,7 @@ public class AsyncTaskMutationService {
         e.setUpdatedAt(now);
         appendProgress(e, "Failed: " + safeMsg);
         asyncTaskRepository.save(e);
-        recordEvent(e, LabJobEventType.FAILED, safeMsg);
+        recordEvent(e, LabJobEventType.FAILED, safeMsg, terminalPayload(null, failureCode));
     }
 
     @Transactional
@@ -104,7 +123,7 @@ public class AsyncTaskMutationService {
         e.setUpdatedAt(now);
         appendProgress(e, "Cancelled: " + (reason != null ? reason : ""));
         asyncTaskRepository.save(e);
-        recordEvent(e, LabJobEventType.CANCELLED, reason != null ? reason : "Cancelled");
+        recordEvent(e, LabJobEventType.CANCELLED, reason != null ? reason : "Cancelled", Map.of("terminal", true));
     }
 
     @Transactional
@@ -125,12 +144,9 @@ public class AsyncTaskMutationService {
         e.setErrorMessage(msg);
         appendProgress(e, msg);
         asyncTaskRepository.save(e);
-        recordEvent(e, LabJobEventType.PROGRESS, msg);
+        recordEvent(e, LabJobEventType.CANCELLING, msg, Map.of());
     }
 
-    /**
-     * Live partial answer for {@link com.uniovi.rag.domain.AsyncTaskType#CHAT_MESSAGE} (polled via GET /lab/jobs/{id}).
-     */
     @Transactional
     public void updateStreamingChatResult(UUID taskId, String partialAnswer) {
         AsyncTaskEntity e = asyncTaskRepository.findById(taskId).orElseThrow();
@@ -144,7 +160,34 @@ public class AsyncTaskMutationService {
     }
 
     private void recordEvent(AsyncTaskEntity e, LabJobEventType type, String message) {
-        labJobEventService.recordEvent(e.getId(), type, message);
+        recordEvent(e, type, message, Map.of());
+    }
+
+    private void recordEvent(AsyncTaskEntity e, LabJobEventType type, String message, Map<String, Object> payload) {
+        labJobEventService.record(LabJobEventRequest.of(e.getId(), type, message).withPayload(payload));
+    }
+
+    private static Map<String, Object> terminalPayload(Map<String, Object> result, String failureCode) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("terminal", true);
+        if (result != null) {
+            payload.put("result", result);
+        }
+        if (failureCode != null) {
+            payload.put("failureCode", failureCode);
+        }
+        return payload;
+    }
+
+    private static UUID evaluationRunId(AsyncTaskEntity e) {
+        if (e.getRequestPayload() == null) {
+            return null;
+        }
+        Object raw = e.getRequestPayload().get(LabJobPayloadKeys.EVALUATION_RUN_ID);
+        if (raw == null) {
+            return null;
+        }
+        return UUID.fromString(raw.toString());
     }
 
     private static void appendProgress(AsyncTaskEntity e, String line) {
