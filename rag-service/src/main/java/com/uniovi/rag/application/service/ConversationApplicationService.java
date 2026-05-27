@@ -475,6 +475,7 @@ public class ConversationApplicationService {
                 m.getId(),
                 m.getRole(),
                 m.getContent(),
+                m.getSeq(),
                 m.getCreatedAt(),
                 ChatSourceRestMapper.toDtos(ChatSourceMapper.fromPersistedMaps(m.getSources())),
                 m.getQueryType(),

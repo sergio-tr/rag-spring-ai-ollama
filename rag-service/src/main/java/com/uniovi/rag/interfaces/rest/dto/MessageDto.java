@@ -11,6 +11,7 @@ public record MessageDto(
         UUID id,
         MessageRole role,
         String content,
+        int seq,
         Instant createdAt,
         List<ChatSourceDto> sources,
         String queryType,

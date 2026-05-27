@@ -524,6 +524,7 @@ class ConversationApplicationServiceTest {
         when(m.getId()).thenReturn(mid);
         when(m.getRole()).thenReturn(MessageRole.USER);
         when(m.getContent()).thenReturn("hi");
+        when(m.getSeq()).thenReturn(2);
         when(m.getCreatedAt()).thenReturn(Instant.EPOCH);
         when(m.getSources()).thenReturn(null);
         when(m.getQueryType()).thenReturn(null);
@@ -537,6 +538,7 @@ class ConversationApplicationServiceTest {
         assertThat(result).hasSize(1);
         assertEquals(mid, result.getFirst().id());
         assertEquals("hi", result.getFirst().content());
+        assertEquals(2, result.getFirst().seq());
     }
 
     @Test

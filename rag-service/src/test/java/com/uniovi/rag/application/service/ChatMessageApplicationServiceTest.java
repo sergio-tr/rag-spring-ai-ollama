@@ -50,6 +50,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -316,6 +317,47 @@ class ChatMessageApplicationServiceTest {
     }
 
     @Test
+    void enqueueMessage_continueBranch_appendsAssistantAfterMaxSeqNotBeforeUser() {
+        UUID userId = UUID.randomUUID();
+        UUID conversationId = UUID.randomUUID();
+        UUID continueId = UUID.randomUUID();
+
+        ConversationEntity conv = mock(ConversationEntity.class);
+        when(conv.getId()).thenReturn(conversationId);
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(conv.getProject()).thenReturn(project);
+        when(conv.getDocumentFilter()).thenReturn(null);
+        when(projectAccessService.requireConversationForUser(userId, conversationId)).thenReturn(conv);
+        when(asyncTaskRepository.findByUser_IdAndTaskTypeAndStatusIn(
+                        eq(userId), eq(AsyncTaskType.CHAT_MESSAGE), any()))
+                .thenReturn(List.of());
+
+        MessageEntity existingUser = mock(MessageEntity.class);
+        when(existingUser.getConversation()).thenReturn(conv);
+        when(existingUser.getRole()).thenReturn(MessageRole.USER);
+        when(existingUser.getDeletedAt()).thenReturn(null);
+        when(existingUser.getContent()).thenReturn("edited question");
+        when(existingUser.getId()).thenReturn(continueId);
+        when(existingUser.getSeq()).thenReturn(3);
+        when(messageRepository.findById(continueId)).thenReturn(Optional.of(existingUser));
+        when(messageRepository.findMaxSeqByConversationId(conversationId)).thenReturn(5);
+
+        UserEntity user = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        ArgumentCaptor<MessageEntity> saved = ArgumentCaptor.forClass(MessageEntity.class);
+
+        service.enqueueMessage(
+                userId, conversationId, new PostMessageRequest("edited question", null, continueId));
+
+        verify(messageRepository).save(saved.capture());
+        MessageEntity assistant = saved.getValue();
+        assertThat(assistant.getRole()).isEqualTo(MessageRole.ASSISTANT);
+        assertThat(assistant.getSeq()).isGreaterThan(existingUser.getSeq());
+        assertThat(assistant.getSeq()).isEqualTo(6);
+    }
+
+    @Test
     void editUserMessage_blankContent_throwsBadRequest() {
         ResponseStatusException ex =
                 assertThrows(
@@ -472,6 +514,7 @@ class ChatMessageApplicationServiceTest {
         verify(tail1).setDeletedAt(any(Instant.class));
         verify(tail2).setDeletedAt(any(Instant.class));
         verify(edited).setContent("new content");
+        verify(edited, never()).setSeq(anyInt());
         verify(projectAccessService).requireConversationForUser(userId, conversationId);
     }
 

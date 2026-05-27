@@ -53,7 +53,10 @@ export function mergeConversationPatchOptimistic(
 type PatchConversationContext = {
   previous: ConversationDto[] | undefined;
 };
-const msgKey = (conversationId: string) => ["messages", conversationId] as const;
+export const conversationMessagesQueryKey = (conversationId: string) =>
+  ["messages", conversationId] as const;
+
+const msgKey = conversationMessagesQueryKey;
 
 export function useConversations(projectId: string | undefined) {
   return useQuery({
