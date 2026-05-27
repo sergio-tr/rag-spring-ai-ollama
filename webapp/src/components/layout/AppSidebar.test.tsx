@@ -390,6 +390,20 @@ describe("AppSidebar", () => {
     expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p1");
   });
 
+  it("main nav Chat link includes active projectId when a project is selected", () => {
+    useAppStore.setState({ activeProject: { id: "p1", name: "Project One" } });
+    render(<AppSidebar />, { wrapper: Wrapper });
+    const chatLink = screen.getByRole("link", { name: /^chat$/i });
+    expect(chatLink).toHaveAttribute("href", "/chat?projectId=p1");
+  });
+
+  it("main nav Chat link goes to projects when no active project", () => {
+    useAppStore.setState({ activeProject: null });
+    render(<AppSidebar />, { wrapper: Wrapper });
+    const chatLink = screen.getByRole("link", { name: /^chat$/i });
+    expect(chatLink).toHaveAttribute("href", "/projects");
+  });
+
   it("clears stale active project when it is not in the current list", async () => {
     useAppStore.setState({ activeProject: { id: "missing", name: "Old Project" } });
     render(<AppSidebar />, { wrapper: Wrapper });

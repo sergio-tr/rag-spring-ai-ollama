@@ -363,15 +363,30 @@ function AppSidebarContent(props?: AppSidebarChromeProps) {
           {primaryLinks
             .filter((l) => (l.key === "admin" ? canSeeAdmin : true))
             .map((item) => {
+              const urlProjectId = searchParams?.get("projectId")?.trim() ?? null;
               const documentsHref =
                 item.key === "documents" && activeProject?.id
                   ? buildProjectScopedDocumentsHref(activeProject.id)
                   : item.href;
-              const href = item.key === "documents" ? documentsHref : item.href;
+              const chatHref =
+                item.key === "chat"
+                  ? activeProject?.id
+                    ? buildProjectScopedChatHref(
+                        activeProject.id,
+                        pathname?.includes("/chat") && urlProjectId === activeProject.id
+                          ? selectedConversationId
+                          : null,
+                      )
+                    : "/projects"
+                  : item.href;
+              const href =
+                item.key === "documents" ? documentsHref : item.key === "chat" ? chatHref : item.href;
               const active =
                 item.key === "documents"
                   ? pathname === "/documents" || (pathname ?? "").startsWith("/documents/")
-                  : pathname === item.href || (pathname ?? "").startsWith(`${item.href}/`);
+                  : item.key === "chat"
+                    ? pathname === "/chat" || (pathname ?? "").startsWith("/chat/")
+                    : pathname === item.href || (pathname ?? "").startsWith(`${item.href}/`);
               const Icon = item.icon;
               const railOnly = railCollapsed && variant === "desktop";
               return (

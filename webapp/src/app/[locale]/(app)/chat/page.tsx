@@ -11,11 +11,16 @@ import { DeleteConversationDialog } from "@/features/chat/components/DeleteConve
 import { MoveConversationDialog } from "@/features/chat/components/MoveConversationDialog";
 import { NewConversationDialog } from "@/features/chat/components/NewConversationDialog";
 import {
+  conversationMessagesQueryKey,
   useConversationMessages,
   useConversations,
   useCreateConversation,
   usePatchConversation,
 } from "@/features/chat/hooks/use-conversations";
+import {
+  applyUserMessageEditOptimistic,
+  sortMessagesBySeq,
+} from "@/features/chat/lib/chat-message-order";
 import { useChatRuntimeState } from "@/features/chat/hooks/use-chat-runtime-state";
 import { optimisticConsumed } from "@/features/chat/lib/chat-optimistic";
 import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
@@ -58,6 +63,7 @@ import type {
   StreamDonePayload,
 } from "@/types/api";
 import { ChevronDown, PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
@@ -310,6 +316,7 @@ function ChatPageInner() {
   const t = useTranslations("Chat");
   const tHelp = useTranslations("Help");
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const active = useAppStore((s) => s.activeProject);
   const projectId = active?.id;
@@ -417,7 +424,11 @@ function ChatPageInner() {
   const createConv = useCreateConversation(projectId);
   const patchConv = usePatchConversation(projectId);
   // R1: runtime-state is the authoritative steady-state validation source.
-  const { data: messages, refetch: refetchMessages } = useConversationMessages(conversationId ?? undefined);
+  const { data: rawMessages, refetch: refetchMessages } = useConversationMessages(conversationId ?? undefined);
+  const messages = useMemo(() => {
+    if (!rawMessages) return rawMessages;
+    return sortMessagesBySeq(rawMessages);
+  }, [rawMessages]);
   /** Only the latest user turn can be edited (matches backend truncate-from semantics). */
   const lastUserMessageId = useMemo(() => {
     if (!messages?.length) return null;
@@ -941,6 +952,10 @@ function ChatPageInner() {
         body: JSON.stringify(patchBody),
         signal,
       });
+      queryClient.setQueryData<MessageDto[]>(
+        conversationMessagesQueryKey(conversationId),
+        (old) => applyUserMessageEditOptimistic(old ?? [], userMsgId, text),
+      );
       const postBody: PostMessageBody = {
         content: text,
         llmModel: llmModelChoice.trim() ? llmModelChoice.trim() : null,
@@ -993,6 +1008,7 @@ function ChatPageInner() {
     editingUserMessageId,
     isSending,
     llmModelChoice,
+    queryClient,
     refetchMessages,
     runChatJob,
     t,
@@ -1426,7 +1442,7 @@ function ChatPageInner() {
   }
 
   return (
-    <div data-testid="chat-page" className="flex h-[calc(100dvh-7rem)] min-h-[420px] flex-col gap-2 md:flex-row md:gap-3">
+    <div data-testid="chat-page" className="flex h-full min-h-0 flex-1 flex-col gap-2 md:flex-row md:gap-3">
       {convListCollapsed ? (
         <div className="flex w-full shrink-0 flex-col items-stretch gap-2 border-border border-b pb-2 md:w-auto md:border-b-0 md:border-r md:pb-0 md:pr-2">
           <Button
@@ -1661,6 +1677,10 @@ function ChatPageInner() {
           {messages?.map((m) => (
             <div
               key={m.id}
+              data-testid="chat-message-row"
+              data-message-role={m.role}
+              data-message-id={m.id}
+              data-message-seq={typeof m.seq === "number" ? String(m.seq) : undefined}
               className={
                 m.role === "USER"
                   ? "ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed"
@@ -2036,12 +2056,19 @@ function ChatPageInner() {
               className="resize-none"
               aria-busy={isSending || isStreaming}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && !isSending && !isStreaming && !runtimeStateInvalid) {
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  !isSending &&
+                  !isStreaming &&
+                  !runtimeStateInvalid &&
+                  !editingUserMessageId
+                ) {
                   e.preventDefault();
                   void send();
                 }
               }}
-              disabled={isSending || isStreaming || runtimeStateInvalid}
+              disabled={isSending || isStreaming || runtimeStateInvalid || Boolean(editingUserMessageId)}
             />
           </div>
           <div className="flex flex-wrap justify-end gap-2">
@@ -2061,7 +2088,13 @@ function ChatPageInner() {
               type="button"
               size="sm"
               data-testid="chat-send-button"
-              disabled={!input.trim() || isSending || isStreaming || runtimeStateInvalid}
+              disabled={
+                !input.trim() ||
+                isSending ||
+                isStreaming ||
+                runtimeStateInvalid ||
+                Boolean(editingUserMessageId)
+              }
               onClick={() => void send()}
             >
               {t("send")}
