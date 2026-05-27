@@ -86,7 +86,10 @@ export function NewConversationDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[min(90vh,720px)] gap-4 overflow-y-auto sm:max-w-lg">
+      <DialogContent
+        data-testid="chat-new-conversation-dialog"
+        className="max-h-[min(90vh,720px)] gap-4 overflow-y-auto sm:max-w-lg"
+      >
         <DialogHeader>
           <DialogTitle>{t("newConversationWizardTitle")}</DialogTitle>
           <DialogDescription>{t("newConversationWizardDescription")}</DialogDescription>
@@ -111,6 +114,7 @@ export function NewConversationDialog({
             </Label>
             <select
               id="new-conv-preset"
+              data-testid="chat-new-conversation-preset"
               className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
               value={presetValue}
               disabled={catalog.isLoading}
@@ -197,7 +201,12 @@ export function NewConversationDialog({
           <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
             {t("wizardCancel")}
           </Button>
-          <Button type="button" onClick={() => void submit()} disabled={createConv.isPending}>
+          <Button
+            type="button"
+            data-testid="chat-new-conversation-create"
+            onClick={() => void submit()}
+            disabled={createConv.isPending}
+          >
             {t("wizardCreate")}
           </Button>
         </DialogFooter>

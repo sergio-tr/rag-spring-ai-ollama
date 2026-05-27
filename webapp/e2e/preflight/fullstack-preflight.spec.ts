@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { seedEmail, seedPassword } from "../fixtures/users";
 import { authHeaders, loginAndGetToken } from "../api/fixtures/auth";
-import { apiBaseUrl, productUrl } from "../api/fixtures/env";
-import { createNewChatConversation, loginAsSeedUser } from "../support/helpers";
+import { actuatorHealthUrl, apiBaseUrl, productUrl } from "../api/fixtures/env";
+import { ensureChatConversationForPreflight, loginAsSeedUser } from "../support/helpers";
 
 type ProjectListResponse = { items?: Array<{ id?: string; name?: string }> };
 
@@ -13,8 +13,8 @@ test.describe("Fullstack E2E preflight @preflight", () => {
   }) => {
     expect(() => new URL(apiBaseUrl()), `API_BASE_URL must be a valid absolute URL: ${apiBaseUrl()}`).not.toThrow();
 
-    const backendHealth = await request.get(`${apiBaseUrl()}/actuator/health`);
-    expect(backendHealth.status(), await backendHealth.text()).toBe(200);
+    const backendLiveness = await request.get(actuatorHealthUrl("/liveness"));
+    expect(backendLiveness.status(), await backendLiveness.text()).toBe(200);
 
     const webResponse = await page.goto("/en/login", { waitUntil: "domcontentloaded", timeout: 10_000 });
     expect(webResponse?.ok(), "web login page should be reachable").toBeTruthy();
@@ -29,12 +29,15 @@ test.describe("Fullstack E2E preflight @preflight", () => {
     expect(firstProject?.id, "seed user must have at least one project for fullstack E2E").toBeTruthy();
 
     await loginAsSeedUser(page);
-    await page.goto(`/en/chat?projectId=${firstProject?.id}`, {
-      waitUntil: "domcontentloaded",
-      timeout: 10_000,
+    const projectId = firstProject!.id!;
+    const convRes = await request.get(productUrl(`/projects/${projectId}/conversations`), {
+      headers: authHeaders(token),
     });
-    await expect(page.getByTestId("chat-page")).toBeVisible({ timeout: 10_000 });
-    await createNewChatConversation(page);
+    expect(convRes.status(), await convRes.text()).toBe(200);
+    const existingConvs = (await convRes.json()) as Array<{ id?: string }>;
+    const existingConvId = existingConvs.find((c) => c.id)?.id;
+
+    await ensureChatConversationForPreflight(page, projectId, existingConvId);
 
     await expect(page.getByTestId("chat-message-input")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("chat-send-button")).toBeVisible({ timeout: 10_000 });
