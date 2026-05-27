@@ -53,6 +53,11 @@ describe("applyUserMessageEditOptimistic", () => {
     expect(next[0].id).toBe("u1");
   });
 
+  it("returns messages unchanged when user message id is missing", () => {
+    const input = [msg("u1", "USER", "hi", 1), msg("a1", "ASSISTANT", "yo", 2)];
+    expect(applyUserMessageEditOptimistic(input, "missing", "new")).toBe(input);
+  });
+
   it("keeps earlier turns when editing a later user message", () => {
     const input = [
       msg("u0", "USER", "first", 1),
@@ -70,5 +75,27 @@ describe("messageSeq", () => {
   it("falls back to index when seq missing", () => {
     const m = msg("x", "USER", "c");
     expect(messageSeq(m, 7)).toBe(7);
+  });
+
+  it("uses finite seq when present", () => {
+    expect(messageSeq(msg("x", "USER", "c", 3), 7)).toBe(3);
+  });
+});
+
+describe("sortMessagesBySeq tie-breakers", () => {
+  it("falls back to id when createdAt is not parseable", () => {
+    const input = [
+      msg("b", "USER", "b", 1, "not-a-date"),
+      msg("a", "ASSISTANT", "a", 1, "also-invalid"),
+    ];
+    expect(sortMessagesBySeq(input).map((m) => m.id)).toEqual(["a", "b"]);
+  });
+
+  it("falls back to id when seq and createdAt tie", () => {
+    const input = [
+      msg("b", "USER", "b", 1, "2025-01-01T00:00:00.000Z"),
+      msg("a", "ASSISTANT", "a", 1, "2025-01-01T00:00:00.000Z"),
+    ];
+    expect(sortMessagesBySeq(input).map((m) => m.id)).toEqual(["a", "b"]);
   });
 });

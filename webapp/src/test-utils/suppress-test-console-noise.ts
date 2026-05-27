@@ -7,6 +7,8 @@ export const SUPPRESSED_TEST_CONSOLE_PATTERNS: RegExp[] = [
   /An update to .+ inside a test was not wrapped in act/i,
   /Query data cannot be undefined/i,
   /Maximum call stack size exceeded/i,
+  /ECONNREFUSED/i,
+  /vitest_backend_unreachable/i,
 ];
 
 export function formatConsoleArgs(args: unknown[]): string {

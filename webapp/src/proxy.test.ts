@@ -42,6 +42,14 @@ describe("proxy middleware", () => {
     expect(res.status).toBe(200);
   });
 
+  it("delegates locale-only paths to i18n middleware without auth redirect", async () => {
+    const { default: proxy } = await import("./proxy");
+    const req = new NextRequest(new URL("http://localhost/en"));
+    const res = proxy(req);
+    expect(handleI18n).toHaveBeenCalledWith(req);
+    expect(res.status).toBe(200);
+  });
+
   it("uses default locale in redirect when path has no locale prefix", async () => {
     const { default: proxy } = await import("./proxy");
     const req = new NextRequest(new URL("http://localhost/chat"));
@@ -55,6 +63,21 @@ describe("proxy middleware", () => {
     const res = proxy(req);
     expect(res.status).toBe(200);
     expect(handleI18n).toHaveBeenCalledWith(req);
+  });
+
+  it("does not treat locale-only paths as protected app routes", async () => {
+    const { default: proxy } = await import("./proxy");
+    const req = new NextRequest(new URL("http://localhost/en"));
+    const res = proxy(req);
+    expect(res.status).toBe(200);
+    expect(handleI18n).toHaveBeenCalledWith(req);
+  });
+
+  it("normalizes bare paths without a leading slash", async () => {
+    const { default: proxy } = await import("./proxy");
+    const req = new NextRequest(new URL("http://localhost/chat"));
+    const res = proxy(req);
+    expect(res.headers.get("location")).toMatch(/\/en\/login$/);
   });
 
   it("does not treat bare /api/* paths as protected app routes", async () => {

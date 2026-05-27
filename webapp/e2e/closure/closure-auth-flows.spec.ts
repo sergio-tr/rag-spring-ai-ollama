@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { adminEmail, adminPassword, seedEmail, seedPassword } from "../fixtures/users";
+import { adminEmail, adminPassword, seedEmail } from "../fixtures/users";
 import { loginAsE2eAdmin, loginAsSeedUser } from "../support/helpers";
 
 /**

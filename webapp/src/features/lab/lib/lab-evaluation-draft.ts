@@ -52,7 +52,9 @@ export function defaultLabEvaluationDraft(): Omit<LabEvaluationDraftStored, "v">
   };
 }
 
-function coerceFollowMode(_raw: unknown): LabJobFollowMode {
+/** Lab drafts always use SSE; legacy poll/unknown stored values are normalized on load. */
+function coerceFollowMode(raw: unknown): LabJobFollowMode {
+  void raw;
   return "sse";
 }
 

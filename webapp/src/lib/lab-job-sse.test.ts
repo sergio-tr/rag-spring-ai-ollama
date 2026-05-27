@@ -719,7 +719,6 @@ describe("streamLabJobLive", () => {
     );
     const onReconnecting = vi.fn();
     const onLive = vi.fn();
-    const ac = new AbortController();
 
     const out = await streamLabJobLive(apiProductPath("/lab/jobs/job-1/events"), {
       callbacks: { onReconnecting, onLive },

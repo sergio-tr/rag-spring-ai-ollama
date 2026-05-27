@@ -85,9 +85,6 @@ export function useAutoResumeLabJobs(options: UseAutoResumeLabJobsOptions): UseA
     [clearOtherLabJobsForSection, onAutoFollow, sectionKey, taskTypeHint],
   );
 
-  const autoFollowJobId =
-    recovery.decision.kind === "auto_follow" ? recovery.decision.candidate.jobId : null;
-
   useEffect(() => {
     if (!canAutoFollow || recovery.decision.kind !== "auto_follow") {
       return;

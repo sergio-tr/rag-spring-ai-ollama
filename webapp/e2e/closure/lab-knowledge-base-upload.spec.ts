@@ -1,4 +1,3 @@
-import * as path from "node:path";
 import { expect, test } from "@playwright/test";
 import { sampleTextFilePath } from "../fixtures/documents";
 import {

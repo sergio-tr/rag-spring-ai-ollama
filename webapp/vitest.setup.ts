@@ -60,14 +60,24 @@ vi.mock("next/navigation.js", () => ({
 }));
 
 // Silence accidental Next-prefetch network calls against the default DOM origin (127.0.0.1:3000).
-// We keep the real fetch for non-prefetch URLs so feature tests can still stub apiFetch as needed.
+// Block dev-backend origins (CI sets NEXT_PUBLIC_API_BASE_URL=http://localhost:9000) so Vitest never
+// emits ECONNREFUSED AggregateError noise when a hook forgets to mock apiFetch.
 const realFetch = globalThis.fetch?.bind(globalThis);
+const BLOCKED_FETCH_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1):9000(?:\/|$)/i;
+
+function resolveFetchUrl(input: RequestInfo | URL): string {
+  const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+  return raw.startsWith("/") ? `http://127.0.0.1:3000${raw}` : raw;
+}
+
 if (realFetch) {
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
-    const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-    const url = raw.startsWith("/") ? `http://127.0.0.1:3000${raw}` : raw;
+    const url = resolveFetchUrl(input);
     if (url.startsWith("http://127.0.0.1:3000") || url.startsWith("http://localhost:3000")) {
       return new Response("", { status: 204 });
+    }
+    if (BLOCKED_FETCH_ORIGIN.test(url)) {
+      return Response.json({ error: "vitest_backend_unreachable" }, { status: 503 });
     }
     return realFetch(input as never, init);
   });

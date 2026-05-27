@@ -14,15 +14,6 @@ export type AppScrollMetrics = {
   voidBelowMainPx: number;
 };
 
-function isElementScrollable(el: Element | null): boolean {
-  if (!el) return false;
-  const node = el as HTMLElement;
-  const style = getComputedStyle(node);
-  const overflowY = style.overflowY;
-  if (!/(auto|scroll|overlay)/.test(overflowY)) return false;
-  return node.scrollHeight > node.clientHeight + 1;
-}
-
 /** Measures scroll owners and empty bands below chat or main content (1366×768 layout contract). */
 export async function measureAppScrollOwners(page: Page): Promise<AppScrollMetrics> {
   return page.evaluate(() => {

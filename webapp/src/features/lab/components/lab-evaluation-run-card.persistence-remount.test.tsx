@@ -21,6 +21,28 @@ vi.mock("@/features/lab/hooks/use-lab-status", () => ({
   })),
 }));
 
+vi.mock("@/features/chat/hooks/use-models-by-type", () => ({
+  useModelsByType: vi.fn(() => ({ data: [], isLoading: false, isFetched: true })),
+}));
+
+vi.mock("@/features/lab/hooks/use-evaluation-corpus", () => ({
+  useEvaluationCorpus: vi.fn(() => ({
+    summary: { documentCount: 2, readyCount: 2, documents: [] },
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+    ensureCorpus: vi.fn(),
+    uploadDocuments: vi.fn(),
+    corpusReady: true,
+    corpusProcessing: false,
+    attachFromProject: vi.fn(),
+  })),
+}));
+
+vi.mock("@/features/lab/hooks/use-experimental-preset-catalog", () => ({
+  useExperimentalPresetCatalog: vi.fn(() => ({ data: [], isLoading: false, isFetched: true })),
+}));
+
 vi.mock("@/features/lab/hooks/use-experimental-datasets", () => ({
   useExperimentalDatasetsQuery: vi.fn(() => ({
     data: [

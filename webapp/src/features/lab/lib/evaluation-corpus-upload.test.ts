@@ -5,6 +5,7 @@ import {
   corpusHasProcessingDocuments,
   corpusHasReadyDocuments,
   corpusUploadErrorMessage,
+  mapKnowledgeBaseApiError,
   summarizeCorpusUploadFailures,
 } from "./evaluation-corpus-upload";
 
@@ -96,6 +97,28 @@ describe("evaluation-corpus-upload", () => {
     ).toBe(false);
     expect(corpusHasProcessingDocuments(null)).toBe(false);
     expect(corpusHasProcessingDocuments({ documents: [] })).toBe(false);
+  });
+
+  it("mapKnowledgeBaseApiError maps known KB codes to i18n keys", () => {
+    const t = (key: string) => `i18n:${key}`;
+    expect(mapKnowledgeBaseApiError("KB_NOT_FOUND", t, "fb")).toBe("i18n:labKbNotFound");
+    expect(mapKnowledgeBaseApiError("KB_EMPTY", t, "fb")).toBe("i18n:labKbEmpty");
+    expect(mapKnowledgeBaseApiError("NO_DOCUMENTS", t, "fb")).toBe("i18n:labKbEmpty");
+    expect(mapKnowledgeBaseApiError("NO_READY_DOCUMENTS", t, "fb")).toBe("i18n:labKbNoReadyDocuments");
+    expect(mapKnowledgeBaseApiError("DOCUMENT_PROCESSING_FAILED", t, "fb")).toBe(
+      "i18n:labKbDocumentProcessingFailed",
+    );
+    expect(mapKnowledgeBaseApiError("NO_CORPUS_SELECTED", t, "fb")).toBe("i18n:benchmarkNeedsCorpus");
+    expect(mapKnowledgeBaseApiError("REINDEX_FAILED", t, "fb")).toBe("i18n:labRagSnapshotPreparationFailed");
+    expect(mapKnowledgeBaseApiError("SNAPSHOT_PREPARATION_FAILED", t, "fb")).toBe(
+      "i18n:labRagSnapshotPreparationFailed",
+    );
+  });
+
+  it("mapKnowledgeBaseApiError returns raw message for unknown codes", () => {
+    const t = (key: string) => key;
+    expect(mapKnowledgeBaseApiError("CUSTOM detail", t, "fb")).toBe("CUSTOM detail");
+    expect(mapKnowledgeBaseApiError("  ", t, "fb")).toBe("fb");
   });
 
   it("uses default message when failed upload has no error", () => {

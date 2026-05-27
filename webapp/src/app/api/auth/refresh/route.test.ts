@@ -62,4 +62,35 @@ describe("POST refresh route", () => {
     expect(body.ok).toBe(true);
     expect(body.accessToken).toBe("new-access");
   });
+
+  it("calls upstream with normalized API prefix (no trailing slash)", async () => {
+    vi.resetModules();
+    process.env.NEXT_PUBLIC_RAG_API_PREFIX = "/api/v5/";
+    process.env.NEXT_PUBLIC_API_BASE_URL = "http://api.test";
+    const fetchMock = vi.fn(async () =>
+      Response.json({ accessToken: "new-access", refreshToken: "new-refresh" }),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+    const { POST: postWithPrefix } = await import("./route");
+    const res = await postWithPrefix();
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.test/api/v5/auth/refresh",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("omits refresh cookie when upstream omits refreshToken", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        accessToken: "new-access",
+      }),
+    ) as typeof fetch;
+    const res = await POST();
+    expect(res.status).toBe(200);
+    const setCookie = res.headers.getSetCookie?.() ?? [];
+    const names = setCookie.map((c) => c.split("=")[0]);
+    expect(names).toContain("rag_access_token");
+    expect(names.filter((n) => n.includes("refresh"))).toHaveLength(0);
+  });
 });

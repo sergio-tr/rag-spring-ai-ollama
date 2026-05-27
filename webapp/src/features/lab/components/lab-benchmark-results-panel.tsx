@@ -5,7 +5,6 @@ import { Label } from "@/components/ui/label";
 import {
   downloadCampaignExport,
   downloadCampaignItemsJson,
-  downloadCampaignMvpItemsJson,
   downloadCampaignSummaryJson,
   downloadMvpExport,
   fetchCampaignComparison,

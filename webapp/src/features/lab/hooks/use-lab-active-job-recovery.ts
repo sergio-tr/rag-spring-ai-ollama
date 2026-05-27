@@ -124,17 +124,6 @@ function toCandidate(
   };
 }
 
-function pickLatestNonTerminalForSection(
-  records: readonly PersistedLabJobRecord[],
-  sectionKey: LabJobSectionKey,
-): PersistedLabJobRecord | null {
-  const filtered = records.filter((r) => r.sectionKey === sectionKey && !r.staleNotFound);
-  const inflight = filtered.filter((r) => r.lastStatus?.terminal !== true);
-  if (inflight.length === 0) return null;
-  const [head, ...tail] = inflight;
-  return tail.reduce((a, b) => (a.lastUpdatedMs >= b.lastUpdatedMs ? a : b), head);
-}
-
 /**
  * Deterministic recovery decision: backend active jobs win over session cache when both exist.
  * Does not perform network I/O.

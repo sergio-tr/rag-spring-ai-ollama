@@ -155,7 +155,6 @@ export function LabEvaluationRunCard({
   cardTitle,
   cardDescription,
   runButtonTestId,
-  radioGroupName,
   introBeforeCard,
 }: LabEvaluationRunCardProps) {
   const t = useTranslations("Lab");
