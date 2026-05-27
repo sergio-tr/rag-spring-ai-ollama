@@ -43,6 +43,7 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.evaluation.LabJobConcurrencyException", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabJobEventService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabJobLifecycleService", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.LabJobSseHub", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.lab.LabClasspathCorpusBootstrapService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService", // ARCH-DEBT-KNOWLEDGE
@@ -131,17 +132,21 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.ExperimentalDatasetLabService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.ExperimentalDatasetResolver", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabCampaignService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabEvaluationRunService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabJobEventService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabJobLifecycleService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabMetricsComparisonService", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.LabJobProgressTracker", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.LabJobStaleReconciliationRunner", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.async.ClassifierEvalJobHandler", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.async.ClassifierTrainJobHandler", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.async.EvalEmbeddingRetrievalJobHandler", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.async.EvalLlmJobHandler", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.async.EvalRagJobHandler", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.async.EvaluationRunRagJobContextLoader", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.async.LabJobHandler", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.async.LabJobPayloadKeys", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.async.OllamaPullJobHandler", // ARCH-DEBT-LAB
