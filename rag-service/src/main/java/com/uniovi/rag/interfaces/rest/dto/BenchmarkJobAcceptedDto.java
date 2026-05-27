@@ -7,6 +7,7 @@ public record BenchmarkJobAcceptedDto(
         UUID evaluationRunId,
         UUID asyncTaskId,
         UUID campaignId,
+        Integer totalItems,
         String status,
         String pollPath,
         String streamPath) {}
