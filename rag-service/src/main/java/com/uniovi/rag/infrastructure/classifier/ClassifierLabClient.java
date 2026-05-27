@@ -46,25 +46,36 @@ public class ClassifierLabClient implements ClassifierLabPort {
             new ParameterizedTypeReference<>() {};
 
     private final String baseUrl;
-    private final RestTemplate restTemplate;
+    private final RestTemplate labRestTemplate;
+    private final RestTemplate classifyRestTemplate;
     private final ObjectMapper objectMapper;
 
     @Autowired
     public ClassifierLabClient(
             @Value("${rag.classifier.service.url:}") String baseUrl,
-            @Value("${rag.classifier.service.timeout-ms:5000}") int timeoutMs,
+            @Value("${rag.classifier.service.timeout-ms:5000}") int classifyTimeoutMs,
+            @Value("${rag.classifier.service.lab-timeout-ms:240000}") int labTimeoutMs,
             ObjectMapper objectMapper) {
-        this(baseUrl, timeoutMs, objectMapper, null);
+        this(baseUrl, classifyTimeoutMs, labTimeoutMs, objectMapper, null, null);
     }
 
     /**
      * Package-private hook for tests: inject a {@link RestTemplate} (e.g. bound to {@code MockRestServiceServer}).
      */
-    ClassifierLabClient(String baseUrl, int timeoutMs, ObjectMapper objectMapper, RestTemplate restTemplate) {
+    ClassifierLabClient(
+            String baseUrl,
+            int classifyTimeoutMs,
+            int labTimeoutMs,
+            ObjectMapper objectMapper,
+            RestTemplate labRestTemplate,
+            RestTemplate classifyRestTemplate) {
         this.baseUrl = baseUrl != null ? stripTrailingSlashes(baseUrl) : "";
         this.objectMapper = objectMapper;
-        int effective = timeoutMs > 0 ? timeoutMs : 5000;
-        this.restTemplate = restTemplate != null ? restTemplate : createRestTemplate(effective);
+        int effectiveLab = labTimeoutMs > 0 ? labTimeoutMs : 240_000;
+        int effectiveClassify = classifyTimeoutMs > 0 ? classifyTimeoutMs : 5_000;
+        this.labRestTemplate = labRestTemplate != null ? labRestTemplate : createRestTemplate(effectiveLab);
+        this.classifyRestTemplate =
+                classifyRestTemplate != null ? classifyRestTemplate : createRestTemplate(effectiveClassify);
     }
 
     private static RestTemplate createRestTemplate(int timeoutMs) {
@@ -166,7 +177,7 @@ public class ClassifierLabClient implements ClassifierLabPort {
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
             HttpEntity<MultiValueMap<String, Object>> entity = new HttpEntity<>(body, headers);
             ResponseEntity<Map<String, Object>> resp =
-                    restTemplate.exchange(baseUrl + "/train", HttpMethod.POST, entity, MAP_OF_STRING_OBJECT);
+                    labRestTemplate.exchange(baseUrl + "/train", HttpMethod.POST, entity, MAP_OF_STRING_OBJECT);
             return bodyAsMap(resp);
         } catch (HttpStatusCodeException e) {
             throw mapClassifierError(e);
@@ -211,11 +222,11 @@ public class ClassifierLabClient implements ClassifierLabPort {
                 headers.setContentType(MediaType.MULTIPART_FORM_DATA);
                 HttpEntity<MultiValueMap<String, Object>> entity = new HttpEntity<>(body, headers);
                 ResponseEntity<Map<String, Object>> resp =
-                        restTemplate.exchange(url.toString(), HttpMethod.POST, entity, MAP_OF_STRING_OBJECT);
+                        labRestTemplate.exchange(url.toString(), HttpMethod.POST, entity, MAP_OF_STRING_OBJECT);
                 return bodyAsMap(resp);
             }
             ResponseEntity<Map<String, Object>> resp =
-                    restTemplate.exchange(url.toString(), HttpMethod.POST, HttpEntity.EMPTY, MAP_OF_STRING_OBJECT);
+                    labRestTemplate.exchange(url.toString(), HttpMethod.POST, HttpEntity.EMPTY, MAP_OF_STRING_OBJECT);
             return bodyAsMap(resp);
         } catch (HttpStatusCodeException e) {
             throw mapClassifierError(e);
@@ -234,7 +245,7 @@ public class ClassifierLabClient implements ClassifierLabPort {
                     Map.of("query", query != null ? query : "", "modelId", modelId != null ? modelId : "default");
             HttpEntity<Map<String, String>> entity = new HttpEntity<>(payload, headers);
             ResponseEntity<Map<String, Object>> resp =
-                    restTemplate.exchange(baseUrl + "/classify", HttpMethod.POST, entity, MAP_OF_STRING_OBJECT);
+                    classifyRestTemplate.exchange(baseUrl + "/classify", HttpMethod.POST, entity, MAP_OF_STRING_OBJECT);
             return bodyAsMap(resp);
         } catch (HttpStatusCodeException e) {
             log.warn(
@@ -253,7 +264,8 @@ public class ClassifierLabClient implements ClassifierLabPort {
     public List<Map<String, Object>> listModels() {
         requireConfigured();
         try {
-            ResponseEntity<List> resp = restTemplate.exchange(baseUrl + "/models", HttpMethod.GET, HttpEntity.EMPTY, List.class);
+            ResponseEntity<List> resp =
+                    classifyRestTemplate.exchange(baseUrl + "/models", HttpMethod.GET, HttpEntity.EMPTY, List.class);
             Object body = resp.getBody();
             if (body instanceof List<?> list) {
                 List<Map<String, Object>> out = new ArrayList<>();

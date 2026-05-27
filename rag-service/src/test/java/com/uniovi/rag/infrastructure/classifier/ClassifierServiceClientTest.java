@@ -19,6 +19,7 @@ import org.springframework.web.client.RestClientException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
@@ -123,15 +124,14 @@ class ClassifierServiceClientTest {
     }
 
     @Test
-    void classify_returnsNull_whenServiceReturns5xx() {
+    void classify_throws_whenServiceReturns5xx() {
         String base = ClassifierClientTestSupport.defaultBaseUrl();
         server.expect(requestTo(base + "/classify"))
                 .andRespond(withServerError());
 
-        QueryType result = classifier.classify("any query");
+        assertThrows(IllegalStateException.class, () -> classifier.classify("any query"));
 
         server.verify();
-        assertNull(result);
     }
 
     @Test
@@ -147,19 +147,18 @@ class ClassifierServiceClientTest {
     }
 
     @Test
-    void classify_returnsNull_whenServiceReturnsNon2xx() {
+    void classify_throws_whenServiceReturnsNon2xx() {
         String base = ClassifierClientTestSupport.defaultBaseUrl();
         server.expect(requestTo(base + "/classify"))
                 .andRespond(withStatus(HttpStatus.BAD_REQUEST));
 
-        QueryType result = classifier.classify("any query");
+        assertThrows(IllegalStateException.class, () -> classifier.classify("any query"));
 
         server.verify();
-        assertNull(result);
     }
 
     @Test
-    void classifyWithText_returnsNull_whenRestTemplateThrowsRestClientException_timeout() {
+    void classifyWithText_throws_whenRestTemplateThrowsRestClientException_timeout() {
         RestTemplate throwingRestTemplate = mock(RestTemplate.class);
         when(throwingRestTemplate.exchange(
                 Mockito.anyString(),
@@ -176,7 +175,7 @@ class ClassifierServiceClientTest {
                 throwingRestTemplate
         );
 
-        assertNull(c.classifyWithText("any query"));
+        assertThrows(IllegalStateException.class, () -> c.classifyWithText("any query"));
     }
 
     @Test

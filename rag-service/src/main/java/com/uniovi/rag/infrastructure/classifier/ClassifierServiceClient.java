@@ -23,7 +23,8 @@ record ClassifyResponseDto(String queryType) {}
  * Uses the default pre-trained model (tag "default") so RAG classification is consistent.
  * Request/response use camelCase for interoperability.
  * POST {baseUrl}/classify with body {"query": "...", "modelId": "default"}, expects {"queryType": "COUNT_DOCUMENTS"} etc.
- * On failure or non-2xx returns null so LLM fallback can be used.
+ * On transport or HTTP failures throws a recoverable exception so the runtime trace records UNAVAILABLE
+ * (instead of silently returning INVALID_OUTPUT).
  */
 public class ClassifierServiceClient implements QueryClassifier {
 
@@ -110,16 +111,22 @@ public class ClassifierServiceClient implements QueryClassifier {
                 ClassifyResponseDto responseBody = response.getBody();
                 return (responseBody != null && responseBody.queryType() != null) ? responseBody.queryType() : null;
             }
+            throw new IllegalStateException("Classifier service returned non-2xx status=" + response.getStatusCode().value());
         } catch (HttpStatusCodeException e) {
-            log().warn(
-                    "[CLASSIFIER] HTTP error status={} url={} body={}",
-                    e.getStatusCode().value(),
-                    url,
-                    safeBodyPreview(e.getResponseBodyAsString()));
+            String detail =
+                    "Classifier HTTP error status="
+                            + e.getStatusCode().value()
+                            + " url="
+                            + url
+                            + " body="
+                            + safeBodyPreview(e.getResponseBodyAsString());
+            log().warn("[CLASSIFIER] {}", detail);
+            throw new IllegalStateException(detail, e);
         } catch (RestClientException e) {
-            log().warn("[CLASSIFIER] Error calling classifier-service (LLM fallback will be used): {}", e.getMessage());
+            String detail = "Classifier transport error url=" + url + " detail=" + e.getMessage();
+            log().warn("[CLASSIFIER] {}", detail);
+            throw new IllegalStateException(detail, e);
         }
-        return null;
     }
 
     private static String safeBodyPreview(String raw) {
