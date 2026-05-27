@@ -2,9 +2,10 @@
 
 import type { LabJobSectionKey } from "@/features/lab/lib/lab-job-persistence";
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
-import { fetchLabJobStatusOnce } from "@/lib/async-task";
+import { fetchLabJobStatusOnce, sleep } from "@/lib/async-task";
 import {
   eventToAsyncTaskStatus,
+  LabSseConfigurationError,
   streamLabJobLive,
   type LabJobStreamCallbacks,
 } from "@/lib/lab-job-sse";
@@ -36,6 +37,8 @@ export type UseLabJobLiveEventsResult = UseLabJobSseResult;
 const RESUMED_FLASH_MS = 2_500;
 /** Recent SSE activity suppresses reconnecting UI. */
 const RECENT_EVENT_MS = 3_000;
+/** Leave "Connecting…" if hydrate + stream open do not progress (never spin forever). */
+const CONNECTING_TIMEOUT_MS = 8_000;
 
 function taskStatusUpper(status: string | null | undefined): string {
   return (status ?? "").trim().toUpperCase();
@@ -48,6 +51,36 @@ function isTerminalConnectionState(state: LabJobLiveConnectionState): boolean {
     state === "cancelled" ||
     state === "finished_away"
   );
+}
+
+function isActiveJobStatus(status: string | null | undefined): boolean {
+  const st = taskStatusUpper(status);
+  return st === "RUNNING" || st === "QUEUED" || st === "CANCELLING" || st === "ACCEPTED";
+}
+
+function connectionStateForTerminalStatus(status: AsyncTaskStatusDto): LabJobLiveConnectionState {
+  const st = taskStatusUpper(status.status);
+  if (st === "SUCCEEDED") return "completed";
+  if (st === "FAILED") return "failed";
+  if (st === "CANCELLED" || st === "CANCELED") return "cancelled";
+  return "failed";
+}
+
+function applyTerminalFromPoll(
+  snapshot: AsyncTaskStatusDto,
+  setters: {
+    setTaskStatus: (s: AsyncTaskStatusDto) => void;
+    setConnectionState: (s: LabJobLiveConnectionState) => void;
+    onTick?: (s: AsyncTaskStatusDto) => void;
+    onTerminal?: (s: AsyncTaskStatusDto) => void;
+  },
+  refs: { taskStatusRef: { current: AsyncTaskStatusDto | null } },
+): void {
+  refs.taskStatusRef.current = snapshot;
+  setters.setTaskStatus(snapshot);
+  setters.onTick?.(snapshot);
+  setters.setConnectionState(connectionStateForTerminalStatus(snapshot));
+  setters.onTerminal?.(snapshot);
 }
 
 /**
@@ -81,6 +114,7 @@ export function useLabJobSse(options: UseLabJobSseOptions): UseLabJobSseResult {
   const resumedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastEventIdRef = useRef<number | null>(null);
   const lastEventAtRef = useRef<number | null>(null);
+  const everConnectedRef = useRef(false);
   const taskStatusRef = useRef<AsyncTaskStatusDto | null>(null);
   const callbacksRef = useRef({ onTick, onTerminal, onStreamError });
 
@@ -163,7 +197,10 @@ export function useLabJobSse(options: UseLabJobSseOptions): UseLabJobSseResult {
         }
       },
       onLive: () => {
-        if (!cancelled) promoteToLive();
+        if (!cancelled) {
+          everConnectedRef.current = true;
+          promoteToLive();
+        }
       },
       onResumed: () => {
         if (!cancelled) {
@@ -176,7 +213,7 @@ export function useLabJobSse(options: UseLabJobSseOptions): UseLabJobSseResult {
         }
       },
       onReconnecting: () => {
-        if (!cancelled && !hasRecentActivity()) {
+        if (!cancelled && everConnectedRef.current && !hasRecentActivity()) {
           setConnectionState("reconnecting");
         }
       },
@@ -189,12 +226,16 @@ export function useLabJobSse(options: UseLabJobSseOptions): UseLabJobSseResult {
         callbacksRef.current.onTick?.(status);
       },
       onJobEvent: (event: LabJobEventDto) => {
-        if (cancelled || event.eventId <= 0) return;
+        if (cancelled) return;
+        if (event.type !== "SNAPSHOT" && event.eventId <= 0) return;
         markRecentActivity();
         promoteToLive();
-        const next = lastEventIdRef.current == null ? event.eventId : Math.max(lastEventIdRef.current, event.eventId);
-        lastEventIdRef.current = next;
-        setLastEventId(next);
+        if (event.eventId > 0) {
+          const next =
+            lastEventIdRef.current == null ? event.eventId : Math.max(lastEventIdRef.current, event.eventId);
+          lastEventIdRef.current = next;
+          setLastEventId(next);
+        }
         const mapped = eventToAsyncTaskStatus(event, taskStatusRef.current);
         if (mapped) {
           taskStatusRef.current = mapped;
@@ -204,7 +245,45 @@ export function useLabJobSse(options: UseLabJobSseOptions): UseLabJobSseResult {
       },
     };
 
+    const connectingTimer = globalThis.setTimeout(() => {
+      void (async () => {
+        if (cancelled || everConnectedRef.current) return;
+        try {
+          const fresh = await hydrateLabJobStatus(jobId, { signal: controller.signal });
+          if (cancelled) return;
+          taskStatusRef.current = fresh;
+          setTaskStatus(fresh);
+          callbacksRef.current.onTick?.(fresh);
+          if (fresh.terminal) {
+            applyTerminalFromPoll(
+              fresh,
+              {
+                setTaskStatus,
+                setConnectionState,
+                onTick: callbacksRef.current.onTick,
+                onTerminal: callbacksRef.current.onTerminal,
+              },
+              { taskStatusRef },
+            );
+            return;
+          }
+          if (isActiveJobStatus(fresh.status)) {
+            setConnectionState("reconnecting");
+            return;
+          }
+        } catch {
+          /* fall through to configuration_error */
+        }
+        if (!cancelled && !everConnectedRef.current) {
+          setConnectionState((prev) =>
+            prev === "connecting" || prev === "reconnecting" ? "configuration_error" : prev,
+          );
+        }
+      })();
+    }, CONNECTING_TIMEOUT_MS);
+
     void (async () => {
+      everConnectedRef.current = false;
       try {
         setConnectionState("connecting");
         const snapshot = await hydrateLabJobStatus(jobId, { signal: controller.signal });
@@ -212,45 +291,125 @@ export function useLabJobSse(options: UseLabJobSseOptions): UseLabJobSseResult {
         taskStatusRef.current = snapshot;
         setTaskStatus(snapshot);
         callbacksRef.current.onTick?.(snapshot);
+        if (!snapshot.terminal) {
+          markRecentActivity();
+        }
         if (snapshot.terminal) {
-          const st = taskStatusUpper(snapshot.status);
-          if (st === "SUCCEEDED") setConnectionState("completed");
-          else if (st === "FAILED") setConnectionState("failed");
-          else if (st === "CANCELLED" || st === "CANCELED") setConnectionState("cancelled");
-          else setConnectionState("failed");
-          callbacksRef.current.onTerminal?.(snapshot);
+          applyTerminalFromPoll(
+            snapshot,
+            {
+              setTaskStatus,
+              setConnectionState,
+              onTick: callbacksRef.current.onTick,
+              onTerminal: callbacksRef.current.onTerminal,
+            },
+            { taskStatusRef },
+          );
           return;
         }
 
-        const terminal = await streamLabJobLive(streamPath, {
-          signal: controller.signal,
-          sinceEventId: lastEventIdRef.current,
-          callbacks,
-        });
-        if (cancelled) return;
-        taskStatusRef.current = terminal;
-        setTaskStatus(terminal);
-        callbacksRef.current.onTick?.(terminal);
-        const st = taskStatusUpper(terminal.status);
-        if (st === "SUCCEEDED") setConnectionState("completed");
-        else if (st === "FAILED") setConnectionState("failed");
-        else if (st === "CANCELLED" || st === "CANCELED") setConnectionState("cancelled");
-        else setConnectionState("failed");
-        callbacksRef.current.onTerminal?.(terminal);
+        let streamAttempts = 0;
+        while (!cancelled && !controller.signal.aborted) {
+          try {
+            const terminal = await streamLabJobLive(streamPath, {
+              signal: controller.signal,
+              sinceEventId: lastEventIdRef.current,
+              callbacks,
+            });
+            if (cancelled) return;
+            taskStatusRef.current = terminal;
+            setTaskStatus(terminal);
+            callbacksRef.current.onTick?.(terminal);
+            setConnectionState(connectionStateForTerminalStatus(terminal));
+            callbacksRef.current.onTerminal?.(terminal);
+            return;
+          } catch (e) {
+            if (cancelled || (e instanceof DOMException && e.name === "AbortError")) {
+              throw e;
+            }
+            if (e instanceof LabSseConfigurationError) {
+              throw e;
+            }
+            const status =
+              e instanceof Error && "status" in e
+                ? Number((e as Error & { status?: number }).status)
+                : typeof e === "object" && e != null && "status" in e
+                  ? Number((e as { status?: number }).status)
+                  : NaN;
+            if (status === 404 || status === 401 || status === 403) {
+              throw e;
+            }
+
+            let poll: AsyncTaskStatusDto;
+            try {
+              poll = await hydrateLabJobStatus(jobId, { signal: controller.signal });
+            } catch {
+              throw e;
+            }
+            if (cancelled) return;
+            taskStatusRef.current = poll;
+            setTaskStatus(poll);
+            callbacksRef.current.onTick?.(poll);
+            if (poll.terminal) {
+              applyTerminalFromPoll(
+                poll,
+                {
+                  setTaskStatus,
+                  setConnectionState,
+                  onTick: callbacksRef.current.onTick,
+                  onTerminal: callbacksRef.current.onTerminal,
+                },
+                { taskStatusRef },
+              );
+              return;
+            }
+            if (isActiveJobStatus(poll.status)) {
+              setConnectionState("reconnecting");
+              streamAttempts += 1;
+              if (streamAttempts > 8) {
+                throw new Error("Live stream stalled while job is still running on the server.");
+              }
+              await sleep(1_000);
+              continue;
+            }
+            throw e;
+          }
+        }
       } catch (e) {
         if (cancelled || (e instanceof DOMException && e.name === "AbortError")) {
           if (!cancelled) setConnectionState("idle");
           return;
         }
         callbacksRef.current.onStreamError?.(e);
-        if (!cancelled && !hasRecentActivity()) {
-          setConnectionState("reconnecting");
+        if (!cancelled) {
+          if (e instanceof LabSseConfigurationError) {
+            setConnectionState("configuration_error");
+            return;
+          }
+          const status =
+            e instanceof Error && "status" in e
+              ? Number((e as Error & { status?: number }).status)
+              : typeof e === "object" && e != null && "status" in e
+                ? Number((e as { status?: number }).status)
+                : NaN;
+          if (status === 404 || status === 401 || status === 403) {
+            setConnectionState("configuration_error");
+            return;
+          }
+          if (everConnectedRef.current && !hasRecentActivity()) {
+            setConnectionState("reconnecting");
+          } else {
+            setConnectionState("configuration_error");
+          }
         }
+      } finally {
+        globalThis.clearTimeout(connectingTimer);
       }
     })();
 
     return () => {
       cancelled = true;
+      globalThis.clearTimeout(connectingTimer);
       abortStreamOnly();
     };
   }, [

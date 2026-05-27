@@ -232,14 +232,15 @@ def _lab_create_evaluation_corpus_with_document(
     upload_headers = _lab_auth_headers(token, json_body=False)
     with _LAB_CORPUS_FIXTURE_PDF.open("rb") as pdf:
         upload = http_client.post(
-            f"{backend_base}{product_api_base}/lab/evaluation-corpora/{corpus_id}/documents/upload",
+            f"{backend_base}{product_api_base}/lab/evaluation-corpora/{corpus_id}/documents",
             headers=upload_headers,
             files={"file": ("bootstrap-acta.pdf", pdf, "application/pdf")},
             timeout=120.0,
         )
     assert upload.status_code == 200, upload.text
     upload_body = _assert_json_response_not_html(upload)
-    assert (upload_body.get("documentCount") or 0) >= 1, upload_body
+    corpus_body = upload_body.get("corpus") if isinstance(upload_body.get("corpus"), dict) else upload_body
+    assert (corpus_body.get("documentCount") or 0) >= 1, upload_body
     return str(corpus_id)
 
 

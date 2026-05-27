@@ -62,6 +62,18 @@ public class LabCampaignController {
         return ResponseEntity.ok(labCampaignService.exportCampaignMvpItemsJson(requireUserId(principal), campaignId));
     }
 
+    @GetMapping(value = "/campaigns/{campaignId}/export/campaign-items.json", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> exportCampaignItemsJson(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID campaignId) {
+        return ResponseEntity.ok(labCampaignService.exportCampaignItemsJson(requireUserId(principal), campaignId));
+    }
+
+    @GetMapping(value = "/campaigns/{campaignId}/export/campaign-summary.json", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> exportCampaignSummaryJson(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID campaignId) {
+        return ResponseEntity.ok(labCampaignService.exportCampaignSummaryJson(requireUserId(principal), campaignId));
+    }
+
     @GetMapping(value = "/campaigns/{campaignId}/comparison", produces = MediaType.APPLICATION_JSON_VALUE)
     public Map<String, Object> comparison(
             @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID campaignId) {

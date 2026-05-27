@@ -8,6 +8,7 @@ import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleL
 import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleCounts;
 import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleSnapshot;
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
+import com.uniovi.rag.application.service.classifier.ClassifierModelRegistryService;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationIssue;
 import com.uniovi.rag.application.service.async.AsyncTaskService;
 import com.uniovi.rag.application.port.ClassifierLabPort;
@@ -39,6 +40,7 @@ import java.util.UUID;
 public class LabController {
 
     private final ClassifierLabPort classifierLabClient;
+    private final ClassifierModelRegistryService classifierModelRegistryService;
     private final AsyncTaskService asyncTaskService;
     private final RagApiPathProperties apiPathProperties;
     private final EvaluationReferenceBundleLoader referenceBundleLoader;
@@ -46,11 +48,13 @@ public class LabController {
 
     public LabController(
             ClassifierLabPort classifierLabClient,
+            ClassifierModelRegistryService classifierModelRegistryService,
             AsyncTaskService asyncTaskService,
             RagApiPathProperties apiPathProperties,
             EvaluationReferenceBundleLoader referenceBundleLoader,
             LabExperimentalPresetCatalogService experimentalPresetCatalogService) {
         this.classifierLabClient = classifierLabClient;
+        this.classifierModelRegistryService = classifierModelRegistryService;
         this.asyncTaskService = asyncTaskService;
         this.apiPathProperties = apiPathProperties;
         this.referenceBundleLoader = referenceBundleLoader;
@@ -135,8 +139,17 @@ public class LabController {
             @RequestParam(value = "batch_size", defaultValue = "8") int batchSize)
             throws IOException {
         if (sync) {
-            return ResponseEntity.ok(
-                    classifierLabClient.train(file, modelName, labels, labelsFile, epochs, batchSize));
+            UUID userId = requireUserId(principal);
+            Map<String, Object> res =
+                    classifierLabClient.train(file, modelName, labels, labelsFile, epochs, batchSize);
+            // Sync mode bypasses async job handlers; still persist registry rows so activation/UI can find the model.
+            try {
+                classifierModelRegistryService.registerAfterSuccessfulTrain(
+                        userId, UUID.randomUUID(), modelName, res, epochs, batchSize);
+            } catch (Exception ignored) {
+                // Best-effort; training result still returned to the caller.
+            }
+            return ResponseEntity.ok(res);
         }
         UUID jobId = asyncTaskService.submitClassifierTrain(
                 requireUserId(principal), projectId, file, modelName, labels, labelsFile, epochs, batchSize);
@@ -153,7 +166,14 @@ public class LabController {
             @RequestPart(value = "file", required = false) MultipartFile file)
             throws IOException {
         if (sync) {
-            return ResponseEntity.ok(classifierLabClient.evaluate(modelId, includeImages, file));
+            UUID userId = requireUserId(principal);
+            Map<String, Object> res = classifierLabClient.evaluate(modelId, includeImages, file);
+            try {
+                classifierModelRegistryService.enrichAfterEval(userId, modelId, res);
+            } catch (Exception ignored) {
+                // Best-effort; evaluation result still returned to the caller.
+            }
+            return ResponseEntity.ok(res);
         }
         UUID jobId =
                 asyncTaskService.submitClassifierEval(requireUserId(principal), projectId, modelId, includeImages, file);

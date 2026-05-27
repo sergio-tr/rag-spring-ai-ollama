@@ -62,6 +62,16 @@ describe("getLabJobUiPhase", () => {
     ).toBe("cancelled");
   });
 
+  it("maps non-terminal CANCELLING", () => {
+    expect(
+      getLabJobUiPhase({
+        taskStatus: task({ status: "CANCELLING", terminal: false }),
+        queuedHint: false,
+        stoppedWaiting: false,
+      }),
+    ).toBe("cancelling");
+  });
+
   it("maps non-terminal RUNNING", () => {
     expect(
       getLabJobUiPhase({
@@ -147,11 +157,13 @@ const labels = {
   finishedAway: "Finished away",
   queued: "Queued",
   running: "Running",
+  cancelling: "Stopping",
   completed: "Completed",
   failed: "Failed",
   cancelled: "Cancelled",
   stoppedWaiting: "Stopped",
   unknownRunning: "Unknown",
+  streamConfigurationError: "Live stream configuration error",
 };
 
 describe("getLabJobStatusLabel", () => {
@@ -163,7 +175,11 @@ describe("getLabJobStatusLabel", () => {
     expect(getLabJobStatusLabel("resumed", labels)).toBe("Resumed");
     expect(getLabJobStatusLabel("finished_away", labels)).toBe("Finished away");
     expect(getLabJobStatusLabel("unknown_running", labels)).toBe("Unknown");
+    expect(getLabJobStatusLabel("cancelling", labels)).toBe("Stopping");
     expect(getLabJobStatusLabel("idle", labels)).toBe("Queued");
+    expect(getLabJobStatusLabel("failed", labels, "configuration_error")).toBe(
+      "Live stream configuration error",
+    );
   });
 });
 

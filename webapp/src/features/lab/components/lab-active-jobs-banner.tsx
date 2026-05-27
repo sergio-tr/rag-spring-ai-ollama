@@ -2,9 +2,11 @@
 
 import { Button } from "@/components/ui/button";
 import { InlineHelpStatus } from "@/features/help/InlineHelpStatus";
+import { LabJobStopConfirmDialog } from "@/features/lab/components/lab-job-stop-confirm-dialog";
 import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import { useRouter } from "@/navigation";
+import type { ActiveLabJobDto } from "@/types/api";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
@@ -17,60 +19,114 @@ function sectionHref(benchmarkKind: string | null | undefined): string {
   return "/lab";
 }
 
-export function LabActiveJobsBanner() {
+function ActiveJobRow(props: Readonly<{
+  job: ActiveLabJobDto;
+  onCancelDone: () => void;
+}>) {
+  const { job, onCancelDone } = props;
   const t = useTranslations("Lab");
   const router = useRouter();
-  const { data, isLoading, refetch } = useActiveLabJobs();
   const [cancelMsg, setCancelMsg] = useState<string | null>(null);
-
-  const job = data?.[0];
-  if (!isLoading && (!data || data.length === 0 || !job)) {
-    return null;
-  }
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   async function cancelJob() {
-    if (!job?.jobId) return;
+    if (!job.jobId) return;
     setCancelMsg(null);
+    setCancelling(true);
     try {
       await apiFetch<void>(apiProductPath(`/lab/jobs/${job.jobId}/cancel`), { method: "POST" });
       setCancelMsg(t("jobCancelRequested"));
+      onCancelDone();
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setCancelMsg(t("jobCancelTooLate"));
       } else {
         setCancelMsg(e instanceof Error ? e.message : String(e));
       }
+      throw e;
+    } finally {
+      setCancelling(false);
     }
-    await refetch();
   }
 
-  const label = job
-    ? t("activeJobBanner", {
-        jobId: job.jobId,
-        benchmarkKind: job.benchmarkKind ?? "unknown",
-        status: job.status,
-      })
-    : t("activeJobBannerLoading");
+  const label = t("activeJobBanner", {
+    jobId: job.jobId,
+    benchmarkKind: job.benchmarkKind ?? "unknown",
+    status: job.status,
+  });
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2" data-testid="lab-active-job-banner">
+    <div className="flex flex-wrap items-center gap-2" data-testid={`lab-active-job-row-${job.jobId}`}>
       <InlineHelpStatus status="in_progress" label={label} className="max-w-[min(100%,42rem)] flex-1" />
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="secondary" size="sm" className="shrink-0" onClick={() => router.push(sectionHref(job?.benchmarkKind))}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="shrink-0"
+          onClick={() => router.push(sectionHref(job.benchmarkKind))}
+        >
           {t("activeJobBannerViewProgress")}
         </Button>
-        {job?.cancellable ? (
-          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => void cancelJob()}>
-            {t("activeJobBannerCancel")}
+        {job.cancellable ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={cancelling}
+            onClick={() => setCancelConfirmOpen(true)}
+          >
+            {cancelling ? t("jobCancelling") : t("jobStopEvaluation")}
           </Button>
         ) : null}
       </div>
       {cancelMsg ? (
-        <p className="text-muted-foreground text-xs w-full" role="status">
+        <span className="text-muted-foreground w-full text-xs" role="status">
           {cancelMsg}
-        </p>
+        </span>
       ) : null}
+      <LabJobStopConfirmDialog
+        open={cancelConfirmOpen}
+        onOpenChange={setCancelConfirmOpen}
+        jobIdFragment={job.jobId?.slice(0, 8) ?? null}
+        onConfirm={cancelJob}
+      />
     </div>
   );
 }
 
+export function LabActiveJobsBanner() {
+  const t = useTranslations("Lab");
+  const { data, isLoading, refetch } = useActiveLabJobs();
+
+  if (isLoading) {
+    return (
+      <div className="rounded-md border border-border bg-muted/30 px-3 py-2" data-testid="lab-active-job-banner">
+        <InlineHelpStatus status="in_progress" label={t("activeJobBannerLoading")} />
+      </div>
+    );
+  }
+
+  const jobs = data ?? [];
+  if (jobs.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className="space-y-2 rounded-md border border-border bg-muted/30 px-3 py-2"
+      data-testid="lab-active-job-banner"
+    >
+      {jobs.length > 1 ? (
+        <p className="font-medium text-sm" data-testid="lab-active-jobs-multiple-title">
+          {t("labRecoveryMultipleTitle")}
+        </p>
+      ) : null}
+      {jobs.map((job) => (
+        <ActiveJobRow key={job.jobId} job={job} onCancelDone={() => void refetch()} />
+      ))}
+    </div>
+  );
+}

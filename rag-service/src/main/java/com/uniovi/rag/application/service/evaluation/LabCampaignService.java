@@ -13,6 +13,8 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpMetricsCalculator;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpRollupCalculator;
+import com.uniovi.rag.application.service.evaluation.metrics.LabBenchmarkExportLabels;
+import com.uniovi.rag.infrastructure.persistence.evaluation.LabCampaignHumanExportBuilder;
 import com.uniovi.rag.interfaces.rest.dto.StartCampaignRequestDto;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -151,34 +153,61 @@ public class LabCampaignService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> exportCampaignMvpItemsJson(UUID userId, UUID campaignId) {
+        return exportCampaignItemsJson(userId, campaignId);
+    }
+
+    /** Human-readable campaign items export ({@code campaign-items.json} contract). */
+    @Transactional(readOnly = true)
+    public Map<String, Object> exportCampaignItemsJson(UUID userId, UUID campaignId) {
         EvaluationCampaignEntity c = requireCampaign(userId, campaignId);
-        CampaignContext ctx = resolveCampaignContext(c, evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId));
         List<EvaluationRunEntity> runs = evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId);
+        CampaignContext ctx = resolveCampaignContext(c, runs);
+        Map<String, Object> out =
+                new LinkedHashMap<>(
+                        LabCampaignHumanExportBuilder.campaignHeader(
+                                c, ctx.campaignType(), ctx.comparisonAxis(), ctx.comparativeMode(), runs));
+        out.put("exportKind", LabCampaignHumanExportBuilder.EXPORT_KIND_ITEMS);
+        out.put("exportedAt", Instant.now().toString());
         List<Map<String, Object>> items = new ArrayList<>();
         for (EvaluationRunEntity run : runs) {
-            List<EvaluationResultEntity> rows = evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId());
+            List<EvaluationResultEntity> rows =
+                    evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId());
             for (EvaluationResultEntity it : rows) {
-                Map<String, Object> mvp = BenchmarkMvpMetricsCalculator.computeMvpMetrics(it, run);
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("campaignId", campaignId);
-                row.put("campaignType", ctx.campaignType());
-                row.put("comparisonAxis", ctx.comparisonAxis());
-                row.put("runId", run.getId());
-                row.put("runName", run.getName());
-                row.put("modelLabel", humanModelLabel(run));
-                row.put("presetLabel", humanPresetLabel(run));
-                row.put("evaluatedAt", it.getEvaluatedAt());
-                row.put("mvp", mvp);
-                items.add(row);
+                items.add(
+                        LabCampaignHumanExportBuilder.buildHumanItemRow(
+                                campaignId, ctx.campaignType(), ctx.comparisonAxis(), run, it));
             }
         }
-        return Map.of(
-                "campaignId", campaignId,
-                "campaignType", ctx.campaignType(),
-                "comparisonAxis", ctx.comparisonAxis(),
-                "comparativeMode", ctx.comparativeMode(),
-                "exportedAt", Instant.now().toString(),
-                "items", items);
+        out.put("items", items);
+        return out;
+    }
+
+    /** Human-readable campaign summary export ({@code campaign-summary.json} contract). */
+    @Transactional(readOnly = true)
+    public Map<String, Object> exportCampaignSummaryJson(UUID userId, UUID campaignId) {
+        EvaluationCampaignEntity c = requireCampaign(userId, campaignId);
+        List<EvaluationRunEntity> runs = evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId);
+        CampaignContext ctx = resolveCampaignContext(c, runs);
+        Map<String, Object> cmp = campaignComparison(userId, campaignId);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> comparisonRows = (List<Map<String, Object>>) cmp.getOrDefault("rows", List.of());
+        List<Map<String, Object>> humanRows = new ArrayList<>();
+        for (Map<String, Object> row : comparisonRows) {
+            UUID runId = parseUuid(row.get("runId"));
+            EvaluationRunEntity run =
+                    runs.stream().filter(r -> r.getId().equals(runId)).findFirst().orElse(runs.isEmpty() ? null : runs.getFirst());
+            humanRows.add(
+                    LabCampaignHumanExportBuilder.buildSummaryRow(
+                            row, run, campaignId, ctx.campaignType(), ctx.comparisonAxis(), ctx.comparativeMode()));
+        }
+        Map<String, Object> out =
+                new LinkedHashMap<>(
+                        LabCampaignHumanExportBuilder.campaignHeader(
+                                c, ctx.campaignType(), ctx.comparisonAxis(), ctx.comparativeMode(), runs));
+        out.put("exportKind", LabCampaignHumanExportBuilder.EXPORT_KIND_SUMMARY);
+        out.put("exportedAt", Instant.now().toString());
+        out.put("rows", humanRows);
+        return out;
     }
 
     @Transactional(readOnly = true)
@@ -194,6 +223,7 @@ public class LabCampaignService {
         out.put("campaignId", campaignId);
         out.put("campaignType", ctx.campaignType());
         out.put("comparisonAxis", ctx.comparisonAxis());
+        out.put("comparisonAxisLabel", LabBenchmarkExportLabels.comparisonAxisLabel(resolveBenchmarkKind(runs)));
         out.put("comparativeMode", ctx.comparativeMode());
         out.put("axisCount", ctx.axisCount());
         out.put("studyType", c.getStudyType());
@@ -217,8 +247,12 @@ public class LabCampaignService {
         cols.add("run_name");
         cols.add("model_label");
         cols.add("preset_label");
+        cols.add("knowledge_base_id");
+        cols.add("knowledge_base_name");
         cols.add("corpus_name");
         cols.add("dataset_name");
+        cols.add("snapshot_id");
+        cols.add("document_name");
         cols.addAll(LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS());
         StringBuilder sb = new StringBuilder();
         sb.append(String.join(",", cols)).append('\n');
@@ -234,8 +268,16 @@ public class LabCampaignService {
                 cells.add(csvEscape(nullToEmpty(run.getName())));
                 cells.add(csvEscape(humanModelLabel(run)));
                 cells.add(csvEscape(humanPresetLabel(run)));
+                UUID kbId = knowledgeBaseId(run);
+                cells.add(csvEscape(kbId != null ? kbId.toString() : ""));
+                cells.add(csvEscape(humanCorpusName(run)));
                 cells.add(csvEscape(humanCorpusName(run)));
                 cells.add(csvEscape(humanDatasetName(run)));
+                Map<String, Object> human =
+                        LabCampaignHumanExportBuilder.buildHumanItemRow(
+                                campaignId, ctx.campaignType(), ctx.comparisonAxis(), run, it);
+                cells.add(csvEscape(String.valueOf(human.getOrDefault("snapshotId", ""))));
+                cells.add(csvEscape(String.valueOf(human.getOrDefault("documentName", ""))));
                 for (String h : LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS()) {
                     cells.add(csvEscape(row.getOrDefault(h, "")));
                 }
@@ -295,7 +337,8 @@ public class LabCampaignService {
         Map<String, Object> bundle = new LinkedHashMap<>();
         bundle.put("campaign", summary(userId, campaignId));
         bundle.put("comparison", campaignComparison(userId, campaignId));
-        bundle.put("itemsBundle", exportCampaignMvpItemsJson(userId, campaignId));
+        bundle.put("itemsBundle", exportCampaignItemsJson(userId, campaignId));
+        bundle.put("summaryJson", exportCampaignSummaryJson(userId, campaignId));
         bundle.put("exportedAt", Instant.now().toString());
         return bundle;
     }
@@ -408,6 +451,35 @@ public class LabCampaignService {
     private static String humanPresetLabel(EvaluationRunEntity run) {
         String code = resolvePresetCode(run);
         return code.isBlank() ? "" : code;
+    }
+
+    private static UUID knowledgeBaseId(EvaluationRunEntity run) {
+        if (run == null || run.getEvaluationCorpus() == null) {
+            return null;
+        }
+        return run.getEvaluationCorpus().getId();
+    }
+
+    private static BenchmarkKind resolveBenchmarkKind(List<EvaluationRunEntity> runs) {
+        if (runs == null || runs.isEmpty() || runs.getFirst().getBenchmarkKind() == null) {
+            return null;
+        }
+        try {
+            return BenchmarkKind.valueOf(runs.getFirst().getBenchmarkKind());
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    private static UUID parseUuid(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return UUID.fromString(String.valueOf(raw));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 
     private static String humanCorpusName(EvaluationRunEntity run) {

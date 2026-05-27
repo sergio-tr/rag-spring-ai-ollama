@@ -51,6 +51,14 @@ export function authApiPath(path: string): string {
 /** Host ports where nginx terminates TLS/HTTP and routes ${RAG_API_PRODUCT_PREFIX} to Spring. */
 const REVERSE_PROXY_BROWSER_PORTS = new Set(["80", "8080", "443", "8443", "8444"]);
 
+/** Next.js dev / direct webapp ports when the API is not same-origin (no reverse-proxy). */
+const DEV_DIRECT_WEBAPP_PORTS = new Set(["3000", "3001", "8081"]);
+
+const DEV_BACKEND_FALLBACK_ORIGIN = "http://127.0.0.1:9000";
+
+/** Thrown when the browser cannot target Spring for product API / SSE paths. */
+export const LAB_STREAM_API_BASE_ERROR = "LAB live stream API base URL is not configured";
+
 function browserUsesReverseProxyProductApi(): boolean {
   if (typeof window === "undefined") {
     return false;
@@ -60,30 +68,84 @@ function browserUsesReverseProxyProductApi(): boolean {
   return REVERSE_PROXY_BROWSER_PORTS.has(port);
 }
 
+function browserUsesDirectWebappWithoutProxy(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const port =
+    window.location.port || (window.location.protocol === "https:" ? "443" : "80");
+  return DEV_DIRECT_WEBAPP_PORTS.has(port);
+}
+
 /**
  * Full browser URL for product API paths (`fetch`, OAuth `<a href>`, etc.).
  * Same-origin path when `NEXT_PUBLIC_API_BASE_URL` is empty or the UI is on a reverse-proxy port,
  * even if an older Docker image baked `http://127.0.0.1:9000` (avoids mixed content / CORS noise).
  */
-export function resolveBrowserProductApiUrl(path: string): string {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+export function resolveBrowserProductApiUrl(pathOrUrl: string): string {
+  const trimmed = pathOrUrl.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      return new URL(trimmed).href;
+    } catch {
+      throw new Error(LAB_STREAM_API_BASE_ERROR);
+    }
+  }
+
+  const normalizedPath = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
   const baked = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
-  if (!baked) {
+
+  if (typeof window === "undefined") {
+    if (baked) {
+      return `${baked}${normalizedPath}`;
+    }
     return normalizedPath;
   }
-  if (typeof window !== "undefined") {
+
+  if (baked) {
     try {
       if (new URL(baked).origin === window.location.origin) {
         return normalizedPath;
       }
     } catch {
-      return normalizedPath;
+      throw new Error(LAB_STREAM_API_BASE_ERROR);
     }
     if (browserUsesReverseProxyProductApi()) {
       return normalizedPath;
     }
+    return `${baked}${normalizedPath}`;
   }
-  return `${baked}${normalizedPath}`;
+
+  if (browserUsesReverseProxyProductApi()) {
+    return normalizedPath;
+  }
+
+  // Direct Next dev / webapp port: never same-origin `/api/v5` (hits Next 404 HTML).
+  if (browserUsesDirectWebappWithoutProxy() || !REVERSE_PROXY_BROWSER_PORTS.has(
+    window.location.port || (window.location.protocol === "https:" ? "443" : "80"),
+  )) {
+    return `${DEV_BACKEND_FALLBACK_ORIGIN}${normalizedPath}`;
+  }
+
+  throw new Error(LAB_STREAM_API_BASE_ERROR);
+}
+
+/**
+ * Canonical browser URL for Lab job APIs (status, hydrate, active jobs, SSE events).
+ * Never returns same-origin `/api/v5` on direct Next dev ports without a reverse proxy.
+ */
+export function resolveLabJobApiUrl(pathOrUrl: string): string {
+  const trimmed = pathOrUrl.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return resolveBrowserProductApiUrl(trimmed);
+  }
+  const path = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const productPath = path.startsWith(RAG_API_PRODUCT_PREFIX)
+    ? path
+    : path.startsWith("/lab/")
+      ? `${RAG_API_PRODUCT_PREFIX}${path}`
+      : apiProductPath(path);
+  return resolveBrowserProductApiUrl(productPath);
 }
 
 /** Full-page navigation URL for Google OAuth start (`<a href>`, not `fetch`). */

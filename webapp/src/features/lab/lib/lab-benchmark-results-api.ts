@@ -13,10 +13,23 @@ export async function fetchLabCampaignRuns(campaignId: string): Promise<Array<Re
 }
 
 export async function downloadCampaignMvpItemsJson(campaignId: string): Promise<void> {
-  const path = apiProductPath(`/lab/campaigns/${encodeURIComponent(campaignId)}/export/mvp/items.json`);
+  return downloadCampaignItemsJson(campaignId);
+}
+
+export async function downloadCampaignItemsJson(campaignId: string): Promise<void> {
+  const path = apiProductPath(
+    `/lab/campaigns/${encodeURIComponent(campaignId)}/export/campaign-items.json`,
+  );
   const blob = await apiDownloadBlob(path);
-  const filename = `lab-campaign-${campaignId}-mvp-items.json`;
-  triggerBrowserBlobDownload(blob, filename);
+  triggerBrowserBlobDownload(blob, `lab-campaign-${campaignId}-campaign-items.json`);
+}
+
+export async function downloadCampaignSummaryJson(campaignId: string): Promise<void> {
+  const path = apiProductPath(
+    `/lab/campaigns/${encodeURIComponent(campaignId)}/export/campaign-summary.json`,
+  );
+  const blob = await apiDownloadBlob(path);
+  triggerBrowserBlobDownload(blob, `lab-campaign-${campaignId}-campaign-summary.json`);
 }
 
 export async function downloadCampaignExport(

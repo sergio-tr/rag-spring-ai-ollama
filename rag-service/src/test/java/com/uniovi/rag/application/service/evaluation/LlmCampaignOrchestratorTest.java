@@ -95,6 +95,7 @@ class LlmCampaignOrchestratorTest {
         when(ds.getOwner()).thenReturn(user);
         when(ds.getDatasetScope()).thenReturn("USER_DATASET");
         when(ds.getExperimentalKind()).thenReturn("LLM_MODEL_BASELINE");
+        when(ds.getQuestionCount()).thenReturn(2);
         when(evaluationDatasetRepository.findById(datasetId)).thenReturn(Optional.of(ds));
 
         // Persist campaign: return an entity with an id.
@@ -113,9 +114,19 @@ class LlmCampaignOrchestratorTest {
             }
             return r;
         });
+        when(evaluationRunRepository.findById(any())).thenAnswer(inv -> {
+            UUID id = inv.getArgument(0);
+            if (id == null) {
+                return Optional.empty();
+            }
+            EvaluationRunEntity r = mock(EvaluationRunEntity.class);
+            when(r.getId()).thenReturn(id);
+            when(r.getProject()).thenReturn(null);
+            return Optional.of(r);
+        });
 
         UUID taskId = UUID.randomUUID();
-        when(asyncTaskService.submitEvalLlm(any(), any(), any())).thenReturn(taskId);
+        when(asyncTaskService.submitEvalLlmCampaign(any(), any(), any(), any())).thenReturn(taskId);
         AsyncTaskEntity task = mock(AsyncTaskEntity.class);
         when(asyncTaskRepository.findById(taskId)).thenReturn(Optional.of(task));
 
@@ -151,7 +162,7 @@ class LlmCampaignOrchestratorTest {
         BenchmarkJobAccepted accepted = orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req);
         assertThat(accepted.campaignId()).isPresent();
         verify(evaluationCampaignRepository).save(any());
-        verify(asyncTaskService, times(2)).submitEvalLlm(any(), any(), any());
+        verify(asyncTaskService, times(1)).submitEvalLlmCampaign(any(), any(), any(), any());
 
         ArgumentCaptor<EvaluationRunEntity> runCaptor = ArgumentCaptor.forClass(EvaluationRunEntity.class);
         verify(evaluationRunRepository, atLeast(2)).save(runCaptor.capture());
@@ -192,6 +203,7 @@ class LlmCampaignOrchestratorTest {
         when(ds.getOwner()).thenReturn(user);
         when(ds.getDatasetScope()).thenReturn("USER_DATASET");
         when(ds.getExperimentalKind()).thenReturn("LLM_MODEL_BASELINE");
+        when(ds.getQuestionCount()).thenReturn(2);
         when(evaluationDatasetRepository.findById(datasetId)).thenReturn(Optional.of(ds));
 
         when(evaluationCampaignRepository.save(any())).thenAnswer(inv -> {
@@ -208,9 +220,19 @@ class LlmCampaignOrchestratorTest {
             }
             return r;
         });
+        when(evaluationRunRepository.findById(any())).thenAnswer(inv -> {
+            UUID id = inv.getArgument(0);
+            if (id == null) {
+                return Optional.empty();
+            }
+            EvaluationRunEntity r = mock(EvaluationRunEntity.class);
+            when(r.getId()).thenReturn(id);
+            when(r.getProject()).thenReturn(null);
+            return Optional.of(r);
+        });
 
         UUID taskId = UUID.randomUUID();
-        when(asyncTaskService.submitEvalLlm(any(), any(), any())).thenReturn(taskId);
+        when(asyncTaskService.submitEvalLlmCampaign(any(), any(), any(), any())).thenReturn(taskId);
         AsyncTaskEntity task = mock(AsyncTaskEntity.class);
         when(asyncTaskRepository.findById(taskId)).thenReturn(Optional.of(task));
 
@@ -245,7 +267,8 @@ class LlmCampaignOrchestratorTest {
 
         BenchmarkJobAccepted accepted = orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req);
         assertThat(accepted.campaignId()).isPresent();
-        verify(asyncTaskService, times(3)).submitEvalLlm(any(), any(), any());
+        assertThat(accepted.totalItems()).contains(6);
+        verify(asyncTaskService, times(1)).submitEvalLlmCampaign(any(), any(), any(), any());
     }
 }
 

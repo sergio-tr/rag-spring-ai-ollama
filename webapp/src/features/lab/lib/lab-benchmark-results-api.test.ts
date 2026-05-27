@@ -70,17 +70,17 @@ describe("lab-benchmark-results-api", () => {
     );
   });
 
-  it("downloadCampaignMvpItemsJson downloads campaign MVP items with stable thesis filename", async () => {
+  it("downloadCampaignMvpItemsJson delegates to campaign-items.json export", async () => {
     vi.mocked(apiDownloadBlob).mockResolvedValueOnce(new Blob(["{}"]));
 
     await downloadCampaignMvpItemsJson("campaign-1");
 
     expect(apiDownloadBlob).toHaveBeenCalledWith(
-      expect.stringContaining("/lab/campaigns/campaign-1/export/mvp/items.json"),
+      expect.stringContaining("/lab/campaigns/campaign-1/export/campaign-items.json"),
     );
     expect(experimentalApi.triggerBrowserBlobDownload).toHaveBeenCalledWith(
       expect.any(Blob),
-      "lab-campaign-campaign-1-mvp-items.json",
+      "lab-campaign-campaign-1-campaign-items.json",
     );
   });
 

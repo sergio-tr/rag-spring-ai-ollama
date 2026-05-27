@@ -3,6 +3,7 @@ package com.uniovi.rag.interfaces.rest;
 import com.uniovi.rag.application.service.ChatMessageApplicationService;
 import com.uniovi.rag.application.service.evaluation.LabJobEventService;
 import com.uniovi.rag.application.service.evaluation.LabJobLifecycleService;
+import com.uniovi.rag.application.service.evaluation.LabJobSseHub;
 import com.uniovi.rag.interfaces.rest.dto.AsyncTaskStatusDto;
 import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
 import com.uniovi.rag.interfaces.rest.dto.LabJobEventDto;
@@ -28,8 +29,7 @@ import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
@@ -41,13 +41,13 @@ import org.springframework.http.HttpStatus;
 public class LabJobController {
 
     private static final long SSE_TIMEOUT_MS = 60L * 60 * 1000;
-    private static final long SSE_TICK_MS = 750L;
-    private static final int HEARTBEAT_EVERY_TICKS = 14;
+    private static final long SSE_HEARTBEAT_MS = 30_000L;
 
     private final AsyncTaskService asyncTaskService;
     private final ChatMessageApplicationService chatMessageApplicationService;
     private final LabJobLifecycleService labJobLifecycleService;
     private final LabJobEventService labJobEventService;
+    private final LabJobSseHub labJobSseHub;
     private final ScheduledExecutorService labJobSseExecutor;
 
     public LabJobController(
@@ -55,11 +55,13 @@ public class LabJobController {
             ChatMessageApplicationService chatMessageApplicationService,
             LabJobLifecycleService labJobLifecycleService,
             LabJobEventService labJobEventService,
+            LabJobSseHub labJobSseHub,
             @Qualifier("labJobSseExecutor") ScheduledExecutorService labJobSseExecutor) {
         this.asyncTaskService = asyncTaskService;
         this.chatMessageApplicationService = chatMessageApplicationService;
         this.labJobLifecycleService = labJobLifecycleService;
         this.labJobEventService = labJobEventService;
+        this.labJobSseHub = labJobSseHub;
         this.labJobSseExecutor = labJobSseExecutor;
     }
 
@@ -86,6 +88,9 @@ public class LabJobController {
             return ResponseEntity.ok(events);
         }
         return ResponseEntity.ok()
+                .header("Cache-Control", "no-cache, no-store, max-age=0, must-revalidate")
+                .header("Pragma", "no-cache")
+                .header("X-Accel-Buffering", "no")
                 .contentType(MediaType.TEXT_EVENT_STREAM)
                 .body(openEventStream(principal.userId(), taskId, since));
     }
@@ -99,7 +104,6 @@ public class LabJobController {
             if (ex.getStatusCode().value() != HttpStatus.NOT_FOUND.value()) {
                 throw ex;
             }
-            // Fallback: chat job cancellation (Lab UI also uses /lab/jobs/* for chat tasks).
             chatMessageApplicationService.cancelChatTask(principal.userId(), taskId);
         }
         return ResponseEntity.noContent().build();
@@ -107,79 +111,70 @@ public class LabJobController {
 
     private SseEmitter openEventStream(UUID userId, UUID taskId, Long sinceEventId) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
-        ScheduledFuture<?>[] holder = new ScheduledFuture<?>[1];
-        AtomicLong lastSentEventId = new AtomicLong(sinceEventId != null ? sinceEventId : 0L);
-        AtomicInteger tickCount = new AtomicInteger(0);
+        ScheduledFuture<?>[] heartbeatHolder = new ScheduledFuture<?>[1];
+        AtomicBoolean completed = new AtomicBoolean(false);
 
-        Runnable replayMissed = () -> {
-            try {
-                List<LabJobEventDto> missed = labJobEventService.listEvents(taskId, userId, lastSentEventId.get());
-                for (LabJobEventDto event : missed) {
-                    sendJobEvent(emitter, event);
-                    lastSentEventId.set(Math.max(lastSentEventId.get(), event.eventId()));
+        Runnable finish = () -> {
+            if (completed.compareAndSet(false, true)) {
+                if (heartbeatHolder[0] != null) {
+                    heartbeatHolder[0].cancel(false);
                 }
-            } catch (IOException ex) {
-                throw new RuntimeException(ex);
-            }
-        };
-
-        Runnable tick = () -> {
-            try {
-                if (tickCount.getAndIncrement() % HEARTBEAT_EVERY_TICKS == 0) {
-                    sendHeartbeat(emitter, taskId);
-                }
-                AsyncTaskStatusDto dto = asyncTaskService.getStatus(taskId, userId);
-                emitter.send(SseEmitter.event().name("task").data(dto, MediaType.APPLICATION_JSON));
-                List<LabJobEventDto> fresh = labJobEventService.listEvents(taskId, userId, lastSentEventId.get());
-                for (LabJobEventDto event : fresh) {
-                    sendJobEvent(emitter, event);
-                    lastSentEventId.set(Math.max(lastSentEventId.get(), event.eventId()));
-                }
-                if (dto.terminal()) {
-                    if (holder[0] != null) {
-                        holder[0].cancel(false);
-                    }
-                    emitter.complete();
-                }
-            } catch (IOException ex) {
-                if (holder[0] != null) {
-                    holder[0].cancel(false);
-                }
-                emitter.completeWithError(ex);
-            } catch (RuntimeException ex) {
-                if (ex.getCause() instanceof IOException io) {
-                    if (holder[0] != null) {
-                        holder[0].cancel(false);
-                    }
-                    emitter.completeWithError(io);
-                } else {
-                    throw ex;
-                }
+                labJobSseHub.complete(taskId);
             }
         };
 
         try {
-            replayMissed.run();
-        } catch (RuntimeException ex) {
-            if (ex.getCause() instanceof IOException io) {
-                emitter.completeWithError(io);
-                return emitter;
+            LabJobEventDto snapshot = labJobEventService.buildSnapshot(taskId, userId);
+            LabJobSseHub.sendJobEvent(emitter, snapshot);
+            List<LabJobEventDto> replay = labJobEventService.listEvents(taskId, userId, sinceEventId);
+            for (LabJobEventDto event : replay) {
+                LabJobSseHub.sendJobEvent(emitter, event);
+                if (event.terminal()) {
+                    emitter.complete();
+                    return emitter;
+                }
             }
-            throw ex;
+        } catch (IOException ex) {
+            emitter.completeWithError(ex);
+            return emitter;
         }
 
-        holder[0] = labJobSseExecutor.scheduleAtFixedRate(tick, 0, SSE_TICK_MS, TimeUnit.MILLISECONDS);
-        emitter.onCompletion(() -> cancel(holder));
-        emitter.onTimeout(() -> cancel(holder));
-        emitter.onError(e -> cancel(holder));
-        return emitter;
-    }
+        LabJobSseHub.Registration registration = labJobSseHub.register(
+                taskId,
+                userId,
+                emitter,
+                terminal -> {
+                    try {
+                        emitter.complete();
+                    } catch (Exception ignored) {
+                        // already closed
+                    }
+                    finish.run();
+                });
+        emitter.onCompletion(() -> {
+            registration.unregister().run();
+            finish.run();
+        });
 
-    private static void sendJobEvent(SseEmitter emitter, LabJobEventDto event) throws IOException {
-        emitter.send(SseEmitter.event()
-                .id(Long.toString(event.eventId()))
-                .name("job-event")
-                .data(event, MediaType.APPLICATION_JSON));
+        heartbeatHolder[0] =
+                labJobSseExecutor.scheduleAtFixedRate(
+                        () -> {
+                            if (completed.get()) {
+                                return;
+                            }
+                            try {
+                                sendHeartbeat(emitter, taskId);
+                            } catch (IOException ex) {
+                                registration.unregister().run();
+                                emitter.completeWithError(ex);
+                                finish.run();
+                            }
+                        },
+                        SSE_HEARTBEAT_MS,
+                        SSE_HEARTBEAT_MS,
+                        TimeUnit.MILLISECONDS);
+
+        return emitter;
     }
 
     private static void sendHeartbeat(SseEmitter emitter, UUID taskId) throws IOException {
@@ -191,13 +186,16 @@ public class LabJobController {
                 null,
                 null,
                 Instant.now(),
-                Map.of());
+                Map.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
         emitter.send(SseEmitter.event().name("heartbeat").data(heartbeat, MediaType.APPLICATION_JSON));
-    }
-
-    private static void cancel(ScheduledFuture<?>[] holder) {
-        if (holder[0] != null) {
-            holder[0].cancel(false);
-        }
     }
 }

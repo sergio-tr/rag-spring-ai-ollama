@@ -10,6 +10,7 @@ export type LabJobUiPhase =
   | "resumed"
   | "queued"
   | "running"
+  | "cancelling"
   | "completed"
   | "failed"
   | "cancelled"
@@ -32,8 +33,10 @@ export function getLabJobUiPhase(input: {
 }): LabJobUiPhase {
   const { taskStatus, queuedHint = false, stoppedWaiting = false, connectionState = null } = input;
 
-  if (connectionState === "connecting") return "connecting";
-  if (connectionState === "reconnecting") return "reconnecting";
+  if (connectionState === "connecting" || connectionState === "accepted") return "connecting";
+  if (connectionState === "connected") return "live";
+  if (connectionState === "reconnecting" || connectionState === "resuming") return "reconnecting";
+  if (connectionState === "stream_unavailable" || connectionState === "configuration_error") return "failed";
   if (connectionState === "resumed") return "resumed";
   if (connectionState === "live") {
     if (!taskStatus) return queuedHint ? "queued" : "running";
@@ -46,6 +49,7 @@ export function getLabJobUiPhase(input: {
     }
     const s = taskStatusUpper(taskStatus.status);
     if (s === "QUEUED" || s === "PENDING") return "queued";
+    if (s === "CANCELLING") return "cancelling";
     if (s === "RUNNING") return "running";
     return "unknown_running";
   }
@@ -69,6 +73,7 @@ export function getLabJobUiPhase(input: {
   }
   const s = taskStatusUpper(taskStatus.status);
   if (s === "QUEUED" || s === "PENDING") return "queued";
+  if (s === "CANCELLING") return "cancelling";
   if (s === "RUNNING") return "running";
   return "unknown_running";
 }
@@ -83,6 +88,8 @@ export function labPhaseToTraceStatus(phase: LabJobUiPhase): TraceStatus {
     case "cancelled":
     case "finished_away":
       return "warning";
+    case "cancelling":
+      return "warning";
     case "reconnecting":
     case "resumed":
     case "stopped_waiting":
@@ -91,6 +98,7 @@ export function labPhaseToTraceStatus(phase: LabJobUiPhase): TraceStatus {
     case "live":
     case "queued":
     case "running":
+    case "cancelling":
     case "unknown_running":
       return "in_progress";
     default:
@@ -106,14 +114,19 @@ export type LabJobUiLabels = {
   finishedAway: string;
   queued: string;
   running: string;
+  cancelling: string;
   completed: string;
   failed: string;
   cancelled: string;
   stoppedWaiting: string;
   unknownRunning: string;
+  streamConfigurationError: string;
 };
 
-export function getLabJobStatusLabel(phase: LabJobUiPhase, labels: LabJobUiLabels): string {
+export function getLabJobStatusLabel(phase: LabJobUiPhase, labels: LabJobUiLabels, connectionState?: LabJobLiveConnectionState | null): string {
+  if (connectionState === "configuration_error") {
+    return labels.streamConfigurationError;
+  }
   switch (phase) {
     case "connecting":
       return labels.connecting;
@@ -131,6 +144,8 @@ export function getLabJobStatusLabel(phase: LabJobUiPhase, labels: LabJobUiLabel
     case "running":
     case "unknown_running":
       return phase === "unknown_running" ? labels.unknownRunning : labels.running;
+    case "cancelling":
+      return labels.cancelling;
     case "completed":
       return labels.completed;
     case "failed":

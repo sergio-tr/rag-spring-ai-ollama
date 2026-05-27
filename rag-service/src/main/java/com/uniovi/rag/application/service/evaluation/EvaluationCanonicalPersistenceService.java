@@ -69,7 +69,7 @@ public class EvaluationCanonicalPersistenceService {
         if (run == null) {
             return;
         }
-        run.setStatus(EvaluationRunStatus.CANCELLED);
+        run.setStatus(EvaluationRunStatus.ERROR);
         run.setCompletedAt(Instant.now());
         Map<String, Object> agg = run.getAggregatesJson() != null
                 ? new LinkedHashMap<>(run.getAggregatesJson())
@@ -137,7 +137,10 @@ public class EvaluationCanonicalPersistenceService {
         Map<String, Object> summary = (Map<String, Object>) evaluationPayload.get("evaluation_summary");
         run.setAggregatesJson(summary != null ? new LinkedHashMap<>(summary) : Map.of());
         if (summary != null && Boolean.TRUE.equals(summary.get("cancelled"))) {
-            run.setStatus(EvaluationRunStatus.PARTIAL_CANCELLED);
+            run.setStatus(EvaluationRunStatus.ERROR);
+            Map<String, Object> agg = run.getAggregatesJson() != null ? new LinkedHashMap<>(run.getAggregatesJson()) : new LinkedHashMap<>();
+            agg.put("partialCancelled", true);
+            run.setAggregatesJson(agg);
         } else {
             run.setStatus(EvaluationRunStatus.DONE);
         }
@@ -191,7 +194,10 @@ public class EvaluationCanonicalPersistenceService {
         Map<String, Object> summary = (Map<String, Object>) payload.get("evaluation_summary");
         run.setAggregatesJson(summary != null ? new LinkedHashMap<>(summary) : Map.of());
         if (summary != null && Boolean.TRUE.equals(summary.get("cancelled"))) {
-            run.setStatus(EvaluationRunStatus.PARTIAL_CANCELLED);
+            run.setStatus(EvaluationRunStatus.ERROR);
+            Map<String, Object> agg = run.getAggregatesJson() != null ? new LinkedHashMap<>(run.getAggregatesJson()) : new LinkedHashMap<>();
+            agg.put("partialCancelled", true);
+            run.setAggregatesJson(agg);
         } else {
             run.setStatus(EvaluationRunStatus.DONE);
         }

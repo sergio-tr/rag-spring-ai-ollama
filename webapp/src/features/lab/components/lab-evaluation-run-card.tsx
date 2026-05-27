@@ -6,15 +6,19 @@ import { Input } from "@/components/ui/input";
 import { HelpPopover } from "@/features/help/HelpPopover";
 import { Label } from "@/components/ui/label";
 import { LabEvaluationCorpusPanel } from "@/features/lab/components/lab-evaluation-corpus-panel";
+import { useEvaluationCorpus } from "@/features/lab/hooks/use-evaluation-corpus";
 import { ModelCheckboxGroup } from "@/features/lab/components/model-checkbox-group";
 import { LabBenchmarkResultsPanel } from "@/features/lab/components/lab-benchmark-results-panel";
 import { LabJobPanel } from "@/features/lab/components/lab-job-panel";
+import { LabJobStopConfirmDialog } from "@/features/lab/components/lab-job-stop-confirm-dialog";
 import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
-import { activeJobMatchesCard, useLabActiveJobRecovery } from "@/features/lab/hooks/use-lab-active-job-recovery";
+import { activeJobMatchesCard } from "@/features/lab/hooks/use-lab-active-job-recovery";
+import { useAutoResumeLabJobs } from "@/features/lab/hooks/use-auto-resume-lab-jobs";
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
 import { useLabEvaluationDraft } from "@/features/lab/hooks/use-lab-evaluation-draft";
-import { useLabJobSse } from "@/features/lab/hooks/use-lab-job-sse";
+import { useLabJobLiveStream } from "@/features/lab/hooks/use-lab-job-live-stream";
+import { pollLabJob } from "@/lib/async-task";
 import {
   LAB_DEFAULT_EMBEDDING_MODEL_ID,
   type LabEvaluationDraftKind,
@@ -22,9 +26,7 @@ import {
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 import { useModelsByType } from "@/features/chat/hooks/use-models-by-type";
 import {
-  asyncTaskDtoFromSnapshot,
   type LabJobSectionKey,
-  type PersistedLabJobRecord,
 } from "@/features/lab/lib/lab-job-persistence";
 import {
   createLabJobTraceDedupe,
@@ -33,8 +35,9 @@ import {
   traceLabJobResumedWatching,
 } from "@/features/lab/lib/lab-job-trace";
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
+import { resolveEmbeddingCampaignIndexSnapshotIds } from "@/features/lab/lib/embedding-campaign-index-snapshots";
+import { mapKnowledgeBaseApiError } from "@/features/lab/lib/evaluation-corpus-upload";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
-import { fetchLabJobStatusOnce } from "@/lib/async-task";
 import { useAppStore } from "@/store/app.store";
 import type {
   AsyncTaskStatusDto,
@@ -46,7 +49,7 @@ import type {
 } from "@/types/api";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type LabEvaluationRunCardProps = {
   benchmarkKind: BenchmarkKind;
@@ -136,8 +139,10 @@ function benchmarkAcceptedToLabAccepted(acc: BenchmarkJobAcceptedDto): LabJobAcc
   };
 }
 
-function taskSucceeded(taskStatus: AsyncTaskStatusDto | null): boolean {
-  return taskStatus?.terminal === true && taskStatus.status?.toUpperCase() === "SUCCEEDED";
+function taskHasViewableResults(taskStatus: AsyncTaskStatusDto | null): boolean {
+  if (taskStatus?.terminal !== true) return false;
+  const st = (taskStatus.status ?? "").trim().toUpperCase();
+  return st === "SUCCEEDED" || st === "CANCELLED" || st === "CANCELED";
 }
 
 /**
@@ -170,15 +175,12 @@ export function LabEvaluationRunCard({
   const [campaignId, setCampaignId] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<AsyncTaskStatusDto | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [stoppedWaiting, setStoppedWaiting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [watchLive, setWatchLive] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const traceDedupeRef = useRef(createLabJobTraceDedupe());
   const mountedEvalCardRef = useRef(true);
-  /** Prevents duplicate backend-driven auto-follow for the same job (incl. React strict double-invoke). */
-  const backendAutoFollowHandledRef = useRef<string | null>(null);
-  /** R4: one-shot probe per session job when active list is empty (reset when list becomes non-empty). */
-  const r4SessionProbeKeyRef = useRef<string | null>(null);
 
   const compatibleRows = useMemo(() => {
     const allowed = compatibleExperimentalTypes(benchmarkKind);
@@ -229,8 +231,11 @@ export function LabEvaluationRunCard({
   const { draft, patchDraft, clearDraft, resetToRecommended, setLastEvaluationRunId, warnings } =
     useLabEvaluationDraft(benchmarkKind as LabEvaluationDraftKind, draftValidation);
 
-  const liveJob = useLabJobSse({
-    accepted,
+  const liveJob = useLabJobLiveStream({
+    jobId: accepted?.jobId ?? null,
+    streamPath: accepted?.streamPath,
+    pollPath: accepted?.pollPath,
+    status: accepted?.status,
     enabled: watchLive && !!accepted,
     onTick: (s) => {
       if (!accepted?.jobId) return;
@@ -248,8 +253,8 @@ export function LabEvaluationRunCard({
       if (!mountedEvalCardRef.current) return;
       setResult(s.result);
       setRunning(false);
+      setCancelling(false);
       setWatchLive(false);
-      setStoppedWaiting(false);
     },
     onStreamError: (e) => {
       if (!mountedEvalCardRef.current) return;
@@ -266,21 +271,56 @@ export function LabEvaluationRunCard({
     },
   });
 
-  const sessionRecords = useLabJobSessionStore((s) => s.records);
-  const clearOtherLabJobsForSection = useLabJobSessionStore((s) => s.clearOtherLabJobsForSection);
-  const labRecovery = useLabActiveJobRecovery({
+  const beginLiveWatch = useCallback(
+    async (rec: { accepted: LabJobAcceptedDto; evaluationRunId?: string | null; jobId: string }) => {
+      traceDedupeRef.current = createLabJobTraceDedupe();
+      traceLabJobResumedWatching(rec.jobId, t("traceJobResumedWatching"));
+      setAccepted(rec.accepted);
+      setEvaluationRunId(rec.evaluationRunId ?? null);
+      setRunning(true);
+      setErr(null);
+      setWatchLive(true);
+    },
+    [t],
+  );
+
+  const labRecovery = useAutoResumeLabJobs({
     sectionKey,
     benchmarkKind,
     activeProjectId: activeProject?.id ?? null,
-    draftFollowMode: "sse",
-    backendActiveJobs: activeJobs.data ?? null,
-    backendActiveJobsLoading: !activeJobs.isFetched,
-    backendActiveJobsError: activeJobs.isError ? activeJobs.error : null,
-    sessionRecords,
+    taskTypeHint,
+    canAutoFollow: !running,
+    watchingJobId: watchLive ? accepted?.jobId ?? null : null,
+    onAutoFollow: async ({ candidate, status }) => {
+      if (!mountedEvalCardRef.current) return;
+      if (status.terminal) {
+        setAccepted(candidate.accepted);
+        setEvaluationRunId(candidate.evaluationRunId);
+        setTaskStatus(status);
+        setResult(status.result);
+        setRunning(false);
+        setWatchLive(false);
+        return;
+      }
+      await beginLiveWatch({
+        accepted: candidate.accepted,
+        evaluationRunId: candidate.evaluationRunId,
+        jobId: candidate.jobId,
+      });
+    },
+    onFollowError: (e) => {
+      if (!mountedEvalCardRef.current) return;
+      if (e instanceof ApiError && e.status === 404) {
+        setErr(t("jobRecoveryStaleShort"));
+      } else if (!(e instanceof DOMException && e.name === "AbortError")) {
+        setErr(e instanceof Error ? e.message : t("evalError"));
+      }
+    },
   });
 
-  const autoFollowJobId =
-    labRecovery.decision.kind === "auto_follow" ? labRecovery.decision.candidate.jobId : null;
+  const needsEvaluationCorpus =
+    benchmarkKind === "RAG_PRESET_END_TO_END" || benchmarkKind === "EMBEDDING_RETRIEVAL";
+  const evaluationCorpus = useEvaluationCorpus(needsEvaluationCorpus ? draft.corpusId : null);
 
   const draftBlocksRun =
     warnings.datasetDeletedOrUnknown ||
@@ -290,6 +330,13 @@ export function LabEvaluationRunCard({
     warnings.embeddingModelInvalid ||
     warnings.embeddingModelsInvalid.length > 0 ||
     warnings.presetsUnknown.length > 0;
+
+  const corpusBlocksRun =
+    needsEvaluationCorpus &&
+    (!draft.corpusId ||
+      !evaluationCorpus.corpusReady ||
+      evaluationCorpus.corpusProcessing ||
+      evaluationCorpus.loading);
 
   const selectedDataset = useMemo(() => {
     const id = draft.datasetId?.trim();
@@ -343,140 +390,6 @@ export function LabEvaluationRunCard({
     };
   }, []);
 
-  const hydratedJobUiRef = useRef(false);
-  useEffect(() => {
-    if (hydratedJobUiRef.current) return;
-    hydratedJobUiRef.current = true;
-
-    const rec = useLabJobSessionStore.getState().pickLatestForSection(sectionKey);
-    if (!rec || rec.staleNotFound) return;
-    queueMicrotask(() => {
-      setAccepted(rec.accepted);
-      setEvaluationRunId(rec.evaluationRunId ?? null);
-      if (rec.lastStatus) {
-        setTaskStatus(asyncTaskDtoFromSnapshot(rec.jobId, rec.lastStatus));
-      }
-      setStoppedWaiting(rec.stoppedWatching);
-    });
-  }, [patchDraft, sectionKey]);
-
-  const resumeNonceEvalCard = useLabJobSessionStore((s) => s.resumeNonce);
-
-  async function beginLiveWatch(rec: PersistedLabJobRecord) {
-    traceDedupeRef.current = createLabJobTraceDedupe();
-    traceLabJobResumedWatching(rec.jobId, t("traceJobResumedWatching"));
-    setAccepted(rec.accepted);
-    setEvaluationRunId(rec.evaluationRunId ?? null);
-    setRunning(true);
-    setErr(null);
-    setStoppedWaiting(false);
-    setWatchLive(true);
-  }
-
-  async function resumeEvalFromPersisted(rec: PersistedLabJobRecord) {
-    await beginLiveWatch(rec);
-  }
-
-  useEffect(() => {
-    const rec = useLabJobSessionStore.getState().consumePendingResume(sectionKey);
-    if (!rec) return;
-    queueMicrotask(() => {
-      void resumeEvalFromPersisted(rec);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- resumeNonce-driven only
-  }, [resumeNonceEvalCard]);
-
-  const autoFollowCandidate =
-    labRecovery.decision.kind === "auto_follow" ? labRecovery.decision.candidate : null;
-  const autoFollowCandidateJobId = autoFollowCandidate?.jobId ?? "";
-  const autoFollowCandidateEvaluationRunId = autoFollowCandidate?.evaluationRunId ?? "";
-
-  useEffect(() => {
-    if (!autoFollowJobId || !autoFollowCandidate) return;
-    const candidate = autoFollowCandidate;
-    if (backendAutoFollowHandledRef.current === autoFollowJobId) {
-      if (running) return;
-      if (taskStatus?.id === autoFollowJobId && taskStatus.terminal) return;
-      return;
-    }
-    if (running && accepted?.jobId && accepted.jobId !== autoFollowJobId) return;
-
-    backendAutoFollowHandledRef.current = autoFollowJobId;
-    void (async () => {
-      try {
-        clearOtherLabJobsForSection(sectionKey, candidate.jobId);
-        useLabJobSessionStore.getState().upsertLabJobOnAccepted({
-          accepted: candidate.accepted,
-          sectionKey,
-          followMode: "sse",
-          taskTypeHint,
-          evaluationRunId: candidate.evaluationRunId,
-        });
-        const status = await fetchLabJobStatusOnce(candidate.jobId);
-        if (!mountedEvalCardRef.current) return;
-        useLabJobSessionStore.getState().patchLabJobFromTick(candidate.jobId, status);
-        const rec = useLabJobSessionStore.getState().pickLatestForSection(sectionKey);
-        if (!rec) return;
-        await beginLiveWatch(rec);
-      } catch (e) {
-        backendAutoFollowHandledRef.current = null;
-        if (!mountedEvalCardRef.current) return;
-        if (e instanceof ApiError && e.status === 404) {
-          useLabJobSessionStore.getState().markLabJobStaleNotFound(candidate.jobId);
-          setErr(t("jobRecoveryStaleShort"));
-        } else if (!(e instanceof DOMException && e.name === "AbortError")) {
-          setErr(e instanceof Error ? e.message : t("evalError"));
-        }
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- resumeEvalFromPersisted is intentionally stable-by-closure; narrow deps avoid session-record churn.
-  }, [
-    autoFollowJobId,
-    labRecovery.decision.kind,
-    autoFollowCandidate,
-    autoFollowCandidateJobId,
-    autoFollowCandidateEvaluationRunId,
-    running,
-    accepted?.jobId,
-    taskStatus?.id,
-    taskStatus?.terminal,
-    sectionKey,
-    taskTypeHint,
-    clearOtherLabJobsForSection,
-    t,
-  ]);
-
-  useEffect(() => {
-    if (!activeJobs.isFetched) return;
-    const jobs = activeJobs.data ?? [];
-    if (jobs.length > 0) {
-      r4SessionProbeKeyRef.current = null;
-      return;
-    }
-    const rec = useLabJobSessionStore.getState().pickLatestForSection(sectionKey);
-    if (!rec?.accepted?.jobId) return;
-    if (rec.staleNotFound || rec.lastStatus?.terminal) return;
-    const probeKey = `${sectionKey}:${rec.jobId}`;
-    if (r4SessionProbeKeyRef.current === probeKey) return;
-    r4SessionProbeKeyRef.current = probeKey;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const s = await fetchLabJobStatusOnce(rec.jobId);
-        if (cancelled || !mountedEvalCardRef.current) return;
-        useLabJobSessionStore.getState().patchLabJobFromTick(rec.jobId, s);
-      } catch (e) {
-        if (cancelled || !mountedEvalCardRef.current) return;
-        if (e instanceof ApiError && e.status === 404) {
-          useLabJobSessionStore.getState().markLabJobStaleNotFound(rec.jobId);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeJobs.isFetched, activeJobs.data, sectionKey]);
-
   const hasCompatibleDataset = !experimentalDatasets.isLoading && selectedDataset != null;
   const datasetIsValid = selectedDataset?.validationStatus === "VALID";
   const demoBlocked = selectedDataset?.isDemoDataset === true;
@@ -489,7 +402,8 @@ export function LabEvaluationRunCard({
           ? (selectedDataset?.questionCounts.ragPresetQuestions ?? 0) <= 1
           : false;
   const hardBlocked = demoBlocked || tooSmallBlocked;
-  const canStart = hasCompatibleDataset && datasetIsValid && !hardBlocked && !draftBlocksRun;
+  const canStart =
+    hasCompatibleDataset && datasetIsValid && !hardBlocked && !draftBlocksRun && !corpusBlocksRun;
 
   const otherActiveJobExists = useMemo(() => {
     const jobs = activeJobs.data ?? [];
@@ -583,7 +497,6 @@ export function LabEvaluationRunCard({
     setEvaluationRunId(null);
     setCampaignId(null);
     setTaskStatus(null);
-    setStoppedWaiting(false);
     setWatchLive(false);
     liveJob.stop();
     traceDedupeRef.current = createLabJobTraceDedupe();
@@ -613,9 +526,11 @@ export function LabEvaluationRunCard({
       }
       const body: StartBenchmarkRunRequest = {
         datasetId: selectedDataset.id,
-        projectId: activeProject?.id ?? undefined,
         corpusId: draft.corpusId ?? undefined,
       };
+      if (benchmarkKind !== "RAG_PRESET_END_TO_END") {
+        body.projectId = activeProject?.id ?? undefined;
+      }
       if (benchmarkKind === "RAG_PRESET_END_TO_END" && draft.selectedExperimentalPresetCodes.length > 0) {
         body.experimentalPresetCodes = draft.selectedExperimentalPresetCodes;
       }
@@ -641,6 +556,24 @@ export function LabEvaluationRunCard({
       if (emList.length > 0) {
         body.embeddingModelIds = emList;
         body.campaignName = body.campaignName ?? `Embedding campaign (${emList.length})`;
+        if (emList.length >= 2) {
+          const projectId = activeProject?.id?.trim();
+          if (projectId) {
+            const { snapshotIds, unresolvedModels } = await resolveEmbeddingCampaignIndexSnapshotIds(
+              projectId,
+              emList,
+            );
+            if (unresolvedModels.length === 0 && snapshotIds.every((id) => id.trim().length > 0)) {
+              body.indexSnapshotIds = snapshotIds;
+            }
+          }
+          // Without a UI project, backend aligns from evaluation-corpus index project and may prepare snapshots.
+        } else if (emList.length === 1 && activeProject?.id) {
+          const { snapshotIds } = await resolveEmbeddingCampaignIndexSnapshotIds(activeProject.id, emList);
+          if (snapshotIds[0]?.trim()) {
+            body.indexSnapshotId = snapshotIds[0];
+          }
+        }
       } else if (em) {
         body.embeddingModelId = em;
       }
@@ -690,9 +623,21 @@ export function LabEvaluationRunCard({
         setErr(t("jobAlreadyRunning"));
         setRunning(false);
         setWatchLive(false);
+      } else if (
+        e instanceof ApiError &&
+        e.status === 400 &&
+        typeof e.message === "string" &&
+        (e.message.includes("EMBEDDING_CAMPAIGN_MISSING_INDEX_SNAPSHOT") ||
+          e.message.includes("EMBEDDING_CAMPAIGN_REQUIRES_ALIGNED_INDEX_SNAPSHOT_IDS"))
+      ) {
+        if (!mountedEvalCardRef.current) return;
+        setErr(t("embeddingCampaignMissingSnapshots", { models: "—" }));
+        setRunning(false);
+        setWatchLive(false);
       } else {
         if (!mountedEvalCardRef.current) return;
-        setErr(e instanceof Error ? e.message : t("evalError"));
+        const raw = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "";
+        setErr(mapKnowledgeBaseApiError(raw, t, t("evalError")));
         setRunning(false);
         setWatchLive(false);
       }
@@ -700,22 +645,45 @@ export function LabEvaluationRunCard({
   }
 
   async function cancelBackendJob() {
-    liveJob.stop();
-    setWatchLive(false);
     if (!accepted?.jobId) {
       abortRef.current?.abort();
       setRunning(false);
+      setCancelling(false);
       return;
     }
+    const jobId = accepted.jobId;
+    setCancelling(true);
+    setWatchLive(true);
     try {
-      await apiFetch<void>(apiProductPath(`/lab/jobs/${accepted.jobId}/cancel`), { method: "POST" });
+      await apiFetch<void>(apiProductPath(`/lab/jobs/${jobId}/cancel`), { method: "POST" });
+      const terminal = await pollLabJob(
+        jobId,
+        (tick) => {
+          setTaskStatus(tick);
+          useLabJobSessionStore.getState().patchLabJobFromTick(jobId, tick);
+        },
+        { maxWaitMs: 90_000, throwOnFailed: false },
+      );
+      setResult(terminal.result);
+      setTaskStatus(terminal);
+      useLabJobSessionStore.getState().patchLabJobFromTick(jobId, terminal);
+      setRunning(false);
+      setCancelling(false);
+      setWatchLive(false);
+      liveJob.stop();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(e instanceof Error ? e.message : t("evalError"));
+      throw e;
+    } finally {
+      setCancelling(false);
+      setRunning(false);
+      setWatchLive(false);
     }
   }
 
-  const showResultsPanel =
-    taskSucceeded(watchLive ? (liveJob.taskStatus ?? taskStatus) : taskStatus) && !!evaluationRunId?.trim();
+  const effectiveTaskStatus = watchLive ? (liveJob.taskStatus ?? taskStatus) : taskStatus;
+  const showResultsPanel = taskHasViewableResults(effectiveTaskStatus) && !!evaluationRunId?.trim();
+  const showStopButton = running || cancelling;
 
   const staleDatasetRow =
     draft.datasetId != null
@@ -787,6 +755,16 @@ export function LabEvaluationRunCard({
               {t("datasetsDisabledWarn")}
             </output>
           )}
+
+          {corpusBlocksRun && needsEvaluationCorpus ? (
+            <output
+              role="status"
+              data-testid="lab-corpus-not-ready-hint"
+              className="block text-muted-foreground text-xs"
+            >
+              {t("benchmarkCorpusNotReady")}
+            </output>
+          ) : null}
 
           {draftBlocksRun ? (
             <output
@@ -1158,12 +1136,25 @@ export function LabEvaluationRunCard({
             >
               {runButtonLabel}
             </Button>
-            {running ? (
-              <Button type="button" variant="outline" onClick={() => void cancelBackendJob()}>
-                {t("jobCancel")}
+            {showStopButton ? (
+              <Button
+                type="button"
+                variant="outline"
+                data-testid="lab-eval-stop"
+                disabled={cancelling}
+                onClick={() => setCancelConfirmOpen(true)}
+              >
+                {cancelling ? t("jobCancelling") : t("jobStopEvaluation")}
               </Button>
             ) : null}
           </div>
+
+          <LabJobStopConfirmDialog
+            open={cancelConfirmOpen}
+            onOpenChange={setCancelConfirmOpen}
+            jobIdFragment={accepted?.jobId?.slice(0, 8) ?? null}
+            onConfirm={cancelBackendJob}
+          />
 
           {otherActiveJobExists ? (
             <p className="text-destructive text-sm" role="alert">
@@ -1213,15 +1204,7 @@ export function LabEvaluationRunCard({
                     disabled={running}
                     data-testid={`lab-recovery-resume-${c.jobId}`}
                     onClick={() => {
-                      clearOtherLabJobsForSection(sectionKey, c.jobId);
-                      useLabJobSessionStore.getState().upsertLabJobOnAccepted({
-                        accepted: c.accepted,
-                        sectionKey,
-                        followMode: "sse",
-                        taskTypeHint,
-                        evaluationRunId: c.evaluationRunId,
-                      });
-                      useLabJobSessionStore.getState().requestResumeLabJob(sectionKey, c.jobId);
+                      void labRecovery.followCandidate(c);
                     }}
                   >
                     {t("labRecoveryResumeJob", { jobId: c.jobId.slice(0, 8) })}
@@ -1236,9 +1219,7 @@ export function LabEvaluationRunCard({
               accepted={accepted}
               taskStatus={watchLive ? (liveJob.taskStatus ?? taskStatus) : taskStatus}
               queuedHint={!!accepted && !taskStatus && !liveJob.taskStatus}
-              stoppedWaiting={stoppedWaiting}
               connectionState={watchLive ? liveJob.connectionState : null}
-              onResumeLive={watchLive ? () => liveJob.resume() : undefined}
             />
           )}
 

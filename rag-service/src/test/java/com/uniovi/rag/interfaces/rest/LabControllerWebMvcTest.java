@@ -6,6 +6,7 @@ import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleL
 import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleCounts;
 import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleSnapshot;
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
+import com.uniovi.rag.application.service.classifier.ClassifierModelRegistryService;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationIssue;
@@ -52,6 +53,9 @@ class LabControllerWebMvcTest {
 
     @MockitoBean
     private ClassifierLabClient classifierLabClient;
+
+    @MockitoBean
+    private ClassifierModelRegistryService classifierModelRegistryService;
 
     @MockitoBean
     private AsyncTaskService asyncTaskService;

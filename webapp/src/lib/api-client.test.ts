@@ -13,6 +13,7 @@ import {
   onApiUnauthorized,
   oauthGoogleStartHref,
   resolveBrowserProductApiUrl,
+  resolveLabJobApiUrl,
   sanitizePlainErrorTextForUi,
 } from "./api-client";
 import * as accessToken from "./access-token";
@@ -163,9 +164,65 @@ describe("apiFetch", () => {
 
   it("resolveBrowserProductApiUrl keeps same-origin path when base URL unset", () => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "http:",
+        port: "80",
+        origin: "http://localhost",
+        pathname: "/en/lab",
+      },
+    });
     expect(resolveBrowserProductApiUrl("/api/v5/projects")).toBe("/api/v5/projects");
     expect(resolveBrowserProductApiUrl("relative")).toBe("/relative");
+    vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+  });
+
+  it("resolveLabJobApiUrl targets Spring for lab job events on Next dev port", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "http:",
+        port: "3000",
+        origin: "http://localhost:3000",
+        pathname: "/en/lab",
+      },
+    });
+    expect(resolveLabJobApiUrl("/api/v5/lab/jobs/1/events")).toBe(
+      "http://127.0.0.1:9000/api/v5/lab/jobs/1/events",
+    );
+    expect(resolveLabJobApiUrl("/lab/jobs/1/events")).toBe(
+      "http://127.0.0.1:9000/api/v5/lab/jobs/1/events",
+    );
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("resolveBrowserProductApiUrl targets local Spring on Next dev port when base URL unset", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "http:",
+        port: "3000",
+        origin: "http://localhost:3000",
+        pathname: "/en/lab",
+      },
+    });
+    expect(resolveBrowserProductApiUrl("/api/v5/lab/jobs/x/events")).toBe(
+      "http://127.0.0.1:9000/api/v5/lab/jobs/x/events",
+    );
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("resolveBrowserProductApiUrl normalizes absolute http(s) URLs", () => {
+    expect(resolveBrowserProductApiUrl("http://127.0.0.1:9000/api/v5/lab/jobs/x/events")).toBe(
+      "http://127.0.0.1:9000/api/v5/lab/jobs/x/events",
+    );
+  });
+
+  it("resolveBrowserProductApiUrl throws on invalid absolute URL", () => {
+    expect(() => resolveBrowserProductApiUrl("http://")).toThrow(/LAB live stream API base URL is not configured/);
   });
 
   it("resolveBrowserProductApiUrl prefixes trimmed absolute base", () => {
@@ -208,7 +265,16 @@ describe("apiFetch", () => {
 
   it("oauthGoogleStartHref uses same-origin path when API base unset", () => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "http:",
+        port: "80",
+        origin: "http://localhost",
+        pathname: "/en/login",
+      },
+    });
     expect(oauthGoogleStartHref("en")).toBe("/api/v5/auth/oauth/google/start?locale=en");
+    vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
 

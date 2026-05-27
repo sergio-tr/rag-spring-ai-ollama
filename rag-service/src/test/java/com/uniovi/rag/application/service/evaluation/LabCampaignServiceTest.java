@@ -7,6 +7,7 @@ import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.infrastructure.persistence.evaluation.LabCampaignHumanExportBuilder;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import org.junit.jupiter.api.Test;
 
@@ -43,12 +44,41 @@ class LabCampaignServiceTest {
         LabCampaignService svc = new LabCampaignService(campaigns, runs, results);
         Map<String, Object> out = svc.exportCampaignMvpItemsJson(userId, campaignId);
         assertThat(out.get("campaignId")).isEqualTo(campaignId);
+        assertThat(out.get("exportKind")).isEqualTo(LabCampaignHumanExportBuilder.EXPORT_KIND_ITEMS);
         assertThat(out.get("comparisonAxis")).isEqualTo(LabCampaignService.COMPARISON_AXIS_LLM);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("items");
         assertThat(rows).hasSize(1);
         assertThat(rows.getFirst().get("campaignId")).isEqualTo(campaignId);
         assertThat(rows.getFirst().get("runId")).isEqualTo(r.getId());
+        assertThat(rows.getFirst()).containsKey("presetCode");
+        assertThat(rows.getFirst()).containsKey("sources");
+        assertThat(rows.getFirst()).containsKey("mvp");
+    }
+
+    @Test
+    void exportCampaignSummaryJson_containsComparisonRows() {
+        UUID userId = UUID.randomUUID();
+        UUID campaignId = UUID.randomUUID();
+
+        EvaluationCampaignRepository campaigns = mock(EvaluationCampaignRepository.class);
+        EvaluationRunRepository runs = mock(EvaluationRunRepository.class);
+        EvaluationResultRepository results = mock(EvaluationResultRepository.class);
+
+        EvaluationCampaignEntity c = campaign(userId, campaignId, "RAG_PRESET_BENCHMARK");
+        when(campaigns.findByIdAndUser_Id(campaignId, userId)).thenReturn(Optional.of(c));
+
+        EvaluationRunEntity run = ragPresetRun("P0");
+        when(runs.findByCampaignIdAndUserId(campaignId, userId)).thenReturn(List.of(run));
+        when(results.findByRun_IdOrderByEvaluatedAtAsc(run.getId())).thenReturn(List.of(item("EXECUTED")));
+
+        LabCampaignService svc = new LabCampaignService(campaigns, runs, results);
+        Map<String, Object> out = svc.exportCampaignSummaryJson(userId, campaignId);
+        assertThat(out.get("exportKind")).isEqualTo(LabCampaignHumanExportBuilder.EXPORT_KIND_SUMMARY);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("rows");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.getFirst().get("presetLabel")).isEqualTo("P0");
     }
 
     @Test

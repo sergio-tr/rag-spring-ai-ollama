@@ -13,6 +13,8 @@ vi.mock("@/features/lab/lib/lab-benchmark-results-api", () => ({
   fetchMvpItemsBundle: vi.fn(),
   downloadMvpExport: vi.fn(),
   downloadCampaignMvpItemsJson: vi.fn(),
+  downloadCampaignItemsJson: vi.fn(),
+  downloadCampaignSummaryJson: vi.fn(),
   downloadCampaignExport: vi.fn(),
 }));
 

@@ -120,6 +120,19 @@ export type EvaluationCorpusSummaryDto = {
   updatedAt: string;
 };
 
+export type EvaluationCorpusDocumentUploadItemDto = {
+  documentId: string | null;
+  fileName: string;
+  /** PROCESSING | READY | FAILED (Lab upload API). */
+  status: string;
+  error: string | null;
+};
+
+export type EvaluationCorpusDocumentsUploadResponseDto = {
+  corpus: EvaluationCorpusSummaryDto;
+  uploads: EvaluationCorpusDocumentUploadItemDto[];
+};
+
 export type ConversationDto = {
   id: string;
   title: string;
@@ -402,6 +415,8 @@ export type BenchmarkJobAcceptedDto = {
   streamPath: string;
   /** Present when the request starts a multi-run campaign (e.g. multi-LLM). */
   campaignId?: string | null;
+  /** Combined work units for campaign jobs (dataset items × model/preset axes). */
+  totalItems?: number | null;
 };
 
 export type StartBenchmarkRunRequest = {
@@ -425,6 +440,8 @@ export type StartBenchmarkRunRequest = {
   llmModelIds?: string[] | null;
   /** Optional multi-embedding campaign (backend may reject if unsupported). */
   embeddingModelIds?: string[] | null;
+  /** Aligned index snapshot ids per embedding model (same length as embeddingModelIds when comparing). */
+  indexSnapshotIds?: string[] | null;
   /** When true, let the backend use workbook-derived candidates when supported. */
   useWorkbookCandidates?: boolean | null;
   /** Optional user-facing name for campaign grouping. */
@@ -604,19 +621,33 @@ export type LabJobEventDto = {
   message: string | null;
   timestamp: string;
   payload: Record<string, unknown> | null;
+  campaignId?: string | null;
+  runId?: string | null;
+  globalCompletedItems?: number | null;
+  globalTotalItems?: number | null;
+  runCompletedItems?: number | null;
+  runTotalItems?: number | null;
+  currentModelId?: string | null;
+  currentPresetCode?: string | null;
 };
 
 /** Live progress UX states for Lab job panels and banners. */
 export type LabJobLiveConnectionState =
   | "idle"
+  | "accepted"
   | "connecting"
+  | "connected"
   | "live"
+  | "running"
   | "reconnecting"
+  | "resuming"
   | "resumed"
   | "completed"
   | "failed"
   | "cancelled"
-  | "finished_away";
+  | "finished_away"
+  | "stream_unavailable"
+  | "configuration_error";
 
 export type ChatSourceDto = {
   documentId: string | null;
@@ -637,6 +668,8 @@ export type MessageDto = {
   id: string;
   role: "USER" | "ASSISTANT";
   content: string;
+  /** Logical order within a conversation (server sequence). Optional for backward-compat with test fixtures. */
+  seq?: number;
   createdAt: string;
   sources: ChatSourceDto[] | null;
   queryType: string | null;

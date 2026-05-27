@@ -67,7 +67,7 @@ Run the full **`rag-service`** suite with working directory **`rag-service/`**: 
 ## Lab benchmark — evaluation corpus (RAG / embedding)
 
 - **Scope:** RAG preset and embedding benchmarks use a Lab **evaluation corpus** (`evaluation_corpus` + `evaluation_corpus_document`), not the global active project from navigation.
-- **API:** `POST {product-base}/lab/evaluation-corpora` creates a corpus; `POST …/{corpusId}/documents/upload` and `POST …/{corpusId}/documents/from-project` attach documents; `GET …/{corpusId}` returns counts and document status.
+- **API:** `POST {product-base}/lab/evaluation-corpora` creates a corpus; `POST …/{corpusId}/documents` (multipart `file` or `files`) and `POST …/{corpusId}/documents/from-project` attach documents; alias base `…/lab/corpora`; `GET …/{corpusId}` returns counts and document status.
 - **Runs:** `POST {product-base}/lab/benchmarks/RAG_PRESET_END_TO_END/runs` and `…/EMBEDDING_RETRIEVAL/runs` require **`corpusId`** when document-backed evidence is needed; **`projectId` is optional** (legacy linkage only).
 - **Validation codes:** `NO_CORPUS_SELECTED`, `NO_DOCUMENTS`, `NO_READY_DOCUMENTS`, `NO_COMPATIBLE_SNAPSHOT` — messages refer to corpus/documents, not missing active project.
 
@@ -207,7 +207,7 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 
 ### Lab benchmarks
 
-Use **product** routes under `{product}/lab` (JWT). Canonical runs live in `evaluation_run` + `evaluation_result`; `async_task` is operational (poll `/lab/jobs/{asyncTaskId}`).
+Use **product** routes under `{product}/lab` (JWT). Canonical runs live in `evaluation_run` + `evaluation_result`; `async_task` is operational. **Lab job progress:** `GET {product}/lab/jobs/{id}` is a one-shot snapshot; `GET {product}/lab/jobs/active` hydrates in-flight jobs for the current user (QUEUED/RUNNING/CANCELLING, non-stale); `GET {product}/lab/jobs/{id}/events` is the canonical **SSE** stream (initial snapshot + replay, then live `job-event` pushes — no periodic task polling). Event types include `ITEM_STARTED` / `ITEM_COMPLETED`, campaign/run lifecycle, and terminal `FAILED` / `CANCELLED` / `RUN_COMPLETED`.
 
 **Internal reference workbook (canonical dataset):** the canonical XLSX is shipped as a **classpath resource** at
 `evaluation/rag_experiment_datasets_and_protocols.xlsx` (under `rag-service/src/main/resources/evaluation/`) and loaded by

@@ -1,19 +1,18 @@
 import { expect, test } from "@playwright/test";
-import { loginAsSeedUser } from "../support/helpers";
 import {
   assertLabDatasetControlsVisible,
-  clearActiveProjectForLab,
+  assertLabRunButtonEnabled,
   gotoLabEvaluationPage,
   labDatasetRunnable,
   pollLabTerminalOutcome,
+  prepareLabE2eTest,
   selectEmbeddingModelsForComparison,
 } from "../support/lab-helpers";
 
 test.describe("LAB embedding model comparison @fullstack", () => {
   test.beforeEach(async ({ page }) => {
     test.setTimeout(300_000);
-    await clearActiveProjectForLab(page);
-    await loginAsSeedUser(page);
+    await prepareLabE2eTest(page);
   });
 
   test("multi-select embeddings and run comparison or clear errors @fullstack", async ({ page }) => {

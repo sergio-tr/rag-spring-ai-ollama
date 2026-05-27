@@ -118,9 +118,19 @@ class RagPresetCampaignOrchestratorTest {
             }
             return r;
         });
+        when(evaluationRunRepository.findById(any())).thenAnswer(inv -> {
+            UUID id = inv.getArgument(0);
+            if (id == null) {
+                return Optional.empty();
+            }
+            EvaluationRunEntity r = mock(EvaluationRunEntity.class);
+            when(r.getId()).thenReturn(id);
+            when(r.getProject()).thenReturn(null);
+            return Optional.of(r);
+        });
 
         UUID taskId = UUID.randomUUID();
-        when(asyncTaskService.submitEvalRag(any(), any(), any())).thenReturn(taskId);
+        when(asyncTaskService.submitEvalRagCampaign(any(), any(), any(), any())).thenReturn(taskId);
 
         List<String> presets = List.of("P0", "P1", "P2");
         StartBenchmarkRunRequest req =
@@ -155,12 +165,17 @@ class RagPresetCampaignOrchestratorTest {
         BenchmarkJobAccepted accepted =
                 orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req);
         assertThat(accepted.campaignId()).isPresent();
-        verify(asyncTaskService, times(3)).submitEvalRag(any(), any(), any());
+        verify(asyncTaskService, times(1)).submitEvalRagCampaign(any(), any(), any(), any());
+        verify(asyncTaskService, times(0)).submitEvalRag(any(), any(), any());
 
         ArgumentCaptor<EvaluationRunEntity> runCaptor = ArgumentCaptor.forClass(EvaluationRunEntity.class);
         verify(evaluationRunRepository, atLeast(3)).save(runCaptor.capture());
-        assertThat(runCaptor.getAllValues()).hasSizeGreaterThanOrEqualTo(3);
-        assertThat(runCaptor.getAllValues().stream().allMatch(r -> r.getCampaign() != null)).isTrue();
+        List<EvaluationRunEntity> childRuns =
+                runCaptor.getAllValues().stream()
+                        .filter(r -> BenchmarkKind.RAG_PRESET_END_TO_END.name().equals(r.getBenchmarkKind()))
+                        .toList();
+        assertThat(childRuns).hasSizeGreaterThanOrEqualTo(3);
+        assertThat(childRuns.stream().allMatch(r -> r.getCampaign() != null)).isTrue();
     }
 
     private BenchmarkRunOrchestrator orchestrator() {

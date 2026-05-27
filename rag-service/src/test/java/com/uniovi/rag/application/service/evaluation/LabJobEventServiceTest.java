@@ -4,11 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.domain.AsyncTaskStatus;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.LabJobEventType;
+import com.uniovi.rag.application.port.AfterCommitTaskScheduler;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
@@ -31,13 +34,26 @@ class LabJobEventServiceTest {
     @Mock
     private AsyncTaskRepository asyncTaskRepository;
 
+    @Mock
+    private LabJobSseHub labJobSseHub;
+
+    @Mock
+    private AfterCommitTaskScheduler afterCommitTaskScheduler;
+
     private LabJobEventService service;
     private UUID taskId;
     private AsyncTaskEntity task;
 
     @BeforeEach
     void setUp() {
-        service = new LabJobEventService(asyncTaskRepository);
+        service = new LabJobEventService(asyncTaskRepository, labJobSseHub, afterCommitTaskScheduler);
+        lenient()
+                .doAnswer(inv -> {
+                    inv.getArgument(0, Runnable.class).run();
+                    return null;
+                })
+                .when(afterCommitTaskScheduler)
+                .scheduleAfterCommit(any(Runnable.class));
         taskId = UUID.randomUUID();
         task = AsyncTaskEntity.queued(mock(UserEntity.class), AsyncTaskType.EVAL_LLM, Map.of(), Instant.parse("2026-01-01T00:00:00Z"));
         try {
@@ -113,5 +129,42 @@ class LabJobEventServiceTest {
         assertThat(events).hasSize(1);
         assertThat(events.getFirst().eventId()).isEqualTo(2L);
         assertThat(events.getFirst().type()).isEqualTo("STARTED");
+    }
+
+    @Test
+    void buildSnapshot_includesLatestCounters() {
+        Map<String, Object> log = new LinkedHashMap<>();
+        log.put("nextId", 2L);
+        log.put(
+                "events",
+                List.of(
+                        Map.of(
+                                "eventId",
+                                1L,
+                                "jobId",
+                                taskId.toString(),
+                                "type",
+                                "ITEM_COMPLETED",
+                                "status",
+                                "RUNNING",
+                                "progress",
+                                "1/3",
+                                "message",
+                                "done",
+                                "timestamp",
+                                "2026-01-01T00:00:02Z",
+                                "globalCompletedItems",
+                                1,
+                                "globalTotalItems",
+                                108)));
+        task.setEventLogJson(log);
+        UUID userId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        when(asyncTaskRepository.findByIdAndUser_Id(taskId, userId)).thenReturn(Optional.of(task));
+
+        var snapshot = service.buildSnapshot(taskId, userId);
+
+        assertThat(snapshot.type()).isEqualTo("SNAPSHOT");
+        assertThat(snapshot.globalTotalItems()).isEqualTo(108);
+        assertThat(snapshot.globalCompletedItems()).isEqualTo(1);
     }
 }

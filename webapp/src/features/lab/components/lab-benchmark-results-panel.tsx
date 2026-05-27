@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
   downloadCampaignExport,
+  downloadCampaignItemsJson,
   downloadCampaignMvpItemsJson,
+  downloadCampaignSummaryJson,
   downloadMvpExport,
   fetchCampaignComparison,
   fetchLabCampaignRuns,
@@ -43,11 +45,14 @@ const FAILED_SKIPPED_OUTCOMES = new Set(["FAILED", "SKIPPED", "NOT_SUPPORTED"]);
 type ResultTableRow = {
   id: string;
   question: string;
+  answer: string;
   outcome: string;
   note: string;
   presetCode: string;
   presetLabel: string;
   modelId: string;
+  snapshotId: string;
+  sourcesSummary: string;
   correctness: number | null;
   llmJudgeScore: number | null;
   hallucinationRate: number | null;
@@ -92,7 +97,31 @@ function toResultTableRow(row: unknown, idx: number, t: (key: string) => string)
   const mp = asRecord(item?.metricsPayload);
   const presetLabelFromPayload = typeof mp?.presetLabel === "string" ? mp.presetLabel : presetLabelRaw;
   const presetLabel = presetCode !== "—" ? formatPresetDisplay(presetCode, presetLabelFromPayload) : "—";
-  const question = typeof item?.questionText === "string" ? item.questionText : "";
+  const question =
+    typeof item?.questionText === "string"
+      ? item.questionText
+      : typeof item?.question === "string"
+        ? item.question
+        : "";
+  const answer =
+    typeof item?.actualAnswer === "string"
+      ? item.actualAnswer
+      : typeof item?.answer === "string"
+        ? item.answer
+        : "";
+  const snapshotId =
+    typeof item?.snapshotId === "string" && item.snapshotId.trim()
+      ? item.snapshotId.trim()
+      : typeof mp?.indexSnapshotId === "string"
+        ? mp.indexSnapshotId
+        : "—";
+  const sourcesRaw = item?.sources;
+  let sourcesSummary = "—";
+  if (Array.isArray(sourcesRaw) && sourcesRaw.length > 0) {
+    sourcesSummary = `${sourcesRaw.length} source(s)`;
+  } else if (typeof mp?.retrieved_document_ids === "string" && mp.retrieved_document_ids.trim()) {
+    sourcesSummary = mp.retrieved_document_ids.split(";").filter(Boolean).length + " doc(s)";
+  }
   const note =
     isExtensionPreset(presetCode)
       ? t("benchmarkNoteExtension")
@@ -106,11 +135,14 @@ function toResultTableRow(row: unknown, idx: number, t: (key: string) => string)
   return {
     id: typeof item?.id === "string" && item.id ? item.id : `row-${idx}`,
     question,
+    answer,
     outcome,
     note,
     presetCode,
     presetLabel,
     modelId,
+    snapshotId,
+    sourcesSummary,
     correctness: numberOrNull(generation?.correctness),
     llmJudgeScore: numberOrNull(generation?.llmJudgeScore),
     hallucinationRate: numberOrNull(generation?.hallucinationRate),
@@ -298,6 +330,22 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
       ? (payload.campaignComparison as Record<string, unknown>)
       : null;
 
+  const knowledgeBaseFromRuns = payload.campaignRuns?.find((r) => {
+    const row = r as Record<string, unknown>;
+    return typeof row.corpusName === "string" && row.corpusName.trim().length > 0;
+  }) as Record<string, unknown> | undefined;
+  const knowledgeBaseFromItems = mvpRows.find((row) => {
+    if (!row || typeof row !== "object") return false;
+    const kb = (row as Record<string, unknown>).knowledgeBaseName;
+    return typeof kb === "string" && kb.trim().length > 0;
+  }) as Record<string, unknown> | undefined;
+  const knowledgeBaseLabel =
+    (typeof knowledgeBaseFromRuns?.corpusName === "string" ? knowledgeBaseFromRuns.corpusName.trim() : "") ||
+    (typeof knowledgeBaseFromItems?.knowledgeBaseName === "string"
+      ? knowledgeBaseFromItems.knowledgeBaseName.trim()
+      : "") ||
+    null;
+
   return (
     <div className="space-y-4 rounded-md border bg-muted/20 p-4" data-testid="lab-benchmark-results-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -328,6 +376,11 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
               presets: uniquePresetCodes.size,
             })}
           </p>
+          {knowledgeBaseLabel ? (
+            <p className="text-muted-foreground text-xs" data-testid="lab-benchmark-knowledge-base-label">
+              {t("benchmarkResultsKnowledgeBase", { name: knowledgeBaseLabel })}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           {campId ? (
@@ -337,9 +390,18 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                 variant="outline"
                 size="sm"
                 data-testid="lab-export-campaign-items-json"
-                onClick={() => void downloadCampaignMvpItemsJson(campId)}
+                onClick={() => void downloadCampaignItemsJson(campId)}
               >
                 {t("benchmarkExportCampaignItemsJson")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="lab-export-campaign-summary-json"
+                onClick={() => void downloadCampaignSummaryJson(campId)}
+              >
+                {t("benchmarkExportCampaignSummaryJson")}
               </Button>
               <Button
                 type="button"
@@ -608,6 +670,8 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                 <th className="p-2 font-medium">{t("benchmarkColItem")}</th>
                 <th className="p-2 font-medium">{t("benchmarkColPreset")}</th>
                 <th className="p-2 font-medium">{t("benchmarkColModel")}</th>
+                <th className="p-2 font-medium">{t("benchmarkColAnswer")}</th>
+                <th className="p-2 font-medium">{t("benchmarkColSources")}</th>
                 <th className="p-2 font-medium">{t("benchmarkColOutcome")}</th>
                 <th className="p-2 font-medium">{t("benchmarkColCorrectness")}</th>
                 <th className="p-2 font-medium">{t("benchmarkColJudge")}</th>
@@ -624,6 +688,10 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                     <td className="p-2 align-top">{snippet || "—"}</td>
                     <td className="p-2 align-top">{row.presetLabel !== "—" ? row.presetLabel : "—"}</td>
                     <td className="p-2 align-top">{displayModelId(row.modelId, t)}</td>
+                    <td className="p-2 align-top" title={row.answer}>
+                      {row.answer.length > 64 ? `${row.answer.slice(0, 64)}…` : row.answer || "—"}
+                    </td>
+                    <td className="p-2 align-top">{row.sourcesSummary}</td>
                     <td className="p-2 align-top">{formatOutcomeLabel(row.outcome, t)}</td>
                     <td className="p-2 align-top">
                       <MetricCell

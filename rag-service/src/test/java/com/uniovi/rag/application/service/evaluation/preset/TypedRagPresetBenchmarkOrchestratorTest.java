@@ -18,6 +18,7 @@ import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.evaluation.workbook.DifficultyLevel;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
+import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
@@ -27,7 +28,9 @@ import com.uniovi.rag.application.result.evaluation.RagPresetBenchmarkRunPayload
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
 import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
 import com.uniovi.rag.application.service.evaluation.EvaluationTestFixtures;
+import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.application.service.evaluation.baseline.ExperimentalSnapshotFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
 import java.time.Instant;
@@ -57,6 +60,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
 
     @Mock private EvaluationService evaluationService;
     @Mock private EvaluationRunRepository evaluationRunRepository;
+    @Mock private ProjectRepository projectRepository;
     @Mock private ExperimentalSnapshotFactory experimentalSnapshotFactory;
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
     @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
@@ -85,13 +89,18 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     }
 
     private TypedRagPresetBenchmarkOrchestrator orchestrator() {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<LabJobProgressTracker> labJobProgressTracker = Mockito.mock(ObjectProvider.class);
         LabEvaluationSnapshotService labEvaluationSnapshotService =
                 new LabEvaluationSnapshotService(
                         knowledgeSnapshotService,
                         knowledgePipelineOrchestrator,
                         projectIndexProfileService,
                         labIndexProfileOverrideFactory,
-                        knowledgeIndexSnapshotRepository);
+                        knowledgeIndexSnapshotRepository,
+                        evaluationRunRepository,
+                        projectRepository,
+                        labJobProgressTracker);
         return new TypedRagPresetBenchmarkOrchestrator(
                 evaluationService,
                 evaluationRunRepository,

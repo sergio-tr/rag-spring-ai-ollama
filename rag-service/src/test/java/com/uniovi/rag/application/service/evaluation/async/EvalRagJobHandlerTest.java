@@ -1,29 +1,28 @@
 package com.uniovi.rag.application.service.evaluation.async;
 
 import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetResolver;
-import com.uniovi.rag.application.service.evaluation.lab.LabClasspathCorpusBootstrapService;
 import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
+import com.uniovi.rag.application.service.evaluation.lab.LabClasspathCorpusBootstrapService;
+import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapResult;
 import com.uniovi.rag.application.service.knowledge.ProjectIndexOperationLockService;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
-import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
-import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapResult;
-import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
-import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
-import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService;
+import com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor;
+import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
 import com.uniovi.rag.application.result.evaluation.RagPresetBenchmarkRunPayload;
 import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
 import com.uniovi.rag.application.service.evaluation.EvaluationTestFixtures;
 import com.uniovi.rag.application.service.evaluation.preset.TypedRagPresetBenchmarkOrchestrator;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,8 +56,6 @@ class EvalRagJobHandlerTest {
 
     @Mock
     private ExperimentalDatasetResolver experimentalDatasetResolver;
-    @Mock
-    private EvaluationRunRepository evaluationRunRepository;
 
     @Mock
     private TypedRagPresetBenchmarkOrchestrator typedRagPresetBenchmarkOrchestrator;
@@ -75,17 +72,28 @@ class EvalRagJobHandlerTest {
     @Mock
     private LabClasspathCorpusBootstrapService labClasspathCorpusBootstrapService;
 
+    @Mock
+    private LabJobProgressTracker labJobProgressTracker;
+
+    @Mock
+    private LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor;
+
+    @Mock
+    private EvaluationRunRagJobContextLoader evaluationRunRagJobContextLoader;
+
     private EvalRagJobHandler handler() {
         return new EvalRagJobHandler(
                 featureConfiguration,
                 implementationProperties,
                 canonicalPersistence,
-                evaluationRunRepository,
                 experimentalDatasetResolver,
                 typedRagPresetBenchmarkOrchestrator,
                 cancellationService,
                 projectIndexOperationLockService,
-                labClasspathCorpusBootstrapService);
+                labClasspathCorpusBootstrapService,
+                labJobProgressTracker,
+                labCampaignBenchmarkExecutor,
+                evaluationRunRagJobContextLoader);
     }
 
     @Test
@@ -97,23 +105,9 @@ class EvalRagJobHandlerTest {
     void run_withRunId_usesTypedRag_neverRemovedEvaluateApi() {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
-        RagPresetQuestion q =
-                new RagPresetQuestion(
-                        "rp1",
-                        "Q?",
-                        "A",
-                        Optional.empty(),
-                        Optional.empty(),
-                        "",
-                        List.of(),
-                        List.of(),
-                        "",
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        "");
+        when(evaluationRunRagJobContextLoader.loadContext(runId))
+                .thenReturn(Optional.of(baseContext(runId, null, null, false, false)));
+        RagPresetQuestion q = sampleQuestion();
         when(experimentalDatasetResolver.resolve(runId))
                 .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
         RagPresetBenchmarkRunPayload eval = EvaluationTestFixtures.emptyRagRunPayload();
@@ -139,9 +133,46 @@ class EvalRagJobHandlerTest {
                         ArgumentMatchers.anySet(),
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any());
-        verify(canonicalPersistence).persistLlmJudgeBatch(runId, new LlmJudgeEvaluationBatchResult(eval.configuration(), eval.results(), eval.evaluationSummary()), BenchmarkKind.RAG_PRESET_END_TO_END);
+        verify(canonicalPersistence)
+                .persistLlmJudgeBatch(
+                        runId,
+                        new LlmJudgeEvaluationBatchResult(
+                                eval.configuration(), eval.results(), eval.evaluationSummary()),
+                        BenchmarkKind.RAG_PRESET_END_TO_END);
         verify(mutation).markSucceeded(taskId, EvaluationPayloadMapper.toAsyncPayload(eval));
         verifyNoInteractions(labClasspathCorpusBootstrapService);
+    }
+
+    @Test
+    void run_projectlessWithKnowledgeBase_usesContextIdsNotJpaEntities() {
+        UUID taskId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        when(evaluationRunRagJobContextLoader.loadContext(runId))
+                .thenReturn(Optional.of(baseContext(runId, corpusId, projectId, true, false)));
+        when(projectIndexOperationLockService.tryAcquire(eq(projectId), Mockito.any(), eq(runId), Mockito.any()))
+                .thenReturn(ProjectIndexOperationLockService.LockAttempt.acquired(null));
+        RagPresetQuestion q = sampleQuestion();
+        when(experimentalDatasetResolver.resolve(runId))
+                .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
+        when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
+                        eq(runId),
+                        ArgumentMatchers.any(),
+                        eq(featureConfiguration),
+                        eq(implementationProperties),
+                        ArgumentMatchers.anySet(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any()))
+                .thenReturn(EvaluationTestFixtures.emptyRagRunPayload());
+        AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
+
+        handler().run(task, mutation);
+
+        verify(evaluationRunRagJobContextLoader).markAutoReindexLockAcquired(runId);
+        verify(labJobProgressTracker)
+                .emitRagEvaluationAccepted(
+                        eq(taskId), eq(runId), eq(corpusId), ArgumentMatchers.any(), ArgumentMatchers.isNull());
     }
 
     @Test
@@ -160,25 +191,10 @@ class EvalRagJobHandlerTest {
     void run_marksRunFailed_thenRethrows_whenEvaluationThrows() {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
-        RagPresetQuestion q =
-                new RagPresetQuestion(
-                        "rp1",
-                        "Q?",
-                        "A",
-                        Optional.empty(),
-                        Optional.empty(),
-                        "",
-                        List.of(),
-                        List.of(),
-                        "",
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        "");
+        when(evaluationRunRagJobContextLoader.loadContext(runId))
+                .thenReturn(Optional.of(baseContext(runId, null, null, false, false)));
         when(experimentalDatasetResolver.resolve(runId))
-                .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
+                .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(sampleQuestion()), List.of()));
         when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
                         eq(runId),
                         ArgumentMatchers.any(),
@@ -202,44 +218,12 @@ class EvalRagJobHandlerTest {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
-
-        // Enable autoReindex via aggregates_json payload.
-        EvaluationRunEntity run = new EvaluationRunEntity();
-        var project = Mockito.mock(ProjectEntity.class);
-        when(project.getId()).thenReturn(projectId);
-        run.setProject(project);
-        run.setAggregatesJson(
-                Map.of(
-                        "autoReindexPolicy",
-                        Map.of(
-                                "enabled", true,
-                                "allowActiveSnapshotMutation", true,
-                                "reuseCompatibleActiveSnapshot", true,
-                                "failOnReindexFailure", true)));
-        when(evaluationRunRepository.findByIdFetchDataset(runId)).thenReturn(Optional.of(run));
-
+        when(evaluationRunRagJobContextLoader.loadContext(runId))
+                .thenReturn(Optional.of(baseContext(runId, UUID.randomUUID(), projectId, true, false)));
         when(projectIndexOperationLockService.tryAcquire(eq(projectId), Mockito.any(), eq(runId), Mockito.any()))
                 .thenReturn(ProjectIndexOperationLockService.LockAttempt.acquired(null));
-
-        RagPresetQuestion q =
-                new RagPresetQuestion(
-                        "rp1",
-                        "Q?",
-                        "A",
-                        Optional.empty(),
-                        Optional.empty(),
-                        "",
-                        List.of(),
-                        List.of(),
-                        "",
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        "");
         when(experimentalDatasetResolver.resolve(runId))
-                .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
+                .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(sampleQuestion()), List.of()));
         when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
                         eq(runId),
                         ArgumentMatchers.any(),
@@ -264,37 +248,12 @@ class EvalRagJobHandlerTest {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
-
-        EvaluationRunEntity run = new EvaluationRunEntity();
-        var project = Mockito.mock(ProjectEntity.class);
-        when(project.getId()).thenReturn(projectId);
-        run.setProject(project);
-        run.setAggregatesJson(Map.of("autoReindexPolicy", Map.of("enabled", true)));
-        when(evaluationRunRepository.findByIdFetchDataset(runId)).thenReturn(Optional.of(run));
-
+        when(evaluationRunRagJobContextLoader.loadContext(runId))
+                .thenReturn(Optional.of(baseContext(runId, null, projectId, true, false)));
         when(projectIndexOperationLockService.tryAcquire(eq(projectId), Mockito.any(), eq(runId), Mockito.any()))
                 .thenReturn(ProjectIndexOperationLockService.LockAttempt.acquired(null));
-
-        RagPresetQuestion q =
-                new RagPresetQuestion(
-                        "rp1",
-                        "Q?",
-                        "A",
-                        Optional.empty(),
-                        Optional.empty(),
-                        "",
-                        List.of(),
-                        List.of(),
-                        "",
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        "");
         when(experimentalDatasetResolver.resolve(runId))
-                .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
-        RagPresetBenchmarkRunPayload eval = EvaluationTestFixtures.emptyRagRunPayload();
+                .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(sampleQuestion()), List.of()));
         when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
                         eq(runId),
                         ArgumentMatchers.any(TypedBenchmarkDataset.RagPresetQuestions.class),
@@ -303,7 +262,7 @@ class EvalRagJobHandlerTest {
                         ArgumentMatchers.anySet(),
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any()))
-                .thenReturn(eval);
+                .thenReturn(EvaluationTestFixtures.emptyRagRunPayload());
         AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
 
         handler().run(task, mutation);
@@ -316,14 +275,8 @@ class EvalRagJobHandlerTest {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
-
-        EvaluationRunEntity run = new EvaluationRunEntity();
-        var project = Mockito.mock(ProjectEntity.class);
-        when(project.getId()).thenReturn(projectId);
-        run.setProject(project);
-        run.setAggregatesJson(Map.of("autoReindexPolicy", Map.of("enabled", true)));
-        when(evaluationRunRepository.findByIdFetchDataset(runId)).thenReturn(Optional.of(run));
-
+        when(evaluationRunRagJobContextLoader.loadContext(runId))
+                .thenReturn(Optional.of(baseContext(runId, null, projectId, true, false)));
         when(projectIndexOperationLockService.tryAcquire(eq(projectId), Mockito.any(), eq(runId), Mockito.any()))
                 .thenReturn(ProjectIndexOperationLockService.LockAttempt.rejected("ALREADY_LOCKED", null));
 
@@ -342,31 +295,10 @@ class EvalRagJobHandlerTest {
         UUID runId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
 
-        EvaluationRunEntity run = new EvaluationRunEntity();
-        var project = Mockito.mock(ProjectEntity.class);
-        when(project.getId()).thenReturn(projectId);
-        run.setProject(project);
-        UserEntity user = Mockito.mock(UserEntity.class);
-        when(user.getId()).thenReturn(userId);
-        run.setUser(user);
-        run.setAggregatesJson(
-                Map.of(
-                        "corpusBootstrapPolicy",
-                        Map.of(
-                                "enabled",
-                                true,
-                                "classpathDocsLocation",
-                                "classpath*:docs/**/*",
-                                "corpusScope",
-                                "PROJECT_SHARED",
-                                "skipExisting",
-                                true,
-                                "failOnDocumentError",
-                                true),
-                        "autoReindexPolicy",
-                        Map.of("enabled", true)));
-        when(evaluationRunRepository.findByIdFetchDataset(runId)).thenReturn(Optional.of(run));
+        when(evaluationRunRagJobContextLoader.loadContext(runId))
+                .thenReturn(Optional.of(baseContext(runId, corpusId, projectId, true, true, userId)));
         when(projectIndexOperationLockService.tryAcquire(eq(projectId), Mockito.any(), eq(runId), Mockito.any()))
                 .thenReturn(ProjectIndexOperationLockService.LockAttempt.acquired(null));
 
@@ -385,28 +317,11 @@ class EvalRagJobHandlerTest {
                         List.of(),
                         Instant.now(),
                         Instant.now());
-        when(labClasspathCorpusBootstrapService.bootstrap(eq(userId), Mockito.any())).thenReturn(corpus);
-
-        RagPresetQuestion q =
-                new RagPresetQuestion(
-                        "rp1",
-                        "Q?",
-                        "A",
-                        Optional.empty(),
-                        Optional.empty(),
-                        "",
-                        List.of(),
-                        List.of(),
-                        "",
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        "");
+        when(labClasspathCorpusBootstrapService.bootstrap(
+                        eq(userId), eq(runId), eq(projectId), ArgumentMatchers.any()))
+                .thenReturn(corpus);
         when(experimentalDatasetResolver.resolve(runId))
-                .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
-        RagPresetBenchmarkRunPayload eval = EvaluationTestFixtures.emptyRagRunPayload();
+                .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(sampleQuestion()), List.of()));
         when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
                         eq(runId),
                         ArgumentMatchers.any(),
@@ -415,17 +330,82 @@ class EvalRagJobHandlerTest {
                         ArgumentMatchers.anySet(),
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any()))
-                .thenReturn(eval);
+                .thenReturn(EvaluationTestFixtures.emptyRagRunPayload());
 
         AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
 
         handler().run(task, mutation);
 
         var order = inOrder(labClasspathCorpusBootstrapService, projectIndexOperationLockService);
-        order.verify(labClasspathCorpusBootstrapService).bootstrap(eq(userId), Mockito.any());
+        order.verify(labClasspathCorpusBootstrapService)
+                .bootstrap(eq(userId), eq(runId), eq(projectId), ArgumentMatchers.any());
         order.verify(projectIndexOperationLockService)
                 .tryAcquire(eq(projectId), Mockito.any(), eq(runId), Mockito.any());
         verify(projectIndexOperationLockService).release(projectId, "lab:auto-reindex", runId);
+    }
+
+    private static EvaluationRunRagJobContext baseContext(
+            UUID runId, UUID corpusId, UUID projectId, boolean autoReindex, boolean bootstrap) {
+        return baseContext(runId, corpusId, projectId, autoReindex, bootstrap, UUID.randomUUID());
+    }
+
+    private static EvaluationRunRagJobContext baseContext(
+            UUID runId,
+            UUID corpusId,
+            UUID projectId,
+            boolean autoReindex,
+            boolean bootstrap,
+            UUID userId) {
+        Map<String, Object> aggregates = new LinkedHashMap<>();
+        if (autoReindex) {
+            aggregates.put("autoReindexPolicy", Map.of("enabled", true));
+        }
+        if (bootstrap) {
+            aggregates.put(
+                    "corpusBootstrapPolicy",
+                    Map.of(
+                            "enabled",
+                            true,
+                            "classpathDocsLocation",
+                            "classpath*:docs/**/*",
+                            "corpusScope",
+                            "PROJECT_SHARED",
+                            "skipExisting",
+                            true,
+                            "failOnDocumentError",
+                            true));
+        }
+        return new EvaluationRunRagJobContext(
+                runId,
+                userId,
+                UUID.randomUUID(),
+                "RAG_PRESET_END_TO_END",
+                corpusId,
+                corpusId != null ? "Lab KB" : "",
+                projectId,
+                bootstrap,
+                autoReindex,
+                aggregates,
+                List.of());
+    }
+
+    private static RagPresetQuestion sampleQuestion() {
+        return new RagPresetQuestion(
+                "rp1",
+                "Q?",
+                "A",
+                Optional.empty(),
+                Optional.empty(),
+                "",
+                List.of(),
+                List.of(),
+                "",
+                false,
+                false,
+                false,
+                false,
+                false,
+                "");
     }
 
     private static AsyncTaskEntity task(UUID id, Map<String, Object> payload) {

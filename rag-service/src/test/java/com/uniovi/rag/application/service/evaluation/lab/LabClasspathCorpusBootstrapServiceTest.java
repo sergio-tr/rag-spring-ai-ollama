@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
+import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
@@ -47,6 +48,9 @@ class LabClasspathCorpusBootstrapServiceTest {
     @Mock
     private ProjectAccessService projectAccessService;
 
+    @Mock
+    private EvaluationRunRepository evaluationRunRepository;
+
     private ResourcePatternResolver resourceResolver;
 
     private LabClasspathCorpusBootstrapService service;
@@ -60,7 +64,11 @@ class LabClasspathCorpusBootstrapServiceTest {
         projectId = UUID.randomUUID();
         resourceResolver = mock(ResourcePatternResolver.class);
         service = new LabClasspathCorpusBootstrapService(
-                knowledgeIngestionService, knowledgeDocumentRepository, projectAccessService, resourceResolver);
+                knowledgeIngestionService,
+                knowledgeDocumentRepository,
+                evaluationRunRepository,
+                projectAccessService,
+                resourceResolver);
     }
 
     @Test

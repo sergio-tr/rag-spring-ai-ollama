@@ -10,6 +10,9 @@ import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
 import com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService;
+import com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor;
+import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
+import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.application.service.evaluation.EvaluationTestFixtures;
 import com.uniovi.rag.application.service.evaluation.baseline.ModelBaselineEvaluationOrchestrator;
 import java.util.List;
@@ -48,9 +51,24 @@ class EvalLlmJobHandlerTest {
     @Mock
     private AsyncTaskCancellationService cancellationService;
 
+    @Mock
+    private LabJobProgressTracker labJobProgressTracker;
+
+    @Mock
+    private EvaluationRunRepository evaluationRunRepository;
+
+    @Mock
+    private LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor;
+
     private EvalLlmJobHandler handler() {
         return new EvalLlmJobHandler(
-                canonicalPersistence, experimentalDatasetResolver, modelBaselineEvaluationOrchestrator, cancellationService);
+                canonicalPersistence,
+                experimentalDatasetResolver,
+                modelBaselineEvaluationOrchestrator,
+                cancellationService,
+                labJobProgressTracker,
+                evaluationRunRepository,
+                labCampaignBenchmarkExecutor);
     }
 
     @Test
@@ -121,8 +139,8 @@ class EvalLlmJobHandlerTest {
 
     private static AsyncTaskEntity task(UUID id, Map<String, Object> payload) {
         AsyncTaskEntity t = Mockito.mock(AsyncTaskEntity.class);
-        when(t.getId()).thenReturn(id);
-        when(t.getRequestPayload()).thenReturn(payload);
+        Mockito.lenient().when(t.getId()).thenReturn(id);
+        Mockito.lenient().when(t.getRequestPayload()).thenReturn(payload);
         return t;
     }
 }

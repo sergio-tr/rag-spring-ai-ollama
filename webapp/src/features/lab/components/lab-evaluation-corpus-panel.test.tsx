@@ -20,8 +20,7 @@ vi.mock("next-intl", () => ({
 
 const refresh = vi.fn();
 const ensureCorpus = vi.fn().mockResolvedValue({ id: "corpus-1", documentCount: 0, readyCount: 0, documents: [] });
-const uploadDocument = vi.fn().mockResolvedValue(undefined);
-const uploadDocuments = vi.fn().mockResolvedValue(undefined);
+const uploadDocuments = vi.fn().mockResolvedValue({ response: { uploads: [] }, corpus: {} });
 const attachFromProject = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/lib/api-client", () => ({
@@ -38,7 +37,6 @@ vi.mock("@/features/lab/hooks/use-evaluation-corpus", () => ({
     error: null,
     refresh,
     ensureCorpus,
-    uploadDocument,
     uploadDocuments,
     attachFromProject,
   }),

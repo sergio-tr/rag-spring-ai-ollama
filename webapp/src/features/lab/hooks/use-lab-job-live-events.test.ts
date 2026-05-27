@@ -77,6 +77,8 @@ const accepted: LabJobAcceptedDto = {
 
 describe("useLabJobLiveEvents", () => {
   beforeEach(() => {
+    vi.useRealTimers();
+    vi.spyOn(asyncTask, "sleep").mockResolvedValue(undefined);
     vi.spyOn(asyncTask, "fetchLabJobStatusOnce").mockResolvedValue({
       ...terminalStatus,
       terminal: false,
@@ -86,6 +88,7 @@ describe("useLabJobLiveEvents", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -133,6 +136,64 @@ describe("useLabJobLiveEvents", () => {
     await waitFor(() => expect(result.current.connectionState).toBe("completed"));
     expect(result.current.taskStatus?.status).toBe("SUCCEEDED");
     expect(onTerminal).toHaveBeenCalled();
+  });
+
+  it("leaves connecting after timeout when hydrate never resolves (SSE-REGRESSION)", async () => {
+    vi.useFakeTimers();
+    let hydrateCalls = 0;
+    vi.mocked(asyncTask.fetchLabJobStatusOnce).mockImplementation(() => {
+      hydrateCalls += 1;
+      if (hydrateCalls === 1) {
+        return new Promise(() => {});
+      }
+      return Promise.reject(new Error("status poll unavailable"));
+    });
+    vi.spyOn(labJobSse, "streamLabJobLive").mockImplementation(
+      () => new Promise(() => {}),
+    );
+
+    const { result } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    expect(result.current.connectionState).toBe("connecting");
+
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(8_500);
+      });
+      expect(result.current.connectionState).toBe("configuration_error");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("enters reconnecting after timeout when poll still reports RUNNING", async () => {
+    vi.useFakeTimers();
+    let hydrateCalls = 0;
+    vi.mocked(asyncTask.fetchLabJobStatusOnce).mockImplementation(() => {
+      hydrateCalls += 1;
+      if (hydrateCalls === 1) {
+        return new Promise(() => {});
+      }
+      return Promise.resolve({
+        ...terminalStatus,
+        terminal: false,
+        status: "RUNNING",
+      });
+    });
+    vi.spyOn(labJobSse, "streamLabJobLive").mockImplementation(
+      () => new Promise(() => {}),
+    );
+
+    const { result } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    expect(result.current.connectionState).toBe("connecting");
+
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(8_500);
+      });
+      expect(result.current.connectionState).toBe("reconnecting");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("short-circuits when snapshot is already terminal", async () => {
@@ -188,6 +249,11 @@ describe("useLabJobLiveEvents", () => {
     const { result, unmount } = renderHook(() => useLabJobLiveEvents({ accepted }));
     await waitFor(() => expect(streamCallbacks).toBeDefined());
     act(() => {
+      streamCallbacks?.onLive?.();
+    });
+    await waitFor(() => expect(result.current.connectionState).toBe("live"));
+    await new Promise((r) => setTimeout(r, 3_100));
+    act(() => {
       streamCallbacks?.onReconnecting?.();
     });
     expect(result.current.connectionState).toBe("reconnecting");
@@ -209,23 +275,73 @@ describe("useLabJobLiveEvents", () => {
     await waitFor(() => expect(onTick).toHaveBeenCalled());
   });
 
-  it("surfaces reconnecting after stream errors", async () => {
-    vi.spyOn(labJobSse, "streamLabJobLive").mockRejectedValue(new Error("stream down"));
-    vi.mocked(asyncTask.fetchLabJobStatusOnce).mockResolvedValue({
+  it("reconnects when stream fails but poll still reports RUNNING", async () => {
+    const running = {
       ...terminalStatus,
       terminal: false,
       status: "RUNNING",
+    };
+    vi.mocked(asyncTask.fetchLabJobStatusOnce).mockResolvedValue(running);
+    let streamCalls = 0;
+    vi.spyOn(labJobSse, "streamLabJobLive").mockImplementation(() => {
+      streamCalls += 1;
+      if (streamCalls === 1) {
+        return Promise.reject(new Error("stream down"));
+      }
+      return new Promise(() => {});
     });
     const onStreamError = vi.fn();
-    const { result } = renderHook(() =>
+    const { result, unmount } = renderHook(() =>
       useLabJobLiveEvents({ accepted, onStreamError }),
     );
 
     await waitFor(() => expect(result.current.connectionState).toBe("reconnecting"));
-    expect(onStreamError).toHaveBeenCalled();
+    expect(onStreamError).not.toHaveBeenCalled();
+    unmount();
   });
 
-  it("maps onConnecting to connecting before first live tick", async () => {
+  it("stays connecting until SSE onLive while stream is opening", async () => {
+    let streamCallbacks: LabJobStreamCallbacks | undefined;
+    let releaseStream: (() => void) | undefined;
+    vi.spyOn(labJobSse, "streamLabJobLive").mockImplementation((_path, options) => {
+      streamCallbacks = options?.callbacks;
+      return new Promise((resolve) => {
+        releaseStream = () => resolve(terminalStatus);
+      });
+    });
+
+    const { result, unmount } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    await waitFor(() => expect(streamCallbacks).toBeDefined());
+    expect(result.current.connectionState).toBe("connecting");
+    act(() => {
+      streamCallbacks?.onLive?.();
+    });
+    expect(result.current.connectionState).toBe("live");
+    releaseStream?.();
+    unmount();
+  });
+
+  it("stays connecting after hydrate until SSE connects", async () => {
+    let streamCallbacks: LabJobStreamCallbacks | undefined;
+    let releaseStream: (() => void) | undefined;
+    vi.spyOn(labJobSse, "streamLabJobLive").mockImplementation((_path, options) => {
+      streamCallbacks = options?.callbacks;
+      return new Promise((resolve) => {
+        releaseStream = () => resolve(terminalStatus);
+      });
+    });
+    const { result, unmount } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    await waitFor(() => expect(streamCallbacks).toBeDefined());
+    expect(result.current.connectionState).toBe("connecting");
+    act(() => {
+      streamCallbacks?.onLive?.();
+    });
+    await waitFor(() => expect(result.current.connectionState).toBe("live"));
+    releaseStream?.();
+    unmount();
+  });
+
+  it("promotes to live on SNAPSHOT job event with eventId 0", async () => {
     let streamCallbacks: LabJobStreamCallbacks | undefined;
     let releaseStream: (() => void) | undefined;
     vi.spyOn(labJobSse, "streamLabJobLive").mockImplementation((_path, options) => {
@@ -238,9 +354,18 @@ describe("useLabJobLiveEvents", () => {
     const { result, unmount } = renderHook(() => useLabJobLiveEvents({ accepted }));
     await waitFor(() => expect(streamCallbacks).toBeDefined());
     act(() => {
-      streamCallbacks?.onConnecting?.();
+      streamCallbacks?.onJobEvent?.({
+        eventId: 0,
+        jobId: "job-live-1",
+        type: "SNAPSHOT",
+        status: "ACCEPTED",
+        progress: "Live updates connected.",
+        message: "Live updates connected.",
+        timestamp: "t",
+        payload: { snapshot: true },
+      });
     });
-    expect(result.current.connectionState).toBe("connecting");
+    expect(result.current.connectionState).toBe("live");
     releaseStream?.();
     unmount();
   });
@@ -290,6 +415,7 @@ describe("useLabJobLiveEvents", () => {
       streamCallbacks?.onLive?.();
     });
     await waitFor(() => expect(result.current.connectionState).toBe("live"));
+    await new Promise((r) => setTimeout(r, 3_100));
     act(() => {
       streamCallbacks?.onConnecting?.();
     });

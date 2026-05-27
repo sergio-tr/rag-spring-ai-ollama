@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -22,4 +23,7 @@ public interface AsyncTaskRepository extends JpaRepository<AsyncTaskEntity, UUID
             @Param("userId") UUID userId,
             @Param("type") AsyncTaskType type,
             @Param("statuses") Collection<AsyncTaskStatus> statuses);
+
+    List<AsyncTaskEntity> findByStatusInAndUpdatedAtBefore(
+            Collection<AsyncTaskStatus> statuses, Instant updatedAtBefore);
 }

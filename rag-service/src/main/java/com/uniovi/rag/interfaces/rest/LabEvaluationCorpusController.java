@@ -3,9 +3,12 @@ package com.uniovi.rag.interfaces.rest;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusAttachFromProjectRequest;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusCreateRequest;
+import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusDocumentsUploadResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusSummaryDto;
 import com.uniovi.rag.security.RagPrincipal;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -16,13 +19,16 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
-@RequestMapping("${rag.api.product-base-path}/lab/evaluation-corpora")
+@RequestMapping({
+    "${rag.api.product-base-path}/lab/evaluation-corpora",
+    "${rag.api.product-base-path}/lab/corpora"
+})
 public class LabEvaluationCorpusController {
 
     private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
@@ -45,13 +51,30 @@ public class LabEvaluationCorpusController {
         return evaluationCorpusApplicationService.getSummary(requireUserId(principal), corpusId);
     }
 
-    @PostMapping(value = "/{corpusId}/documents/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public EvaluationCorpusSummaryDto uploadDocument(
+    /**
+     * Multipart upload for one or more evaluation corpus documents ({@code file} or {@code files} parts).
+     * Uses {@link RequestParam} so browser {@code FormData} uploads bind reliably.
+     */
+    @PostMapping(value = "/{corpusId}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public EvaluationCorpusDocumentsUploadResponseDto uploadDocuments(
             @AuthenticationPrincipal RagPrincipal principal,
             @PathVariable UUID corpusId,
-            @RequestPart("file") MultipartFile file)
+            @RequestParam(value = "files", required = false) List<MultipartFile> files,
+            @RequestParam(value = "file", required = false) MultipartFile singleFile)
             throws IOException {
-        return evaluationCorpusApplicationService.uploadDocument(requireUserId(principal), corpusId, file);
+        return evaluationCorpusApplicationService.uploadDocuments(
+                requireUserId(principal), corpusId, resolveMultipartFiles(files, singleFile));
+    }
+
+    /** @deprecated Prefer {@link #uploadDocuments}; kept for older clients. */
+    @PostMapping(value = "/{corpusId}/documents/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public EvaluationCorpusDocumentsUploadResponseDto uploadDocumentLegacy(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable UUID corpusId,
+            @RequestParam(value = "files", required = false) List<MultipartFile> files,
+            @RequestParam(value = "file", required = false) MultipartFile singleFile)
+            throws IOException {
+        return uploadDocuments(principal, corpusId, files, singleFile);
     }
 
     @PostMapping("/{corpusId}/documents/from-project")
@@ -60,6 +83,21 @@ public class LabEvaluationCorpusController {
             @PathVariable UUID corpusId,
             @RequestBody EvaluationCorpusAttachFromProjectRequest body) {
         return evaluationCorpusApplicationService.attachFromProject(requireUserId(principal), corpusId, body);
+    }
+
+    private static List<MultipartFile> resolveMultipartFiles(List<MultipartFile> files, MultipartFile singleFile) {
+        List<MultipartFile> resolved = new ArrayList<>();
+        if (files != null) {
+            for (MultipartFile file : files) {
+                if (file != null && !file.isEmpty()) {
+                    resolved.add(file);
+                }
+            }
+        }
+        if (singleFile != null && !singleFile.isEmpty()) {
+            resolved.add(singleFile);
+        }
+        return resolved;
     }
 
     private static UUID requireUserId(RagPrincipal principal) {

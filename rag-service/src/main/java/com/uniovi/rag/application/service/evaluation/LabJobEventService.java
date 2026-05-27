@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation;
 
+import com.uniovi.rag.application.port.AfterCommitTaskScheduler;
 import com.uniovi.rag.domain.AsyncTaskStatus;
 import com.uniovi.rag.domain.LabJobEventType;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
@@ -22,31 +23,80 @@ public class LabJobEventService {
 
     private static final String LOG_KEY = "events";
     private static final String NEXT_ID_KEY = "nextId";
-    private static final int MAX_EVENTS = 200;
+    private static final int MAX_EVENTS = 500;
 
     private final AsyncTaskRepository asyncTaskRepository;
+    private final LabJobSseHub sseHub;
+    private final AfterCommitTaskScheduler afterCommitTaskScheduler;
 
-    public LabJobEventService(AsyncTaskRepository asyncTaskRepository) {
+    public LabJobEventService(
+            AsyncTaskRepository asyncTaskRepository,
+            LabJobSseHub sseHub,
+            AfterCommitTaskScheduler afterCommitTaskScheduler) {
         this.asyncTaskRepository = asyncTaskRepository;
+        this.sseHub = sseHub;
+        this.afterCommitTaskScheduler = afterCommitTaskScheduler;
     }
 
     @Transactional
     public LabJobEventDto recordEvent(UUID taskId, LabJobEventType type, String message) {
-        AsyncTaskEntity task = asyncTaskRepository.findById(taskId).orElseThrow();
-        return appendEvent(task, type, message, null);
+        return record(LabJobEventRequest.of(taskId, type, message));
+    }
+
+    @Transactional
+    public LabJobEventDto record(LabJobEventRequest request) {
+        if (request.type() == LabJobEventType.HEARTBEAT) {
+            throw new IllegalArgumentException("HEARTBEAT is not persisted");
+        }
+        AsyncTaskEntity task = asyncTaskRepository.findById(request.taskId()).orElseThrow();
+        return appendEvent(task, request);
     }
 
     @Transactional
     public LabJobEventDto recordFromStatus(UUID taskId, LabJobEventType type, AsyncTaskStatusDto status, String message) {
-        AsyncTaskEntity task = asyncTaskRepository.findById(taskId).orElseThrow();
         Map<String, Object> payload = statusPayload(status);
-        return appendEvent(task, type, message, payload);
+        return record(LabJobEventRequest.of(taskId, type, message).withPayload(payload));
     }
 
     @Transactional(readOnly = true)
     public List<LabJobEventDto> listEvents(UUID taskId, UUID userId, Long sinceEventId) {
         AsyncTaskEntity task = requireOwnedTask(taskId, userId);
         return eventsAfter(readLog(task), sinceEventId);
+    }
+
+    @Transactional(readOnly = true)
+    public LabJobEventDto buildSnapshot(UUID taskId, UUID userId) {
+        AsyncTaskEntity task = requireOwnedTask(taskId, userId);
+        Map<String, Object> log = readLog(task);
+        List<LabJobEventDto> events = eventsAfter(log, null);
+        LabJobEventDto latest = events.isEmpty() ? null : events.getLast();
+        long nextId = readNextId(log);
+        String status = task.getStatus() != null ? task.getStatus().name() : "UNKNOWN";
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("snapshot", true);
+        payload.put("eventCount", events.size());
+        if (latest != null) {
+            payload.put("latestEventId", latest.eventId());
+            payload.put("latestType", latest.type());
+        }
+        return new LabJobEventDto(
+                Math.max(0L, nextId - 1L),
+                task.getId(),
+                "SNAPSHOT",
+                status,
+                task.getProgressText(),
+                "Live updates connected.",
+                task.getUpdatedAt() != null ? task.getUpdatedAt() : Instant.now(),
+                Map.copyOf(payload),
+                latest != null ? latest.campaignId() : null,
+                latest != null ? latest.runId() : null,
+                null,
+                latest != null ? latest.globalCompletedItems() : null,
+                latest != null ? latest.globalTotalItems() : null,
+                latest != null ? latest.runCompletedItems() : null,
+                latest != null ? latest.runTotalItems() : null,
+                latest != null ? latest.currentModelId() : null,
+                latest != null ? latest.currentPresetCode() : null);
     }
 
     @Transactional(readOnly = true)
@@ -66,11 +116,10 @@ public class LabJobEventService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Task not found"));
     }
 
-    private LabJobEventDto appendEvent(
-            AsyncTaskEntity task, LabJobEventType type, String message, Map<String, Object> payload) {
+    private LabJobEventDto appendEvent(AsyncTaskEntity task, LabJobEventRequest request) {
         Map<String, Object> log = new LinkedHashMap<>(readLog(task));
         long nextId = readNextId(log);
-        LabJobEventDto event = toEvent(task, nextId, type, message, payload);
+        LabJobEventDto event = toEvent(task, nextId, request);
         List<Map<String, Object>> events = readEvents(log);
         events.add(toStoredMap(event));
         while (events.size() > MAX_EVENTS) {
@@ -80,26 +129,31 @@ public class LabJobEventService {
         log.put(LOG_KEY, events);
         task.setEventLogJson(log);
         asyncTaskRepository.save(task);
+        UUID taskId = task.getId();
+        afterCommitTaskScheduler.scheduleAfterCommit(() -> sseHub.publish(taskId, event));
         return event;
     }
 
-    private static LabJobEventDto toEvent(
-            AsyncTaskEntity task,
-            long eventId,
-            LabJobEventType type,
-            String message,
-            Map<String, Object> payload) {
-        String progress = task.getProgressText();
+    private static LabJobEventDto toEvent(AsyncTaskEntity task, long eventId, LabJobEventRequest request) {
         String status = task.getStatus() != null ? task.getStatus().name() : "UNKNOWN";
         return new LabJobEventDto(
                 eventId,
                 task.getId(),
-                type.name(),
+                request.type().name(),
                 status,
-                progress,
-                message,
+                task.getProgressText(),
+                request.message(),
                 task.getUpdatedAt() != null ? task.getUpdatedAt() : Instant.now(),
-                payload != null ? payload : Map.of());
+                request.payload() != null ? request.payload() : Map.of(),
+                request.campaignId(),
+                request.runId(),
+                request.itemId(),
+                request.globalCompletedItems(),
+                request.globalTotalItems(),
+                request.runCompletedItems(),
+                request.runTotalItems(),
+                request.currentModelId(),
+                request.currentPresetCode());
     }
 
     private static Map<String, Object> statusPayload(AsyncTaskStatusDto status) {
@@ -173,6 +227,33 @@ public class LabJobEventService {
         m.put("progress", event.progress());
         m.put("message", event.message());
         m.put("timestamp", event.timestamp().toString());
+        if (event.campaignId() != null) {
+            m.put("campaignId", event.campaignId().toString());
+        }
+        if (event.runId() != null) {
+            m.put("runId", event.runId().toString());
+        }
+        if (event.itemId() != null) {
+            m.put("itemId", event.itemId());
+        }
+        if (event.globalCompletedItems() != null) {
+            m.put("globalCompletedItems", event.globalCompletedItems());
+        }
+        if (event.globalTotalItems() != null) {
+            m.put("globalTotalItems", event.globalTotalItems());
+        }
+        if (event.runCompletedItems() != null) {
+            m.put("runCompletedItems", event.runCompletedItems());
+        }
+        if (event.runTotalItems() != null) {
+            m.put("runTotalItems", event.runTotalItems());
+        }
+        if (event.currentModelId() != null) {
+            m.put("currentModelId", event.currentModelId());
+        }
+        if (event.currentPresetCode() != null) {
+            m.put("currentPresetCode", event.currentPresetCode());
+        }
         if (event.payload() != null && !event.payload().isEmpty()) {
             m.put("payload", event.payload());
         }
@@ -198,15 +279,38 @@ public class LabJobEventService {
                 stored.get("progress") != null ? String.valueOf(stored.get("progress")) : null,
                 stored.get("message") != null ? String.valueOf(stored.get("message")) : null,
                 ts,
-                payload);
+                payload,
+                parseUuid(stored.get("campaignId")),
+                parseUuid(stored.get("runId")),
+                stored.get("itemId") != null ? String.valueOf(stored.get("itemId")) : null,
+                intOrNull(stored.get("globalCompletedItems")),
+                intOrNull(stored.get("globalTotalItems")),
+                intOrNull(stored.get("runCompletedItems")),
+                intOrNull(stored.get("runTotalItems")),
+                stored.get("currentModelId") != null ? String.valueOf(stored.get("currentModelId")) : null,
+                stored.get("currentPresetCode") != null ? String.valueOf(stored.get("currentPresetCode")) : null);
+    }
+
+    private static UUID parseUuid(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        return UUID.fromString(raw.toString());
+    }
+
+    private static Integer intOrNull(Object raw) {
+        if (raw instanceof Number n) {
+            return n.intValue();
+        }
+        return null;
     }
 
     static LabJobEventType typeForStatus(AsyncTaskStatus status) {
         return switch (status) {
             case QUEUED -> LabJobEventType.ACCEPTED;
             case RUNNING -> LabJobEventType.STARTED;
-            case CANCELLING -> LabJobEventType.PROGRESS;
-            case SUCCEEDED -> LabJobEventType.COMPLETED;
+            case CANCELLING -> LabJobEventType.CANCELLING;
+            case SUCCEEDED -> LabJobEventType.RUN_COMPLETED;
             case FAILED -> LabJobEventType.FAILED;
             case CANCELLED -> LabJobEventType.CANCELLED;
         };

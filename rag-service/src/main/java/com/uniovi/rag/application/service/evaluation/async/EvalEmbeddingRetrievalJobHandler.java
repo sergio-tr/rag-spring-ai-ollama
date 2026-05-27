@@ -23,6 +23,8 @@ import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.application.service.async.LabJobCancelledException;
 import com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService;
+import com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor;
+import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
 import com.uniovi.rag.application.service.evaluation.baseline.BaselineRunSnapshotWriter;
 import com.uniovi.rag.application.service.evaluation.baseline.EmbeddingRetrievalMetrics;
@@ -66,6 +68,8 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
     private final EvaluationRunRepository evaluationRunRepository;
     private final int topK;
     private final AsyncTaskCancellationService cancellationService;
+    private final LabJobProgressTracker labJobProgressTracker;
+    private final LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor;
 
     EvalEmbeddingRetrievalJobHandler(
             PgVectorStoreRegistry vectorStoreRegistry,
@@ -79,6 +83,8 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             OllamaModelCatalogClient ollamaModelCatalogClient,
             EvaluationRunRepository evaluationRunRepository,
             AsyncTaskCancellationService cancellationService,
+            LabJobProgressTracker labJobProgressTracker,
+            LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor,
             @Value("${spring.ai.ollama.top-k:5}") int topK) {
         this.vectorStoreRegistry = vectorStoreRegistry;
         this.embeddingSpaceGuard = embeddingSpaceGuard;
@@ -91,6 +97,8 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
         this.ollamaModelCatalogClient = ollamaModelCatalogClient;
         this.evaluationRunRepository = evaluationRunRepository;
         this.cancellationService = cancellationService;
+        this.labJobProgressTracker = labJobProgressTracker;
+        this.labCampaignBenchmarkExecutor = labCampaignBenchmarkExecutor;
         this.topK = Math.max(1, topK);
     }
 
@@ -101,18 +109,34 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
 
     @Override
     public void run(AsyncTaskEntity task, AsyncTaskMutationService mutation) {
-        UUID taskId = task.getId();
-        UUID evaluationRunId = LabJobPayloads.evaluationRunId(task.getRequestPayload());
-        List<Map<String, Object>> rows = null;
+        UUID campaignId = LabJobPayloads.campaignId(task.getRequestPayload());
         LabEvalConcurrency.SERIAL_EVAL.lock();
         try {
-            EmbeddingRetrievalDataset embeddingDs = null;
-
+            if (campaignId != null) {
+                labCampaignBenchmarkExecutor.runCampaign(
+                        task, mutation, campaignId, this::runSingleEmbeddingRun);
+                return;
+            }
+            UUID evaluationRunId = LabJobPayloads.evaluationRunId(task.getRequestPayload());
             if (evaluationRunId == null) {
                 throw new IllegalStateException(
                         "This embedding evaluation job is missing its run reference — start a new embedding"
                                 + " benchmark from the Lab evaluation page with a compatible workbook.");
             }
+            Map<String, Object> payload = runSingleEmbeddingRun(task, mutation, evaluationRunId);
+            mutation.markSucceeded(task.getId(), payload);
+        } finally {
+            LabEvalConcurrency.SERIAL_EVAL.unlock();
+        }
+    }
+
+    Map<String, Object> runSingleEmbeddingRun(
+            AsyncTaskEntity task, AsyncTaskMutationService mutation, UUID evaluationRunId) {
+        UUID taskId = task.getId();
+        List<Map<String, Object>> rows = null;
+        try {
+            EmbeddingRetrievalDataset embeddingDs = null;
+
             mutation.appendProgressLine(taskId, "Resolving typed dataset for EMBEDDING_RETRIEVAL…");
             TypedBenchmarkDataset typed = experimentalDatasetResolver.resolve(evaluationRunId);
             if (!(typed instanceof TypedBenchmarkDataset.EmbeddingQuestions emb)) {
@@ -153,7 +177,10 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                             prompts,
                             embSnap.model(),
                             embeddingCompatibility);
-            rows = runEmbeddingQueries(taskId, mutation, embeddingDs.queries(), ctx);
+            int runTotal = embeddingDs.queries().size();
+            labJobProgressTracker.emitRunStarted(
+                    taskId, evaluationRunId, runTotal, null, ctx.embeddingModelId(), null);
+            rows = runEmbeddingQueries(taskId, evaluationRunId, embeddingDs.queries(), ctx);
 
             int hitsAt1 = 0;
             int hitsAtK = 0;
@@ -198,7 +225,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             if (evaluationRunId != null) {
                 canonicalPersistence.persistEmbeddingRetrievalResults(evaluationRunId, payload);
             }
-            mutation.markSucceeded(taskId, payload);
+            return payload;
         } catch (LabJobCancelledException e) {
             // Persist partial results (exportable) and mark run as PARTIAL_CANCELLED.
             Map<String, Object> summary = new LinkedHashMap<>();
@@ -224,23 +251,29 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                 canonicalPersistence.markRunFailed(evaluationRunId, e.getMessage());
             }
             throw e;
-        } finally {
-            LabEvalConcurrency.SERIAL_EVAL.unlock();
         }
     }
 
     private List<Map<String, Object>> runEmbeddingQueries(
             UUID taskId,
-            AsyncTaskMutationService mutation,
+            UUID evaluationRunId,
             List<EmbeddingRetrievalQuery> queries,
             EmbeddingBenchmarkContext ctx) {
         List<Map<String, Object>> rows = new ArrayList<>();
         int n = queries.size();
         int idx = 0;
+        var itemProgress =
+                labJobProgressTracker.itemProgressCallback(
+                        taskId,
+                        evaluationRunId,
+                        n,
+                        null,
+                        ctx.embeddingModelId(),
+                        null,
+                        () -> cancellationService.throwIfCancellationRequested(taskId));
         for (EmbeddingRetrievalQuery q : queries) {
-            cancellationService.throwIfCancellationRequested(taskId);
             idx++;
-            mutation.appendProgressLine(taskId, "Running item " + idx + "/" + n);
+            itemProgress.accept(idx, n);
             Map<String, Object> row = new LinkedHashMap<>();
             row.put(BenchmarkResultRowKeys.DATASET_QUESTION_ID, q.id());
             String question = q.query();

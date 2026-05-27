@@ -151,10 +151,6 @@ export function computeLabActiveJobRecovery(params: LabActiveJobRecoveryInputs):
   }
 
   if (params.backendActiveJobsError) {
-    const rec = pickLatestNonTerminalForSection(params.sessionRecords, params.sectionKey);
-    if (rec) {
-      return { kind: "session_only", record: rec, reason: "active_jobs_request_failed" };
-    }
     return { kind: "none" };
   }
 
@@ -162,10 +158,6 @@ export function computeLabActiveJobRecovery(params: LabActiveJobRecoveryInputs):
   const matched = jobs.filter((j) => activeJobMatchesCard(j, params.benchmarkKind, params.activeProjectId));
 
   if (matched.length === 0) {
-    const rec = pickLatestNonTerminalForSection(params.sessionRecords, params.sectionKey);
-    if (rec) {
-      return { kind: "session_only", record: rec, reason: "no_backend_candidate" };
-    }
     return { kind: "none" };
   }
 

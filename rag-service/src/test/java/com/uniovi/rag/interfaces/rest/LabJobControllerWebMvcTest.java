@@ -5,6 +5,7 @@ import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.ChatMessageApplicationService;
 import com.uniovi.rag.application.service.evaluation.LabJobEventService;
 import com.uniovi.rag.application.service.evaluation.LabJobLifecycleService;
+import com.uniovi.rag.application.service.evaluation.LabJobSseHub;
 import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
 import com.uniovi.rag.interfaces.rest.dto.AsyncTaskStatusDto;
 import com.uniovi.rag.interfaces.rest.dto.LabJobEventDto;
@@ -34,10 +35,15 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @WebMvcTest(controllers = LabJobController.class)
 @ContextConfiguration(classes = RagWebMvcTestApplication.class)
@@ -59,6 +65,9 @@ class LabJobControllerWebMvcTest {
 
     @MockitoBean
     private LabJobEventService labJobEventService;
+
+    @MockitoBean
+    private LabJobSseHub labJobSseHub;
 
     private UUID userId;
     private UUID taskId;
@@ -164,6 +173,23 @@ class LabJobControllerWebMvcTest {
     }
 
     @Test
+    void cancel_delegatesToLifecycleService() throws Exception {
+        doNothing().when(labJobLifecycleService).cancelEvaluationJob(eq(userId), eq(taskId));
+
+        mockMvc.perform(post(path("/lab/jobs/{id}/cancel"), taskId)).andExpect(status().isNoContent());
+    }
+
+    @Test
+    void cancel_notFound_fallsBackToChatCancel() throws Exception {
+        doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "missing"))
+                .when(labJobLifecycleService)
+                .cancelEvaluationJob(eq(userId), eq(taskId));
+        doNothing().when(chatMessageApplicationService).cancelChatTask(eq(userId), eq(taskId));
+
+        mockMvc.perform(post(path("/lab/jobs/{id}/cancel"), taskId)).andExpect(status().isNoContent());
+    }
+
+    @Test
     void eventsStream_opensSse() throws Exception {
         when(asyncTaskService.getStatus(eq(taskId), eq(userId)))
                 .thenReturn(
@@ -180,6 +206,16 @@ class LabJobControllerWebMvcTest {
                                 Instant.parse("2025-01-01T00:00:02Z"),
                                 Instant.parse("2025-01-01T00:00:05Z"),
                                 null));
+        when(labJobEventService.buildSnapshot(eq(taskId), eq(userId)))
+                .thenReturn(new LabJobEventDto(
+                        0L,
+                        taskId,
+                        "SNAPSHOT",
+                        "SUCCEEDED",
+                        "done",
+                        "snapshot",
+                        Instant.parse("2025-01-01T00:00:05Z"),
+                        Map.of("snapshot", true)));
         when(labJobEventService.listEvents(eq(taskId), eq(userId), isNull()))
                 .thenReturn(List.of());
 

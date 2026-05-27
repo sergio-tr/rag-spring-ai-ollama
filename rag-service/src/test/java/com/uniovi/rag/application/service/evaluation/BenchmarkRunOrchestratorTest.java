@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.evaluation;
 
 import com.uniovi.rag.configuration.RagRuntimeProperties;
+import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.EvaluationDatasetScope;
 import com.uniovi.rag.domain.evaluation.EvaluationRunKind;
@@ -58,6 +59,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -479,6 +481,7 @@ class BenchmarkRunOrchestratorTest {
         when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.of(ds));
         when(evaluationDatasetStorePort.openStream(eq("datasets/u1/ref.xlsx"))).thenReturn(new ByteArrayInputStream(bytes));
         when(labJobLifecycleService.findFirstActiveJobForScope(eq(userId), eq(projectId))).thenReturn(null);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(Mockito.mock(UserEntity.class)));
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -517,7 +520,7 @@ class BenchmarkRunOrchestratorTest {
                             assertThat(r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
                             assertThat(r.getReason()).contains("EMBEDDING_CAMPAIGN_REQUIRES_ALIGNED_INDEX_SNAPSHOT_IDS");
                         });
-        verify(asyncTaskService, never()).submitEvalEmbeddingRetrieval(any(), any(), any());
+        verify(asyncTaskService, never()).submitEvalEmbeddingCampaign(any(), any(), any(), any());
     }
 
     @Test
@@ -583,9 +586,9 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         List.of(),
                         null,
-                        null,
+                        "mxbai-embed-large",
                         List.of(),
-                        List.of("mxbai-embed-large"),
+                        List.of(),
                         false,
                         null,
                         false,
@@ -597,7 +600,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(snapId));
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -608,6 +611,7 @@ class BenchmarkRunOrchestratorTest {
                             assertThat(r.getReason()).contains("EMBEDDING_MODEL_INDEX_MISMATCH");
                         });
         verify(asyncTaskService, never()).submitEvalEmbeddingRetrieval(any(), any(), any());
+        verify(asyncTaskService, never()).submitEvalEmbeddingCampaign(any(), any(), any(), any());
     }
 
     @Test
@@ -687,8 +691,16 @@ class BenchmarkRunOrchestratorTest {
                         });
 
         UUID taskId = UUID.randomUUID();
-        when(asyncTaskService.submitEvalEmbeddingRetrieval(eq(userId), any(), any(UUID.class)))
+        when(asyncTaskService.submitEvalEmbeddingCampaign(eq(userId), eq(projectId), any(UUID.class), any(UUID.class)))
                 .thenReturn(taskId);
+        when(evaluationRunRepository.findById(any(UUID.class)))
+                .thenAnswer(
+                        inv -> {
+                            UUID id = inv.getArgument(0);
+                            EvaluationRunEntity r = new EvaluationRunEntity();
+                            r.setId(id);
+                            return Optional.of(r);
+                        });
         when(asyncTaskRepository.findById(taskId)).thenReturn(Optional.of(Mockito.mock(AsyncTaskEntity.class)));
 
         StartBenchmarkRunRequest req =
@@ -724,9 +736,237 @@ class BenchmarkRunOrchestratorTest {
 
         verify(knowledgeIndexSnapshotRepository).findById(snapA);
         verify(knowledgeIndexSnapshotRepository).findById(snapB);
-        ArgumentCaptor<UUID> runIdCaptor = ArgumentCaptor.forClass(UUID.class);
-        verify(asyncTaskService, times(2)).submitEvalEmbeddingRetrieval(eq(userId), any(), runIdCaptor.capture());
-        assertThat(runIdCaptor.getAllValues()).doesNotHaveDuplicates();
+        verify(asyncTaskService, times(1))
+                .submitEvalEmbeddingCampaign(eq(userId), isNull(), any(UUID.class), any(UUID.class));
+        verify(evaluationRunRepository, times(3)).save(any(EvaluationRunEntity.class));
+    }
+
+    @Test
+    void startJsonBenchmark_embeddingCampaign_threeModels_oneJob_plannedTotalItemsNxM() throws Exception {
+        BenchmarkRunOrchestrator orch =
+                new BenchmarkRunOrchestrator(
+                        userRepository,
+                        evaluationDatasetRepository,
+                        evaluationCampaignRepository,
+                        evaluationRunRepository,
+                        resolvedConfigSnapshotRepository,
+                        knowledgeIndexSnapshotRepository,
+                        ragPresetRepository,
+                        asyncTaskRepository,
+                        asyncTaskService,
+                        labJobLifecycleService,
+                        projectAccessService,
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
+
+        UUID dsId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID snapA = UUID.randomUUID();
+        UUID snapB = UUID.randomUUID();
+        UUID snapC = UUID.randomUUID();
+        byte[] bytes = canonicalReferenceBundleBytes();
+
+        EvaluationDatasetEntity ds = Mockito.mock(EvaluationDatasetEntity.class);
+        UserEntity owner = Mockito.mock(UserEntity.class);
+        Mockito.when(owner.getId()).thenReturn(userId);
+        Mockito.when(ds.getOwner()).thenReturn(owner);
+        Mockito.when(ds.getDatasetScope()).thenReturn("USER_DATASET");
+        Mockito.when(ds.getExperimentalKind()).thenReturn("REFERENCE_BUNDLE");
+        Mockito.when(ds.getStorageUri()).thenReturn("datasets/u1/ref.xlsx");
+        Mockito.when(ds.getId()).thenReturn(dsId);
+        Mockito.when(ds.getQuestionCount()).thenReturn(12);
+        when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.of(ds));
+        when(evaluationDatasetStorePort.openStream(eq("datasets/u1/ref.xlsx"))).thenReturn(new ByteArrayInputStream(bytes));
+        when(labJobLifecycleService.findFirstActiveJobForScope(eq(userId), eq(projectId))).thenReturn(null);
+        when(projectAccessService.requireOwnedProject(eq(userId), eq(projectId))).thenReturn(Mockito.mock(ProjectEntity.class));
+
+        KnowledgeIndexSnapshotEntity idxA = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
+        when(idxA.getId()).thenReturn(snapA);
+        when(idxA.getIndexProfileJsonb()).thenReturn(Map.of("embeddingModelId", "mxbai-embed-large"));
+        when(idxA.getSignatureHash()).thenReturn("sig-a");
+        when(knowledgeIndexSnapshotRepository.findById(snapA)).thenReturn(Optional.of(idxA));
+
+        KnowledgeIndexSnapshotEntity idxB = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
+        when(idxB.getId()).thenReturn(snapB);
+        when(idxB.getIndexProfileJsonb()).thenReturn(Map.of("embeddingModelId", "nomic-embed-text"));
+        when(idxB.getSignatureHash()).thenReturn("sig-b");
+        when(knowledgeIndexSnapshotRepository.findById(snapB)).thenReturn(Optional.of(idxB));
+
+        KnowledgeIndexSnapshotEntity idxC = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
+        when(idxC.getId()).thenReturn(snapC);
+        when(idxC.getIndexProfileJsonb()).thenReturn(Map.of("embeddingModelId", "bge-m3"));
+        when(idxC.getSignatureHash()).thenReturn("sig-c");
+        when(knowledgeIndexSnapshotRepository.findById(snapC)).thenReturn(Optional.of(idxC));
+
+        UserEntity user = Mockito.mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        ArgumentCaptor<EvaluationCampaignEntity> campCaptor = ArgumentCaptor.forClass(EvaluationCampaignEntity.class);
+        when(evaluationCampaignRepository.save(campCaptor.capture()))
+                .thenAnswer(
+                        inv -> {
+                            EvaluationCampaignEntity c = inv.getArgument(0);
+                            if (c.getId() == null) {
+                                c.setId(UUID.randomUUID());
+                            }
+                            return c;
+                        });
+        when(evaluationRunRepository.save(any(EvaluationRunEntity.class)))
+                .thenAnswer(
+                        inv -> {
+                            EvaluationRunEntity r = inv.getArgument(0);
+                            if (r.getId() == null) {
+                                r.setId(UUID.randomUUID());
+                            }
+                            return r;
+                        });
+
+        UUID taskId = UUID.randomUUID();
+        when(asyncTaskService.submitEvalEmbeddingCampaign(eq(userId), isNull(), any(UUID.class), any(UUID.class)))
+                .thenReturn(taskId);
+        when(evaluationRunRepository.findById(any(UUID.class)))
+                .thenAnswer(
+                        inv -> {
+                            UUID id = inv.getArgument(0);
+                            EvaluationRunEntity r = new EvaluationRunEntity();
+                            r.setId(id);
+                            return Optional.of(r);
+                        });
+        when(asyncTaskRepository.findById(taskId)).thenReturn(Optional.of(Mockito.mock(AsyncTaskEntity.class)));
+
+        List<String> models = List.of("mxbai-embed-large", "nomic-embed-text", "bge-m3");
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        dsId,
+                        TEST_CORPUS_ID,
+                        projectId,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "emb-campaign-3",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        models,
+                        false,
+                        "cmp",
+                        false,
+                        false,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(snapA, snapB, snapC));
+
+        BenchmarkJobAccepted accepted =
+                orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req);
+
+        verify(asyncTaskService, times(1))
+                .submitEvalEmbeddingCampaign(eq(userId), isNull(), any(UUID.class), any(UUID.class));
+        verify(evaluationRunRepository, times(4)).save(any(EvaluationRunEntity.class));
+        assertThat(accepted.totalItems()).isPresent();
+        assertThat(accepted.totalItems().orElseThrow()).isGreaterThan(0);
+        Map<String, Object> meta = campCaptor.getValue().getMetaJson();
+        assertThat(meta).containsEntry("embeddingModelIds", models);
+        int perAxis = ((Number) meta.get("perAxisItemCount")).intValue();
+        assertThat(((Number) meta.get("plannedTotalItems")).intValue()).isEqualTo(perAxis * models.size());
+    }
+
+    @Test
+    void startJsonBenchmark_embeddingCampaign_rejectsMissingSnapshotForModel() throws Exception {
+        BenchmarkRunOrchestrator orch =
+                new BenchmarkRunOrchestrator(
+                        userRepository,
+                        evaluationDatasetRepository,
+                        evaluationCampaignRepository,
+                        evaluationRunRepository,
+                        resolvedConfigSnapshotRepository,
+                        knowledgeIndexSnapshotRepository,
+                        ragPresetRepository,
+                        asyncTaskRepository,
+                        asyncTaskService,
+                        labJobLifecycleService,
+                        projectAccessService,
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusRepository);
+
+        UUID dsId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        byte[] bytes = canonicalReferenceBundleBytes();
+
+        EvaluationDatasetEntity ds = Mockito.mock(EvaluationDatasetEntity.class);
+        UserEntity owner = Mockito.mock(UserEntity.class);
+        Mockito.when(owner.getId()).thenReturn(userId);
+        Mockito.when(ds.getOwner()).thenReturn(owner);
+        Mockito.when(ds.getDatasetScope()).thenReturn("USER_DATASET");
+        Mockito.when(ds.getExperimentalKind()).thenReturn("REFERENCE_BUNDLE");
+        Mockito.when(ds.getStorageUri()).thenReturn("datasets/u1/ref.xlsx");
+        Mockito.when(ds.getQuestionCount()).thenReturn(10);
+        when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.of(ds));
+        when(evaluationDatasetStorePort.openStream(eq("datasets/u1/ref.xlsx"))).thenReturn(new ByteArrayInputStream(bytes));
+        when(labJobLifecycleService.findFirstActiveJobForScope(eq(userId), eq(projectId))).thenReturn(null);
+        when(projectAccessService.requireOwnedProject(eq(userId), eq(projectId))).thenReturn(Mockito.mock(ProjectEntity.class));
+        when(knowledgeIndexSnapshotRepository.findByProjectAndScopeProjectOrderByCreatedAtDesc(
+                        eq(projectId), eq(KnowledgeSnapshotScopeType.PROJECT)))
+                .thenReturn(List.of());
+
+        UserEntity user = Mockito.mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        dsId,
+                        TEST_CORPUS_ID,
+                        projectId,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "emb-campaign-missing",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        List.of("mxbai-embed-large", "nomic-embed-text"),
+                        false,
+                        null,
+                        false,
+                        false,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
+
+        assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex -> {
+                            ResponseStatusException r = (ResponseStatusException) ex;
+                            assertThat(r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                            assertThat(r.getReason()).contains("EMBEDDING_CAMPAIGN_MISSING_INDEX_SNAPSHOT");
+                        });
+        verify(asyncTaskService, never()).submitEvalEmbeddingCampaign(any(), any(), any(), any());
     }
 
     @Test
@@ -796,8 +1036,16 @@ class BenchmarkRunOrchestratorTest {
                             return r;
                         });
         UUID taskId = UUID.randomUUID();
-        when(asyncTaskService.submitEvalEmbeddingRetrieval(eq(userId), any(), any(UUID.class)))
+        when(asyncTaskService.submitEvalEmbeddingCampaign(eq(userId), eq(projectId), any(UUID.class), any(UUID.class)))
                 .thenReturn(taskId);
+        when(evaluationRunRepository.findById(any(UUID.class)))
+                .thenAnswer(
+                        inv -> {
+                            UUID id = inv.getArgument(0);
+                            EvaluationRunEntity r = new EvaluationRunEntity();
+                            r.setId(id);
+                            return Optional.of(r);
+                        });
         when(asyncTaskRepository.findById(taskId)).thenReturn(Optional.of(Mockito.mock(AsyncTaskEntity.class)));
 
         StartBenchmarkRunRequest req =
@@ -832,11 +1080,16 @@ class BenchmarkRunOrchestratorTest {
         orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req);
 
         verify(evaluationRunRepository, times(2)).save(runCaptor.capture());
-        EvaluationRunEntity savedRun = runCaptor.getAllValues().getFirst();
+        EvaluationRunEntity savedRun =
+                runCaptor.getAllValues().stream()
+                        .filter(r -> r.getAggregatesJson() != null)
+                        .findFirst()
+                        .orElseThrow();
         assertThat(savedRun.getAggregatesJson())
                 .containsEntry("embeddingCompatibilityStatus", "INCOMPATIBLE")
                 .containsEntry("embeddingCompatibilityErrorCode", "EMBEDDING_DIMENSION_MISMATCH");
-        verify(asyncTaskService).submitEvalEmbeddingRetrieval(eq(userId), any(), any(UUID.class));
+        verify(asyncTaskService)
+                .submitEvalEmbeddingCampaign(eq(userId), isNull(), any(UUID.class), any(UUID.class));
     }
 
     private static byte[] canonicalReferenceBundleBytes() throws Exception {

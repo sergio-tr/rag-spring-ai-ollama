@@ -17,10 +17,12 @@ type LabJobPanelProps = Readonly<{
   queuedHint?: boolean;
   /** Legacy local abort flag — mapped to reconnecting copy, not a destructive error */
   stoppedWaiting?: boolean;
-  /** Canonical SSE connection state from {@link useLabJobSse}. */
+  /** Canonical SSE connection state from {@link useLabJobLiveStream}. */
   connectionState?: LabJobLiveConnectionState | null;
   /** Monotonic seconds since async watch began (local UI clock). */
   watchElapsedSeconds?: number;
+  /** Debug/fallback only — hidden in normal live-watcher flow. */
+  showResumeFallback?: boolean;
   onResumeLive?: () => void;
 }>;
 
@@ -34,6 +36,7 @@ export function LabJobPanel({
   stoppedWaiting = false,
   connectionState = null,
   watchElapsedSeconds,
+  showResumeFallback = false,
   onResumeLive,
 }: LabJobPanelProps) {
   const t = useTranslations("Lab");
@@ -51,13 +54,15 @@ export function LabJobPanel({
     finishedAway: t("jobUiFinishedAway"),
     queued: t("jobUiQueued"),
     running: t("jobUiRunning"),
+    cancelling: t("jobUiCancelling"),
     completed: t("jobUiCompleted"),
     failed: t("jobUiFailed"),
     cancelled: t("jobUiCancelled"),
     stoppedWaiting: t("jobUiReconnecting"),
     unknownRunning: t("jobUiUnknownRunning"),
+    streamConfigurationError: t("jobUiStreamConfigurationError"),
   };
-  const statusLabel = getLabJobStatusLabel(phase, labels);
+  const statusLabel = getLabJobStatusLabel(phase, labels, connectionState);
   const traceStatus = labPhaseToTraceStatus(phase);
 
   const copyJobId = () => {
@@ -72,6 +77,7 @@ export function LabJobPanel({
       : null;
 
   const showResumeCta =
+    showResumeFallback &&
     onResumeLive != null &&
     (phase === "reconnecting" || phase === "stopped_waiting" || phase === "finished_away");
 

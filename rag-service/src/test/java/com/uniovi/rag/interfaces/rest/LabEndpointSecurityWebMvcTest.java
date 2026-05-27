@@ -11,6 +11,7 @@ import com.uniovi.rag.interfaces.rest.support.RagApiExceptionHandler;
 import com.uniovi.rag.security.JwtAuthenticationFilter;
 import com.uniovi.rag.security.JwtService;
 import com.uniovi.rag.application.service.async.AsyncTaskService;
+import com.uniovi.rag.application.service.classifier.ClassifierModelRegistryService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -68,6 +69,9 @@ class LabEndpointSecurityWebMvcTest {
 
     @MockitoBean
     private LabExperimentalPresetCatalogService experimentalPresetCatalogService;
+
+    @MockitoBean
+    private ClassifierModelRegistryService classifierModelRegistryService;
 
     @Test
     void labStatus_withoutToken_returnsJson401() throws Exception {

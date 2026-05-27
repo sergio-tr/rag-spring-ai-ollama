@@ -20,11 +20,15 @@ import com.uniovi.rag.application.service.evaluation.EvaluationService;
 import com.uniovi.rag.application.service.evaluation.baseline.BaselineRunSnapshotWriter;
 import com.uniovi.rag.application.service.evaluation.baseline.ExperimentalSnapshotFactory;
 import com.uniovi.rag.application.service.evaluation.baseline.ModelBaselineLlmRunner;
+import com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor;
+import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.application.service.evaluation.baseline.OllamaModelCatalogClient;
+import java.util.function.BiConsumer;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -41,8 +45,10 @@ import org.springframework.web.server.ResponseStatusException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -109,6 +115,27 @@ class EvalEmbeddingRetrievalJobHandlerTest {
     @Mock
     private AsyncTaskCancellationService cancellationService;
 
+    @Mock
+    private LabJobProgressTracker labJobProgressTracker;
+
+    @Mock
+    private LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor;
+
+    @BeforeEach
+    void stubItemProgress() {
+        lenient()
+                .when(labJobProgressTracker.itemProgressCallback(
+                        any(), any(), anyInt(), any(), any(), any(), any()))
+                .thenAnswer(inv -> {
+                    Runnable beforeEachItem = inv.getArgument(6);
+                    return (BiConsumer<Integer, Integer>) (index, total) -> {
+                        if (beforeEachItem != null) {
+                            beforeEachItem.run();
+                        }
+                    };
+                });
+    }
+
     private EvalEmbeddingRetrievalJobHandler handler(int topK) {
         return new EvalEmbeddingRetrievalJobHandler(
                 vectorStoreRegistry,
@@ -122,6 +149,8 @@ class EvalEmbeddingRetrievalJobHandlerTest {
                 ollamaModelCatalogClient,
                 evaluationRunRepository,
                 cancellationService,
+                labJobProgressTracker,
+                labCampaignBenchmarkExecutor,
                 topK);
     }
 
@@ -375,6 +404,19 @@ class EvalEmbeddingRetrievalJobHandlerTest {
     }
 
     @Test
+    void run_delegatesToCampaignExecutor_whenCampaignIdPresent() {
+        UUID taskId = UUID.randomUUID();
+        UUID campaignId = UUID.randomUUID();
+        AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.CAMPAIGN_ID, campaignId.toString()));
+
+        handler(3).run(task, mutation);
+
+        verify(labCampaignBenchmarkExecutor)
+                .runCampaign(eq(task), eq(mutation), eq(campaignId), ArgumentMatchers.<LabCampaignBenchmarkExecutor.CampaignRunSlice>any());
+        verifyNoInteractions(experimentalDatasetResolver);
+    }
+
+    @Test
     void run_marksRunFailed_whenResolverFails() {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
@@ -389,8 +431,8 @@ class EvalEmbeddingRetrievalJobHandlerTest {
 
     private static AsyncTaskEntity task(UUID id, Map<String, Object> payload) {
         AsyncTaskEntity t = Mockito.mock(AsyncTaskEntity.class);
-        Mockito.when(t.getId()).thenReturn(id);
-        Mockito.when(t.getRequestPayload()).thenReturn(payload);
+        Mockito.lenient().when(t.getId()).thenReturn(id);
+        Mockito.lenient().when(t.getRequestPayload()).thenReturn(payload);
         return t;
     }
 }

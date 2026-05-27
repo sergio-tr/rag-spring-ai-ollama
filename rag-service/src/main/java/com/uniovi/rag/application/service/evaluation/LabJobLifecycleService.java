@@ -7,6 +7,8 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService;
+import com.uniovi.rag.configuration.RagApiPathProperties;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -24,21 +26,25 @@ public class LabJobLifecycleService {
 
     private static final List<AsyncTaskStatus> ACTIVE_STATUSES =
             List.of(AsyncTaskStatus.QUEUED, AsyncTaskStatus.RUNNING, AsyncTaskStatus.CANCELLING);
+    private static final Duration ACTIVE_STALE_AFTER = Duration.ofHours(6);
 
     private final EvaluationRunRepository evaluationRunRepository;
     private final AsyncTaskRepository asyncTaskRepository;
     private final AsyncTaskMutationService asyncTaskMutationService;
     private final EvaluationCanonicalPersistenceService evaluationCanonicalPersistenceService;
+    private final RagApiPathProperties apiPathProperties;
 
     public LabJobLifecycleService(
             EvaluationRunRepository evaluationRunRepository,
             AsyncTaskRepository asyncTaskRepository,
             AsyncTaskMutationService asyncTaskMutationService,
-            EvaluationCanonicalPersistenceService evaluationCanonicalPersistenceService) {
+            EvaluationCanonicalPersistenceService evaluationCanonicalPersistenceService,
+            RagApiPathProperties apiPathProperties) {
         this.evaluationRunRepository = evaluationRunRepository;
         this.asyncTaskRepository = asyncTaskRepository;
         this.asyncTaskMutationService = asyncTaskMutationService;
         this.evaluationCanonicalPersistenceService = evaluationCanonicalPersistenceService;
+        this.apiPathProperties = apiPathProperties;
     }
 
     @Transactional(readOnly = true)
@@ -46,7 +52,13 @@ public class LabJobLifecycleService {
         if (userId == null) {
             return List.of();
         }
+        Instant staleCutoff = Instant.now().minus(ACTIVE_STALE_AFTER);
         List<ActiveLabJobDto> out = evaluationRunRepository.findActiveRunsByUser(userId, ACTIVE_STATUSES).stream()
+                .filter(run -> run.getAsyncTask() != null && !run.getAsyncTask().isTerminal())
+                .filter(run -> {
+                    Instant updated = run.getAsyncTask().getUpdatedAt();
+                    return updated != null && updated.isAfter(staleCutoff);
+                })
                 .map(this::toDto)
                 .toList();
         if (!out.isEmpty()) {
@@ -75,10 +87,27 @@ public class LabJobLifecycleService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Task not found");
         }
         AsyncTaskStatus st = asyncTaskRepository.findById(taskId).map(t -> t.getStatus()).orElse(null);
-        if (st == AsyncTaskStatus.SUCCEEDED || st == AsyncTaskStatus.FAILED || st == AsyncTaskStatus.CANCELLED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Job already finished");
+        if (st == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Task not found");
         }
         String reason = "Cancellation requested by user";
+        // Idempotent for terminal states. A second POST while CANCELLING forces CANCELLED so UI/E2E
+        // cleanup is not blocked when the worker is slow to observe cooperative cancellation.
+        if (st == AsyncTaskStatus.SUCCEEDED
+                || st == AsyncTaskStatus.FAILED
+                || st == AsyncTaskStatus.CANCELLED) {
+            log.debug("lab_job_cancel_noop taskId={} status={}", taskId, st);
+            return;
+        }
+        if (st == AsyncTaskStatus.CANCELLING) {
+            log.info(
+                    "lab_job_cancel_force_terminal taskId={} runId={} benchmarkKind={}",
+                    taskId,
+                    run.getId(),
+                    run.getBenchmarkKind());
+            asyncTaskMutationService.markCancelled(taskId, reason);
+            return;
+        }
         log.info(
                 "lab_job_cancel_requested taskId={} runId={} benchmarkKind={}",
                 taskId,
@@ -108,9 +137,13 @@ public class LabJobLifecycleService {
                 progress,
                 startedAt,
                 updatedAt,
-                taskId != null ? "/lab/jobs/" + taskId : null,
-                taskId != null ? "/lab/jobs/" + taskId + "/events" : null,
+                taskId != null ? jobBasePath(taskId) : null,
+                taskId != null ? jobBasePath(taskId) + "/events" : null,
                 cancellable);
+    }
+
+    private String jobBasePath(UUID taskId) {
+        return apiPathProperties.getProductBasePath() + "/lab/jobs/" + taskId;
     }
 }
 

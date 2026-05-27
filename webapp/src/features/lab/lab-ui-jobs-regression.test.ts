@@ -22,11 +22,13 @@ const labels: LabJobUiLabels = {
   finishedAway: "Away",
   queued: "Queued",
   running: "Running",
+  cancelling: "Cancelling",
   completed: "Done",
   failed: "Failed",
   cancelled: "Cancelled",
   stoppedWaiting: "Reconnecting",
   unknownRunning: "Unknown",
+  streamConfigurationError: "Live stream configuration error",
 };
 
 describe("LAB UI/Jobs regression (JOBS-UI, UX, MODEL, CORPUS)", () => {
@@ -76,6 +78,7 @@ describe("LAB UI/Jobs regression (JOBS-UI, UX, MODEL, CORPUS)", () => {
     );
     expect(src).toMatch(/multiple/);
     expect(src).toMatch(/uploadDocuments/);
+    expect(src).toMatch(/documents`/);
   });
 
   it("SSE-001: evaluation runner persists sse-only follow mode", () => {

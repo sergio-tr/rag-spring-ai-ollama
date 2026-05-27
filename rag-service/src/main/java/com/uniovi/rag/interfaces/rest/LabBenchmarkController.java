@@ -247,6 +247,7 @@ public class LabBenchmarkController {
                 accepted.evaluationRunId(),
                 jobId,
                 accepted.campaignId().orElse(null),
+                accepted.totalItems().orElse(null),
                 "ACCEPTED",
                 base,
                 base + "/events");

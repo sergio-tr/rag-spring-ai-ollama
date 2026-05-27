@@ -22,7 +22,9 @@ vi.mock("@/features/lab/hooks/use-evaluation-corpus", () => ({
     error: null,
     refresh: vi.fn(),
     ensureCorpus: vi.fn(),
-    uploadDocument: vi.fn(),
+    uploadDocuments: vi.fn(),
+    corpusReady: true,
+    corpusProcessing: false,
     attachFromProject: vi.fn(),
   }),
 }));

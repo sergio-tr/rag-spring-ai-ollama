@@ -16,6 +16,10 @@ function mockFetchWithStream(chunks: Uint8Array[], ok = true, status = 200) {
     ok,
     status,
     statusText: ok ? "OK" : "Error",
+    headers: new Headers({ "content-type": "text/event-stream" }),
+    clone: () => ({
+      text: () => Promise.resolve(""),
+    }),
     text: () => Promise.resolve("err-body"),
     body: new ReadableStream<Uint8Array>({
       pull(controller) {
@@ -33,6 +37,10 @@ function mockFetchWithStream(chunks: Uint8Array[], ok = true, status = 200) {
 describe("streamLabJob", () => {
   beforeEach(() => {
     vi.spyOn(apiClient, "getApiBaseUrl").mockReturnValue("http://localhost:9000");
+    const toBackend = (path: string) =>
+      `http://localhost:9000${path.startsWith("/") ? path : `/${path}`}`;
+    vi.spyOn(apiClient, "resolveBrowserProductApiUrl").mockImplementation(toBackend);
+    vi.spyOn(apiClient, "resolveLabJobApiUrl").mockImplementation(toBackend);
     vi.spyOn(accessToken, "getAccessToken").mockReturnValue(null);
   });
 
@@ -74,11 +82,31 @@ describe("streamLabJob", () => {
     await streamLabJob(apiProductPath("/lab/jobs/e/events"), () => {});
   });
 
+  it("normalizes GET /lab/jobs/active style paths with product prefix", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: RequestInfo) => {
+        expect(String(url)).toBe(`http://localhost:9000${apiProductPath("/lab/jobs/job-1/events")}`);
+        return Promise.resolve(
+          mockFetchWithStream([
+            encodeLines([
+              'event: job-event',
+              'data: {"eventId":1,"jobId":"job-1","type":"COMPLETED","status":"SUCCEEDED","terminal":true,"timestamp":"t","payload":{"terminal":true}}',
+              "",
+            ]),
+          ]),
+        );
+      }),
+    );
+
+    await streamLabJob("/lab/jobs/job-1/events", () => {});
+  });
+
   it("adds leading slash when streamPath has no slash prefix", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url: RequestInfo) => {
-        expect(String(url)).toBe("http://localhost:9000/lab/stream");
+        expect(String(url)).toBe(`http://localhost:9000${apiProductPath("/lab/stream")}`);
         return Promise.resolve(
           mockFetchWithStream([
             encodeLines(['event: task', 'data: {"terminal":true,"status":"SUCCEEDED"}', ""]),
@@ -114,7 +142,9 @@ describe("streamLabJob", () => {
         ok: false,
         status: 502,
         statusText: "Bad Gateway",
+        headers: new Headers({ "content-type": "application/json" }),
         text: () => Promise.resolve("upstream"),
+        clone: () => ({ text: () => Promise.resolve("upstream") }),
       } as Response),
     );
 
@@ -128,7 +158,9 @@ describe("streamLabJob", () => {
         ok: false,
         status: 503,
         statusText: "Service Unavailable",
+        headers: new Headers({ "content-type": "application/json" }),
         text: () => Promise.reject(new Error("read failed")),
+        clone: () => ({ text: () => Promise.reject(new Error("read failed")) }),
       } as Response),
     );
 
@@ -141,6 +173,8 @@ describe("streamLabJob", () => {
       vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
+        headers: new Headers({ "content-type": "text/event-stream" }),
+        clone: () => ({ text: () => Promise.resolve("") }),
         body: null,
       } as Response),
     );
@@ -338,10 +372,42 @@ describe("streamLabJob", () => {
     const out = await streamLabJob("/e", () => {}, { sinceEventId: 0 });
     expect(out.status).toBe("SUCCEEDED");
   });
+
+  it("invokes onLive on initial SNAPSHOT with eventId 0 (SSE-REGRESSION)", async () => {
+    const onLive = vi.fn();
+    const onTick = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        mockFetchWithStream([
+          encodeLines([
+            "id:0",
+            "event: job-event",
+            'data: {"eventId":0,"jobId":"job-new","type":"SNAPSHOT","status":"ACCEPTED","progress":null,"message":"Live updates connected.","timestamp":"2026-01-01T00:00:00Z","payload":{"snapshot":true}}',
+            "",
+          ]),
+        ]),
+      ),
+    );
+
+    const ac = new AbortController();
+    const pending = streamLabJobLive(apiProductPath("/lab/jobs/job-new/events"), {
+      signal: ac.signal,
+      callbacks: { onLive, onTaskTick: onTick },
+    });
+    await vi.waitFor(() => expect(onTick).toHaveBeenCalled());
+    ac.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(onLive).toHaveBeenCalled();
+    expect(onTick).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "ACCEPTED", terminal: false }),
+    );
+  });
 });
 
 describe("eventToAsyncTaskStatus", () => {
-  it("returns null for heartbeat and invalid event ids", () => {
+  it("returns null for heartbeat", () => {
     expect(
       eventToAsyncTaskStatus(
         {
@@ -349,6 +415,43 @@ describe("eventToAsyncTaskStatus", () => {
           jobId: "j",
           type: "HEARTBEAT",
           status: null,
+          progress: null,
+          message: null,
+          timestamp: "t",
+          payload: null,
+        },
+        null,
+      ),
+    ).toBeNull();
+  });
+
+  it("maps SNAPSHOT with eventId 0 to task status", () => {
+    const mapped = eventToAsyncTaskStatus(
+      {
+        eventId: 0,
+        jobId: "job-new",
+        type: "SNAPSHOT",
+        status: "ACCEPTED",
+        progress: "Live updates connected.",
+        message: "Live updates connected.",
+        timestamp: "2026-01-01T00:00:00Z",
+        payload: { snapshot: true },
+      },
+      null,
+    );
+    expect(mapped?.status).toBe("ACCEPTED");
+    expect(mapped?.terminal).toBe(false);
+    expect(mapped?.id).toBe("job-new");
+  });
+
+  it("returns null for non-snapshot events with invalid event ids", () => {
+    expect(
+      eventToAsyncTaskStatus(
+        {
+          eventId: 0,
+          jobId: "j",
+          type: "ACCEPTED",
+          status: "QUEUED",
           progress: null,
           message: null,
           timestamp: "t",
@@ -496,7 +599,7 @@ describe("streamLabJobLive", () => {
 
     expect(out.status).toBe("SUCCEEDED");
     expect(poll).not.toHaveBeenCalled();
-    expect(onReconnecting).toHaveBeenCalled();
+    expect(onReconnecting).not.toHaveBeenCalled();
     expect(calls).toBeGreaterThanOrEqual(3);
   });
 
@@ -547,14 +650,65 @@ describe("streamLabJobLive", () => {
     expect(onLive).toHaveBeenCalled();
   });
 
-  it("invokes onReconnecting after first failed attempt", async () => {
+  it("throws configuration error on HTML 404 response (Next dev mis-route)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        headers: new Headers({ "content-type": "text/html; charset=utf-8" }),
+        clone: () => ({
+          text: () => Promise.resolve("<!DOCTYPE html><html><body>404</body></html>"),
+        }),
+      }),
+    );
+
+    await expect(streamLabJob("/lab/jobs/j1/events", () => {})).rejects.toMatchObject({
+      name: "LabSseConfigurationError",
+      message: /reached the web application instead of the backend API/,
+    });
+  });
+
+  it("does not retry on HTML 404 configuration error", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      headers: new Headers({ "content-type": "text/html; charset=utf-8" }),
+      clone: () => ({
+        text: () => Promise.resolve("<!DOCTYPE html><html><body>404</body></html>"),
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      streamLabJobLive(apiProductPath("/lab/jobs/job-1/events"), { signal: AbortSignal.timeout(5_000) }),
+    ).rejects.toMatchObject({ name: "LabSseConfigurationError" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("invokes onReconnecting only after a prior successful connection", async () => {
+    vi.spyOn(asyncTask, "sleep").mockResolvedValue(undefined);
     let calls = 0;
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation(() => {
         calls += 1;
         if (calls === 1) {
-          return Promise.reject(new Error("fail"));
+          return Promise.resolve(
+            mockFetchWithStream([
+              encodeLines([
+                "event: job-event",
+                'data: {"eventId":0,"jobId":"j1","type":"SNAPSHOT","status":"RUNNING","timestamp":"t","payload":{}}',
+                "",
+                'event: task',
+                'data: {"terminal":true,"status":"SUCCEEDED"}',
+                "",
+              ]),
+            ]),
+          );
+        }
+        if (calls === 2) {
+          return Promise.reject(new Error("disconnect"));
         }
         return Promise.resolve(
           mockFetchWithStream([
@@ -564,11 +718,14 @@ describe("streamLabJobLive", () => {
       }),
     );
     const onReconnecting = vi.fn();
+    const onLive = vi.fn();
+    const ac = new AbortController();
 
-    await streamLabJobLive(apiProductPath("/lab/jobs/job-1/events"), {
-      callbacks: { onReconnecting },
+    const out = await streamLabJobLive(apiProductPath("/lab/jobs/job-1/events"), {
+      callbacks: { onReconnecting, onLive },
     });
-
-    expect(onReconnecting).toHaveBeenCalled();
+    expect(out.status).toBe("SUCCEEDED");
+    expect(onLive).toHaveBeenCalled();
+    expect(onReconnecting).not.toHaveBeenCalled();
   });
 });

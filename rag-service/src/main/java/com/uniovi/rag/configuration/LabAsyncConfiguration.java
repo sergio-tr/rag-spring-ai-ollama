@@ -9,7 +9,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
 /**
- * Thread pool for long-running lab/admin background work ({@code @Async("labExecutor")}) and SSE polling.
+ * Thread pool for long-running lab/admin background work ({@code @Async("labExecutor")}) and SSE keepalives.
  */
 @Configuration
 public class LabAsyncConfiguration {

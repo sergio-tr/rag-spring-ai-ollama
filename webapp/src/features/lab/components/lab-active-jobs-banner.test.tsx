@@ -57,7 +57,7 @@ describe("LabActiveJobsBanner", () => {
     expect(routerMock.push).toHaveBeenCalledWith("/lab/evaluation/rag");
   });
 
-  it("requests cancellation and shows 409 too-late hint", async () => {
+  it("requests cancellation via confirm dialog and shows 409 too-late hint", async () => {
     const refetch = vi.fn();
     jobsMock.useActiveLabJobs.mockReturnValue({
       isLoading: false,
@@ -71,9 +71,10 @@ describe("LabActiveJobsBanner", () => {
       </IntlTestProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    fireEvent.click(screen.getByRole("button", { name: /stop evaluation/i }));
+    fireEvent.click(screen.getByTestId("lab-job-stop-confirm-button"));
     expect(await screen.findByText(/already finished/i)).toBeInTheDocument();
-    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(refetch).not.toHaveBeenCalled();
   });
 });
 

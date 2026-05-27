@@ -2,12 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createTestQueryClient } from "@/test-utils/query-client";
-import { initialSnapshotFromAccepted, type PersistedLabJobRecord } from "@/features/lab/lib/lab-job-persistence";
 import { IntlTestProvider } from "@/test-utils/intl";
-import type { LabJobAcceptedDto } from "@/types/api";
+import type { ActiveLabJobDto } from "@/types/api";
 
-const { useLabJobSseMock } = vi.hoisted(() => ({
-  useLabJobSseMock: vi.fn(() => ({
+const { useLabJobLiveStreamMock } = vi.hoisted(() => ({
+  useLabJobLiveStreamMock: vi.fn(() => ({
     connectionState: "live" as const,
     taskStatus: null,
     lastEventId: null,
@@ -16,8 +15,8 @@ const { useLabJobSseMock } = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("@/features/lab/hooks/use-lab-job-sse", () => ({
-  useLabJobSse: useLabJobSseMock,
+vi.mock("@/features/lab/hooks/use-lab-job-live-stream", () => ({
+  useLabJobLiveStream: useLabJobLiveStreamMock,
 }));
 
 vi.mock("@/features/help/HelpPopover", () => ({
@@ -58,26 +57,52 @@ vi.mock("@/features/lab/hooks/use-experimental-datasets", () => ({
   })),
 }));
 
+vi.mock("@/features/lab/hooks/use-active-lab-jobs", () => ({
+  useActiveLabJobs: vi.fn(),
+}));
+
+vi.mock("@/lib/async-task", () => ({
+  fetchLabJobStatusOnce: vi.fn(async () => ({
+    id: "resume-job",
+    taskType: "LAB",
+    status: "RUNNING",
+    terminal: false,
+    progressText: null,
+    errorMessage: null,
+    failureCode: null,
+    result: null,
+  })),
+}));
+
 vi.mock("@/store/app.store", () => ({
   useAppStore: (selector: (s: { activeProject: null }) => unknown) => selector({ activeProject: null }),
 }));
 
 import { LabEvaluationRunCard } from "./lab-evaluation-run-card";
+import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
 
-function baseAccepted(jobId: string): LabJobAcceptedDto {
+function activeJob(jobId: string): ActiveLabJobDto {
   return {
     jobId,
-    status: "QUEUED",
+    benchmarkKind: "LLM_JUDGE_QA",
+    evaluationRunId: "550e8400-e29b-41d4-a716-446655440001",
+    projectId: null,
+    datasetId: null,
+    status: "RUNNING",
+    progress: null,
+    startedAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:01:00.000Z",
     pollPath: `/lab/jobs/${jobId}`,
     streamPath: `/lab/jobs/${jobId}/events`,
+    cancellable: true,
   };
 }
 
 describe("LabEvaluationRunCard resume follow", () => {
   beforeEach(() => {
-    useLabJobSseMock.mockReset();
-    useLabJobSseMock.mockReturnValue({
+    useLabJobLiveStreamMock.mockReset();
+    useLabJobLiveStreamMock.mockReturnValue({
       connectionState: "live",
       taskStatus: null,
       lastEventId: null,
@@ -87,26 +112,16 @@ describe("LabEvaluationRunCard resume follow", () => {
     sessionStorage.removeItem("rag-lab-jobs");
     useLabJobSessionStore.persist.clearStorage();
     useLabJobSessionStore.setState({ records: [], pendingResume: null, resumeNonce: 0 });
+    vi.mocked(useActiveLabJobs).mockReturnValue({
+      data: [activeJob("resume-job")],
+      isFetched: true,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as never);
   });
 
-  it("consumes pending resume and enables live SSE watch with persisted acceptance", async () => {
-    const acceptedDto = baseAccepted("resume-job");
-    const persisted: PersistedLabJobRecord = {
-      jobId: acceptedDto.jobId,
-      sectionKey: "evaluation-llm",
-      accepted: acceptedDto,
-      followMode: "sse",
-      startedAtMs: Date.now(),
-      lastUpdatedMs: Date.now(),
-      lastStatus: initialSnapshotFromAccepted(acceptedDto, "LLM_EVALUATION"),
-      stoppedWatching: false,
-      staleNotFound: false,
-      pollTimedOut: false,
-      dismissedTerminal: false,
-    };
-    useLabJobSessionStore.setState({ records: [persisted] });
-    useLabJobSessionStore.getState().requestResumeLabJob("evaluation-llm", "resume-job");
-
+  it("auto-opens SSE when GET /lab/jobs/active returns a matching job", async () => {
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>
@@ -124,9 +139,9 @@ describe("LabEvaluationRunCard resume follow", () => {
     );
 
     await waitFor(() =>
-      expect(useLabJobSseMock).toHaveBeenCalledWith(
+      expect(useLabJobLiveStreamMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          accepted: acceptedDto,
+          jobId: "resume-job",
           enabled: true,
         }),
       ),

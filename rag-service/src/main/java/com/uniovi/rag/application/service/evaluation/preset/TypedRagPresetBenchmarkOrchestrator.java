@@ -124,6 +124,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
 
         EvaluationRunEntity run =
                 evaluationRunId != null ? evaluationRunRepository.findById(evaluationRunId).orElse(null) : null;
+        if (evaluationRunId != null) {
+            labEvaluationSnapshotService.ensureRunIndexProjectByRunId(evaluationRunId);
+        }
         LlmExperimentalSnapshot llmSnap = experimentalSnapshotFactory.buildLlmSnapshot(run);
         EmbeddingExperimentalSnapshot embSnap = experimentalSnapshotFactory.buildEmbeddingSnapshot(run);
 
@@ -166,7 +169,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
         LabPresetRunPlanModels.LabPresetRunPlan runPlan = labPresetRunPlanService.build(run, codesForPlan);
         LabEvaluationSnapshotService.AutoReindexPolicy autoReindexPolicy =
                 LabEvaluationSnapshotService.AutoReindexPolicy.fromRun(run);
-        labEvaluationSnapshotService.ensureRunIndexProject(run);
+        if (evaluationRunId != null) {
+            labEvaluationSnapshotService.ensureRunIndexProjectByRunId(evaluationRunId);
+        }
 
         Map<RagExperimentalPresetCode, RagPresetDefinition> defByPreset =
                 catalog.stream()
@@ -512,9 +517,13 @@ public class TypedRagPresetBenchmarkOrchestrator {
         if (preset == null || !ExperimentalPresetCanonicalCatalog.corpusRequired(preset)) {
             return CorpusDiagnostics.notRequired();
         }
-        UUID userId = run != null && run.getUser() != null ? run.getUser().getId() : null;
+        UUID runId = run != null ? run.getId() : null;
+        UUID userId =
+                runId != null
+                        ? evaluationRunRepository.findUserIdByRunId(runId).orElse(null)
+                        : null;
         UUID corpusId =
-                run != null && run.getEvaluationCorpus() != null ? run.getEvaluationCorpus().getId() : null;
+                runId != null ? evaluationRunRepository.findCorpusIdByRunId(runId).orElse(null) : null;
         List<UUID> snapshotIds = resolveCorpusSnapshotIds(snapshotId, preset);
         CorpusAvailabilityGate.Result result = corpusAvailabilityGate.evaluate(userId, corpusId, snapshotIds);
         Map<String, Object> metrics = corpusAvailabilityGate.probe(userId, corpusId, snapshotIds);
@@ -670,7 +679,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
         if (run == null || group == null || exec == null || !policy.enabled()) {
             return exec;
         }
-        labEvaluationSnapshotService.ensureRunIndexProject(run);
+        if (run.getId() != null) {
+            labEvaluationSnapshotService.ensureRunIndexProjectByRunId(run.getId());
+        }
 
         ExperimentalPresetCanonicalCatalog.IndexRequirements req = groupRequirements(group);
         LabEvaluationSnapshotService.PrepareResult prepared =

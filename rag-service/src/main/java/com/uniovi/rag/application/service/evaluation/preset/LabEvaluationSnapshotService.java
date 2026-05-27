@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation.preset;
 
+import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
@@ -13,12 +14,17 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCorpusEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
+import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
+import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Resolves and prepares evaluation-corpus-scoped index snapshots for Lab benchmarks.
@@ -40,22 +46,37 @@ public class LabEvaluationSnapshotService {
     private final ProjectIndexProfileService projectIndexProfileService;
     private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
+    private final EvaluationRunRepository evaluationRunRepository;
+    private final ProjectRepository projectRepository;
+    private final ObjectProvider<LabJobProgressTracker> labJobProgressTracker;
 
     public LabEvaluationSnapshotService(
             KnowledgeSnapshotService knowledgeSnapshotService,
             KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
             ProjectIndexProfileService projectIndexProfileService,
             LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
-            KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository) {
+            KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
+            EvaluationRunRepository evaluationRunRepository,
+            ProjectRepository projectRepository,
+            ObjectProvider<LabJobProgressTracker> labJobProgressTracker) {
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
         this.projectIndexProfileService = projectIndexProfileService;
         this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
         this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
+        this.evaluationRunRepository = evaluationRunRepository;
+        this.projectRepository = projectRepository;
+        this.labJobProgressTracker = labJobProgressTracker;
     }
 
     public UUID resolveCorpusId(EvaluationRunEntity run) {
-        if (run == null || run.getEvaluationCorpus() == null) {
+        if (run == null) {
+            return null;
+        }
+        if (run.getId() != null) {
+            return evaluationRunRepository.findCorpusIdByRunId(run.getId()).orElse(null);
+        }
+        if (run.getEvaluationCorpus() == null) {
             return null;
         }
         return run.getEvaluationCorpus().getId();
@@ -65,11 +86,14 @@ public class LabEvaluationSnapshotService {
         if (run == null) {
             return null;
         }
-        if (run.getEvaluationCorpus() != null && run.getEvaluationCorpus().getIndexProject() != null) {
-            return run.getEvaluationCorpus().getIndexProject().getId();
+        if (run.getId() != null) {
+            return evaluationRunRepository.findEffectiveProjectIdByRunId(run.getId()).orElse(null);
         }
         if (run.getProject() != null) {
             return run.getProject().getId();
+        }
+        if (run.getEvaluationCorpus() != null && run.getEvaluationCorpus().getIndexProject() != null) {
+            return run.getEvaluationCorpus().getIndexProject().getId();
         }
         return null;
     }
@@ -174,6 +198,8 @@ public class LabEvaluationSnapshotService {
                 corpusId != null ? KnowledgeSnapshotOwnerType.EVALUATION_CORPUS : KnowledgeSnapshotOwnerType.PROJECT;
         UUID ownerId = corpusId != null ? corpusId : projectId;
 
+        emitSnapshotPreparation(run, groupKey, corpusId, true);
+
         UUID newSnapId =
                 knowledgePipelineOrchestrator.rebuildScopeWithProfileOverride(
                         projectId,
@@ -197,6 +223,7 @@ public class LabEvaluationSnapshotService {
                         : effective.toSnapshotJsonb();
         if (built == null || built.getId() == null) {
             IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profileJson);
+            emitSnapshotPreparationCompleted(run, groupKey, corpusId, newSnapId);
             return PrepareResult.built(
                     new ResolvedSnapshot(
                             true,
@@ -214,7 +241,38 @@ public class LabEvaluationSnapshotService {
             throw new IllegalStateException(
                     afterIdx.reasonCode() != null ? afterIdx.reasonCode() : NO_COMPATIBLE_SNAPSHOT);
         }
+        UUID preparedSnapshotId = built != null && built.getId() != null ? built.getId() : newSnapId;
+        emitSnapshotPreparationCompleted(run, groupKey, corpusId, preparedSnapshotId);
         return PrepareResult.built(resolved(built, true));
+    }
+
+    private void emitSnapshotPreparation(
+            EvaluationRunEntity run, LabPresetRunGroupKey groupKey, UUID corpusId, boolean started) {
+        if (run == null || run.getAsyncTask() == null || run.getAsyncTask().getId() == null) {
+            return;
+        }
+        labJobProgressTracker.ifAvailable(
+                tracker -> {
+                    UUID taskId = run.getAsyncTask().getId();
+                    UUID runId = run.getId();
+                    if (started) {
+                        tracker.emitSnapshotPreparationStarted(taskId, runId, groupKey, corpusId);
+                    }
+                });
+    }
+
+    private void emitSnapshotPreparationCompleted(
+            EvaluationRunEntity run,
+            LabPresetRunGroupKey groupKey,
+            UUID corpusId,
+            UUID snapshotId) {
+        if (run == null || run.getAsyncTask() == null || run.getAsyncTask().getId() == null) {
+            return;
+        }
+        labJobProgressTracker.ifAvailable(
+                tracker ->
+                        tracker.emitSnapshotPreparationCompleted(
+                                run.getAsyncTask().getId(), run.getId(), groupKey, snapshotId, corpusId));
     }
 
     public boolean isCompatibleSnapshot(
@@ -327,15 +385,28 @@ public class LabEvaluationSnapshotService {
 
     /** Ensures run project is wired from evaluation corpus index sandbox when only corpus is set. */
     public void ensureRunIndexProject(EvaluationRunEntity run) {
-        if (run == null) {
+        if (run == null || run.getId() == null) {
             return;
         }
-        if (run.getProject() != null && run.getProject().getId() != null) {
+        ensureRunIndexProjectByRunId(run.getId());
+    }
+
+    /**
+     * Wires {@code evaluation_run.project_id} from corpus index project using scalar lookups only (async-safe).
+     */
+    @Transactional
+    public void ensureRunIndexProjectByRunId(UUID runId) {
+        if (runId == null) {
             return;
         }
-        EvaluationCorpusEntity corpus = run.getEvaluationCorpus();
-        if (corpus != null && corpus.getIndexProject() != null) {
-            run.setProject(corpus.getIndexProject());
+        if (evaluationRunRepository.findProjectIdByRunId(runId).isPresent()) {
+            return;
         }
+        Optional<UUID> projectId = evaluationRunRepository.findEffectiveProjectIdByRunId(runId);
+        if (projectId.isEmpty()) {
+            return;
+        }
+        EvaluationRunEntity run = evaluationRunRepository.getReferenceById(runId);
+        run.setProject(projectRepository.getReferenceById(projectId.get()));
     }
 }

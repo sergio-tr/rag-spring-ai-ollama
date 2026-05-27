@@ -36,7 +36,9 @@ public class LabPresetRunPlanService {
      */
     public LabPresetRunPlanModels.LabPresetRunPlan build(EvaluationRunEntity run, List<RagExperimentalPresetCode> requested) {
         List<RagExperimentalPresetCode> ordered = dedupePreserveOrder(requested);
-        labEvaluationSnapshotService.ensureRunIndexProject(run);
+        if (run != null && run.getId() != null) {
+            labEvaluationSnapshotService.ensureRunIndexProjectByRunId(run.getId());
+        }
 
         Map<String, String> skipped = new LinkedHashMap<>();
         List<String> executable = new ArrayList<>();

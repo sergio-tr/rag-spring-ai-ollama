@@ -26,6 +26,8 @@ import java.nio.file.StandardCopyOption;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusAttachFromProjectRequest;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusCreateRequest;
+import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusDocumentUploadItemDto;
+import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusDocumentsUploadResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusSummaryDto;
 import java.io.IOException;
 import java.time.Instant;
@@ -47,7 +49,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class EvaluationCorpusApplicationService {
 
     public static final String NO_CORPUS_SELECTED = "NO_CORPUS_SELECTED";
-    public static final String NO_DOCUMENTS = "NO_DOCUMENTS";
+    /** @deprecated Prefer {@link #KB_EMPTY}. */
+    public static final String NO_DOCUMENTS = "KB_EMPTY";
+    public static final String KB_NOT_FOUND = "KB_NOT_FOUND";
+    public static final String KB_EMPTY = "KB_EMPTY";
+    public static final String NO_READY_DOCUMENTS = "NO_READY_DOCUMENTS";
+    public static final String DOCUMENT_PROCESSING_FAILED = "DOCUMENT_PROCESSING_FAILED";
 
     private final EvaluationCorpusRepository evaluationCorpusRepository;
     private final EvaluationCorpusDocumentRepository evaluationCorpusDocumentRepository;
@@ -83,7 +90,7 @@ public class EvaluationCorpusApplicationService {
         String name =
                 request != null && request.name() != null && !request.name().isBlank()
                         ? request.name().trim()
-                        : "Lab evaluation corpus";
+                        : "Lab knowledge base";
         ProjectEntity indexProject = createIndexSandboxProject(owner, name);
         EvaluationCorpusEntity corpus =
                 EvaluationCorpusEntityFactory.newCorpus(owner, name, EvaluationCorpusSourceType.UPLOADED, indexProject);
@@ -107,14 +114,115 @@ public class EvaluationCorpusApplicationService {
         return new EvaluationCorpusContext(corpusId, indexProjectId, documentIds, docs);
     }
 
+    /**
+     * Validates knowledge base exists, has documents, and at least one READY document for benchmark execution.
+     */
+    @Transactional(readOnly = true)
+    public EvaluationCorpusContext requireReadyContext(UUID userId, UUID corpusId) {
+        EvaluationCorpusContext context = requireContext(userId, corpusId);
+        List<KnowledgeDocumentEntity> docs = context.documents();
+        if (docs == null || docs.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, KB_EMPTY);
+        }
+        if (!context.readyDocumentIds().isEmpty()) {
+            return context;
+        }
+        boolean anyProcessing =
+                docs.stream()
+                        .anyMatch(d -> d != null && d.getStatus() == ProjectDocumentStatus.INGESTING);
+        if (anyProcessing) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, NO_READY_DOCUMENTS);
+        }
+        boolean anyFailed =
+                docs.stream().anyMatch(d -> d != null && d.getStatus() == ProjectDocumentStatus.ERROR);
+        if (anyFailed) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, DOCUMENT_PROCESSING_FAILED);
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, NO_READY_DOCUMENTS);
+    }
+
     @Transactional
     public EvaluationCorpusSummaryDto uploadDocument(UUID userId, UUID corpusId, MultipartFile file) throws IOException {
+        return uploadDocuments(userId, corpusId, List.of(file)).corpus();
+    }
+
+    @Transactional
+    public EvaluationCorpusDocumentsUploadResponseDto uploadDocuments(
+            UUID userId, UUID corpusId, List<MultipartFile> files) throws IOException {
         EvaluationCorpusEntity corpus = requireOwnedCorpus(userId, corpusId);
+        List<MultipartFile> normalized = normalizeUploadFiles(files);
+        if (normalized.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one file is required");
+        }
         UUID indexProjectId = corpus.getIndexProject().getId();
-        ProjectDocumentDto uploaded = knowledgeIngestionService.uploadProjectDocument(userId, indexProjectId, file);
-        linkDocument(corpus, uploaded.id());
+        List<EvaluationCorpusDocumentUploadItemDto> uploads = new ArrayList<>();
+        for (MultipartFile file : normalized) {
+            uploads.add(uploadOneFile(userId, corpus, indexProjectId, file));
+        }
         touchCorpus(corpus, EvaluationCorpusSourceType.UPLOADED, false);
-        return toSummary(corpus);
+        return new EvaluationCorpusDocumentsUploadResponseDto(toSummary(corpus), List.copyOf(uploads));
+    }
+
+    private EvaluationCorpusDocumentUploadItemDto uploadOneFile(
+            UUID userId, EvaluationCorpusEntity corpus, UUID indexProjectId, MultipartFile file) {
+        String fileName = resolveUploadFileName(file);
+        if (file == null || file.isEmpty()) {
+            return new EvaluationCorpusDocumentUploadItemDto(null, fileName, "FAILED", "File is empty");
+        }
+        try {
+            // Synchronous ingest: async uploadProjectDocument can run before the document row is visible.
+            ProjectDocumentDto uploaded =
+                    knowledgeIngestionService.ingestProjectSharedDocumentSynchronouslyFromBytes(
+                            userId,
+                            indexProjectId,
+                            file.getBytes(),
+                            fileName,
+                            file.getContentType());
+            linkDocument(corpus, uploaded.id());
+            return new EvaluationCorpusDocumentUploadItemDto(
+                    uploaded.id(),
+                    uploaded.fileName() != null ? uploaded.fileName() : fileName,
+                    toUploadStatus(uploaded.status()),
+                    uploaded.errorMessage());
+        } catch (ResponseStatusException ex) {
+            return new EvaluationCorpusDocumentUploadItemDto(
+                    null, fileName, "FAILED", ex.getReason() != null ? ex.getReason() : ex.getMessage());
+        } catch (IOException ex) {
+            return new EvaluationCorpusDocumentUploadItemDto(null, fileName, "FAILED", ex.getMessage());
+        }
+    }
+
+    private static List<MultipartFile> normalizeUploadFiles(List<MultipartFile> files) {
+        if (files == null || files.isEmpty()) {
+            return List.of();
+        }
+        List<MultipartFile> out = new ArrayList<>();
+        for (MultipartFile file : files) {
+            if (file != null && !file.isEmpty()) {
+                out.add(file);
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static String resolveUploadFileName(MultipartFile file) {
+        if (file == null) {
+            return "unknown";
+        }
+        String original = file.getOriginalFilename();
+        return original != null && !original.isBlank() ? original : "unknown";
+    }
+
+    /** Lab upload API status labels (maps persisted {@link ProjectDocumentStatus}). */
+    static String toUploadStatus(ProjectDocumentStatus status) {
+        if (status == null) {
+            return "PROCESSING";
+        }
+        return switch (status) {
+            case READY -> "READY";
+            case ERROR -> "FAILED";
+            default -> "PROCESSING";
+        };
     }
 
     @Transactional
@@ -236,12 +344,14 @@ public class EvaluationCorpusApplicationService {
         }
         return evaluationCorpusRepository
                 .findByIdAndOwner_Id(corpusId, userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Evaluation corpus not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, KB_NOT_FOUND));
     }
 
     private ProjectEntity createIndexSandboxProject(UserEntity owner, String corpusName) {
-        String projectName = "Lab corpus · " + truncate(corpusName, 48);
-        ProjectEntity project = ProjectEntityFactory.newOwnedProject(owner, projectName, "Internal index scope for Lab evaluation corpus");
+        String projectName = "Lab knowledge base · " + truncate(corpusName, 48);
+        ProjectEntity project =
+                ProjectEntityFactory.newOwnedProject(
+                        owner, projectName, "Internal index scope for Lab knowledge base");
         return projectRepository.save(project);
     }
 

@@ -88,7 +88,7 @@ describe("computeLabActiveJobRecovery", () => {
     expect(d.kind).toBe("none");
   });
 
-  it("returns session_only when backend active jobs request fails but session has non-terminal job", () => {
+  it("returns none when backend active jobs request fails (session is not source of truth)", () => {
     const rec = sessionRec({ jobId: "sess-err", sectionKey: "evaluation-embedding" });
     const d = computeLabActiveJobRecovery({
       sectionKey: "evaluation-embedding",
@@ -100,11 +100,7 @@ describe("computeLabActiveJobRecovery", () => {
       backendActiveJobsError: new Error("boom"),
       sessionRecords: [rec],
     });
-    expect(d.kind).toBe("session_only");
-    if (d.kind === "session_only") {
-      expect(d.reason).toBe("active_jobs_request_failed");
-      expect(d.record.jobId).toBe("sess-err");
-    }
+    expect(d.kind).toBe("none");
   });
 
   it("returns none when backend active jobs request fails and session has no usable record", () => {
@@ -159,7 +155,7 @@ describe("computeLabActiveJobRecovery", () => {
     }
   });
 
-  it("returns session_only when no backend job matches but session has non-terminal row", () => {
+  it("returns none when no backend job matches even if session has non-terminal row", () => {
     const rec = sessionRec({ jobId: "sess-1", sectionKey: "evaluation-llm" });
     const d = computeLabActiveJobRecovery({
       sectionKey: "evaluation-llm",
@@ -171,11 +167,7 @@ describe("computeLabActiveJobRecovery", () => {
       backendActiveJobsError: null,
       sessionRecords: [rec],
     });
-    expect(d.kind).toBe("session_only");
-    if (d.kind === "session_only") {
-      expect(d.record.jobId).toBe("sess-1");
-      expect(d.reason).toBe("no_backend_candidate");
-    }
+    expect(d.kind).toBe("none");
   });
 
   it("returns none when no backend job matches and session has no non-terminal rows", () => {

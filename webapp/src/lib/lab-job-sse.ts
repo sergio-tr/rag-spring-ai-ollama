@@ -1,5 +1,10 @@
 import { sleep } from "@/lib/async-task";
-import { getApiBaseUrl, sanitizePlainErrorTextForUi } from "@/lib/api-client";
+import {
+  apiProductPath,
+  getRagApiProductPrefix,
+  resolveLabJobApiUrl,
+  sanitizePlainErrorTextForUi,
+} from "@/lib/api-client";
 import { getAccessToken } from "@/lib/access-token";
 import { createTraceparent } from "@/lib/traceparent";
 import type { AsyncTaskStatusDto, LabJobEventDto } from "@/types/api";
@@ -16,17 +21,100 @@ export type LabJobStreamCallbacks = {
 const SSE_RETRY_BASE_MS = 800;
 const SSE_RETRY_MAX_MS = 15_000;
 
-function toAbsoluteUrl(pathOrUrl: string): string {
+const LAB_SSE_HTML_MISROUTE_MESSAGE =
+  "Live updates reached the web application instead of the backend API. Check NEXT_PUBLIC_API_BASE_URL or dev proxy.";
+
+/** SSE response was HTML/404 or not `text/event-stream` (misconfigured URL or proxy). */
+export class LabSseConfigurationError extends Error {
+  readonly code = "LAB_SSE_CONFIGURATION";
+  status?: number;
+
+  constructor(message = LAB_SSE_HTML_MISROUTE_MESSAGE, status?: number) {
+    super(message);
+    this.name = "LabSseConfigurationError";
+    this.status = status;
+  }
+}
+
+function isLabSseDebugEnabled(): boolean {
+  if (typeof window === "undefined") {
+    return process.env.NEXT_PUBLIC_DEBUG_LAB_SSE === "1";
+  }
+  try {
+    return (
+      process.env.NEXT_PUBLIC_DEBUG_LAB_SSE === "1" ||
+      window.sessionStorage?.getItem("lab-sse-debug") === "1"
+    );
+  } catch {
+    return process.env.NEXT_PUBLIC_DEBUG_LAB_SSE === "1";
+  }
+}
+
+function labSseDebug(message: string, detail?: Record<string, unknown>): void {
+  if (!isLabSseDebugEnabled()) return;
+  if (detail) {
+    console.info(`[LAB SSE] ${message}`, detail);
+  } else {
+    console.info(`[LAB SSE] ${message}`);
+  }
+}
+
+function responseLooksLikeHtml(contentType: string, bodyPreview: string): boolean {
+  const ct = contentType.toLowerCase();
+  if (ct.includes("text/html")) {
+    return true;
+  }
+  const trimmed = bodyPreview.trimStart().toLowerCase();
+  return trimmed.startsWith("<!doctype") || trimmed.startsWith("<html");
+}
+
+function assertEventStreamResponse(res: Response, bodyPreview = ""): void {
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!res.ok) {
+    if (responseLooksLikeHtml(contentType, bodyPreview) || res.status === 404) {
+      throw new LabSseConfigurationError(LAB_SSE_HTML_MISROUTE_MESSAGE, res.status);
+    }
+    return;
+  }
+  if (
+    responseLooksLikeHtml(contentType, bodyPreview) ||
+    (!contentType.toLowerCase().includes("text/event-stream") && contentType !== "")
+  ) {
+    throw new LabSseConfigurationError(LAB_SSE_HTML_MISROUTE_MESSAGE, res.status);
+  }
+}
+
+function isNonRetryableStreamError(e: unknown): boolean {
+  if (e instanceof LabSseConfigurationError) return true;
+  if (e instanceof DOMException && e.name === "AbortError") return true;
+  const status =
+    e instanceof Error && "status" in e
+      ? Number((e as Error & { status?: number }).status)
+      : typeof e === "object" && e != null && "status" in e
+        ? Number((e as { status?: number }).status)
+        : NaN;
+  return status === 401 || status === 403 || status === 404;
+}
+
+/** Normalize backend poll/stream paths to a full browser URL with the product API prefix. */
+export function toAbsoluteLabJobStreamUrl(pathOrUrl: string): string {
   if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
     return pathOrUrl;
   }
-  const base = getApiBaseUrl();
   const p = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
-  return `${base}${p}`;
+  const prefix = getRagApiProductPrefix();
+  const productPath = p.startsWith(prefix) ? p : p.startsWith("/lab/") ? `${prefix}${p}` : apiProductPath(p);
+  return resolveLabJobApiUrl(productPath);
 }
 
 function buildStreamUrl(streamPath: string, sinceEventId: number | null | undefined): string {
-  const url = new URL(toAbsoluteUrl(streamPath));
+  const absolute = toAbsoluteLabJobStreamUrl(streamPath);
+  const url =
+    absolute.startsWith("http://") || absolute.startsWith("https://")
+      ? new URL(absolute)
+      : typeof window !== "undefined"
+        ? new URL(absolute, window.location.origin)
+        : new URL(absolute, "http://127.0.0.1:3000");
   if (sinceEventId != null && sinceEventId > 0) {
     url.searchParams.set("since", String(sinceEventId));
   }
@@ -68,7 +156,59 @@ export function eventToAsyncTaskStatus(
   event: LabJobEventDto,
   previous: AsyncTaskStatusDto | null,
 ): AsyncTaskStatusDto | null {
-  if (event.type === "HEARTBEAT" || event.eventId <= 0) {
+  if (event.type === "HEARTBEAT") {
+    return null;
+  }
+  if (
+    event.type === "RAG_EVALUATION_ACCEPTED" ||
+    event.type === "SNAPSHOT_PREPARATION_STARTED" ||
+    event.type === "SNAPSHOT_PREPARATION_COMPLETED"
+  ) {
+    const progress =
+      event.progress?.trim() ||
+      event.message?.trim() ||
+      previous?.progressText ||
+      null;
+    return {
+      id: event.jobId,
+      taskType: previous?.taskType ?? "LAB",
+      status: "RUNNING",
+      progressText: progress,
+      result: previous?.result ?? null,
+      errorMessage: previous?.errorMessage ?? null,
+      terminal: false,
+      createdAt: previous?.createdAt ?? event.timestamp,
+      updatedAt: event.timestamp,
+      startedAt: previous?.startedAt ?? event.timestamp,
+      completedAt: previous?.completedAt ?? null,
+      failureCode: previous?.failureCode ?? null,
+    };
+  }
+  if (event.type === "SNAPSHOT") {
+    const status = event.status ?? previous?.status ?? "QUEUED";
+    const st = status.trim().toUpperCase();
+    const terminal =
+      st === "SUCCEEDED" ||
+      st === "FAILED" ||
+      st === "CANCELLED" ||
+      st === "CANCELED" ||
+      (event.payload?.terminal === true);
+    return {
+      id: event.jobId,
+      taskType: previous?.taskType ?? "LAB",
+      status,
+      progressText: event.progress ?? previous?.progressText ?? null,
+      result: previous?.result ?? null,
+      errorMessage: previous?.errorMessage ?? null,
+      terminal,
+      createdAt: previous?.createdAt ?? event.timestamp,
+      updatedAt: event.timestamp,
+      startedAt: previous?.startedAt ?? null,
+      completedAt: terminal ? event.timestamp : previous?.completedAt ?? null,
+      failureCode: previous?.failureCode ?? null,
+    };
+  }
+  if (event.eventId <= 0) {
     return null;
   }
   const payload = event.payload ?? {};
@@ -111,6 +251,7 @@ async function consumeSseStream(
   },
 ): Promise<AsyncTaskStatusDto> {
   const url = buildStreamUrl(streamPath, options.sinceEventId);
+  labSseDebug("resolved URL", { url });
   const headers: Record<string, string> = {
     Accept: "text/event-stream",
     traceparent: createTraceparent(),
@@ -127,10 +268,20 @@ async function consumeSseStream(
     headers,
     signal: options.signal,
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(text || res.statusText);
+  const contentType = res.headers.get("content-type") ?? "";
+  labSseDebug("response", { status: res.status, contentType, url });
+  let bodyPreview = "";
+  if (!res.ok || !contentType.toLowerCase().includes("text/event-stream")) {
+    bodyPreview = await res.clone().text().catch(() => "");
+    assertEventStreamResponse(res, bodyPreview);
   }
+  if (!res.ok) {
+    const err = new Error(bodyPreview || res.statusText) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+
+  options.callbacks?.onLive?.();
 
   const reader = res.body?.getReader();
   if (!reader) {
@@ -181,11 +332,27 @@ async function consumeSseStream(
                 options.callbacks?.onLive?.();
                 continue;
               }
+              if (event.type === "SNAPSHOT") {
+                labSseDebug("first event", { type: event.type, jobId: event.jobId });
+                options.callbacks?.onLive?.();
+                options.callbacks?.onJobEvent?.(event);
+                const mapped = eventToAsyncTaskStatus(event, lastStatus);
+                if (mapped) {
+                  lastStatus = mapped;
+                  options.callbacks?.onTaskTick?.(mapped);
+                  const finished = finishOrThrowOnFailedTerminal(mapped);
+                  if (finished !== null) {
+                    return finished;
+                  }
+                }
+                continue;
+              }
               if (event.eventId > 0) {
                 if (event.eventId <= (options.sinceEventId ?? 0)) {
                   sawReplay = true;
                 }
                 lastEventId = Math.max(lastEventId, event.eventId);
+                options.callbacks?.onLive?.();
                 options.callbacks?.onJobEvent?.(event);
                 const mapped = eventToAsyncTaskStatus(event, lastStatus);
                 if (mapped) {
@@ -263,20 +430,25 @@ export async function streamLabJobLive(
 ): Promise<AsyncTaskStatusDto> {
   let attempt = 0;
   let since = options.sinceEventId ?? null;
+  let everConnected = false;
 
   while (true) {
     if (options.signal?.aborted) {
       throw new DOMException("Aborted", "AbortError");
     }
     try {
-      if (attempt > 0) {
+      if (attempt > 0 && everConnected) {
         options.callbacks?.onReconnecting?.();
       }
-      return await consumeSseStream(streamPath, {
+      const result = await consumeSseStream(streamPath, {
         signal: options.signal,
         sinceEventId: since,
         callbacks: {
           ...options.callbacks,
+          onLive: () => {
+            everConnected = true;
+            options.callbacks?.onLive?.();
+          },
           onJobEvent: (event) => {
             if (event.eventId > 0) {
               since = since == null ? event.eventId : Math.max(since, event.eventId);
@@ -285,8 +457,13 @@ export async function streamLabJobLive(
           },
         },
       });
+      everConnected = true;
+      return result;
     } catch (e) {
       if (options.signal?.aborted || (e instanceof DOMException && e.name === "AbortError")) {
+        throw e;
+      }
+      if (isNonRetryableStreamError(e)) {
         throw e;
       }
       attempt += 1;

@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.evaluation.lab;
 
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
+import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
@@ -44,6 +45,7 @@ public class LabClasspathCorpusBootstrapService {
 
     private final KnowledgeIngestionService knowledgeIngestionService;
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
+    private final EvaluationRunRepository evaluationRunRepository;
     private final ProjectAccessService projectAccessService;
     private final ResourcePatternResolver resourceResolver;
 
@@ -51,10 +53,12 @@ public class LabClasspathCorpusBootstrapService {
     public LabClasspathCorpusBootstrapService(
             KnowledgeIngestionService knowledgeIngestionService,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
+            EvaluationRunRepository evaluationRunRepository,
             ProjectAccessService projectAccessService) {
         this(
                 knowledgeIngestionService,
                 knowledgeDocumentRepository,
+                evaluationRunRepository,
                 projectAccessService,
                 new PathMatchingResourcePatternResolver());
     }
@@ -62,10 +66,12 @@ public class LabClasspathCorpusBootstrapService {
     LabClasspathCorpusBootstrapService(
             KnowledgeIngestionService knowledgeIngestionService,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
+            EvaluationRunRepository evaluationRunRepository,
             ProjectAccessService projectAccessService,
             ResourcePatternResolver resourceResolver) {
         this.knowledgeIngestionService = knowledgeIngestionService;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
+        this.evaluationRunRepository = evaluationRunRepository;
         this.projectAccessService = projectAccessService;
         this.resourceResolver = resourceResolver;
     }
@@ -74,11 +80,26 @@ public class LabClasspathCorpusBootstrapService {
      * Loads classpath corpus for the run's project when {@code aggregates_json.corpusBootstrapPolicy.enabled=true}.
      */
     public LabCorpusBootstrapResult bootstrap(UUID userId, EvaluationRunEntity run) {
+        if (run == null) {
+            return disabledBootstrapSummary();
+        }
+        UUID projectId =
+                run.getProject() != null && run.getProject().getId() != null
+                        ? run.getProject().getId()
+                        : evaluationRunRepository.findEffectiveProjectIdByRunId(run.getId()).orElse(null);
+        return bootstrap(userId, run.getId(), projectId, run.getAggregatesJson());
+    }
+
+    /**
+     * Classpath bootstrap without JPA run graph (safe for async workers).
+     */
+    public LabCorpusBootstrapResult bootstrap(
+            UUID userId, UUID runId, UUID projectIdHint, Map<String, Object> aggregatesJson) {
         Instant startedAt = Instant.now();
         List<String> errors = new ArrayList<>();
         List<UUID> docIds = new ArrayList<>();
 
-        Map<String, Object> policy = readPolicy(run);
+        Map<String, Object> policy = readPolicy(aggregatesJson);
         if (policy == null || !Boolean.TRUE.equals(policy.get("enabled"))) {
             return new LabCorpusBootstrapResult(
                     false,
@@ -96,17 +117,15 @@ public class LabClasspathCorpusBootstrapService {
                     Instant.now());
         }
 
-        if (run.getProject() == null || run.getProject().getId() == null) {
-            if (run.getEvaluationCorpus() == null
-                    || run.getEvaluationCorpus().getIndexProject() == null
-                    || run.getEvaluationCorpus().getIndexProject().getId() == null) {
-                throw new IllegalStateException(
-                        LabCorpusBootstrapErrors.REQUIRES_PROJECT
-                                + ": Classpath corpus bootstrap requires evaluation corpus index scope.");
-            }
-            run.setProject(run.getEvaluationCorpus().getIndexProject());
+        UUID projectId = projectIdHint;
+        if (projectId == null && runId != null) {
+            projectId = evaluationRunRepository.findEffectiveProjectIdByRunId(runId).orElse(null);
         }
-        UUID projectId = run.getProject().getId();
+        if (projectId == null) {
+            throw new IllegalStateException(
+                    LabCorpusBootstrapErrors.REQUIRES_PROJECT
+                            + ": Classpath corpus bootstrap requires evaluation corpus index scope.");
+        }
         String corpusScopeName = String.valueOf(policy.getOrDefault("corpusScope", CorpusScope.PROJECT_SHARED.name()));
         if (!CorpusScope.PROJECT_SHARED.name().equalsIgnoreCase(corpusScopeName)) {
             throw new IllegalStateException(
@@ -327,12 +346,25 @@ public class LabClasspathCorpusBootstrapService {
         throw new IllegalStateException("LAB_CORPUS_BOOTSTRAP_INGEST_TIMEOUT: documentId=" + documentId);
     }
 
+    private static LabCorpusBootstrapResult disabledBootstrapSummary() {
+        Instant now = Instant.now();
+        return new LabCorpusBootstrapResult(
+                false, null, null, 0, 0, 0, 0, 0, 0, List.of(), List.of(), now, now);
+    }
+
+    private static Map<String, Object> readPolicy(Map<String, Object> aggregatesJson) {
+        if (aggregatesJson == null || aggregatesJson.isEmpty()) {
+            return null;
+        }
+        Object o = aggregatesJson.get("corpusBootstrapPolicy");
+        return o instanceof Map<?, ?> m ? castStringKeyed(m) : null;
+    }
+
     private static Map<String, Object> readPolicy(EvaluationRunEntity run) {
         if (run == null || run.getAggregatesJson() == null) {
             return null;
         }
-        Object o = run.getAggregatesJson().get("corpusBootstrapPolicy");
-        return o instanceof Map<?, ?> m ? castStringKeyed(m) : null;
+        return readPolicy(run.getAggregatesJson());
     }
 
     private static Map<String, Object> castStringKeyed(Map<?, ?> raw) {

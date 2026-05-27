@@ -3,7 +3,10 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { ApiError, apiFetch } from "@/lib/api-client";
-import type { EvaluationCorpusSummaryDto } from "@/types/api";
+import type {
+  EvaluationCorpusDocumentsUploadResponseDto,
+  EvaluationCorpusSummaryDto,
+} from "@/types/api";
 import { useEvaluationCorpus } from "./use-evaluation-corpus";
 
 vi.mock("@/lib/api-client", async () => {
@@ -91,16 +94,26 @@ describe("useEvaluationCorpus", () => {
     expect(apiFetch).toHaveBeenCalledWith("/lab/evaluation-corpora/corpus-1");
   });
 
-  it("uploadDocument updates cache", async () => {
+  it("uploadDocuments posts multipart to documents endpoint", async () => {
     vi.mocked(apiFetch).mockResolvedValue(corpus);
     const { result } = renderHook(() => useEvaluationCorpus("corpus-1"), { wrapper });
     await waitFor(() => expect(result.current.summary).toEqual(corpus));
 
-    const uploaded = { ...corpus, documentCount: 5 };
-    vi.mocked(apiFetch).mockResolvedValue(uploaded);
+    const uploadResponse: EvaluationCorpusDocumentsUploadResponseDto = {
+      corpus: { ...corpus, documentCount: 5 },
+      uploads: [{ documentId: "d1", fileName: "doc.txt", status: "PROCESSING", error: null }],
+    };
+    vi.mocked(apiFetch).mockResolvedValueOnce(uploadResponse).mockResolvedValueOnce(uploadResponse.corpus);
+
     const file = new File(["x"], "doc.txt", { type: "text/plain" });
-    const out = await result.current.uploadDocument("corpus-1", file);
-    expect(out.documentCount).toBe(5);
+    const out = await result.current.uploadDocuments("corpus-1", [file]);
+    expect(out.response.uploads).toHaveLength(1);
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/lab/evaluation-corpora/corpus-1/documents",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const init = vi.mocked(apiFetch).mock.calls[1]?.[1];
+    expect(init?.body).toBeInstanceOf(FormData);
     await waitFor(() => expect(result.current.summary?.documentCount).toBe(5));
   });
 

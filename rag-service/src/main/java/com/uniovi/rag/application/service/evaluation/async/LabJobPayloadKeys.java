@@ -20,6 +20,9 @@ public final class LabJobPayloadKeys {
     /** Canonical UUID string of {@code evaluation_run} when the task writes benchmark results to SQL. */
     public static final String EVALUATION_RUN_ID = "evaluationRunId";
 
+    /** When set, the async task orchestrates all runs under this evaluation campaign. */
+    public static final String CAMPAIGN_ID = "campaignId";
+
     private LabJobPayloadKeys() {
     }
 }

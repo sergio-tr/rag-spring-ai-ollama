@@ -1,14 +1,14 @@
 import { expect, test } from "@playwright/test";
-import { loginAsSeedUser } from "../support/helpers";
 import {
   assertLabDatasetControlsVisible,
   assertLabJobPanelShowsActivePhase,
-  clearActiveProjectForLab,
+  assertLabRunButtonEnabled,
   assertLabRunStarted,
   ensureFirstLlmModelSelectedForRun,
   fetchActiveLabJobs,
   gotoLabEvaluationPage,
   labDatasetRunnable,
+  prepareLabE2eTest,
 } from "../support/lab-helpers";
 
 test.describe("LAB live job and refresh resume @fullstack", () => {
@@ -16,8 +16,7 @@ test.describe("LAB live job and refresh resume @fullstack", () => {
     page,
   }) => {
     test.setTimeout(240_000);
-    await clearActiveProjectForLab(page);
-    await loginAsSeedUser(page);
+    await prepareLabE2eTest(page);
     await gotoLabEvaluationPage(page, "llm");
     await assertLabDatasetControlsVisible(page);
     await expect
@@ -26,8 +25,8 @@ test.describe("LAB live job and refresh resume @fullstack", () => {
 
     await ensureFirstLlmModelSelectedForRun(page);
 
+    await assertLabRunButtonEnabled(page, "lab-llm-run");
     const runButton = page.getByTestId("lab-llm-run");
-    await expect(runButton).toBeEnabled({ timeout: 30_000 });
     await runButton.click();
     await assertLabRunStarted(page);
 

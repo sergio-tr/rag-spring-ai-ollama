@@ -31,6 +31,8 @@ const FORBIDDEN_IN_LAB_MESSAGES = [
   /Stopped waiting — the server job/i,
   /corpus and snapshot preparation are project-scoped/i,
   /Select an active project before running a RAG preset benchmark/i,
+  /\bcorpus\b/i,
+  /\bcorpus de evaluación\b/i,
   /Status poll:/i,
   /Live stream:/i,
   /Lab API —/i,
