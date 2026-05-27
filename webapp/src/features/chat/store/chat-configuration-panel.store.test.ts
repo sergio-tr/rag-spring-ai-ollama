@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatConfigurationPanelStore } from "./chat-configuration-panel.store";
 
 describe("chat configuration panel store", () => {
@@ -26,5 +26,24 @@ describe("chat configuration panel store", () => {
     useChatConfigurationPanelStore.getState().toggle();
     expect(useChatConfigurationPanelStore.getState().open).toBe(false);
     expect(globalThis.localStorage.getItem("chat-config-panel-open-v1")).toBe("false");
+  });
+
+  it("treats storage read failures as closed", () => {
+    const getItem = vi.spyOn(globalThis.localStorage, "getItem").mockImplementation(() => {
+      throw new Error("storage blocked");
+    });
+    useChatConfigurationPanelStore.setState({ open: true, hydrated: false });
+    useChatConfigurationPanelStore.getState().hydrateFromStorage();
+    expect(useChatConfigurationPanelStore.getState().open).toBe(false);
+    getItem.mockRestore();
+  });
+
+  it("ignores storage write failures", () => {
+    const setItem = vi.spyOn(globalThis.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
+    expect(() => useChatConfigurationPanelStore.getState().setOpen(true)).not.toThrow();
+    expect(useChatConfigurationPanelStore.getState().open).toBe(true);
+    setItem.mockRestore();
   });
 });
