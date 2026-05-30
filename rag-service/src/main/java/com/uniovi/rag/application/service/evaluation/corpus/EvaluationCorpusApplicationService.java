@@ -189,6 +189,9 @@ public class EvaluationCorpusApplicationService {
                     null, fileName, "FAILED", ex.getReason() != null ? ex.getReason() : ex.getMessage());
         } catch (IOException ex) {
             return new EvaluationCorpusDocumentUploadItemDto(null, fileName, "FAILED", ex.getMessage());
+        } catch (RuntimeException ex) {
+            return new EvaluationCorpusDocumentUploadItemDto(
+                    null, fileName, "FAILED", ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName());
         }
     }
 
@@ -303,7 +306,7 @@ public class EvaluationCorpusApplicationService {
             try (InputStream in = binaryStoragePort.openStream(copied.relativeUri())) {
                 Files.copy(in, temp, StandardCopyOption.REPLACE_EXISTING);
             }
-            knowledgeIngestionService.ingestFromTempFile(
+            knowledgeIngestionService.ingestFromTempFileJoiningCallerTransaction(
                     userId,
                     indexProjectId,
                     target.getId(),

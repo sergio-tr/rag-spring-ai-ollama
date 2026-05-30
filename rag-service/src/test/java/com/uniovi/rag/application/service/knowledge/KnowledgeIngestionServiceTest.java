@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.knowledge;
 
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
+import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
@@ -14,6 +15,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import jakarta.persistence.EntityManager;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -29,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -45,7 +48,9 @@ class KnowledgeIngestionServiceTest {
         ProjectAccessService access = mock(ProjectAccessService.class);
         ResolvedConfigSnapshotApplicationService resolved = mock(ResolvedConfigSnapshotApplicationService.class);
 
-        KnowledgeIngestionService sut = new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved);
+        EntityManager entityManager = mock(EntityManager.class);
+        KnowledgeIngestionService sut =
+                new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved, entityManager);
 
         UUID docId = UUID.randomUUID();
         when(repo.findById(docId)).thenReturn(Optional.empty());
@@ -63,7 +68,9 @@ class KnowledgeIngestionServiceTest {
         ProjectAccessService access = mock(ProjectAccessService.class);
         ResolvedConfigSnapshotApplicationService resolved = mock(ResolvedConfigSnapshotApplicationService.class);
 
-        KnowledgeIngestionService sut = new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved);
+        EntityManager entityManager = mock(EntityManager.class);
+        KnowledgeIngestionService sut =
+                new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved, entityManager);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -94,7 +101,9 @@ class KnowledgeIngestionServiceTest {
         ProjectAccessService access = mock(ProjectAccessService.class);
         ResolvedConfigSnapshotApplicationService resolved = mock(ResolvedConfigSnapshotApplicationService.class);
 
-        KnowledgeIngestionService sut = new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved);
+        EntityManager entityManager = mock(EntityManager.class);
+        KnowledgeIngestionService sut =
+                new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved, entityManager);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -117,6 +126,67 @@ class KnowledgeIngestionServiceTest {
     }
 
     @Test
+    void ingestProjectSharedDocumentSynchronouslyFromBytes_flushesBeforePipeline_andClearsBeforeReload()
+            throws IOException {
+        KnowledgePipelineOrchestrator orchestrator = mock(KnowledgePipelineOrchestrator.class);
+        KnowledgeDocumentRepository repo = mock(KnowledgeDocumentRepository.class);
+        ProjectDocumentIngestionService ingestion = mock(ProjectDocumentIngestionService.class);
+        ProjectAccessService access = mock(ProjectAccessService.class);
+        ResolvedConfigSnapshotApplicationService resolved = mock(ResolvedConfigSnapshotApplicationService.class);
+        EntityManager entityManager = mock(EntityManager.class);
+
+        KnowledgeIngestionService sut =
+                new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved, entityManager);
+
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID docId = UUID.randomUUID();
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(access.requireOwnedProject(userId, projectId)).thenReturn(project);
+
+        KnowledgeDocumentEntity ingesting = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
+        when(ingesting.getId()).thenReturn(docId);
+        when(ingesting.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
+        when(ingesting.getConversation()).thenReturn(null);
+
+        KnowledgeDocumentEntity ready = mock(KnowledgeDocumentEntity.class);
+        when(ready.getId()).thenReturn(docId);
+        when(ready.getFileName()).thenReturn("bootstrap-acta.txt");
+        when(ready.getStatus()).thenReturn(ProjectDocumentStatus.READY);
+        when(ready.getChunkCount()).thenReturn(3);
+        when(ready.getErrorMessage()).thenReturn(null);
+        when(ready.getUploadedAt()).thenReturn(null);
+        when(ready.getReindexedAt()).thenReturn(null);
+        when(ready.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
+        when(ready.getConversation()).thenReturn(null);
+        when(ready.getCurrentIndexSnapshot()).thenReturn(null);
+        when(ready.getStorageUri()).thenReturn("projects/x/doc.bin");
+
+        when(repo.save(any(KnowledgeDocumentEntity.class))).thenReturn(ingesting);
+        when(repo.findById(docId)).thenReturn(Optional.of(ingesting), Optional.of(ready));
+
+        ResolvedConfigSnapshotEntity snap = mock(ResolvedConfigSnapshotEntity.class);
+        when(snap.getId()).thenReturn(UUID.randomUUID());
+        when(snap.getConfigHash()).thenReturn("hash");
+        when(resolved.persistIngestionDefaultSnapshot(eq(userId), eq(projectId), eq(Optional.empty())))
+                .thenReturn(snap);
+
+        ProjectDocumentDto dto =
+                sut.ingestProjectSharedDocumentSynchronouslyFromBytes(
+                        userId, projectId, "acta".getBytes(), "bootstrap-acta.txt", "text/plain");
+
+        assertThat(dto.id()).isEqualTo(docId);
+        assertThat(dto.status()).isEqualTo(ProjectDocumentStatus.READY);
+        verify(entityManager, atLeastOnce()).flush();
+        verify(entityManager).clear();
+        verify(entityManager, never()).refresh(any());
+        verify(orchestrator)
+                .ingestFromTempFileInCurrentTransaction(
+                        eq(projectId), eq(docId), any(Path.class), eq("bootstrap-acta.txt"), eq("text/plain"), any(), any());
+        verify(orchestrator, never()).ingestFromTempFile(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     void deleteVectorChunksForDocument_delegatesToOrchestrator() {
         KnowledgePipelineOrchestrator orchestrator = mock(KnowledgePipelineOrchestrator.class);
         KnowledgeDocumentRepository repo = mock(KnowledgeDocumentRepository.class);
@@ -124,7 +194,9 @@ class KnowledgeIngestionServiceTest {
         ProjectAccessService access = mock(ProjectAccessService.class);
         ResolvedConfigSnapshotApplicationService resolved = mock(ResolvedConfigSnapshotApplicationService.class);
 
-        KnowledgeIngestionService sut = new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved);
+        EntityManager entityManager = mock(EntityManager.class);
+        KnowledgeIngestionService sut =
+                new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved, entityManager);
 
         UUID docId = UUID.randomUUID();
         sut.deleteVectorChunksForDocument(docId);
@@ -140,7 +212,9 @@ class KnowledgeIngestionServiceTest {
         ProjectAccessService access = mock(ProjectAccessService.class);
         ResolvedConfigSnapshotApplicationService resolved = mock(ResolvedConfigSnapshotApplicationService.class);
 
-        KnowledgeIngestionService sut = new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved);
+        EntityManager entityManager = mock(EntityManager.class);
+        KnowledgeIngestionService sut =
+                new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved, entityManager);
 
         MultipartFile file = mock(MultipartFile.class);
         when(file.isEmpty()).thenReturn(true);
@@ -159,7 +233,9 @@ class KnowledgeIngestionServiceTest {
         ProjectAccessService access = mock(ProjectAccessService.class);
         ResolvedConfigSnapshotApplicationService resolved = mock(ResolvedConfigSnapshotApplicationService.class);
 
-        KnowledgeIngestionService sut = new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved);
+        EntityManager entityManager = mock(EntityManager.class);
+        KnowledgeIngestionService sut =
+                new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved, entityManager);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -211,7 +287,9 @@ class KnowledgeIngestionServiceTest {
         ProjectAccessService access = mock(ProjectAccessService.class);
         ResolvedConfigSnapshotApplicationService resolved = mock(ResolvedConfigSnapshotApplicationService.class);
 
-        KnowledgeIngestionService sut = new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved);
+        EntityManager entityManager = mock(EntityManager.class);
+        KnowledgeIngestionService sut =
+                new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved, entityManager);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();

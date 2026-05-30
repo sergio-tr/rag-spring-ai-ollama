@@ -57,8 +57,10 @@ class KnowledgeSnapshotServiceTest {
                         eq(IndexSnapshotStatus.ACTIVE)))
                 .thenReturn(List.of(prior));
 
+        UUID docId = UUID.randomUUID();
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class);
-        when(doc.getId()).thenReturn(UUID.randomUUID());
+        when(doc.getId()).thenReturn(docId);
+        when(knowledgeDocumentRepository.getReferenceById(docId)).thenReturn(doc);
 
         knowledgeSnapshotService.activateSnapshot(building, List.of(doc), Optional.of(prior));
 

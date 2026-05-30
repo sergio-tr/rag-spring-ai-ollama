@@ -184,16 +184,37 @@ def _login_access_token(
     return str(token) if token else None
 
 
-# Shipped with rag-service unit tests; small PDF for Lab evaluation corpus upload.
-_LAB_CORPUS_FIXTURE_PDF = (
+# Plain-text acta bytes (must be extractable; empty PDFs fail ingestion). Shipped under rag-service test resources.
+_LAB_CORPUS_FIXTURE_PATH = (
     Path(__file__).resolve().parents[2]
     / "rag-service"
     / "src"
     / "test"
     / "resources"
     / "docs"
-    / "bootstrap-acta.pdf"
+    / "bootstrap-acta.txt"
 )
+_LAB_CORPUS_FIXTURE_BYTES = """\
+ACTA — 24 de febrero de 2025
+
+Fecha: 24 de febrero de 2025.
+Presidente: Juan Pérez García.
+Secretaria: Laura Martínez.
+
+Orden del día:
+1) Aprobación del acta anterior.
+2) Presupuesto.
+3) Mantenimiento del ascensor.
+
+Acuerdos:
+- Se aprueba el presupuesto anual.
+""".encode("utf-8")
+
+
+def _lab_corpus_fixture_bytes() -> bytes:
+    if _LAB_CORPUS_FIXTURE_PATH.is_file():
+        return _LAB_CORPUS_FIXTURE_PATH.read_bytes()
+    return _LAB_CORPUS_FIXTURE_BYTES
 
 
 def _lab_auth_headers(token: str, *, json_body: bool = True) -> dict[str, str]:
@@ -226,22 +247,66 @@ def _lab_create_evaluation_corpus_with_document(
     corpus_id = corpus_body.get("id")
     assert corpus_id, corpus_body
 
-    if not _LAB_CORPUS_FIXTURE_PDF.is_file():
-        pytest.skip(f"Lab corpus fixture missing: {_LAB_CORPUS_FIXTURE_PDF}")
-
     upload_headers = _lab_auth_headers(token, json_body=False)
-    with _LAB_CORPUS_FIXTURE_PDF.open("rb") as pdf:
-        upload = http_client.post(
-            f"{backend_base}{product_api_base}/lab/evaluation-corpora/{corpus_id}/documents",
-            headers=upload_headers,
-            files={"file": ("bootstrap-acta.pdf", pdf, "application/pdf")},
-            timeout=120.0,
-        )
+    upload = http_client.post(
+        f"{backend_base}{product_api_base}/lab/evaluation-corpora/{corpus_id}/documents",
+        headers=upload_headers,
+        files={"file": ("bootstrap-acta.txt", _lab_corpus_fixture_bytes(), "text/plain")},
+        timeout=120.0,
+    )
     assert upload.status_code == 200, upload.text
     upload_body = _assert_json_response_not_html(upload)
     corpus_body = upload_body.get("corpus") if isinstance(upload_body.get("corpus"), dict) else upload_body
     assert (corpus_body.get("documentCount") or 0) >= 1, upload_body
+    _lab_wait_evaluation_corpus_ready(
+        http_client, backend_base, product_api_base, token, str(corpus_id)
+    )
     return str(corpus_id)
+
+
+def _lab_wait_evaluation_corpus_ready(
+    http_client: httpx.Client,
+    backend_base: str,
+    product_api_base: str,
+    token: str,
+    corpus_id: str,
+    *,
+    deadline_s: float = 90.0,
+    interval_s: float = 2.0,
+) -> None:
+    """Poll GET evaluation corpus until at least one document is READY (RAG_PRESET_END_TO_END gate)."""
+    headers = _lab_auth_headers(token)
+    url = f"{backend_base}{product_api_base}/lab/evaluation-corpora/{corpus_id}"
+    last_body: dict | None = None
+
+    def ready() -> bool:
+        nonlocal last_body
+        try:
+            r = http_client.get(url, headers=headers, timeout=30.0)
+        except (httpx.ConnectError, httpx.ConnectTimeout):
+            return False
+        if r.status_code != 200:
+            return False
+        last_body = _assert_json_response_not_html(r)
+        ready_count = last_body.get("readyCount") or 0
+        if ready_count >= 1:
+            docs = last_body.get("documents") or []
+            if any(
+                isinstance(d, dict)
+                and d.get("status") == "READY"
+                and d.get("storagePresent") is True
+                for d in docs
+            ):
+                return True
+            # readyCount can disagree with per-document status when persistence context is stale
+        if (last_body.get("failedCount") or 0) >= 1:
+            pytest.fail(f"evaluation corpus document processing failed: {last_body}")
+        return False
+
+    if not _poll_until(ready, deadline_s, interval_s):
+        pytest.fail(
+            f"evaluation corpus {corpus_id} has no READY documents after {deadline_s}s: {last_body}"
+        )
 
 
 class TestClassifierService:

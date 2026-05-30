@@ -11,9 +11,12 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
 import com.uniovi.rag.application.service.knowledge.document.ProjectDocumentIngestionService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
+import jakarta.persistence.EntityManager;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -41,23 +44,27 @@ public class KnowledgeIngestionService {
     private final ProjectDocumentIngestionService projectDocumentIngestionService;
     private final ProjectAccessService projectAccessService;
     private final ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
+    private final EntityManager entityManager;
 
     public KnowledgeIngestionService(
             KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
             @Lazy ProjectDocumentIngestionService projectDocumentIngestionService,
             ProjectAccessService projectAccessService,
-            ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService) {
+            ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService,
+            EntityManager entityManager) {
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.projectDocumentIngestionService = projectDocumentIngestionService;
         this.projectAccessService = projectAccessService;
         this.resolvedConfigSnapshotApplicationService = resolvedConfigSnapshotApplicationService;
+        this.entityManager = entityManager;
     }
 
     /**
      * Synchronous PROJECT_SHARED ingest from bytes (same pipeline as HTTP upload). Caller handles deduplication.
      */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProjectDocumentDto ingestProjectSharedDocumentSynchronouslyFromBytes(
             UUID userId,
             UUID projectId,
@@ -74,19 +81,20 @@ public class KnowledgeIngestionService {
 
         KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newIngesting(project, original);
         row = knowledgeDocumentRepository.save(row);
+        entityManager.flush();
 
         Path temp = createPrivateTempFile("rag-lab-bootstrap-", original);
         Files.write(temp, bytes);
 
-        ingestFromTempFile(userId, projectId, row.getId(), temp, original, ct);
+        ingestFromTempFileJoiningCallerTransaction(userId, projectId, row.getId(), temp, original, ct);
 
-        KnowledgeDocumentEntity done = knowledgeDocumentRepository.findById(row.getId()).orElse(row);
-        return toDto(done);
+        return toDto(requireTerminalDocumentAfterSyncIngest(row.getId()));
     }
 
     /**
      * Re-ingest an existing project document from fresh bytes (same document id). Used by Lab classpath bootstrap retries.
      */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProjectDocumentDto reingestProjectSharedDocumentSynchronouslyFromBytes(
             UUID userId,
             UUID projectId,
@@ -110,10 +118,25 @@ public class KnowledgeIngestionService {
         Path temp = createPrivateTempFile("rag-lab-bootstrap-retry-", original);
         Files.write(temp, bytes);
 
-        ingestFromTempFile(userId, projectId, row.getId(), temp, original, ct);
+        entityManager.flush();
+        ingestFromTempFileJoiningCallerTransaction(userId, projectId, row.getId(), temp, original, ct);
 
-        KnowledgeDocumentEntity done = knowledgeDocumentRepository.findById(row.getId()).orElse(row);
-        return toDto(done);
+        return toDto(requireTerminalDocumentAfterSyncIngest(row.getId()));
+    }
+
+    /**
+     * Ingest from a temp file in the caller's Spring transaction (no extra orchestrator {@code REQUIRES_NEW}).
+     * Used by lab corpus synchronous upload paths that already run in an isolated transaction.
+     */
+    public void ingestFromTempFileJoiningCallerTransaction(
+            UUID userId,
+            UUID projectId,
+            UUID projectDocumentId,
+            Path tempFile,
+            String originalFilename,
+            String contentType) {
+        runIngestFromTempFile(
+                userId, projectId, projectDocumentId, tempFile, originalFilename, contentType, false);
     }
 
     public void ingestFromTempFile(
@@ -123,6 +146,21 @@ public class KnowledgeIngestionService {
             Path tempFile,
             String originalFilename,
             String contentType) {
+        runIngestFromTempFile(
+                userId, projectId, projectDocumentId, tempFile, originalFilename, contentType, true);
+    }
+
+    private void runIngestFromTempFile(
+            UUID userId,
+            UUID projectId,
+            UUID projectDocumentId,
+            Path tempFile,
+            String originalFilename,
+            String contentType,
+            boolean isolateOrchestratorTransaction) {
+        if (!isolateOrchestratorTransaction) {
+            entityManager.flush();
+        }
         KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
         if (row == null) {
             return;
@@ -135,14 +173,25 @@ public class KnowledgeIngestionService {
             var snap =
                     resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshot(
                             userId, projectId, conversationId);
-            knowledgePipelineOrchestrator.ingestFromTempFile(
-                    projectId,
-                    projectDocumentId,
-                    tempFile,
-                    originalFilename,
-                    contentType,
-                    snap.getId(),
-                    snap.getConfigHash());
+            if (isolateOrchestratorTransaction) {
+                knowledgePipelineOrchestrator.ingestFromTempFile(
+                        projectId,
+                        projectDocumentId,
+                        tempFile,
+                        originalFilename,
+                        contentType,
+                        snap.getId(),
+                        snap.getConfigHash());
+            } else {
+                knowledgePipelineOrchestrator.ingestFromTempFileInCurrentTransaction(
+                        projectId,
+                        projectDocumentId,
+                        tempFile,
+                        originalFilename,
+                        contentType,
+                        snap.getId(),
+                        snap.getConfigHash());
+            }
         } catch (Exception e) {
             KnowledgeDocumentEntity rowErr = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
             if (rowErr != null) {
@@ -150,7 +199,8 @@ public class KnowledgeIngestionService {
                 rowErr.setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
                 knowledgeDocumentRepository.save(rowErr);
             }
-            throw e;
+            // Do not rethrow: orchestrator already persisted ERROR for ingest failures; callers expect
+            // a terminal document row and a 200 upload response with per-file FAILED status when needed.
         }
     }
 
@@ -292,6 +342,31 @@ public class KnowledgeIngestionService {
         } catch (UnsupportedOperationException ex) {
             return new FileAttribute<?>[0];
         }
+    }
+
+    /**
+     * Reload row after pipeline ingest ({@code REQUIRES_NEW}) so the caller transaction does not flush a stale
+     * {@link ProjectDocumentStatus#INGESTING} over a committed READY state.
+     *
+     * <p>Uses {@link EntityManager#clear()} (no preceding {@link EntityManager#flush()}) so a stale INGESTING
+     * instance in this session is discarded without being written back after nested {@code REQUIRES_NEW} ingest
+     * committed READY in another transaction (avoids "does not yet exist as a row in the database" on flush/refresh).
+     */
+    private KnowledgeDocumentEntity reloadProjectDocumentAfterIngest(UUID projectDocumentId) {
+        entityManager.clear();
+        return knowledgeDocumentRepository
+                .findById(projectDocumentId)
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "project_document"));
+    }
+
+    private KnowledgeDocumentEntity requireTerminalDocumentAfterSyncIngest(UUID projectDocumentId) {
+        KnowledgeDocumentEntity row = reloadProjectDocumentAfterIngest(projectDocumentId);
+        if (row.getStatus() == ProjectDocumentStatus.INGESTING) {
+            throw new IllegalStateException(
+                    "Synchronous ingest did not reach a terminal state for document " + projectDocumentId);
+        }
+        return row;
     }
 
     private static ProjectDocumentDto toDto(KnowledgeDocumentEntity e) {

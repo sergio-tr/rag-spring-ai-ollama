@@ -138,14 +138,19 @@ public class KnowledgeSnapshotService {
         snapshot.setUpdatedAt(now);
         snapshotRepository.save(snapshot);
         for (KnowledgeDocumentEntity d : documents) {
+            if (d == null || d.getId() == null) {
+                continue;
+            }
+            UUID documentId = d.getId();
             KnowledgeSnapshotDocumentEntity link = new KnowledgeSnapshotDocumentEntity();
-            KnowledgeSnapshotDocumentPk pk = new KnowledgeSnapshotDocumentPk(snapshot.getId(), d.getId());
+            KnowledgeSnapshotDocumentPk pk = new KnowledgeSnapshotDocumentPk(snapshot.getId(), documentId);
             link.setId(pk);
             link.setSnapshot(snapshot);
-            link.setDocument(d);
+            link.setDocument(knowledgeDocumentRepository.getReferenceById(documentId));
             snapshotDocumentRepository.save(link);
-            d.setCurrentIndexSnapshot(snapshot);
-            knowledgeDocumentRepository.save(d);
+            KnowledgeDocumentEntity managed = knowledgeDocumentRepository.getReferenceById(documentId);
+            managed.setCurrentIndexSnapshot(snapshot);
+            knowledgeDocumentRepository.save(managed);
         }
     }
 

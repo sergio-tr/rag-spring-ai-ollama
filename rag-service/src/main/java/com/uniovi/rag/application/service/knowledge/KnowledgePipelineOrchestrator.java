@@ -26,6 +26,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
@@ -65,6 +66,8 @@ public class KnowledgePipelineOrchestrator {
     private final IndexingEmbeddingGuard indexingEmbeddingGuard;
     private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
     private final TransactionTemplate transactionTemplate;
+    /** Joins the caller's Spring transaction (lab sync ingest); do not use {@link #transactionTemplate} here. */
+    private final TransactionTemplate joinCallerTransactionTemplate;
     private final MeterRegistry meterRegistry;
 
     public KnowledgePipelineOrchestrator(
@@ -90,7 +93,11 @@ public class KnowledgePipelineOrchestrator {
         this.embeddingSpaceGuard = embeddingSpaceGuard;
         this.indexingEmbeddingGuard = indexingEmbeddingGuard;
         this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
+        // Isolate ingest work so a failed inner ingest does not mark the caller transaction rollback-only.
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.joinCallerTransactionTemplate = new TransactionTemplate(transactionManager);
+        this.joinCallerTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
         this.meterRegistry = meterRegistry;
     }
 
@@ -166,6 +173,52 @@ public class KnowledgePipelineOrchestrator {
     }
 
     /**
+     * Same as {@link #ingestFromTempFile} but runs {@link #ingestTx} in the caller's Spring transaction
+     * ({@link TransactionDefinition#PROPAGATION_REQUIRED}). Use when the caller is already isolated
+     * (e.g. {@code REQUIRES_NEW} lab sync ingest) so the flushed document row and {@code ingestTx}
+     * commit together as {@code READY} or {@code ERROR}.
+     */
+    public void ingestFromTempFileInCurrentTransaction(
+            UUID projectId,
+            UUID projectDocumentId,
+            Path tempFile,
+            String originalFilename,
+            String contentType,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash) {
+        try {
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "started");
+            joinCallerTransactionTemplate.executeWithoutResult(
+                    status ->
+                            ingestTx(
+                                    projectId,
+                                    projectDocumentId,
+                                    tempFile,
+                                    originalFilename,
+                                    contentType,
+                                    resolvedConfigSnapshotId,
+                                    resolvedConfigHash));
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "success");
+        } catch (Exception e) {
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "failure");
+            log.error("Knowledge ingest failed for project document {}: {}", projectDocumentId, e.getMessage(), e);
+            transactionTemplate.executeWithoutResult(
+                    s -> {
+                        KnowledgeDocumentEntity rowErr =
+                                knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+                        if (rowErr != null) {
+                            rowErr.setStatus(ProjectDocumentStatus.ERROR);
+                            rowErr.setErrorMessage(
+                                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                            knowledgeDocumentRepository.save(rowErr);
+                        }
+                    });
+        } finally {
+            deleteTempQuietly(tempFile);
+        }
+    }
+
+    /**
      * Retry ingest without a new upload by reusing the stored binary (storageUri).
      * This guarantees the document will transition to READY or ERROR (never remain INGESTING forever).
      */
@@ -204,11 +257,15 @@ public class KnowledgePipelineOrchestrator {
             String contentType,
             UUID resolvedConfigSnapshotId,
             String resolvedConfigHash) {
-        KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
-        if (row == null) {
-            log.warn("Project document {} not found, skipping ingest", projectDocumentId);
-            return;
-        }
+        KnowledgeDocumentEntity row =
+                knowledgeDocumentRepository
+                        .findById(projectDocumentId)
+                        .orElseThrow(
+                                () ->
+                                        new IllegalStateException(
+                                                "Project document "
+                                                        + projectDocumentId
+                                                        + " not found for ingest"));
 
         persistBinaryAndUpdateRow(projectId, projectDocumentId, tempFile, contentType, row);
         final KnowledgeDocumentEntity rowReloaded = knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
@@ -295,11 +352,15 @@ public class KnowledgePipelineOrchestrator {
             UUID projectDocumentId,
             UUID resolvedConfigSnapshotId,
             String resolvedConfigHash) {
-        KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
-        if (row == null) {
-            log.warn("Project document {} not found, skipping ingest", projectDocumentId);
-            return;
-        }
+        KnowledgeDocumentEntity row =
+                knowledgeDocumentRepository
+                        .findById(projectDocumentId)
+                        .orElseThrow(
+                                () ->
+                                        new IllegalStateException(
+                                                "Project document "
+                                                        + projectDocumentId
+                                                        + " not found for ingest"));
         if (row.getStorageUri() == null || row.getStorageUri().isBlank()) {
             throw new IllegalStateException("missing storage URI for stored-binary retry");
         }

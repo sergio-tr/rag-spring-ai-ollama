@@ -162,7 +162,7 @@ class EvaluationCorpusApplicationServiceTest {
                 .thenReturn(uploaded);
         when(knowledgeIngestionService.ingestProjectSharedDocumentSynchronouslyFromBytes(
                         eq(userId), eq(indexProjectId), any(), eq("bad.pdf"), any()))
-                .thenThrow(new IOException("unsupported"));
+                .thenThrow(new IllegalStateException("unsupported"));
 
         KnowledgeDocumentEntity linked = mock(KnowledgeDocumentEntity.class);
         when(linked.getStatus()).thenReturn(ProjectDocumentStatus.INGESTING);
@@ -174,6 +174,33 @@ class EvaluationCorpusApplicationServiceTest {
         assertThat(response.uploads().get(0).status()).isEqualTo("PROCESSING");
         assertThat(response.uploads().get(1).status()).isEqualTo("FAILED");
         verify(evaluationCorpusDocumentRepository).save(any());
+    }
+
+    @Test
+    void uploadDocuments_mapsRuntimeExceptionToFailedUploadItem() throws Exception {
+        UUID corpusId = UUID.randomUUID();
+        UUID indexProjectId = UUID.randomUUID();
+        EvaluationCorpusEntity corpus = mock(EvaluationCorpusEntity.class);
+        ProjectEntity indexProject = mock(ProjectEntity.class);
+        when(indexProject.getId()).thenReturn(indexProjectId);
+        when(corpus.getId()).thenReturn(corpusId);
+        when(corpus.getIndexProject()).thenReturn(indexProject);
+        when(corpus.getSourceType()).thenReturn(EvaluationCorpusSourceType.UPLOADED);
+        when(evaluationCorpusRepository.findByIdAndOwner_Id(corpusId, userId)).thenReturn(Optional.of(corpus));
+        when(evaluationCorpusRepository.save(corpus)).thenReturn(corpus);
+
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getOriginalFilename()).thenReturn("bad.pdf");
+        when(knowledgeIngestionService.ingestProjectSharedDocumentSynchronouslyFromBytes(
+                        eq(userId), eq(indexProjectId), any(), eq("bad.pdf"), any()))
+                .thenThrow(new IllegalStateException("ingest failed"));
+
+        var response = service.uploadDocuments(userId, corpusId, List.of(file));
+
+        assertThat(response.uploads()).hasSize(1);
+        assertThat(response.uploads().get(0).status()).isEqualTo("FAILED");
+        assertThat(response.uploads().get(0).error()).contains("ingest failed");
     }
 
     @Test
