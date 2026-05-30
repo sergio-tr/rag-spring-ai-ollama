@@ -1,7 +1,5 @@
 "use client";
 
-import { Label } from "@/components/ui/label";
-
 export type ModelCheckboxGroupProps = Readonly<{
   id: string;
   label: string;
@@ -39,10 +37,13 @@ export function ModelCheckboxGroup({
   }
 
   return (
-    <div className="space-y-2" data-testid={`${testIdPrefix}-group`}>
-      <Label htmlFor={id}>{label}</Label>
+    <fieldset
+      id={id}
+      className="m-0 min-w-0 space-y-2 border-0 p-0"
+      data-testid={`${testIdPrefix}-group`}
+    >
+      <legend className="text-sm leading-none font-medium">{label}</legend>
       <div
-        id={id}
         className="max-h-60 space-y-2 overflow-auto rounded-md border p-2"
         data-testid={`${testIdPrefix}-list`}
       >
@@ -73,6 +74,6 @@ export function ModelCheckboxGroup({
         ) : null}
       </div>
       {hint ? <p className="text-muted-foreground text-xs">{hint}</p> : null}
-    </div>
+    </fieldset>
   );
 }

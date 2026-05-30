@@ -68,3 +68,20 @@ export function summarizePlaywrightJson(json) {
   }
   return { total: leaves.length, passed, failed, skipped };
 }
+
+/**
+ * When {@code PLAYWRIGHT_MAX_FAILURES=1}, Playwright marks not-yet-run tests as skipped in JSON stats.
+ * {@code E2E_FAIL_ON_SKIPS} targets intentional {@code test.skip()} (false greens), not that abort behavior.
+ */
+export function shouldFailOnExplicitSkips(summary, env = process.env) {
+  if (env.E2E_FAIL_ON_SKIPS !== "1") {
+    return false;
+  }
+  if (!summary || summary.skipped <= 0) {
+    return false;
+  }
+  if (summary.failed > 0) {
+    return false;
+  }
+  return true;
+}

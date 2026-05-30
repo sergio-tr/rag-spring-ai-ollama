@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { countListedTests, summarizePlaywrightJson } from "./e2e-report-summary.mjs";
+import { countListedTests, shouldFailOnExplicitSkips, summarizePlaywrightJson } from "./e2e-report-summary.mjs";
 
 /** Playwright 1.59+ JSON reporter shape (stats root); no on-disk test-results artifact required. */
 const FAILED_PREFLIGHT_JSON = {
@@ -25,5 +25,20 @@ describe("e2e-report-summary", () => {
     assert.equal(summary.total, 1);
     assert.equal(summary.failed, 1);
     assert.equal(summary.passed, 0);
+  });
+
+  it("does not treat maxFailures-aborted skips as explicit skip guard failures", () => {
+    const summary = summarizePlaywrightJson({
+      stats: { expected: 0, unexpected: 1, skipped: 10, flaky: 0 },
+      suites: [],
+    });
+    assert.equal(summary.failed, 1);
+    assert.equal(summary.skipped, 10);
+    assert.equal(shouldFailOnExplicitSkips(summary, { E2E_FAIL_ON_SKIPS: "1" }), false);
+  });
+
+  it("fails explicit skip guard when tests skipped without failures", () => {
+    const summary = { total: 3, passed: 1, failed: 0, skipped: 2 };
+    assert.equal(shouldFailOnExplicitSkips(summary, { E2E_FAIL_ON_SKIPS: "1" }), true);
   });
 });

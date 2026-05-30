@@ -9,23 +9,44 @@
 
 const REVERSE_PROXY_PORTS = new Set(["80", "443", "8080", "8443", "8444"]);
 
-/** Apply demo-proxy defaults when CI has not pinned URLs (official stack entrypoint). */
-export function applyDemoProxyEnvDefaults() {
-  if (process.env.CI === "true" || process.env.CI === "1") {
+/** Node fetch rejects self-signed reverse-proxy certs unless this is set (Playwright uses its own flag). */
+function applyInsecureTlsForHttpsProxyFetch() {
+  if (process.env.NODE_TLS_REJECT_UNAUTHORIZED != null) {
     return;
   }
-  if (!process.env.PLAYWRIGHT_BASE_URL && !process.env.E2E_PUBLIC_BASE_URL) {
-    process.env.PLAYWRIGHT_BASE_URL = "https://127.0.0.1:8444";
-  }
-  if (process.env.PLAYWRIGHT_SKIP_WEBSERVER == null) {
-    process.env.PLAYWRIGHT_SKIP_WEBSERVER = "1";
-  }
-  if (process.env.PLAYWRIGHT_IGNORE_HTTPS_ERRORS == null) {
-    process.env.PLAYWRIGHT_IGNORE_HTTPS_ERRORS = "1";
-  }
-  if (process.env.NODE_TLS_REJECT_UNAUTHORIZED == null) {
+  const candidates = [
+    process.env.API_BASE_URL,
+    process.env.PLAYWRIGHT_BASE_URL,
+    process.env.E2E_PUBLIC_BASE_URL,
+  ].filter(Boolean);
+  const usesHttpsProxy = candidates.some((raw) => {
+    try {
+      const u = new URL(raw);
+      return u.protocol === "https:" && isReverseProxyOrigin(raw);
+    } catch {
+      return false;
+    }
+  });
+  if (usesHttpsProxy) {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   }
+}
+
+/** Apply demo-proxy defaults when CI has not pinned URLs (official stack entrypoint). */
+export function applyDemoProxyEnvDefaults() {
+  const isCi = process.env.CI === "true" || process.env.CI === "1";
+  if (!isCi) {
+    if (!process.env.PLAYWRIGHT_BASE_URL && !process.env.E2E_PUBLIC_BASE_URL) {
+      process.env.PLAYWRIGHT_BASE_URL = "https://127.0.0.1:8444";
+    }
+    if (process.env.PLAYWRIGHT_SKIP_WEBSERVER == null) {
+      process.env.PLAYWRIGHT_SKIP_WEBSERVER = "1";
+    }
+    if (process.env.PLAYWRIGHT_IGNORE_HTTPS_ERRORS == null) {
+      process.env.PLAYWRIGHT_IGNORE_HTTPS_ERRORS = "1";
+    }
+  }
+  applyInsecureTlsForHttpsProxyFetch();
 }
 
 export function isReverseProxyOrigin(urlString) {

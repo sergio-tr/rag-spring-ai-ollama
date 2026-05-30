@@ -244,6 +244,7 @@ public class KnowledgeIngestionService {
                 userId, projectId, projectDocumentId, snap.getId(), snap.getConfigHash());
     }
 
+    @Transactional
     public ProjectDocumentDto uploadProjectDocument(UUID userId, UUID projectId, MultipartFile file) throws IOException {
         ProjectEntity project = projectAccessService.requireOwnedProject(userId, projectId);
         if (file == null || file.isEmpty()) {
@@ -264,6 +265,7 @@ public class KnowledgeIngestionService {
 
         KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newIngesting(project, original);
         row = knowledgeDocumentRepository.save(row);
+        entityManager.flush();
 
         Path temp = createPrivateTempFile("rag-doc-", original);
         file.transferTo(temp.toFile());
@@ -272,6 +274,7 @@ public class KnowledgeIngestionService {
         return toDto(row);
     }
 
+    @Transactional
     public ProjectDocumentDto uploadConversationOverlay(
             UUID userId, UUID projectId, UUID conversationId, MultipartFile file) throws IOException {
         projectAccessService.requireOwnedProject(userId, projectId);
@@ -297,6 +300,7 @@ public class KnowledgeIngestionService {
 
         KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newChatLocalIngesting(conv.getProject(), conv, original);
         row = knowledgeDocumentRepository.save(row);
+        entityManager.flush();
         Path temp = createPrivateTempFile("rag-doc-overlay-", original);
         file.transferTo(temp.toFile());
         projectDocumentIngestionService.ingestFromTempFile(userId, projectId, row.getId(), temp, original, ct);

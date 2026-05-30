@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { countListedTests, summarizePlaywrightJson } from "./e2e-report-summary.mjs";
+import { countListedTests, shouldFailOnExplicitSkips, summarizePlaywrightJson } from "./e2e-report-summary.mjs";
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
@@ -97,7 +97,7 @@ if (summary.skipped >= summary.total && summary.passed === 0 && summary.failed =
   console.error(`E2E guard failed: all collected tests were skipped (${summary.skipped}/${summary.total}).`);
   process.exit(1);
 }
-if (process.env.E2E_FAIL_ON_SKIPS === "1" && summary.skipped > 0) {
+if (shouldFailOnExplicitSkips(summary)) {
   console.error(`E2E guard failed: E2E_FAIL_ON_SKIPS=1 and ${summary.skipped} test(s) skipped.`);
   process.exit(1);
 }

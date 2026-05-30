@@ -14,6 +14,7 @@ describe("ModelCheckboxGroup", () => {
         testIdPrefix="lab-llm"
       />,
     );
+    expect(screen.getByRole("group", { name: "Models" })).toBeInTheDocument();
     expect(screen.getByText("No models available.")).toBeInTheDocument();
   });
 

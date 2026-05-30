@@ -272,6 +272,7 @@ class KnowledgeIngestionServiceTest {
 
         ProjectDocumentDto dto = sut.uploadProjectDocument(userId, projectId, file);
         assertThat(dto.id()).isEqualTo(docId);
+        verify(entityManager).flush();
 
         ArgumentCaptor<Path> tempPath = ArgumentCaptor.forClass(Path.class);
         verify(ingestion)
