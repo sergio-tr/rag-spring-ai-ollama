@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { ChatConfigurationPanelContent } from "./ChatConfigurationPanelContent";
@@ -112,7 +113,7 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     });
   });
 
-  it("exposes stable chat configuration controls for E2E flows", () => {
+  it("exposes stable chat configuration controls for E2E flows", async () => {
     hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
       data: { capabilities: [] },
       isLoading: false,
@@ -124,6 +125,10 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     });
 
     renderSubject();
+
+    expect(screen.getByTestId("chat-config-compact-summary")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("chat-config-edit-button"));
 
     expect(screen.getByTestId("chat-limit-documents-checkbox")).toBeInTheDocument();
     expect(screen.getByTestId("chat-open-documents-sheet")).toBeInTheDocument();
@@ -159,7 +164,7 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     expect(saveRuntimeOverride).toHaveBeenCalledWith({ similarityThreshold: 0.4 });
   });
 
-  it("renders classifier loading errors without hiding document scope controls", () => {
+  it("renders classifier loading errors without hiding document scope controls", async () => {
     hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
       data: { capabilities: [] },
       isLoading: false,
@@ -167,13 +172,15 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     hooksMock.useClassifierModelsQuery.mockReturnValue({ data: [], isError: true, isLoading: false });
 
     renderSubject();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("chat-config-edit-button"));
 
     expect(screen.getByTestId("chat-open-documents-sheet")).toBeEnabled();
     expect(screen.getByText(/Could not load classifier models/i)).toBeInTheDocument();
     expect(screen.getByTestId("chat-error-code-CLASSIFIER_UNAVAILABLE")).toHaveTextContent(/classifier model is unavailable/i);
   });
 
-  it("shows actionable runtime error code and active snapshot capabilities", () => {
+  it("shows actionable runtime error code and active snapshot capabilities", async () => {
     hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
       data: { capabilities: [] },
       isLoading: false,
@@ -219,6 +226,8 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
 
     expect(screen.getByTestId("chat-error-code-REINDEX_REQUIRED")).toHaveTextContent("REINDEX_REQUIRED");
     expect(screen.getByTestId("chat-runtime-blocking-banner")).toHaveTextContent(/requires a new compatible index snapshot/i);
+    const user = userEvent.setup();
+    await user.click(screen.getByText(/Technical details/i));
     expect(screen.getByTestId("chat-index-info")).toHaveTextContent("CHUNK_LEVEL");
     expect(screen.getByTestId("chat-index-info")).toHaveTextContent("mxbai-embed-large");
   });

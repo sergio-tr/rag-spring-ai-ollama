@@ -10,6 +10,10 @@ import { useClassifierModelsQuery } from "@/features/lab/hooks/use-classifier-re
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import { useActiveProjectSnapshot } from "@/features/projects/hooks/use-active-project-snapshot";
 import { useProjectIndexProfile } from "@/features/projects/hooks/use-project-index-profile";
+import {
+  ChatConfigTechnicalDetails,
+  CompactSummaryRow,
+} from "@/features/chat/components/chat-config-compact-ui";
 import { chatFailureHintForCode, normalizeChatFailureCode } from "@/features/chat/lib/chat-job-errors";
 import { cn } from "@/lib/utils";
 import type { RuntimeConfigValidationIssueDto } from "@/types/api";
@@ -108,6 +112,7 @@ export function ChatConfigurationPanelContent() {
   const presetSelectId = useId();
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
+  const [editOpen, setEditOpen] = useState(false);
   const [runtimeOpen, setRuntimeOpen] = useState(false);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
   const [advancedValidationText, setAdvancedValidationText] = useState<string | null>(null);
@@ -431,6 +436,29 @@ export function ChatConfigurationPanelContent() {
     return Object.entries(base as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
   }, [api?.runtimeState?.baseEffectiveConfig]);
 
+  const retrievalEnabled = getBooleanValue("useRetrieval");
+  const displayModelLabel = activeLlmModel.trim() || tChat("modelDefault");
+  const displayPresetLabel =
+    api?.runtimeState?.preset?.label?.trim() ||
+    api?.presets?.find((p) => p.id === runtimeSelectedPresetId)?.name ||
+    tChat("presetRecommendedDefault");
+  const documentsReadyLabel =
+    documentCounts.ready > 0
+      ? tChat("configCompactDocumentsReady", { ready: documentCounts.ready })
+      : tChat("configCompactDocumentsNone");
+  const indexStatusLabel = useMemo(() => {
+    if (api?.runtimeState?.requiresReindex) return tChat("configCompactIndexIncompatible");
+    const status = api?.runtimeState?.indexCompatibility?.compatibilityStatus;
+    if (status === "INCOMPATIBLE") return tChat("configCompactIndexIncompatible");
+    if (activeSnapQuery.data?.id) return tChat("configCompactIndexCompatible");
+    return tChat("configCompactIndexUnknown");
+  }, [
+    activeSnapQuery.data?.id,
+    api?.runtimeState?.indexCompatibility?.compatibilityStatus,
+    api?.runtimeState?.requiresReindex,
+    tChat,
+  ]);
+
   return (
     <div className="flex flex-col gap-6">
       {blockingIssues.length > 0 ? (
@@ -461,6 +489,51 @@ export function ChatConfigurationPanelContent() {
         </div>
       ) : null}
 
+      <div
+        className="space-y-3 rounded-lg border bg-background/60 p-3"
+        data-testid="chat-config-compact-summary"
+      >
+        <p className="text-sm font-medium">{tChat("configCompactTitle")}</p>
+        <div className="space-y-2">
+          <CompactSummaryRow
+            label={tChat("configCompactModel")}
+            value={<span data-testid="chat-config-summary-model">{displayModelLabel}</span>}
+          />
+          <CompactSummaryRow
+            label={tChat("configCompactPreset")}
+            value={<span data-testid="chat-config-summary-preset">{displayPresetLabel}</span>}
+          />
+          <CompactSummaryRow
+            label={tChat("configCompactDocSearch")}
+            value={
+              <span data-testid="chat-config-summary-doc-search">
+                {retrievalEnabled ? tChat("configCompactDocSearchOn") : tChat("configCompactDocSearchOff")}
+              </span>
+            }
+          />
+          <CompactSummaryRow
+            label={tChat("configCompactDocuments")}
+            value={<span data-testid="chat-config-summary-documents">{documentsReadyLabel}</span>}
+          />
+          <CompactSummaryRow
+            label={tChat("configCompactIndex")}
+            value={<span data-testid="chat-config-summary-index">{indexStatusLabel}</span>}
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            data-testid="chat-config-edit-button"
+            className={cn(buttonVariants({ variant: "default", size: "sm" }))}
+            onClick={() => setEditOpen((o) => !o)}
+          >
+            {editOpen ? tChat("configEditClose") : tChat("configEditButton")}
+          </button>
+        </div>
+      </div>
+
+      {editOpen ? (
+        <>
       <Section title="Document scope">
         <Box>
           <div className="space-y-3">
@@ -534,11 +607,184 @@ export function ChatConfigurationPanelContent() {
         </Box>
       </Section>
 
-      <Section title="Index/project capabilities">
+      <Section title="Model & preset">
         <Box>
+          <div className="space-y-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor={modelSelectId} className="text-xs">
+                {tChat("modelLabel")}
+              </Label>
+              <select
+                id={modelSelectId}
+                data-testid="chat-llm-model-select"
+                className={cn(
+                  "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
+                  api?.modelsError && "border-destructive",
+                )}
+                value={api?.llmModelChoice ?? ""}
+                onChange={(e) => api?.setLlmModelChoice(e.target.value)}
+                disabled={needsProject || needsConversation || !!api?.modelsError || patchPending}
+                aria-label={tChat("modelLabel")}
+              >
+                <option value="">{tChat("modelDefault")}</option>
+                {api?.modelsCatalog?.allowlist
+                  ?.filter((e) => e.type === "LLM")
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((m) => {
+                    const usable = m.inAllowlist && m.installedInOllama;
+                    return (
+                      <option key={m.name} value={m.name} disabled={!usable}>
+                        {m.name}
+                        {!m.installedInOllama ? ` (${tChat("modelNotInstalled")})` : ""}
+                        {!m.inAllowlist ? ` (${tChat("modelNotAllowlisted")})` : ""}
+                      </option>
+                    );
+                  })}
+              </select>
+              {api?.modelsError ? (
+                <output className="text-destructive text-xs" data-testid="chat-error-code-MODEL_UNAVAILABLE">
+                  {api.modelsErrorMessage || tChat("chatJobFailure_MODEL_UNAVAILABLE")}
+                </output>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label htmlFor={classifierSelectId} className="text-xs">
+                {tChat("classifierLabel")}
+              </Label>
+              <select
+                id={classifierSelectId}
+                data-testid="chat-classifier-select"
+                className={cn(
+                  "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
+                  classifierModelsQuery.isError && "border-destructive",
+                )}
+                value={api?.classifierModelChoice ?? ""}
+                onChange={(e) => api?.setClassifierModelChoice(e.target.value)}
+                disabled={needsProject || needsConversation || patchPending}
+                aria-label={tChat("classifierLabel")}
+              >
+                <option value="">{tChat("classifierDefault")}</option>
+                {(classifierModelsQuery.data ?? []).map((m) => (
+                  <option key={m.id} value={m.inferenceTag}>
+                    {m.name} ({m.inferenceTag})
+                  </option>
+                ))}
+              </select>
+              {classifierModelsQuery.isError ? (
+                <output className="text-destructive text-xs" data-testid="chat-error-code-CLASSIFIER_UNAVAILABLE">
+                  {tChat("classifierLoadError")} {tChat("chatJobFailure_CLASSIFIER_UNAVAILABLE")}
+                </output>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor={presetSelectId} className="text-xs">
+                  {tChat("presetLabel")}
+                </Label>
+                <div className="flex items-center gap-2">
+                  {presetKindBadge ? (
+                    <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">
+                      {presetKindBadge}
+                    </span>
+                  ) : null}
+                  {selectedExperimental ? (
+                    <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">
+                      {selectedExperimental.code}
+                    </span>
+                  ) : null}
+                  {hasCustomOverride ? (
+                    <span
+                      className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium"
+                      data-testid="chat-custom-state"
+                    >
+                      Custom
+                    </span>
+                  ) : null}
+                  {presetSupportBadge ? (
+                    <span
+                      className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium"
+                      data-testid="chat-preset-support-badge"
+                    >
+                      {presetSupportBadge}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              <select
+                id={presetSelectId}
+                data-testid="chat-preset-select"
+                className={cn(
+                  "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
+                  api?.presetsError && "border-destructive",
+                )}
+                value={selectedPresetValue}
+                onChange={(e) => api?.onPresetChange(e.target.value)}
+                disabled={needsProject || needsConversation || !!api?.presetSelectDisabled}
+                aria-label={tChat("presetLabel")}
+              >
+                <option value="">{tChat("presetRecommendedDefault")}</option>
+                {runtimeSelectedPresetId &&
+                !selectedInProduct &&
+                !selectedExperimental &&
+                api?.runtimeState?.preset?.label ? (
+                  <option value={runtimeSelectedPresetId}>{api.runtimeState.preset.label}</option>
+                ) : null}
+                <optgroup label="Product presets">
+                  {api?.presets?.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Experimental presets (P0–P14)">
+                  {experimentalUnique.map((p) => {
+                    const reason = presetIndexDisabledReason(p);
+                    return (
+                      <option
+                        key={p.productPresetId}
+                        value={p.productPresetId}
+                        disabled={Boolean(reason)}
+                        title={reason ?? undefined}
+                      >
+                        {reason && p.chatSelectable
+                          ? `${experimentalPresetOptionLabel(p)} [${reason}]`
+                          : experimentalPresetOptionLabel(p)}
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              </select>
+
+              {selectedPresetDisabledReason ? (
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
+                  <p className="font-medium text-destructive">{selectedPresetDisabledReason}</p>
+                  {api?.runtimeState?.requiresReindex ? (
+                    <p className="mt-1 text-muted-foreground">
+                      Create or reindex project with compatible profile.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              {!api?.presetsLoading && !api?.presetsError && (api?.presets?.length ?? 0) === 0 ? (
+                <output className="text-muted-foreground text-xs">{tChat("presetCatalogEmpty")}</output>
+              ) : null}
+              {api?.presetsError ? (
+                <output className="text-destructive text-xs">{tChat("presetsLoadError")}</output>
+              ) : null}
+            </div>
+          </div>
+        </Box>
+      </Section>
+        </>
+      ) : null}
+
+      <ChatConfigTechnicalDetails summary={tChat("configTechnicalDetails")} testId="chat-config-technical-details">
           <div className="space-y-2">
             <MenuHint>
-              These capabilities are fixed by the project index profile and require reindexing to change.
+              Index profile values require reindexing to change.
             </MenuHint>
 
             {activeSnapQuery.data ? (
@@ -646,228 +892,8 @@ export function ChatConfigurationPanelContent() {
                 );
               })}
             </div>
-          </div>
-        </Box>
-      </Section>
 
-      <Section title="Model & preset">
-        <Box>
-          <div className="space-y-3">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor={modelSelectId} className="text-xs">
-                {tChat("modelLabel")}
-              </Label>
-              <select
-                id={modelSelectId}
-                data-testid="chat-llm-model-select"
-                className={cn(
-                  "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
-                  api?.modelsError && "border-destructive",
-                )}
-                value={api?.llmModelChoice ?? ""}
-                onChange={(e) => api?.setLlmModelChoice(e.target.value)}
-                disabled={needsProject || needsConversation || !!api?.modelsError || patchPending}
-                aria-label={tChat("modelLabel")}
-              >
-                <option value="">{tChat("modelDefault")}</option>
-                {api?.modelsCatalog?.allowlist
-                  ?.filter((e) => e.type === "LLM")
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .map((m) => {
-                    const usable = m.inAllowlist && m.installedInOllama;
-                    return (
-                      <option key={m.name} value={m.name} disabled={!usable}>
-                        {m.name}
-                        {!m.installedInOllama ? ` (${tChat("modelNotInstalled")})` : ""}
-                        {!m.inAllowlist ? ` (${tChat("modelNotAllowlisted")})` : ""}
-                      </option>
-                    );
-                  })}
-              </select>
-              {api?.modelsError ? (
-                <output className="text-destructive text-xs" data-testid="chat-error-code-MODEL_UNAVAILABLE">
-                  {api.modelsErrorMessage || tChat("chatJobFailure_MODEL_UNAVAILABLE")}
-                </output>
-              ) : null}
-              {activeLlmModel ? (
-                <p className="text-muted-foreground text-[11px]" data-testid="chat-llm-active-selection">
-                  {tChat("modelActiveSelection", { model: activeLlmModel })}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <Label htmlFor={classifierSelectId} className="text-xs">
-                {tChat("classifierLabel")}
-              </Label>
-              <select
-                id={classifierSelectId}
-                data-testid="chat-classifier-select"
-                className={cn(
-                  "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
-                  classifierModelsQuery.isError && "border-destructive",
-                )}
-                value={api?.classifierModelChoice ?? ""}
-                onChange={(e) => api?.setClassifierModelChoice(e.target.value)}
-                disabled={needsProject || needsConversation || patchPending}
-                aria-label={tChat("classifierLabel")}
-              >
-                <option value="">{tChat("classifierDefault")}</option>
-                {(classifierModelsQuery.data ?? []).map((m) => (
-                  <option key={m.id} value={m.inferenceTag}>
-                    {m.name} ({m.inferenceTag})
-                  </option>
-                ))}
-              </select>
-              {classifierModelsQuery.isError ? (
-                <output className="text-destructive text-xs" data-testid="chat-error-code-CLASSIFIER_UNAVAILABLE">
-                  {tChat("classifierLoadError")} {tChat("chatJobFailure_CLASSIFIER_UNAVAILABLE")}
-                </output>
-              ) : null}
-              {activeClassifierModel ? (
-                <p className="text-muted-foreground text-[11px]" data-testid="chat-classifier-active-selection">
-                  {tChat("classifierActiveSelection", { model: activeClassifierModel })}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor={presetSelectId} className="text-xs">
-                  {tChat("presetLabel")}
-                </Label>
-                <div className="flex items-center gap-2">
-                  {presetKindBadge ? (
-                    <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">
-                      {presetKindBadge}
-                    </span>
-                  ) : null}
-                  {selectedExperimental ? (
-                    <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">
-                      {selectedExperimental.code}
-                    </span>
-                  ) : null}
-                  {hasCustomOverride ? (
-                    <span
-                      className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium"
-                      data-testid="chat-custom-state"
-                    >
-                      Custom
-                    </span>
-                  ) : null}
-                  {presetSupportBadge ? (
-                    <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">
-                      {presetSupportBadge}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-
-              <select
-                id={presetSelectId}
-                data-testid="chat-preset-select"
-                className={cn(
-                  "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
-                  api?.presetsError && "border-destructive",
-                )}
-                value={selectedPresetValue}
-                onChange={(e) => api?.onPresetChange(e.target.value)}
-                disabled={needsProject || needsConversation || !!api?.presetSelectDisabled}
-                aria-label={tChat("presetLabel")}
-              >
-                <option value="">{tChat("presetRecommendedDefault")}</option>
-
-                {/* Defensive: when runtime-state selectedPresetId is not in loaded catalog yet. */}
-                {runtimeSelectedPresetId &&
-                !selectedInProduct &&
-                !selectedExperimental &&
-                api?.runtimeState?.preset?.label ? (
-                  <option value={runtimeSelectedPresetId}>{api.runtimeState.preset.label}</option>
-                ) : null}
-
-                <optgroup label="Product presets">
-                  {api?.presets?.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Experimental presets (P0–P14)">
-                  {experimentalUnique.map((p) => {
-                    const reason = presetIndexDisabledReason(p);
-                    return (
-                      <option
-                        key={p.productPresetId}
-                        value={p.productPresetId}
-                        disabled={Boolean(reason)}
-                        title={reason ?? undefined}
-                      >
-                        {reason && p.chatSelectable
-                          ? `${experimentalPresetOptionLabel(p)} [${reason}]`
-                          : experimentalPresetOptionLabel(p)}
-                      </option>
-                    );
-                  })}
-                </optgroup>
-              </select>
-
-              {selectedPresetDisabledReason ? (
-                <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
-                  <p className="font-medium text-destructive">{selectedPresetDisabledReason}</p>
-                  {api?.runtimeState?.requiresReindex ? (
-                    <p className="mt-1 text-muted-foreground">
-                      Create or reindex project with compatible profile.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {!api?.presetsLoading && !api?.presetsError && (api?.presets?.length ?? 0) === 0 ? (
-                <output className="text-muted-foreground text-xs">
-                  {tChat("presetCatalogEmpty")}
-                </output>
-              ) : null}
-              {api?.presetsError ? (
-                <output className="text-destructive text-xs">
-                  {tChat("presetsLoadError")}
-                </output>
-              ) : null}
-            </div>
-          </div>
-        </Box>
-      </Section>
-
-      <Section title="Runtime configuration">
-        <Box>
-          <div className="space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <button
-                  type="button"
-                  data-testid="chat-config-runtime-collapsible"
-                  className="hover:bg-muted inline-flex w-full items-center justify-between gap-3 rounded-md px-2 py-1 text-left"
-                  aria-expanded={runtimeOpen}
-                  onClick={() => setRuntimeOpen((p) => !p)}
-                >
-                  <span className="text-sm font-medium">Advanced configuration</span>
-                  <span className="text-muted-foreground text-xs">{runtimeOpen ? "Hide" : "Show"}</span>
-                </button>
-                <p className="text-muted-foreground text-xs">
-                  Hot-swappable overrides for this conversation. Overrides are marked Custom.
-                </p>
-              </div>
-              <button
-                type="button"
-                data-testid="chat-config-runtime-refresh-effective"
-                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-                disabled={needsProject || needsConversation || effectiveLoading}
-                onClick={() => api?.refreshRuntimeState()}
-              >
-                {effectiveLoading ? "Loading..." : "Refresh"}
-              </button>
-            </div>
-
-            <div className="rounded-lg border bg-background/40 p-3">
+            <div className="rounded-lg border bg-background/40 p-3" data-testid="chat-config-effective-block">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-medium">{tChat("runtimeEffectiveTitle")}</p>
                 <button
@@ -880,33 +906,26 @@ export function ChatConfigurationPanelContent() {
                   {tChat("runtimeEffectiveExport")}
                 </button>
               </div>
-              <p className="text-muted-foreground mt-1 text-xs">{tChat("runtimeEffectiveHint")}</p>
               {effectiveError ? (
                 <p className="text-destructive mt-2 text-xs" role="alert">
                   {effectiveError}
                 </p>
               ) : null}
-
               {api?.runtimeState ? (
-                <div className="mt-3 space-y-2 rounded-md border bg-background/50 p-2 text-[11px]">
+                <div className="mt-2 space-y-2 text-[11px]">
                   <p className="text-muted-foreground font-medium uppercase tracking-wide">{tChat("runtimeLayersTitle")}</p>
-                  <div>
-                    <span className="text-muted-foreground">{tChat("runtimeBaseLabel")}</span>
-                    <p className="text-muted-foreground mt-0.5 leading-snug">{tChat("runtimeBaseHint")}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">{tChat("runtimeCustomLabel")}</span>
-                    <p className="mt-0.5 font-mono text-xs">
+                  <p className="text-muted-foreground">
+                    {tChat("runtimeCustomLabel")}{" "}
+                    <span className="font-mono">
                       {api.runtimeState.manualOverrideKeys?.length
                         ? api.runtimeState.manualOverrideKeys.join(", ")
                         : tChat("runtimeCustomEmpty")}
-                    </p>
-                  </div>
+                    </span>
+                  </p>
                 </div>
               ) : null}
-
               {api?.runtimeState?.baseEffectiveConfig && baseEffectiveEntriesSorted.length > 0 ? (
-                <details className="mt-3 rounded-md border bg-background/30 p-2 text-xs">
+                <details className="mt-2 rounded-md border bg-background/30 p-2 text-xs">
                   <summary className="cursor-pointer font-medium">{tChat("runtimeBaseExpand")}</summary>
                   <div className="mt-2 grid max-h-48 grid-cols-1 gap-1 overflow-y-auto text-[11px]">
                     {baseEffectiveEntriesSorted.map(([k, v]) => (
@@ -920,9 +939,8 @@ export function ChatConfigurationPanelContent() {
                   </div>
                 </details>
               ) : null}
-
               {effectiveConfig ? (
-                <div className="mt-2 grid max-h-64 grid-cols-1 gap-1 overflow-y-auto text-xs">
+                <div className="mt-2 grid max-h-64 grid-cols-1 gap-1 overflow-y-auto text-xs" data-testid="chat-config-effective-keys">
                   <output className="text-muted-foreground mb-1 block text-[11px]">
                     {tChat("runtimeEffectiveKeyCount", { count: effectiveEntriesSorted.length })}
                   </output>
@@ -943,6 +961,46 @@ export function ChatConfigurationPanelContent() {
               ) : (
                 <output className="text-muted-foreground mt-2 block text-xs">Not loaded.</output>
               )}
+              {effectiveConfig && typeof effectiveConfig === "object" ? (
+                <pre
+                  className="bg-muted/40 mt-2 max-h-40 overflow-auto rounded-md border p-2 text-[10px]"
+                  data-testid="chat-config-effective-json"
+                >
+                  {JSON.stringify(effectiveConfig, null, 2)}
+                </pre>
+              ) : null}
+            </div>
+          </div>
+      </ChatConfigTechnicalDetails>
+
+      <Section title={tChat("configAdvancedSection")}>
+        <Box>
+          <div className="space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <button
+                  type="button"
+                  data-testid="chat-config-runtime-collapsible"
+                  className="hover:bg-muted inline-flex w-full items-center justify-between gap-3 rounded-md px-2 py-1 text-left"
+                  aria-expanded={runtimeOpen}
+                  onClick={() => setRuntimeOpen((p) => !p)}
+                >
+                  <span className="text-sm font-medium">{tChat("configAdvancedSection")}</span>
+                  <span className="text-muted-foreground text-xs">{runtimeOpen ? "Hide" : "Show"}</span>
+                </button>
+                {!runtimeOpen ? (
+                  <p className="text-muted-foreground text-xs">{tChat("runtimeEffectiveCollapsedHint")}</p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                data-testid="chat-config-runtime-refresh-effective"
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                disabled={needsProject || needsConversation || effectiveLoading}
+                onClick={() => api?.refreshRuntimeState()}
+              >
+                {effectiveLoading ? "Loading..." : "Refresh"}
+              </button>
             </div>
 
             {runtimeOpen ? (

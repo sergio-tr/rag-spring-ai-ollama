@@ -810,6 +810,15 @@ async function openChatToolbarOverflow(user: ReturnType<typeof userEvent.setup>)
   await screen.findByTestId("chat-configuration-side-panel");
 }
 
+/** Opens the desktop panel and expands edit controls (compact summary is collapsed by default). */
+async function openChatConfigurationEdit(user: ReturnType<typeof userEvent.setup>) {
+  await openChatToolbarOverflow(user);
+  const panel = await screen.findByTestId("chat-configuration-side-panel");
+  if (!within(panel).queryByTestId("chat-llm-model-select")) {
+    await user.click(within(panel).getByTestId("chat-config-edit-button"));
+  }
+}
+
 function renderChat() {
   const qc = new QueryClient({
     defaultOptions: {
@@ -1053,7 +1062,7 @@ describe("ChatPage", () => {
 
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     const panel = await screen.findByTestId("chat-configuration-side-panel");
     const modelSelect = within(panel).getByRole("combobox", { name: /^LLM model$/i });
 
@@ -1077,7 +1086,7 @@ describe("ChatPage", () => {
 
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
 
     const presetSelect = screen.getByRole("combobox", { name: /^Preset$/i }) as HTMLSelectElement;
     expect(presetSelect.value).toBe("cafe0001-0001-4001-8001-000000000014");
@@ -1090,7 +1099,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
 
     const presetSelect = screen.getByRole("combobox", { name: /^Preset$/i }) as HTMLSelectElement;
     await user.selectOptions(presetSelect, "cafe0001-0001-4001-8001-000000000014");
@@ -1108,7 +1117,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
 
     const presetSelect = screen.getByRole("combobox", { name: /^Preset$/i }) as HTMLSelectElement;
     const optionTextByCode = new Map(
@@ -1130,7 +1139,7 @@ describe("ChatPage", () => {
     mockConvRows[0].effectivePresetId = "cafe0001-0001-4001-8001-000000000018";
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
 
     await user.click(screen.getByTestId("chat-config-runtime-collapsible"));
     await user.click(screen.getByTestId("chat-config-runtime-refresh-effective"));
@@ -1145,7 +1154,7 @@ describe("ChatPage", () => {
     mockConvRows[0].effectivePresetId = "cafe0001-0001-4001-8001-000000000024";
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
 
     await user.click(screen.getByTestId("chat-config-runtime-collapsible"));
     await user.click(screen.getByTestId("chat-config-runtime-refresh-effective"));
@@ -1160,7 +1169,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
 
     // Open advanced config, refresh effective config and flip a boolean (auto-saves to runtimeOverride).
     await user.click(screen.getByTestId("chat-config-runtime-collapsible"));
@@ -1389,7 +1398,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     // Ignore unrelated initial effects (draft load, etc.).
     vi.mocked(apiFetch).mockClear();
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
@@ -1408,7 +1417,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     expect(presetSelect).toHaveValue("pr1");
     expect(screen.getByRole("option", { name: /^P$/ })).toBeInTheDocument();
@@ -1420,7 +1429,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     expect(presetSelect).toBeDisabled();
     expect(screen.getAllByRole("status").some((n) => /No presets are available/i.test(n.textContent ?? ""))).toBe(true);
@@ -1442,7 +1451,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     await waitFor(() => expect(presetSelect).toHaveValue(""));
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
@@ -1452,7 +1461,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     const limitCb = await screen.findByRole("checkbox", { name: /Limit retrieval to selected documents/i });
     vi.mocked(apiFetch).mockClear();
     await user.click(limitCb);
@@ -1468,11 +1477,12 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     await user.selectOptions(presetSelect, "pr1");
     expect(screen.getByRole("combobox", { name: /^LLM model$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Close$/i })).toBeInTheDocument();
+    const panel = screen.getByTestId("chat-configuration-side-panel");
+    expect(within(panel).getByRole("heading", { name: /Chat configuration/i })).toBeInTheDocument();
   });
 
   it("toggles the persistent right side panel with ⋮ on desktop", async () => {
@@ -1506,7 +1516,7 @@ describe("ChatPage", () => {
 
     await user.click(screen.getByTestId("chat-config-trigger"));
     expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
-    // Drawer content should render headings when open.
+    await user.click(screen.getByTestId("chat-config-edit-button"));
     expect(await screen.findByRole("heading", { level: 3, name: "Document scope" })).toBeInTheDocument();
   });
 
@@ -1514,11 +1524,11 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
 
     const panel = screen.getByTestId("chat-configuration-side-panel");
     expect(panel).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Close$/i })).toBeInTheDocument();
+    expect(within(panel).getByRole("heading", { name: /Chat configuration/i })).toBeInTheDocument();
 
     expect(screen.queryByText(/Unavailable capabilities/i)).not.toBeInTheDocument();
 
@@ -1564,7 +1574,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     const uploadInput = await screen.findByLabelText(/Upload files to project/i);
     const file = new File(["x"], "from-settings.doc", { type: "application/msword" });
     await user.upload(uploadInput, file);
@@ -1586,7 +1596,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText(/Documents for this chat/i)).toBeInTheDocument();
@@ -1597,7 +1607,7 @@ describe("ChatPage", () => {
     vi.mocked(apiFetch).mockClear();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
     const sheetCb = await screen.findByRole("checkbox", { name: /Include second\.pdf/i });
     await user.click(sheetCb);
@@ -1612,11 +1622,11 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     await user.click(screen.getByRole("checkbox", { name: /Limit retrieval to selected documents/i }));
     await waitFor(() => expect(patchConversationApiCalls().length).toBeGreaterThanOrEqual(1));
     vi.mocked(apiFetch).mockClear();
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
     const dlg = await screen.findByRole("dialog");
     const input = await within(dlg).findByLabelText(/Upload files to project/i);
@@ -1637,7 +1647,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
     const dlg = await screen.findByRole("dialog");
     const input = await within(dlg).findByLabelText(/Upload files to project/i);
@@ -1649,11 +1659,11 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     await user.click(screen.getByRole("checkbox", { name: /Limit retrieval to selected documents/i }));
     await waitFor(() => expect(patchConversationApiCalls().length).toBeGreaterThanOrEqual(1));
     vi.mocked(apiFetch).mockClear();
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
     const togglePdf = await screen.findByRole("checkbox", { name: /Include f\.pdf/i });
     await user.click(togglePdf);
@@ -1684,7 +1694,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     const cb = await screen.findByRole("checkbox", { name: /Limit retrieval to selected documents/i });
     expect(cb).toBeDisabled();
     await waitFor(() =>
@@ -1709,10 +1719,10 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     await user.click(screen.getByRole("checkbox", { name: /Limit retrieval to selected documents/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/documentFilter rejected/i);
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     expect(screen.getByRole("checkbox", { name: /Limit retrieval to selected documents/i })).not.toBeChecked();
   });
 
@@ -1720,7 +1730,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     const { qc } = renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
     const limitCb = await screen.findByRole("checkbox", { name: /Limit retrieval to selected documents/i });
     expect(limitCb).not.toBeChecked();
     const patchCountBefore = patchConversationApiCalls().length;

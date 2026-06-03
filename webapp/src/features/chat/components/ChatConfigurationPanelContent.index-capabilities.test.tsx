@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChatConfigurationPanelContent } from "./ChatConfigurationPanelContent";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
@@ -33,6 +34,23 @@ function renderSubject() {
       </IntlTestProvider>
     </QueryClientProvider>,
   );
+}
+
+async function openTechnicalDetails() {
+  const user = userEvent.setup();
+  const details = screen.getByTestId("chat-config-technical-details");
+  if (!details.hasAttribute("open")) {
+    await user.click(within(details).getByText(/Technical details/i));
+  }
+  return { user, details };
+}
+
+async function openEditPanel() {
+  const user = userEvent.setup();
+  if (!screen.queryByTestId("chat-preset-select")) {
+    await user.click(screen.getByTestId("chat-config-edit-button"));
+  }
+  return user;
 }
 
 function indexBoundCap(key: string, label: string, displayOrder: number) {
@@ -143,25 +161,45 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     });
   });
 
-  it("shows a hint when there is no active snapshot yet", () => {
-    renderSubject();
-    expect(screen.getByText(/No active index snapshot yet/i)).toBeInTheDocument();
-  });
-
-  it("renders active snapshot details including profile hash when available", () => {
+  it("shows compact summary without exposing profile hash by default", () => {
     hooksMock.useActiveProjectSnapshot.mockReturnValue({
       data: { id: "snap-1", status: "ACTIVE", indexProfileHash: "h1" },
       isLoading: false,
       isError: false,
     });
     renderSubject();
-    expect(screen.getByText(/Active snapshot/i)).toBeInTheDocument();
-    expect(screen.getByText("snap-1")).toBeInTheDocument();
-    expect(screen.getByText("ACTIVE")).toBeInTheDocument();
-    expect(screen.getByText("h1")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-config-compact-summary")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-config-summary-index")).toBeInTheDocument();
+    const technical = screen.getByTestId("chat-config-technical-details");
+    expect(technical).not.toHaveAttribute("open");
+    expect(within(technical).getByText("h1")).not.toBeVisible();
+    const effectiveKeys = screen.queryByTestId("chat-config-effective-keys");
+    if (effectiveKeys) {
+      expect(effectiveKeys).not.toBeVisible();
+    }
   });
 
-  it("renders preset requirements + compatibility and shows reindex-required callout", () => {
+  it("shows a hint when there is no active snapshot yet inside technical details", async () => {
+    renderSubject();
+    const { details } = await openTechnicalDetails();
+    expect(within(details).getByText(/No active index snapshot yet/i)).toBeInTheDocument();
+  });
+
+  it("renders active snapshot details including profile hash when technical details are open", async () => {
+    hooksMock.useActiveProjectSnapshot.mockReturnValue({
+      data: { id: "snap-1", status: "ACTIVE", indexProfileHash: "h1" },
+      isLoading: false,
+      isError: false,
+    });
+    renderSubject();
+    const { details } = await openTechnicalDetails();
+    expect(within(details).getByText(/Active snapshot/i)).toBeInTheDocument();
+    expect(within(details).getByText("snap-1")).toBeInTheDocument();
+    expect(within(details).getByText("ACTIVE")).toBeInTheDocument();
+    expect(within(details).getByText("h1")).toBeInTheDocument();
+  });
+
+  it("renders preset requirements + compatibility and shows reindex-required callout", async () => {
     useChatToolbarStore.setState((s) => ({
       api: {
         ...s.api!,
@@ -185,14 +223,14 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     }));
 
     renderSubject();
-    expect(screen.getByText(/Preset index requirements/i)).toBeInTheDocument();
-    expect(screen.getByText("HYBRID")).toBeInTheDocument();
-    expect(screen.getByText("true")).toBeInTheDocument();
-    expect(screen.getByText("INCOMPATIBLE")).toBeInTheDocument();
-    expect(screen.getByText(/Reindex required for this preset/i)).toBeInTheDocument();
+    const { details } = await openTechnicalDetails();
+    expect(within(details).getByText(/Preset index requirements/i)).toBeInTheDocument();
+    expect(within(details).getByText("HYBRID")).toBeInTheDocument();
+    expect(within(details).getByText("INCOMPATIBLE")).toBeInTheDocument();
+    expect(within(details).getByText(/Reindex required for this preset/i)).toBeInTheDocument();
   });
 
-  it("falls back to effectiveConfig values when project index profile is not loaded", () => {
+  it("falls back to effectiveConfig values when project index profile is not loaded", async () => {
     hooksMock.useProjectIndexProfile.mockReturnValue({ data: null, isLoading: false, isError: false });
     useChatToolbarStore.setState((s) => ({
       api: {
@@ -205,15 +243,15 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     }));
 
     renderSubject();
-    const indexSection = screen.getByRole("region", { name: "Index/project capabilities" });
-    expect(within(indexSection).getByText(/Materialization strategy/i)).toBeInTheDocument();
-    expect(within(indexSection).getByText("FULL_TEXT")).toBeInTheDocument();
-    expect(within(indexSection).getByText(/Metadata index/i)).toBeInTheDocument();
-    expect(within(indexSection).getByText("true")).toBeInTheDocument();
+    const { details } = await openTechnicalDetails();
+    expect(within(details).getByText(/Materialization strategy/i)).toBeInTheDocument();
+    expect(within(details).getAllByText("FULL_TEXT").length).toBeGreaterThan(0);
+    expect(within(details).getByText(/Metadata index/i)).toBeInTheDocument();
   });
 
   it("renders preset kind badges for PRODUCT / EXPERIMENTAL / MISSING", async () => {
     renderSubject();
+    await openEditPanel();
     useChatToolbarStore.setState((s) => ({
       api: {
         ...s.api!,
@@ -248,7 +286,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     expect(await screen.findByText("Missing")).toBeInTheDocument();
   });
 
-  it("renders support badge when runtime preset is not chat-selectable", () => {
+  it("renders support badge when runtime preset is not chat-selectable", async () => {
     useChatToolbarStore.setState((s) => ({
       api: {
         ...s.api!,
@@ -265,10 +303,11 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
       },
     }));
     renderSubject();
-    expect(screen.getByText("NOT_SUPPORTED")).toBeInTheDocument();
+    await openEditPanel();
+    expect(screen.getByTestId("chat-preset-support-badge")).toHaveTextContent("NOT_SUPPORTED");
   });
 
-  it("shows custom badge when runtime state is marked custom", () => {
+  it("shows custom badge when runtime state is marked custom", async () => {
     useChatToolbarStore.setState((s) => ({
       api: {
         ...s.api!,
@@ -276,10 +315,11 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
       },
     }));
     renderSubject();
+    await openEditPanel();
     expect(screen.getByText("Custom")).toBeInTheDocument();
   });
 
-  it("shows synthetic selected preset option when selectedPresetId is not in catalogs", () => {
+  it("shows synthetic selected preset option when selectedPresetId is not in catalogs", async () => {
     useChatToolbarStore.setState((s) => ({
       api: {
         ...s.api!,
@@ -291,13 +331,14 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
       },
     }));
     renderSubject();
+    await openEditPanel();
     const sel = screen.getByRole("combobox", { name: /preset/i }) as HTMLSelectElement;
     expect(sel.value).toBe("preset-missing-id");
     // The synthetic option should be present so UI doesn't appear blank.
     expect(screen.getByRole("option", { name: "Prior Preset Label" })).toBeInTheDocument();
   });
 
-  it("renders experimental preset option labels for multi-turn and not selectable presets", () => {
+  it("renders experimental preset option labels for multi-turn and not selectable presets", async () => {
     useChatToolbarStore.setState((s) => ({
       api: {
         ...s.api!,
@@ -378,6 +419,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
       },
     }));
     renderSubject();
+    await openEditPanel();
     expect(screen.getByText(/P13 — Multi turn \[REQUIRES_MULTI_TURN\]/)).toBeInTheDocument();
     expect(screen.getByText(/P0 — Hidden \[NOT_SUPPORTED: not allowed\]/)).toBeInTheDocument();
     // Supported selectable presets should render the base label without brackets.
@@ -386,7 +428,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     expect(screen.getByText(/P3 — Not supported but selectable \[NOT_SUPPORTED: incompatible index\]/)).toBeInTheDocument();
   });
 
-  it("disables experimental preset when active index profile is incompatible", () => {
+  it("disables experimental preset when active index profile is incompatible", async () => {
     useChatToolbarStore.setState((s) => ({
       api: {
         ...s.api!,
@@ -437,12 +479,13 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     }));
 
     renderSubject();
+    await openEditPanel();
     const option = screen.getByRole("option", { name: /P7 — Hybrid preset/i }) as HTMLOptionElement;
     expect(option.disabled).toBe(true);
     expect(option.textContent).toMatch(/Create or reindex the project with a compatible index profile/i);
   });
 
-  it("shows blocking issue banner and selected preset reindex CTA from runtime-state", () => {
+  it("shows blocking issue banner and selected preset reindex CTA from runtime-state", async () => {
     useChatToolbarStore.setState((s) => ({
       api: {
         ...s.api!,
@@ -475,14 +518,18 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
 
     renderSubject();
     expect(screen.getByTestId("chat-runtime-blocking-banner")).toHaveTextContent("This preset requires a HYBRID index.");
+    await openEditPanel();
+    expect(screen.getByTestId("chat-preset-select")).toBeInTheDocument();
     expect(screen.getByText(/Create or reindex project with compatible profile/i)).toBeInTheDocument();
   });
 
-  it("shows preset catalog empty message when presets are loaded and empty", () => {
+  it("shows preset catalog empty message when presets are loaded and empty", async () => {
     useChatToolbarStore.setState((s) => ({
       api: { ...s.api!, presetsLoading: false, presetsError: false, presets: [] },
     }));
     renderSubject();
+    await openEditPanel();
+    expect(screen.getByTestId("chat-preset-select")).toBeInTheDocument();
     expect(screen.getByText(/No presets are available/i)).toBeInTheDocument();
   });
 });
