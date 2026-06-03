@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Vitest/coverage output (local runs; absent on fresh CI checkout until tests run).
     "coverage/**",
+    // Playwright HTML report (local runs only; not present on fresh CI checkout).
+    "playwright-report/**",
+    "test-results/**",
     // Typedoc output committed for docs hosting; not hand-maintained TS/TSX.
     "docs/api/**",
   ]),
