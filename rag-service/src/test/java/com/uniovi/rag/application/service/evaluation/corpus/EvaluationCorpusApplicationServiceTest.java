@@ -20,7 +20,10 @@ import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusAttachFromP
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusCreateRequest;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusSummaryDto;
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -38,7 +41,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -139,9 +144,11 @@ class EvaluationCorpusApplicationServiceTest {
         MultipartFile okFile = mock(MultipartFile.class);
         when(okFile.isEmpty()).thenReturn(false);
         when(okFile.getOriginalFilename()).thenReturn("ok.pdf");
+        when(okFile.getBytes()).thenReturn("ok-bytes".getBytes());
         MultipartFile badFile = mock(MultipartFile.class);
         when(badFile.isEmpty()).thenReturn(false);
         when(badFile.getOriginalFilename()).thenReturn("bad.pdf");
+        when(badFile.getBytes()).thenReturn("bad-bytes".getBytes());
 
         ProjectDocumentDto uploaded =
                 new ProjectDocumentDto(
@@ -192,6 +199,7 @@ class EvaluationCorpusApplicationServiceTest {
         MultipartFile file = mock(MultipartFile.class);
         when(file.isEmpty()).thenReturn(false);
         when(file.getOriginalFilename()).thenReturn("bad.pdf");
+        when(file.getBytes()).thenReturn("bad-bytes".getBytes());
         when(knowledgeIngestionService.ingestProjectSharedDocumentSynchronouslyFromBytes(
                         eq(userId), eq(indexProjectId), any(), eq("bad.pdf"), any()))
                 .thenThrow(new IllegalStateException("ingest failed"));
@@ -275,5 +283,108 @@ class EvaluationCorpusApplicationServiceTest {
 
         assertThat(summary.documentCount()).isEqualTo(1);
         verify(evaluationCorpusDocumentRepository).save(any());
+    }
+
+    @Test
+    void uploadDocuments_reportsDuplicateWhenChecksumMatches() throws Exception {
+        UUID corpusId = UUID.randomUUID();
+        UUID indexProjectId = UUID.randomUUID();
+        UUID existingDocId = UUID.randomUUID();
+        EvaluationCorpusEntity corpus = mock(EvaluationCorpusEntity.class);
+        ProjectEntity indexProject = mock(ProjectEntity.class);
+        when(indexProject.getId()).thenReturn(indexProjectId);
+        when(corpus.getId()).thenReturn(corpusId);
+        when(corpus.getIndexProject()).thenReturn(indexProject);
+        when(corpus.getSourceType()).thenReturn(EvaluationCorpusSourceType.UPLOADED);
+        when(evaluationCorpusRepository.findByIdAndOwner_Id(corpusId, userId)).thenReturn(Optional.of(corpus));
+        when(evaluationCorpusRepository.save(corpus)).thenReturn(corpus);
+
+        byte[] payload = "same-content".getBytes();
+        KnowledgeDocumentEntity existing = mock(KnowledgeDocumentEntity.class);
+        when(existing.getId()).thenReturn(existingDocId);
+        when(existing.getFileName()).thenReturn("acta.txt");
+        when(existing.getContentChecksum()).thenReturn(sha256(payload));
+        when(evaluationCorpusDocumentRepository.findDocumentsByCorpusId(corpusId)).thenReturn(List.of(existing));
+
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getOriginalFilename()).thenReturn("acta-copy.txt");
+        when(file.getBytes()).thenReturn(payload);
+
+        var response = service.uploadDocuments(userId, corpusId, List.of(file));
+
+        assertThat(response.uploads()).hasSize(1);
+        assertThat(response.uploads().get(0).status())
+                .isEqualTo(EvaluationCorpusApplicationService.UPLOAD_STATUS_DUPLICATE);
+        assertThat(response.uploads().get(0).documentId()).isEqualTo(existingDocId);
+        verify(knowledgeIngestionService, never())
+                .ingestProjectSharedDocumentSynchronouslyFromBytes(any(), any(), any(), anyString(), any());
+    }
+
+    @Test
+    void removeAllDocuments_deletesEveryLinkedDocument() {
+        UUID corpusId = UUID.randomUUID();
+        UUID indexProjectId = UUID.randomUUID();
+        UUID docId = UUID.randomUUID();
+        EvaluationCorpusEntity corpus = mock(EvaluationCorpusEntity.class);
+        ProjectEntity indexProject = mock(ProjectEntity.class);
+        when(indexProject.getId()).thenReturn(indexProjectId);
+        when(corpus.getId()).thenReturn(corpusId);
+        when(corpus.getIndexProject()).thenReturn(indexProject);
+        when(corpus.getSourceType()).thenReturn(EvaluationCorpusSourceType.UPLOADED);
+        when(evaluationCorpusRepository.findByIdAndOwner_Id(corpusId, userId)).thenReturn(Optional.of(corpus));
+        when(evaluationCorpusRepository.save(corpus)).thenReturn(corpus);
+
+        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class);
+        when(doc.getId()).thenReturn(docId);
+        when(evaluationCorpusDocumentRepository.findDocumentsByCorpusId(corpusId))
+                .thenReturn(List.of(doc))
+                .thenReturn(List.of());
+
+        KnowledgeDocumentEntity stored = mock(KnowledgeDocumentEntity.class);
+        when(knowledgeDocumentRepository.findByIdAndProject_Id(docId, indexProjectId))
+                .thenReturn(Optional.of(stored));
+
+        var summary = service.removeAllDocuments(userId, corpusId);
+
+        assertThat(summary.documentCount()).isZero();
+        verify(evaluationCorpusDocumentRepository).deleteById(any());
+        verify(knowledgeIngestionService).deleteVectorChunksForDocument(docId);
+        verify(knowledgeDocumentRepository).delete(stored);
+    }
+
+    @Test
+    void retryDocumentIngestion_invokesIngestionRetryForFailedDocument() {
+        UUID corpusId = UUID.randomUUID();
+        UUID indexProjectId = UUID.randomUUID();
+        UUID docId = UUID.randomUUID();
+        EvaluationCorpusEntity corpus = mock(EvaluationCorpusEntity.class);
+        ProjectEntity indexProject = mock(ProjectEntity.class);
+        when(indexProject.getId()).thenReturn(indexProjectId);
+        when(corpus.getId()).thenReturn(corpusId);
+        when(corpus.getIndexProject()).thenReturn(indexProject);
+        when(corpus.getSourceType()).thenReturn(EvaluationCorpusSourceType.UPLOADED);
+        when(evaluationCorpusRepository.findByIdAndOwner_Id(corpusId, userId)).thenReturn(Optional.of(corpus));
+        when(evaluationCorpusRepository.save(corpus)).thenReturn(corpus);
+        when(evaluationCorpusDocumentRepository.existsByCorpusIdAndDocumentId(corpusId, docId)).thenReturn(true);
+
+        KnowledgeDocumentEntity row = mock(KnowledgeDocumentEntity.class);
+        when(row.getStatus()).thenReturn(ProjectDocumentStatus.ERROR);
+        when(row.getStorageUri()).thenReturn("storage://doc");
+        when(knowledgeDocumentRepository.findByIdAndProject_Id(docId, indexProjectId)).thenReturn(Optional.of(row));
+        when(evaluationCorpusDocumentRepository.findDocumentsByCorpusId(corpusId)).thenReturn(List.of(row));
+
+        service.retryDocumentIngestion(userId, corpusId, docId);
+
+        verify(knowledgeIngestionService).retryIngestFromStoredBinarySynchronously(userId, indexProjectId, docId);
+    }
+
+    private static String sha256(byte[] data) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(md.digest(data));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

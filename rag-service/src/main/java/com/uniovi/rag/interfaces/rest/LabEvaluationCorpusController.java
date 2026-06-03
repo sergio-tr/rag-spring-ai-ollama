@@ -14,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -75,6 +76,29 @@ public class LabEvaluationCorpusController {
             @RequestParam(value = "file", required = false) MultipartFile singleFile)
             throws IOException {
         return uploadDocuments(principal, corpusId, files, singleFile);
+    }
+
+    @DeleteMapping("/{corpusId}/documents/{documentId}")
+    public EvaluationCorpusSummaryDto removeDocument(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable UUID corpusId,
+            @PathVariable UUID documentId) {
+        return evaluationCorpusApplicationService.removeDocument(requireUserId(principal), corpusId, documentId);
+    }
+
+    @DeleteMapping("/{corpusId}/documents")
+    public EvaluationCorpusSummaryDto removeAllDocuments(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID corpusId) {
+        return evaluationCorpusApplicationService.removeAllDocuments(requireUserId(principal), corpusId);
+    }
+
+    @PostMapping("/{corpusId}/documents/{documentId}/retry-ingest")
+    public EvaluationCorpusSummaryDto retryDocumentIngestion(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable UUID corpusId,
+            @PathVariable UUID documentId) {
+        return evaluationCorpusApplicationService.retryDocumentIngestion(
+                requireUserId(principal), corpusId, documentId);
     }
 
     @PostMapping("/{corpusId}/documents/from-project")

@@ -4,6 +4,7 @@ import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -107,6 +108,28 @@ class LabEvaluationCorpusControllerWebMvcTest {
                 .andExpect(jsonPath("$.corpus.documentCount").value(1))
                 .andExpect(jsonPath("$.uploads[0].fileName").value("a.pdf"))
                 .andExpect(jsonPath("$.uploads[0].status").value("PROCESSING"));
+    }
+
+    @Test
+    void removeAllDocuments_returnsEmptySummary() throws Exception {
+        UUID corpusId = UUID.randomUUID();
+        when(evaluationCorpusApplicationService.removeAllDocuments(userId, corpusId)).thenReturn(summary(corpusId, 0));
+
+        mockMvc.perform(delete(path("/lab/evaluation-corpora/" + corpusId + "/documents")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentCount").value(0));
+    }
+
+    @Test
+    void retryDocumentIngest_returnsSummary() throws Exception {
+        UUID corpusId = UUID.randomUUID();
+        UUID docId = UUID.randomUUID();
+        when(evaluationCorpusApplicationService.retryDocumentIngestion(userId, corpusId, docId))
+                .thenReturn(summary(corpusId, 1));
+
+        mockMvc.perform(post(path("/lab/evaluation-corpora/" + corpusId + "/documents/" + docId + "/retry-ingest")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentCount").value(1));
     }
 
     @Test

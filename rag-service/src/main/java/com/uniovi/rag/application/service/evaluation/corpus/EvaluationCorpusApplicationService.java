@@ -16,6 +16,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntityFactory;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.application.port.BinaryStoragePort;
+import com.uniovi.rag.application.service.knowledge.DocumentIngestionHumanErrors;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntityFactory;
@@ -30,10 +31,15 @@ import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusDocumentUpl
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusDocumentsUploadResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusSummaryDto;
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -55,6 +61,9 @@ public class EvaluationCorpusApplicationService {
     public static final String KB_EMPTY = "KB_EMPTY";
     public static final String NO_READY_DOCUMENTS = "NO_READY_DOCUMENTS";
     public static final String DOCUMENT_PROCESSING_FAILED = "DOCUMENT_PROCESSING_FAILED";
+    public static final String DUPLICATE_FILE = "DUPLICATE_FILE";
+    /** Per-file upload status when content or name+size already exists in the corpus. */
+    public static final String UPLOAD_STATUS_DUPLICATE = "DUPLICATE";
 
     private final EvaluationCorpusRepository evaluationCorpusRepository;
     private final EvaluationCorpusDocumentRepository evaluationCorpusDocumentRepository;
@@ -170,12 +179,25 @@ public class EvaluationCorpusApplicationService {
             return new EvaluationCorpusDocumentUploadItemDto(null, fileName, "FAILED", "File is empty");
         }
         try {
+            byte[] bytes = file.getBytes();
+            long byteSize = bytes.length;
+            String contentChecksum = sha256Hex(bytes);
+            Optional<KnowledgeDocumentEntity> duplicate =
+                    findDuplicateInCorpus(corpus.getId(), fileName, byteSize, contentChecksum);
+            if (duplicate.isPresent()) {
+                KnowledgeDocumentEntity existing = duplicate.get();
+                return new EvaluationCorpusDocumentUploadItemDto(
+                        existing.getId(),
+                        existing.getFileName() != null ? existing.getFileName() : fileName,
+                        UPLOAD_STATUS_DUPLICATE,
+                        DUPLICATE_FILE);
+            }
             // Synchronous ingest: async uploadProjectDocument can run before the document row is visible.
             ProjectDocumentDto uploaded =
                     knowledgeIngestionService.ingestProjectSharedDocumentSynchronouslyFromBytes(
                             userId,
                             indexProjectId,
-                            file.getBytes(),
+                            bytes,
                             fileName,
                             file.getContentType());
             linkDocument(corpus, uploaded.id());
@@ -226,6 +248,69 @@ public class EvaluationCorpusApplicationService {
             case ERROR -> "FAILED";
             default -> "PROCESSING";
         };
+    }
+
+    @Transactional
+    public EvaluationCorpusSummaryDto removeDocument(UUID userId, UUID corpusId, UUID documentId) {
+        EvaluationCorpusEntity corpus = requireOwnedCorpus(userId, corpusId);
+        if (documentId == null
+                || !evaluationCorpusDocumentRepository.existsByCorpusIdAndDocumentId(corpusId, documentId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "document not found in knowledge base");
+        }
+        removeDocumentFromCorpus(corpus, corpusId, documentId);
+        touchCorpus(corpus, corpus.getSourceType(), false);
+        return toSummary(corpus);
+    }
+
+    @Transactional
+    public EvaluationCorpusSummaryDto removeAllDocuments(UUID userId, UUID corpusId) {
+        EvaluationCorpusEntity corpus = requireOwnedCorpus(userId, corpusId);
+        List<KnowledgeDocumentEntity> docs =
+                List.copyOf(evaluationCorpusDocumentRepository.findDocumentsByCorpusId(corpusId));
+        for (KnowledgeDocumentEntity doc : docs) {
+            if (doc != null && doc.getId() != null) {
+                removeDocumentFromCorpus(corpus, corpusId, doc.getId());
+            }
+        }
+        touchCorpus(corpus, corpus.getSourceType(), false);
+        return toSummary(corpus);
+    }
+
+    @Transactional
+    public EvaluationCorpusSummaryDto retryDocumentIngestion(UUID userId, UUID corpusId, UUID documentId) {
+        EvaluationCorpusEntity corpus = requireOwnedCorpus(userId, corpusId);
+        if (documentId == null
+                || !evaluationCorpusDocumentRepository.existsByCorpusIdAndDocumentId(corpusId, documentId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "document not found in knowledge base");
+        }
+        UUID indexProjectId = corpus.getIndexProject().getId();
+        KnowledgeDocumentEntity row =
+                knowledgeDocumentRepository
+                        .findByIdAndProject_Id(documentId, indexProjectId)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "document not found in knowledge base"));
+        if (row.getStatus() != ProjectDocumentStatus.ERROR) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "document is not in failed state");
+        }
+        if (row.getStorageUri() == null || row.getStorageUri().isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "document has no stored binary; re-upload the file");
+        }
+        knowledgeIngestionService.retryIngestFromStoredBinarySynchronously(userId, indexProjectId, documentId);
+        touchCorpus(corpus, corpus.getSourceType(), false);
+        return toSummary(corpus);
+    }
+
+    private void removeDocumentFromCorpus(
+            EvaluationCorpusEntity corpus, UUID corpusId, UUID documentId) {
+        evaluationCorpusDocumentRepository.deleteById(new EvaluationCorpusDocumentEntity.Key(corpusId, documentId));
+        UUID indexProjectId = corpus.getIndexProject().getId();
+        knowledgeIngestionService.deleteVectorChunksForDocument(documentId);
+        knowledgeDocumentRepository
+                .findByIdAndProject_Id(documentId, indexProjectId)
+                .ifPresent(knowledgeDocumentRepository::delete);
     }
 
     @Transactional
@@ -320,6 +405,44 @@ public class EvaluationCorpusApplicationService {
         }
     }
 
+    private Optional<KnowledgeDocumentEntity> findDuplicateInCorpus(
+            UUID corpusId, String fileName, long byteSize, String contentChecksum) {
+        String normalizedName = normalizeFileName(fileName);
+        for (KnowledgeDocumentEntity doc : evaluationCorpusDocumentRepository.findDocumentsByCorpusId(corpusId)) {
+            if (doc == null) {
+                continue;
+            }
+            if (contentChecksum != null
+                    && !contentChecksum.isBlank()
+                    && contentChecksum.equals(doc.getContentChecksum())) {
+                return Optional.of(doc);
+            }
+            if (!normalizedName.isEmpty() && normalizedName.equals(normalizeFileName(doc.getFileName()))) {
+                Long existingSize = doc.getByteSize();
+                if (existingSize != null && existingSize == byteSize) {
+                    return Optional.of(doc);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static String sha256Hex(byte[] data) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(md.digest(data != null ? data : new byte[0]));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    private static String normalizeFileName(String fileName) {
+        if (fileName == null) {
+            return "";
+        }
+        return fileName.trim().toLowerCase(Locale.ROOT);
+    }
+
     private void linkDocument(EvaluationCorpusEntity corpus, UUID documentId) {
         if (documentId == null || evaluationCorpusDocumentRepository.existsByCorpusIdAndDocumentId(corpus.getId(), documentId)) {
             return;
@@ -384,12 +507,16 @@ public class EvaluationCorpusApplicationService {
     }
 
     private static ProjectDocumentDto toDocumentDto(KnowledgeDocumentEntity e) {
+        String humanError =
+                e.getStatus() == ProjectDocumentStatus.ERROR
+                        ? DocumentIngestionHumanErrors.humanize(e.getErrorMessage())
+                        : null;
         return new ProjectDocumentDto(
                 e.getId(),
                 e.getFileName(),
                 e.getStatus(),
                 e.getChunkCount(),
-                e.getErrorMessage(),
+                humanError,
                 e.getUploadedAt(),
                 e.getReindexedAt(),
                 e.getCorpusScope(),
