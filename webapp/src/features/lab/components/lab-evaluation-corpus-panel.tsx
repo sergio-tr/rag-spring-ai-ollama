@@ -2,15 +2,22 @@
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { useEvaluationCorpus } from "@/features/lab/hooks/use-evaluation-corpus";
+import {
+  useEvaluationCorpus,
+  type EvaluationCorpusApi,
+} from "@/features/lab/hooks/use-evaluation-corpus";
+import { humanizeIngestionErrorMessage } from "@/features/lab/lib/evaluation-corpus-ingestion";
 import {
   corpusUploadErrorMessage,
-  summarizeCorpusUploadFailures,
+  mapKnowledgeBaseApiError,
+  summarizeCorpusUploadDuplicates,
+  summarizeCorpusUploadFailuresForDisplay,
 } from "@/features/lab/lib/evaluation-corpus-upload";
+import { mapUserFacingErrorMessage } from "@/lib/user-facing-error-messages";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import type { ProjectDocumentDto } from "@/types/api";
 import { useTranslations } from "next-intl";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 export type LabEvaluationCorpusPanelProps = {
   corpusId: string | null;
@@ -18,14 +25,46 @@ export type LabEvaluationCorpusPanelProps = {
   /** Optional project to reuse documents from (not required). */
   optionalProjectId?: string | null;
   disabled?: boolean;
+  /** Shared hook instance from {@link LabEvaluationRunCard} so upload state and Evaluate gating stay in sync. */
+  evaluationCorpus?: EvaluationCorpusApi;
 };
 
-function formatDocumentStatus(status: string, t: (key: string) => string): string {
+function mapIngestionErrorForDisplay(code: string | null | undefined, t: (key: string) => string): string {
+  if (!code) {
+    return t("labCorpusStatusFailed");
+  }
+  switch (code) {
+    case "UNSUPPORTED_FILE":
+      return t("labIngestUnsupportedFile");
+    case "PARSE_ERROR":
+      return t("labIngestParseError");
+    case "EMBEDDING_ERROR":
+      return t("labIngestEmbeddingError");
+    case "INDEX_ERROR":
+      return t("labIngestIndexError");
+    case "EMPTY_FILE":
+      return t("labIngestEmptyFile");
+    case "INGESTION_TIMEOUT":
+      return t("labIngestTimeout");
+    case "DUPLICATE_FILE":
+      return t("labKbDuplicateFile");
+    default:
+      return mapUserFacingErrorMessage(code, t, t("labCorpusStatusFailed"));
+  }
+}
+
+function formatDocumentStatus(
+  status: string,
+  t: (key: string) => string,
+  errorMessage?: string | null,
+): string {
   if (status === "INGESTING" || status === "PROCESSING") {
     return t("labCorpusStatusProcessing");
   }
   if (status === "ERROR" || status === "FAILED") {
-    return t("labCorpusStatusFailed");
+    const code = humanizeIngestionErrorMessage(errorMessage);
+    const detail = mapIngestionErrorForDisplay(code, t);
+    return `${t("labCorpusStatusFailed")} (${detail})`;
   }
   if (status === "READY") {
     return t("labCorpusStatusReady");
@@ -33,30 +72,39 @@ function formatDocumentStatus(status: string, t: (key: string) => string): strin
   return status;
 }
 
+function isFailedDocumentStatus(status: string): boolean {
+  return status === "ERROR" || status === "FAILED";
+}
+
 export function LabEvaluationCorpusPanel({
   corpusId,
   onCorpusIdChange,
   optionalProjectId,
   disabled = false,
+  evaluationCorpus: evaluationCorpusProp,
 }: LabEvaluationCorpusPanelProps) {
   const t = useTranslations("Lab");
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [localErr, setLocalErr] = useState<string | null>(null);
-  const { summary, loading, error, ensureCorpus, uploadDocuments, attachFromProject } =
-    useEvaluationCorpus(corpusId);
+  const [localWarn, setLocalWarn] = useState<string | null>(null);
+  const internalCorpus = useEvaluationCorpus(evaluationCorpusProp ? null : corpusId);
+  const {
+    summary,
+    loading,
+    error,
+    ensureCorpus,
+    uploadDocuments,
+    attachFromProject,
+    deleteDocument,
+    deleteAllDocuments,
+    retryDocumentIngest,
+    refresh,
+  } = evaluationCorpusProp ?? internalCorpus;
 
   const mapUploadError = useCallback(
-    (message: string) => {
-      if (message === "FILE_TOO_LARGE") {
-        return t("labCorpusFileTooLarge");
-      }
-      if (message === "UNSUPPORTED_TYPE") {
-        return t("labCorpusUnsupportedType");
-      }
-      return message;
-    },
+    (message: string) => mapKnowledgeBaseApiError(message, t, t("labCorpusUploadFailed")),
     [t],
   );
 
@@ -72,13 +120,18 @@ export function LabEvaluationCorpusPanel({
     if (list.length === 0 || disabled) return;
     setBusy(true);
     setLocalErr(null);
+    setLocalWarn(null);
     setUploadProgress(t("labCorpusUploadProgress", { current: 0, total: list.length }));
     try {
       const id = await ensureReady();
       const { response } = await uploadDocuments(id, list, (current, total) => {
         setUploadProgress(t("labCorpusUploadProgress", { current, total }));
       });
-      const partial = summarizeCorpusUploadFailures(response);
+      const duplicateNames = summarizeCorpusUploadDuplicates(response);
+      if (duplicateNames) {
+        setLocalWarn(t("labCorpusDuplicateWarning", { files: duplicateNames }));
+      }
+      const partial = summarizeCorpusUploadFailuresForDisplay(response, t);
       if (partial) {
         setLocalErr(t("labCorpusUploadPartialFailed", { details: partial }));
       }
@@ -92,10 +145,76 @@ export function LabEvaluationCorpusPanel({
     }
   }
 
+  async function onDeleteDocument(documentId: string) {
+    if (disabled) return;
+    setBusy(true);
+    setLocalErr(null);
+    setLocalWarn(null);
+    try {
+      const id = await ensureReady();
+      await deleteDocument(id, documentId);
+    } catch (e) {
+      const raw = corpusUploadErrorMessage(e, t("labCorpusDeleteFailed"));
+      setLocalErr(mapUploadError(raw));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRetryDocument(documentId: string) {
+    if (disabled) return;
+    setBusy(true);
+    setLocalErr(null);
+    setLocalWarn(null);
+    try {
+      const id = await ensureReady();
+      await retryDocumentIngest(id, documentId);
+    } catch (e) {
+      const raw = corpusUploadErrorMessage(e, t("labCorpusRetryFailed"));
+      setLocalErr(mapUploadError(raw));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRefresh() {
+    if (!corpusId || disabled) return;
+    setBusy(true);
+    setLocalErr(null);
+    try {
+      await refresh(corpusId);
+    } catch (e) {
+      const raw = corpusUploadErrorMessage(e, t("labCorpusRefreshFailed"));
+      setLocalErr(mapUploadError(raw));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onClearAll() {
+    if (disabled || (summary?.documentCount ?? 0) === 0) return;
+    if (!window.confirm(t("labCorpusClearAllConfirm"))) {
+      return;
+    }
+    setBusy(true);
+    setLocalErr(null);
+    setLocalWarn(null);
+    try {
+      const id = await ensureReady();
+      await deleteAllDocuments(id);
+    } catch (e) {
+      const raw = corpusUploadErrorMessage(e, t("labCorpusClearAllFailed"));
+      setLocalErr(mapUploadError(raw));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function attachAllFromOptionalProject() {
     if (!optionalProjectId || disabled) return;
     setBusy(true);
     setLocalErr(null);
+    setLocalWarn(null);
     try {
       const id = await ensureReady();
       const docs = await apiFetch<ProjectDocumentDto[]>(
@@ -115,7 +234,11 @@ export function LabEvaluationCorpusPanel({
     }
   }
 
-  const displayErr = localErr ?? error;
+  const displayErr = useMemo(() => {
+    const raw = localErr ?? error;
+    if (!raw) return null;
+    return mapKnowledgeBaseApiError(raw, t, t("labCorpusUploadFailed"));
+  }, [localErr, error, t]);
   const docCount = summary?.documentCount ?? 0;
   const readyCount = summary?.readyCount ?? 0;
 
@@ -125,9 +248,36 @@ export function LabEvaluationCorpusPanel({
       data-testid="lab-evaluation-corpus-panel"
       data-lab-knowledge-base-panel=""
     >
-      <div>
-        <p className="font-medium text-foreground">{t("labCorpusTitle")}</p>
-        <p className="text-muted-foreground mt-1 text-xs leading-relaxed">{t("labCorpusHelp")}</p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="font-medium text-foreground">{t("labCorpusTitle")}</p>
+          <details className="text-muted-foreground text-xs">
+            <summary className="cursor-pointer">{t("labCorpusHelpSummary")}</summary>
+            <p className="mt-1 leading-relaxed">{t("labCorpusHelp")}</p>
+          </details>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            data-testid="lab-corpus-refresh"
+            disabled={disabled || busy || loading || !corpusId}
+            onClick={() => void onRefresh()}
+          >
+            {t("labCorpusRefresh")}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            data-testid="lab-corpus-clear-all"
+            disabled={disabled || busy || loading || docCount === 0}
+            onClick={() => void onClearAll()}
+          >
+            {t("labCorpusClearAll")}
+          </Button>
+        </div>
       </div>
 
       <p className="text-muted-foreground text-xs" data-testid="lab-corpus-summary">
@@ -135,11 +285,48 @@ export function LabEvaluationCorpusPanel({
       </p>
 
       {summary?.documents && summary.documents.length > 0 ? (
-        <ul className="text-muted-foreground max-h-28 list-inside list-disc overflow-y-auto text-xs">
+        <ul className="text-muted-foreground space-y-1 text-xs" data-testid="lab-corpus-document-list">
           {summary.documents.map((d) => (
-            <li key={d.id}>
-              {d.fileName} — {formatDocumentStatus(d.status, t)}
-              {d.errorMessage ? ` (${d.errorMessage})` : null}
+            <li
+              key={d.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded border bg-background/50 px-2 py-1"
+              data-testid={`lab-corpus-document-${d.id}`}
+            >
+              <span className="min-w-0 truncate">
+                {d.fileName} —{" "}
+                <span
+                  data-testid={`lab-corpus-doc-status-${d.id}`}
+                  data-ingestion-state={d.status}
+                >
+                  {formatDocumentStatus(d.status, t, d.errorMessage)}
+                </span>
+              </span>
+              <span className="flex shrink-0 gap-1">
+                {isFailedDocumentStatus(d.status) ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    data-testid={`lab-corpus-retry-${d.id}`}
+                    disabled={disabled || busy || loading}
+                    onClick={() => void onRetryDocument(d.id)}
+                  >
+                    {t("labCorpusRetryIngest")}
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  data-testid={`lab-corpus-delete-${d.id}`}
+                  disabled={disabled || busy || loading}
+                  onClick={() => void onDeleteDocument(d.id)}
+                >
+                  {t("labCorpusDeleteDocument")}
+                </Button>
+              </span>
             </li>
           ))}
         </ul>
@@ -181,8 +368,18 @@ export function LabEvaluationCorpusPanel({
         </output>
       ) : null}
 
+      {localWarn ? (
+        <output
+          role="status"
+          className="block text-amber-700 dark:text-amber-400 text-xs"
+          data-testid="lab-kb-duplicate-warning"
+        >
+          {localWarn}
+        </output>
+      ) : null}
+
       {displayErr ? (
-        <output role="alert" className="block text-destructive text-xs">
+        <output role="alert" className="block text-destructive text-xs" data-testid="lab-kb-error">
           {displayErr}
         </output>
       ) : null}

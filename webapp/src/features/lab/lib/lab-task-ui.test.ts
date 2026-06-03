@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { AsyncTaskStatusDto } from "@/types/api";
-import { getLabJobStatusLabel, getLabJobUiPhase, labPhaseToTraceStatus } from "./lab-task-ui";
+import {
+  getLabJobStatusLabel,
+  getLabJobUiPhase,
+  labPhaseToTraceStatus,
+  labTraceStatusForJob,
+} from "./lab-task-ui";
 
 function task(partial: Partial<AsyncTaskStatusDto> & Pick<AsyncTaskStatusDto, "status" | "terminal">): AsyncTaskStatusDto {
   return {
@@ -40,6 +45,22 @@ describe("getLabJobUiPhase", () => {
         stoppedWaiting: false,
       }),
     ).toBe("completed");
+  });
+
+  it("maps terminal SUCCEEDED with zero executed items to failed", () => {
+    expect(
+      getLabJobUiPhase({
+        taskStatus: task({
+          status: "SUCCEEDED",
+          terminal: true,
+          result: {
+            benchmarkClosure: { expectedItems: 10, executedItems: 0, skippedItems: 10 },
+          },
+        }),
+        queuedHint: false,
+        stoppedWaiting: false,
+      }),
+    ).toBe("failed");
   });
 
   it("maps terminal FAILED", () => {
@@ -159,6 +180,9 @@ const labels = {
   running: "Running",
   cancelling: "Stopping",
   completed: "Completed",
+  completedWithFailures: "Completed with failures",
+  completedWithUnsupported: "Completed with unsupported presets",
+  noItemsExecuted: "No items executed",
   failed: "Failed",
   cancelled: "Cancelled",
   stoppedWaiting: "Stopped",
@@ -180,6 +204,44 @@ describe("getLabJobStatusLabel", () => {
     expect(getLabJobStatusLabel("failed", labels, "configuration_error")).toBe(
       "Live stream configuration error",
     );
+  });
+});
+
+describe("labTraceStatusForJob", () => {
+  it("uses warning when completed with skipped or not supported items", () => {
+    expect(
+      labTraceStatusForJob(
+        "completed",
+        task({
+          status: "SUCCEEDED",
+          terminal: true,
+          result: {
+            benchmarkClosure: {
+              expectedItems: 10,
+              executedItems: 8,
+              failedItems: 0,
+              skippedItems: 2,
+              notSupportedItems: 0,
+            },
+          },
+        }),
+      ),
+    ).toBe("warning");
+  });
+
+  it("uses error when completed with zero executed items", () => {
+    expect(
+      labTraceStatusForJob(
+        "failed",
+        task({
+          status: "SUCCEEDED",
+          terminal: true,
+          result: {
+            benchmarkClosure: { expectedItems: 10, executedItems: 0, skippedItems: 10 },
+          },
+        }),
+      ),
+    ).toBe("error");
   });
 });
 

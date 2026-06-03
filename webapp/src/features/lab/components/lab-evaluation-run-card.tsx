@@ -1,7 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CompactHelp, TechnicalDetails } from "@/features/lab/components/compact-lab-ui";
 import { Input } from "@/components/ui/input";
 import { HelpPopover } from "@/features/help/HelpPopover";
 import { Label } from "@/components/ui/label";
@@ -36,7 +37,18 @@ import {
 } from "@/features/lab/lib/lab-job-trace";
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
 import { resolveEmbeddingCampaignIndexSnapshotIds } from "@/features/lab/lib/embedding-campaign-index-snapshots";
+import {
+  EMBEDDING_CAMPAIGN_PREFERRED_MODEL_IDS,
+  EMBEDDING_CAMPAIGN_STORE_DIMENSION,
+  filterCampaignCompatibleEmbeddingIds,
+  missingPreferredEmbeddingModels,
+} from "@/features/lab/lib/embedding-campaign-preferred-models";
+import {
+  LLM_CAMPAIGN_PREFERRED_MODEL_IDS,
+  missingPreferredLlmModels,
+} from "@/features/lab/lib/llm-campaign-preferred-models";
 import { mapKnowledgeBaseApiError } from "@/features/lab/lib/evaluation-corpus-upload";
+import { extractTechnicalErrorCode } from "@/lib/user-facing-error-messages";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import { useAppStore } from "@/store/app.store";
 import type {
@@ -56,7 +68,8 @@ export type LabEvaluationRunCardProps = {
   sectionKey: LabJobSectionKey;
   taskTypeHint: string;
   cardTitle: string;
-  cardDescription: string;
+  /** Optional; omit for compact run section (title only). */
+  cardDescription?: string;
   runButtonTestId: string;
   radioGroupName: string;
   /** Optional copy above the card (e.g. RAG-specific help). */
@@ -139,9 +152,23 @@ function benchmarkAcceptedToLabAccepted(acc: BenchmarkJobAcceptedDto): LabJobAcc
   };
 }
 
+const BENCHMARK_EVIDENCE_FAILURE_CODES = new Set([
+  "BENCHMARK_NO_EXECUTABLE_ITEMS",
+  "BENCHMARK_ALL_ITEMS_SKIPPED",
+  "COMPLETED_WITH_NO_EXECUTED_ITEMS",
+  "FAILED_VALIDATION",
+  "BENCHMARK_SKIPPED_WITHOUT_REASON",
+  "BENCHMARK_NOT_SUPPORTED_WITHOUT_REASON",
+]);
+
 function taskHasViewableResults(taskStatus: AsyncTaskStatusDto | null): boolean {
   if (taskStatus?.terminal !== true) return false;
+  const failureCode = taskStatus.failureCode?.trim();
+  if (failureCode && BENCHMARK_EVIDENCE_FAILURE_CODES.has(failureCode)) {
+    return false;
+  }
   const st = (taskStatus.status ?? "").trim().toUpperCase();
+  if (st === "FAILED") return false;
   return st === "SUCCEEDED" || st === "CANCELLED" || st === "CANCELED";
 }
 
@@ -174,9 +201,12 @@ export function LabEvaluationRunCard({
   const [campaignId, setCampaignId] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<AsyncTaskStatusDto | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [technicalErrCode, setTechnicalErrCode] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [watchLive, setWatchLive] = useState(false);
+  const [watchStartedAtMs, setWatchStartedAtMs] = useState<number | null>(null);
+  const [elapsedClockTick, setElapsedClockTick] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const traceDedupeRef = useRef(createLabJobTraceDedupe());
   const mountedEvalCardRef = useRef(true);
@@ -201,9 +231,43 @@ export function LabEvaluationRunCard({
     () => llmModels.data?.map((m) => m.modelId).sort((a, b) => a.localeCompare(b)) ?? [],
     [llmModels.data],
   );
+  const llmComparisonAvailabilityBlocked = useMemo(() => {
+    if (benchmarkKind !== "LLM_JUDGE_QA") return false;
+    return availableLlmModels.length > 0 && availableLlmModels.length < 2;
+  }, [benchmarkKind, availableLlmModels.length]);
+  const missingPreferredLlmTags = useMemo(
+    () => missingPreferredLlmModels(availableLlmModels, LLM_CAMPAIGN_PREFERRED_MODEL_IDS),
+    [availableLlmModels],
+  );
   const availableEmbeddingModels = useMemo(
     () => embeddingModels.data?.map((m) => m.modelId).sort((a, b) => a.localeCompare(b)) ?? [],
     [embeddingModels.data],
+  );
+  const compatibleEmbeddingModels = useMemo(
+    () => filterCampaignCompatibleEmbeddingIds(availableEmbeddingModels),
+    [availableEmbeddingModels],
+  );
+  const embeddingComparisonAvailabilityBlocked = useMemo(() => {
+    if (benchmarkKind !== "EMBEDDING_RETRIEVAL") return false;
+    return compatibleEmbeddingModels.length > 0 && compatibleEmbeddingModels.length < 2;
+  }, [benchmarkKind, compatibleEmbeddingModels.length]);
+  const missingPreferredEmbeddingTags = useMemo(
+    () => missingPreferredEmbeddingModels(compatibleEmbeddingModels, EMBEDDING_CAMPAIGN_PREFERRED_MODEL_IDS),
+    [compatibleEmbeddingModels],
+  );
+
+  const setUserFacingErr = useCallback(
+    (raw: string | null | undefined) => {
+      const trimmed = raw?.trim() ?? "";
+      if (!trimmed) {
+        setErr(null);
+        setTechnicalErrCode(null);
+        return;
+      }
+      setTechnicalErrCode(extractTechnicalErrorCode(trimmed));
+      setErr(mapKnowledgeBaseApiError(trimmed, t, t("evalError")));
+    },
+    [t],
   );
 
   const draftValidation = useMemo(
@@ -229,6 +293,29 @@ export function LabEvaluationRunCard({
 
   const { draft, patchDraft, clearDraft, resetToRecommended, setLastEvaluationRunId, warnings } =
     useLabEvaluationDraft(benchmarkKind as LabEvaluationDraftKind, draftValidation);
+
+  useEffect(() => {
+    if (!watchLive) {
+      const resetId = globalThis.setTimeout(() => {
+        setWatchStartedAtMs(null);
+        setElapsedClockTick(0);
+      }, 0);
+      return () => globalThis.clearTimeout(resetId);
+    }
+    if (watchStartedAtMs != null) {
+      return;
+    }
+    const id = globalThis.setTimeout(() => setWatchStartedAtMs(Date.now()), 0);
+    return () => globalThis.clearTimeout(id);
+  }, [watchLive, watchStartedAtMs]);
+
+  useEffect(() => {
+    if (watchStartedAtMs == null) return undefined;
+    const id = globalThis.setInterval(() => setElapsedClockTick((x) => x + 1), 1000);
+    return () => globalThis.clearInterval(id);
+  }, [watchStartedAtMs]);
+
+  const watchElapsedSeconds = watchStartedAtMs != null ? elapsedClockTick : undefined;
 
   const liveJob = useLabJobLiveStream({
     jobId: accepted?.jobId ?? null,
@@ -261,9 +348,9 @@ export function LabEvaluationRunCard({
         useLabJobSessionStore.getState().markLabJobStaleNotFound(accepted.jobId);
         setErr(t("jobRecoveryStaleShort"));
       } else if (e instanceof Error) {
-        setErr(e.message || t("evalError"));
+        setUserFacingErr(e.message || t("evalError"));
       } else {
-        setErr(t("evalError"));
+        setUserFacingErr(t("evalError"));
       }
       setRunning(false);
       setWatchLive(false);
@@ -312,7 +399,7 @@ export function LabEvaluationRunCard({
       if (e instanceof ApiError && e.status === 404) {
         setErr(t("jobRecoveryStaleShort"));
       } else if (!(e instanceof DOMException && e.name === "AbortError")) {
-        setErr(e instanceof Error ? e.message : t("evalError"));
+        setUserFacingErr(e instanceof Error ? e.message : t("evalError"));
       }
     },
   });
@@ -320,6 +407,16 @@ export function LabEvaluationRunCard({
   const needsEvaluationCorpus =
     benchmarkKind === "RAG_PRESET_END_TO_END" || benchmarkKind === "EMBEDDING_RETRIEVAL";
   const evaluationCorpus = useEvaluationCorpus(needsEvaluationCorpus ? draft.corpusId : null);
+  const resolvedCorpusId =
+    draft.corpusId ?? evaluationCorpus.effectiveCorpusId ?? null;
+
+  useEffect(() => {
+    if (!needsEvaluationCorpus) return;
+    const id = evaluationCorpus.effectiveCorpusId;
+    if (id && !draft.corpusId) {
+      patchDraft({ corpusId: id });
+    }
+  }, [needsEvaluationCorpus, evaluationCorpus.effectiveCorpusId, draft.corpusId, patchDraft]);
 
   const draftBlocksRun =
     warnings.datasetDeletedOrUnknown ||
@@ -330,12 +427,12 @@ export function LabEvaluationRunCard({
     warnings.embeddingModelsInvalid.length > 0 ||
     warnings.presetsUnknown.length > 0;
 
+  const hasEvaluationCorpus = Boolean(resolvedCorpusId);
   const corpusBlocksRun =
     needsEvaluationCorpus &&
-    (!draft.corpusId ||
+    (!hasEvaluationCorpus ||
       !evaluationCorpus.corpusReady ||
-      evaluationCorpus.corpusProcessing ||
-      evaluationCorpus.loading);
+      evaluationCorpus.corpusProcessing);
 
   const selectedDataset = useMemo(() => {
     const id = draft.datasetId?.trim();
@@ -507,7 +604,7 @@ export function LabEvaluationRunCard({
         return;
       }
       if (benchmarkKind === "RAG_PRESET_END_TO_END" || benchmarkKind === "EMBEDDING_RETRIEVAL") {
-        if (!draft.corpusId) {
+        if (!resolvedCorpusId) {
           setErr(t("benchmarkNeedsCorpus"));
           setRunning(false);
           return;
@@ -525,7 +622,7 @@ export function LabEvaluationRunCard({
       }
       const body: StartBenchmarkRunRequest = {
         datasetId: selectedDataset.id,
-        corpusId: draft.corpusId ?? undefined,
+        corpusId: resolvedCorpusId ?? undefined,
       };
       if (benchmarkKind !== "RAG_PRESET_END_TO_END") {
         body.projectId = activeProject?.id ?? undefined;
@@ -537,6 +634,8 @@ export function LabEvaluationRunCard({
         body.autoReindex = true;
         body.allowActiveSnapshotMutation = true;
         body.reuseCompatibleActiveSnapshot = true;
+        body.bootstrapCorpusFromClasspathDocs = true;
+        body.bootstrapSkipExisting = true;
       }
       if (draft.runName.trim()) {
         body.campaignName = draft.runName.trim();
@@ -636,7 +735,7 @@ export function LabEvaluationRunCard({
       } else {
         if (!mountedEvalCardRef.current) return;
         const raw = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "";
-        setErr(mapKnowledgeBaseApiError(raw, t, t("evalError")));
+        setUserFacingErr(raw);
         setRunning(false);
         setWatchLive(false);
       }
@@ -671,7 +770,7 @@ export function LabEvaluationRunCard({
       setWatchLive(false);
       liveJob.stop();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t("evalError"));
+      setUserFacingErr(e instanceof Error ? e.message : t("evalError"));
       throw e;
     } finally {
       setCancelling(false);
@@ -689,17 +788,19 @@ export function LabEvaluationRunCard({
       ? (experimentalDatasets.data ?? []).find((d) => d.id === draft.datasetId)
       : undefined;
 
+  function datasetOptionLabel(row: ExperimentalDatasetListItemDto): string {
+    const name = row.name ?? t("experimentalDatasetUnnamed");
+    const status = row.validationStatus ?? "";
+    return status ? `${name} · ${status}` : name;
+  }
+
   return (
-    <div className="space-y-4">
-      <p className="text-muted-foreground border-l-4 border-primary/40 pl-3 text-sm">{t("adrDisclaimer")}</p>
+    <div className="space-y-3">
       {introBeforeCard ?? null}
 
-      <Card>
-        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <CardTitle>{cardTitle}</CardTitle>
-            <CardDescription>{cardDescription}</CardDescription>
-          </div>
+      <Card data-testid="lab-eval-run-card">
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 space-y-0 pb-2">
+          <CardTitle className="text-base">{cardTitle}</CardTitle>
           <HelpPopover
             triggerAriaLabel={tHelp("labEvalRunnerTriggerLabel")}
             title={tHelp("labEvalRunnerTitle")}
@@ -707,31 +808,40 @@ export function LabEvaluationRunCard({
             details={tHelp("labEvalRunnerDetails")}
           />
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <details className="text-xs">
-            <summary className="cursor-pointer text-muted-foreground">{t("labAdvancedOptionsSummary")}</summary>
-            <div className="mt-2 space-y-3">
-              <p className="text-muted-foreground leading-relaxed">{t("labAdvancedEvalHelp")}</p>
-              <details className="rounded-md border bg-muted/20 p-2">
-                <summary className="cursor-pointer text-muted-foreground">{t("labDeveloperDetailsSummary")}</summary>
-                <p className="text-muted-foreground mt-2 leading-relaxed">
-                  {t("labDeveloperEvalEndpoint", { kind: benchmarkKind })}
-                </p>
-              </details>
-            </div>
-          </details>
+        <CardContent className="flex flex-col gap-3">
+          {cardDescription ? (
+            <p className="text-muted-foreground -mt-1 text-xs">{cardDescription}</p>
+          ) : null}
 
-          <details className="rounded-md border bg-muted/20 p-3 text-xs">
-            <summary className="cursor-pointer font-medium text-foreground">{t("benchmarkModelHintsSummary")}</summary>
-            <p className="text-muted-foreground mt-2 leading-relaxed">{t("benchmarkPromptProfileInfo")}</p>
-            {benchmarkKind === "RAG_PRESET_END_TO_END" ? (
-              <p className="text-muted-foreground mt-2 leading-relaxed">{t("benchmarkRagPresetCatalogInfo")}</p>
+          <TechnicalDetails summary={t("labDeveloperDetailsSummary")} testId="lab-eval-technical-details">
+            {technicalErrCode ? (
+              <p className="text-muted-foreground text-xs" data-testid="lab-eval-technical-error-code">
+                <span className="font-medium">{t("labTechnicalErrorCodeLabel")}: </span>
+                <code>{technicalErrCode}</code>
+              </p>
             ) : null}
-          </details>
+            <CompactHelp summary={t("adrDisclaimerSummary")}>
+              <p className="text-muted-foreground text-xs leading-relaxed">{t("adrDisclaimer")}</p>
+            </CompactHelp>
+            <p className="text-muted-foreground text-xs">{t("labAdvancedEvalHelp")}</p>
+            <p className="text-muted-foreground text-xs">
+              {t("labDeveloperEvalEndpoint", { kind: benchmarkKind })}
+            </p>
+            <p className="text-muted-foreground text-xs">{t("benchmarkPromptProfileInfo")}</p>
+            {benchmarkKind === "RAG_PRESET_END_TO_END" ? (
+              <p className="text-muted-foreground text-xs">{t("benchmarkRagPresetCatalogInfo")}</p>
+            ) : null}
+            {draft.lastEvaluationRunId ? (
+              <p className="text-muted-foreground text-xs" data-testid="lab-eval-draft-last-run">
+                {t("evalDraftLastRunHint", { runId: draft.lastEvaluationRunId })}
+              </p>
+            ) : null}
+          </TechnicalDetails>
 
           {benchmarkKind === "RAG_PRESET_END_TO_END" || benchmarkKind === "EMBEDDING_RETRIEVAL" ? (
             <LabEvaluationCorpusPanel
-              corpusId={draft.corpusId}
+              corpusId={resolvedCorpusId}
+              evaluationCorpus={evaluationCorpus}
               optionalProjectId={activeProject?.id ?? null}
               disabled={running}
               onCorpusIdChange={(id) => patchDraft({ corpusId: id })}
@@ -834,12 +944,6 @@ export function LabEvaluationRunCard({
             </div>
           </div>
 
-          {draft.lastEvaluationRunId ? (
-            <p className="text-muted-foreground text-xs" data-testid="lab-eval-draft-last-run">
-              {t("evalDraftLastRunHint", { runId: draft.lastEvaluationRunId })}
-            </p>
-          ) : null}
-
           <div className="space-y-2">
             <Label htmlFor={`lab-benchmark-dataset-${sectionKey}`}>{t("benchmarkDatasetLabel")}</Label>
             <select
@@ -873,17 +977,10 @@ export function LabEvaluationRunCard({
               ) : null}
               {compatibleRows.map((row) => (
                 <option key={row.id} value={row.id}>
-                  {(row.name ?? t("experimentalDatasetUnnamed")) +
-                    ` · ${datasetOriginLabel(row, t)}` +
-                    ` · ${row.experimentalDatasetType}` +
-                    (row.validationStatus ? ` · ${row.validationStatus}` : "") +
-                    ` · ${datasetCountsLabel(row, t)}`}
+                  {datasetOptionLabel(row)}
                 </option>
               ))}
             </select>
-            <p className="text-muted-foreground text-xs">
-              {t("benchmarkDatasetCompatibilityHint", { kind: datasetCompatibilityLabel(benchmarkKind, t) })}
-            </p>
           </div>
 
           {experimentalDatasets.isFetched && compatibleRows.length === 0 ? (
@@ -903,34 +1000,43 @@ export function LabEvaluationRunCard({
           ) : null}
 
           {selectedDataset ? (
-            <div className="rounded-md border bg-muted/20 p-3 text-xs" data-testid="lab-selected-dataset-details">
-              <p className="font-medium">{t("datasetDetailsTitle")}</p>
-              <div className="text-muted-foreground mt-1 space-y-1">
-                <p>
-                  <span className="font-medium">{t("datasetDetailsName")}:</span>{" "}
-                  {selectedDataset.name ?? t("experimentalDatasetUnnamed")}
-                </p>
-                <p>
-                  <span className="font-medium">{t("datasetDetailsType")}:</span> {selectedDataset.experimentalDatasetType}
-                </p>
-                <p>
-                  <span className="font-medium">{t("datasetDetailsOrigin")}:</span>{" "}
-                  {datasetOriginLabel(selectedDataset, t)}
-                </p>
-                <p>
-                  <span className="font-medium">{t("datasetDetailsCounts")}:</span> {datasetCountsLabel(selectedDataset, t)}
-                </p>
-                <p>
-                  <span className="font-medium">{t("datasetDetailsStatus")}:</span>{" "}
-                  {selectedDataset.validationStatus ?? t("experimentalDatasetValidationStatusUnknown")}
-                </p>
-              </div>
+            <>
+              <p className="text-muted-foreground text-xs" data-testid="lab-selected-dataset-summary">
+                {t("compactSelectedDataset", {
+                  name: selectedDataset.name ?? t("experimentalDatasetUnnamed"),
+                  status: selectedDataset.validationStatus ?? t("experimentalDatasetValidationStatusUnknown"),
+                })}
+              </p>
               {!datasetIsValid ? (
-                <output className="mt-2 block text-amber-600 dark:text-amber-500" data-testid="lab-dataset-invalid-warn">
+                <output className="block text-amber-600 text-xs dark:text-amber-500" data-testid="lab-dataset-invalid-warn">
                   {t("benchmarkNeedsValidDataset")}
                 </output>
               ) : null}
-            </div>
+              <TechnicalDetails
+                summary={t("datasetDetailsTitle")}
+                testId="lab-selected-dataset-details"
+              >
+                <div className="text-muted-foreground space-y-1 text-xs">
+                  <p>
+                    <span className="font-medium">{t("datasetDetailsType")}:</span>{" "}
+                    {selectedDataset.experimentalDatasetType}
+                  </p>
+                  <p>
+                    <span className="font-medium">{t("datasetDetailsOrigin")}:</span>{" "}
+                    {datasetOriginLabel(selectedDataset, t)}
+                  </p>
+                  <p>
+                    <span className="font-medium">{t("datasetDetailsCounts")}:</span>{" "}
+                    {datasetCountsLabel(selectedDataset, t)}
+                  </p>
+                  <p className="text-xs">
+                    {t("benchmarkDatasetCompatibilityHint", {
+                      kind: datasetCompatibilityLabel(benchmarkKind, t),
+                    })}
+                  </p>
+                </div>
+              </TechnicalDetails>
+            </>
           ) : null}
 
           {(benchmarkKind === "LLM_JUDGE_QA" ||
@@ -1097,11 +1203,9 @@ export function LabEvaluationRunCard({
                           {p.code} — {p.label}
                         </span>
                       </span>
-                      <span className="text-muted-foreground block text-xs">
-                        {p.supportStatus}
-                        {p.reasonIfUnsupported ? ` · ${p.reasonIfUnsupported}` : ""}
-                        {!p.supported ? ` · ${t("ragPresetExplainerNotSupported")}` : ""}
-                      </span>
+                      {!p.supported ? (
+                        <span className="text-muted-foreground block text-xs">{p.supportStatus}</span>
+                      ) : null}
                     </label>
                   );
                 })}
@@ -1109,7 +1213,6 @@ export function LabEvaluationRunCard({
                   <p className="text-muted-foreground text-xs">{t("benchmarkExperimentalPresetsEmpty")}</p>
                 ) : null}
               </div>
-              <p className="text-muted-foreground text-xs">{t("benchmarkExperimentalPresetsHint")}</p>
             </div>
           ) : null}
 
@@ -1162,7 +1265,7 @@ export function LabEvaluationRunCard({
           ) : null}
 
           {err && !watchLive ? (
-            <p className="text-destructive text-sm" role="alert">
+            <p className="text-destructive text-sm" role="alert" data-testid="lab-eval-user-error">
               {err}
             </p>
           ) : null}
@@ -1183,6 +1286,33 @@ export function LabEvaluationRunCard({
             <p className="text-muted-foreground text-xs" data-testid="lab-comparison-selection-hint">
               {comparisonHint}
             </p>
+          ) : null}
+
+          {llmComparisonAvailabilityBlocked ? (
+            <output
+              role="status"
+              data-testid="lab-llm-model-availability-blocked"
+              className="block rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-950 dark:text-amber-100"
+            >
+              {t("labLlmBlockedByModelAvailability", {
+                available: availableLlmModels.join(", ") || "—",
+                missing: missingPreferredLlmTags.join(", ") || "—",
+              })}
+            </output>
+          ) : null}
+
+          {embeddingComparisonAvailabilityBlocked ? (
+            <output
+              role="status"
+              data-testid="lab-embedding-model-availability-blocked"
+              className="block rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-950 dark:text-amber-100"
+            >
+              {t("labEmbeddingBlockedByModelAvailability", {
+                dimension: String(EMBEDDING_CAMPAIGN_STORE_DIMENSION),
+                available: compatibleEmbeddingModels.join(", ") || "—",
+                missing: missingPreferredEmbeddingTags.join(", ") || "—",
+              })}
+            </output>
           ) : null}
 
           {labRecovery.decision.kind === "cta" ? (
@@ -1219,6 +1349,9 @@ export function LabEvaluationRunCard({
               taskStatus={watchLive ? (liveJob.taskStatus ?? taskStatus) : taskStatus}
               queuedHint={!!accepted && !taskStatus && !liveJob.taskStatus}
               connectionState={watchLive ? liveJob.connectionState : null}
+              watchElapsedSeconds={watchLive ? watchElapsedSeconds : undefined}
+              recentEvents={watchLive ? liveJob.recentEvents : []}
+              progressSnapshot={watchLive ? liveJob.progressSnapshot : undefined}
             />
           )}
 
@@ -1229,12 +1362,11 @@ export function LabEvaluationRunCard({
           />
 
           {result != null ? (
-            <details className="text-xs">
-              <summary className="cursor-pointer text-muted-foreground">{t("benchmarkRawTaskResultSummary")}</summary>
-              <pre className="bg-muted/40 mt-2 max-h-[320px] overflow-auto rounded-md border border-border p-3 text-xs">
+            <TechnicalDetails summary={t("benchmarkViewLogsSummary")} testId="lab-eval-raw-result">
+              <pre className="bg-muted/40 max-h-[320px] overflow-auto rounded-md border border-border p-3 text-xs">
                 {JSON.stringify(result, null, 2)}
               </pre>
-            </details>
+            </TechnicalDetails>
           ) : null}
         </CardContent>
       </Card>

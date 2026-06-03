@@ -18,7 +18,9 @@ function LabEvalHarness({ children }: Readonly<{ children: ReactNode }>) {
 vi.mock("@/features/lab/hooks/use-evaluation-corpus", () => ({
   useEvaluationCorpus: () => ({
     summary: { documentCount: 2, readyCount: 2, documents: [] },
+    effectiveCorpusId: "corpus-1",
     loading: false,
+    fetching: false,
     error: null,
     refresh: vi.fn(),
     ensureCorpus: vi.fn(),
@@ -26,6 +28,9 @@ vi.mock("@/features/lab/hooks/use-evaluation-corpus", () => ({
     corpusReady: true,
     corpusProcessing: false,
     attachFromProject: vi.fn(),
+    deleteDocument: vi.fn(),
+    deleteAllDocuments: vi.fn(),
+    retryDocumentIngest: vi.fn(),
   }),
 }));
 
@@ -321,7 +326,7 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.getByRole("button", { name: /Run evaluation/i })).toBeDisabled();
   });
 
-  it("keeps developer endpoint hint inside nested disclosure by default", async () => {
+  it("keeps developer endpoint hint inside technical disclosure by default", async () => {
     const user = userEvent.setup();
     render(
       <LabEvalHarness>
@@ -336,16 +341,14 @@ describe("LabEvaluationRunCard", () => {
         />
       </LabEvalHarness>,
     );
-    const advancedDetails = screen.getByText(/Advanced options/i).closest("details");
-    const developerDetails = screen.getByText(/Technical details/i).closest("details");
-    expect(advancedDetails).not.toHaveAttribute("open");
+    const developerDetails = screen.getByTestId("lab-eval-technical-details");
     expect(developerDetails).not.toHaveAttribute("open");
-    await user.click(screen.getByText(/Advanced options/i));
     await user.click(screen.getByText(/Technical details/i));
-    expect(advancedDetails).toHaveTextContent(/Benchmark kind/i);
+    expect(developerDetails).toHaveTextContent(/Benchmark kind/i);
+    expect(screen.queryByText(/POST \/api/i)).not.toBeInTheDocument();
   });
 
-  it("shows experimental preset catalog with unsupported reason in RAG benchmark mode", () => {
+  it("shows experimental preset catalog in RAG benchmark mode without long unsupported reasons visible", () => {
     render(
       <LabEvalHarness>
         <LabEvaluationRunCard
@@ -361,7 +364,7 @@ describe("LabEvaluationRunCard", () => {
     );
     expect(screen.getByTestId("lab-experimental-presets-list")).toBeInTheDocument();
     expect(screen.getByText(/PX_OBSOLETE — Clarification loop/i)).toBeInTheDocument();
-    expect(screen.getByText(/PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED/i)).toBeInTheDocument();
+    expect(screen.queryByText(/PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("lab-experimental-presets-select-core")).toBeInTheDocument();
   });
 

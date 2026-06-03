@@ -10,7 +10,7 @@ vi.mock("@/features/lab/components/lab-evaluation-run-card", () => ({
 }));
 
 describe("LabLlmEvalPage", () => {
-  it("renders guided steps and avoids endpoint boilerplate", () => {
+  it("renders compact summary and collapsed help without endpoint boilerplate", () => {
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>
@@ -18,9 +18,10 @@ describe("LabLlmEvalPage", () => {
         </IntlTestProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getByText(/Guided steps/i)).toBeInTheDocument();
+    expect(screen.getByTestId("lab-llm-eval-page")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-eval-guided-help")).toBeInTheDocument();
+    expect(screen.queryByText(/Guided steps/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\/lab\/benchmarks/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("lab-eval-run-card")).toBeInTheDocument();
   });
 });
-

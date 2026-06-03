@@ -6,6 +6,7 @@ import {
   corpusHasReadyDocuments,
   corpusUploadErrorMessage,
   mapKnowledgeBaseApiError,
+  summarizeCorpusUploadDuplicates,
   summarizeCorpusUploadFailures,
 } from "./evaluation-corpus-upload";
 
@@ -72,6 +73,27 @@ describe("evaluation-corpus-upload", () => {
     expect(summarizeCorpusUploadFailures(response)).toContain("bad.pdf");
   });
 
+  it("summarizes duplicate uploads without treating them as failures", () => {
+    const response: EvaluationCorpusDocumentsUploadResponseDto = {
+      corpus: {
+        id: "c1",
+        name: "x",
+        sourceType: "UPLOADED",
+        documentCount: 1,
+        readyCount: 1,
+        failedCount: 0,
+        documents: [],
+        createdAt: "",
+        updatedAt: "",
+      },
+      uploads: [
+        { documentId: "d1", fileName: "acta.txt", status: "DUPLICATE", error: "DUPLICATE_FILE" },
+      ],
+    };
+    expect(summarizeCorpusUploadFailures(response)).toBeNull();
+    expect(summarizeCorpusUploadDuplicates(response)).toBe("acta.txt");
+  });
+
   it("detects ready corpus", () => {
     expect(corpusHasReadyDocuments({ documentCount: 2, readyCount: 1 })).toBe(true);
     expect(corpusHasReadyDocuments({ documentCount: 1, readyCount: 0 })).toBe(false);
@@ -102,11 +124,13 @@ describe("evaluation-corpus-upload", () => {
   it("mapKnowledgeBaseApiError maps known KB codes to i18n keys", () => {
     const t = (key: string) => `i18n:${key}`;
     expect(mapKnowledgeBaseApiError("KB_NOT_FOUND", t, "fb")).toBe("i18n:labKbNotFound");
-    expect(mapKnowledgeBaseApiError("KB_EMPTY", t, "fb")).toBe("i18n:labKbEmpty");
-    expect(mapKnowledgeBaseApiError("NO_DOCUMENTS", t, "fb")).toBe("i18n:labKbEmpty");
-    expect(mapKnowledgeBaseApiError("NO_READY_DOCUMENTS", t, "fb")).toBe("i18n:labKbNoReadyDocuments");
+    expect(mapKnowledgeBaseApiError("KB_EMPTY", t, "fb")).toBe("i18n:userError_NO_DOCUMENTS");
+    expect(mapKnowledgeBaseApiError("NO_DOCUMENTS", t, "fb")).toBe("i18n:userError_NO_DOCUMENTS");
+    expect(mapKnowledgeBaseApiError("NO_READY_DOCUMENTS", t, "fb")).toBe(
+      "i18n:userError_NO_READY_DOCUMENTS",
+    );
     expect(mapKnowledgeBaseApiError("DOCUMENT_PROCESSING_FAILED", t, "fb")).toBe(
-      "i18n:labKbDocumentProcessingFailed",
+      "i18n:userError_DOCUMENT_PROCESSING_FAILED",
     );
     expect(mapKnowledgeBaseApiError("NO_CORPUS_SELECTED", t, "fb")).toBe("i18n:benchmarkNeedsCorpus");
     expect(mapKnowledgeBaseApiError("REINDEX_FAILED", t, "fb")).toBe("i18n:labRagSnapshotPreparationFailed");
@@ -119,6 +143,16 @@ describe("evaluation-corpus-upload", () => {
     const t = (key: string) => key;
     expect(mapKnowledgeBaseApiError("CUSTOM detail", t, "fb")).toBe("CUSTOM detail");
     expect(mapKnowledgeBaseApiError("  ", t, "fb")).toBe("fb");
+  });
+
+  it("mapKnowledgeBaseApiError humanizes technical substrings", () => {
+    const t = (key: string) => `i18n:${key}`;
+    expect(
+      mapKnowledgeBaseApiError("EMBEDDING_DIMENSION_MISMATCH: model x", t, "fb"),
+    ).toBe("i18n:userError_EMBEDDING_DIMENSION_MISMATCH");
+    expect(mapKnowledgeBaseApiError("BLOCKED_BY_MODEL_AVAILABILITY", t, "fb")).toBe(
+      "i18n:userError_BLOCKED_BY_MODEL_AVAILABILITY",
+    );
   });
 
   it("uses default message when failed upload has no error", () => {

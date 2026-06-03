@@ -75,6 +75,35 @@ describe("LabJobPanel", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/Queued/i);
   });
 
+  it("shows no-items-executed label when closure has zero executed", () => {
+    render(
+      <IntlTestProvider>
+        <LabJobPanel
+          accepted={accepted}
+          taskStatus={{
+            ...runningTask,
+            status: "FAILED",
+            terminal: true,
+            failureCode: "BENCHMARK_ALL_ITEMS_SKIPPED",
+            errorMessage: "Every benchmark item was skipped",
+            result: {
+              benchmarkClosure: {
+                expectedItems: 4,
+                executedItems: 0,
+                skippedItems: 4,
+                classification: "COMPLETED_WITH_NO_EXECUTED_ITEMS",
+              },
+            },
+          }}
+        />
+      </IntlTestProvider>,
+    );
+    const panel = screen.getByTestId("lab-job-panel");
+    expect(within(panel).getAllByRole("status")[0]).toHaveTextContent(/No items executed/i);
+    expect(within(panel).getByTestId("lab-benchmark-closure-summary")).toHaveTextContent(/0 executed/i);
+    expect(screen.getByTestId("lab-empty-success-warning")).toBeInTheDocument();
+  });
+
   it("shows completed chip for terminal success", () => {
     render(
       <IntlTestProvider>
@@ -131,5 +160,73 @@ describe("LabJobPanel", () => {
     expect(screen.getByText("j1")).toBeInTheDocument();
     expect(screen.queryByText("/p")).not.toBeInTheDocument();
     expect(screen.queryByText("/s")).not.toBeInTheDocument();
+  });
+
+  it("renders progress summary and subtasks from structured events", () => {
+    render(
+      <IntlTestProvider>
+        <LabJobPanel
+          accepted={accepted}
+          taskStatus={runningTask}
+          recentEvents={[
+            {
+              eventId: 1,
+              jobId: "j1",
+              type: "DATASET_RESOLVED",
+              status: "RUNNING",
+              progress: null,
+              message: "Dataset ready · 2 questions",
+              timestamp: "2026-01-01T00:00:00Z",
+              payload: { phase: "DATASET" },
+            },
+            {
+              eventId: 2,
+              jobId: "j1",
+              type: "ITEM_COMPLETED",
+              status: "RUNNING",
+              progress: null,
+              message: "P0 · Question 1/2",
+              timestamp: "2026-01-01T00:00:01Z",
+              runCompletedItems: 1,
+              runTotalItems: 2,
+              currentPresetCode: "P0",
+              payload: { phase: "RAG_EVALUATION" },
+            },
+          ]}
+        />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByTestId("lab-progress-summary")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-subtask-list")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-job-item-counter")).toHaveTextContent(/1\s*\/\s*2/);
+    expect(screen.queryByText(/Resolving typed dataset/i)).not.toBeInTheDocument();
+  });
+
+  it("shows global item counter when campaign totals are present", () => {
+    render(
+      <IntlTestProvider>
+        <LabJobPanel
+          accepted={accepted}
+          taskStatus={runningTask}
+          recentEvents={[
+            {
+              eventId: 1,
+              jobId: "j1",
+              type: "ITEM_COMPLETED",
+              status: "RUNNING",
+              progress: null,
+              payload: null,
+              message: "Progress",
+              timestamp: "2026-01-01T00:00:00Z",
+              globalCompletedItems: 5,
+              globalTotalItems: 108,
+              runCompletedItems: 5,
+              runTotalItems: 36,
+            },
+          ]}
+        />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByTestId("lab-job-item-counter")).toHaveTextContent(/5\s*\/\s*108/);
   });
 });

@@ -33,7 +33,7 @@ vi.mock("next-intl", () => ({
   },
 }));
 
-const refresh = vi.fn();
+const refresh = vi.fn().mockResolvedValue(undefined);
 const ensureCorpus = vi.fn().mockResolvedValue({
   id: "corpus-new",
   documentCount: 0,
@@ -42,6 +42,9 @@ const ensureCorpus = vi.fn().mockResolvedValue({
 });
 const uploadDocuments = vi.fn();
 const attachFromProject = vi.fn().mockResolvedValue(undefined);
+const deleteDocument = vi.fn().mockResolvedValue(undefined);
+const deleteAllDocuments = vi.fn().mockResolvedValue(undefined);
+const retryDocumentIngest = vi.fn().mockResolvedValue(undefined);
 const apiFetch = vi.fn();
 
 vi.mock("@/lib/api-client", async (importOriginal) => {
@@ -86,6 +89,9 @@ function corpusSummary(
     ensureCorpus,
     uploadDocuments,
     attachFromProject,
+    deleteDocument,
+    deleteAllDocuments,
+    retryDocumentIngest,
   };
 }
 
@@ -109,10 +115,10 @@ describe("LabEvaluationCorpusPanel", () => {
     expect(screen.getByTestId("lab-evaluation-corpus-panel")).toBeInTheDocument();
     expect(screen.getByTestId("lab-corpus-summary")).toHaveTextContent(/5 documents/i);
     expect(screen.getByTestId("lab-corpus-upload-input")).toHaveAttribute("multiple");
-    expect(screen.getByText(/ready\.pdf — Ready/)).toBeInTheDocument();
-    expect(screen.getByText(/ingest\.pdf — Processing/)).toBeInTheDocument();
-    expect(screen.getByText(/fail\.pdf — Failed \(bad\)/)).toBeInTheDocument();
-    expect(screen.getByText(/other\.pdf — QUEUED/)).toBeInTheDocument();
+    expect(screen.getByTestId("lab-corpus-doc-status-d1")).toHaveTextContent(/Ready/);
+    expect(screen.getByTestId("lab-corpus-doc-status-d2")).toHaveTextContent(/Processing/);
+    expect(screen.getByTestId("lab-corpus-doc-status-d3")).toHaveTextContent(/Failed \(bad\)/);
+    expect(screen.getByTestId("lab-corpus-doc-status-d5")).toHaveTextContent(/QUEUED/);
   });
 
   it("shows attach-from-project only when optional project is set", async () => {
@@ -194,6 +200,32 @@ describe("LabEvaluationCorpusPanel", () => {
     expect(input).toBeDisabled();
     await userEvent.upload(input, new File(["x"], "x.pdf", { type: "application/pdf" }));
     expect(uploadDocuments).not.toHaveBeenCalled();
+  });
+
+  it("shows duplicate warning without error alert", async () => {
+    uploadDocuments.mockResolvedValueOnce({
+      response: {
+        uploads: [{ documentId: "d1", fileName: "acta.txt", status: "DUPLICATE", error: "DUPLICATE_FILE" }],
+      },
+      corpus: {},
+    });
+    render(
+      <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
+    );
+    await userEvent.upload(
+      screen.getByTestId("lab-corpus-upload-input"),
+      new File(["x"], "acta.txt", { type: "text/plain" }),
+    );
+    await waitFor(() => expect(screen.getByTestId("lab-kb-duplicate-warning")).toBeInTheDocument());
+    expect(screen.queryByTestId("lab-kb-error")).not.toBeInTheDocument();
+  });
+
+  it("deletes document via hook", async () => {
+    render(
+      <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
+    );
+    await userEvent.click(screen.getByTestId("lab-corpus-delete-d1"));
+    await waitFor(() => expect(deleteDocument).toHaveBeenCalledWith("corpus-1", "d1"));
   });
 
   it("surfaces hook error when present", () => {

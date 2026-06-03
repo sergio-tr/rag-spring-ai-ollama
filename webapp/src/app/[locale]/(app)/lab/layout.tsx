@@ -21,8 +21,7 @@ export default function LabLayout({ children }: Readonly<{ children: ReactNode }
   return (
     <AppSubnavSectionLayout
       title={t("title")}
-      subtitle={t("subtitle")}
-      noteBelowSubtitle={t("layoutAdrNote")}
+      subtitle={t("compactLayoutSubtitle")}
       navAriaLabel={t("sectionsNavLabel")}
       sectionRootHref="/lab"
       tabs={tabs}

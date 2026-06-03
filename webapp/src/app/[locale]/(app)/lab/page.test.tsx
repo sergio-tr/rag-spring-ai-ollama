@@ -196,7 +196,7 @@ describe("LabOverviewPage", () => {
         </IntlTestProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getByText(/See what is ready to run/i)).toBeInTheDocument();
+    expect(screen.getByText(/Pick a workflow/i)).toBeInTheDocument();
     expect(screen.queryByText(/Feature flags from GET/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\{product\}/i)).not.toBeInTheDocument();
     expect(screen.getByText(/packaged reference workbook is missing/i)).toBeInTheDocument();
@@ -230,7 +230,7 @@ describe("LabOverviewPage", () => {
     expect(link).toHaveAttribute("href", "/en#datasets");
   });
 
-  it("renders the three workflows with links to each evaluation page", () => {
+  it("renders four compact workflow cards with links", () => {
     vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
       data: {
         datasetKindsReady: true,
@@ -250,15 +250,13 @@ describe("LabOverviewPage", () => {
         </IntlTestProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getByTestId("lab-control-panel")).toBeInTheDocument();
-    expect(screen.getByText(/Control panel/i)).toBeInTheDocument();
-    expect(screen.getByText(/Step 1/i)).toBeInTheDocument();
-    expect(screen.getByText(/Step 2/i)).toBeInTheDocument();
-    expect(screen.getByText(/Step 3/i)).toBeInTheDocument();
-    expect(screen.getByText(/A\.\s*LLM model baseline/i)).toBeInTheDocument();
-    expect(screen.getByText(/B\.\s*Embedding model baseline/i)).toBeInTheDocument();
-    expect(screen.getByText(/C\.\s*RAG preset benchmark/i)).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: /Open workflow/i }).length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByTestId("lab-overview-workflow-cards")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-workflow-card-llm")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-workflow-card-embedding")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-workflow-card-rag")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-workflow-card-classifier")).toBeInTheDocument();
+    expect(screen.queryByText(/Follow the steps below/i)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /Open workflow/i }).length).toBeGreaterThanOrEqual(4);
   });
 
   it("collapses technical server status lines behind a disclosure by default", async () => {
@@ -284,9 +282,13 @@ describe("LabOverviewPage", () => {
         </IntlTestProvider>
       </QueryClientProvider>,
     );
+    const technical = screen.getByTestId("lab-overview-status-technical");
+    expect(technical).not.toHaveAttribute("open");
     const serverDetails = screen.getByText(/Server note/i).closest("details");
     expect(serverDetails).not.toHaveAttribute("open");
     expect(serverDetails).toHaveTextContent(/Research Lab is ready/i);
+    await user.click(screen.getByText(/Technical details/i));
+    expect(technical).toHaveAttribute("open");
     await user.click(screen.getByText(/Server note/i));
     expect(serverDetails).toHaveAttribute("open");
   });
@@ -341,7 +343,7 @@ describe("LabOverviewPage", () => {
         </IntlTestProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getByTestId("lab-control-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-overview-compact")).toBeInTheDocument();
     expect(screen.getByText("LLM & RAG evaluations")).toBeInTheDocument();
     expect(screen.queryByText(/compose\.obs\.yml/i)).not.toBeInTheDocument();
   });

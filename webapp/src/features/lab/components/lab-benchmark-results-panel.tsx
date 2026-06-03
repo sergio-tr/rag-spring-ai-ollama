@@ -288,6 +288,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
   }
 
   const occ = readGlobalOutcomeCounts(payload.rollups);
+  const executedOutcomeCount = occ.EXECUTED ?? 0;
   const macroExecuted = readOnExecutedSummary(payload.rollups.globalMacro);
   const mvpRows = readMvpItems(payload.itemsBundle);
   const tableRows = mvpRows.map((row, idx) => toResultTableRow(row, idx, t));
@@ -563,6 +564,16 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             {t("benchmarkCampaignComparisonEmpty")}
           </output>
         )
+      ) : null}
+
+      {executedOutcomeCount <= 0 ? (
+        <output
+          role="alert"
+          className="text-destructive block text-xs font-medium"
+          data-testid="lab-benchmark-no-executed-warning"
+        >
+          {t("benchmarkNoExecutedItemsSummary")}
+        </output>
       ) : null}
 
       <div className="space-y-2">

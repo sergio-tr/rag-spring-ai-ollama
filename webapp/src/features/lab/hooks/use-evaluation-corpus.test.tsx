@@ -94,27 +94,61 @@ describe("useEvaluationCorpus", () => {
     expect(apiFetch).toHaveBeenCalledWith("/lab/evaluation-corpora/corpus-1");
   });
 
-  it("uploadDocuments posts multipart to documents endpoint", async () => {
+  it("uploadDocuments posts multipart and merges processing row into cache", async () => {
     vi.mocked(apiFetch).mockResolvedValue(corpus);
     const { result } = renderHook(() => useEvaluationCorpus("corpus-1"), { wrapper });
     await waitFor(() => expect(result.current.summary).toEqual(corpus));
 
     const uploadResponse: EvaluationCorpusDocumentsUploadResponseDto = {
-      corpus: { ...corpus, documentCount: 5 },
+      corpus: { ...corpus, documentCount: 0, documents: [] },
       uploads: [{ documentId: "d1", fileName: "doc.txt", status: "PROCESSING", error: null }],
     };
-    vi.mocked(apiFetch).mockResolvedValueOnce(uploadResponse).mockResolvedValueOnce(uploadResponse.corpus);
+    const readyCorpus = {
+      ...corpus,
+      documentCount: 1,
+      readyCount: 1,
+      documents: [
+        {
+          id: "d1",
+          fileName: "doc.txt",
+          status: "READY" as const,
+          chunkCount: 1,
+          errorMessage: null,
+          uploadedAt: corpus.createdAt,
+          reindexedAt: null,
+          corpusScope: "PROJECT_SHARED" as const,
+          conversationId: null,
+          currentIndexSnapshotId: null,
+          indexSignatureHash: null,
+          storagePresent: true,
+        },
+      ],
+    };
+    vi.mocked(apiFetch).mockImplementation(async (url, init) => {
+      if (init?.method === "POST" && String(url).includes("/documents")) {
+        return uploadResponse;
+      }
+      return readyCorpus;
+    });
 
     const file = new File(["x"], "doc.txt", { type: "text/plain" });
     const out = await result.current.uploadDocuments("corpus-1", [file]);
     expect(out.response.uploads).toHaveLength(1);
+    expect(out.corpus.documents).toHaveLength(1);
+    expect(out.corpus.documents[0]?.status).toBe("READY");
     expect(apiFetch).toHaveBeenCalledWith(
       "/lab/evaluation-corpora/corpus-1/documents",
       expect.objectContaining({ method: "POST" }),
     );
-    const init = vi.mocked(apiFetch).mock.calls[1]?.[1];
-    expect(init?.body).toBeInstanceOf(FormData);
-    await waitFor(() => expect(result.current.summary?.documentCount).toBe(5));
+  });
+
+  it("exposes effectiveCorpusId after ensureCorpus when prop is null", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(corpus);
+    const { result } = renderHook(() => useEvaluationCorpus(null), { wrapper });
+
+    await result.current.ensureCorpus();
+    await waitFor(() => expect(result.current.effectiveCorpusId).toBe("corpus-1"));
+    await waitFor(() => expect(result.current.summary).toEqual(corpus));
   });
 
   it("attachFromProject updates cache", async () => {

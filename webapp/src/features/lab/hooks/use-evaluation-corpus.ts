@@ -5,12 +5,13 @@ import {
   corpusHasProcessingDocuments,
   corpusHasReadyDocuments,
 } from "@/features/lab/lib/evaluation-corpus-upload";
+import { mergeCorpusAfterUpload } from "@/features/lab/lib/evaluation-corpus-ingestion";
 import type {
   EvaluationCorpusDocumentsUploadResponseDto,
   EvaluationCorpusSummaryDto,
 } from "@/types/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export function evaluationCorpusQueryKey(corpusId: string | null) {
   return ["lab", "evaluation-corpus", corpusId] as const;
@@ -23,13 +24,24 @@ async function fetchEvaluationCorpus(id: string): Promise<EvaluationCorpusSummar
 const CORPUS_POLL_MS = 2_000;
 const CORPUS_POLL_MAX_ATTEMPTS = 45;
 
+export type EvaluationCorpusApi = ReturnType<typeof useEvaluationCorpus>;
+
 export function useEvaluationCorpus(corpusId: string | null) {
   const qc = useQueryClient();
+  const [resolvedCorpusId, setResolvedCorpusId] = useState<string | null>(corpusId);
+
+  useEffect(() => {
+    if (!corpusId) return;
+    const timer = globalThis.setTimeout(() => setResolvedCorpusId(corpusId), 0);
+    return () => globalThis.clearTimeout(timer);
+  }, [corpusId]);
+
+  const effectiveCorpusId = corpusId ?? resolvedCorpusId;
 
   const query = useQuery({
-    queryKey: evaluationCorpusQueryKey(corpusId),
-    enabled: Boolean(corpusId),
-    queryFn: () => fetchEvaluationCorpus(corpusId!),
+    queryKey: evaluationCorpusQueryKey(effectiveCorpusId),
+    enabled: Boolean(effectiveCorpusId),
+    queryFn: () => fetchEvaluationCorpus(effectiveCorpusId!),
     refetchInterval: (q) => {
       const data = q.state.data;
       if (!data || !corpusHasProcessingDocuments(data)) {
@@ -65,8 +77,8 @@ export function useEvaluationCorpus(corpusId: string | null) {
   );
 
   const ensureCorpus = useCallback(async () => {
-    if (corpusId) {
-      return refresh(corpusId);
+    if (effectiveCorpusId) {
+      return refresh(effectiveCorpusId);
     }
     try {
       const created = await apiFetch<EvaluationCorpusSummaryDto>(apiProductPath("/lab/evaluation-corpora"), {
@@ -74,13 +86,14 @@ export function useEvaluationCorpus(corpusId: string | null) {
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ name: "Lab knowledge base" }),
       });
+      setResolvedCorpusId(created.id);
       qc.setQueryData(evaluationCorpusQueryKey(created.id), created);
       return created;
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "Failed to create evaluation corpus";
       throw new Error(msg, { cause: e });
     }
-  }, [corpusId, qc, refresh]);
+  }, [effectiveCorpusId, qc, refresh]);
 
   const uploadDocuments = useCallback(
     async (id: string, files: File[], onProgress?: (current: number, total: number) => void) => {
@@ -97,9 +110,100 @@ export function useEvaluationCorpus(corpusId: string | null) {
         { method: "POST", body: form },
       );
       onProgress?.(files.length, files.length);
-      qc.setQueryData(evaluationCorpusQueryKey(id), data.corpus);
+      const key = evaluationCorpusQueryKey(id);
+      const previous = qc.getQueryData<EvaluationCorpusSummaryDto>(key);
+      const merged = mergeCorpusAfterUpload(previous ?? data.corpus, data);
+      qc.setQueryData(key, merged);
       const refreshed = await waitForReadyDocuments(id);
+      qc.setQueryData(key, refreshed);
       return { response: data, corpus: refreshed };
+    },
+    [qc, waitForReadyDocuments],
+  );
+
+  const deleteDocument = useCallback(
+    async (id: string, documentId: string) => {
+      const key = evaluationCorpusQueryKey(id);
+      const previous = qc.getQueryData<EvaluationCorpusSummaryDto>(key);
+      if (previous) {
+        const remaining = previous.documents.filter((d) => d.id !== documentId);
+        qc.setQueryData<EvaluationCorpusSummaryDto>(key, {
+          ...previous,
+          documents: remaining,
+          documentCount: remaining.length,
+          readyCount: remaining.filter((d) => d.status === "READY").length,
+          failedCount: remaining.filter((d) => d.status === "ERROR").length,
+        });
+      }
+      try {
+        const data = await apiFetch<EvaluationCorpusSummaryDto>(
+          apiProductPath(`/lab/evaluation-corpora/${id}/documents/${documentId}`),
+          { method: "DELETE" },
+        );
+        qc.setQueryData(key, data);
+        return data;
+      } catch (e) {
+        if (previous) {
+          qc.setQueryData(key, previous);
+        }
+        throw e;
+      }
+    },
+    [qc],
+  );
+
+  const deleteAllDocuments = useCallback(
+    async (id: string) => {
+      const key = evaluationCorpusQueryKey(id);
+      const previous = qc.getQueryData<EvaluationCorpusSummaryDto>(key);
+      const empty: EvaluationCorpusSummaryDto = previous
+        ? {
+            ...previous,
+            documents: [],
+            documentCount: 0,
+            readyCount: 0,
+            failedCount: 0,
+          }
+        : {
+            id,
+            name: "Lab knowledge base",
+            sourceType: "UPLOADED",
+            documentCount: 0,
+            readyCount: 0,
+            failedCount: 0,
+            documents: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+      qc.setQueryData(key, empty);
+      try {
+        const data = await apiFetch<EvaluationCorpusSummaryDto>(
+          apiProductPath(`/lab/evaluation-corpora/${id}/documents`),
+          { method: "DELETE" },
+        );
+        qc.setQueryData(key, data);
+        return data;
+      } catch (e) {
+        if (previous) {
+          qc.setQueryData(key, previous);
+        }
+        throw e;
+      }
+    },
+    [qc],
+  );
+
+  const retryDocumentIngest = useCallback(
+    async (id: string, documentId: string) => {
+      const data = await apiFetch<EvaluationCorpusSummaryDto>(
+        apiProductPath(`/lab/evaluation-corpora/${id}/documents/${documentId}/retry-ingest`),
+        { method: "POST" },
+      );
+      const key = evaluationCorpusQueryKey(id);
+      qc.setQueryData(key, data);
+      const refreshed = await waitForReadyDocuments(id);
+      qc.setQueryData(key, refreshed);
+      return refreshed;
     },
     [qc, waitForReadyDocuments],
   );
@@ -120,7 +224,7 @@ export function useEvaluationCorpus(corpusId: string | null) {
     [qc, waitForReadyDocuments],
   );
 
-  const summary = corpusId ? (query.data ?? null) : null;
+  const summary = effectiveCorpusId ? (query.data ?? null) : null;
   const error =
     query.error instanceof ApiError
       ? query.error.message
@@ -132,7 +236,9 @@ export function useEvaluationCorpus(corpusId: string | null) {
 
   return {
     summary,
-    loading: query.isFetching,
+    effectiveCorpusId,
+    loading: query.isLoading,
+    fetching: query.isFetching,
     error,
     corpusReady: corpusHasReadyDocuments(summary),
     corpusProcessing: corpusHasProcessingDocuments(summary),
@@ -140,5 +246,8 @@ export function useEvaluationCorpus(corpusId: string | null) {
     ensureCorpus,
     uploadDocuments,
     attachFromProject,
+    deleteDocument,
+    deleteAllDocuments,
+    retryDocumentIngest,
   };
 }

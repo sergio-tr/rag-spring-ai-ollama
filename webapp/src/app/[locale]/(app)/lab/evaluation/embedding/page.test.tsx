@@ -10,7 +10,7 @@ vi.mock("@/features/lab/components/lab-evaluation-run-card", () => ({
 }));
 
 describe("LabEmbeddingEvalPage", () => {
-  it("renders guided steps and avoids endpoint boilerplate", () => {
+  it("renders compact summary and collapsed help", () => {
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>
@@ -18,9 +18,8 @@ describe("LabEmbeddingEvalPage", () => {
         </IntlTestProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getByText(/Guided steps/i)).toBeInTheDocument();
-    expect(screen.queryByText(/\/lab\/benchmarks/i)).not.toBeInTheDocument();
-    expect(screen.getByTestId("lab-eval-run-card")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-embedding-eval-page")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-eval-guided-help")).toBeInTheDocument();
+    expect(screen.queryByText(/Guided steps/i)).not.toBeInTheDocument();
   });
 });
-

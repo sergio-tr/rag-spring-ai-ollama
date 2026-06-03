@@ -9,6 +9,11 @@ import {
   streamLabJobLive,
   type LabJobStreamCallbacks,
 } from "@/lib/lab-job-sse";
+import {
+  EMPTY_LAB_PROGRESS_SNAPSHOT,
+  mergeLabProgressSnapshot,
+  type LabProgressSnapshot,
+} from "@/features/lab/lib/lab-job-progress-payload";
 import type { AsyncTaskStatusDto, LabJobAcceptedDto, LabJobEventDto, LabJobLiveConnectionState } from "@/types/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -20,10 +25,56 @@ export type UseLabJobSseOptions = Readonly<{
   onStreamError?: (error: unknown) => void;
 }>;
 
+/** Enough tail for long campaigns; reducer keeps latest global counters from events. */
+const RECENT_JOB_EVENTS_MAX = 200;
+
+const STRUCTURED_JOB_EVENT_TYPES = new Set([
+  "ACCEPTED",
+  "RAG_EVALUATION_ACCEPTED",
+  "DATASET_RESOLVED",
+  "KNOWLEDGE_BASE_CHECKED",
+  "CAMPAIGN_ACCEPTED",
+  "CAMPAIGN_PLANNED",
+  "CAMPAIGN_STARTED",
+  "RUN_STARTED",
+  "PRESET_STARTED",
+  "ITEM_STARTED",
+  "SNAPSHOT_PREPARATION_STARTED",
+  "SNAPSHOT_PREPARATION_COMPLETED",
+  "ITEM_COMPLETED",
+  "ITEM_FAILED",
+  "ITEM_SKIPPED",
+  "EXPORT_GENERATED",
+  "RUN_COMPLETED",
+  "CAMPAIGN_COMPLETED",
+  "FAILED",
+  "CANCELLED",
+]);
+
+const SPAM_JOB_MESSAGE = [
+  /^Resolving typed dataset/i,
+  /^Auto-reindex lock acquired/i,
+  /^RAG dataset resolved:/i,
+  /^Parsed dataset /i,
+];
+
+function shouldTrackJobEvent(event: LabJobEventDto): boolean {
+  if (event.type === "HEARTBEAT" || event.type === "SNAPSHOT" || event.type === "PROGRESS") {
+    return false;
+  }
+  const msg = event.message?.trim() ?? "";
+  if (msg && SPAM_JOB_MESSAGE.some((re) => re.test(msg))) {
+    return false;
+  }
+  return STRUCTURED_JOB_EVENT_TYPES.has(event.type);
+}
+
 export type UseLabJobSseResult = Readonly<{
   connectionState: LabJobLiveConnectionState;
   taskStatus: AsyncTaskStatusDto | null;
   lastEventId: number | null;
+  recentEvents: LabJobEventDto[];
+  progressSnapshot: LabProgressSnapshot;
   resume: () => void;
   stop: () => void;
 }>;
@@ -108,6 +159,8 @@ export function useLabJobSse(options: UseLabJobSseOptions): UseLabJobSseResult {
   const [connectionState, setConnectionState] = useState<LabJobLiveConnectionState>("idle");
   const [taskStatus, setTaskStatus] = useState<AsyncTaskStatusDto | null>(null);
   const [lastEventId, setLastEventId] = useState<number | null>(null);
+  const [recentEvents, setRecentEvents] = useState<LabJobEventDto[]>([]);
+  const [progressSnapshot, setProgressSnapshot] = useState<LabProgressSnapshot>(EMPTY_LAB_PROGRESS_SNAPSHOT);
   const [resumeNonce, setResumeNonce] = useState(0);
 
   const abortRef = useRef<AbortController | null>(null);
@@ -181,6 +234,12 @@ export function useLabJobSse(options: UseLabJobSseOptions): UseLabJobSseResult {
     }
 
     let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setRecentEvents([]);
+        setProgressSnapshot(EMPTY_LAB_PROGRESS_SNAPSHOT);
+      }
+    });
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -235,6 +294,13 @@ export function useLabJobSse(options: UseLabJobSseOptions): UseLabJobSseResult {
             lastEventIdRef.current == null ? event.eventId : Math.max(lastEventIdRef.current, event.eventId);
           lastEventIdRef.current = next;
           setLastEventId(next);
+        }
+        setProgressSnapshot((prev) => mergeLabProgressSnapshot(prev, event));
+        if (shouldTrackJobEvent(event)) {
+          setRecentEvents((prev) => {
+            const tail = prev.length >= RECENT_JOB_EVENTS_MAX ? prev.slice(-(RECENT_JOB_EVENTS_MAX - 1)) : prev;
+            return [...tail, event];
+          });
         }
         const mapped = eventToAsyncTaskStatus(event, taskStatusRef.current);
         if (mapped) {
@@ -429,6 +495,8 @@ export function useLabJobSse(options: UseLabJobSseOptions): UseLabJobSseResult {
     connectionState: connectionStateOut,
     taskStatus,
     lastEventId,
+    recentEvents,
+    progressSnapshot,
     resume,
     stop,
   };

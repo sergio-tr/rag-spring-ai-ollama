@@ -1,5 +1,9 @@
 import type { AsyncTaskStatusDto, LabJobLiveConnectionState } from "@/types/api";
 import type { TraceStatus } from "@/features/trace/trace-types";
+import {
+  isEmptyBenchmarkSuccess,
+  readBenchmarkClosureFromTask,
+} from "@/features/lab/lib/lab-rag-closure";
 
 /** Normalized phases for UI + trace dedupe (backend uses AsyncTaskStatus strings). */
 export type LabJobUiPhase =
@@ -22,6 +26,12 @@ function taskStatusUpper(status: string | null | undefined): string {
   return (status ?? "").trim().toUpperCase();
 }
 
+function terminalSucceededButNoExecutedItems(taskStatus: AsyncTaskStatusDto | null): boolean {
+  if (!taskStatus?.terminal) return false;
+  if (taskStatusUpper(taskStatus.status) !== "SUCCEEDED") return false;
+  return isEmptyBenchmarkSuccess(taskStatus);
+}
+
 /**
  * Map async task DTO + live connection state to a single visible phase.
  */
@@ -42,7 +52,7 @@ export function getLabJobUiPhase(input: {
     if (!taskStatus) return queuedHint ? "queued" : "running";
     if (taskStatus.terminal) {
       const s = taskStatusUpper(taskStatus.status);
-      if (s === "SUCCEEDED") return "completed";
+      if (s === "SUCCEEDED") return terminalSucceededButNoExecutedItems(taskStatus) ? "failed" : "completed";
       if (s === "FAILED") return "failed";
       if (s === "CANCELLED" || s === "CANCELED") return "cancelled";
       return "failed";
@@ -66,7 +76,7 @@ export function getLabJobUiPhase(input: {
   }
   if (taskStatus.terminal) {
     const s = taskStatusUpper(taskStatus.status);
-    if (s === "SUCCEEDED") return "completed";
+    if (s === "SUCCEEDED") return terminalSucceededButNoExecutedItems(taskStatus) ? "failed" : "completed";
     if (s === "FAILED") return "failed";
     if (s === "CANCELLED" || s === "CANCELED") return "cancelled";
     return "failed";
@@ -106,6 +116,28 @@ export function labPhaseToTraceStatus(phase: LabJobUiPhase): TraceStatus {
   }
 }
 
+/** Trace pill when benchmark closure shows partial or empty execution. */
+export function labTraceStatusForJob(
+  phase: LabJobUiPhase,
+  taskStatus: AsyncTaskStatusDto | null,
+): TraceStatus {
+  if (phase === "failed" && taskStatus && isEmptyBenchmarkSuccess(taskStatus)) {
+    return "error";
+  }
+  if (phase === "completed" && taskStatus) {
+    const closure = readBenchmarkClosureFromTask(taskStatus);
+    if (closure && closure.expectedItems > 0) {
+      if (closure.executedItems <= 0) {
+        return "error";
+      }
+      if (closure.failedItems > 0 || closure.skippedItems > 0 || closure.notSupportedItems > 0) {
+        return "warning";
+      }
+    }
+  }
+  return labPhaseToTraceStatus(phase);
+}
+
 export type LabJobUiLabels = {
   connecting: string;
   live: string;
@@ -116,6 +148,9 @@ export type LabJobUiLabels = {
   running: string;
   cancelling: string;
   completed: string;
+  completedWithFailures: string;
+  completedWithUnsupported: string;
+  noItemsExecuted: string;
   failed: string;
   cancelled: string;
   stoppedWaiting: string;
@@ -123,7 +158,12 @@ export type LabJobUiLabels = {
   streamConfigurationError: string;
 };
 
-export function getLabJobStatusLabel(phase: LabJobUiPhase, labels: LabJobUiLabels, connectionState?: LabJobLiveConnectionState | null): string {
+export function getLabJobStatusLabel(
+  phase: LabJobUiPhase,
+  labels: LabJobUiLabels,
+  connectionState?: LabJobLiveConnectionState | null,
+  taskStatus?: AsyncTaskStatusDto | null,
+): string {
   if (connectionState === "configuration_error") {
     return labels.streamConfigurationError;
   }
@@ -146,13 +186,41 @@ export function getLabJobStatusLabel(phase: LabJobUiPhase, labels: LabJobUiLabel
       return phase === "unknown_running" ? labels.unknownRunning : labels.running;
     case "cancelling":
       return labels.cancelling;
-    case "completed":
+    case "completed": {
+      const closure = taskStatus ? readClosureClassification(taskStatus) : null;
+      if (closure === "COMPLETED_WITH_FAILURES") {
+        return labels.completedWithFailures;
+      }
+      if (closure === "COMPLETED_WITH_UNSUPPORTED") {
+        return labels.completedWithUnsupported;
+      }
+      const summary = taskStatus ? readBenchmarkClosureFromTask(taskStatus) : null;
+      if (
+        summary &&
+        summary.executedItems > 0 &&
+        (summary.failedItems > 0 || summary.skippedItems > 0 || summary.notSupportedItems > 0)
+      ) {
+        return labels.completedWithFailures;
+      }
       return labels.completed;
+    }
     case "failed":
+      if (taskStatus && isEmptyBenchmarkSuccess(taskStatus)) {
+        return labels.noItemsExecuted;
+      }
       return labels.failed;
     case "cancelled":
       return labels.cancelled;
     default:
       return labels.queued;
   }
+}
+
+function readClosureClassification(taskStatus: AsyncTaskStatusDto): string | null {
+  const result = taskStatus.result;
+  if (!result || typeof result !== "object") return null;
+  const closure = (result as Record<string, unknown>).benchmarkClosure;
+  if (!closure || typeof closure !== "object") return null;
+  const c = (closure as Record<string, unknown>).classification;
+  return typeof c === "string" ? c : null;
 }

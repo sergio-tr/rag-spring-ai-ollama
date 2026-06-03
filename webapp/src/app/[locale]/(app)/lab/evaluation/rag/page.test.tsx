@@ -10,7 +10,7 @@ vi.mock("@/features/lab/components/lab-evaluation-run-card", () => ({
 }));
 
 describe("LabRagEvalPage", () => {
-  it("renders guided steps for P0-P14 and avoids removed endpoint copy", () => {
+  it("hides preset guide by default and shows compact run section", () => {
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>
@@ -18,11 +18,9 @@ describe("LabRagEvalPage", () => {
         </IntlTestProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getByText(/Guided steps/i)).toBeInTheDocument();
-    expect(screen.getByTestId("lab-rag-preset-explainer")).toBeInTheDocument();
-    expect(screen.getByText(/P0–P8/i)).toBeInTheDocument();
-    expect(screen.queryByText(/\/lab\/evaluations/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("lab-rag-eval-page")).toBeInTheDocument();
+    expect(screen.queryByText(/How to read P0/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("lab-rag-preset-help")).toBeInTheDocument();
     expect(screen.getByTestId("lab-eval-run-card")).toBeInTheDocument();
   });
 });
-
