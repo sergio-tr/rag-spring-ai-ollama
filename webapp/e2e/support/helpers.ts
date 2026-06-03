@@ -70,7 +70,7 @@ export async function authHeadersFromPage(page: Page): Promise<Record<string, st
   return h;
 }
 
-function activeProjectIdFromUrl(page: Page): string {
+export function activeProjectIdFromUrl(page: Page): string {
   const u = new URL(page.url());
   const pid = u.searchParams.get("projectId");
   if (!pid) {

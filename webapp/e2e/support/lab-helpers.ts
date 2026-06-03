@@ -2,7 +2,11 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import { expect, type Page } from "@playwright/test";
 import { authHeadersFromPage, productApiUrl } from "./helpers";
-import { sampleTextFilePath } from "../fixtures/documents";
+import {
+  actaKnowledgeBaseFilePath,
+  ragClasspathBootstrapActaFilePath,
+  sampleTextFilePath,
+} from "../fixtures/documents";
 import type { ActiveLabJobDto } from "@/types/api";
 import {
   ensureNoActiveLabJobs,
@@ -109,6 +113,10 @@ export async function assertLabJobPanelShowsActivePhase(page: Page, timeoutMs = 
 }
 
 export const FORBIDDEN_LAB_UI_PATTERNS: RegExp[] = [
+  /Follow the steps below/i,
+  /How to read P0/i,
+  /Guided steps/i,
+  /\bcorpus\b/i,
   /POST JSON/i,
   /canonical benchmark API/i,
   /Lab API —/i,
@@ -183,6 +191,171 @@ export async function pollLabTerminalOutcome(
   return outcome;
 }
 
+/** Canonical LLM tags for comparison closure (Flyway V61 allowlist). */
+export const LLM_CAMPAIGN_PREFERRED_MODEL_IDS = [
+  "llama3.1:8b",
+  "gemma3:4b",
+  "mistral:7b",
+] as const;
+
+export type LlmModelValidationSnapshot = {
+  status: "READY" | "BLOCKED_BY_MODEL_AVAILABILITY";
+  selectableLlmModelIds: string[];
+  allowlistLlmNames: string[];
+  ollamaTags: string[];
+  preferred: string[];
+  missingPreferred: string[];
+  checkedAt: string;
+};
+
+function ensureLlmModelsAllowlisted(modelNames: readonly string[]): void {
+  const container = process.env.E2E_POSTGRES_DOCKER_CONTAINER ?? "docker-postgres-1";
+  const db = process.env.POSTGRES_DB ?? "vectordb";
+  const user = process.env.POSTGRES_USER ?? "postgres";
+  for (const name of modelNames) {
+    execSync(
+      `docker exec ${container} psql -U ${user} -d ${db} -v ON_ERROR_STOP=1 -c ` +
+        JSON.stringify(
+          "INSERT INTO allowed_model (name, type, in_allowlist, available, display_name) " +
+            `VALUES ('${name.replace(/'/g, "''")}', 'LLM', TRUE, FALSE, '${name.replace(/'/g, "''")}') ` +
+            "ON CONFLICT (name, type) DO UPDATE SET in_allowlist = EXCLUDED.in_allowlist;",
+        ),
+      { stdio: "pipe" },
+    );
+  }
+}
+
+export async function fetchSelectableLlmModelIds(page: Page): Promise<string[]> {
+  const headers = await authHeadersFromPage(page);
+  const res = await page.request.get(productApiUrl("/models?type=LLM"), { headers });
+  expect(res.ok(), await res.text()).toBeTruthy();
+  const rows = (await res.json()) as Array<{ modelId: string }>;
+  return rows.map((r) => r.modelId);
+}
+
+export async function fetchModelsCatalogSnapshot(page: Page): Promise<{
+  reachable: boolean;
+  installedModelNames: string[];
+  allowlistLlmNames: string[];
+  allowlistEmbeddingNames: string[];
+}> {
+  const headers = await authHeadersFromPage(page);
+  const res = await page.request.get(productApiUrl("/models"), { headers });
+  expect(res.ok(), await res.text()).toBeTruthy();
+  const body = (await res.json()) as {
+    reachable?: boolean;
+    installedModelNames?: string[];
+    entries?: Array<{ name?: string; type?: string; inAllowlist?: boolean; installedInOllama?: boolean }>;
+  };
+  const entries = body.entries ?? [];
+  const allowlistLlmNames = entries
+    .filter((e) => e.type === "LLM" && e.inAllowlist)
+    .map((e) => String(e.name ?? "").trim())
+    .filter(Boolean);
+  const allowlistEmbeddingNames = entries
+    .filter((e) => e.type === "EMBEDDING" && e.inAllowlist)
+    .map((e) => String(e.name ?? "").trim())
+    .filter(Boolean);
+  return {
+    reachable: body.reachable === true,
+    installedModelNames: body.installedModelNames ?? [],
+    allowlistLlmNames,
+    allowlistEmbeddingNames,
+  };
+}
+
+function listOllamaTagsViaDockerExec(): string[] {
+  const container = process.env.E2E_OLLAMA_DOCKER_EXEC_CONTAINER ?? "docker-backend-dev-1";
+  const ollamaUrl = process.env.E2E_OLLAMA_INTERNAL_URL ?? "http://host.docker.internal:11434";
+  try {
+    const raw = execSync(
+      `docker exec ${container} curl -sf ${ollamaUrl}/api/tags`,
+      { stdio: "pipe", timeout: 30_000, maxBuffer: 8 * 1024 * 1024 },
+    ).toString("utf8");
+    const parsed = JSON.parse(raw) as { models?: Array<{ name?: string }> };
+    return (parsed.models ?? []).map((m) => String(m.name ?? "").trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** Collects allowlist, Ollama tags, and selectable LLM ids for closure evidence. */
+export async function collectLlmModelValidation(page: Page): Promise<LlmModelValidationSnapshot> {
+  const preferred = [...LLM_CAMPAIGN_PREFERRED_MODEL_IDS];
+  const catalog = await fetchModelsCatalogSnapshot(page);
+  const selectableLlmModelIds = await fetchSelectableLlmModelIds(page);
+  const ollamaTags = listOllamaTagsViaDockerExec();
+  const missingPreferred = preferred.filter((id) => !selectableLlmModelIds.includes(id));
+  const status: LlmModelValidationSnapshot["status"] =
+    selectableLlmModelIds.length >= 2 ? "READY" : "BLOCKED_BY_MODEL_AVAILABILITY";
+  return {
+    status,
+    selectableLlmModelIds,
+    allowlistLlmNames: catalog.allowlistLlmNames,
+    ollamaTags: ollamaTags.length > 0 ? ollamaTags : catalog.installedModelNames,
+    preferred,
+    missingPreferred,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Ensures at least {@code minCount} LLM models are allowlisted and installed in Ollama.
+ * Pulls missing preferred models when the demo Docker stack is available.
+ */
+export async function ensureLlmCampaignModelsReady(page: Page, minCount = 2): Promise<string[]> {
+  const preferred = [...LLM_CAMPAIGN_PREFERRED_MODEL_IDS];
+  try {
+    ensureLlmModelsAllowlisted(preferred);
+  } catch {
+    /* allowlist bootstrap is best-effort when Postgres is not reachable from the test runner */
+  }
+
+  let selectable = await fetchSelectableLlmModelIds(page);
+  if (selectable.length < minCount) {
+    for (const model of preferred) {
+      if (selectable.includes(model)) continue;
+      try {
+        pullOllamaModelViaDockerExec(model);
+      } catch {
+        /* pull is best-effort */
+      }
+    }
+    await expect
+      .poll(
+        async () => {
+          selectable = await fetchSelectableLlmModelIds(page);
+          return selectable.length;
+        },
+        { timeout: 600_000, intervals: [2000, 5000, 10_000] },
+      )
+      .toBeGreaterThanOrEqual(minCount);
+    selectable = await fetchSelectableLlmModelIds(page);
+  }
+
+  expect(
+    selectable.length,
+    `BLOCKED_BY_MODEL_AVAILABILITY: need at least ${minCount} installed allowlisted LLM models. ` +
+      `Found: [${selectable.join(", ") || "none"}]. Preferred: [${preferred.join(", ")}]. ` +
+      `Pull/install missing tags in Ollama and verify allowlist (Flyway V61).`,
+  ).toBeGreaterThanOrEqual(minCount);
+
+  const picked = preferred.filter((id) => selectable.includes(id));
+  return (picked.length >= minCount ? picked : selectable).slice(0, minCount);
+}
+
+/** Selects LLM models by checkbox test id (lab-benchmark-llm-models-{modelId}). */
+export async function selectLlmModelsByIds(page: Page, modelIds: string[]): Promise<void> {
+  const prefix = "lab-benchmark-llm-models";
+  const group = page.getByTestId(`${prefix}-group`);
+  await expect(group).toBeVisible({ timeout: 20_000 });
+  for (const modelId of modelIds) {
+    const box = page.getByTestId(`${prefix}-${modelId}`);
+    await expect(box, `LLM model checkbox missing: ${modelId}`).toBeVisible({ timeout: 15_000 });
+    await box.check();
+  }
+}
+
 /** Checks the first N models in the LLM checkbox group (comparison runs). */
 export async function selectLlmModelsForComparison(page: Page, count: number): Promise<boolean> {
   const group = page.getByTestId("lab-benchmark-llm-models-group");
@@ -209,20 +382,96 @@ export const EMBEDDING_CAMPAIGN_PREFERRED_MODEL_IDS = [
   "bge-m3:latest",
 ] as const;
 
-function ensureBgeM3EmbeddingAllowlisted(): void {
+function ensureEmbeddingModelsAllowlisted(modelNames: readonly string[]): void {
   const container = process.env.E2E_POSTGRES_DOCKER_CONTAINER ?? "docker-postgres-1";
   const db = process.env.POSTGRES_DB ?? "vectordb";
   const user = process.env.POSTGRES_USER ?? "postgres";
-  execSync(
-    `docker exec ${container} psql -U ${user} -d ${db} -v ON_ERROR_STOP=1 -c ` +
-      JSON.stringify(
-        "INSERT INTO allowed_model (name, type, in_allowlist, available, display_name) " +
-          "VALUES ('bge-m3:latest', 'EMBEDDING', TRUE, FALSE, 'BGE-M3') " +
-          "ON CONFLICT (name, type) DO UPDATE SET in_allowlist = EXCLUDED.in_allowlist, " +
-          "display_name = COALESCE(allowed_model.display_name, EXCLUDED.display_name);",
-      ),
-    { stdio: "pipe" },
+  for (const name of modelNames) {
+    const safeName = name.replace(/'/g, "''");
+    execSync(
+      `docker exec ${container} psql -U ${user} -d ${db} -v ON_ERROR_STOP=1 -c ` +
+        JSON.stringify(
+          "INSERT INTO allowed_model (name, type, in_allowlist, available, display_name) " +
+            `VALUES ('${safeName}', 'EMBEDDING', TRUE, FALSE, '${safeName}') ` +
+            "ON CONFLICT (name, type) DO UPDATE SET in_allowlist = EXCLUDED.in_allowlist;",
+        ),
+      { stdio: "pipe" },
+    );
+  }
+}
+
+const EMBEDDING_STORE_DIMENSION = 1024;
+
+function probeEmbeddingDimensionViaDockerExec(modelName: string): number | null {
+  const container = process.env.E2E_OLLAMA_DOCKER_EXEC_CONTAINER ?? "docker-backend-dev-1";
+  const ollamaUrl = process.env.E2E_OLLAMA_INTERNAL_URL ?? "http://host.docker.internal:11434";
+  const payload = JSON.stringify({ model: modelName, prompt: "rag-embedding-dimension-probe" });
+  try {
+    const raw = execSync(
+      `docker exec ${container} curl -sf -X POST ${ollamaUrl}/api/embeddings -H "Content-Type: application/json" -d ${JSON.stringify(payload)}`,
+      { stdio: "pipe", timeout: 120_000, maxBuffer: 8 * 1024 * 1024 },
+    ).toString("utf8");
+    const parsed = JSON.parse(raw) as { embedding?: number[] };
+    const dims = parsed.embedding?.length ?? 0;
+    return dims > 0 ? dims : null;
+  } catch {
+    return null;
+  }
+}
+
+export type EmbeddingModelValidationSnapshot = {
+  status: "READY" | "BLOCKED_BY_MODEL_AVAILABILITY";
+  selectableCompatibleEmbeddingIds: string[];
+  allowlistEmbeddingNames: string[];
+  ollamaTags: string[];
+  preferred: string[];
+  missingPreferred: string[];
+  excludedIncompatibleTags: string[];
+  expectedStoreDimension: number;
+  probeByModel: Record<string, { dimension: number | null; probeOk: boolean; dimensionCompatible: boolean }>;
+  checkedAt: string;
+};
+
+/** Collects allowlist, Ollama tags, dimension probes, and 1024-dim-compatible selectable embeddings. */
+export async function collectEmbeddingModelValidation(page: Page): Promise<EmbeddingModelValidationSnapshot> {
+  const preferred = [...EMBEDDING_CAMPAIGN_PREFERRED_MODEL_IDS];
+  const catalog = await fetchModelsCatalogSnapshot(page);
+  const selectableAll = await fetchSelectableEmbeddingModelIds(page);
+  const selectableCompatibleEmbeddingIds = filterCampaignCompatibleEmbeddingIds(selectableAll);
+  const ollamaTags = listOllamaTagsViaDockerExec();
+  const installed = ollamaTags.length > 0 ? ollamaTags : catalog.installedModelNames;
+  const excludedIncompatibleTags = catalog.allowlistEmbeddingNames.filter(
+    (name) => !filterCampaignCompatibleEmbeddingIds([name]).includes(name),
   );
+
+  const probeByModel: EmbeddingModelValidationSnapshot["probeByModel"] = {};
+  for (const modelId of preferred) {
+    const dimension = installed.some((t) => t === modelId || t.startsWith(modelId.split(":")[0]))
+      ? probeEmbeddingDimensionViaDockerExec(modelId)
+      : null;
+    probeByModel[modelId] = {
+      dimension,
+      probeOk: dimension != null && dimension > 0,
+      dimensionCompatible: dimension === EMBEDDING_STORE_DIMENSION,
+    };
+  }
+
+  const missingPreferred = preferred.filter((id) => !selectableCompatibleEmbeddingIds.includes(id));
+  const status: EmbeddingModelValidationSnapshot["status"] =
+    selectableCompatibleEmbeddingIds.length >= 2 ? "READY" : "BLOCKED_BY_MODEL_AVAILABILITY";
+
+  return {
+    status,
+    selectableCompatibleEmbeddingIds,
+    allowlistEmbeddingNames: catalog.allowlistEmbeddingNames,
+    ollamaTags: installed,
+    preferred,
+    missingPreferred,
+    excludedIncompatibleTags,
+    expectedStoreDimension: EMBEDDING_STORE_DIMENSION,
+    probeByModel,
+    checkedAt: new Date().toISOString(),
+  };
 }
 
 export async function fetchSelectableEmbeddingModelIds(page: Page): Promise<string[]> {
@@ -260,7 +509,7 @@ export async function ensureEmbeddingCampaignModelsReady(
 
   if (compatible.length < minCount) {
     try {
-      ensureBgeM3EmbeddingAllowlisted();
+      ensureEmbeddingModelsAllowlisted(preferred);
     } catch {
       /* allowlist bootstrap is best-effort when Postgres is not reachable from the test runner */
     }
@@ -291,8 +540,8 @@ export async function ensureEmbeddingCampaignModelsReady(
 
   expect(
     compatible.length,
-    `Need at least ${minCount} embedding models compatible with 1024-dim vector store (exclude nomic/qwen3). ` +
-      `Found: [${compatible.join(", ") || "none"}]. Ensure ${preferred.join(", ")} are allowlisted and installed in Ollama.`,
+    `BLOCKED_BY_MODEL_AVAILABILITY: need at least ${minCount} embedding models compatible with ${EMBEDDING_STORE_DIMENSION}-dim vector store (exclude nomic/qwen3). ` +
+      `Found: [${compatible.join(", ") || "none"}]. Ensure ${preferred.join(", ")} are allowlisted, probed OK in Ollama, and installed.`,
   ).toBeGreaterThanOrEqual(minCount);
 
   const picked = preferred.filter((id) => compatible.includes(id));
@@ -393,7 +642,7 @@ export async function ensureLabEvaluationCorpusReadyViaApi(
   const headers = await authHeadersFromPage(page);
   const createRes = await page.request.post(productApiUrl("/lab/evaluation-corpora"), {
     headers: { ...headers, "Content-Type": "application/json", Accept: "application/json" },
-    data: { name: `e2e-lab-corpus-${Date.now()}` },
+    data: { name: `e2e-lab-kb-${Date.now()}` },
   });
   expect([200, 201], await createRes.text()).toContain(createRes.status());
   const created = (await createRes.json()) as EvaluationCorpusSummary;
@@ -489,6 +738,306 @@ export async function ensureLabEvaluationCorpusReadyViaApi(
       localStorage.setItem(key, JSON.stringify(base));
     },
     { id: corpusId, kind: draftKind },
+  );
+  return corpusId;
+}
+
+export type BenchmarkClosurePayload = {
+  expectedItems: number;
+  executedItems: number;
+  failedItems: number;
+  skippedItems: number;
+  notSupportedItems: number;
+  classification: string | null;
+};
+
+/** Reads {@code benchmarkClosure} from a terminal lab job status payload. */
+export function readBenchmarkClosureFromJobStatus(status: {
+  result?: Record<string, unknown> | null;
+}): BenchmarkClosurePayload | null {
+  const result = status.result;
+  if (!result || typeof result !== "object") return null;
+  const closure = (result as Record<string, unknown>).benchmarkClosure;
+  if (!closure || typeof closure !== "object") return null;
+  const c = closure as Record<string, unknown>;
+  return {
+    expectedItems: typeof c.expectedItems === "number" ? c.expectedItems : 0,
+    executedItems: typeof c.executedItems === "number" ? c.executedItems : 0,
+    failedItems: typeof c.failedItems === "number" ? c.failedItems : 0,
+    skippedItems: typeof c.skippedItems === "number" ? c.skippedItems : 0,
+    notSupportedItems: typeof c.notSupportedItems === "number" ? c.notSupportedItems : 0,
+    classification: typeof c.classification === "string" ? c.classification : null,
+  };
+}
+
+export function assertRagBenchmarkClosureAccounting(closure: BenchmarkClosurePayload): void {
+  const accounted =
+    closure.executedItems +
+    closure.failedItems +
+    closure.skippedItems +
+    closure.notSupportedItems;
+  expect(accounted, "executed+failed+skipped+notSupported must equal expectedItems").toBe(
+    closure.expectedItems,
+  );
+  expect(closure.executedItems, "RAG must not finish with zero executed items").toBeGreaterThan(0);
+}
+
+export type RagSkipReasonRecord = {
+  presetCode?: string;
+  outcome: string;
+  reason: string;
+  questionId?: string;
+};
+
+/** Collects SKIPPED / NOT_SUPPORTED rows with human-readable reasons from campaign items export. */
+export function collectRagSkipReasonsFromCampaignItems(
+  items: Array<Record<string, unknown>>,
+): { records: RagSkipReasonRecord[]; notSupported: RagSkipReasonRecord[]; skipped: RagSkipReasonRecord[] } {
+  const records: RagSkipReasonRecord[] = [];
+  for (const item of items) {
+    const mvp = item.mvp as Record<string, unknown> | undefined;
+    const operational = mvp?.operational as Record<string, unknown> | undefined;
+    const outcome = String(item.outcome ?? operational?.outcome ?? "").trim();
+    if (outcome !== "SKIPPED" && outcome !== "NOT_SUPPORTED") continue;
+    const reason = String(
+      item.skipReason ??
+        item.unsupportedReason ??
+        operational?.skipReason ??
+        operational?.unsupportedReason ??
+        operational?.humanReason ??
+        item.failureReason ??
+        item.reason ??
+        item.note ??
+        "",
+    ).trim();
+    const presetFromRow =
+      typeof item.presetCode === "string"
+        ? item.presetCode
+        : typeof operational?.presetCode === "string"
+          ? operational.presetCode
+          : undefined;
+    records.push({
+      presetCode: presetFromRow,
+      outcome,
+      reason: reason.length > 0 ? reason : "(no reason in export row)",
+      questionId:
+        typeof item.datasetQuestionId === "string"
+          ? item.datasetQuestionId
+          : typeof item.questionId === "string"
+            ? item.questionId
+            : undefined,
+    });
+  }
+  return {
+    records,
+    notSupported: records.filter((r) => r.outcome === "NOT_SUPPORTED"),
+    skipped: records.filter((r) => r.outcome === "SKIPPED"),
+  };
+}
+
+/** Selects the packaged reference workbook dataset when listed in the benchmark dataset select. */
+export async function selectReferenceRagDataset(page: Page): Promise<string> {
+  const select = page.getByTestId("lab-benchmark-dataset-select");
+  await expect(select).toBeVisible({ timeout: 15_000 });
+  const options = select.locator("option");
+  const count = await options.count();
+  for (let i = 0; i < count; i += 1) {
+    const opt = options.nth(i);
+    const text = ((await opt.textContent()) ?? "").trim();
+    const value = (await opt.getAttribute("value")) ?? "";
+    if (!value || value === "") continue;
+    if (/reference|packaged reference|workbook/i.test(text)) {
+      await select.selectOption(value);
+      return value;
+    }
+  }
+  const fallback = await select.inputValue();
+  expect(fallback.trim().length, "Need a RAG-compatible reference dataset selected").toBeGreaterThan(0);
+  return fallback;
+}
+
+/** Clicks “select all” and asserts P0–P14 checkboxes are checked when present in catalog. */
+export async function selectExperimentalPresetsP0ThroughP14(page: Page): Promise<string[]> {
+  await expect(page.getByTestId("lab-experimental-presets-list")).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId("lab-experimental-presets-select-all").click();
+  const selected: string[] = [];
+  for (let i = 0; i <= 14; i += 1) {
+    const code = `P${i}`;
+    const box = page.getByTestId(`lab-experimental-preset-${code}`);
+    if (await box.isVisible().catch(() => false)) {
+      await expect(box).toBeChecked({ timeout: 5_000 });
+      selected.push(code);
+    }
+  }
+  expect(
+    selected.length,
+    "Catalog must expose P0–P14 presets for full RAG preset evidence (missing codes block closure)",
+  ).toBeGreaterThanOrEqual(2);
+  return selected;
+}
+
+/** Injects classpath corpus bootstrap on RAG/embedding benchmark POST (reference workbook actas). */
+export function enableRagClasspathCorpusBootstrapOnBenchmarkPost(page: Page): void {
+  page.route(/\/lab\/benchmarks\/[^/]+\/runs(?:\?.*)?$/, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    const raw = route.request().postData();
+    if (!raw) {
+      await route.continue();
+      return;
+    }
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      await route.continue();
+      return;
+    }
+    body.bootstrapCorpusFromClasspathDocs = true;
+    const headers = { ...route.request().headers(), "content-type": "application/json" };
+    await route.continue({ postData: JSON.stringify(body), headers });
+  });
+}
+
+async function attachProjectReadyDocumentsToCorpus(
+  page: Page,
+  corpusId: string,
+  maxDocs = 5,
+): Promise<string[]> {
+  const headers = await authHeadersFromPage(page);
+  const projectsRes = await page.request.get(productApiUrl("/projects?page=0&size=20"), { headers });
+  expect(projectsRes.ok(), await projectsRes.text()).toBeTruthy();
+  const projectsBody = (await projectsRes.json()) as { items?: Array<{ id: string; name?: string }> };
+  const project =
+    projectsBody.items?.find((p) => /default/i.test(p.name ?? "")) ?? projectsBody.items?.[0];
+  expect(project?.id, "Need a project with READY documents to ground reference workbook questions").toBeTruthy();
+
+  const docsRes = await page.request.get(
+    productApiUrl(`/projects/${encodeURIComponent(project!.id)}/documents`),
+    { headers },
+  );
+  expect(docsRes.ok(), await docsRes.text()).toBeTruthy();
+  const docs = (await docsRes.json()) as Array<{ id: string; status: string; corpusScope?: string }>;
+  const sharedIds = docs
+    .filter((d) => d.status === "READY" && (d.corpusScope === "PROJECT_SHARED" || !d.corpusScope))
+    .map((d) => d.id)
+    .slice(0, maxDocs);
+  if (sharedIds.length === 0) {
+    return [];
+  }
+
+  const attachRes = await page.request.post(
+    productApiUrl(`/lab/evaluation-corpora/${encodeURIComponent(corpusId)}/documents/from-project`),
+    {
+      headers: { ...headers, "Content-Type": "application/json", Accept: "application/json" },
+      data: { projectId: project!.id, documentIds: sharedIds },
+    },
+  );
+  expect(attachRes.ok(), await attachRes.text()).toBeTruthy();
+  return sharedIds;
+}
+
+/**
+ * Fresh evaluation knowledge base: ACTA upload (duplicate guard) plus optional READY project docs
+ * so reference-workbook RAG questions can execute against indexed content.
+ */
+export async function prepareLabRagActaKnowledgeBase(page: Page): Promise<string> {
+  const headers = await authHeadersFromPage(page);
+  const createRes = await page.request.post(productApiUrl("/lab/evaluation-corpora"), {
+    headers: { ...headers, "Content-Type": "application/json", Accept: "application/json" },
+    data: { name: `e2e-rag-preset-evidence-${Date.now()}` },
+  });
+  expect([200, 201], await createRes.text()).toContain(createRes.status());
+  const created = (await createRes.json()) as EvaluationCorpusSummary;
+  const corpusId = created.id;
+
+  await page.request.delete(productApiUrl(`/lab/evaluation-corpora/${encodeURIComponent(corpusId)}/documents`), {
+    headers,
+  });
+
+  const actaPath = actaKnowledgeBaseFilePath();
+  const actaBuffer = fs.readFileSync(actaPath);
+  const uploadOnce = async () =>
+    page.request.post(productApiUrl(`/lab/evaluation-corpora/${encodeURIComponent(corpusId)}/documents`), {
+      headers,
+      multipart: {
+        files: {
+          name: "acta-24-02-2025.txt",
+          mimeType: "text/plain",
+          buffer: actaBuffer,
+        },
+      },
+    });
+
+  const first = await uploadOnce();
+  expect([200, 201], await first.text()).toContain(first.status());
+  const second = await uploadOnce();
+  expect([200, 201], await second.text()).toContain(second.status());
+  const secondBody = (await second.json()) as {
+    uploads?: Array<{ status?: string; message?: string }>;
+  };
+  const duplicateHit = (secondBody.uploads ?? []).some(
+    (u) => (u.status ?? "").toUpperCase() === "DUPLICATE" || /duplicate/i.test(u.message ?? ""),
+  );
+  expect(duplicateHit, "Second ACTA upload must be rejected as duplicate").toBe(true);
+
+  const bootstrapActaPath = ragClasspathBootstrapActaFilePath();
+  if (fs.existsSync(bootstrapActaPath)) {
+    const bootstrapRes = await page.request.post(
+      productApiUrl(`/lab/evaluation-corpora/${encodeURIComponent(corpusId)}/documents`),
+      {
+        headers,
+        multipart: {
+          files: {
+            name: "bootstrap-acta.txt",
+            mimeType: "text/plain",
+            buffer: fs.readFileSync(bootstrapActaPath),
+          },
+        },
+      },
+    );
+    expect([200, 201], await bootstrapRes.text()).toContain(bootstrapRes.status());
+  }
+
+  const attachedProjectDocIds = await attachProjectReadyDocumentsToCorpus(page, corpusId, 5);
+
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get(
+          productApiUrl(`/lab/evaluation-corpora/${encodeURIComponent(corpusId)}`),
+          { headers },
+        );
+        if (!res.ok()) return null;
+        const summary = (await res.json()) as EvaluationCorpusSummary;
+        if (summary.documentCount < 1) return null;
+        if (summary.readyCount < summary.documentCount) return null;
+        return summary;
+      },
+      { timeout: 300_000, intervals: [1000, 2500, 5000] },
+    )
+    .not.toBeNull();
+
+  const finalRes = await page.request.get(
+    productApiUrl(`/lab/evaluation-corpora/${encodeURIComponent(corpusId)}`),
+    { headers },
+  );
+  expect(finalRes.ok(), await finalRes.text()).toBeTruthy();
+  const finalSummary = (await finalRes.json()) as EvaluationCorpusSummary;
+  expect(finalSummary.documentCount, "Knowledge base must include ACTA and optional project docs").toBeGreaterThanOrEqual(1);
+  expect(finalSummary.readyCount).toBeGreaterThanOrEqual(1);
+
+  await page.evaluate(
+    ({ id }) => {
+      const key = "lab:evaluation-draft:v1:RAG_PRESET_END_TO_END";
+      const raw = localStorage.getItem(key);
+      const base = raw ? (JSON.parse(raw) as Record<string, unknown>) : { v: 1 };
+      base.corpusId = id;
+      localStorage.setItem(key, JSON.stringify(base));
+    },
+    { id: corpusId },
   );
   return corpusId;
 }
@@ -626,6 +1175,19 @@ export function trackBenchmarkCampaignAccepted(page: Page): {
   return { accepted: state, request };
 }
 
+export async function fetchCampaignComparison(
+  page: Page,
+  campaignId: string,
+): Promise<Record<string, unknown>> {
+  const headers = await authHeadersFromPage(page);
+  const res = await page.request.get(
+    productApiUrl(`/lab/campaigns/${encodeURIComponent(campaignId)}/comparison`),
+    { headers },
+  );
+  expect(res.status(), await res.text()).toBe(200);
+  return (await res.json()) as Record<string, unknown>;
+}
+
 export async function fetchCampaignSummary(
   page: Page,
   campaignId: string,
@@ -653,6 +1215,13 @@ export function trackLabJobSseResponses(page: Page): {
     });
   });
   return { responses };
+}
+
+export function indexSnapshotIdsFromCampaignSummary(summary: Record<string, unknown>): string[] {
+  const meta = summary.meta as Record<string, unknown> | undefined;
+  const raw = meta?.indexSnapshotIds ?? summary.indexSnapshotIds;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
 }
 
 export async function downloadCampaignExportJson(

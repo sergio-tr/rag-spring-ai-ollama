@@ -10,6 +10,7 @@ import {
   ensureEmbeddingCampaignModelsReady,
   ensureLabEvaluationCorpusReadyViaApi,
   fetchCampaignSummary,
+  indexSnapshotIdsFromCampaignSummary,
   gotoLabEvaluationPage,
   labDatasetRunnable,
   pollLabJobTerminal,
@@ -19,13 +20,6 @@ import {
   trackBenchmarkCampaignAccepted,
   waitForSingleActiveLabJob,
 } from "../support/lab-helpers";
-
-function indexSnapshotIdsFromSummary(summary: Record<string, unknown>): string[] {
-  const meta = summary.meta as Record<string, unknown> | undefined;
-  const raw = meta?.indexSnapshotIds ?? summary.indexSnapshotIds;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
-}
 
 test.describe("Closure LAB embedding campaign @closure @fullstack", () => {
   test.describe.configure({ mode: "serial" });
@@ -113,7 +107,7 @@ test.describe("Closure LAB embedding campaign @closure @fullstack", () => {
     }
 
     const summary = await fetchCampaignSummary(page, campaignId!);
-    const alignedSnapshotIds = indexSnapshotIdsFromSummary(summary);
+    const alignedSnapshotIds = indexSnapshotIdsFromCampaignSummary(summary);
     expect(
       alignedSnapshotIds.length,
       "Campaign meta must record indexSnapshotIds aligned with embedding models",
