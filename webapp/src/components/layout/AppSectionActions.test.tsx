@@ -30,6 +30,7 @@ vi.mock("@/features/projects/hooks/use-projects", () => ({
       convCount: 0,
       updatedAt: "",
     }),
+    reset: vi.fn(),
     isPending: false,
     isError: false,
   }),

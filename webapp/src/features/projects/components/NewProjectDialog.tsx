@@ -51,8 +51,17 @@ export function NewProjectDialog({
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const controlled = controlledOpen !== undefined && onOpenChange !== undefined;
   const open = controlled ? controlledOpen : uncontrolledOpen;
-  const setOpen = controlled ? onOpenChange : setUncontrolledOpen;
-  const create = useCreateProject();
+  const setOpenState = controlled ? onOpenChange! : setUncontrolledOpen;
+  const { mutateAsync, reset, isPending, isError } = useCreateProject();
+  const [createWarning, setCreateWarning] = useState<string | null>(null);
+
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      reset();
+      setCreateWarning(null);
+    }
+    setOpenState(next);
+  }
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -67,8 +76,9 @@ export function NewProjectDialog({
   });
 
   async function onSubmit(values: FormValues) {
+    setCreateWarning(null);
     try {
-      await create.mutateAsync({
+      const outcome = await mutateAsync({
         name: values.name,
         description: values.description || undefined,
         initialIndexProfile: {
@@ -80,15 +90,20 @@ export function NewProjectDialog({
           metadataProfile: null,
         },
       });
-      setOpen(false);
+      if (outcome.activateFailed) {
+        setCreateWarning(t("createActivateWarning"));
+      } else if (outcome.reconciledFromList) {
+        setCreateWarning(t("createReconciledWarning"));
+      }
+      handleOpenChange(false);
       form.reset();
     } catch {
-      // Error surfaced via mutation state below
+      // Critical failure only when POST did not yield a project (see useCreateProject).
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       {!controlled ? (
         <DialogTrigger type="button" className={cn(buttonVariants(), triggerClassName)}>
           {t("newProject")}
@@ -151,16 +166,21 @@ export function NewProjectDialog({
               </div>
             </div>
           </div>
-          {create.isError && (
-            <p className="text-destructive text-sm" role="alert">
+          {isError ? (
+            <p className="text-destructive text-sm" role="alert" data-testid="project-create-error">
               {t("createError")}
             </p>
-          )}
+          ) : null}
+          {createWarning ? (
+            <p className="text-amber-700 text-sm dark:text-amber-400" role="status" data-testid="project-create-warning">
+              {createWarning}
+            </p>
+          ) : null}
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               {t("cancel")}
             </Button>
-            <Button type="submit" disabled={create.isPending}>
+            <Button type="submit" disabled={isPending}>
               {t("createSubmit")}
             </Button>
           </DialogFooter>

@@ -8,12 +8,15 @@ import { NewProjectDialog } from "./NewProjectDialog";
 
 const createHook = vi.hoisted(() => ({
   mutateAsync: vi.fn().mockResolvedValue({
-    id: "p1",
-    name: "N",
-    docCount: 0,
-    convCount: 0,
-    updatedAt: "",
+    project: {
+      id: "p1",
+      name: "N",
+      docCount: 0,
+      convCount: 0,
+      updatedAt: "",
+    },
   }),
+  reset: vi.fn(),
   isPending: false,
   isError: false,
 }));
@@ -21,6 +24,7 @@ const createHook = vi.hoisted(() => ({
 vi.mock("@/features/projects/hooks/use-projects", () => ({
   useCreateProject: () => ({
     mutateAsync: createHook.mutateAsync,
+    reset: createHook.reset,
     isPending: createHook.isPending,
     isError: createHook.isError,
   }),
