@@ -25,6 +25,7 @@ import com.uniovi.rag.application.result.evaluation.LlmJudgeItemResult;
 import com.uniovi.rag.application.result.evaluation.RagPresetBenchmarkRunPayload;
 import com.uniovi.rag.application.result.evaluation.RagPresetEvaluationBatchResult;
 import com.uniovi.rag.application.service.evaluation.AbstractEvaluationService;
+import com.uniovi.rag.application.service.evaluation.RagBenchmarkHumanReasons;
 import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
 import com.uniovi.rag.application.service.evaluation.EvaluationSummaryBuilder;
@@ -893,15 +894,18 @@ public class TypedRagPresetBenchmarkOrchestrator {
         row.put(JSON_KEY_GENERATED_ANSWER, "");
         row.put(KEY_LLM_EVALUATION, "");
         row.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.NOT_SUPPORTED.name());
+        String human = RagBenchmarkHumanReasons.humanize(errorCode);
         row.put(BenchmarkResultRowKeys.ERROR_CODE, errorCode);
-        row.put(BenchmarkResultRowKeys.REASON, errorCode);
+        row.put(BenchmarkResultRowKeys.REASON, human);
         row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
         LabPresetRunGroupKey gk =
                 groupKey != null ? groupKey : LabPresetRunPlanService.groupKeyFor(preset);
         Map<String, Object> metrics =
                 buildLabMetricsPayload(presetLabel, preset, gk, null, runPlanVersion, exec, applicationDefaults);
         metrics.put(KEY_SKIPPED_REASON_CODE, errorCode);
-        metrics.put(KEY_SKIPPED_REASON, errorCode);
+        metrics.put(KEY_SKIPPED_REASON, human);
+        metrics.put("humanReason", human);
+        metrics.put("unsupportedReason", human);
         applyExecutionEvidenceSemantics(metrics, preset);
         row.put(JSON_KEY_METRICS_PAYLOAD, metrics);
         return row;
@@ -945,6 +949,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
         }
         metrics.put(KEY_SKIPPED_REASON_CODE, code);
         metrics.put(KEY_SKIPPED_REASON, humanReason);
+        metrics.put("humanReason", humanReason);
         applyExecutionEvidenceSemantics(metrics, preset);
         row.put(JSON_KEY_METRICS_PAYLOAD, metrics);
         return row;

@@ -17,8 +17,11 @@ import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.application.service.async.LabJobCancelledException;
 import com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService;
+import com.uniovi.rag.application.service.evaluation.LabBenchmarkCompletionService;
 import com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor;
+import com.uniovi.rag.application.service.evaluation.LabJobPhaseEmitter;
 import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
 import com.uniovi.rag.application.result.evaluation.RagPresetBenchmarkRunPayload;
 import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
@@ -43,8 +46,11 @@ class EvalRagJobHandler implements LabJobHandler {
     private final ProjectIndexOperationLockService projectIndexOperationLockService;
     private final LabClasspathCorpusBootstrapService labClasspathCorpusBootstrapService;
     private final LabJobProgressTracker labJobProgressTracker;
+    private final LabJobPhaseEmitter labJobPhaseEmitter;
+    private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
     private final LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor;
     private final EvaluationRunRagJobContextLoader evaluationRunRagJobContextLoader;
+    private final LabBenchmarkCompletionService labBenchmarkCompletionService;
 
     EvalRagJobHandler(
             RagFeatureConfiguration featureConfiguration,
@@ -56,8 +62,11 @@ class EvalRagJobHandler implements LabJobHandler {
             ProjectIndexOperationLockService projectIndexOperationLockService,
             LabClasspathCorpusBootstrapService labClasspathCorpusBootstrapService,
             LabJobProgressTracker labJobProgressTracker,
+            LabJobPhaseEmitter labJobPhaseEmitter,
+            EvaluationCorpusApplicationService evaluationCorpusApplicationService,
             LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor,
-            EvaluationRunRagJobContextLoader evaluationRunRagJobContextLoader) {
+            EvaluationRunRagJobContextLoader evaluationRunRagJobContextLoader,
+            LabBenchmarkCompletionService labBenchmarkCompletionService) {
         this.featureConfiguration = featureConfiguration;
         this.implementationProperties = implementationProperties;
         this.canonicalPersistence = canonicalPersistence;
@@ -67,8 +76,11 @@ class EvalRagJobHandler implements LabJobHandler {
         this.projectIndexOperationLockService = projectIndexOperationLockService;
         this.labClasspathCorpusBootstrapService = labClasspathCorpusBootstrapService;
         this.labJobProgressTracker = labJobProgressTracker;
+        this.labJobPhaseEmitter = labJobPhaseEmitter;
+        this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
         this.labCampaignBenchmarkExecutor = labCampaignBenchmarkExecutor;
         this.evaluationRunRagJobContextLoader = evaluationRunRagJobContextLoader;
+        this.labBenchmarkCompletionService = labBenchmarkCompletionService;
     }
 
     @Override
@@ -99,7 +111,7 @@ class EvalRagJobHandler implements LabJobHandler {
                                 + " from the Lab evaluation page with a compatible workbook.");
             }
             Map<String, Object> payload = runSingleRagRun(task, mutation, evaluationRunId);
-            mutation.markSucceeded(taskId, payload);
+            labBenchmarkCompletionService.completeRun(mutation, taskId, evaluationRunId, payload);
         } finally {
             LabEvalConcurrency.SERIAL_EVAL.unlock();
         }
@@ -111,7 +123,6 @@ class EvalRagJobHandler implements LabJobHandler {
         UUID lockedProjectId = null;
         boolean lockAcquired = false;
         try {
-            mutation.appendProgressLine(taskId, "Resolving typed dataset for RAG_PRESET_END_TO_END…");
             EvaluationRunRagJobContext ctx =
                     evaluationRunRagJobContextLoader
                             .loadContext(evaluationRunId)
@@ -181,7 +192,7 @@ class EvalRagJobHandler implements LabJobHandler {
                 }
                 lockAcquired = true;
                 evaluationRunRagJobContextLoader.markAutoReindexLockAcquired(evaluationRunId);
-                mutation.appendProgressLine(taskId, "Auto-reindex lock acquired for projectId=" + projectId);
+                labJobPhaseEmitter.emitAutoReindexLock(taskId, evaluationRunId, projectId);
             }
 
             TypedBenchmarkDataset typed = experimentalDatasetResolver.resolve(evaluationRunId);
@@ -201,22 +212,34 @@ class EvalRagJobHandler implements LabJobHandler {
             UUID campaignId = LabJobPayloads.campaignId(task.getRequestPayload());
             labJobProgressTracker.emitRagEvaluationAccepted(
                     taskId, evaluationRunId, ctx.corpusId(), ctx.datasetId(), campaignId);
+            labJobPhaseEmitter.emitDatasetResolved(
+                    taskId,
+                    evaluationRunId,
+                    ctx.datasetId(),
+                    "RAG_PRESET_END_TO_END",
+                    questionCount,
+                    selectedPresetCount);
+            if (ctx.corpusId() != null) {
+                var corpusSummary =
+                        evaluationCorpusApplicationService.getSummary(ctx.userId(), ctx.corpusId());
+                labJobPhaseEmitter.emitKnowledgeBaseChecked(
+                        taskId,
+                        evaluationRunId,
+                        ctx.corpusId(),
+                        corpusSummary.readyCount(),
+                        corpusSummary.documentCount());
+            }
             labJobProgressTracker.emitRunStarted(
                     taskId, evaluationRunId, runTotalItems, null, null, presetCode);
-            mutation.appendProgressLine(
-                    taskId,
-                    "RAG dataset resolved: datasetId="
-                            + (ctx.datasetId() != null ? ctx.datasetId() : "unknown")
-                            + " experimentalKind="
-                            + (ctx.datasetExperimentalKind() != null ? ctx.datasetExperimentalKind() : "unknown")
-                            + " questions="
-                            + questionCount
-                            + " presets="
-                            + presetCount
-                            + " selectedPresets="
-                            + selectedPresetCount
-                            + " expectedItems="
-                            + runTotalItems);
+            evaluationRunRagJobContextLoader.mergeAggregatesJson(
+                    evaluationRunId,
+                    Map.of(
+                            "expectedItemCount",
+                            runTotalItems,
+                            "plannedQuestionCount",
+                            questionCount,
+                            "plannedPresetCount",
+                            selectedPresetCount));
 
             boolean hasDemoId =
                     rag.questions() != null
@@ -224,9 +247,6 @@ class EvalRagJobHandler implements LabJobHandler {
             if (hasDemoId) {
                 throw new IllegalStateException("Demo dataset_question_id RAG_Q1 detected; aborting benchmark.");
             }
-            mutation.appendProgressLine(
-                    taskId,
-                    "Parsed dataset RAG_PRESET_END_TO_END: " + rag.questions().size() + " questions");
             RagPresetBenchmarkRunPayload res =
                     typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
                             evaluationRunId,

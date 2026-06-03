@@ -10,6 +10,7 @@ import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
 import com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService;
+import com.uniovi.rag.application.service.evaluation.LabBenchmarkCompletionService;
 import com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor;
 import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
@@ -60,6 +61,9 @@ class EvalLlmJobHandlerTest {
     @Mock
     private LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor;
 
+    @Mock
+    private LabBenchmarkCompletionService labBenchmarkCompletionService;
+
     private EvalLlmJobHandler handler() {
         return new EvalLlmJobHandler(
                 canonicalPersistence,
@@ -68,7 +72,8 @@ class EvalLlmJobHandlerTest {
                 cancellationService,
                 labJobProgressTracker,
                 evaluationRunRepository,
-                labCampaignBenchmarkExecutor);
+                labCampaignBenchmarkExecutor,
+                labBenchmarkCompletionService);
     }
 
     @Test
@@ -105,7 +110,7 @@ class EvalLlmJobHandlerTest {
         handler().run(task, mutation);
 
         verify(canonicalPersistence).persistLlmJudgeBatch(runId, eval, BenchmarkKind.LLM_JUDGE_QA);
-        verify(mutation).markSucceeded(eq(taskId), ArgumentMatchers.any());
+        verify(labBenchmarkCompletionService).completeRun(eq(mutation), eq(taskId), eq(runId), ArgumentMatchers.any());
     }
 
     @Test

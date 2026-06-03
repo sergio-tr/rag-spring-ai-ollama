@@ -23,6 +23,7 @@ import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.application.service.async.LabJobCancelledException;
 import com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService;
+import com.uniovi.rag.application.service.evaluation.LabBenchmarkCompletionService;
 import com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor;
 import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
@@ -70,6 +71,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
     private final AsyncTaskCancellationService cancellationService;
     private final LabJobProgressTracker labJobProgressTracker;
     private final LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor;
+    private final LabBenchmarkCompletionService labBenchmarkCompletionService;
 
     EvalEmbeddingRetrievalJobHandler(
             PgVectorStoreRegistry vectorStoreRegistry,
@@ -85,6 +87,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             AsyncTaskCancellationService cancellationService,
             LabJobProgressTracker labJobProgressTracker,
             LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor,
+            LabBenchmarkCompletionService labBenchmarkCompletionService,
             @Value("${spring.ai.ollama.top-k:5}") int topK) {
         this.vectorStoreRegistry = vectorStoreRegistry;
         this.embeddingSpaceGuard = embeddingSpaceGuard;
@@ -99,6 +102,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
         this.cancellationService = cancellationService;
         this.labJobProgressTracker = labJobProgressTracker;
         this.labCampaignBenchmarkExecutor = labCampaignBenchmarkExecutor;
+        this.labBenchmarkCompletionService = labBenchmarkCompletionService;
         this.topK = Math.max(1, topK);
     }
 
@@ -124,7 +128,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                                 + " benchmark from the Lab evaluation page with a compatible workbook.");
             }
             Map<String, Object> payload = runSingleEmbeddingRun(task, mutation, evaluationRunId);
-            mutation.markSucceeded(task.getId(), payload);
+            labBenchmarkCompletionService.completeRun(mutation, task.getId(), evaluationRunId, payload);
         } finally {
             LabEvalConcurrency.SERIAL_EVAL.unlock();
         }

@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.evaluation.metrics;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
+import com.uniovi.rag.application.service.evaluation.RagBenchmarkHumanReasons;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
@@ -86,6 +87,7 @@ public final class BenchmarkMvpMetricsCalculator {
         operational.put("unsupportedReason", unsupportedReason(outcome, mp));
         operational.put("skipReasonCode", skipReasonCode(outcome, mp));
         operational.put("skipReason", skipReason(outcome, mp));
+        operational.put("humanReason", humanReason(outcome, mp));
         operational.put("runPlanVersion", str(mp.get("runPlanVersion")));
 
         Map<String, Object> root = new LinkedHashMap<>();
@@ -172,6 +174,7 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("unsupportedReason", csvVal(op.get("unsupportedReason")));
         row.put("skipReasonCode", csvVal(op.get("skipReasonCode")));
         row.put("skipReason", csvVal(op.get("skipReason")));
+        row.put("humanReason", csvVal(op.get("humanReason")));
         row.put("runPlanVersion", csvVal(op.get("runPlanVersion")));
 
         // Embedding retrieval: export gold + retrieved id lists for reproducibility/debugging.
@@ -359,8 +362,31 @@ public final class BenchmarkMvpMetricsCalculator {
         if (!BenchmarkItemOutcome.NOT_SUPPORTED.name().equals(outcome)) {
             return "";
         }
+        String human = humanReason(outcome, mp);
+        if (!human.isBlank()) {
+            return human;
+        }
         String code = str(mp.get(BenchmarkResultRowKeys.ERROR_CODE));
-        return code.isBlank() ? "NOT_SUPPORTED" : code;
+        return code.isBlank() ? RagBenchmarkHumanReasons.humanize("NOT_SUPPORTED") : RagBenchmarkHumanReasons.humanize(code);
+    }
+
+    private static String humanReason(String outcome, Map<String, Object> mp) {
+        String fromMetrics = str(mp.get("humanReason"));
+        if (!fromMetrics.isBlank()) {
+            return truncate(fromMetrics, 200);
+        }
+        if (BenchmarkItemOutcome.SKIPPED.name().equals(outcome)) {
+            return skipReason(outcome, mp);
+        }
+        if (BenchmarkItemOutcome.NOT_SUPPORTED.name().equals(outcome)) {
+            String reason = str(mp.get(BenchmarkResultRowKeys.REASON));
+            if (!reason.isBlank()) {
+                return truncate(reason, 200);
+            }
+            String code = str(mp.get(BenchmarkResultRowKeys.ERROR_CODE));
+            return code.isBlank() ? "" : RagBenchmarkHumanReasons.humanize(code);
+        }
+        return "";
     }
 
     private static String skipReasonCode(String outcome, Map<String, Object> mp) {

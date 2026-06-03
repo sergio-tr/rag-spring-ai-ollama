@@ -29,14 +29,17 @@ public class LabCampaignBenchmarkExecutor {
     private final EvaluationRunRepository evaluationRunRepository;
     private final EvaluationCampaignRepository evaluationCampaignRepository;
     private final LabJobEventService labJobEventService;
+    private final LabBenchmarkCompletionService labBenchmarkCompletionService;
 
     public LabCampaignBenchmarkExecutor(
             EvaluationRunRepository evaluationRunRepository,
             EvaluationCampaignRepository evaluationCampaignRepository,
-            LabJobEventService labJobEventService) {
+            LabJobEventService labJobEventService,
+            LabBenchmarkCompletionService labBenchmarkCompletionService) {
         this.evaluationRunRepository = evaluationRunRepository;
         this.evaluationCampaignRepository = evaluationCampaignRepository;
         this.labJobEventService = labJobEventService;
+        this.labBenchmarkCompletionService = labBenchmarkCompletionService;
     }
 
     public void runCampaign(
@@ -95,7 +98,8 @@ public class LabCampaignBenchmarkExecutor {
         for (EvaluationRunEntity run : runs) {
             lastPayload = slice.run(task, mutation, run.getId());
         }
-        mutation.markSucceeded(task.getId(), lastPayload);
+        List<UUID> runIds = runs.stream().map(EvaluationRunEntity::getId).toList();
+        labBenchmarkCompletionService.completeCampaign(mutation, task.getId(), runIds, lastPayload);
     }
 
     private CampaignExecutionPlan buildPlan(UUID campaignId, List<EvaluationRunEntity> runs) {

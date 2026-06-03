@@ -14,8 +14,12 @@ import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService;
+import com.uniovi.rag.application.service.evaluation.LabBenchmarkCompletionService;
 import com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor;
+import com.uniovi.rag.application.service.evaluation.LabJobPhaseEmitter;
 import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusSummaryDto;
 import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
 import com.uniovi.rag.application.result.evaluation.RagPresetBenchmarkRunPayload;
 import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
@@ -27,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentMatchers;
@@ -76,10 +81,36 @@ class EvalRagJobHandlerTest {
     private LabJobProgressTracker labJobProgressTracker;
 
     @Mock
+    private LabJobPhaseEmitter labJobPhaseEmitter;
+
+    @Mock
+    private EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+
+    @Mock
     private LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor;
 
     @Mock
     private EvaluationRunRagJobContextLoader evaluationRunRagJobContextLoader;
+
+    @Mock
+    private LabBenchmarkCompletionService labBenchmarkCompletionService;
+
+    @BeforeEach
+    void stubCorpusSummary() {
+        Mockito.lenient()
+                .when(evaluationCorpusApplicationService.getSummary(ArgumentMatchers.any(), ArgumentMatchers.any()))
+                .thenReturn(
+                        new EvaluationCorpusSummaryDto(
+                                UUID.randomUUID(),
+                                "Lab KB",
+                                "UPLOADED",
+                                1,
+                                1,
+                                0,
+                                List.of(),
+                                Instant.now(),
+                                Instant.now()));
+    }
 
     private EvalRagJobHandler handler() {
         return new EvalRagJobHandler(
@@ -92,8 +123,11 @@ class EvalRagJobHandlerTest {
                 projectIndexOperationLockService,
                 labClasspathCorpusBootstrapService,
                 labJobProgressTracker,
+                labJobPhaseEmitter,
+                evaluationCorpusApplicationService,
                 labCampaignBenchmarkExecutor,
-                evaluationRunRagJobContextLoader);
+                evaluationRunRagJobContextLoader,
+                labBenchmarkCompletionService);
     }
 
     @Test
@@ -139,7 +173,8 @@ class EvalRagJobHandlerTest {
                         new LlmJudgeEvaluationBatchResult(
                                 eval.configuration(), eval.results(), eval.evaluationSummary()),
                         BenchmarkKind.RAG_PRESET_END_TO_END);
-        verify(mutation).markSucceeded(taskId, EvaluationPayloadMapper.toAsyncPayload(eval));
+        verify(labBenchmarkCompletionService)
+                .completeRun(mutation, taskId, runId, EvaluationPayloadMapper.toAsyncPayload(eval));
         verifyNoInteractions(labClasspathCorpusBootstrapService);
     }
 

@@ -12,6 +12,7 @@ import com.uniovi.rag.application.service.async.LabJobCancelledException;
 import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
 import com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService;
 import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
+import com.uniovi.rag.application.service.evaluation.LabBenchmarkCompletionService;
 import com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor;
 import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.application.service.evaluation.baseline.ModelBaselineEvaluationOrchestrator;
@@ -32,6 +33,7 @@ class EvalLlmJobHandler implements LabJobHandler {
     private final LabJobProgressTracker labJobProgressTracker;
     private final EvaluationRunRepository evaluationRunRepository;
     private final LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor;
+    private final LabBenchmarkCompletionService labBenchmarkCompletionService;
 
     EvalLlmJobHandler(
             EvaluationCanonicalPersistenceService canonicalPersistence,
@@ -40,7 +42,8 @@ class EvalLlmJobHandler implements LabJobHandler {
             AsyncTaskCancellationService cancellationService,
             LabJobProgressTracker labJobProgressTracker,
             EvaluationRunRepository evaluationRunRepository,
-            LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor) {
+            LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor,
+            LabBenchmarkCompletionService labBenchmarkCompletionService) {
         this.canonicalPersistence = canonicalPersistence;
         this.experimentalDatasetResolver = experimentalDatasetResolver;
         this.modelBaselineEvaluationOrchestrator = modelBaselineEvaluationOrchestrator;
@@ -48,6 +51,7 @@ class EvalLlmJobHandler implements LabJobHandler {
         this.labJobProgressTracker = labJobProgressTracker;
         this.evaluationRunRepository = evaluationRunRepository;
         this.labCampaignBenchmarkExecutor = labCampaignBenchmarkExecutor;
+        this.labBenchmarkCompletionService = labBenchmarkCompletionService;
     }
 
     @Override
@@ -72,7 +76,7 @@ class EvalLlmJobHandler implements LabJobHandler {
                                 + " Lab evaluation page with a compatible workbook.");
             }
             Map<String, Object> payload = runSingleRun(task, mutation, evaluationRunId);
-            mutation.markSucceeded(task.getId(), payload);
+            labBenchmarkCompletionService.completeRun(mutation, task.getId(), evaluationRunId, payload);
         } finally {
             LabEvalConcurrency.SERIAL_EVAL.unlock();
         }

@@ -198,7 +198,9 @@ class BenchmarkMvpMetricsCalculatorTest {
                 .containsEntry("embeddingCompatibilityStatus", "INCOMPATIBLE")
                 .containsEntry("embeddingCompatibilityErrorCode", "EMBEDDING_DIMENSION_MISMATCH")
                 .containsEntry("outcome", "NOT_SUPPORTED")
-                .containsEntry("unsupportedReason", "EMBEDDING_DIMENSION_MISMATCH");
+                .containsEntry(
+                        "unsupportedReason",
+                        "The embedding model is not compatible with the vector index.");
         assertThat(csv.get("embeddingCompatibilityReason")).contains("768");
         assertThat(csv.get("failureCode")).isEmpty();
     }

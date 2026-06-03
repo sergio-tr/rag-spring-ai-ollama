@@ -20,6 +20,7 @@ import com.uniovi.rag.application.service.evaluation.EvaluationService;
 import com.uniovi.rag.application.service.evaluation.baseline.BaselineRunSnapshotWriter;
 import com.uniovi.rag.application.service.evaluation.baseline.ExperimentalSnapshotFactory;
 import com.uniovi.rag.application.service.evaluation.baseline.ModelBaselineLlmRunner;
+import com.uniovi.rag.application.service.evaluation.LabBenchmarkCompletionService;
 import com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor;
 import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.application.service.evaluation.baseline.OllamaModelCatalogClient;
@@ -121,6 +122,9 @@ class EvalEmbeddingRetrievalJobHandlerTest {
     @Mock
     private LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor;
 
+    @Mock
+    private LabBenchmarkCompletionService labBenchmarkCompletionService;
+
     @BeforeEach
     void stubItemProgress() {
         lenient()
@@ -151,6 +155,7 @@ class EvalEmbeddingRetrievalJobHandlerTest {
                 cancellationService,
                 labJobProgressTracker,
                 labCampaignBenchmarkExecutor,
+                labBenchmarkCompletionService,
                 topK);
     }
 
@@ -293,7 +298,7 @@ class EvalEmbeddingRetrievalJobHandlerTest {
         handler(2).run(task, mutation);
 
         ArgumentCaptor<Map<String, Object>> result = ArgumentCaptor.forClass(Map.class);
-        verify(mutation).markSucceeded(eq(taskId), result.capture());
+        verify(labBenchmarkCompletionService).completeRun(eq(mutation), eq(taskId), eq(runId), result.capture());
         assertThat(result.getValue()).containsKeys("results", "evaluation_summary");
         @SuppressWarnings("unchecked")
         Map<String, Object> retr =
@@ -347,7 +352,7 @@ class EvalEmbeddingRetrievalJobHandlerTest {
         List<Map<String, Object>> rows = (List<Map<String, Object>>) payload.getValue().get("results");
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get("item_outcome")).isEqualTo("FAILED");
-        verify(mutation).markSucceeded(eq(taskId), ArgumentMatchers.any());
+        verify(labBenchmarkCompletionService).completeRun(eq(mutation), eq(taskId), eq(runId), ArgumentMatchers.any());
     }
 
     @Test
