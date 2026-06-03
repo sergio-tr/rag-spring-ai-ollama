@@ -8,6 +8,7 @@
  */
 import { getAccessToken, setAccessToken } from "@/lib/access-token";
 import { createTraceparent } from "@/lib/traceparent";
+import { mapUserFacingErrorMessageEnglish } from "@/lib/user-facing-error-messages";
 
 const DEBUG_BODY_PREVIEW_CHARS = 500;
 
@@ -496,16 +497,23 @@ export function sanitizePlainErrorTextForUi(raw: string | undefined | null, maxL
   if (!t) return "";
   if (looksLikeHtml(t)) return "";
   if (looksLikeStackTrace(t)) return "";
-  return trimSafeMessage(t, maxLen);
+  const human = mapUserFacingErrorMessageEnglish(t, "");
+  const source = human || t;
+  return trimSafeMessage(source, maxLen);
 }
 
 /**
- * User-safe message for UI (never raw HTML pages).
+ * User-safe message for UI (never raw HTML pages or bare technical codes).
  */
 export function getSafeApiErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
+  if (error instanceof ApiError) {
+    return mapUserFacingErrorMessageEnglish(
+      error.message,
+      "Something went wrong. Please try again.",
+    );
+  }
   if (error instanceof Error) return "Unexpected error. Please try again.";
-  return String(error);
+  return mapUserFacingErrorMessageEnglish(String(error), "Something went wrong. Please try again.");
 }
 
 function throwIfNetworkFailure(e: unknown, url: string, method: string): never {

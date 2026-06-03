@@ -123,7 +123,7 @@ export type EvaluationCorpusSummaryDto = {
 export type EvaluationCorpusDocumentUploadItemDto = {
   documentId: string | null;
   fileName: string;
-  /** PROCESSING | READY | FAILED (Lab upload API). */
+  /** PROCESSING | READY | FAILED | DUPLICATE (Lab upload API). */
   status: string;
   error: string | null;
 };
@@ -452,6 +452,9 @@ export type StartBenchmarkRunRequest = {
   allowActiveSnapshotMutation?: boolean | null;
   /** RAG preset LAB: reuse active snapshot when it already satisfies preset groups. */
   reuseCompatibleActiveSnapshot?: boolean | null;
+  /** RAG preset LAB: seed evaluation corpus from server classpath acta bundle when needed. */
+  bootstrapCorpusFromClasspathDocs?: boolean | null;
+  bootstrapSkipExisting?: boolean | null;
 };
 
 export type ExperimentalPresetCatalogItemDto = {
