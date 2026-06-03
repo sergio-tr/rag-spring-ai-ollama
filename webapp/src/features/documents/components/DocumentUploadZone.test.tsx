@@ -1,7 +1,10 @@
+import type { ReactElement } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
+import { createTestQueryClient } from "@/test-utils/query-client";
 import { DocumentUploadZone } from "./DocumentUploadZone";
 import { ApiError } from "@/lib/api-client";
 
@@ -69,6 +72,14 @@ const readyDoc = (overrides: Partial<ReadyDocFixture> = {}): ReadyDocFixture => 
   ...overrides,
 });
 
+function renderZone(ui: ReactElement) {
+  return render(
+    <QueryClientProvider client={createTestQueryClient()}>
+      <IntlTestProvider>{ui}</IntlTestProvider>
+    </QueryClientProvider>,
+  );
+}
+
 describe("DocumentUploadZone", () => {
   beforeEach(() => {
     apiMock.apiFetch.mockReset();
@@ -84,10 +95,8 @@ describe("DocumentUploadZone", () => {
   it("uploads a file via browse control", async () => {
     const user = userEvent.setup();
     apiMock.apiFetch.mockResolvedValueOnce(readyDoc({ chunkCount: 3 }));
-    render(
-      <IntlTestProvider>
+    renderZone(
         <DocumentUploadZone projectId="p1" />
-      </IntlTestProvider>,
     );
     const file = new File(["x"], "doc.txt", { type: "text/plain" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -99,10 +108,8 @@ describe("DocumentUploadZone", () => {
 
   it("does not upload when projectId is missing", async () => {
     const user = userEvent.setup();
-    render(
-      <IntlTestProvider>
+    renderZone(
         <DocumentUploadZone projectId={undefined} />
-      </IntlTestProvider>,
     );
     const file = new File(["x"], "doc.txt", { type: "text/plain" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -115,10 +122,8 @@ describe("DocumentUploadZone", () => {
   it("shows upload error when upload fails", async () => {
     const user = userEvent.setup();
     apiMock.apiFetch.mockRejectedValueOnce(new ApiError(503, "x"));
-    render(
-      <IntlTestProvider>
+    renderZone(
         <DocumentUploadZone projectId="p1" />
-      </IntlTestProvider>,
     );
     const file = new File(["x"], "doc.txt", { type: "text/plain" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -128,10 +133,8 @@ describe("DocumentUploadZone", () => {
 
   it("maps 403 to unauthorized upload hint like 401", () => {
     apiMock.apiFetch.mockRejectedValueOnce(new ApiError(403, "forbidden"));
-    render(
-      <IntlTestProvider>
+    renderZone(
         <DocumentUploadZone projectId="p1" />
-      </IntlTestProvider>,
     );
     // Trigger upload so the per-item error is rendered.
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -147,10 +150,8 @@ describe("DocumentUploadZone", () => {
     apiMock.apiFetch
       .mockResolvedValueOnce({ id: "a1", fileName: "a.txt", status: "READY", chunkCount: 1, errorMessage: null })
       .mockResolvedValueOnce({ id: "b1", fileName: "b.txt", status: "READY", chunkCount: 1, errorMessage: null });
-    render(
-      <IntlTestProvider>
+    renderZone(
         <DocumentUploadZone projectId="p1" />
-      </IntlTestProvider>,
     );
     const a = new File(["a"], "a.txt", { type: "text/plain" });
     const b = new File(["b"], "b.txt", { type: "text/plain" });
@@ -163,10 +164,8 @@ describe("DocumentUploadZone", () => {
 
   it("opens file picker from keyboard on the drop zone", () => {
     const clickSpy = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {});
-    render(
-      <IntlTestProvider>
+    renderZone(
         <DocumentUploadZone projectId="p1" />
-      </IntlTestProvider>,
     );
     const zone = screen.getByRole("group", { name: /drag files here or browse/i });
     fireEvent.keyDown(zone, { key: "Enter" });
@@ -178,10 +177,8 @@ describe("DocumentUploadZone", () => {
 
   it("opens file picker when clicking the hint text outside the browse button", () => {
     const clickSpy = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {});
-    render(
-      <IntlTestProvider>
+    renderZone(
         <DocumentUploadZone projectId="p1" />
-      </IntlTestProvider>,
     );
     fireEvent.click(screen.getByText(/Drag files here or browse/i));
     expect(clickSpy).toHaveBeenCalledTimes(1);
@@ -190,10 +187,8 @@ describe("DocumentUploadZone", () => {
 
   it("uploads files dropped on the zone", async () => {
     apiMock.apiFetch.mockResolvedValueOnce(readyDoc({ fileName: "drop.txt" }));
-    render(
-      <IntlTestProvider>
+    renderZone(
         <DocumentUploadZone projectId="p1" />
-      </IntlTestProvider>,
     );
     const zone = screen.getByText(/Drag files here or browse/i).closest("div");
     expect(zone).toBeTruthy();
@@ -205,10 +200,8 @@ describe("DocumentUploadZone", () => {
   });
 
   it("sets drag styling on drag over and clears on drop", () => {
-    render(
-      <IntlTestProvider>
+    renderZone(
         <DocumentUploadZone projectId="p1" />
-      </IntlTestProvider>,
     );
     const zone = screen.getByText(/Drag files here or browse/i).closest("div")!;
     fireEvent.dragOver(zone);
@@ -220,10 +213,8 @@ describe("DocumentUploadZone", () => {
   });
 
   it("clears drag styling on drag leave", () => {
-    render(
-      <IntlTestProvider>
+    renderZone(
         <DocumentUploadZone projectId="p1" />
-      </IntlTestProvider>,
     );
     const zone = screen.getByText(/Drag files here or browse/i).closest("div")!;
     fireEvent.dragOver(zone);

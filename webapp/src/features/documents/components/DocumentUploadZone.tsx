@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ApiError, apiFetch, apiProductPath, getSafeApiErrorMessage } from "@/lib/api-client";
@@ -128,10 +129,13 @@ async function pollDocumentStatus(options: {
 
 export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZoneProps>) {
   const t = useTranslations("Documents");
+  const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const [items, setItems] = useState<UploadItem[]>([]);
-  const processingRef = useRef(false);
+  const itemsRef = useRef<UploadItem[]>([]);
+  const drainingRef = useRef(false);
+  const cancelledRef = useRef(false);
 
   const inProgressCount = useMemo(
     () => items.filter((i) => i.phase === "queued" || i.phase === "uploading" || i.phase === "ingesting").length,
@@ -181,97 +185,128 @@ export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZonePro
     inputRef.current?.click();
   }, []);
 
-  useEffect(() => {
-    if (!projectId) return;
-    if (processingRef.current) return;
-    const queued = items.some((i) => i.phase === "queued");
-    if (!queued) return;
+  itemsRef.current = items;
 
-    processingRef.current = true;
-    let cancelled = false;
-    void (async () => {
+  const invalidateProjectDocuments = useCallback(() => {
+    if (projectId) {
+      void qc.invalidateQueries({ queryKey: ["project-documents", projectId] });
+    }
+  }, [projectId, qc]);
+
+  const processOneQueued = useCallback(
+    async (item: UploadItem) => {
+      if (!projectId || cancelledRef.current) return;
+      setItems((prev) =>
+        prev.map((x) => (x.clientId === item.clientId ? { ...x, phase: "uploading", lastError: null } : x)),
+      );
       try {
-        for (const item of items) {
-          if (cancelled) return;
-          if (item.phase !== "queued") continue;
-          setItems((prev) =>
-            prev.map((x) => (x.clientId === item.clientId ? { ...x, phase: "uploading", lastError: null } : x)),
-          );
-          try {
-            const created = await uploadSingle(item.file);
-            setItems((prev) =>
-              prev.map((x) =>
-                x.clientId === item.clientId
-                  ? {
-                      ...x,
-                      phase: created.status === "READY" ? "ready" : "ingesting",
-                      docId: created.id,
-                      status: created.status,
-                      chunkCount: created.chunkCount ?? null,
-                      errorMessage: created.errorMessage ?? null,
-                    }
-                  : x,
-              ),
-            );
-            if (created.status !== "READY" && created.status !== "ERROR") {
-              const terminal = await pollDocumentStatus({
-                documentId: created.id,
-                timeoutMs: 5 * 60_000,
-                intervalMs: 1500,
-                onTick: (dto) => {
-                  setItems((prev) =>
-                    prev.map((x) =>
-                      x.clientId === item.clientId
-                        ? {
-                            ...x,
-                            status: dto.status,
-                            chunkCount: dto.chunkCount ?? null,
-                            errorMessage: dto.errorMessage ?? null,
-                          }
-                        : x,
-                    ),
-                  );
-                },
-              });
+        const created = await uploadSingle(item.file);
+        if (cancelledRef.current) return;
+        const terminalPhase =
+          created.status === "READY" ? "ready" : created.status === "ERROR" ? "error" : "ingesting";
+        setItems((prev) =>
+          prev.map((x) =>
+            x.clientId === item.clientId
+              ? {
+                  ...x,
+                  phase: terminalPhase,
+                  docId: created.id,
+                  status: created.status,
+                  chunkCount: created.chunkCount ?? null,
+                  errorMessage: created.errorMessage ?? null,
+                }
+              : x,
+          ),
+        );
+        invalidateProjectDocuments();
+        if (created.status !== "READY" && created.status !== "ERROR") {
+          const terminal = await pollDocumentStatus({
+            documentId: created.id,
+            timeoutMs: 5 * 60_000,
+            intervalMs: 1500,
+            onTick: (dto) => {
+              if (cancelledRef.current) return;
               setItems((prev) =>
                 prev.map((x) =>
                   x.clientId === item.clientId
                     ? {
                         ...x,
-                        status: terminal.status,
-                        chunkCount: terminal.chunkCount ?? null,
-                        errorMessage: terminal.errorMessage ?? null,
-                        phase:
-                          terminal.status === "READY"
-                            ? "ready"
-                            : terminal.status === "ERROR"
-                              ? "error"
-                              : "stalled",
+                        status: dto.status,
+                        chunkCount: dto.chunkCount ?? null,
+                        errorMessage: dto.errorMessage ?? null,
                       }
                     : x,
                 ),
               );
-            }
-          } catch (e) {
-            setItems((prev) =>
-              prev.map((x) =>
-                x.clientId === item.clientId
-                  ? { ...x, phase: "error", lastError: e, errorMessage: uploadErrorDetail(e, t) }
-                  : x,
-              ),
-            );
-          }
+              invalidateProjectDocuments();
+            },
+          });
+          if (cancelledRef.current) return;
+          setItems((prev) =>
+            prev.map((x) =>
+              x.clientId === item.clientId
+                ? {
+                    ...x,
+                    status: terminal.status,
+                    chunkCount: terminal.chunkCount ?? null,
+                    errorMessage: terminal.errorMessage ?? null,
+                    phase:
+                      terminal.status === "READY"
+                        ? "ready"
+                        : terminal.status === "ERROR"
+                          ? "error"
+                          : "stalled",
+                  }
+                : x,
+            ),
+          );
+          invalidateProjectDocuments();
         }
-      } finally {
-        processingRef.current = false;
+      } catch (e) {
+        if (cancelledRef.current) return;
+        setItems((prev) =>
+          prev.map((x) =>
+            x.clientId === item.clientId
+              ? { ...x, phase: "error", lastError: e, errorMessage: uploadErrorDetail(e, t) }
+              : x,
+          ),
+        );
+        invalidateProjectDocuments();
       }
-    })();
+    },
+    [invalidateProjectDocuments, projectId, t],
+  );
+
+  const drainUploadQueue = useCallback(async () => {
+    if (!projectId || drainingRef.current) return;
+    drainingRef.current = true;
+    try {
+      while (!cancelledRef.current) {
+        const next = itemsRef.current.find((i) => i.phase === "queued");
+        if (!next) break;
+        await processOneQueued(next);
+      }
+    } finally {
+      drainingRef.current = false;
+      if (!cancelledRef.current && itemsRef.current.some((i) => i.phase === "queued")) {
+        void drainUploadQueue();
+      }
+    }
+  }, [processOneQueued, projectId]);
+
+  useEffect(() => {
+    cancelledRef.current = false;
     return () => {
-      cancelled = true;
-      processingRef.current = false;
+      cancelledRef.current = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- items drive the queue
-  }, [items, projectId]);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    if (items.some((i) => i.phase === "queued")) {
+      void drainUploadQueue();
+    }
+  }, [items, drainUploadQueue, projectId]);
 
   const anyError = items.some((i) => i.phase === "error" || i.phase === "stalled");
 

@@ -16,6 +16,13 @@ export function useProjectDocuments(projectId: string | undefined) {
     enabled: Boolean(projectId),
     queryFn: () =>
       apiFetch<ProjectDocumentDto[]>(apiProductPath(`/projects/${projectId}/documents`)),
+    refetchInterval: (query) => {
+      const rows = query.state.data;
+      if (!rows?.some((d) => d.status === "INGESTING")) {
+        return false;
+      }
+      return 2_000;
+    },
   });
 }
 
@@ -112,6 +119,22 @@ export function useDeleteProjectDocument(projectId: string | undefined) {
 /**
  * No bulk DELETE API — sequential per-document deletes scoped to `projectId` only.
  */
+export function useRetryProjectDocumentIngest(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (documentId: string) => {
+      return apiFetch<ProjectDocumentDto>(apiProductPath(`/documents/${documentId}/retry-ingest`), {
+        method: "POST",
+      });
+    },
+    onSuccess: () => {
+      if (projectId) {
+        void qc.invalidateQueries({ queryKey: docsKey(projectId) });
+      }
+    },
+  });
+}
+
 export function useDeleteAllProjectDocuments(projectId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
