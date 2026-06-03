@@ -65,7 +65,7 @@ public class AsyncTaskMutationService {
         e.setResultJson(result);
         e.setCompletedAt(now);
         e.setUpdatedAt(now);
-        appendProgress(e, "Finished successfully.");
+        appendProgress(e, finishProgressLine(result));
         asyncTaskRepository.save(e);
         UUID runId = evaluationRunId(e);
         if (runId != null) {
@@ -188,6 +188,69 @@ public class AsyncTaskMutationService {
             return null;
         }
         return UUID.fromString(raw.toString());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String finishProgressLine(Map<String, Object> result) {
+        if (result == null || result.isEmpty()) {
+            return "Finished successfully.";
+        }
+        Object closure = result.get("benchmarkClosure");
+        if (!(closure instanceof Map<?, ?> c)) {
+            return "Finished successfully.";
+        }
+        Map<String, Object> closureMap = (Map<String, Object>) c;
+        long executed = longValue(closureMap.get("executedItems"));
+        long failed = longValue(closureMap.get("failedItems"));
+        long skipped = longValue(closureMap.get("skippedItems"));
+        long notSupported = longValue(closureMap.get("notSupportedItems"));
+        String classification = strValue(closureMap.get("classification"));
+        if ("COMPLETED_WITH_FAILURES".equals(classification)
+                || "COMPLETED_WITH_UNSUPPORTED".equals(classification)) {
+            return "Finished with warnings — executed="
+                    + executed
+                    + ", failed="
+                    + failed
+                    + ", skipped="
+                    + skipped
+                    + ", notSupported="
+                    + notSupported
+                    + ".";
+        }
+        if ("COMPLETED_WITH_NO_EXECUTED_ITEMS".equals(classification) || executed <= 0) {
+            return "Finished without executed items — skipped="
+                    + skipped
+                    + ", notSupported="
+                    + notSupported
+                    + ".";
+        }
+        if (executed > 0) {
+            return "Finished — executed="
+                    + executed
+                    + " item(s)"
+                    + (failed > 0 || skipped > 0 || notSupported > 0
+                            ? " (failed="
+                                    + failed
+                                    + ", skipped="
+                                    + skipped
+                                    + ", notSupported="
+                                    + notSupported
+                                    + ")"
+                            : "")
+                    + ".";
+        }
+        return "Finished without executed items.";
+    }
+
+    private static long longValue(Object raw) {
+        if (raw instanceof Number n) {
+            return Math.max(0, n.longValue());
+        }
+        return 0;
+    }
+
+    private static String strValue(Object raw) {
+        return raw != null ? raw.toString().trim() : "";
     }
 
     private static void appendProgress(AsyncTaskEntity e, String line) {

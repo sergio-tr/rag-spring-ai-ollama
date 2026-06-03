@@ -78,18 +78,27 @@ class LabJobProgressTrackerTest {
     }
 
     @Test
-    void itemProgress_emitsStartedAndCompletedPerItem() {
+    void itemProgress_emitsCompletedPerItemWithPresetLabel() {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
-        var callback = tracker.itemProgressCallback(taskId, runId, 3, null, "llama3", null, null);
+        var callback = tracker.itemProgressCallback(taskId, runId, 3, null, "llama3", "P2", null);
         callback.accept(1, 3);
         callback.accept(2, 3);
 
         ArgumentCaptor<LabJobEventRequest> captor = ArgumentCaptor.forClass(LabJobEventRequest.class);
         verify(labJobEventService, atLeastOnce()).record(captor.capture());
-        List<LabJobEventType> types =
-                captor.getAllValues().stream().map(LabJobEventRequest::type).toList();
-        assertThat(types).contains(LabJobEventType.ITEM_STARTED, LabJobEventType.ITEM_COMPLETED);
+        List<LabJobEventRequest> completed =
+                captor.getAllValues().stream()
+                        .filter(r -> r.type() == LabJobEventType.ITEM_COMPLETED)
+                        .toList();
+        assertThat(completed).hasSize(2);
+        assertThat(completed.getFirst().message()).contains("P2");
+        assertThat(completed.getFirst().message()).contains("1/3");
+        assertThat(typesFrom(captor)).contains(LabJobEventType.ITEM_STARTED);
+    }
+
+    private static List<LabJobEventType> typesFrom(ArgumentCaptor<LabJobEventRequest> captor) {
+        return captor.getAllValues().stream().map(LabJobEventRequest::type).toList();
     }
 
     @Test

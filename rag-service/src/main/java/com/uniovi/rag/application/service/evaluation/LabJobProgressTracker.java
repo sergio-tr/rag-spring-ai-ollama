@@ -61,16 +61,26 @@ public class LabJobProgressTracker {
         }
         RunContext ctx = resolveContext(runId, runTotalItems, resolvedGlobal, modelId, presetCode);
         maybeEmitCampaignStarted(taskId, ctx);
+        Integer globalTotal = resolvedGlobalTotal(ctx, new GlobalCounters(0, resolvedGlobal));
+        String userMessage = formatRunStartedMessage(ctx, runTotalItems, globalTotal);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("phase", "RUNNING_EVALUATION");
+        payload.put("runTotalItems", runTotalItems);
+        if (globalTotal != null) {
+            payload.put("totalItems", globalTotal);
+            payload.put("currentItem", 0);
+        }
+        payload.put("label", userMessage);
         labJobEventService.record(new LabJobEventRequest(
                 taskId,
                 LabJobEventType.RUN_STARTED,
-                "Run started",
-                Map.of("runTotalItems", runTotalItems),
+                userMessage,
+                payload,
                 ctx.campaignId(),
                 runId,
                 null,
                 0,
-                ctx.globalTotalItems(),
+                globalTotal,
                 0,
                 runTotalItems,
                 ctx.modelId(),
@@ -90,30 +100,37 @@ public class LabJobProgressTracker {
             if (beforeEachItem != null) {
                 beforeEachItem.run();
             }
-            self.getObject().onItemFinished(taskId, ctx, "item-" + index, index, total);
+            self.getObject().onItemProgress(taskId, ctx, "item-" + index, index, total);
         };
     }
 
     @Transactional
-    public void onItemFinished(UUID taskId, RunContext ctx, String itemId, int index, int runTotal) {
-        emitItemStarted(taskId, ctx, itemId, index, runTotal);
+    public void onItemProgress(UUID taskId, RunContext ctx, String itemId, int index, int runTotal) {
+        GlobalCounters before = readGlobalCounters(ctx);
+        emitItemStarted(taskId, ctx, itemId, index, runTotal, before);
         emitItemCompleted(taskId, ctx, itemId, index, runTotal);
     }
 
-    void emitItemStarted(UUID taskId, RunContext ctx, String itemId, int index, int runTotal) {
-        int runCompleted = Math.max(0, index - 1);
-        GlobalCounters global = readGlobalCounters(ctx);
+    void emitItemStarted(
+            UUID taskId, RunContext ctx, String itemId, int index, int runTotal, GlobalCounters before) {
+        int priorGlobal = before.completed() != null ? before.completed() : 0;
+        int displayGlobal = priorGlobal + 1;
+        Integer globalTotal = resolvedGlobalTotal(ctx, before);
+        int runInProgress = Math.max(1, index);
+        String userMessage =
+                formatUserItemMessage(ctx, runInProgress, runTotal, displayGlobal, globalTotal, true);
+        Map<String, Object> payload = itemProgressPayload(ctx, index, runTotal, displayGlobal, globalTotal, true);
         labJobEventService.record(new LabJobEventRequest(
                 taskId,
                 LabJobEventType.ITEM_STARTED,
-                "Item " + index + "/" + runTotal + " started",
-                Map.of("itemIndex", index, "runTotalItems", runTotal),
+                userMessage,
+                payload,
                 ctx.campaignId(),
                 ctx.runId(),
                 itemId,
-                global.completed(),
-                global.total(),
-                runCompleted,
+                priorGlobal,
+                globalTotal,
+                runInProgress,
                 runTotal,
                 ctx.modelId(),
                 ctx.presetCode()));
@@ -122,16 +139,20 @@ public class LabJobProgressTracker {
     void emitItemCompleted(UUID taskId, RunContext ctx, String itemId, int index, int runTotal) {
         int runCompleted = index;
         GlobalCounters global = incrementGlobalIfCampaign(ctx);
+        Integer globalTotal = resolvedGlobalTotal(ctx, global);
+        int globalDone = global.completed() != null ? global.completed() : runCompleted;
+        String userMessage = formatUserItemMessage(ctx, runCompleted, runTotal, globalDone, globalTotal, false);
+        Map<String, Object> payload = itemProgressPayload(ctx, index, runTotal, globalDone, globalTotal, false);
         labJobEventService.record(new LabJobEventRequest(
                 taskId,
                 LabJobEventType.ITEM_COMPLETED,
-                "Item " + index + "/" + runTotal + " completed",
-                Map.of("itemIndex", index, "runTotalItems", runTotal),
+                userMessage,
+                payload,
                 ctx.campaignId(),
                 ctx.runId(),
                 itemId,
-                global.completed(),
-                global.total(),
+                globalDone,
+                globalTotal,
                 runCompleted,
                 runTotal,
                 ctx.modelId(),
@@ -305,6 +326,9 @@ public class LabJobProgressTracker {
             if (camp != null && camp.getMetaJson() != null) {
                 Map<String, Object> progress = progressMap(camp.getMetaJson());
                 resolvedGlobal = intOrNull(progress.get("globalTotalItems"));
+                if (resolvedGlobal == null) {
+                    resolvedGlobal = intOrNull(camp.getMetaJson().get("plannedTotalItems"));
+                }
             }
         }
         return new RunContext(
@@ -382,11 +406,12 @@ public class LabJobProgressTracker {
             payload.put("corpusId", corpusId.toString());
             payload.put("knowledgeBaseId", corpusId.toString());
         }
+        payload.put("phase", "INDEXING");
         labJobEventService.record(
                 LabJobEventRequest.of(
                                 taskId,
                                 LabJobEventType.SNAPSHOT_PREPARATION_STARTED,
-                                "Preparing index snapshot for " + (groupKey != null ? groupKey.name() : "group"))
+                                "Preparing index · " + (groupKey != null ? groupKey.name() : "group"))
                         .withPayload(payload)
                         .withScope(null, runId, null, null, null, null, null, null, null));
     }
@@ -405,12 +430,81 @@ public class LabJobProgressTracker {
             payload.put("corpusId", corpusId.toString());
             payload.put("knowledgeBaseId", corpusId.toString());
         }
+        payload.put("phase", "INDEXING");
         labJobEventService.record(
                 LabJobEventRequest.of(
                                 taskId,
                                 LabJobEventType.SNAPSHOT_PREPARATION_COMPLETED,
-                                "Index snapshot ready for " + (groupKey != null ? groupKey.name() : "group"))
+                                "Index ready · " + (groupKey != null ? groupKey.name() : "group"))
                         .withPayload(payload)
                         .withScope(null, runId, null, null, null, null, null, null, null));
+    }
+
+    private static Integer resolvedGlobalTotal(RunContext ctx, GlobalCounters counters) {
+        if (counters.total() != null && counters.total() > 0) {
+            return counters.total();
+        }
+        return ctx.globalTotalItems();
+    }
+
+    private static String formatRunStartedMessage(RunContext ctx, int runTotal, Integer globalTotal) {
+        String axis = axisLabel(ctx);
+        if (globalTotal != null && globalTotal > 0) {
+            return axis + " · run " + runTotal + " questions · campaign " + globalTotal + " items";
+        }
+        return axis + " · " + runTotal + " questions";
+    }
+
+    private static String formatUserItemMessage(
+            RunContext ctx,
+            int runIndex,
+            int runTotal,
+            int globalDone,
+            Integer globalTotal,
+            boolean starting) {
+        String axis = axisLabel(ctx);
+        if (globalTotal != null && globalTotal > 0) {
+            String verb = starting ? "Evaluating" : "Completed";
+            return verb + " · " + axis + " · " + globalDone + "/" + globalTotal;
+        }
+        String verb = starting ? "Question" : "Completed question";
+        return axis + " · " + verb + " " + runIndex + "/" + runTotal;
+    }
+
+    private static String axisLabel(RunContext ctx) {
+        if (ctx.presetCode() != null && !ctx.presetCode().isBlank()) {
+            return ctx.presetCode().trim();
+        }
+        if (ctx.modelId() != null && !ctx.modelId().isBlank()) {
+            return ctx.modelId().trim();
+        }
+        return "Item";
+    }
+
+    private static Map<String, Object> itemProgressPayload(
+            RunContext ctx,
+            int questionIndex,
+            int questionTotal,
+            int currentItem,
+            Integer totalItems,
+            boolean starting) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("phase", "RUNNING_EVALUATION");
+        payload.put("questionIndex", questionIndex);
+        payload.put("questionTotal", questionTotal);
+        payload.put("currentItem", currentItem);
+        if (totalItems != null) {
+            payload.put("totalItems", totalItems);
+        }
+        if (ctx.modelId() != null) {
+            payload.put("modelId", ctx.modelId());
+        }
+        if (ctx.presetCode() != null) {
+            payload.put("presetCode", ctx.presetCode());
+        }
+        payload.put(
+                "userMessage",
+                formatUserItemMessage(ctx, questionIndex, questionTotal, currentItem, totalItems, starting));
+        return payload;
     }
 }
