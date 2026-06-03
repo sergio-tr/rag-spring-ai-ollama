@@ -22,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 
 import java.io.IOException;
+import java.time.Instant;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileAttribute;
@@ -196,7 +197,7 @@ public class KnowledgeIngestionService {
             KnowledgeDocumentEntity rowErr = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
             if (rowErr != null) {
                 rowErr.setStatus(ProjectDocumentStatus.ERROR);
-                rowErr.setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                rowErr.setErrorMessage(DocumentIngestionFailureCodes.classify(e));
                 knowledgeDocumentRepository.save(rowErr);
             }
             // Do not rethrow: orchestrator already persisted ERROR for ingest failures; callers expect
@@ -217,7 +218,7 @@ public class KnowledgeIngestionService {
             KnowledgeDocumentEntity rowErr = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
             if (rowErr != null) {
                 rowErr.setStatus(ProjectDocumentStatus.ERROR);
-                rowErr.setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                rowErr.setErrorMessage(DocumentIngestionFailureCodes.classify(e));
                 knowledgeDocumentRepository.save(rowErr);
             }
             throw e;
@@ -242,6 +243,50 @@ public class KnowledgeIngestionService {
                         userId, projectId, conversationId);
         projectDocumentIngestionService.ingestFromStoredBinary(
                 userId, projectId, projectDocumentId, snap.getId(), snap.getConfigHash());
+    }
+
+    /**
+     * Synchronous retry from stored binary; returns terminal row (READY or ERROR).
+     */
+    @Transactional
+    public ProjectDocumentDto retryIngestFromStoredBinarySynchronously(
+            UUID userId, UUID projectId, UUID projectDocumentId) {
+        KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+        if (row == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "project_document");
+        }
+        if (row.getStorageUri() == null || row.getStorageUri().isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    DocumentIngestionFailureCodes.format(
+                            DocumentIngestionFailureCodes.FAILED_GENERIC,
+                            "Stored binary is missing; upload the file again."));
+        }
+        row.setStatus(ProjectDocumentStatus.INGESTING);
+        row.setErrorMessage(null);
+        row.setReindexedAt(Instant.now());
+        knowledgeDocumentRepository.save(row);
+        entityManager.flush();
+
+        Optional<UUID> conversationId =
+                row.getCorpusScope() == CorpusScope.CHAT_LOCAL && row.getConversation() != null
+                        ? Optional.of(row.getConversation().getId())
+                        : Optional.empty();
+        var snap =
+                resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshot(
+                        userId, projectId, conversationId);
+        try {
+            knowledgePipelineOrchestrator.ingestFromStoredBinary(
+                    projectId, projectDocumentId, snap.getId(), snap.getConfigHash());
+        } catch (Exception e) {
+            KnowledgeDocumentEntity rowErr = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+            if (rowErr != null && rowErr.getStatus() == ProjectDocumentStatus.INGESTING) {
+                rowErr.setStatus(ProjectDocumentStatus.ERROR);
+                rowErr.setErrorMessage(DocumentIngestionFailureCodes.classify(e));
+                knowledgeDocumentRepository.save(rowErr);
+            }
+        }
+        return loadTerminalProjectDocumentDto(projectDocumentId);
     }
 
     @Transactional
@@ -270,8 +315,8 @@ public class KnowledgeIngestionService {
         Path temp = createPrivateTempFile("rag-doc-", original);
         file.transferTo(temp.toFile());
 
-        projectDocumentIngestionService.ingestFromTempFile(userId, projectId, row.getId(), temp, original, ct);
-        return toDto(row);
+        ingestFromTempFileJoiningCallerTransaction(userId, projectId, row.getId(), temp, original, ct);
+        return toDto(requireTerminalDocumentAfterSyncIngest(row.getId()));
     }
 
     @Transactional
@@ -303,8 +348,8 @@ public class KnowledgeIngestionService {
         entityManager.flush();
         Path temp = createPrivateTempFile("rag-doc-overlay-", original);
         file.transferTo(temp.toFile());
-        projectDocumentIngestionService.ingestFromTempFile(userId, projectId, row.getId(), temp, original, ct);
-        return toDto(row);
+        ingestFromTempFileJoiningCallerTransaction(userId, projectId, row.getId(), temp, original, ct);
+        return toDto(requireTerminalDocumentAfterSyncIngest(row.getId()));
     }
 
     private static Path createPrivateTempFile(String prefix, String originalFilename) throws IOException {
@@ -367,10 +412,19 @@ public class KnowledgeIngestionService {
     private KnowledgeDocumentEntity requireTerminalDocumentAfterSyncIngest(UUID projectDocumentId) {
         KnowledgeDocumentEntity row = reloadProjectDocumentAfterIngest(projectDocumentId);
         if (row.getStatus() == ProjectDocumentStatus.INGESTING) {
-            throw new IllegalStateException(
-                    "Synchronous ingest did not reach a terminal state for document " + projectDocumentId);
+            row.setStatus(ProjectDocumentStatus.ERROR);
+            row.setErrorMessage(
+                    DocumentIngestionFailureCodes.format(
+                            DocumentIngestionFailureCodes.FAILED_STALE_INGESTION,
+                            "Ingestion did not reach a terminal state before the request completed."));
+            knowledgeDocumentRepository.save(row);
         }
         return row;
+    }
+
+    /** Reload row after synchronous ingest (READY or ERROR). */
+    public ProjectDocumentDto loadTerminalProjectDocumentDto(UUID projectDocumentId) {
+        return toDto(requireTerminalDocumentAfterSyncIngest(projectDocumentId));
     }
 
     private static ProjectDocumentDto toDto(KnowledgeDocumentEntity e) {
@@ -379,7 +433,7 @@ public class KnowledgeIngestionService {
                 e.getFileName(),
                 e.getStatus(),
                 e.getChunkCount(),
-                e.getErrorMessage(),
+                DocumentIngestionHumanErrors.humanize(e.getErrorMessage()),
                 e.getUploadedAt(),
                 e.getReindexedAt(),
                 e.getCorpusScope(),

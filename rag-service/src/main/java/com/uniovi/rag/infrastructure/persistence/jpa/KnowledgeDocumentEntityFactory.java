@@ -19,7 +19,9 @@ public final class KnowledgeDocumentEntityFactory {
         e.setCorpusScope(CorpusScope.PROJECT_SHARED);
         e.setFileName(fileName);
         e.setStatus(ProjectDocumentStatus.INGESTING);
-        e.setUploadedAt(Instant.now());
+        Instant now = Instant.now();
+        e.setUploadedAt(now);
+        e.setReindexedAt(now);
         return e;
     }
 
@@ -31,7 +33,9 @@ public final class KnowledgeDocumentEntityFactory {
         e.setCorpusScope(CorpusScope.CHAT_LOCAL);
         e.setFileName(fileName);
         e.setStatus(ProjectDocumentStatus.INGESTING);
-        e.setUploadedAt(Instant.now());
+        Instant now = Instant.now();
+        e.setUploadedAt(now);
+        e.setReindexedAt(now);
         return e;
     }
 }

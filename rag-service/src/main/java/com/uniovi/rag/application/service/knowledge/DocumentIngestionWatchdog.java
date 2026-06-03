@@ -22,7 +22,7 @@ public class DocumentIngestionWatchdog {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentIngestionWatchdog.class);
 
-    private static final Duration STALL_THRESHOLD = Duration.ofMinutes(30);
+    private static final Duration STALL_THRESHOLD = Duration.ofMinutes(5);
 
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
 
@@ -30,7 +30,7 @@ public class DocumentIngestionWatchdog {
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
     }
 
-    @Scheduled(fixedDelayString = "${rag.documents.watchdog.fixedDelayMs:300000}")
+    @Scheduled(fixedDelayString = "${rag.documents.watchdog.fixedDelayMs:120000}")
     @Transactional
     public void markStalledIngestsAsError() {
         Instant cutoff = Instant.now().minus(STALL_THRESHOLD);
@@ -40,7 +40,10 @@ public class DocumentIngestionWatchdog {
             Instant since = d.getReindexedAt() != null ? d.getReindexedAt() : d.getUploadedAt();
             if (since != null && since.isBefore(cutoff)) {
                 d.setStatus(ProjectDocumentStatus.ERROR);
-                d.setErrorMessage("Ingestion timed out (watchdog). Please retry.");
+                d.setErrorMessage(
+                        DocumentIngestionFailureCodes.format(
+                                DocumentIngestionFailureCodes.FAILED_STALE_INGESTION,
+                                "Ingestion did not complete within the allowed time. Retry or re-upload."));
                 knowledgeDocumentRepository.save(d);
                 log.warn("document_ingest_watchdog_marked_error documentId={} fileName={}", d.getId(), d.getFileName());
             }

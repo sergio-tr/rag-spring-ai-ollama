@@ -30,6 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
@@ -255,29 +256,39 @@ class KnowledgeIngestionServiceTest {
                 .when(file)
                 .transferTo(any(File.class));
 
-        KnowledgeDocumentEntity saved = mock(KnowledgeDocumentEntity.class);
+        KnowledgeDocumentEntity ingesting = mock(KnowledgeDocumentEntity.class);
+        KnowledgeDocumentEntity ready = mock(KnowledgeDocumentEntity.class);
         UUID docId = UUID.randomUUID();
-        when(saved.getId()).thenReturn(docId);
-        when(saved.getFileName()).thenReturn("report.pdf");
-        when(saved.getStorageUri()).thenReturn(null);
-        when(saved.getStatus()).thenReturn(null);
-        when(saved.getChunkCount()).thenReturn(0);
-        when(saved.getErrorMessage()).thenReturn(null);
-        when(saved.getUploadedAt()).thenReturn(null);
-        when(saved.getReindexedAt()).thenReturn(null);
-        when(saved.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
-        when(saved.getConversation()).thenReturn(null);
-        when(saved.getCurrentIndexSnapshot()).thenReturn(null);
-        when(repo.save(any(KnowledgeDocumentEntity.class))).thenReturn(saved);
+        when(ingesting.getId()).thenReturn(docId);
+        when(ready.getId()).thenReturn(docId);
+        when(ready.getFileName()).thenReturn("report.pdf");
+        when(ready.getStorageUri()).thenReturn("projects/x/doc.bin");
+        when(ready.getStatus()).thenReturn(ProjectDocumentStatus.READY);
+        when(ready.getChunkCount()).thenReturn(3);
+        when(ready.getErrorMessage()).thenReturn(null);
+        when(ready.getUploadedAt()).thenReturn(null);
+        when(ready.getReindexedAt()).thenReturn(null);
+        when(ready.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
+        when(ready.getConversation()).thenReturn(null);
+        when(ready.getCurrentIndexSnapshot()).thenReturn(null);
+        when(repo.save(any(KnowledgeDocumentEntity.class))).thenReturn(ingesting);
+        when(repo.findById(docId)).thenReturn(Optional.of(ingesting), Optional.of(ready));
+
+        ResolvedConfigSnapshotEntity snap = mock(ResolvedConfigSnapshotEntity.class);
+        when(snap.getId()).thenReturn(UUID.randomUUID());
+        when(snap.getConfigHash()).thenReturn("hash");
+        when(resolved.persistIngestionDefaultSnapshot(eq(userId), eq(projectId), eq(Optional.empty())))
+                .thenReturn(snap);
 
         ProjectDocumentDto dto = sut.uploadProjectDocument(userId, projectId, file);
         assertThat(dto.id()).isEqualTo(docId);
-        verify(entityManager).flush();
-
-        ArgumentCaptor<Path> tempPath = ArgumentCaptor.forClass(Path.class);
-        verify(ingestion)
-                .ingestFromTempFile(eq(userId), eq(projectId), eq(docId), tempPath.capture(), eq("report.pdf"), eq("application/pdf"));
-        assertThat(Files.exists(tempPath.getValue())).isTrue();
+        assertThat(dto.status()).isEqualTo(ProjectDocumentStatus.READY);
+        verify(entityManager, atLeastOnce()).flush();
+        verify(entityManager).clear();
+        verify(orchestrator)
+                .ingestFromTempFileInCurrentTransaction(
+                        eq(projectId), eq(docId), any(Path.class), eq("report.pdf"), eq("application/pdf"), any(), any());
+        verify(ingestion, never()).ingestFromTempFile(any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -308,6 +319,45 @@ class KnowledgeIngestionServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void loadTerminalProjectDocumentDto_marksStaleIngestingAsError() {
+        KnowledgePipelineOrchestrator orchestrator = mock(KnowledgePipelineOrchestrator.class);
+        KnowledgeDocumentRepository repo = mock(KnowledgeDocumentRepository.class);
+        ProjectDocumentIngestionService ingestion = mock(ProjectDocumentIngestionService.class);
+        ProjectAccessService access = mock(ProjectAccessService.class);
+        ResolvedConfigSnapshotApplicationService resolved = mock(ResolvedConfigSnapshotApplicationService.class);
+        EntityManager entityManager = mock(EntityManager.class);
+
+        KnowledgeIngestionService sut =
+                new KnowledgeIngestionService(orchestrator, repo, ingestion, access, resolved, entityManager);
+
+        UUID docId = UUID.randomUUID();
+        KnowledgeDocumentEntity stuck = mock(KnowledgeDocumentEntity.class);
+        when(stuck.getId()).thenReturn(docId);
+        when(stuck.getFileName()).thenReturn("stuck.txt");
+        when(stuck.getStatus())
+                .thenReturn(ProjectDocumentStatus.INGESTING, ProjectDocumentStatus.ERROR);
+        when(stuck.getChunkCount()).thenReturn(0);
+        when(stuck.getErrorMessage()).thenReturn(null);
+        when(stuck.getUploadedAt()).thenReturn(null);
+        when(stuck.getReindexedAt()).thenReturn(null);
+        when(stuck.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
+        when(stuck.getConversation()).thenReturn(null);
+        when(stuck.getCurrentIndexSnapshot()).thenReturn(null);
+        when(stuck.getStorageUri()).thenReturn("uri");
+
+        when(repo.findById(docId)).thenReturn(Optional.of(stuck));
+        when(repo.save(stuck)).thenReturn(stuck);
+
+        ProjectDocumentDto dto = sut.loadTerminalProjectDocumentDto(docId);
+
+        assertThat(dto.status()).isEqualTo(ProjectDocumentStatus.ERROR);
+        verify(stuck).setStatus(ProjectDocumentStatus.ERROR);
+        verify(stuck)
+                .setErrorMessage(
+                        argThat(msg -> msg != null && msg.contains("FAILED_STALE_INGESTION")));
     }
 }
 

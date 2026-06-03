@@ -5,6 +5,7 @@ import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDebugDto;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
+import com.uniovi.rag.application.service.knowledge.DocumentIngestionHumanErrors;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
@@ -145,8 +146,9 @@ public class ProjectDocumentApplicationService {
         String ct = file.getContentType() != null ? file.getContentType() : MIME_APPLICATION_OCTET_STREAM;
         Path temp = Files.createTempFile("rag-reindex-", "-" + FILENAME_SANITIZE_PATTERN.matcher(original).replaceAll("_"));
         file.transferTo(temp.toFile());
-        knowledgeIngestionService.ingestFromTempFile(userId, projectId, documentId, temp, original, ct);
-        return toDto(row);
+        knowledgeIngestionService.ingestFromTempFileJoiningCallerTransaction(
+                userId, projectId, documentId, temp, original, ct);
+        return knowledgeIngestionService.loadTerminalProjectDocumentDto(documentId);
     }
 
     public ProjectDocumentDto retryIngestFromStoredBinary(UUID userId, UUID documentId) {
@@ -160,8 +162,8 @@ public class ProjectDocumentApplicationService {
         row.setErrorMessage(null);
         row.setReindexedAt(Instant.now());
         knowledgeDocumentRepository.save(row);
-        knowledgeIngestionService.retryIngestFromStoredBinary(userId, row.getProject().getId(), row.getId());
-        return toDto(row);
+        return knowledgeIngestionService.retryIngestFromStoredBinarySynchronously(
+                userId, row.getProject().getId(), row.getId());
     }
 
     private static ProjectDocumentDto toDto(KnowledgeDocumentEntity e) {
@@ -170,7 +172,7 @@ public class ProjectDocumentApplicationService {
                 e.getFileName(),
                 e.getStatus(),
                 e.getChunkCount(),
-                e.getErrorMessage(),
+                DocumentIngestionHumanErrors.humanize(e.getErrorMessage()),
                 e.getUploadedAt(),
                 e.getReindexedAt(),
                 e.getCorpusScope(),
