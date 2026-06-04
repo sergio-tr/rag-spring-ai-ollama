@@ -541,6 +541,176 @@ class TestBackendAuthApi:
         assert r.status_code == 409, r.text
 
 
+def _unique_integration_email() -> str:
+    stamp = int(time.time() * 1000)
+    return f"m2-auth-{stamp}@integration.local"
+
+
+def _assert_email_confirmation_enabled(register_response: httpx.Response) -> None:
+    if register_response.status_code == 200:
+        try:
+            body = register_response.json()
+        except ValueError:
+            body = {}
+        if body.get("status") == "REGISTERED":
+            pytest.fail(
+                "Email confirmation must be enabled on the integration backend "
+                "(RAG_AUTH_EMAIL_CONFIRMATION_ENABLED=true, e2e profile). "
+                f"Got: {register_response.status_code} {register_response.text[:300]}"
+            )
+
+
+def _admin_access_token(http_client: httpx.Client, backend_base: str, product_api_base: str) -> str:
+    admin_email = os.environ.get("INTEGRATION_ADMIN_EMAIL", "admin@e2e.local").strip()
+    admin_password = os.environ.get("INTEGRATION_ADMIN_PASSWORD", "e2e").strip()
+    token = _login_access_token(http_client, backend_base, admin_email, admin_password)
+    if not token:
+        pytest.fail(
+            f"Admin login failed for mail-outbox inspection ({admin_email}). "
+            "Ensure e2e profile and E2eAdminUserSeeder are active."
+        )
+    return token
+
+
+def _extract_confirm_token_from_outbox(
+    http_client: httpx.Client,
+    backend_base: str,
+    product_api_base: str,
+    admin_token: str,
+    recipient_email: str,
+) -> str:
+    import re
+
+    r = http_client.get(
+        f"{backend_base}{product_api_base}/admin/mail-outbox",
+        params={"limit": 20},
+        headers={"Authorization": f"Bearer {admin_token}", "Accept": "application/json"},
+        timeout=30.0,
+    )
+    assert r.status_code == 200, r.text
+    entries = r.json()
+    assert isinstance(entries, list), entries
+    normalized = recipient_email.strip().lower()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("purpose") != "EMAIL_CONFIRMATION":
+            continue
+        if str(entry.get("recipient", "")).strip().lower() != normalized:
+            continue
+        body_text = str(entry.get("bodyText", ""))
+        match = re.search(r"confirm-email\?token=([^&\s\"']+)", body_text)
+        if match:
+            from urllib.parse import unquote
+
+            return unquote(match.group(1))
+    pytest.fail(f"No EMAIL_CONFIRMATION outbox row with token link for {recipient_email}")
+
+
+class TestBackendAuthEmailConfirmation:
+    """M2: register → pending → login blocked → confirm → login OK (requires e2e auth flags)."""
+
+    def test_register_returns_pending_status(
+        self, http_client: httpx.Client, backend_base: str, product_api_base: str
+    ) -> None:
+        email = _unique_integration_email()
+        try:
+            r = http_client.post(
+                f"{backend_base}{product_api_base}/auth/register",
+                json={
+                    "name": "M2 Pending",
+                    "email": email,
+                    "password": "Password123!",
+                    "locale": "en",
+                    "acceptedPrivacyPolicy": True,
+                    "acceptedTerms": True,
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        _assert_email_confirmation_enabled(r)
+        assert r.status_code == 202, r.text
+        body = r.json()
+        assert body.get("status") == "PENDING_EMAIL_VERIFICATION"
+        assert body.get("login") is None
+
+    def test_login_unverified_returns_403_email_not_verified(
+        self, http_client: httpx.Client, backend_base: str, product_api_base: str
+    ) -> None:
+        email = _unique_integration_email()
+        password = "Password123!"
+        try:
+            reg = http_client.post(
+                f"{backend_base}{product_api_base}/auth/register",
+                json={
+                    "name": "M2 Blocked Login",
+                    "email": email,
+                    "password": password,
+                    "locale": "en",
+                    "acceptedPrivacyPolicy": True,
+                    "acceptedTerms": True,
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        _assert_email_confirmation_enabled(reg)
+        login = http_client.post(
+            f"{backend_base}{product_api_base}/auth/login",
+            json={"email": email, "password": password},
+            headers={"Content-Type": "application/json"},
+            timeout=30.0,
+        )
+        assert login.status_code == 403, login.text
+        try:
+            payload = login.json()
+        except ValueError:
+            payload = {}
+        assert payload.get("code") == "EMAIL_NOT_VERIFIED"
+
+    def test_confirm_email_via_outbox_then_login_ok(
+        self, http_client: httpx.Client, backend_base: str, product_api_base: str
+    ) -> None:
+        email = _unique_integration_email()
+        password = "Password123!"
+        try:
+            reg = http_client.post(
+                f"{backend_base}{product_api_base}/auth/register",
+                json={
+                    "name": "M2 Confirm Cycle",
+                    "email": email,
+                    "password": password,
+                    "locale": "en",
+                    "acceptedPrivacyPolicy": True,
+                    "acceptedTerms": True,
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        _assert_email_confirmation_enabled(reg)
+        admin_token = _admin_access_token(http_client, backend_base, product_api_base)
+        raw_token = _extract_confirm_token_from_outbox(
+            http_client, backend_base, product_api_base, admin_token, email
+        )
+        confirm = http_client.post(
+            f"{backend_base}{product_api_base}/auth/confirm-email",
+            json={"token": raw_token},
+            headers={"Content-Type": "application/json"},
+            timeout=30.0,
+        )
+        assert confirm.status_code == 200, confirm.text
+        token = _login_access_token(http_client, backend_base, email, password)
+        assert token, "login must return accessToken after email confirmation"
+
+
 class TestBackendAdminApi:
     """GET product admin routes requires ROLE_ADMIN (see SecurityConfiguration)."""
 
