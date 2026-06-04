@@ -244,6 +244,16 @@ class AuthControllerTest {
     }
 
     @Test
+    void refresh_emailNotVerified_returns403WithCode() throws Exception {
+        when(authService.refresh(any())).thenThrow(new EmailNotVerifiedException());
+        mockMvc.perform(post(AUTH_BASE + "/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"refresh-token\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("EMAIL_NOT_VERIFIED"));
+    }
+
+    @Test
     void resetPassword_valid_returnsOk() throws Exception {
         doNothing().when(authService).resetPassword(any());
         mockMvc.perform(post(AUTH_BASE + "/reset-password")

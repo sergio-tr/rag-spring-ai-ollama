@@ -275,6 +275,18 @@ class AuthServiceTest {
 	}
 
 	@Test
+	void refresh_unverifiedUserWhenConfirmationEnabled_throws() {
+		UUID id = UUID.randomUUID();
+		when(jwtService.parseRefreshTokenUserId("rt")).thenReturn(id);
+		UserEntity u = mock(UserEntity.class);
+		when(u.isEmailVerified()).thenReturn(false);
+		when(userAccountPort.findById(id)).thenReturn(Optional.of(u));
+
+		assertThatThrownBy(() -> newServiceEmailConfirmationEnabled().refresh(new RefreshRequest("rt")))
+				.isInstanceOf(EmailNotVerifiedException.class);
+	}
+
+	@Test
 	void resetPassword_disabled_throws() {
 		assertThatThrownBy(() -> newService().resetPassword(new ResetPasswordRequest("t", "password123")))
 				.isInstanceOf(AuthTokenException.class);
