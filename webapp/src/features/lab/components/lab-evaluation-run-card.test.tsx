@@ -187,6 +187,7 @@ function presetCodesFixture() {
     requiresSnapshot: true,
     requiresProjectDocuments: true,
     singleTurnBenchmarkSelectable: i <= 12,
+    requiresMultiTurn: i >= 13,
     protocolStageIndex: i,
     parentPresetCode: i > 0 ? `P${i - 1}` : null,
     effectiveTerminalRuntimeJson: "{}",
@@ -357,6 +358,33 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.queryByText(/POST \/api/i)).not.toBeInTheDocument();
   });
 
+  it("disables non-lab-selectable presets and blocks run when only P13 is selected", async () => {
+    localStorage.setItem(
+      "lab:evaluation-draft:v1:RAG_PRESET_END_TO_END",
+      JSON.stringify({
+        v: 1,
+        datasetId: "ds-llm",
+        selectedExperimentalPresetCodes: ["P13"],
+        corpusId: "corpus-1111-1111-1111-111111111111",
+      }),
+    );
+    render(
+      <LabEvalHarness>
+        <LabEvaluationRunCard
+          benchmarkKind="RAG_PRESET_END_TO_END"
+          sectionKey="evaluation-rag"
+          taskTypeHint="RAG_EVALUATION"
+          cardTitle="RAG evaluation"
+          cardDescription="Benchmark retrieval presets."
+          runButtonTestId="lab-rag-run"
+          radioGroupName="follow-test-rag"
+        />
+      </LabEvalHarness>,
+    );
+    expect(screen.getByTestId("lab-experimental-preset-P13")).toBeDisabled();
+    expect(screen.getByTestId("lab-rag-run")).toBeDisabled();
+  });
+
   it("shows experimental preset catalog in RAG benchmark mode without long unsupported reasons visible", () => {
     render(
       <LabEvalHarness>
@@ -373,7 +401,7 @@ describe("LabEvaluationRunCard", () => {
     );
     expect(screen.getByTestId("lab-experimental-presets-list")).toBeInTheDocument();
     expect(screen.getByText(/PX_OBSOLETE — Clarification loop/i)).toBeInTheDocument();
-    expect(screen.queryByText(/PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("lab-preset-blocked-PX_OBSOLETE")).toBeInTheDocument();
     expect(screen.getByTestId("lab-experimental-presets-select-core")).toBeInTheDocument();
   });
 

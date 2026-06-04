@@ -17,6 +17,12 @@ import { activeJobMatchesCard } from "@/features/lab/hooks/use-lab-active-job-re
 import { useAutoResumeLabJobs } from "@/features/lab/hooks/use-auto-resume-lab-jobs";
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
+import {
+  filterLabBenchmarkSelectablePresets,
+  findInvalidLabPresetSelections,
+  isLabBenchmarkPresetSelectable,
+  listCoreExperimentalPresetCodes,
+} from "@/features/lab/lib/experimental-preset-selection";
 import { useLabEvaluationDraft } from "@/features/lab/hooks/use-lab-evaluation-draft";
 import { useLabJobLiveStream } from "@/features/lab/hooks/use-lab-job-live-stream";
 import { pollLabJob } from "@/lib/async-task";
@@ -420,6 +426,21 @@ export function LabEvaluationRunCard({
     }
   }, [needsEvaluationCorpus, evaluationCorpus.effectiveCorpusId, draft.corpusId, patchDraft]);
 
+  const invalidLabPresetSelections = useMemo(
+    () =>
+      benchmarkKind === "RAG_PRESET_END_TO_END"
+        ? findInvalidLabPresetSelections(
+            draft.selectedExperimentalPresetCodes,
+            experimentalPresets.data,
+          )
+        : [],
+    [benchmarkKind, draft.selectedExperimentalPresetCodes, experimentalPresets.data],
+  );
+
+  const ragPresetConfigBlocksRun =
+    benchmarkKind === "RAG_PRESET_END_TO_END" &&
+    (draft.selectedExperimentalPresetCodes.length === 0 || invalidLabPresetSelections.length > 0);
+
   const draftBlocksRun =
     warnings.datasetDeletedOrUnknown ||
     warnings.datasetIncompatibleWithBenchmark ||
@@ -427,7 +448,8 @@ export function LabEvaluationRunCard({
     warnings.llmModelsInvalid.length > 0 ||
     warnings.embeddingModelInvalid ||
     warnings.embeddingModelsInvalid.length > 0 ||
-    warnings.presetsUnknown.length > 0;
+    warnings.presetsUnknown.length > 0 ||
+    ragPresetConfigBlocksRun;
 
   const hasEvaluationCorpus = Boolean(resolvedCorpusId);
   const corpusPrimaryBlocker = evaluationCorpus.readiness?.primaryBlocker ?? null;
@@ -916,6 +938,14 @@ export function LabEvaluationRunCard({
                 {warnings.presetsUnknown.length > 0 ? (
                   <li>{t("evalDraftWarnPresetsUnknown", { codes: warnings.presetsUnknown.join(", ") })}</li>
                 ) : null}
+                {invalidLabPresetSelections.length > 0 ? (
+                  <li>{t("evalDraftWarnPresetsNotLabSelectable", { codes: invalidLabPresetSelections.join(", ") })}</li>
+                ) : null}
+                {benchmarkKind === "RAG_PRESET_END_TO_END" &&
+                draft.selectedExperimentalPresetCodes.length === 0 &&
+                !corpusBlocksRun ? (
+                  <li>{t("labConfigNoPresets")}</li>
+                ) : null}
               </ul>
             </output>
           ) : null}
@@ -1156,7 +1186,9 @@ export function LabEvaluationRunCard({
                   data-testid="lab-experimental-presets-select-all"
                   onClick={() =>
                     patchDraft({
-                      selectedExperimentalPresetCodes: (experimentalPresets.data ?? []).map((p) => p.code),
+                      selectedExperimentalPresetCodes: filterLabBenchmarkSelectablePresets(
+                        experimentalPresets.data,
+                      ).map((p) => p.code),
                     })
                   }
                 >
@@ -1170,9 +1202,9 @@ export function LabEvaluationRunCard({
                   data-testid="lab-experimental-presets-select-core"
                   onClick={() =>
                     patchDraft({
-                      selectedExperimentalPresetCodes: (experimentalPresets.data ?? [])
-                        .map((p) => p.code)
-                        .filter((c) => /^P[0-8]$/.test(c)),
+                      selectedExperimentalPresetCodes: listCoreExperimentalPresetCodes(
+                        experimentalPresets.data ?? [],
+                      ),
                     })
                   }
                 >
@@ -1195,13 +1227,17 @@ export function LabEvaluationRunCard({
               >
                 {(experimentalPresets.data ?? []).map((p) => {
                   const checked = draft.selectedExperimentalPresetCodes.includes(p.code);
+                  const labSelectable = isLabBenchmarkPresetSelectable(p);
                   return (
-                    <label key={p.code} className="block space-y-0.5 rounded border px-2 py-1 text-sm">
+                    <label
+                      key={p.code}
+                      className={`block space-y-0.5 rounded border px-2 py-1 text-sm ${labSelectable ? "" : "opacity-70"}`}
+                    >
                       <span className="flex items-center gap-2">
                         <input
                           type="checkbox"
                           data-testid={`lab-experimental-preset-${p.code}`}
-                          disabled={running}
+                          disabled={running || !labSelectable}
                           checked={checked}
                           onChange={(e) =>
                             patchDraft((prev) => ({
@@ -1215,7 +1251,11 @@ export function LabEvaluationRunCard({
                           {p.code} — {p.label}
                         </span>
                       </span>
-                      {!p.supported ? (
+                      {!labSelectable ? (
+                        <span className="text-destructive block text-xs" data-testid={`lab-preset-blocked-${p.code}`}>
+                          {p.reasonIfUnsupported?.trim() || p.supportStatus || t("labConfigUnsupportedPreset")}
+                        </span>
+                      ) : p.supportStatus && p.supportStatus !== "EXECUTABLE" ? (
                         <span className="text-muted-foreground block text-xs">{p.supportStatus}</span>
                       ) : null}
                     </label>
