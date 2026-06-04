@@ -932,7 +932,44 @@ describe("ChatPage", () => {
     await waitFor(() => expect(followLabJob).toHaveBeenCalled());
   });
 
-  it("renders stable selectors for answer, sources, trace, date warning, and composer", async () => {
+  it("T-M5-FE-trace: renders documentBound and date grounding metadata", async () => {
+    const user = userEvent.setup();
+    chatMessagesStore = [
+      {
+        id: "a-trace",
+        role: "ASSISTANT",
+        content: "Trace sample",
+        createdAt: "",
+        sources: [],
+        queryType: "DOCUMENT",
+        pipelineSteps: [],
+        status: "DONE",
+        executionMetadata: {
+          traceId: "trace-m5",
+          workflowName: "ChunkDenseMetadataWorkflow",
+          requestedDate: "2025-02-24",
+          exactDocumentMatch: true,
+          documentBound: true,
+          dateMismatchDetected: false,
+          candidateSourceCountBeforeDateFilter: 3,
+          candidateSourceCountAfterDateFilter: 1,
+          groundingPolicyApplied: "DATE_AWARE_SOURCE_GROUNDING",
+        },
+      },
+    ];
+
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+
+    expect(await screen.findByTestId("chat-trace")).toHaveTextContent("trace-m5");
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("documentBound");
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("true");
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("2025-02-24");
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("exactDocumentMatch");
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("3 -> 1");
+  });
+
+  it("T-M5-FE-sources: renders filename, date, chunk, and date warning", async () => {
     const user = userEvent.setup();
     chatMessagesStore = [
       {
@@ -958,9 +995,9 @@ describe("ChatPage", () => {
             snippet: "meeting fragment",
             distance: 0.12,
             distanceLabel: "distance",
-            chunkIndex: 0,
+            chunkIndex: 3,
             detectedDate: "2025-02-25",
-            metadata: null,
+            metadata: { chunkId: "chunk-abc" },
           },
         ],
         queryType: "DOCUMENT",
@@ -990,12 +1027,8 @@ describe("ChatPage", () => {
     expect(screen.getByTestId("chat-answer")).toHaveTextContent("No exact acta");
     expect(screen.getByTestId("chat-sources")).toHaveTextContent("ACTA 5.pdf");
     expect(screen.getByTestId("chat-sources")).toHaveTextContent("date=2025-02-25");
+    expect(screen.getByTestId("chat-sources")).toHaveTextContent("chunk=3");
     expect(screen.getAllByTestId("chat-date-warning")[0]).toHaveTextContent(/requested date/i);
-    expect(screen.getByTestId("chat-trace")).toHaveTextContent("trace-1");
-    expect(screen.getByTestId("chat-trace")).toHaveTextContent("topSourceDate");
-    expect(screen.getByTestId("chat-trace")).toHaveTextContent("2025-02-25");
-    expect(screen.getByTestId("chat-trace")).toHaveTextContent("exactDocumentMatch");
-    expect(screen.getByTestId("chat-trace")).toHaveTextContent("2 -> 1");
     expect(screen.getByTestId("chat-message-input")).toBeInTheDocument();
   });
 
