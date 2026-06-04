@@ -59,13 +59,15 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
             String answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
             List<ExecutionStageTrace> stages = new ArrayList<>();
             stages.add(stage("llm", tLlm, ExecutionStageOutcome.SUCCESS, "from_advisor_packed_context"));
+            boolean packedDocBound = RuntimeAnswerPrompts.requiresStrictDocumentGrounding(q);
             stages.add(
                     RuntimeAnswerPrompts.runtimeAnswerMetaStage(
                             policy,
                             packed.get().promptContextText() != null ? packed.get().promptContextText().length() : 0,
                             packed.get().totalSourceCount(),
                             false,
-                            ""));
+                            "",
+                            packedDocBound));
             return RagExecutionResult.withPlaceholderTrace(
                             answer,
                             workflowName(),
@@ -82,8 +84,12 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
         List<ExecutionStageTrace> stages = new ArrayList<>(curated.retrievalStageTraces());
         String rawPromptContext = curated.promptContextText();
         boolean docBound = RuntimeAnswerPrompts.requiresStrictDocumentGrounding(q);
-        DateGroundingSupport.DateGroundingDecision dateDecision =
+        boolean dateGroundingActive =
                 docBound
+                        || DateGroundingSupport.requestedDate(q, plan.entityExtractionResult().dates())
+                                .isPresent();
+        DateGroundingSupport.DateGroundingDecision dateDecision =
+                dateGroundingActive
                         ? DateGroundingSupport.decision(q, plan.entityExtractionResult().dates(), curated.finalCandidates())
                         : DateGroundingSupport.decision("", curated.finalCandidates());
         String effectivePromptContext =
@@ -101,7 +107,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                 ExecutionStageOutcome.SUCCESS,
                 DateGroundingSupport.traceMessage(dateDecision)));
         Optional<String> mismatch =
-                docBound && dateDecision.dateMismatchDetected()
+                dateGroundingActive && dateDecision.dateMismatchDetected()
                         ? Optional.of(DateGroundingSupport.mismatchMessage(q, dateDecision))
                         : Optional.empty();
 
@@ -133,7 +139,8 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                         effectivePromptContext.length(),
                         curated.finalCandidates().size(),
                         abstention,
-                        abstentionReason));
+                        abstentionReason,
+                        docBound));
 
         Optional<DateGroundingSupport.RequestedDate> requestedForSources =
                 dateDecision.requestedDate() != null ? Optional.of(dateDecision.requestedDate()) : Optional.empty();
