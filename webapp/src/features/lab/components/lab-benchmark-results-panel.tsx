@@ -27,6 +27,7 @@ import {
   sortComparisonRows,
   type ComparisonRow,
 } from "@/features/lab/lib/lab-benchmark-labels";
+import { mapUserFacingErrorMessage } from "@/lib/user-facing-error-messages";
 import {
   readGlobalOutcomeCounts,
   readMvpItems,
@@ -87,6 +88,8 @@ function toResultTableRow(row: unknown, idx: number, t: (key: string) => string)
   const outcome = typeof op?.outcome === "string" && op.outcome ? op.outcome : "—";
   const unsupportedReason =
     typeof op?.unsupportedReason === "string" && op.unsupportedReason.trim() ? op.unsupportedReason.trim() : "";
+  const skipReasonCode =
+    typeof op?.skipReasonCode === "string" && op.skipReasonCode.trim() ? op.skipReasonCode.trim() : "";
   const skipReason = typeof op?.skipReason === "string" && op.skipReason.trim() ? op.skipReason.trim() : "";
   const rawPreset = typeof op?.presetCode === "string" ? op.presetCode.trim() : "";
   const presetCode = rawPreset && !isMissingMetadata(rawPreset) ? rawPreset : "—";
@@ -127,7 +130,11 @@ function toResultTableRow(row: unknown, idx: number, t: (key: string) => string)
       : outcome === "NOT_SUPPORTED"
         ? unsupportedReason || formatOutcomeLabel("NOT_SUPPORTED", t)
         : outcome === "SKIPPED"
-          ? skipReason || formatOutcomeLabel("SKIPPED", t)
+          ? mapUserFacingErrorMessage(
+              skipReasonCode || skipReason,
+              t,
+              skipReason || formatOutcomeLabel("SKIPPED", t),
+            )
           : outcome === "FAILED"
             ? t("benchmarkNoteSeeExport")
             : "—";

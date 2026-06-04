@@ -120,6 +120,24 @@ export type EvaluationCorpusSummaryDto = {
   updatedAt: string;
 };
 
+/** GET /lab/evaluation-corpora/{id}/readiness — corpus + snapshot preflight for Lab benchmarks. */
+export type EvaluationCorpusReadinessDto = {
+  corpusId: string;
+  indexProjectId: string | null;
+  documentCount: number;
+  readyCount: number;
+  processingCount: number;
+  failedCount: number;
+  primaryBlocker: string | null;
+  primaryBlockerMessage: string | null;
+  activeSnapshotId: string | null;
+  reindexRequired: boolean;
+  snapshotBlocker: string | null;
+  snapshotBlockerDetailCode?: string | null;
+  selectedSnapshotIds: string[];
+  runnable: boolean;
+};
+
 export type EvaluationCorpusDocumentUploadItemDto = {
   documentId: string | null;
   fileName: string;

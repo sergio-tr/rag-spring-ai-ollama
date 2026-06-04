@@ -406,7 +406,9 @@ export function LabEvaluationRunCard({
 
   const needsEvaluationCorpus =
     benchmarkKind === "RAG_PRESET_END_TO_END" || benchmarkKind === "EMBEDDING_RETRIEVAL";
-  const evaluationCorpus = useEvaluationCorpus(needsEvaluationCorpus ? draft.corpusId : null);
+  const evaluationCorpus = useEvaluationCorpus(needsEvaluationCorpus ? draft.corpusId : null, {
+    onCorpusStale: () => patchDraft({ corpusId: null }),
+  });
   const resolvedCorpusId =
     draft.corpusId ?? evaluationCorpus.effectiveCorpusId ?? null;
 
@@ -428,11 +430,13 @@ export function LabEvaluationRunCard({
     warnings.presetsUnknown.length > 0;
 
   const hasEvaluationCorpus = Boolean(resolvedCorpusId);
+  const corpusPrimaryBlocker = evaluationCorpus.readiness?.primaryBlocker ?? null;
   const corpusBlocksRun =
     needsEvaluationCorpus &&
     (!hasEvaluationCorpus ||
-      !evaluationCorpus.corpusReady ||
-      evaluationCorpus.corpusProcessing);
+      !evaluationCorpus.corpusRunnable ||
+      evaluationCorpus.corpusProcessing ||
+      Boolean(corpusPrimaryBlocker));
 
   const selectedDataset = useMemo(() => {
     const id = draft.datasetId?.trim();
@@ -871,7 +875,15 @@ export function LabEvaluationRunCard({
               data-testid="lab-corpus-not-ready-hint"
               className="block text-muted-foreground text-xs"
             >
-              {t("benchmarkCorpusNotReady")}
+              {corpusPrimaryBlocker
+                ? t("labCorpusReadinessBlocked", {
+                    reason: mapKnowledgeBaseApiError(
+                      corpusPrimaryBlocker,
+                      t,
+                      evaluationCorpus.readiness?.primaryBlockerMessage ?? t("benchmarkCorpusNotReady"),
+                    ),
+                  })
+                : t("benchmarkCorpusNotReady")}
             </output>
           ) : null}
 

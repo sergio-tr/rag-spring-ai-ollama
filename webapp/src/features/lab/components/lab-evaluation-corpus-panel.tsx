@@ -90,8 +90,10 @@ export function LabEvaluationCorpusPanel({
   const [localErr, setLocalErr] = useState<string | null>(null);
   const [localWarn, setLocalWarn] = useState<string | null>(null);
   const internalCorpus = useEvaluationCorpus(evaluationCorpusProp ? null : corpusId);
+  const corpusApi = evaluationCorpusProp ?? internalCorpus;
   const {
     summary,
+    readiness,
     loading,
     error,
     ensureCorpus,
@@ -101,7 +103,7 @@ export function LabEvaluationCorpusPanel({
     deleteAllDocuments,
     retryDocumentIngest,
     refresh,
-  } = evaluationCorpusProp ?? internalCorpus;
+  } = corpusApi;
 
   const mapUploadError = useCallback(
     (message: string) => mapKnowledgeBaseApiError(message, t, t("labCorpusUploadFailed")),
@@ -283,6 +285,44 @@ export function LabEvaluationCorpusPanel({
       <p className="text-muted-foreground text-xs" data-testid="lab-corpus-summary">
         {t("labCorpusSelectedSummary", { total: docCount, ready: readyCount })}
       </p>
+
+      {readiness?.primaryBlocker ? (
+        <output
+          role="status"
+          className="block text-destructive text-xs"
+          data-testid="lab-corpus-readiness-blocker"
+        >
+          {t("labCorpusReadinessBlocked", {
+            reason: mapKnowledgeBaseApiError(
+              readiness.primaryBlocker,
+              t,
+              readiness.primaryBlockerMessage ?? "",
+            ),
+          })}
+        </output>
+      ) : null}
+
+      {readiness?.snapshotBlocker && !readiness.primaryBlocker ? (
+        <output
+          role="status"
+          className="block text-amber-700 dark:text-amber-400 text-xs"
+          data-testid="lab-corpus-snapshot-hint"
+        >
+          {t("labCorpusSnapshotHint", {
+            reason: mapKnowledgeBaseApiError(
+              readiness.snapshotBlocker,
+              t,
+              readiness.primaryBlockerMessage ?? "",
+            ),
+          })}
+        </output>
+      ) : null}
+
+      {!optionalProjectId ? (
+        <p className="text-muted-foreground text-xs" data-testid="lab-corpus-import-hint">
+          {t("labCorpusImportHintNoProject")}
+        </p>
+      ) : null}
 
       {summary?.documents && summary.documents.length > 0 ? (
         <ul className="text-muted-foreground space-y-1 text-xs" data-testid="lab-corpus-document-list">

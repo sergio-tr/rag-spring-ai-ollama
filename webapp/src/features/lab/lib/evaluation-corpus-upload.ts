@@ -1,4 +1,26 @@
 import { ApiError } from "@/lib/api-client";
+
+const REASON_CODE_RE = /^[A-Z][A-Z0-9_]+$/;
+
+/** Reads stable `code` from ApiError JSON body when present. */
+export function extractApiErrorCode(error: unknown): string | null {
+  if (!(error instanceof ApiError)) {
+    return null;
+  }
+  const parsed = error.meta?.parsedJson;
+  if (parsed && typeof parsed === "object") {
+    const root = parsed as Record<string, unknown>;
+    if (typeof root.code === "string" && REASON_CODE_RE.test(root.code)) {
+      return root.code;
+    }
+    const nested = root.error as Record<string, unknown> | undefined;
+    if (typeof nested?.code === "string" && REASON_CODE_RE.test(nested.code)) {
+      return nested.code;
+    }
+  }
+  const head = (error.message ?? "").trim().split(/[:\s]/)[0] ?? "";
+  return REASON_CODE_RE.test(head) ? head : null;
+}
 import { isNonTerminalDocumentStatus } from "@/features/lab/lib/evaluation-corpus-ingestion";
 import { mapUserFacingErrorMessage } from "@/lib/user-facing-error-messages";
 import type { EvaluationCorpusDocumentsUploadResponseDto } from "@/types/api";
@@ -10,6 +32,10 @@ export function corpusUploadErrorMessage(error: unknown, fallback: string): stri
     }
     if (error.status === 415) {
       return "UNSUPPORTED_TYPE";
+    }
+    const code = extractApiErrorCode(error);
+    if (code) {
+      return code;
     }
     const detail = error.message?.trim();
     if (detail) {

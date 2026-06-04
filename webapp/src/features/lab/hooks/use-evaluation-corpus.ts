@@ -4,10 +4,12 @@ import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import {
   corpusHasProcessingDocuments,
   corpusHasReadyDocuments,
+  extractApiErrorCode,
 } from "@/features/lab/lib/evaluation-corpus-upload";
 import { mergeCorpusAfterUpload } from "@/features/lab/lib/evaluation-corpus-ingestion";
 import type {
   EvaluationCorpusDocumentsUploadResponseDto,
+  EvaluationCorpusReadinessDto,
   EvaluationCorpusSummaryDto,
 } from "@/types/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,16 +19,31 @@ export function evaluationCorpusQueryKey(corpusId: string | null) {
   return ["lab", "evaluation-corpus", corpusId] as const;
 }
 
+export function evaluationCorpusReadinessQueryKey(corpusId: string | null) {
+  return [...evaluationCorpusQueryKey(corpusId), "readiness"] as const;
+}
+
 async function fetchEvaluationCorpus(id: string): Promise<EvaluationCorpusSummaryDto> {
   return apiFetch<EvaluationCorpusSummaryDto>(apiProductPath(`/lab/evaluation-corpora/${id}`));
+}
+
+async function fetchEvaluationCorpusReadiness(id: string): Promise<EvaluationCorpusReadinessDto> {
+  return apiFetch<EvaluationCorpusReadinessDto>(
+    apiProductPath(`/lab/evaluation-corpora/${id}/readiness`),
+  );
 }
 
 const CORPUS_POLL_MS = 2_000;
 const CORPUS_POLL_MAX_ATTEMPTS = 45;
 
+export type UseEvaluationCorpusOptions = {
+  /** Called when persisted corpus id is invalid (404 KB_NOT_FOUND). */
+  onCorpusStale?: () => void;
+};
+
 export type EvaluationCorpusApi = ReturnType<typeof useEvaluationCorpus>;
 
-export function useEvaluationCorpus(corpusId: string | null) {
+export function useEvaluationCorpus(corpusId: string | null, options?: UseEvaluationCorpusOptions) {
   const qc = useQueryClient();
   const [resolvedCorpusId, setResolvedCorpusId] = useState<string | null>(corpusId);
 
@@ -42,6 +59,12 @@ export function useEvaluationCorpus(corpusId: string | null) {
     queryKey: evaluationCorpusQueryKey(effectiveCorpusId),
     enabled: Boolean(effectiveCorpusId),
     queryFn: () => fetchEvaluationCorpus(effectiveCorpusId!),
+    retry: (failureCount, error) => {
+      if (error instanceof ApiError && error.status === 404) {
+        return false;
+      }
+      return failureCount < 1;
+    },
     refetchInterval: (q) => {
       const data = q.state.data;
       if (!data || !corpusHasProcessingDocuments(data)) {
@@ -51,12 +74,47 @@ export function useEvaluationCorpus(corpusId: string | null) {
     },
   });
 
+  const readinessQuery = useQuery({
+    queryKey: evaluationCorpusReadinessQueryKey(effectiveCorpusId),
+    enabled: Boolean(effectiveCorpusId),
+    queryFn: () => fetchEvaluationCorpusReadiness(effectiveCorpusId!),
+    refetchInterval: (q) => {
+      const summary = query.data;
+      if (!summary || !corpusHasProcessingDocuments(summary)) {
+        return false;
+      }
+      const readiness = q.state.data;
+      if (readiness && readiness.runnable && !readiness.processingCount) {
+        return false;
+      }
+      return CORPUS_POLL_MS;
+    },
+  });
+
+  useEffect(() => {
+    const err = query.error;
+    if (!err || !effectiveCorpusId) return;
+    if (!(err instanceof ApiError) || err.status !== 404) return;
+    const code = extractApiErrorCode(err);
+    if (code === "KB_NOT_FOUND" || code === "CORPUS_UNAVAILABLE") {
+      qc.removeQueries({ queryKey: evaluationCorpusQueryKey(effectiveCorpusId) });
+      qc.removeQueries({ queryKey: evaluationCorpusReadinessQueryKey(effectiveCorpusId) });
+      setResolvedCorpusId(null);
+      options?.onCorpusStale?.();
+    }
+  }, [query.error, effectiveCorpusId, options, qc]);
+
   const refresh = useCallback(
     async (id: string) => {
-      return qc.fetchQuery({
+      const summary = await qc.fetchQuery({
         queryKey: evaluationCorpusQueryKey(id),
         queryFn: () => fetchEvaluationCorpus(id),
       });
+      await qc.fetchQuery({
+        queryKey: evaluationCorpusReadinessQueryKey(id),
+        queryFn: () => fetchEvaluationCorpusReadiness(id),
+      });
+      return summary;
     },
     [qc],
   );
@@ -90,7 +148,8 @@ export function useEvaluationCorpus(corpusId: string | null) {
       qc.setQueryData(evaluationCorpusQueryKey(created.id), created);
       return created;
     } catch (e) {
-      const msg = e instanceof ApiError ? e.message : "Failed to create evaluation corpus";
+      const code = extractApiErrorCode(e);
+      const msg = code ?? (e instanceof ApiError ? e.message : "Failed to create evaluation corpus");
       throw new Error(msg, { cause: e });
     }
   }, [effectiveCorpusId, qc, refresh]);
@@ -141,6 +200,7 @@ export function useEvaluationCorpus(corpusId: string | null) {
           { method: "DELETE" },
         );
         qc.setQueryData(key, data);
+        await qc.invalidateQueries({ queryKey: evaluationCorpusReadinessQueryKey(id) });
         return data;
       } catch (e) {
         if (previous) {
@@ -182,6 +242,7 @@ export function useEvaluationCorpus(corpusId: string | null) {
           { method: "DELETE" },
         );
         qc.setQueryData(key, data);
+        await qc.invalidateQueries({ queryKey: evaluationCorpusReadinessQueryKey(id) });
         return data;
       } catch (e) {
         if (previous) {
@@ -225,22 +286,31 @@ export function useEvaluationCorpus(corpusId: string | null) {
   );
 
   const summary = effectiveCorpusId ? (query.data ?? null) : null;
+  const readiness = effectiveCorpusId ? (readinessQuery.data ?? null) : null;
+  const errorCode =
+    query.error instanceof ApiError ? extractApiErrorCode(query.error) : null;
   const error =
     query.error instanceof ApiError
-      ? query.error.message
+      ? errorCode ?? query.error.message
       : query.error instanceof Error
         ? query.error.message
         : query.error
           ? "Failed to load evaluation corpus"
           : null;
 
+  const corpusRunnable = readiness?.runnable ?? corpusHasReadyDocuments(summary);
+
   return {
     summary,
+    readiness,
     effectiveCorpusId,
     loading: query.isLoading,
     fetching: query.isFetching,
+    readinessLoading: readinessQuery.isLoading,
     error,
+    errorCode,
     corpusReady: corpusHasReadyDocuments(summary),
+    corpusRunnable,
     corpusProcessing: corpusHasProcessingDocuments(summary),
     refresh,
     ensureCorpus,

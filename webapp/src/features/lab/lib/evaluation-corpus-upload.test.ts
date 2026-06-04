@@ -5,6 +5,7 @@ import {
   corpusHasProcessingDocuments,
   corpusHasReadyDocuments,
   corpusUploadErrorMessage,
+  extractApiErrorCode,
   mapKnowledgeBaseApiError,
   summarizeCorpusUploadDuplicates,
   summarizeCorpusUploadFailures,
@@ -153,6 +154,21 @@ describe("evaluation-corpus-upload", () => {
     expect(mapKnowledgeBaseApiError("BLOCKED_BY_MODEL_AVAILABILITY", t, "fb")).toBe(
       "i18n:userError_BLOCKED_BY_MODEL_AVAILABILITY",
     );
+    expect(mapKnowledgeBaseApiError("DOCUMENT_IMPORT_NOT_FOUND", t, "fb")).toBe(
+      "i18n:labImportDocumentNotFound",
+    );
+    expect(mapKnowledgeBaseApiError("NO_ACTIVE_SNAPSHOT", t, "fb")).toBe(
+      "i18n:userError_NO_ACTIVE_SNAPSHOT",
+    );
+  });
+
+  it("extractApiErrorCode reads code from ApiError JSON", () => {
+    const err = new ApiError(400, "human", {
+      kind: "http",
+      safeMessage: "human",
+      parsedJson: { code: "DOCUMENT_IMPORT_NOT_FOUND", message: "x" },
+    });
+    expect(extractApiErrorCode(err)).toBe("DOCUMENT_IMPORT_NOT_FOUND");
   });
 
   it("uses default message when failed upload has no error", () => {

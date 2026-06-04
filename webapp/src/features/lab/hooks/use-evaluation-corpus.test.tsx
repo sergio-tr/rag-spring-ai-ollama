@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import type {
   EvaluationCorpusDocumentsUploadResponseDto,
+  EvaluationCorpusReadinessDto,
   EvaluationCorpusSummaryDto,
 } from "@/types/api";
 import { useEvaluationCorpus } from "./use-evaluation-corpus";
@@ -30,6 +31,32 @@ const corpus: EvaluationCorpusSummaryDto = {
   updatedAt: "2026-01-01T00:00:00Z",
 };
 
+const readinessRunnable: EvaluationCorpusReadinessDto = {
+  corpusId: "corpus-1",
+  indexProjectId: "proj-1",
+  documentCount: 2,
+  readyCount: 1,
+  processingCount: 0,
+  failedCount: 0,
+  primaryBlocker: null,
+  primaryBlockerMessage: null,
+  activeSnapshotId: null,
+  reindexRequired: true,
+  snapshotBlocker: "REINDEX_REQUIRED",
+  snapshotBlockerDetailCode: "NO_ACTIVE_INDEX",
+  selectedSnapshotIds: [],
+  runnable: true,
+};
+
+function mockCorpusFetch(summary: EvaluationCorpusSummaryDto = corpus) {
+  vi.mocked(apiFetch).mockImplementation((url: string) => {
+    if (String(url).includes("/readiness")) {
+      return Promise.resolve(readinessRunnable);
+    }
+    return Promise.resolve(summary);
+  });
+}
+
 describe("useEvaluationCorpus", () => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
@@ -51,7 +78,7 @@ describe("useEvaluationCorpus", () => {
   });
 
   it("loads corpus summary when corpusId is set", async () => {
-    vi.mocked(apiFetch).mockResolvedValue(corpus);
+    mockCorpusFetch();
     const { result } = renderHook(() => useEvaluationCorpus("corpus-1"), { wrapper });
 
     await waitFor(() => expect(result.current.summary).toEqual(corpus));
@@ -59,14 +86,35 @@ describe("useEvaluationCorpus", () => {
   });
 
   it("surfaces ApiError message on fetch failure", async () => {
-    vi.mocked(apiFetch).mockRejectedValue(new ApiError(404, "Corpus missing"));
+    vi.mocked(apiFetch).mockRejectedValue(
+      new ApiError(404, "The selected knowledge base does not exist", {
+        kind: "http",
+        safeMessage: "The selected knowledge base does not exist",
+        parsedJson: { code: "KB_NOT_FOUND", message: "x" },
+      }),
+    );
     const { result } = renderHook(() => useEvaluationCorpus("corpus-1"), { wrapper });
 
-    await waitFor(() => expect(result.current.error).toBe("Corpus missing"));
+    await waitFor(() => expect(result.current.errorCode).toBe("KB_NOT_FOUND"));
+  });
+
+  it("onCorpusStale clears resolved id when corpus 404", async () => {
+    const onCorpusStale = vi.fn();
+    vi.mocked(apiFetch).mockRejectedValue(
+      new ApiError(404, "missing", {
+        kind: "http",
+        safeMessage: "missing",
+        parsedJson: { code: "KB_NOT_FOUND" },
+      }),
+    );
+    const { result } = renderHook(() => useEvaluationCorpus("stale-id", { onCorpusStale }), { wrapper });
+
+    await waitFor(() => expect(onCorpusStale).toHaveBeenCalled());
+    // Parent must clear draft corpusId; hook still receives prop until re-render.
   });
 
   it("refresh refetches by id", async () => {
-    vi.mocked(apiFetch).mockResolvedValue(corpus);
+    mockCorpusFetch();
     const { result } = renderHook(() => useEvaluationCorpus("corpus-1"), { wrapper });
     await waitFor(() => expect(result.current.summary).toEqual(corpus));
 
@@ -86,7 +134,7 @@ describe("useEvaluationCorpus", () => {
   });
 
   it("ensureCorpus refreshes when corpusId already set", async () => {
-    vi.mocked(apiFetch).mockResolvedValue(corpus);
+    mockCorpusFetch();
     const { result } = renderHook(() => useEvaluationCorpus("corpus-1"), { wrapper });
     await waitFor(() => expect(result.current.summary).toEqual(corpus));
 
@@ -95,7 +143,7 @@ describe("useEvaluationCorpus", () => {
   });
 
   it("uploadDocuments posts multipart and merges processing row into cache", async () => {
-    vi.mocked(apiFetch).mockResolvedValue(corpus);
+    mockCorpusFetch();
     const { result } = renderHook(() => useEvaluationCorpus("corpus-1"), { wrapper });
     await waitFor(() => expect(result.current.summary).toEqual(corpus));
 
@@ -143,7 +191,7 @@ describe("useEvaluationCorpus", () => {
   });
 
   it("exposes effectiveCorpusId after ensureCorpus when prop is null", async () => {
-    vi.mocked(apiFetch).mockResolvedValue(corpus);
+    mockCorpusFetch();
     const { result } = renderHook(() => useEvaluationCorpus(null), { wrapper });
 
     await result.current.ensureCorpus();
@@ -152,7 +200,7 @@ describe("useEvaluationCorpus", () => {
   });
 
   it("attachFromProject updates cache", async () => {
-    vi.mocked(apiFetch).mockResolvedValue(corpus);
+    mockCorpusFetch();
     const { result } = renderHook(() => useEvaluationCorpus("corpus-1"), { wrapper });
     await waitFor(() => expect(result.current.summary).toEqual(corpus));
 

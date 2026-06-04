@@ -15,23 +15,31 @@ function LabEvalHarness({ children }: Readonly<{ children: ReactNode }>) {
   );
 }
 
+const { useEvaluationCorpusMock } = vi.hoisted(() => ({
+  useEvaluationCorpusMock: vi.fn(),
+}));
+
+const defaultEvaluationCorpusApi = {
+  summary: { documentCount: 2, readyCount: 2, documents: [] },
+  effectiveCorpusId: "corpus-1",
+  loading: false,
+  fetching: false,
+  error: null,
+  refresh: vi.fn(),
+  ensureCorpus: vi.fn(),
+  uploadDocuments: vi.fn(),
+  corpusReady: true,
+  corpusRunnable: true,
+  readiness: { runnable: true, primaryBlocker: null, primaryBlockerMessage: null },
+  corpusProcessing: false,
+  attachFromProject: vi.fn(),
+  deleteDocument: vi.fn(),
+  deleteAllDocuments: vi.fn(),
+  retryDocumentIngest: vi.fn(),
+};
+
 vi.mock("@/features/lab/hooks/use-evaluation-corpus", () => ({
-  useEvaluationCorpus: () => ({
-    summary: { documentCount: 2, readyCount: 2, documents: [] },
-    effectiveCorpusId: "corpus-1",
-    loading: false,
-    fetching: false,
-    error: null,
-    refresh: vi.fn(),
-    ensureCorpus: vi.fn(),
-    uploadDocuments: vi.fn(),
-    corpusReady: true,
-    corpusProcessing: false,
-    attachFromProject: vi.fn(),
-    deleteDocument: vi.fn(),
-    deleteAllDocuments: vi.fn(),
-    retryDocumentIngest: vi.fn(),
-  }),
+  useEvaluationCorpus: (...args: unknown[]) => useEvaluationCorpusMock(...args),
 }));
 
 vi.mock("@/features/help/HelpPopover", () => ({
@@ -187,6 +195,7 @@ function presetCodesFixture() {
 
 describe("LabEvaluationRunCard", () => {
   beforeEach(() => {
+    useEvaluationCorpusMock.mockReturnValue(defaultEvaluationCorpusApi);
     Object.keys(localStorage).forEach((k) => {
       if (k.startsWith("lab:evaluation-draft:v1:")) localStorage.removeItem(k);
     });
@@ -508,6 +517,40 @@ describe("LabEvaluationRunCard", () => {
     for (let i = 0; i <= 14; i += 1) {
       expect(screen.getByTestId(`lab-experimental-preset-P${i}`)).toBeChecked();
     }
+  });
+
+  it("disables Run when corpus readiness reports NO_DOCUMENTS blocker", () => {
+    useEvaluationCorpusMock.mockReturnValue({
+      ...defaultEvaluationCorpusApi,
+      corpusRunnable: false,
+      readiness: {
+        runnable: false,
+        primaryBlocker: "NO_DOCUMENTS",
+        primaryBlockerMessage: "The knowledge base has no documents.",
+      },
+    });
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+      data: [ragDataset],
+      isLoading: false,
+      isFetched: true,
+      isSuccess: true,
+    } as never);
+    localStorage.setItem("lab:evaluation-draft:v1:RAG_PRESET_END_TO_END", storedRagDraft({}));
+    render(
+      <LabEvalHarness>
+        <LabEvaluationRunCard
+          benchmarkKind="RAG_PRESET_END_TO_END"
+          sectionKey="evaluation-rag"
+          taskTypeHint="RAG_EVALUATION"
+          cardTitle="RAG evaluation"
+          cardDescription="Benchmark retrieval presets."
+          runButtonTestId="lab-rag-run"
+          radioGroupName="follow-corpus-blocked"
+        />
+      </LabEvalHarness>,
+    );
+    expect(screen.getByTestId("lab-corpus-not-ready-hint")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-rag-run")).toBeDisabled();
   });
 
   it("shows evaluation corpus panel for RAG without active project", () => {
