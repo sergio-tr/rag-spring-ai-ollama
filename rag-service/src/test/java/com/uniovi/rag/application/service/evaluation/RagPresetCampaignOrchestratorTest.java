@@ -25,6 +25,8 @@ import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import com.uniovi.rag.application.service.async.AsyncTaskService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
+import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -65,6 +67,7 @@ class RagPresetCampaignOrchestratorTest {
     @Mock private EvaluationDatasetStorePort evaluationDatasetStorePort;
     @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
     @Mock private EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+    @Mock private EvaluationCorpusReadinessService evaluationCorpusReadinessService;
     @Mock private EvaluationCorpusRepository evaluationCorpusRepository;
 
     @BeforeEach
@@ -84,6 +87,24 @@ class RagPresetCampaignOrchestratorTest {
                 .when(evaluationCorpusRepository.findByIdAndOwner_Id(any(), any()))
                 .thenReturn(Optional.of(corpus));
         lenient().when(asyncTaskRepository.findById(any())).thenReturn(Optional.of(mock(AsyncTaskEntity.class)));
+        lenient()
+                .when(evaluationCorpusReadinessService.getReadiness(any(), any()))
+                .thenReturn(
+                        new EvaluationCorpusReadinessDto(
+                                corpusId,
+                                UUID.randomUUID(),
+                                1,
+                                1,
+                                0,
+                                0,
+                                null,
+                                null,
+                                UUID.randomUUID(),
+                                false,
+                                null,
+                                null,
+                                List.of(UUID.randomUUID()),
+                                true));
     }
 
     @Test
@@ -196,6 +217,7 @@ class RagPresetCampaignOrchestratorTest {
                 new EvaluationWorkbookParser(),
                 embeddingSpaceGuard,
                 evaluationCorpusApplicationService,
+                evaluationCorpusReadinessService,
                 evaluationCorpusRepository);
     }
 }

@@ -21,6 +21,8 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
+import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import com.uniovi.rag.infrastructure.persistence.EvaluationCorpusRepository;
 import org.junit.jupiter.api.Test;
@@ -60,7 +62,30 @@ class LlmCampaignOrchestratorTest {
     @Mock private EvaluationDatasetStorePort evaluationDatasetStorePort;
     @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
     @Mock private EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+    @Mock private EvaluationCorpusReadinessService evaluationCorpusReadinessService;
     @Mock private EvaluationCorpusRepository evaluationCorpusRepository;
+
+    @org.junit.jupiter.api.BeforeEach
+    void stubCorpusReadiness() {
+        org.mockito.Mockito.lenient()
+                .when(evaluationCorpusReadinessService.getReadiness(any(), any()))
+                .thenReturn(
+                        new EvaluationCorpusReadinessDto(
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                1,
+                                1,
+                                0,
+                                0,
+                                null,
+                                null,
+                                UUID.randomUUID(),
+                                false,
+                                null,
+                                null,
+                                List.of(),
+                                true));
+    }
 
     @Test
     void startJsonBenchmark_llmCampaign_createsCampaignAndChildRuns_andReturnsCampaignId() {
@@ -82,6 +107,7 @@ class LlmCampaignOrchestratorTest {
                         new EvaluationWorkbookParser(),
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         UUID userId = UUID.randomUUID();
@@ -190,6 +216,7 @@ class LlmCampaignOrchestratorTest {
                         new EvaluationWorkbookParser(),
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         UUID userId = UUID.randomUUID();

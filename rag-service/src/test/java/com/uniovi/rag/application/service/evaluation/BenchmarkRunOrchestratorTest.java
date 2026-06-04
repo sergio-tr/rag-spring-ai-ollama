@@ -20,6 +20,9 @@ import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleLoader;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
+import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
 import com.uniovi.rag.infrastructure.persistence.EvaluationCorpusRepository;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
@@ -90,6 +93,7 @@ class BenchmarkRunOrchestratorTest {
     private final EvaluationWorkbookParser evaluationWorkbookParser = new EvaluationWorkbookParser();
     @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
     @Mock private EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+    @Mock private EvaluationCorpusReadinessService evaluationCorpusReadinessService;
     @Mock private EvaluationCorpusRepository evaluationCorpusRepository;
 
     @BeforeEach
@@ -113,6 +117,103 @@ class BenchmarkRunOrchestratorTest {
                 .when(evaluationCorpusRepository.findByIdAndOwner_Id(any(), any()))
                 .thenReturn(Optional.of(corpus));
         lenient().when(asyncTaskRepository.findById(any())).thenReturn(Optional.of(Mockito.mock(AsyncTaskEntity.class)));
+        lenient()
+                .when(evaluationCorpusReadinessService.getReadiness(any(), any()))
+                .thenReturn(
+                        new EvaluationCorpusReadinessDto(
+                                TEST_CORPUS_ID,
+                                UUID.randomUUID(),
+                                1,
+                                1,
+                                0,
+                                0,
+                                null,
+                                null,
+                                UUID.randomUUID(),
+                                false,
+                                null,
+                                null,
+                                List.of(UUID.randomUUID()),
+                                true));
+    }
+
+    @Test
+    void startJsonBenchmark_ragRejectsEmptyCorpusWithKbEmptyCode() {
+        BenchmarkRunOrchestrator orch =
+                new BenchmarkRunOrchestrator(
+                        userRepository,
+                        evaluationDatasetRepository,
+                        evaluationCampaignRepository,
+                        evaluationRunRepository,
+                        resolvedConfigSnapshotRepository,
+                        knowledgeIndexSnapshotRepository,
+                        ragPresetRepository,
+                        asyncTaskRepository,
+                        asyncTaskService,
+                        labJobLifecycleService,
+                        projectAccessService,
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser,
+                        embeddingSpaceGuard,
+                        evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
+                        evaluationCorpusRepository);
+        when(evaluationCorpusReadinessService.getReadiness(any(), eq(TEST_CORPUS_ID)))
+                .thenReturn(
+                        new EvaluationCorpusReadinessDto(
+                                TEST_CORPUS_ID,
+                                UUID.randomUUID(),
+                                0,
+                                0,
+                                0,
+                                0,
+                                LabCorpusReasonCodes.NO_DOCUMENTS,
+                                "empty",
+                                null,
+                                false,
+                                null,
+                                null,
+                                List.of(),
+                                false));
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        UUID.randomUUID(),
+                        TEST_CORPUS_ID,
+                        null,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "n",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        false,
+                        null,
+                        false,
+                        false,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
+
+        assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex -> {
+                            ResponseStatusException rse = (ResponseStatusException) ex;
+                            assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                            assertThat(rse.getReason()).isEqualTo(LabCorpusReasonCodes.KB_EMPTY);
+                        });
     }
 
     @Test
@@ -135,6 +236,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         StartBenchmarkRunRequest req =
@@ -194,6 +296,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
@@ -262,6 +365,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         UUID userId = UUID.randomUUID();
@@ -335,6 +439,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
@@ -396,6 +501,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
@@ -464,6 +570,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
@@ -544,6 +651,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
@@ -634,6 +742,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
@@ -761,6 +870,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
@@ -903,6 +1013,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
@@ -989,6 +1100,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
@@ -1119,6 +1231,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         UUID dsId = UUID.randomUUID();
@@ -1194,6 +1307,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         StartBenchmarkRunRequest req =
@@ -1253,6 +1367,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         StartBenchmarkRunRequest req =
@@ -1312,6 +1427,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         StartBenchmarkRunRequest req =
@@ -1371,6 +1487,7 @@ class BenchmarkRunOrchestratorTest {
                         evaluationWorkbookParser,
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
+                        evaluationCorpusReadinessService,
                         evaluationCorpusRepository);
 
         StartBenchmarkRunRequest req =

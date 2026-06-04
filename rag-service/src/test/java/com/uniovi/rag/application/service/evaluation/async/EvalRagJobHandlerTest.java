@@ -207,7 +207,12 @@ class EvalRagJobHandlerTest {
         verify(evaluationRunRagJobContextLoader).markAutoReindexLockAcquired(runId);
         verify(labJobProgressTracker)
                 .emitRagEvaluationAccepted(
-                        eq(taskId), eq(runId), eq(corpusId), ArgumentMatchers.any(), ArgumentMatchers.isNull());
+                        eq(taskId),
+                        eq(runId),
+                        eq(corpusId),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.isNull(),
+                        ArgumentMatchers.any());
     }
 
     @Test

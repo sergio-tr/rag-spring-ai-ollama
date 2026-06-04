@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.evaluation.corpus;
 
 import com.uniovi.rag.domain.ProjectDocumentStatus;
+import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.domain.evaluation.EvaluationCorpusSourceType;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.infrastructure.persistence.EvaluationCorpusDocumentRepository;
@@ -16,6 +17,7 @@ import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
+import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusAttachFromProjectRequest;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusCreateRequest;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusSummaryDto;
@@ -283,6 +285,58 @@ class EvaluationCorpusApplicationServiceTest {
 
         assertThat(summary.documentCount()).isEqualTo(1);
         verify(evaluationCorpusDocumentRepository).save(any());
+    }
+
+    @Test
+    void attachFromProject_missingDocument_throwsImportNotFound() {
+        UUID corpusId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        EvaluationCorpusEntity corpus = mock(EvaluationCorpusEntity.class);
+        ProjectEntity indexProject = mock(ProjectEntity.class);
+        when(indexProject.getId()).thenReturn(projectId);
+        when(corpus.getIndexProject()).thenReturn(indexProject);
+        when(evaluationCorpusRepository.findByIdAndOwner_Id(corpusId, userId)).thenReturn(Optional.of(corpus));
+        when(knowledgeDocumentRepository.findByIdAndProject_Id(any(), eq(projectId))).thenReturn(Optional.empty());
+
+        assertThatThrownBy(
+                        () ->
+                                service.attachFromProject(
+                                        userId,
+                                        corpusId,
+                                        new EvaluationCorpusAttachFromProjectRequest(
+                                                projectId, List.of(UUID.randomUUID()))))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((ResponseStatusException) ex).getReason())
+                                        .isEqualTo(LabCorpusReasonCodes.DOCUMENT_IMPORT_NOT_FOUND));
+    }
+
+    @Test
+    void attachFromProject_nonSharedScope_throwsScopeNotShared() {
+        UUID corpusId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID docId = UUID.randomUUID();
+        EvaluationCorpusEntity corpus = mock(EvaluationCorpusEntity.class);
+        ProjectEntity indexProject = mock(ProjectEntity.class);
+        KnowledgeDocumentEntity source = mock(KnowledgeDocumentEntity.class);
+        when(indexProject.getId()).thenReturn(projectId);
+        when(corpus.getIndexProject()).thenReturn(indexProject);
+        when(evaluationCorpusRepository.findByIdAndOwner_Id(corpusId, userId)).thenReturn(Optional.of(corpus));
+        when(knowledgeDocumentRepository.findByIdAndProject_Id(docId, projectId)).thenReturn(Optional.of(source));
+        when(source.getCorpusScope()).thenReturn(CorpusScope.CHAT_LOCAL);
+
+        assertThatThrownBy(
+                        () ->
+                                service.attachFromProject(
+                                        userId,
+                                        corpusId,
+                                        new EvaluationCorpusAttachFromProjectRequest(projectId, List.of(docId))))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((ResponseStatusException) ex).getReason())
+                                        .isEqualTo(LabCorpusReasonCodes.DOCUMENT_SCOPE_NOT_SHARED));
     }
 
     @Test

@@ -4,6 +4,8 @@ import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -12,6 +14,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
+import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusDocumentUploadItemDto;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusDocumentsUploadResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusSummaryDto;
@@ -50,6 +55,9 @@ class LabEvaluationCorpusControllerWebMvcTest {
     @MockitoBean
     private EvaluationCorpusApplicationService evaluationCorpusApplicationService;
 
+    @MockitoBean
+    private EvaluationCorpusReadinessService evaluationCorpusReadinessService;
+
     private UUID userId;
 
     @BeforeEach
@@ -76,6 +84,44 @@ class LabEvaluationCorpusControllerWebMvcTest {
         mockMvc.perform(post(path("/lab/evaluation-corpora")).contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(corpusId.toString()));
+    }
+
+    @Test
+    void getReadiness_returnsBlockerCode() throws Exception {
+        UUID corpusId = UUID.randomUUID();
+        when(evaluationCorpusReadinessService.getReadiness(userId, corpusId))
+                .thenReturn(
+                        new EvaluationCorpusReadinessDto(
+                                corpusId,
+                                UUID.randomUUID(),
+                                0,
+                                0,
+                                0,
+                                0,
+                                "NO_DOCUMENTS",
+                                "The knowledge base has no documents to retrieve from.",
+                                null,
+                                false,
+                                null,
+                                null,
+                                List.of(),
+                                false));
+
+        mockMvc.perform(get(path("/lab/evaluation-corpora/") + corpusId + "/readiness"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.primaryBlocker").value("NO_DOCUMENTS"))
+                .andExpect(jsonPath("$.runnable").value(false));
+    }
+
+    @Test
+    void getCorpus_missing_returnsKbNotFoundCode() throws Exception {
+        UUID corpusId = UUID.randomUUID();
+        when(evaluationCorpusApplicationService.getSummary(userId, corpusId))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, LabCorpusReasonCodes.KB_NOT_FOUND));
+
+        mockMvc.perform(get(path("/lab/evaluation-corpora/") + corpusId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("KB_NOT_FOUND"));
     }
 
     @Test
