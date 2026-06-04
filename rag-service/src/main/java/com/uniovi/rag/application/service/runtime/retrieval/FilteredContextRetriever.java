@@ -97,8 +97,14 @@ public class FilteredContextRetriever extends AbstractContextRetriever {
                     .content();
             String filteredContent = rawContent != null ? rawContent.trim() : "";
 
-            // Validate filtered content
+            // Validate filtered content; keep original when LLM filter strips everything (M5-RET1).
             if (filteredContent.isEmpty()) {
+                if (!contentWithPrefix.trim().isEmpty()) {
+                    log().info(
+                            "Filtered content empty; filter_fallback=original for document: {}",
+                            doc.getId());
+                    return contentWithPrefix;
+                }
                 log().info("Filtered content is empty for document: {}", doc.getId());
                 return "";
             }
