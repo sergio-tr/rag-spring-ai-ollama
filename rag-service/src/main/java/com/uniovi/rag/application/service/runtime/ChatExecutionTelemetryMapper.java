@@ -72,6 +72,7 @@ public final class ChatExecutionTelemetryMapper {
         putReasoningTelemetry(trace, m);
         trace.retrievalDiagnostics().ifPresent(d -> putRetrievalDiagnosticsTelemetry(d, m));
         putDateGroundingTelemetry(trace, m);
+        putRuntimeAnswerMetaTelemetry(trace, m);
 
         parseCorpusBudgetTelemetry(trace, m);
 
@@ -210,6 +211,23 @@ public final class ChatExecutionTelemetryMapper {
         d.rerankScoreSummary().ifPresent(s -> m.put("retrievalRerankScoreSummaryTruncated", s));
     }
 
+    private static void putRuntimeAnswerMetaTelemetry(ExecutionTrace trace, Map<String, Object> m) {
+        if (trace.stages() == null) {
+            return;
+        }
+        for (ExecutionStageTrace stage : trace.stages()) {
+            if (stage == null || !"runtime_answer_meta".equals(stage.stageName())) {
+                continue;
+            }
+            String msg = stage.message();
+            if (msg == null || msg.isBlank()) {
+                return;
+            }
+            putBooleanIfPresent(m, "documentBound", tokenAfter(msg, "documentBound="));
+            return;
+        }
+    }
+
     private static void putDateGroundingTelemetry(ExecutionTrace trace, Map<String, Object> m) {
         if (trace.stages() == null || trace.stages().isEmpty()) {
             return;
@@ -305,6 +323,7 @@ public final class ChatExecutionTelemetryMapper {
                 "candidateSourceCountBeforeDateFilter=",
                 "candidateSourceCountAfterDateFilter=",
                 "dateBoostApplied=",
+                "documentBound=",
                 "before=",
                 "after=")) {
             int idx = msg.indexOf(next, start);

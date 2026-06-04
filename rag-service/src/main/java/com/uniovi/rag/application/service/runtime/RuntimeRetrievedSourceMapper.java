@@ -51,6 +51,9 @@ final class RuntimeRetrievedSourceMapper {
             }
 
             Map<String, Object> allowlisted = new LinkedHashMap<>(allowlistMetadata(meta));
+            if (c.candidateId() != null && !c.candidateId().isBlank()) {
+                allowlisted.put("chunkId", c.candidateId());
+            }
             boolean supporting =
                     !globalMismatch
                             && (requestedDate.isEmpty()
