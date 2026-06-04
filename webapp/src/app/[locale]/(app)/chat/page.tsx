@@ -270,9 +270,26 @@ function hasRuntimeTraceMetadata(message: MessageDto): boolean {
     "candidateSourceCountBeforeDateFilter",
     "candidateSourceCountAfterDateFilter",
     "dateBoostApplied",
+    "documentBound",
     "answerPolicy",
     "groundingPolicy",
   ].some((key) => meta[key] !== undefined && meta[key] !== null && String(meta[key]).trim() !== "");
+}
+
+function sourceChunkIndex(source: Record<string, unknown>): string | null {
+  const direct = source.chunkIndex ?? source.chunk_index;
+  if (typeof direct === "number") return String(direct);
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const meta = source.metadata;
+  if (meta && typeof meta === "object") {
+    const fromMeta = meta as Record<string, unknown>;
+    const chunkId = metadataString(fromMeta, "chunkId");
+    if (chunkId) return chunkId;
+    const idx = fromMeta.chunkIndex ?? fromMeta.chunk_index;
+    if (typeof idx === "number") return String(idx);
+    if (typeof idx === "string" && idx.trim()) return idx.trim();
+  }
+  return null;
 }
 
 function sourceDetectedDate(source: Record<string, unknown>): string | null {
@@ -1760,6 +1777,7 @@ function ChatPageInner() {
                           const detectedDate = sourceDetectedDate(s);
                           const excerpt = sourceSnippet(s);
                           const score = sourceScore(s);
+                          const chunk = sourceChunkIndex(s);
                           const mismatched = sourceDateMismatch(detectedDate, requestedDate);
                           const alternative = sourceIsAlternativeOnly(s);
                           return (
@@ -1773,6 +1791,11 @@ function ChatPageInner() {
                               {detectedDate ? (
                                 <p className="font-mono text-muted-foreground mt-0.5">
                                   date={detectedDate}
+                                </p>
+                              ) : null}
+                              {chunk ? (
+                                <p className="font-mono text-muted-foreground mt-0.5">
+                                  chunk={chunk}
                                 </p>
                               ) : null}
                               {alternative ? (
@@ -1876,6 +1899,12 @@ function ChatPageInner() {
                           <div className="flex justify-between gap-2">
                             <dt className="text-muted-foreground">exactDocumentMatch</dt>
                             <dd>{String(m.executionMetadata.exactDocumentMatch)}</dd>
+                          </div>
+                        ) : null}
+                        {m.executionMetadata?.documentBound != null ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">documentBound</dt>
+                            <dd>{String(m.executionMetadata.documentBound)}</dd>
                           </div>
                         ) : null}
                         {m.executionMetadata?.candidateSourceCountBeforeDateFilter != null ? (
