@@ -69,7 +69,8 @@ Run the full **`rag-service`** suite with working directory **`rag-service/`**: 
 - **Scope:** RAG preset and embedding benchmarks use a Lab **evaluation corpus** (`evaluation_corpus` + `evaluation_corpus_document`), not the global active project from navigation.
 - **API:** `POST {product-base}/lab/evaluation-corpora` creates a corpus; `POST …/{corpusId}/documents` (multipart `file` or `files`) and `POST …/{corpusId}/documents/from-project` attach documents; alias base `…/lab/corpora`; `GET …/{corpusId}` returns counts and document status.
 - **Runs:** `POST {product-base}/lab/benchmarks/RAG_PRESET_END_TO_END/runs` and `…/EMBEDDING_RETRIEVAL/runs` require **`corpusId`** when document-backed evidence is needed; **`projectId` is optional** (legacy linkage only).
-- **Validation codes:** `NO_CORPUS_SELECTED`, `NO_DOCUMENTS`, `NO_READY_DOCUMENTS`, `NO_COMPATIBLE_SNAPSHOT` — messages refer to corpus/documents, not missing active project.
+- **Readiness:** `GET {product-base}/lab/evaluation-corpora/{corpusId}/readiness` returns `primaryBlocker`, `snapshotBlocker`, `runnable`, and document counts before starting a benchmark.
+- **Validation codes (HTTP JSON `code`):** `KB_NOT_FOUND` (404, missing corpus), `KB_EMPTY` / `NO_DOCUMENTS` (no docs), `NO_READY_DOCUMENTS` (409), `DOCUMENT_IMPORT_NOT_FOUND`, `DOCUMENT_SCOPE_NOT_SHARED`, `NO_ACTIVE_SNAPSHOT`, `REINDEX_REQUIRED`, `NO_COMPATIBLE_SNAPSHOT` — not a generic 404 for preconditions.
 
 ## Lab benchmark — classpath corpus (thesis / reproducible runs)
 
@@ -150,11 +151,11 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 | `SPRING_DATASOURCE_USERNAME` | DB user (must match db/.env) | `postgres` |
 | `SPRING_DATASOURCE_PASSWORD` | DB password (must match db/.env) | — |
 | `RAG_JWT_SECRET` | HS256 key for JWTs (≥32 characters). The root `application.properties` has no default: set this env, or use Spring profile **`dev`** / **`docker`** (non-prod fallbacks in `application-dev.properties` / `application-docker.properties`). | Strong random in staging/prod |
-| `rag.auth.email-confirmation.enabled` / `RAG_AUTH_EMAIL_CONFIRMATION_ENABLED` | Enable email confirmation after register (register returns **202** + `PENDING_EMAIL_VERIFICATION`; login blocks until verified). | `false` |
+| `rag.auth.email-confirmation.enabled` / `RAG_AUTH_EMAIL_CONFIRMATION_ENABLED` | Enable email confirmation after register (register returns **202** + `PENDING_EMAIL_VERIFICATION`; login blocks until verified). | `true` (override `false` in unit tests via `application-test.properties`) |
 | `rag.auth.email-confirmation.token-ttl-seconds` / `RAG_AUTH_EMAIL_CONFIRMATION_TOKEN_TTL_SECONDS` | Email confirmation token TTL (seconds). | `3600` |
 | `rag.auth.password-reset.enabled` / `RAG_AUTH_PASSWORD_RESET_ENABLED` | Enable forgot/reset password. Forgot password is anti-enumeration (always **200**). | `false` |
 | `rag.auth.password-reset.token-ttl-seconds` / `RAG_AUTH_PASSWORD_RESET_TOKEN_TTL_SECONDS` | Password reset token TTL (seconds). | `3600` |
-| `rag.auth.mail.enabled` / `RAG_AUTH_MAIL_ENABLED` | When true, registration confirmation and password-reset emails are written to `mail_outbox` and delivered by `MailOutboxDeliveryService` via Spring Mail (SMTP). | `false` |
+| `rag.auth.mail.enabled` / `RAG_AUTH_MAIL_ENABLED` | When true, registration confirmation and password-reset emails are written to `mail_outbox` and delivered by `MailOutboxDeliveryService` via Spring Mail (SMTP). | `true` (set `false` if you only need DB tokens without outbox rows) |
 | `rag.auth.mail.from` / `RAG_AUTH_MAIL_FROM` | SMTP “From” address (`MimeMessage`); must be non-empty when mail is enabled. For Gmail, use the same mailbox as `SPRING_MAIL_USERNAME`. Blank → `AddressException: Empty address`, rows stay pending (`sent_at` null). | `no-reply@local.test` |
 | `rag.auth.mail.from-name` / `RAG_AUTH_MAIL_FROM_NAME` | Display name for the From header. | `RAG App` |
 | `SPRING_MAIL_HOST` / `SPRING_MAIL_PORT` | SMTP server (Gmail: `smtp.gmail.com`, `587`). | Unit tests: `127.0.0.1` / `3025` (`application-test.properties`) |
