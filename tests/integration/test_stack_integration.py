@@ -1187,6 +1187,124 @@ class TestBackendLabJobs:
         body = r.json()
         assert isinstance(body, list)
 
+    def test_lab_evaluation_corpus_readiness_no_documents(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        """M3: empty corpus exposes primaryBlocker NO_DOCUMENTS and runnable=false."""
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("Login did not return a token.")
+        headers = _lab_auth_headers(token)
+        try:
+            create = http_client.post(
+                f"{backend_base}{product_api_base}/lab/evaluation-corpora",
+                headers=headers,
+                json={"name": "pytest-readiness-empty"},
+                timeout=60.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert create.status_code in (200, 201), create.text
+        corpus_id = _assert_json_response_not_html(create).get("id")
+        assert corpus_id
+
+        try:
+            readiness = http_client.get(
+                f"{backend_base}{product_api_base}/lab/evaluation-corpora/{corpus_id}/readiness",
+                headers=headers,
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert readiness.status_code == 200, readiness.text
+        body = _assert_json_response_not_html(readiness)
+        assert body.get("primaryBlocker") == "NO_DOCUMENTS"
+        assert body.get("runnable") is False
+
+    def test_lab_evaluation_corpus_readiness_runnable_after_upload(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        """M3: corpus with READY documents is runnable (snapshot may still need reindex)."""
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("Login did not return a token.")
+        try:
+            corpus_id = _lab_create_evaluation_corpus_with_document(
+                http_client,
+                backend_base,
+                product_api_base,
+                token,
+                corpus_name="pytest-readiness-ready",
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        headers = _lab_auth_headers(token)
+        try:
+            readiness = http_client.get(
+                f"{backend_base}{product_api_base}/lab/evaluation-corpora/{corpus_id}/readiness",
+                headers=headers,
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert readiness.status_code == 200, readiness.text
+        body = _assert_json_response_not_html(readiness)
+        assert body.get("runnable") is True
+        assert body.get("primaryBlocker") in (None, "")
+
+    def test_lab_evaluation_corpus_missing_returns_kb_not_found_code(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        """M3: stale corpus id returns machine code KB_NOT_FOUND, not generic NOT_FOUND."""
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("Login did not return a token.")
+        missing_id = "00000000-0000-7000-8000-000000009999"
+        headers = _lab_auth_headers(token)
+        try:
+            r = http_client.get(
+                f"{backend_base}{product_api_base}/lab/evaluation-corpora/{missing_id}",
+                headers=headers,
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 404, r.text
+        body = _assert_json_response_not_html(r)
+        assert body.get("code") == "KB_NOT_FOUND"
+
 
 class TestCrossService:
     def test_classifier_then_backend_query(self, http_client: httpx.Client, classifier_base: str, backend_base: str) -> None:
