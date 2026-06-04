@@ -24,6 +24,8 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import com.uniovi.rag.application.service.async.AsyncTaskService;
+import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightResult;
+import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
@@ -37,6 +39,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -69,6 +72,7 @@ class RagPresetCampaignOrchestratorTest {
     @Mock private EvaluationCorpusApplicationService evaluationCorpusApplicationService;
     @Mock private EvaluationCorpusReadinessService evaluationCorpusReadinessService;
     @Mock private EvaluationCorpusRepository evaluationCorpusRepository;
+    @Mock private LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService;
 
     @BeforeEach
     void stubCorpus() {
@@ -105,6 +109,11 @@ class RagPresetCampaignOrchestratorTest {
                                 null,
                                 List.of(UUID.randomUUID()),
                                 true));
+        lenient()
+                .when(labBenchmarkConfigPreflightService.validateOrThrow(any(), any(), any()))
+                .thenReturn(
+                        new LabBenchmarkConfigPreflightResult(
+                                true, "OK", List.of("P0"), null, true, false, Map.of()));
     }
 
     @Test
@@ -197,6 +206,12 @@ class RagPresetCampaignOrchestratorTest {
                         .toList();
         assertThat(childRuns).hasSizeGreaterThanOrEqualTo(3);
         assertThat(childRuns.stream().allMatch(r -> r.getCampaign() != null)).isTrue();
+        assertThat(childRuns)
+                .allMatch(
+                        r ->
+                                r.getAggregatesJson() != null
+                                        && r.getAggregatesJson()
+                                                .containsKey(BenchmarkRunOrchestrator.AGG_KEY_CONFIG_PREFLIGHT));
     }
 
     private BenchmarkRunOrchestrator orchestrator() {
@@ -218,6 +233,7 @@ class RagPresetCampaignOrchestratorTest {
                 embeddingSpaceGuard,
                 evaluationCorpusApplicationService,
                 evaluationCorpusReadinessService,
-                evaluationCorpusRepository);
+                evaluationCorpusRepository,
+                labBenchmarkConfigPreflightService);
     }
 }

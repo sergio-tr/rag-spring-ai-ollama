@@ -20,6 +20,8 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskService;
+import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightResult;
+import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
@@ -33,6 +35,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -64,6 +67,7 @@ class LlmCampaignOrchestratorTest {
     @Mock private EvaluationCorpusApplicationService evaluationCorpusApplicationService;
     @Mock private EvaluationCorpusReadinessService evaluationCorpusReadinessService;
     @Mock private EvaluationCorpusRepository evaluationCorpusRepository;
+    @Mock private LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService;
 
     @org.junit.jupiter.api.BeforeEach
     void stubCorpusReadiness() {
@@ -85,6 +89,11 @@ class LlmCampaignOrchestratorTest {
                                 null,
                                 List.of(),
                                 true));
+        org.mockito.Mockito.lenient()
+                .when(labBenchmarkConfigPreflightService.validateOrThrow(any(), any(), any()))
+                .thenReturn(
+                        new LabBenchmarkConfigPreflightResult(
+                                true, "OK", List.of(), null, true, false, Map.of()));
     }
 
     @Test
@@ -108,7 +117,8 @@ class LlmCampaignOrchestratorTest {
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
-                        evaluationCorpusRepository);
+                        evaluationCorpusRepository,
+                        labBenchmarkConfigPreflightService);
 
         UUID userId = UUID.randomUUID();
         UserEntity user = mock(UserEntity.class);
@@ -217,7 +227,8 @@ class LlmCampaignOrchestratorTest {
                         embeddingSpaceGuard,
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
-                        evaluationCorpusRepository);
+                        evaluationCorpusRepository,
+                        labBenchmarkConfigPreflightService);
 
         UUID userId = UUID.randomUUID();
         UserEntity user = mock(UserEntity.class);
