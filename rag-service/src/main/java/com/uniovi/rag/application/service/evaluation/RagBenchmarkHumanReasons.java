@@ -36,6 +36,19 @@ public final class RagBenchmarkHumanReasons {
             case "EMBEDDING_DIMENSION_MISMATCH" ->
                     "The embedding model is not compatible with the vector index.";
             case "DUPLICATE_FILE" -> "Duplicate document in the knowledge base.";
+            case "KB_NOT_FOUND", "CORPUS_UNAVAILABLE" ->
+                    "The selected knowledge base does not exist or is not accessible.";
+            case "DOCUMENT_IMPORT_NOT_FOUND" ->
+                    "The selected project document could not be found.";
+            case "DOCUMENT_SCOPE_NOT_SHARED" ->
+                    "Only project-shared documents can be imported into the Lab knowledge base.";
+            case "DOCUMENT_BINARY_MISSING" ->
+                    "The document has no stored file; re-upload it in the project first.";
+            case "NO_ACTIVE_SNAPSHOT" ->
+                    "No active index snapshot exists for this knowledge base yet.";
+            case "STALE_CORPUS_SELECTION" ->
+                    "The saved knowledge base selection is no longer valid.";
+            case "BACKEND_ERROR" -> "A server error occurred. Check logs and retry.";
             default -> raw.length() > 120 ? raw.substring(0, 117) + "..." : raw;
         };
     }

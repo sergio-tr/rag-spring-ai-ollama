@@ -1,9 +1,11 @@
 package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusAttachFromProjectRequest;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusCreateRequest;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusDocumentsUploadResponseDto;
+import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusSummaryDto;
 import com.uniovi.rag.security.RagPrincipal;
 import java.io.IOException;
@@ -33,9 +35,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class LabEvaluationCorpusController {
 
     private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+    private final EvaluationCorpusReadinessService evaluationCorpusReadinessService;
 
-    public LabEvaluationCorpusController(EvaluationCorpusApplicationService evaluationCorpusApplicationService) {
+    public LabEvaluationCorpusController(
+            EvaluationCorpusApplicationService evaluationCorpusApplicationService,
+            EvaluationCorpusReadinessService evaluationCorpusReadinessService) {
         this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
+        this.evaluationCorpusReadinessService = evaluationCorpusReadinessService;
     }
 
     @PostMapping
@@ -50,6 +56,12 @@ public class LabEvaluationCorpusController {
     public EvaluationCorpusSummaryDto get(
             @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID corpusId) {
         return evaluationCorpusApplicationService.getSummary(requireUserId(principal), corpusId);
+    }
+
+    @GetMapping("/{corpusId}/readiness")
+    public EvaluationCorpusReadinessDto getReadiness(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID corpusId) {
+        return evaluationCorpusReadinessService.getReadiness(requireUserId(principal), corpusId);
     }
 
     /**

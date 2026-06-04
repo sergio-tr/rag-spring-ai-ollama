@@ -329,11 +329,16 @@ public class EvaluationCorpusApplicationService {
                 continue;
             }
             KnowledgeDocumentEntity source =
-                    knowledgeDocumentRepository.findByIdAndProject_Id(sourceDocId, sourceProjectId).orElseThrow(
-                            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "document not found in project"));
+                    knowledgeDocumentRepository
+                            .findByIdAndProject_Id(sourceDocId, sourceProjectId)
+                            .orElseThrow(
+                                    () ->
+                                            new ResponseStatusException(
+                                                    HttpStatus.BAD_REQUEST,
+                                                    LabCorpusReasonCodes.DOCUMENT_IMPORT_NOT_FOUND));
             if (source.getCorpusScope() != CorpusScope.PROJECT_SHARED) {
                 throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "Only PROJECT_SHARED documents can be attached to an evaluation corpus");
+                        HttpStatus.BAD_REQUEST, LabCorpusReasonCodes.DOCUMENT_SCOPE_NOT_SHARED);
             }
             UUID linkedDocId;
             if (crossProject) {
@@ -366,11 +371,7 @@ public class EvaluationCorpusApplicationService {
             return source.getId();
         }
         if (source.getStorageUri() == null || source.getStorageUri().isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Document "
-                            + source.getFileName()
-                            + " has no stored binary; re-upload it in the source project before attaching.");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, LabCorpusReasonCodes.DOCUMENT_BINARY_MISSING);
         }
         ProjectEntity indexProject = corpus.getIndexProject();
         KnowledgeDocumentEntity target = KnowledgeDocumentEntityFactory.newIngesting(indexProject, source.getFileName());

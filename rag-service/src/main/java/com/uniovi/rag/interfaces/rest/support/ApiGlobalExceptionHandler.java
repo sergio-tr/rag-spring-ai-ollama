@@ -5,6 +5,8 @@ import com.uniovi.rag.interfaces.rest.auth.DuplicateEmailException;
 import com.uniovi.rag.interfaces.rest.auth.EmailNotVerifiedException;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.interfaces.rest.auth.FeatureDisabledException;
+import com.uniovi.rag.application.service.evaluation.RagBenchmarkHumanReasons;
+import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
 import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetValidationException;
 import com.uniovi.rag.application.service.evaluation.LabDatasetGateException;
 import com.uniovi.rag.application.service.evaluation.LabJobConcurrencyException;
@@ -137,7 +139,12 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
         HttpStatus st = HttpStatus.resolve(ex.getStatusCode().value()) != null
                 ? HttpStatus.valueOf(ex.getStatusCode().value())
                 : HttpStatus.INTERNAL_SERVER_ERROR;
-        String msg = ex.getReason() != null && !ex.getReason().isBlank() ? ex.getReason() : "Request failed";
+        String reason = ex.getReason() != null && !ex.getReason().isBlank() ? ex.getReason().trim() : null;
+        if (reason != null && LabCorpusReasonCodes.isReasonCode(reason)) {
+            String human = RagBenchmarkHumanReasons.humanize(reason);
+            return ResponseEntity.status(st).body(build(request, st, reason, human, null));
+        }
+        String msg = reason != null ? reason : "Request failed";
         return ResponseEntity.status(st).body(build(request, st, st.name(), msg, null));
     }
 
