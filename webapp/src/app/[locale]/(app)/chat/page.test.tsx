@@ -999,7 +999,7 @@ describe("ChatPage", () => {
     expect(screen.getByTestId("chat-message-input")).toBeInTheDocument();
   });
 
-  it("disables composer and send when runtime-state has blocking issues", async () => {
+  it("T-M4-FE-chat-send: disables composer and send when runtime-state has blocking issues", async () => {
     const user = userEvent.setup();
     vi.mocked(apiFetch).mockImplementation((url: string | { toString(): string }, init?: RequestInit) => {
       const u = typeof url === "string" ? url : url.toString();
