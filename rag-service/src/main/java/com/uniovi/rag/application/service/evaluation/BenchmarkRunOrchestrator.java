@@ -16,6 +16,8 @@ import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.evaluation.workbook.LabDatasetGateValidator;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightResult;
+import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
@@ -65,6 +67,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Objects;
 import java.util.Optional;
@@ -84,6 +87,7 @@ public class BenchmarkRunOrchestrator {
     static final String AGG_KEY_AUTO_REINDEX_WARNING = "autoReindexWarning";
     static final String AGG_KEY_CORPUS_BOOTSTRAP_POLICY = "corpusBootstrapPolicy";
     static final String AGG_KEY_CORPUS_READINESS = "corpusReadiness";
+    static final String AGG_KEY_CONFIG_PREFLIGHT = "configPreflight";
 
     private final UserRepository userRepository;
     private final EvaluationDatasetRepository evaluationDatasetRepository;
@@ -103,6 +107,7 @@ public class BenchmarkRunOrchestrator {
     private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
     private final EvaluationCorpusReadinessService evaluationCorpusReadinessService;
     private final EvaluationCorpusRepository evaluationCorpusRepository;
+    private final LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService;
 
     @Autowired(required = false)
     private EmbeddingCampaignSnapshotAlignmentService embeddingCampaignSnapshotAlignmentService;
@@ -125,7 +130,8 @@ public class BenchmarkRunOrchestrator {
             EmbeddingSpaceGuard embeddingSpaceGuard,
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
             EvaluationCorpusReadinessService evaluationCorpusReadinessService,
-            EvaluationCorpusRepository evaluationCorpusRepository) {
+            EvaluationCorpusRepository evaluationCorpusRepository,
+            LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService) {
         this.userRepository = userRepository;
         this.evaluationDatasetRepository = evaluationDatasetRepository;
         this.evaluationCampaignRepository = evaluationCampaignRepository;
@@ -144,6 +150,7 @@ public class BenchmarkRunOrchestrator {
         this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
         this.evaluationCorpusReadinessService = evaluationCorpusReadinessService;
         this.evaluationCorpusRepository = evaluationCorpusRepository;
+        this.labBenchmarkConfigPreflightService = labBenchmarkConfigPreflightService;
     }
 
     @Transactional
@@ -169,6 +176,8 @@ public class BenchmarkRunOrchestrator {
         validateAutoReindexRequest(kind, request);
         validateClasspathCorpusBootstrapRequest(kind, request);
         validateDocumentBackedCorpus(userId, kind, request);
+        LabBenchmarkConfigPreflightResult configPreflight =
+                labBenchmarkConfigPreflightService.validateOrThrow(userId, kind, request);
         requireNoActiveLabJob(userId, resolveConcurrencyScopeId(userId, request));
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
@@ -180,6 +189,7 @@ public class BenchmarkRunOrchestrator {
         applyCorpusLinks(userId, run, request);
         applyOptionalLinks(run, request);
         applyCorpusReadinessAggregates(userId, run, request);
+        applyConfigPreflightAggregates(run, configPreflight);
         finalizeEmbeddingRetrievalRuntimeBinding(kind, run);
 
         run = evaluationRunRepository.save(run);
@@ -239,14 +249,13 @@ public class BenchmarkRunOrchestrator {
         validateAutoReindexRequest(kind, request);
         validateClasspathCorpusBootstrapRequest(kind, request);
         validateDocumentBackedCorpus(userId, kind, request);
+        LabBenchmarkConfigPreflightResult configPreflight =
+                labBenchmarkConfigPreflightService.validateOrThrow(userId, kind, request);
         requireNoActiveLabJob(userId, resolveConcurrencyScopeId(userId, request));
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
         validateScienceFields(kind, request);
         List<String> presetCodes = request.experimentalPresetCodes();
-        if (presetCodes == null || presetCodes.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "experimentalPresetCodes is empty");
-        }
 
         UserEntity user = userRepository.findById(userId).orElseThrow();
         EvaluationCampaignEntity camp = new EvaluationCampaignEntity();
@@ -307,6 +316,8 @@ public class BenchmarkRunOrchestrator {
             run.setName(childRunName(request.name(), kind, presetCode));
             applyCorpusLinks(userId, run, childReq);
             applyOptionalLinks(run, childReq);
+            applyCorpusReadinessAggregates(userId, run, childReq);
+            applyConfigPreflightAggregates(run, configPreflight);
             run = evaluationRunRepository.save(run);
 
             if (firstRunId == null) {
@@ -416,6 +427,7 @@ public class BenchmarkRunOrchestrator {
         validateRunKind(roleName, request.runKind());
         validateClasspathCorpusBootstrapRequest(kind, request);
         validateDocumentBackedCorpus(userId, kind, request);
+        labBenchmarkConfigPreflightService.validateOrThrow(userId, kind, request);
         requireNoActiveLabJob(userId, resolveConcurrencyScopeId(userId, request));
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
@@ -1050,7 +1062,19 @@ public class BenchmarkRunOrchestrator {
                 readiness.selectedSnapshotIds() != null
                         ? readiness.selectedSnapshotIds().stream().map(UUID::toString).toList()
                         : List.of());
-        agg.put(AGG_KEY_CORPUS_READINESS, Map.copyOf(snapshot));
+        agg.put(AGG_KEY_CORPUS_READINESS, Collections.unmodifiableMap(snapshot));
+        run.setAggregatesJson(new LinkedHashMap<>(agg));
+    }
+
+    private void applyConfigPreflightAggregates(EvaluationRunEntity run, LabBenchmarkConfigPreflightResult preflight) {
+        if (run == null || preflight == null) {
+            return;
+        }
+        Map<String, Object> agg = new LinkedHashMap<>();
+        if (run.getAggregatesJson() != null && !run.getAggregatesJson().isEmpty()) {
+            agg.putAll(run.getAggregatesJson());
+        }
+        agg.put(AGG_KEY_CONFIG_PREFLIGHT, preflight.toAggregatesMap());
         run.setAggregatesJson(Map.copyOf(agg));
     }
 

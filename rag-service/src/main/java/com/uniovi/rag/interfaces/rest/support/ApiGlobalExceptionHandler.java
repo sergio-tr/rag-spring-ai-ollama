@@ -6,6 +6,7 @@ import com.uniovi.rag.interfaces.rest.auth.EmailNotVerifiedException;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.interfaces.rest.auth.FeatureDisabledException;
 import com.uniovi.rag.application.service.evaluation.RagBenchmarkHumanReasons;
+import com.uniovi.rag.application.service.evaluation.config.LabRuntimeConfigReasonCodes;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
 import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetValidationException;
 import com.uniovi.rag.application.service.evaluation.LabDatasetGateException;
@@ -140,7 +141,8 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 ? HttpStatus.valueOf(ex.getStatusCode().value())
                 : HttpStatus.INTERNAL_SERVER_ERROR;
         String reason = ex.getReason() != null && !ex.getReason().isBlank() ? ex.getReason().trim() : null;
-        if (reason != null && LabCorpusReasonCodes.isReasonCode(reason)) {
+        if (reason != null
+                && (LabCorpusReasonCodes.isReasonCode(reason) || LabRuntimeConfigReasonCodes.isConfigReasonCode(reason))) {
             String human = RagBenchmarkHumanReasons.humanize(reason);
             return ResponseEntity.status(st).body(build(request, st, reason, human, null));
         }
