@@ -28,6 +28,7 @@ import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
 import com.uniovi.rag.application.service.evaluation.preset.TypedRagPresetBenchmarkOrchestrator;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -210,8 +211,14 @@ class EvalRagJobHandler implements LabJobHandler {
                     requestedPresets.isEmpty() ? null : requestedPresets.iterator().next().name();
 
             UUID campaignId = LabJobPayloads.campaignId(task.getRequestPayload());
+            Map<String, Object> corpusReadinessPayload = readCorpusReadinessFromAggregates(ctx.aggregatesJson());
             labJobProgressTracker.emitRagEvaluationAccepted(
-                    taskId, evaluationRunId, ctx.corpusId(), ctx.datasetId(), campaignId);
+                    taskId,
+                    evaluationRunId,
+                    ctx.corpusId(),
+                    ctx.datasetId(),
+                    campaignId,
+                    corpusReadinessPayload);
             labJobPhaseEmitter.emitDatasetResolved(
                     taskId,
                     evaluationRunId,
@@ -292,5 +299,23 @@ class EvalRagJobHandler implements LabJobHandler {
             RagExperimentalPresetCode.tryParse(row).ifPresent(out::add);
         }
         return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> readCorpusReadinessFromAggregates(Map<String, Object> aggregatesJson) {
+        if (aggregatesJson == null || aggregatesJson.isEmpty()) {
+            return Map.of();
+        }
+        Object raw = aggregatesJson.get("corpusReadiness");
+        if (!(raw instanceof Map<?, ?> map) || map.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            if (e.getKey() != null) {
+                out.put(String.valueOf(e.getKey()), e.getValue());
+            }
+        }
+        return Map.copyOf(out);
     }
 }

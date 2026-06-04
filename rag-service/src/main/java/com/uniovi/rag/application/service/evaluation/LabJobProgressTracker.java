@@ -380,7 +380,12 @@ public class LabJobProgressTracker {
 
     @Transactional
     public void emitRagEvaluationAccepted(
-            UUID taskId, UUID runId, UUID corpusId, UUID datasetId, UUID campaignId) {
+            UUID taskId,
+            UUID runId,
+            UUID corpusId,
+            UUID datasetId,
+            UUID campaignId,
+            Map<String, Object> corpusReadiness) {
         Map<String, Object> payload = new LinkedHashMap<>();
         if (corpusId != null) {
             payload.put("corpusId", corpusId.toString());
@@ -388,6 +393,9 @@ public class LabJobProgressTracker {
         }
         if (datasetId != null) {
             payload.put("datasetId", datasetId.toString());
+        }
+        if (corpusReadiness != null && !corpusReadiness.isEmpty()) {
+            payload.put("corpusReadiness", corpusReadiness);
         }
         labJobEventService.record(
                 LabJobEventRequest.of(taskId, LabJobEventType.RAG_EVALUATION_ACCEPTED, "RAG evaluation accepted")

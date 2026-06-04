@@ -16,6 +16,9 @@ import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.evaluation.workbook.LabDatasetGateValidator;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
+import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
 import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
@@ -80,6 +83,7 @@ public class BenchmarkRunOrchestrator {
     static final String AGG_KEY_AUTO_REINDEX_MODE = "autoReindexMode";
     static final String AGG_KEY_AUTO_REINDEX_WARNING = "autoReindexWarning";
     static final String AGG_KEY_CORPUS_BOOTSTRAP_POLICY = "corpusBootstrapPolicy";
+    static final String AGG_KEY_CORPUS_READINESS = "corpusReadiness";
 
     private final UserRepository userRepository;
     private final EvaluationDatasetRepository evaluationDatasetRepository;
@@ -97,6 +101,7 @@ public class BenchmarkRunOrchestrator {
     private final EvaluationWorkbookParser evaluationWorkbookParser;
     private final EmbeddingSpaceGuard embeddingSpaceGuard;
     private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+    private final EvaluationCorpusReadinessService evaluationCorpusReadinessService;
     private final EvaluationCorpusRepository evaluationCorpusRepository;
 
     @Autowired(required = false)
@@ -119,6 +124,7 @@ public class BenchmarkRunOrchestrator {
             EvaluationWorkbookParser evaluationWorkbookParser,
             EmbeddingSpaceGuard embeddingSpaceGuard,
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
+            EvaluationCorpusReadinessService evaluationCorpusReadinessService,
             EvaluationCorpusRepository evaluationCorpusRepository) {
         this.userRepository = userRepository;
         this.evaluationDatasetRepository = evaluationDatasetRepository;
@@ -136,6 +142,7 @@ public class BenchmarkRunOrchestrator {
         this.evaluationWorkbookParser = evaluationWorkbookParser;
         this.embeddingSpaceGuard = embeddingSpaceGuard;
         this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
+        this.evaluationCorpusReadinessService = evaluationCorpusReadinessService;
         this.evaluationCorpusRepository = evaluationCorpusRepository;
     }
 
@@ -172,6 +179,7 @@ public class BenchmarkRunOrchestrator {
         run.setName(request.name() != null ? request.name() : kind.name());
         applyCorpusLinks(userId, run, request);
         applyOptionalLinks(run, request);
+        applyCorpusReadinessAggregates(userId, run, request);
         finalizeEmbeddingRetrievalRuntimeBinding(kind, run);
 
         run = evaluationRunRepository.save(run);
@@ -987,16 +995,63 @@ public class BenchmarkRunOrchestrator {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, EvaluationCorpusApplicationService.NO_CORPUS_SELECTED);
         }
-        if (kind == BenchmarkKind.RAG_PRESET_END_TO_END) {
-            evaluationCorpusApplicationService.requireReadyContext(userId, request.corpusId());
+        EvaluationCorpusReadinessDto readiness =
+                evaluationCorpusReadinessService.getReadiness(userId, request.corpusId());
+        if (!readiness.runnable()) {
+            String blocker =
+                    readiness.primaryBlocker() != null
+                            ? readiness.primaryBlocker()
+                            : LabCorpusReasonCodes.NO_READY_DOCUMENTS;
+            String httpCode = httpReasonCodeForReadinessBlocker(blocker);
+            HttpStatus status =
+                    LabCorpusReasonCodes.NO_READY_DOCUMENTS.equals(blocker)
+                            ? HttpStatus.CONFLICT
+                            : HttpStatus.BAD_REQUEST;
+            throw new ResponseStatusException(status, httpCode);
+        }
+    }
+
+    /** Maps readiness {@code NO_DOCUMENTS} to HTTP contract code {@code KB_EMPTY} (B7). */
+    private static String httpReasonCodeForReadinessBlocker(String readinessBlocker) {
+        if (LabCorpusReasonCodes.NO_DOCUMENTS.equals(readinessBlocker)) {
+            return LabCorpusReasonCodes.KB_EMPTY;
+        }
+        return readinessBlocker;
+    }
+
+    private void applyCorpusReadinessAggregates(
+            UUID userId, EvaluationRunEntity run, StartBenchmarkRunRequest request) {
+        if (request == null || request.corpusId() == null) {
             return;
         }
-        EvaluationCorpusApplicationService.EvaluationCorpusContext context =
-                evaluationCorpusApplicationService.requireContext(userId, request.corpusId());
-        if (context.documents() == null || context.documents().isEmpty()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, EvaluationCorpusApplicationService.KB_EMPTY);
+        if (run.getBenchmarkKind() != null
+                && !BenchmarkKind.RAG_PRESET_END_TO_END.name().equals(run.getBenchmarkKind())
+                && !BenchmarkKind.EMBEDDING_RETRIEVAL.name().equals(run.getBenchmarkKind())) {
+            return;
         }
+        EvaluationCorpusReadinessDto readiness =
+                evaluationCorpusReadinessService.getReadiness(userId, request.corpusId());
+        Map<String, Object> agg = new LinkedHashMap<>();
+        if (run.getAggregatesJson() != null && !run.getAggregatesJson().isEmpty()) {
+            agg.putAll(run.getAggregatesJson());
+        }
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("corpusId", request.corpusId().toString());
+        snapshot.put("documentCount", readiness.documentCount());
+        snapshot.put("readyCount", readiness.readyCount());
+        snapshot.put("processingCount", readiness.processingCount());
+        snapshot.put("failedCount", readiness.failedCount());
+        snapshot.put("primaryBlocker", readiness.primaryBlocker());
+        snapshot.put("snapshotBlocker", readiness.snapshotBlocker());
+        snapshot.put("snapshotBlockerDetailCode", readiness.snapshotBlockerDetailCode());
+        snapshot.put("reindexRequired", readiness.reindexRequired());
+        snapshot.put(
+                "selectedSnapshotIds",
+                readiness.selectedSnapshotIds() != null
+                        ? readiness.selectedSnapshotIds().stream().map(UUID::toString).toList()
+                        : List.of());
+        agg.put(AGG_KEY_CORPUS_READINESS, Map.copyOf(snapshot));
+        run.setAggregatesJson(Map.copyOf(agg));
     }
 
     private void applyCorpusLinks(UUID userId, EvaluationRunEntity run, StartBenchmarkRunRequest request) {
