@@ -63,7 +63,7 @@ public final class RuntimeAnswerPrompts {
             2. If the question asks for a specific date/acta, answer only from sources for that exact date/acta.
             3. If the exact date/acta is not supported by the CONTEXT, say that no matching acta/source was found; you may mention nearby actas only as alternatives, not as the answer.
             4. Do not mix actas from different dates as if they were one document.
-            5. For roles such as president or secretary, answer only when the role and person are explicit in the CONTEXT; otherwise say the evidence does not support that field.
+            5. For roles such as president, vice-president, or secretary, answer only when the role and person are explicit in the CONTEXT; otherwise say the role is not stated in the sources (do not invent names).
             6. If evidence is partial, answer only the supported part and name the limitation.
             7. Answer in the SAME LANGUAGE as the user's question.
             8. Be concise.
@@ -83,7 +83,7 @@ public final class RuntimeAnswerPrompts {
             1. Do not use general world knowledge for document-specific facts.
             2. If the question asks for a specific date/acta, answer only from sources for that exact date/acta.
             3. If the exact date/acta is not supported, abstain clearly and optionally mention nearby actas as alternatives only.
-            4. Never invent names, dates, counts, roles, attendees, or secretary/president fields not present in the CONTEXT.
+            4. Never invent names, dates, counts, roles, attendees, or president/vice-president/secretary fields not present in the CONTEXT.
             5. Do not merge evidence from different actas unless the user asks for comparison.
             6. Answer in the SAME LANGUAGE as the user's question.
 
@@ -242,6 +242,17 @@ public final class RuntimeAnswerPrompts {
             int sourceCount,
             boolean abstentionTriggered,
             String abstentionReason) {
+        return runtimeAnswerMetaStage(
+                policy, contextCharCount, sourceCount, abstentionTriggered, abstentionReason, false);
+    }
+
+    public static ExecutionStageTrace runtimeAnswerMetaStage(
+            AnswerGroundingPolicy policy,
+            int contextCharCount,
+            int sourceCount,
+            boolean abstentionTriggered,
+            String abstentionReason,
+            boolean documentBound) {
         String reason = abstentionReason != null ? abstentionReason.replace('\n', ' ').trim() : "";
         String msg =
                 "policy="
@@ -253,7 +264,9 @@ public final class RuntimeAnswerPrompts {
                         + " abstention="
                         + abstentionTriggered
                         + " reason="
-                        + reason;
+                        + reason
+                        + " documentBound="
+                        + documentBound;
         return new ExecutionStageTrace("runtime_answer_meta", 0L, ExecutionStageOutcome.SUCCESS, msg);
     }
 

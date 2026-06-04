@@ -50,7 +50,10 @@ final class DocumentBoundQuestionPolicy {
                 "en las reuniones",
                 "de las que tienes conocimiento",
                 "en el proyecto",
-                "del proyecto")) {
+                "del proyecto",
+                "en este proyecto",
+                "presupuesto",
+                "presupuestos")) {
             return true;
         }
 
@@ -62,6 +65,8 @@ final class DocumentBoundQuestionPolicy {
                 "presidio",
                 "presidió",
                 "presidente",
+                "vicepresidente",
+                "vicepresident",
                 "secretario",
                 "secretaria",
                 "duracion",
