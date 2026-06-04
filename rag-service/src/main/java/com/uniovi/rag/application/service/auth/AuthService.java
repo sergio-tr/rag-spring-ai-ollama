@@ -109,6 +109,11 @@ public class AuthService {
 		if (emailConfirmationEnabled) {
 			u.setEmailVerified(false);
 			u.setEmailVerifiedAt(null);
+		} else {
+			u.setEmailVerified(true);
+			if (u.getEmailVerifiedAt() == null) {
+				u.setEmailVerifiedAt(Instant.now());
+			}
 		}
 		applyLegalAcceptance(u, req);
 		u = userAccountPort.save(u);
@@ -143,6 +148,9 @@ public class AuthService {
 			throw new InvalidCredentialsException();
 		}
 		UserEntity u = userAccountPort.findById(userId).orElseThrow(InvalidCredentialsException::new);
+		if (emailConfirmationEnabled && !u.isEmailVerified()) {
+			throw new EmailNotVerifiedException();
+		}
 		return tokensForUser(u);
 	}
 
