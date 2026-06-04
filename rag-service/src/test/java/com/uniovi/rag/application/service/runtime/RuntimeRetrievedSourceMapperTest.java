@@ -31,6 +31,20 @@ class RuntimeRetrievedSourceMapperTest {
     }
 
     @Test
+    void T_M5_BE_sourcesMap_exposesChunkIdInMetadata() {
+        RetrievalCandidate exact = candidate("ACTA5.pdf", Map.of("date_iso", "2026-02-25", "chunkIndex", 2));
+        DateGroundingSupport.DateGroundingDecision decision =
+                DateGroundingSupport.decision("acta del 25/02/2026", List.of(exact));
+
+        List<ChatSource> sources =
+                RuntimeRetrievedSourceMapper.toChatSources(
+                        List.of(exact), Optional.of(decision.requestedDate()), decision);
+
+        assertThat(sources.get(0).chunkIndex()).isEqualTo(2);
+        assertThat(sources.get(0).metadata()).containsEntry("chunkId", exact.candidateId());
+    }
+
+    @Test
     void marksExactDateSourceAsSupporting() {
         RetrievalCandidate exact = candidate("ACTA5.pdf", Map.of("date_iso", "2026-02-25"));
         DateGroundingSupport.DateGroundingDecision decision =
@@ -47,6 +61,6 @@ class RuntimeRetrievedSourceMapperTest {
         Map<String, Object> meta = new LinkedHashMap<>(metadata);
         meta.put("filename", filename);
         return new RetrievalCandidate(
-                filename, "body", meta, 0.1, 0.9, 1, 0, UUID.randomUUID(), 1.0);
+                "chunk-" + filename, "body", meta, 0.1, 0.9, 1, 0, UUID.randomUUID(), 1.0);
     }
 }

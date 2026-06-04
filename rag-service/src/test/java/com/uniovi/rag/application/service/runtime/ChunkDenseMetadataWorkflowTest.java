@@ -111,7 +111,7 @@ class ChunkDenseMetadataWorkflowTest {
     }
 
     @Test
-    void execute_whenDocBoundEmptyContext_returnsExactAbstention() {
+    void T_M5_BE_emptyContext_docBoundQuestionWithoutEvidence_abstains() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("should_not_be_used");
         when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("should_not_be_used");
@@ -301,17 +301,22 @@ class ChunkDenseMetadataWorkflowTest {
     }
 
     @Test
-    void execute_whenDocBoundExactDatePresent_callsLlm() {
+    void T_M5_BE_antiFalseNegative_exactDateMatch_callsLlmWithSources_notNoActaMessage() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("summary_ok");
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("summary_ok");
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("El presidente fue Juan Pérez García.");
+        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content())
+                .thenReturn("El presidente fue Juan Pérez García.");
 
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
                 .thenReturn(
                         new CuratedContextSet(
-                                List.of(dummyCandidateWithFilename("ACTA 7.pdf", "Fecha: 25 de febrero de 2025\nContenido: ...")),
-                                "ACTA 7.pdf — Fecha: 25 de febrero de 2025\nContenido: ...",
+                                List.of(
+                                        dummyCandidateWithDate(
+                                                "acta-24-02-2025.txt",
+                                                "Fecha: 24 de febrero de 2025. Presidente: Juan Pérez García.",
+                                                "2025-02-24")),
+                                "acta-24-02-2025.txt — Fecha: 24 de febrero de 2025",
                                 new CompressionOutcome(1, 1, 0, List.of()),
                                 List.of(),
                                 new RetrievalDiagnostics(
@@ -336,12 +341,76 @@ class ChunkDenseMetadataWorkflowTest {
 
         ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(chatClient, pipeline, null);
 
-        ExecutionContext ctx = minimalCtx(Optional.empty(), "hazme un resumen del acta del 25 de febrero de 2025");
+        ExecutionContext ctx =
+                minimalCtx(
+                        Optional.empty(),
+                        "¿Quién fue el presidente del acta del 24 de febrero de 2025?");
         RagExecutionResult out = wf.execute(ctx);
 
-        assertThat(out.answerText()).isEqualTo("summary_ok");
-        // Invoked at least once for the document-bound LLM path.
+        assertThat(out.answerText())
+                .isEqualTo("El presidente fue Juan Pérez García.")
+                .doesNotContain(RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES);
+        assertThat(out.responseSources()).isNotEmpty();
+        assertThat(out.workflowStageTraces())
+                .anyMatch(
+                        s -> "date_grounding_answer_policy".equals(s.stageName())
+                                && s.message().contains("exactDateMatch=true"));
+        assertThat(out.workflowStageTraces())
+                .anyMatch(
+                        s -> "runtime_answer_meta".equals(s.stageName())
+                                && s.message().contains("abstention=false")
+                                && s.message().contains("documentBound=true"));
         verify(chatClient, atLeastOnce()).prompt();
+    }
+
+    @Test
+    void T_M5_BE_dateMismatch_acta15Mar2099_abstainsWithoutLlm() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        clearInvocations(chatClient);
+
+        AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
+        when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
+                .thenReturn(
+                        new CuratedContextSet(
+                                List.of(
+                                        dummyCandidateWithDate(
+                                                "acta-24-02-2025.txt",
+                                                "Presidente: Juan Pérez García.",
+                                                "2025-02-24")),
+                                "acta-24-02-2025.txt",
+                                new CompressionOutcome(1, 1, 0, List.of()),
+                                List.of(),
+                                new RetrievalDiagnostics(
+                                        RetrievalMode.DENSE_ONLY,
+                                        Optional.empty(),
+                                        "",
+                                        1,
+                                        0,
+                                        1,
+                                        1,
+                                        1,
+                                        1,
+                                        1,
+                                        0,
+                                        0,
+                                        false,
+                                        List.of(),
+                                        List.of(),
+                                        Optional.empty()),
+                                List.of(),
+                                List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
+
+        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(chatClient, pipeline, null);
+        ExecutionContext ctx =
+                minimalCtx(Optional.empty(), "¿Quién presidió el acta del 15 de marzo de 2099?");
+        RagExecutionResult out = wf.execute(ctx);
+
+        assertThat(out.answerText()).contains("2099-03-15").doesNotContain("Juan Pérez");
+        assertThat(out.workflowStageTraces())
+                .anyMatch(
+                        s -> "date_grounding_answer_policy".equals(s.stageName())
+                                && s.message().contains("dateMismatchDetected=true"));
+        verify(chatClient, never()).prompt();
     }
 
     private static RetrievalCandidate dummyCandidate() {
@@ -358,16 +427,17 @@ class ChunkDenseMetadataWorkflowTest {
     }
 
     private static RetrievalCandidate dummyCandidateWithFilename(String filename, String content) {
+        return dummyCandidateWithDate(filename, content, null);
+    }
+
+    private static RetrievalCandidate dummyCandidateWithDate(String filename, String content, String dateIso) {
+        Map<String, Object> meta = new java.util.LinkedHashMap<>();
+        meta.put("filename", filename);
+        if (dateIso != null) {
+            meta.put("date_iso", dateIso);
+        }
         return new RetrievalCandidate(
-                "c_" + filename,
-                content,
-                Map.of("filename", filename),
-                0,
-                0,
-                0,
-                0,
-                UUID.randomUUID(),
-                0);
+                "c_" + filename, content, meta, 0, 0, 0, 0, UUID.randomUUID(), 0);
     }
 
     private static ExecutionContext minimalCtx(Optional<PackedContextSet> packed) {

@@ -14,6 +14,31 @@ import static org.mockito.Mockito.when;
 class ChatExecutionTelemetryMapperDateGroundingTest {
 
     @Test
+    void T_M5_BE_telemetry_exportsDocumentBoundFromRuntimeAnswerMeta() {
+        ExecutionTrace trace = mock(ExecutionTrace.class);
+        when(trace.stages()).thenReturn(List.of(new ExecutionStageTrace(
+                "runtime_answer_meta",
+                0,
+                ExecutionStageOutcome.SUCCESS,
+                "policy=ATTEMPT_WITH_CONTEXT contextChars=120 sourceCount=1 abstention=false reason= documentBound=true")));
+        when(trace.usedKnowledgeSnapshotIds()).thenReturn(List.of());
+        when(trace.clarificationOutcome()).thenReturn("");
+        when(trace.memoryOutcome()).thenReturn("");
+        when(trace.routingOutcome()).thenReturn("");
+        when(trace.routingRouteKind()).thenReturn("");
+        when(trace.routingFallbackRouteKind()).thenReturn("");
+        when(trace.judgeFinalOutcome()).thenReturn("");
+        when(trace.judgeCandidateSource()).thenReturn("");
+        when(trace.retrievalDiagnostics()).thenReturn(Optional.empty());
+        when(trace.answerGroundingPolicy()).thenReturn("ATTEMPT_WITH_CONTEXT");
+        when(trace.abstentionReason()).thenReturn("");
+
+        var telemetry = ChatExecutionTelemetryMapper.fromTrace(trace);
+
+        assertThat(telemetry).containsEntry("documentBound", true);
+    }
+
+    @Test
     void fromTraceExportsDateGroundingTelemetryForEvaluator() {
         ExecutionTrace trace = mock(ExecutionTrace.class);
         when(trace.stages()).thenReturn(List.of(new ExecutionStageTrace(

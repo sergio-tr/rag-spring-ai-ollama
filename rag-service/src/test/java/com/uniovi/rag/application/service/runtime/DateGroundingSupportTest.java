@@ -127,6 +127,21 @@ class DateGroundingSupportTest {
     }
 
     @Test
+    void T_M5_BE_dateAbstain_futureDateWithOnlyWrongYearSources_mismatchWithoutExactMatch() {
+        RetrievalCandidate acta2025 = candidate("acta-24-02-2025.txt", "Presidente: Juan Pérez García.", Map.of("date_iso", "2025-02-24"));
+
+        var decision =
+                DateGroundingSupport.decision("¿Quién presidió el acta del 15 de marzo de 2099?", List.of(acta2025));
+        String answer = DateGroundingSupport.mismatchMessage("¿Quién presidió el acta del 15 de marzo de 2099?", decision);
+
+        assertThat(decision.exactDateMatch()).isFalse();
+        assertThat(decision.dateMismatchDetected()).isTrue();
+        assertThat(decision.abstentionReason()).isEqualTo("no_exact_date_source");
+        assertThat(answer).contains("2099-03-15");
+        assertThat(answer).doesNotContain("Juan");
+    }
+
+    @Test
     void unsupportedSourcesTriggerAbstentionReasonForExactDateQuestion() {
         var decision = DateGroundingSupport.decision("¿Qué dice el acta del 25/02/2026 sobre X?", List.of());
 
