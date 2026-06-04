@@ -187,6 +187,26 @@ describe("LoginForm", () => {
     );
   });
 
+  it("links to pending verification page when login returns EMAIL_NOT_VERIFIED", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockRejectedValueOnce(
+      new ApiError(403, "Forbidden.", {
+        kind: "http",
+        rawBodyPreview: '{"code":"EMAIL_NOT_VERIFIED","message":"Email verification required"}',
+      }),
+    );
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/email/i), "pending@example.com");
+    await user.type(screen.getByLabelText(/^password$/i), "secret1234");
+    await user.click(screen.getByRole("button", { name: /^Continue$/i }));
+    const link = await screen.findByRole("link", { name: /email verification page/i });
+    expect(link).toHaveAttribute("href", "/register/pending?email=pending%40example.com");
+  });
+
   it("shows email verification error when 403 message indicates verification requirement", async () => {
     const user = userEvent.setup();
     vi.mocked(apiFetch).mockRejectedValueOnce(
