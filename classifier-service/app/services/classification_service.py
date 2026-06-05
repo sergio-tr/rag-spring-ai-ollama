@@ -37,8 +37,8 @@ class ClassificationService(TracedService):
             "classifier.service.classify",
             lambda: self._classify_impl(query.strip(), resolved_id),
             input_attrs={
-                "query": (query or "").strip()[:500],
-                "model_id": resolved_id,
+                "queryLength": str(len((query or "").strip())),
+                "modelId": resolved_id,
             },
             output_attr="query_type",
             output_value_fn=lambda r: r.query_type,

@@ -16,10 +16,13 @@ import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.application.service.runtime.query.QueryClassifierAdapter.ClassifierOutcome;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
+import io.micrometer.tracing.Tracer;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -32,7 +35,7 @@ class DefaultQueryClassifierAdapterTest {
     void nullQueryType_mapsToInvalidOutput_recoverable() {
         QueryClassifier classifier = mock(QueryClassifier.class);
         when(classifier.classify("hello", "cls")).thenReturn(null);
-        DefaultQueryClassifierAdapter adapter = new DefaultQueryClassifierAdapter(classifier);
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
 
         ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "hello");
 
@@ -45,7 +48,7 @@ class DefaultQueryClassifierAdapterTest {
     void classifierException_mapsToUnavailable_recoverable() {
         QueryClassifier classifier = mock(QueryClassifier.class);
         when(classifier.classify("hello", "cls")).thenThrow(new IllegalStateException("simulated classifier outage"));
-        DefaultQueryClassifierAdapter adapter = new DefaultQueryClassifierAdapter(classifier);
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
 
         ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "hello");
 
@@ -58,12 +61,19 @@ class DefaultQueryClassifierAdapterTest {
     void okClassification_returnsOk() {
         QueryClassifier classifier = mock(QueryClassifier.class);
         when(classifier.classify("How many documents?", "cls")).thenReturn(QueryType.COUNT_DOCUMENTS);
-        DefaultQueryClassifierAdapter adapter = new DefaultQueryClassifierAdapter(classifier);
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
 
         ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "How many documents?");
 
         assertEquals(ClassifierStatus.OK, out.classifierStatus());
         assertEquals(Optional.of(QueryType.COUNT_DOCUMENTS), out.classifierQueryType());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static DefaultQueryClassifierAdapter adapter(QueryClassifier classifier) {
+        ObjectProvider<RuntimeObservability> obs = mock(ObjectProvider.class);
+        ObjectProvider<Tracer> tracer = mock(ObjectProvider.class);
+        return new DefaultQueryClassifierAdapter(classifier, obs, tracer);
     }
 
     private static ExecutionContext ctxToolsEnabled() {
