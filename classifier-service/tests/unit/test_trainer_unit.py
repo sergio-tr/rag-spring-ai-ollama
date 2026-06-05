@@ -28,7 +28,7 @@ def models_dir(tmp_path, monkeypatch):
 def _make_excel(path, n: int = 10):
     df = pd.DataFrame({
         "Question": [f"q{i}" for i in range(n)],
-        "QueryType": (["A"] * (n // 2)) + (["B"] * (n - n // 2)),
+        "QueryType": (["COUNT_DOCUMENTS"] * (n // 2)) + (["EXTRACT_ENTITIES"] * (n - n // 2)),
     })
     df.to_excel(path, index=False)
 
@@ -152,8 +152,8 @@ def test_train_raises_when_missing_columns(tmp_path, monkeypatch):
 def test_train_with_class_names_filters_empty_raises(tmp_path, monkeypatch):
     _reset_config()
     excel = tmp_path / "cf.xlsx"
-    pd.DataFrame({"Question": ["a"], "QueryType": ["A"]}).to_excel(excel, index=False)
+    pd.DataFrame({"Question": ["a"], "QueryType": ["COUNT_DOCUMENTS"]}).to_excel(excel, index=False)
 
     pipeline = TrainingPipeline(config=Config(), registry=MagicMock())
     with pytest.raises(ValueError, match="No rows left"):
-        pipeline.train(str(excel), "n", class_names=["Z"])
+        pipeline.train(str(excel), "n", class_names=["EXTRACT_ENTITIES"])
