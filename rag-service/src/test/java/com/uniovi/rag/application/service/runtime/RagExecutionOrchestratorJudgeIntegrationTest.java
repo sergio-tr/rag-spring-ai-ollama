@@ -123,7 +123,8 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         routingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
-                        mock(AnswerVerificationService.class));
+                        mock(AnswerVerificationService.class),
+                        mock(org.springframework.beans.factory.ObjectProvider.class));
 
         var out = orchestrator.execute(in);
         assertThat(out.answerText()).isEqualTo("tool-answer");
@@ -211,7 +212,8 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         routingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
-                        mock(AnswerVerificationService.class));
+                        mock(AnswerVerificationService.class),
+                        mock(org.springframework.beans.factory.ObjectProvider.class));
 
         var out = orchestrator.execute(in);
         assertThat(out.answerText()).isEqualTo("judged-answer");
@@ -275,7 +277,8 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         routingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
-                        mock(AnswerVerificationService.class));
+                        mock(AnswerVerificationService.class),
+                        mock(org.springframework.beans.factory.ObjectProvider.class));
 
         var out = orchestrator.execute(in);
         assertThat(out.workflowName()).isEqualTo("clarification");

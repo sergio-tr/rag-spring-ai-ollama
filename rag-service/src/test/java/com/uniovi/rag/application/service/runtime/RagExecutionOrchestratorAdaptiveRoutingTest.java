@@ -130,7 +130,8 @@ class RagExecutionOrchestratorAdaptiveRoutingTest {
                         routingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
-                        mock(AnswerVerificationService.class));
+                        mock(AnswerVerificationService.class),
+                        mock(org.springframework.beans.factory.ObjectProvider.class));
 
         var out = orchestrator.execute(in);
         assertEquals("tool-answer", out.answerText());

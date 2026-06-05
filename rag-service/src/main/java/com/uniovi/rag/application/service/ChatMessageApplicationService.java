@@ -28,8 +28,10 @@ import com.uniovi.rag.application.service.chat.async.ChatJobCancellationRegistry
 import com.uniovi.rag.application.service.chat.async.ChatJobPayloadKeys;
 import com.uniovi.rag.application.service.config.ChatPresetDefaults;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -62,6 +64,7 @@ public class ChatMessageApplicationService {
     private final ChatMessageWorkService chatMessageWorkService;
     private final RuntimeConfigValidationService runtimeConfigValidationService;
     private final ChatPresetDefaults chatPresetDefaults;
+    private final ObjectProvider<RuntimeObservability> runtimeObservability;
 
     public ChatMessageApplicationService(
             ProjectAccessService projectAccessService,
@@ -76,7 +79,8 @@ public class ChatMessageApplicationService {
             AsyncTaskMutationService asyncTaskMutationService,
             ChatMessageWorkService chatMessageWorkService,
             RuntimeConfigValidationService runtimeConfigValidationService,
-            ChatPresetDefaults chatPresetDefaults) {
+            ChatPresetDefaults chatPresetDefaults,
+            ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.projectAccessService = projectAccessService;
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -90,6 +94,7 @@ public class ChatMessageApplicationService {
         this.chatMessageWorkService = chatMessageWorkService;
         this.runtimeConfigValidationService = runtimeConfigValidationService;
         this.chatPresetDefaults = chatPresetDefaults;
+        this.runtimeObservability = runtimeObservability;
     }
 
     @Transactional
@@ -171,6 +176,14 @@ public class ChatMessageApplicationService {
                 AsyncTaskEntity.queued(user, project, AsyncTaskType.CHAT_MESSAGE, payload, Instant.now());
         asyncTaskRepository.save(task);
         UUID taskId = task.getId();
+        RuntimeObservability obs = runtimeObservability.getIfAvailable();
+        if (obs != null) {
+            obs.chatAccepted(
+                    conversationId,
+                    project != null ? project.getId() : null,
+                    taskId,
+                    userId);
+        }
         afterCommitTaskScheduler.scheduleAfterCommit(() -> asyncLabTaskRunner.execute(taskId));
         return new ChatMessageAcceptedDto(taskId, userMsg.getId(), asst.getId());
     }
@@ -227,6 +240,14 @@ public class ChatMessageApplicationService {
         AsyncTaskEntity task = AsyncTaskEntity.queued(user, project, AsyncTaskType.CHAT_MESSAGE, payload, Instant.now());
         asyncTaskRepository.save(task);
         UUID taskId = task.getId();
+        RuntimeObservability obs = runtimeObservability.getIfAvailable();
+        if (obs != null) {
+            obs.chatAccepted(
+                    conversationId,
+                    project != null ? project.getId() : null,
+                    taskId,
+                    userId);
+        }
         afterCommitTaskScheduler.scheduleAfterCommit(() -> asyncLabTaskRunner.execute(taskId));
         return new ChatMessageAcceptedDto(taskId, userMsg.getId(), asst.getId());
     }

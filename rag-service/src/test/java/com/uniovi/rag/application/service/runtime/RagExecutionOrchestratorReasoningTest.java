@@ -213,7 +213,8 @@ class RagExecutionOrchestratorReasoningTest {
                         routing,
                         mock(JudgeStrategy.class),
                         new StructuredAnswerPlanService(chatClient, new ObjectMapper()),
-                        new AnswerVerificationService(chatClient));
+                        new AnswerVerificationService(chatClient),
+                        mock(org.springframework.beans.factory.ObjectProvider.class));
 
         var out = orch.execute(base);
 

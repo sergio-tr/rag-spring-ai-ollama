@@ -46,12 +46,14 @@ import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -74,6 +76,7 @@ public class RagExecutionOrchestrator {
     private final JudgeStrategy judgeStrategy;
     private final StructuredAnswerPlanService structuredAnswerPlanService;
     private final AnswerVerificationService answerVerificationService;
+    private final ObjectProvider<RuntimeObservability> runtimeObservability;
 
     public RagExecutionOrchestrator(
             WorkflowSelector workflowSelector,
@@ -90,7 +93,8 @@ public class RagExecutionOrchestrator {
             AdaptiveRoutingStrategy adaptiveRoutingStrategy,
             JudgeStrategy judgeStrategy,
             StructuredAnswerPlanService structuredAnswerPlanService,
-            AnswerVerificationService answerVerificationService) {
+            AnswerVerificationService answerVerificationService,
+            ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.workflowSelector = workflowSelector;
         this.snapshotFallbackDirectLlmWorkflow = snapshotFallbackDirectLlmWorkflow;
         this.queryUnderstandingPipeline = queryUnderstandingPipeline;
@@ -106,6 +110,7 @@ public class RagExecutionOrchestrator {
         this.judgeStrategy = judgeStrategy;
         this.structuredAnswerPlanService = structuredAnswerPlanService;
         this.answerVerificationService = answerVerificationService;
+        this.runtimeObservability = runtimeObservability;
     }
 
     public RagExecutionResult execute(ExecutionContext ctx) {
@@ -592,7 +597,15 @@ public class RagExecutionOrchestrator {
         String wname = workflow.workflowName();
         RagExecutionContextHolder.set(toRagExecutionContextHolder(effectiveCtx));
         try {
-            RagExecutionResult partial = workflow.execute(effectiveCtx);
+            RuntimeObservability obs = runtimeObservability != null ? runtimeObservability.getIfAvailable() : null;
+            final int promptChars =
+                    plan != null && plan.rewrittenQueryText() != null ? plan.rewrittenQueryText().length() : 0;
+            final String workflowFamily = wname;
+            final ExecutionContext workflowCtx = effectiveCtx;
+            RagExecutionResult partial =
+                    obs != null
+                            ? obs.promptCompose(workflowFamily, promptChars, () -> workflow.execute(workflowCtx))
+                            : workflow.execute(effectiveCtx);
 
             // Minimal post-verification (no retry): only when reasoning is enabled and strategy explicitly requests verify.
             if (rag.reasoningEnabled()

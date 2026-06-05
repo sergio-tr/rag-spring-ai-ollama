@@ -66,7 +66,8 @@ class ChatMessageApplicationServiceValidationTest {
                         mock(AsyncTaskMutationService.class),
                         mock(ChatMessageWorkService.class),
                         runtimeConfigValidationService,
-                        chatPresetDefaults);
+                        chatPresetDefaults,
+                        mock(org.springframework.beans.factory.ObjectProvider.class));
     }
 
     @Test

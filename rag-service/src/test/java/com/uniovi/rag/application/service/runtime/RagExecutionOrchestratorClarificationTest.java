@@ -105,7 +105,8 @@ class RagExecutionOrchestratorClarificationTest {
                         routingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
-                        mock(AnswerVerificationService.class));
+                        mock(AnswerVerificationService.class),
+                        mock(org.springframework.beans.factory.ObjectProvider.class));
 
         var out = orchestrator.execute(in);
 
@@ -261,7 +262,8 @@ class RagExecutionOrchestratorClarificationTest {
                         routingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
-                        mock(AnswerVerificationService.class));
+                        mock(AnswerVerificationService.class),
+                        mock(org.springframework.beans.factory.ObjectProvider.class));
 
         orchestrator.execute(merged);
 

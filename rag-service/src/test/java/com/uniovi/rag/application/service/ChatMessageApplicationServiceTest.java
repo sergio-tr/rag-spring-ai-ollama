@@ -28,7 +28,9 @@ import com.uniovi.rag.application.service.chat.async.ChatJobPayloadKeys;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
 import com.uniovi.rag.application.service.config.ChatPresetDefaults;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -99,6 +101,9 @@ class ChatMessageApplicationServiceTest {
 
     @Mock
     private ChatPresetDefaults chatPresetDefaults;
+
+    @Mock
+    private ObjectProvider<RuntimeObservability> runtimeObservability;
 
     @InjectMocks
     private ChatMessageApplicationService service;

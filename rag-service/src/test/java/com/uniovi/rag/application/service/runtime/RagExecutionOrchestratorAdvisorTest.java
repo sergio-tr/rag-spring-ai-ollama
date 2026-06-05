@@ -146,7 +146,8 @@ class RagExecutionOrchestratorAdvisorTest {
                         routingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
-                        mock(AnswerVerificationService.class));
+                        mock(AnswerVerificationService.class),
+                        mock(org.springframework.beans.factory.ObjectProvider.class));
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("tool-answer", out.answerText());
@@ -252,7 +253,8 @@ class RagExecutionOrchestratorAdvisorTest {
                         routingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
-                        mock(AnswerVerificationService.class));
+                        mock(AnswerVerificationService.class),
+                        mock(org.springframework.beans.factory.ObjectProvider.class));
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("fc-answer", out.answerText());
@@ -368,7 +370,8 @@ class RagExecutionOrchestratorAdvisorTest {
                         routingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
-                        mock(AnswerVerificationService.class));
+                        mock(AnswerVerificationService.class),
+                        mock(org.springframework.beans.factory.ObjectProvider.class));
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("wf-answer", out.answerText());

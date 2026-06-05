@@ -94,7 +94,8 @@ class RagExecutionOrchestratorMemoryTest {
                         routingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
-                        mock(AnswerVerificationService.class));
+                        mock(AnswerVerificationService.class),
+                        mock(org.springframework.beans.factory.ObjectProvider.class));
 
         ExecutionStageTrace mem1 =
                 new ExecutionStageTrace(

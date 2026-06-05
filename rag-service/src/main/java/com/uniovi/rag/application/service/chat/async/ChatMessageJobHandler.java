@@ -12,7 +12,9 @@ import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.evaluation.async.LabJobHandler;
 import com.uniovi.rag.application.service.chat.ChatStreamChunks;
 import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import java.time.Duration;
+import org.springframework.beans.factory.ObjectProvider;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -36,14 +38,17 @@ public class ChatMessageJobHandler implements LabJobHandler {
     private final RuntimeQueryExecutionService runtimeQueryExecutionService;
     private final ChatJobCancellationRegistry cancellationRegistry;
     private final ChatMessageWorkService chatMessageWorkService;
+    private final ObjectProvider<RuntimeObservability> runtimeObservability;
 
     public ChatMessageJobHandler(
             RuntimeQueryExecutionService runtimeQueryExecutionService,
             ChatJobCancellationRegistry cancellationRegistry,
-            ChatMessageWorkService chatMessageWorkService) {
+            ChatMessageWorkService chatMessageWorkService,
+            ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.runtimeQueryExecutionService = runtimeQueryExecutionService;
         this.cancellationRegistry = cancellationRegistry;
         this.chatMessageWorkService = chatMessageWorkService;
+        this.runtimeObservability = runtimeObservability;
     }
 
     @Override
@@ -146,10 +151,12 @@ public class ChatMessageJobHandler implements LabJobHandler {
             mutation.markSucceeded(taskId, result);
         } catch (RagServiceException e) {
             log.warn("Chat job {} failed: {}", taskId, e.getMessage());
+            recordChatFailure(e.getErrorCode() != null ? e.getErrorCode().name() : "unknown");
             chatMessageWorkService.applyAssistantError(assistantId, conversationId, e.getPublicMessage());
             mutation.markFailed(taskId, e.getPublicMessage(), e.getErrorCode().name());
         } catch (Exception e) {
             log.warn("Chat job {} failed", taskId, e);
+            recordChatFailure("unknown");
             String msg =
                     UserFacingErrorSanitizer.sanitizeOrDefault(
                             e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName(),
@@ -166,6 +173,13 @@ public class ChatMessageJobHandler implements LabJobHandler {
             UUID taskId, UUID conversationId, UUID assistantId, AsyncTaskMutationService mutation) {
         chatMessageWorkService.applyAssistantCancelled(assistantId, conversationId);
         mutation.markCancelled(taskId, "Stopped");
+    }
+
+    private void recordChatFailure(String errorCode) {
+        RuntimeObservability obs = runtimeObservability.getIfAvailable();
+        if (obs != null) {
+            obs.chatFailed(errorCode);
+        }
     }
 
     private static List<Map<String, Object>> buildPipelineSteps(QueryResponse qr) {

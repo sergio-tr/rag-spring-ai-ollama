@@ -10,6 +10,7 @@ import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTraceP
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.infrastructure.observability.Loggable;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.interfaces.rest.support.ConnectivityFailureDetector;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
@@ -45,6 +46,7 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
     private final OllamaConnectivityChecker ollamaConnectivityChecker;
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final ObjectProvider<RuntimeQueryExecutionService> selfProvider;
+    private final ObjectProvider<RuntimeObservability> runtimeObservability;
 
     public RuntimeQueryExecutionService(
             ExecutionContextFactory executionContextFactory,
@@ -60,6 +62,7 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
                 chatClient,
                 ollamaConnectivityChecker,
                 knowledgeDocumentRepository,
+                null,
                 null);
     }
 
@@ -71,13 +74,15 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
             ChatClient chatClient,
             OllamaConnectivityChecker ollamaConnectivityChecker,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
-            ObjectProvider<RuntimeQueryExecutionService> selfProvider) {
+            ObjectProvider<RuntimeQueryExecutionService> selfProvider,
+            ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.executionContextFactory = executionContextFactory;
         this.ragExecutionOrchestrator = ragExecutionOrchestrator;
         this.runtimeTracePersistenceService = runtimeTracePersistenceService;
         this.chatClient = chatClient;
         this.ollamaConnectivityChecker = ollamaConnectivityChecker;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
+        this.runtimeObservability = runtimeObservability;
         this.selfProvider =
                 selfProvider != null
                         ? selfProvider
@@ -159,6 +164,10 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
                             Optional.ofNullable(userMessageId));
             ollamaConnectivityChecker.prepareForQuery(
                     ChatGenerationModelSelector.effectiveChatModelId(ctx).orElse(null));
+            RuntimeObservability obs = runtimeObservability != null ? runtimeObservability.getIfAvailable() : null;
+            if (obs != null) {
+                return obs.chatGenerate(ctx, () -> executeOrchestrated(ctx));
+            }
             return executeOrchestrated(ctx);
         } catch (RagServiceException | ResponseStatusException e) {
             throw e;
@@ -212,6 +221,10 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
             return QueryResponse.fromLLM(errorResponse);
         }
         RagExecutionResult result = ragExecutionOrchestrator.execute(ctx);
+        RuntimeObservability obs = runtimeObservability != null ? runtimeObservability.getIfAvailable() : null;
+        if (obs != null && result.executionTrace() != null) {
+            obs.sourcesAttribute(result.executionTrace());
+        }
         runtimeTracePersistenceService.persistBestEffort(ctx, result.executionTrace());
         boolean useRetrieval = ctx.resolved() != null && ctx.resolved().toRagConfig().useRetrieval();
         int denseCandidateCount =

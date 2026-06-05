@@ -58,7 +58,8 @@ class RagExecutionOrchestratorSnapshotFallbackTest {
                         routingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
-                        mock(AnswerVerificationService.class));
+                        mock(AnswerVerificationService.class),
+                        mock(org.springframework.beans.factory.ObjectProvider.class));
         return new OrchestratorHarness(orchestrator, direct);
     }
 

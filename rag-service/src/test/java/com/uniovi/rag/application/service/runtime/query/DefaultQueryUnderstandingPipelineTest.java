@@ -22,7 +22,10 @@ import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
+import io.micrometer.tracing.Tracer;
+import org.springframework.beans.factory.ObjectProvider;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -178,7 +181,7 @@ class DefaultQueryUnderstandingPipelineTest {
         when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content())
                 .thenReturn(rewriteJson);
 
-        DefaultQueryClassifierAdapter classifierAdapter = new DefaultQueryClassifierAdapter(classifier);
+        DefaultQueryClassifierAdapter classifierAdapter = classifierAdapter(classifier);
         DefaultNamedEntityExtractionAdapter nerAdapter = new DefaultNamedEntityExtractionAdapter(analyser);
         DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(chatClient);
         DefaultQueryIntentResolver intentResolver = new DefaultQueryIntentResolver();
@@ -215,7 +218,7 @@ class DefaultQueryUnderstandingPipelineTest {
         RagConfig rag = rag(false, false);
 
         QueryClassifier classifier = mock(QueryClassifier.class);
-        QueryClassifierAdapter adapter = new DefaultQueryClassifierAdapter(classifier);
+        QueryClassifierAdapter adapter = classifierAdapter(classifier);
 
         var outcome = adapter.classify(ctx(rag, "q"), "q");
         assertEquals("UNCLASSIFIED", outcome.classifierLabel());
@@ -469,6 +472,13 @@ class DefaultQueryUnderstandingPipelineTest {
 
         QueryPlan plan = pipeline.buildPlan(ctx(cfg, "q"));
         assertTrue(plan.pipelineNotes().get(2).contains("qu_status=DISABLED"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static DefaultQueryClassifierAdapter classifierAdapter(QueryClassifier classifier) {
+        ObjectProvider<RuntimeObservability> obs = mock(ObjectProvider.class);
+        ObjectProvider<Tracer> tracer = mock(ObjectProvider.class);
+        return new DefaultQueryClassifierAdapter(classifier, obs, tracer);
     }
 }
 

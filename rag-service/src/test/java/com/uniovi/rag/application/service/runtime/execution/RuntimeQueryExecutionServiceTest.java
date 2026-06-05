@@ -59,6 +59,11 @@ class RuntimeQueryExecutionServiceTest {
         knowledgeDocumentRepository = mock(KnowledgeDocumentRepository.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
         when(knowledgeDocumentRepository.countByProject_IdAndIdIn(any(), any())).thenReturn(1L);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<RuntimeQueryExecutionService> selfProvider = mock(ObjectProvider.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<com.uniovi.rag.infrastructure.observability.RuntimeObservability> runtimeObservability =
+                mock(ObjectProvider.class);
         service =
                 new RuntimeQueryExecutionService(
                         executionContextFactory,
@@ -66,7 +71,9 @@ class RuntimeQueryExecutionServiceTest {
                         runtimeTracePersistenceService,
                         chatClient,
                         ollamaConnectivityChecker,
-                        knowledgeDocumentRepository);
+                        knowledgeDocumentRepository,
+                        selfProvider,
+                        runtimeObservability);
     }
 
     private static ResolvedRuntimeConfig minimalResolved(RagConfig rag) {
@@ -248,6 +255,9 @@ class RuntimeQueryExecutionServiceTest {
     void generateResponseForChat_usesSelfProviderWhenAvailable() {
         @SuppressWarnings("unchecked")
         ObjectProvider<RuntimeQueryExecutionService> provider = mock(ObjectProvider.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<com.uniovi.rag.infrastructure.observability.RuntimeObservability> runtimeObservability =
+                mock(ObjectProvider.class);
         RuntimeQueryExecutionService self =
                 spy(new RuntimeQueryExecutionService(
                         executionContextFactory,
@@ -256,7 +266,8 @@ class RuntimeQueryExecutionServiceTest {
                         chatClient,
                         ollamaConnectivityChecker,
                         knowledgeDocumentRepository,
-                        provider));
+                        provider,
+                        runtimeObservability));
         when(provider.getIfAvailable()).thenReturn(self);
 
         // We only care that the delegating overload calls through the provider.

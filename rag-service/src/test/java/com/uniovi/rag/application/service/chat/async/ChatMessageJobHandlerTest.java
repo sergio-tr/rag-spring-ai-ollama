@@ -12,6 +12,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +23,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -45,6 +47,12 @@ class ChatMessageJobHandlerTest {
 
     @Mock
     private AsyncTaskMutationService mutation;
+
+    @Mock
+    private ObjectProvider<RuntimeObservability> runtimeObservability;
+
+    @Mock
+    private RuntimeObservability observability;
 
     @InjectMocks
     private ChatMessageJobHandler handler;
@@ -195,11 +203,13 @@ class ChatMessageJobHandlerTest {
                                 "public-msg",
                                 "internal",
                                 null));
+        when(runtimeObservability.getIfAvailable()).thenReturn(observability);
 
         handler.run(task, mutation);
 
         verify(chatMessageWorkService).applyAssistantError(asstId, convId, "public-msg");
         verify(mutation).markFailed(taskId, "public-msg", "INTERNAL_ERROR");
+        verify(observability).chatFailed("INTERNAL_ERROR");
         verify(cancellationRegistry).clear(taskId);
     }
 
@@ -220,11 +230,13 @@ class ChatMessageJobHandlerTest {
         when(cancellationRegistry.isCancelled(taskId)).thenReturn(false);
         when(runtimeQueryExecutionService.generateResponseForChat(any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new IllegalStateException("boom"));
+        when(runtimeObservability.getIfAvailable()).thenReturn(observability);
 
         handler.run(task, mutation);
 
         verify(chatMessageWorkService).applyAssistantError(asstId, convId, "boom");
         verify(mutation).markFailed(taskId, "boom");
+        verify(observability).chatFailed("unknown");
         verify(cancellationRegistry).clear(taskId);
     }
 
