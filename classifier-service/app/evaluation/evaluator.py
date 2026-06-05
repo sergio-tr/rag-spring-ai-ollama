@@ -6,6 +6,7 @@ import io
 
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -67,7 +68,8 @@ class EvaluationPipeline(Loggable):
                 "Ensure QueryType values match the model labels."
             )
 
-        y_pred_probs = model.predict(X, verbose=0)
+        # Keras TextVectorization expects string inputs (list/tf.constant), not object-dtype ndarray (py3.11).
+        y_pred_probs = model.predict(tf.constant([str(x) for x in X]), verbose=0)
         y_pred_idx = np.argmax(y_pred_probs, axis=1)
         y_true = y_true_idx
         y_pred = y_pred_idx
@@ -101,7 +103,7 @@ class EvaluationPipeline(Loggable):
         cols = [c for c in ("precision", "recall", "f1-score") if c in report_df.columns]
         if not cols:
             cols = report_df.columns.tolist()
-        data = report_df.loc[rows, cols].astype(float)
+        data = report_df.loc[rows, cols].apply(pd.to_numeric, errors="coerce").astype(float)
         _, ax = plt.subplots(figsize=(10, max(4, len(data) * 0.5)))
         sns.heatmap(data, annot=True, fmt=".2f", cmap="Greens", ax=ax)
         ax.set_title("Classification Report")
