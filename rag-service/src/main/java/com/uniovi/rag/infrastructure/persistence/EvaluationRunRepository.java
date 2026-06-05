@@ -14,6 +14,8 @@ import com.uniovi.rag.domain.AsyncTaskStatus;
 
 public interface EvaluationRunRepository extends JpaRepository<EvaluationRunEntity, UUID> {
 
+    List<EvaluationRunEntity> findByUser_IdOrderByCreatedAtDesc(UUID userId);
+
     Optional<EvaluationRunEntity> findByIdAndUser_Id(UUID id, UUID userId);
 
     List<EvaluationRunEntity> findByIdInAndUser_Id(List<UUID> ids, UUID userId);
