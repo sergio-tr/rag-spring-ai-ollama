@@ -104,6 +104,8 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.PromoteDocumentApplicationService", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService", // ARCH-DEBT-RUNTIME-CONFIG
             "com.uniovi.rag.application.service.account.AccountDeletionApplicationService", // ARCH-DEBT-ASYNC
+            "com.uniovi.rag.application.service.account.AccountDeletionOrchestrator", // ARCH-DEBT-ASYNC
+            "com.uniovi.rag.application.service.account.VectorStoreOwnerPurge", // ARCH-DEBT-ASYNC
             "com.uniovi.rag.application.service.account.AccountExportApplicationService", // ARCH-DEBT-ASYNC
             "com.uniovi.rag.application.service.account.AccountExportArtifactRegistrar", // ARCH-DEBT-ASYNC
             "com.uniovi.rag.application.service.account.AccountExportCleanupScheduler", // ARCH-DEBT-ASYNC

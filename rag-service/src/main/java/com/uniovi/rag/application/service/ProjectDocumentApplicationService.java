@@ -5,6 +5,7 @@ import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDebugDto;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
+import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.application.service.knowledge.DocumentIngestionHumanErrors;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
@@ -38,16 +39,19 @@ public class ProjectDocumentApplicationService {
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final KnowledgeIngestionService knowledgeIngestionService;
     private final ProjectAccessService projectAccessService;
+    private final BinaryStoragePort binaryStoragePort;
     private final JdbcTemplate jdbcTemplate;
 
     public ProjectDocumentApplicationService(
             KnowledgeDocumentRepository knowledgeDocumentRepository,
             KnowledgeIngestionService knowledgeIngestionService,
             ProjectAccessService projectAccessService,
+            BinaryStoragePort binaryStoragePort,
             JdbcTemplate jdbcTemplate) {
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.knowledgeIngestionService = knowledgeIngestionService;
         this.projectAccessService = projectAccessService;
+        this.binaryStoragePort = binaryStoragePort;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -86,8 +90,21 @@ public class ProjectDocumentApplicationService {
         if (doc.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
+        KnowledgeDocumentEntity row = doc.get();
         knowledgeIngestionService.deleteVectorChunksForDocument(documentId);
-        knowledgeDocumentRepository.delete(doc.get());
+        deleteStoredBinaryQuietly(row.getStorageUri());
+        knowledgeDocumentRepository.delete(row);
+    }
+
+    private void deleteStoredBinaryQuietly(String storageUri) {
+        if (storageUri == null || storageUri.isBlank()) {
+            return;
+        }
+        try {
+            binaryStoragePort.delete(storageUri);
+        } catch (IOException e) {
+            // Best-effort; DB row removal still proceeds.
+        }
     }
 
     public ProjectDocumentDto documentStatus(UUID userId, UUID documentId) {
