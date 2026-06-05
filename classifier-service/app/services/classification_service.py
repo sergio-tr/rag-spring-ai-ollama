@@ -8,6 +8,7 @@ from app.config import Config
 from app.exceptions import ClassificationError, ModelNotFoundError, ValidationError
 from app.inference.inference_engine import InferenceEngine
 from app.models.classification_result import ClassificationResult
+from app.query_type_contract import validate_query_type_label
 from app.telemetry import record_classifier_call
 
 
@@ -46,8 +47,15 @@ class ClassificationService(TracedService):
     def _classify_impl(self, query: str, resolved_id: str) -> ClassificationResult:
         try:
             query_type = self._engine.predict(query, resolved_id)
+            try:
+                validate_query_type_label(query_type)
+            except ValueError as e:
+                record_classifier_call("error", resolved_id)
+                raise ClassificationError(f"Invalid classifier output: {e}") from e
             record_classifier_call("success", resolved_id)
             return ClassificationResult(query_type=query_type)
+        except ClassificationError:
+            raise
         except RuntimeError as e:
             record_classifier_call("error", resolved_id)
             self.logger.exception("Model not ready: %s", e)
