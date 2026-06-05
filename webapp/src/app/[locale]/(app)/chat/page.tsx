@@ -1871,6 +1871,24 @@ function ChatPageInner() {
                             <dd>{messageMetadataString(m, "classifierStatus")}</dd>
                           </div>
                         ) : null}
+                        {messageMetadataString(m, "predictedQueryType") ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">predictedQueryType</dt>
+                            <dd>{messageMetadataString(m, "predictedQueryType")}</dd>
+                          </div>
+                        ) : null}
+                        {m.executionMetadata?.classifierFallback === true ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">classifierFallback</dt>
+                            <dd>true</dd>
+                          </div>
+                        ) : null}
+                        {messageMetadataString(m, "classifierFallbackReason") ? (
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">classifierFallbackReason</dt>
+                            <dd>{messageMetadataString(m, "classifierFallbackReason")}</dd>
+                          </div>
+                        ) : null}
                         {messageMetadataString(m, "requestedDate") ? (
                           <div className="flex justify-between gap-2">
                             <dt className="text-muted-foreground">requestedDate</dt>

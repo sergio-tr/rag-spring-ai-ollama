@@ -969,6 +969,41 @@ describe("ChatPage", () => {
     expect(screen.getByTestId("chat-trace")).toHaveTextContent("3 -> 1");
   });
 
+  it("T-M6-FE-trace: renders classifier contract metadata", async () => {
+    const user = userEvent.setup();
+    chatMessagesStore = [
+      {
+        id: "a-clf",
+        role: "ASSISTANT",
+        content: "Classifier trace",
+        createdAt: "",
+        sources: [],
+        queryType: "DOCUMENT",
+        pipelineSteps: [],
+        status: "DONE",
+        executionMetadata: {
+          traceId: "trace-m6",
+          classifierStatus: "OK",
+          classifierLabel: "COUNT_DOCUMENTS",
+          predictedQueryType: "COUNT_DOCUMENTS",
+          classifierModelIdUsed: "default",
+          classifierFallback: false,
+          classifierFallbackReason: "",
+        },
+      },
+    ];
+
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+
+    const trace = await screen.findByTestId("chat-trace");
+    expect(trace).toHaveTextContent("trace-m6");
+    expect(trace).toHaveTextContent("classifierStatus");
+    expect(trace).toHaveTextContent("predictedQueryType");
+    expect(trace).toHaveTextContent("COUNT_DOCUMENTS");
+    expect(trace).toHaveTextContent("default");
+  });
+
   it("T-M5-FE-sources: renders filename, date, chunk, and date warning", async () => {
     const user = userEvent.setup();
     chatMessagesStore = [
