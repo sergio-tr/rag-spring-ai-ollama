@@ -29,15 +29,11 @@ public final class TracedPostRetrievalProcessor implements PostRetrievalProcesso
                         "rag.postretrieval.process",
                         Map.of(
                                 "inputCount", String.valueOf(documents != null ? documents.size() : 0),
-                                "query", truncate(query != null ? query : "")
+                                "queryLength", TelemetryRedaction.queryLength(query)
                         ),
                         (String) null,
                         () -> delegate.process(documents, query)
                 ));
     }
 
-    private static String truncate(String s) {
-        if (s == null) return "";
-        return s.length() <= MAX_ATTR ? s : s.substring(0, MAX_ATTR) + "...";
-    }
 }

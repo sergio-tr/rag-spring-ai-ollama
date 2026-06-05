@@ -26,7 +26,7 @@ public final class TracedContextRetriever implements ContextRetriever {
 
     private static final String TAG_OPERATION = "operation";
 
-    private static final String ATTR_QUERY = "query";
+    private static final String ATTR_QUERY_LENGTH = "queryLength";
 
     private static final String ATTR_TOP_K = "rag.top_k";
 
@@ -52,7 +52,7 @@ public final class TracedContextRetriever implements ContextRetriever {
                                         // Domain convention: retrieval is part of document search
                                         SPAN_DOCUMENT_SEARCH,
                                         Map.of(
-                                                ATTR_QUERY, truncate(query != null ? query : ""),
+                                                ATTR_QUERY_LENGTH, TelemetryRedaction.queryLength(query),
                                                 ATTR_TOP_K, String.valueOf(delegate.getTopK())
                                         ),
                                         (String) null,
@@ -72,7 +72,7 @@ public final class TracedContextRetriever implements ContextRetriever {
                                         // Domain convention: retrieval is part of document search
                                         SPAN_DOCUMENT_SEARCH,
                                         Map.of(
-                                                ATTR_QUERY, truncate(query != null ? query : ""),
+                                                ATTR_QUERY_LENGTH, TelemetryRedaction.queryLength(query),
                                                 "hasEntities",
                                                 String.valueOf(nerEntities != null && !nerEntities.isEmpty()),
                                                 ATTR_TOP_K, String.valueOf(delegate.getTopK())
@@ -94,7 +94,7 @@ public final class TracedContextRetriever implements ContextRetriever {
                                         // Domain convention: retrieval stage (documents -> context)
                                         SPAN_DOCUMENT_SEARCH,
                                         Map.of(
-                                                ATTR_QUERY, truncate(query != null ? query : ""),
+                                                ATTR_QUERY_LENGTH, TelemetryRedaction.queryLength(query),
                                                 "rag.docs.count",
                                                 String.valueOf(documents != null ? documents.size() : 0),
                                                 ATTR_TOP_K, String.valueOf(delegate.getTopK())
@@ -128,11 +128,6 @@ public final class TracedContextRetriever implements ContextRetriever {
     @Override
     public void restoreDefaultSettings() {
         delegate.restoreDefaultSettings();
-    }
-
-    private static String truncate(String s) {
-        if (s == null) return "";
-        return s.length() <= MAX_ATTR ? s : s.substring(0, MAX_ATTR) + "...";
     }
 
     /**

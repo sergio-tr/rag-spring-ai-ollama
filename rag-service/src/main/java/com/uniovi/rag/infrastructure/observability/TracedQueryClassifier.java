@@ -14,7 +14,7 @@ public final class TracedQueryClassifier implements QueryClassifier {
     private static final int MAX_ATTR = 500;
     private static final String METRIC_CALLS = "rag.classifier.calls";
     private static final String ATTR_OPERATION = "operation";
-    private static final String ATTR_QUERY = "query";
+    private static final String ATTR_QUERY_LENGTH = "queryLength";
     private static final String ATTR_MODEL_ID = "model_id";
     private static final String ATTR_MODE = "mode";
     private static final String OP_CLASSIFY = "classify";
@@ -40,7 +40,7 @@ public final class TracedQueryClassifier implements QueryClassifier {
                 observability.runWithSpan(
                         // Domain convention: classification is part of the query pipeline
                         SPAN_QUERY_CLASSIFY,
-                        Map.of(ATTR_QUERY, truncate(query != null ? query : "")),
+                        Map.of(ATTR_QUERY_LENGTH, TelemetryRedaction.queryLength(query)),
                         // Domain convention: attribute name starts with `rag.`
                         OUTPUT_QUERY_TYPE,
                         () -> delegate.classify(query)));
@@ -56,8 +56,8 @@ public final class TracedQueryClassifier implements QueryClassifier {
                 observability.runWithSpan(
                         SPAN_QUERY_CLASSIFY,
                         Map.of(
-                                ATTR_QUERY, truncate(query != null ? query : ""),
-                                ATTR_MODEL_ID, truncate(modelId != null ? modelId : "")),
+                                ATTR_QUERY_LENGTH, TelemetryRedaction.queryLength(query),
+                                "classifierModelId", truncate(modelId != null ? modelId : "")),
                         OUTPUT_QUERY_TYPE,
                         () -> delegate.classify(query, modelId)));
     }
@@ -72,7 +72,7 @@ public final class TracedQueryClassifier implements QueryClassifier {
                 observability.runWithSpan(
                         SPAN_QUERY_CLASSIFY,
                         Map.of(
-                                ATTR_QUERY, truncate(query != null ? query : ""),
+                                ATTR_QUERY_LENGTH, TelemetryRedaction.queryLength(query),
                                 ATTR_MODE, OP_CLASSIFY_WITH_TEXT
                         ),
                         OUTPUT_QUERY_TYPE,
@@ -89,9 +89,9 @@ public final class TracedQueryClassifier implements QueryClassifier {
                 observability.runWithSpan(
                         SPAN_QUERY_CLASSIFY,
                         Map.of(
-                                ATTR_QUERY, truncate(query != null ? query : ""),
+                                ATTR_QUERY_LENGTH, TelemetryRedaction.queryLength(query),
                                 ATTR_MODE, OP_CLASSIFY_WITH_TEXT,
-                                ATTR_MODEL_ID, truncate(modelId != null ? modelId : "")
+                                "classifierModelId", truncate(modelId != null ? modelId : "")
                         ),
                         OUTPUT_QUERY_TYPE,
                         () -> delegate.classifyWithText(query, modelId)));

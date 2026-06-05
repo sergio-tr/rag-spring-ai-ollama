@@ -30,7 +30,7 @@ public final class TracedDateExistenceGuard implements DateExistenceGuard {
                 observability.runWithSpan(
                         "rag.guard.checkNoActaForDate",
                         Map.of(
-                                "query", truncate(query != null ? query : ""),
+                                "queryLength", TelemetryRedaction.queryLength(query),
                                 "queryType", queryType != null ? queryType.name() : "null"
                 ),
                 "present",
@@ -38,8 +38,4 @@ public final class TracedDateExistenceGuard implements DateExistenceGuard {
         ));
     }
 
-    private static String truncate(String s) {
-        if (s == null) return "";
-        return s.length() <= MAX_ATTR ? s : s.substring(0, MAX_ATTR) + "...";
-    }
 }
