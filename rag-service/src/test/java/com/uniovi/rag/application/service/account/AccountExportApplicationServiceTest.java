@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.account;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.configuration.RagAccountProperties;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
@@ -10,6 +11,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.zip.ZipFile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -37,7 +39,7 @@ class AccountExportApplicationServiceTest {
     private AsyncTaskMutationService mutation;
 
     @Test
-    void runExport_writesZip_andDelegatesCompletion(@TempDir Path exportRoot) throws Exception {
+    void runExport_writesZipWithManifestV2_andDelegatesCompletion(@TempDir Path exportRoot) throws Exception {
         RagAccountProperties props = new RagAccountProperties();
         props.setExportStorageDir(exportRoot.toString());
         props.setExportTtlHours(1);
@@ -53,13 +55,17 @@ class AccountExportApplicationServiceTest {
         AccountExportSnapshotLoader.ExportSnapshot snap =
                 new AccountExportSnapshotLoader.ExportSnapshot(
                         user,
-                        Map.of("version", 1),
                         Map.of("email", "a@b.c"),
                         Map.of(),
                         Map.of(),
                         List.of(),
                         List.of(),
-                        List.of());
+                        List.of(Map.of("id", "m1", "content", "hello")),
+                        List.of(),
+                        List.of(),
+                        Map.of("runs", List.of()),
+                        List.of(),
+                        AccountExportExclusions.build());
         when(snapshotLoader.load(userId)).thenReturn(snap);
 
         AccountExportApplicationService svc =
@@ -78,6 +84,17 @@ class AccountExportApplicationServiceTest {
         assertThat(Files.exists(c.zipPath())).isTrue();
         assertThat(c.sha256()).hasSize(64);
         assertThat(c.byteSize()).isGreaterThan(0L);
-        assertThat(c.mutation()).isSameAs(mutation);
+
+        try (ZipFile zip = new ZipFile(c.zipPath().toFile())) {
+            assertThat(zip.getEntry("manifest.json")).isNotNull();
+            assertThat(zip.getEntry("messages.json")).isNotNull();
+            assertThat(zip.getEntry("exclusions.json")).isNotNull();
+            JsonNode manifest =
+                    new ObjectMapper()
+                            .readTree(zip.getInputStream(zip.getEntry("manifest.json")).readAllBytes());
+            assertThat(manifest.get("schemaVersion").asInt()).isEqualTo(2);
+            assertThat(manifest.get("entries").isArray()).isTrue();
+            assertThat(manifest.get("entries").size()).isGreaterThan(0);
+        }
     }
 }

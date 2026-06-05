@@ -160,4 +160,31 @@ class MeAccountControllerWebMvcTest {
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.jobId").value(job.toString()));
     }
+
+    @Test
+    void deletion_returnsBadRequest_whenEmailDoesNotMatch() throws Exception {
+        UserEntity u = mock(UserEntity.class);
+        when(u.getEmail()).thenReturn("u@test");
+        when(userRepository.findById(eq(userId))).thenReturn(Optional.of(u));
+
+        mockMvc.perform(
+                        post(path("/me/account/deletion"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"confirm\":\"DELETE_ACCOUNT_AND_ALL_DATA\",\"email\":\"other@test\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deletion_returnsBadRequest_whenConfirmLiteralWrong() throws Exception {
+        UserEntity u = mock(UserEntity.class);
+        when(u.getEmail()).thenReturn("u@test");
+        when(userRepository.findById(eq(userId))).thenReturn(Optional.of(u));
+
+        mockMvc.perform(
+                        post(path("/me/account/deletion"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"confirm\":\"DELETE_ME\",\"email\":\"u@test\"}"))
+                .andExpect(status().isBadRequest());
+    }
 }

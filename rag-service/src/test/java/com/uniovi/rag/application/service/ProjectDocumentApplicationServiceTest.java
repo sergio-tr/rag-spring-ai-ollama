@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service;
 
+import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
@@ -43,6 +44,9 @@ class ProjectDocumentApplicationServiceTest {
 
     @Mock
     private ProjectAccessService projectAccessService;
+
+    @Mock
+    private BinaryStoragePort binaryStoragePort;
 
     @InjectMocks
     private ProjectDocumentApplicationService service;
