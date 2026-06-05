@@ -15,8 +15,12 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -27,6 +31,8 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class AccountExportApplicationService {
+
+    public static final int MANIFEST_SCHEMA_VERSION = 2;
 
     private static final String EXPORT_JSON_ITEMS_KEY = "items";
 
@@ -60,15 +66,7 @@ public class AccountExportApplicationService {
         UUID artifactId = UUID.randomUUID();
         Path zipPath = baseDir.resolve(artifactId + ".zip");
 
-        writeZip(
-                zipPath,
-                snap.manifest(),
-                snap.profile(),
-                snap.preferences(),
-                snap.personalization(),
-                snap.projects(),
-                snap.conversations(),
-                snap.documents());
+        writeZip(zipPath, userId, snap);
 
         long byteSize = Files.size(zipPath);
         String sha256 = sha256Hex(zipPath);
@@ -80,33 +78,65 @@ public class AccountExportApplicationService {
                         task, taskId, artifactId, snap.user(), zipPath, sha256, byteSize, now, expiresAt, mutation));
     }
 
-    private void writeZip(
-            Path zipPath,
-            Map<String, Object> manifest,
-            Map<String, Object> profile,
-            Map<String, Object> prefs,
-            Map<String, Object> pers,
-            List<Map<String, Object>> projects,
-            List<Map<String, Object>> conversations,
-            List<Map<String, Object>> documents)
-            throws IOException {
+    private void writeZip(Path zipPath, UUID userId, AccountExportSnapshotLoader.ExportSnapshot snap)
+            throws IOException, NoSuchAlgorithmException {
+        Map<String, byte[]> payloads = new LinkedHashMap<>();
+        payloads.put("profile.json", objectMapper.writeValueAsBytes(snap.profile()));
+        payloads.put("preferences.json", objectMapper.writeValueAsBytes(snap.preferences()));
+        payloads.put("personalization.json", objectMapper.writeValueAsBytes(snap.personalization()));
+        payloads.put("projects.json", objectMapper.writeValueAsBytes(Map.of(EXPORT_JSON_ITEMS_KEY, snap.projects())));
+        payloads.put("conversations.json", objectMapper.writeValueAsBytes(Map.of(EXPORT_JSON_ITEMS_KEY, snap.conversations())));
+        payloads.put("messages.json", objectMapper.writeValueAsBytes(Map.of(EXPORT_JSON_ITEMS_KEY, snap.messages())));
+        payloads.put("documents.json", objectMapper.writeValueAsBytes(Map.of(EXPORT_JSON_ITEMS_KEY, snap.documents())));
+        payloads.put(
+                "rag-config-summary.json",
+                objectMapper.writeValueAsBytes(Map.of(EXPORT_JSON_ITEMS_KEY, snap.ragConfigSummary())));
+        payloads.put("lab-evaluation-summary.json", objectMapper.writeValueAsBytes(snap.labEvaluationSummary()));
+        payloads.put(
+                "classifier-models.json",
+                objectMapper.writeValueAsBytes(Map.of(EXPORT_JSON_ITEMS_KEY, snap.classifierModels())));
+        payloads.put("exclusions.json", objectMapper.writeValueAsBytes(Map.of(EXPORT_JSON_ITEMS_KEY, snap.exclusions())));
+
+        List<Map<String, Object>> manifestEntries = new ArrayList<>();
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        for (Map.Entry<String, byte[]> entry : payloads.entrySet()) {
+            byte[] bytes = entry.getValue();
+            md.reset();
+            String fileSha = hex(md.digest(bytes));
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("path", entry.getKey());
+            row.put("sha256", fileSha);
+            row.put("byteSize", bytes.length);
+            manifestEntries.add(row);
+        }
+
+        Map<String, Object> manifest = new LinkedHashMap<>();
+        manifest.put("schemaVersion", MANIFEST_SCHEMA_VERSION);
+        manifest.put("exportedAt", Instant.now().toString());
+        manifest.put("userId", userId.toString());
+        manifest.put("entries", manifestEntries);
+        payloads.put("manifest.json", objectMapper.writeValueAsBytes(manifest));
+
+        Set<String> writeOrder = new LinkedHashSet<>(payloads.keySet());
+        writeOrder.remove("manifest.json");
+        writeOrder.add("manifest.json");
+
         try (ZipOutputStream zos =
                 new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(zipPath)), StandardCharsets.UTF_8)) {
-            putJson(zos, "manifest.json", manifest);
-            putJson(zos, "profile.json", profile);
-            putJson(zos, "preferences.json", prefs);
-            putJson(zos, "personalization.json", pers);
-            putJson(zos, "projects.json", Map.of(EXPORT_JSON_ITEMS_KEY, projects));
-            putJson(zos, "conversations.json", Map.of(EXPORT_JSON_ITEMS_KEY, conversations));
-            putJson(zos, "documents.json", Map.of(EXPORT_JSON_ITEMS_KEY, documents));
+            for (String name : writeOrder) {
+                zos.putNextEntry(new ZipEntry(name));
+                zos.write(payloads.get(name));
+                zos.closeEntry();
+            }
         }
     }
 
-    private void putJson(ZipOutputStream zos, String name, Object value) throws IOException {
-        zos.putNextEntry(new ZipEntry(name));
-        byte[] bytes = objectMapper.writeValueAsBytes(value);
-        zos.write(bytes);
-        zos.closeEntry();
+    private static String hex(byte[] digest) {
+        StringBuilder sb = new StringBuilder(digest.length * 2);
+        for (byte b : digest) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 
     private static String sha256Hex(Path file) throws IOException, NoSuchAlgorithmException {
@@ -114,11 +144,6 @@ public class AccountExportApplicationService {
         try (DigestInputStream dis = new DigestInputStream(Files.newInputStream(file), md)) {
             dis.transferTo(OutputStream.nullOutputStream());
         }
-        byte[] digest = md.digest();
-        StringBuilder sb = new StringBuilder(digest.length * 2);
-        for (byte b : digest) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
+        return hex(md.digest());
     }
 }
