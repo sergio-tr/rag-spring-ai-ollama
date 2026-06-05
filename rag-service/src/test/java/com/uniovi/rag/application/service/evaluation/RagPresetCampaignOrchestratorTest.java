@@ -30,7 +30,9 @@ import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusAppl
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -73,6 +75,7 @@ class RagPresetCampaignOrchestratorTest {
     @Mock private EvaluationCorpusReadinessService evaluationCorpusReadinessService;
     @Mock private EvaluationCorpusRepository evaluationCorpusRepository;
     @Mock private LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService;
+    @Mock private ObjectProvider<RuntimeObservability> runtimeObservability;
 
     @BeforeEach
     void stubCorpus() {
@@ -234,6 +237,7 @@ class RagPresetCampaignOrchestratorTest {
                 evaluationCorpusApplicationService,
                 evaluationCorpusReadinessService,
                 evaluationCorpusRepository,
-                labBenchmarkConfigPreflightService);
+                labBenchmarkConfigPreflightService,
+                runtimeObservability);
     }
 }

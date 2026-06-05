@@ -17,12 +17,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.IntStream;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 
 @ExtendWith(MockitoExtension.class)
 class LabBenchmarkCompletionServiceTest {
@@ -39,8 +41,11 @@ class LabBenchmarkCompletionServiceTest {
     @InjectMocks
     LabBenchmarkEvidenceValidator evidenceValidator;
 
+    @Mock
+    ObjectProvider<RuntimeObservability> runtimeObservability;
+
     private LabBenchmarkCompletionService service() {
-        return new LabBenchmarkCompletionService(evidenceValidator);
+        return new LabBenchmarkCompletionService(evidenceValidator, runtimeObservability);
     }
 
     @Test

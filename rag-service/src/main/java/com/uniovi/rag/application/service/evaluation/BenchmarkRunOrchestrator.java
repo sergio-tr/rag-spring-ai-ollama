@@ -50,8 +50,10 @@ import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
 import com.uniovi.rag.application.service.async.AsyncTaskService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -108,6 +110,7 @@ public class BenchmarkRunOrchestrator {
     private final EvaluationCorpusReadinessService evaluationCorpusReadinessService;
     private final EvaluationCorpusRepository evaluationCorpusRepository;
     private final LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService;
+    private final ObjectProvider<RuntimeObservability> runtimeObservability;
 
     @Autowired(required = false)
     private EmbeddingCampaignSnapshotAlignmentService embeddingCampaignSnapshotAlignmentService;
@@ -131,7 +134,8 @@ public class BenchmarkRunOrchestrator {
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
             EvaluationCorpusReadinessService evaluationCorpusReadinessService,
             EvaluationCorpusRepository evaluationCorpusRepository,
-            LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService) {
+            LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService,
+            ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.userRepository = userRepository;
         this.evaluationDatasetRepository = evaluationDatasetRepository;
         this.evaluationCampaignRepository = evaluationCampaignRepository;
@@ -151,6 +155,7 @@ public class BenchmarkRunOrchestrator {
         this.evaluationCorpusReadinessService = evaluationCorpusReadinessService;
         this.evaluationCorpusRepository = evaluationCorpusRepository;
         this.labBenchmarkConfigPreflightService = labBenchmarkConfigPreflightService;
+        this.runtimeObservability = runtimeObservability;
     }
 
     @Transactional
@@ -177,7 +182,7 @@ public class BenchmarkRunOrchestrator {
         validateClasspathCorpusBootstrapRequest(kind, request);
         validateDocumentBackedCorpus(userId, kind, request);
         LabBenchmarkConfigPreflightResult configPreflight =
-                labBenchmarkConfigPreflightService.validateOrThrow(userId, kind, request);
+                validateAndRecordConfigPreflight(userId, kind, request);
         requireNoActiveLabJob(userId, resolveConcurrencyScopeId(userId, request));
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
@@ -207,7 +212,74 @@ public class BenchmarkRunOrchestrator {
                 };
 
         attachTaskAndRunning(run, taskId);
+        RuntimeObservability obs = runtimeObservability.getIfAvailable();
+        if (obs != null) {
+            obs.labRunAccepted(
+                    run.getId(),
+                    taskId,
+                    kind != null ? kind.name() : null,
+                    primarySnapshotId(request));
+        }
         return BenchmarkJobAccepted.of(run.getId(), taskId);
+    }
+
+    private LabBenchmarkConfigPreflightResult validateAndRecordConfigPreflight(
+            UUID userId, BenchmarkKind kind, StartBenchmarkRunRequest request) {
+        try {
+            LabBenchmarkConfigPreflightResult result =
+                    labBenchmarkConfigPreflightService.validateOrThrow(userId, kind, request);
+            recordLabConfigPreflight(kind, request, result);
+            return result;
+        } catch (ResponseStatusException ex) {
+            recordLabConfigPreflightFailure(kind, request, ex.getReason());
+            throw ex;
+        }
+    }
+
+    private void recordLabConfigPreflight(
+            BenchmarkKind kind, StartBenchmarkRunRequest request, LabBenchmarkConfigPreflightResult configPreflight) {
+        RuntimeObservability obs = runtimeObservability.getIfAvailable();
+        if (obs == null) {
+            return;
+        }
+        String presetKey = resolvePresetKey(request);
+        String reasonCode =
+                configPreflight != null && configPreflight.primaryCode() != null
+                        ? configPreflight.primaryCode()
+                        : "OK";
+        obs.labConfigPreflight(presetKey, reasonCode, kind != null ? kind.name() : null);
+    }
+
+    private void recordLabConfigPreflightFailure(
+            BenchmarkKind kind, StartBenchmarkRunRequest request, String configReasonCode) {
+        RuntimeObservability obs = runtimeObservability.getIfAvailable();
+        if (obs == null) {
+            return;
+        }
+        String code = configReasonCode != null && !configReasonCode.isBlank() ? configReasonCode : "CONFIG_VALIDATION_ERROR";
+        obs.labConfigPreflight(resolvePresetKey(request), code, kind != null ? kind.name() : null);
+    }
+
+    private static String resolvePresetKey(StartBenchmarkRunRequest request) {
+        if (request != null
+                && request.experimentalPresetCodes() != null
+                && !request.experimentalPresetCodes().isEmpty()) {
+            return request.experimentalPresetCodes().getFirst();
+        }
+        return null;
+    }
+
+    private static UUID primarySnapshotId(StartBenchmarkRunRequest request) {
+        if (request == null) {
+            return null;
+        }
+        if (request.indexSnapshotId() != null) {
+            return request.indexSnapshotId();
+        }
+        if (request.indexSnapshotIds() != null && !request.indexSnapshotIds().isEmpty()) {
+            return request.indexSnapshotIds().getFirst();
+        }
+        return null;
     }
 
     private void validateDatasetPreRunEligibility(BenchmarkKind kind, EvaluationDatasetEntity dataset) {
@@ -250,7 +322,7 @@ public class BenchmarkRunOrchestrator {
         validateClasspathCorpusBootstrapRequest(kind, request);
         validateDocumentBackedCorpus(userId, kind, request);
         LabBenchmarkConfigPreflightResult configPreflight =
-                labBenchmarkConfigPreflightService.validateOrThrow(userId, kind, request);
+                validateAndRecordConfigPreflight(userId, kind, request);
         requireNoActiveLabJob(userId, resolveConcurrencyScopeId(userId, request));
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
@@ -427,7 +499,7 @@ public class BenchmarkRunOrchestrator {
         validateRunKind(roleName, request.runKind());
         validateClasspathCorpusBootstrapRequest(kind, request);
         validateDocumentBackedCorpus(userId, kind, request);
-        labBenchmarkConfigPreflightService.validateOrThrow(userId, kind, request);
+        validateAndRecordConfigPreflight(userId, kind, request);
         requireNoActiveLabJob(userId, resolveConcurrencyScopeId(userId, request));
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
@@ -1009,6 +1081,18 @@ public class BenchmarkRunOrchestrator {
         }
         EvaluationCorpusReadinessDto readiness =
                 evaluationCorpusReadinessService.getReadiness(userId, request.corpusId());
+        RuntimeObservability obs = runtimeObservability.getIfAvailable();
+        if (obs != null) {
+            UUID snapshotId =
+                    readiness.selectedSnapshotIds() != null && !readiness.selectedSnapshotIds().isEmpty()
+                            ? readiness.selectedSnapshotIds().getFirst()
+                            : null;
+            obs.labCorpusPreflight(
+                    request.corpusId(),
+                    readiness.primaryBlocker(),
+                    readiness.runnable(),
+                    snapshotId);
+        }
         if (!readiness.runnable()) {
             String blocker =
                     readiness.primaryBlocker() != null

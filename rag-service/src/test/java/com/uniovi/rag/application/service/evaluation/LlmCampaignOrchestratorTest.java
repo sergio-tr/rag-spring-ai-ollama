@@ -26,8 +26,10 @@ import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusAppl
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import com.uniovi.rag.infrastructure.persistence.EvaluationCorpusRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -68,6 +70,7 @@ class LlmCampaignOrchestratorTest {
     @Mock private EvaluationCorpusReadinessService evaluationCorpusReadinessService;
     @Mock private EvaluationCorpusRepository evaluationCorpusRepository;
     @Mock private LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService;
+    @Mock private ObjectProvider<RuntimeObservability> runtimeObservability;
 
     @org.junit.jupiter.api.BeforeEach
     void stubCorpusReadiness() {
@@ -118,7 +121,8 @@ class LlmCampaignOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         UUID userId = UUID.randomUUID();
         UserEntity user = mock(UserEntity.class);
@@ -228,7 +232,8 @@ class LlmCampaignOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         UUID userId = UUID.randomUUID();
         UserEntity user = mock(UserEntity.class);

@@ -47,9 +47,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -102,6 +104,12 @@ class BenchmarkRunOrchestratorTest {
     @Mock private EvaluationCorpusRepository evaluationCorpusRepository;
     @Mock private LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService;
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
+    @Mock private ObjectProvider<RuntimeObservability> runtimeObservability;
+
+    @BeforeEach
+    void stubRuntimeObservability() {
+        lenient().when(runtimeObservability.getIfAvailable()).thenReturn(null);
+    }
 
     @BeforeEach
     void stubConfigPreflight() {
@@ -175,7 +183,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
         when(evaluationCorpusReadinessService.getReadiness(any(), eq(TEST_CORPUS_ID)))
                 .thenReturn(
                         new EvaluationCorpusReadinessDto(
@@ -258,7 +267,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        realPreflight);
+                        realPreflight,
+                        runtimeObservability);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -320,7 +330,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -381,7 +392,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         UUID dsId = UUID.randomUUID();
         EvaluationDatasetEntity ds = Mockito.mock(EvaluationDatasetEntity.class);
@@ -451,7 +463,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -526,7 +539,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         UUID dsId = UUID.randomUUID();
         when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.empty());
@@ -589,7 +603,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -659,7 +674,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -741,7 +757,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -833,7 +850,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -962,7 +980,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1106,7 +1125,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1194,7 +1214,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1326,7 +1347,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1403,7 +1425,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -1464,7 +1487,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -1525,7 +1549,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -1586,7 +1611,8 @@ class BenchmarkRunOrchestratorTest {
                         evaluationCorpusApplicationService,
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
-                        labBenchmarkConfigPreflightService);
+                        labBenchmarkConfigPreflightService,
+                        runtimeObservability);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(

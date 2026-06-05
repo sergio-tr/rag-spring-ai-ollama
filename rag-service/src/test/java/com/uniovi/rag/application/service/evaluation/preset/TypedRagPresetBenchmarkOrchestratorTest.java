@@ -30,6 +30,7 @@ import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
 import com.uniovi.rag.application.service.evaluation.EvaluationTestFixtures;
 import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.application.service.evaluation.baseline.ExperimentalSnapshotFactory;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.springframework.beans.factory.ObjectProvider;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
@@ -101,13 +102,16 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         evaluationRunRepository,
                         projectRepository,
                         labJobProgressTracker);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<RuntimeObservability> runtimeObservability = Mockito.mock(ObjectProvider.class);
         return new TypedRagPresetBenchmarkOrchestrator(
                 evaluationService,
                 evaluationRunRepository,
                 experimentalSnapshotFactory,
                 labEvaluationSnapshotService,
                 new LabPresetRunPlanService(labEvaluationSnapshotService),
-                corpusAvailabilityGate);
+                corpusAvailabilityGate,
+                runtimeObservability);
     }
 
     private static EvaluationRunEntity runWithAutoReindex(ProjectEntity project, boolean enabled) {

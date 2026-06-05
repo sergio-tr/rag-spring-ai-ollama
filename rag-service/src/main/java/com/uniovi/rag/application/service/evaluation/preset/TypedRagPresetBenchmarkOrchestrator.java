@@ -33,6 +33,8 @@ import com.uniovi.rag.application.service.evaluation.baseline.ExperimentalSnapsh
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.domain.exception.ErrorCode;
 import com.uniovi.rag.application.service.async.LabJobCancelledException;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -77,6 +79,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
     private final LabEvaluationSnapshotService labEvaluationSnapshotService;
     private final LabPresetRunPlanService labPresetRunPlanService;
     private final CorpusAvailabilityGate corpusAvailabilityGate;
+    private final ObjectProvider<RuntimeObservability> runtimeObservability;
 
     public TypedRagPresetBenchmarkOrchestrator(
             EvaluationService evaluationService,
@@ -84,13 +87,15 @@ public class TypedRagPresetBenchmarkOrchestrator {
             ExperimentalSnapshotFactory experimentalSnapshotFactory,
             LabEvaluationSnapshotService labEvaluationSnapshotService,
             LabPresetRunPlanService labPresetRunPlanService,
-            CorpusAvailabilityGate corpusAvailabilityGate) {
+            CorpusAvailabilityGate corpusAvailabilityGate,
+            ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.evaluationService = evaluationService;
         this.evaluationRunRepository = evaluationRunRepository;
         this.experimentalSnapshotFactory = experimentalSnapshotFactory;
         this.labEvaluationSnapshotService = labEvaluationSnapshotService;
         this.labPresetRunPlanService = labPresetRunPlanService;
         this.corpusAvailabilityGate = corpusAvailabilityGate;
+        this.runtimeObservability = runtimeObservability;
     }
 
     public RagPresetBenchmarkRunPayload runPresetBenchmark(
@@ -180,14 +185,20 @@ public class TypedRagPresetBenchmarkOrchestrator {
 
         int totalOps = codesForPlan.size() * Math.max(1, questions.size());
         AtomicInteger progressed = new AtomicInteger(0);
-        Runnable bump = () -> {
-            if (cancellationCheck != null) {
-                cancellationCheck.run();
-            }
-            if (itemProgress != null) {
-                itemProgress.accept(progressed.incrementAndGet(), totalOps);
-            }
-        };
+        java.util.function.BiConsumer<String, String> bumpItem =
+                (itemStatus, skipReason) -> {
+                    if (cancellationCheck != null) {
+                        cancellationCheck.run();
+                    }
+                    int index = progressed.incrementAndGet();
+                    RuntimeObservability obs = runtimeObservability.getIfAvailable();
+                    if (obs != null) {
+                        obs.labBenchmarkItem(index, itemStatus, skipReason);
+                    }
+                    if (itemProgress != null) {
+                        itemProgress.accept(index, totalOps);
+                    }
+                };
 
         List<Map<String, Object>> allRows = new ArrayList<>();
         Map<String, Object> lastConfigurationMap = new LinkedHashMap<>();
@@ -231,7 +242,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     Optional<String> blocked = ExperimentalPresetBenchmarkGate.blockReason(preset);
                     String errCode = blocked.orElse("MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED");
                     for (RagPresetQuestion q : questions) {
-                        bump.run();
+                        bumpItem.accept("not_supported", errCode);
                         allRows.add(
                                 notSupportedRow(
                                         q,
@@ -279,7 +290,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                         RagPresetDefinition def = defByPreset.get(preset);
                         String label = def != null ? def.name() : preset.name();
                         for (RagPresetQuestion q : questions) {
-                            bump.run();
+                            bumpItem.accept("skipped", REINDEX_FAILED);
                             allRows.add(
                                     skippedRow(
                                             q,
@@ -321,7 +332,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 if (def == null) {
                     String label = preset.name();
                     for (RagPresetQuestion q : questions) {
-                        bump.run();
+                        bumpItem.accept("not_supported", "PRESET_WORKBOOK_CATALOG_ROW_MISSING");
                         allRows.add(
                                 notSupportedRow(
                                         q,
@@ -340,7 +351,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 Optional<String> blocked = ExperimentalPresetBenchmarkGate.blockReason(preset);
                 if (blocked.isPresent()) {
                     for (RagPresetQuestion q : questions) {
-                        bump.run();
+                        bumpItem.accept("not_supported", blocked.get());
                         allRows.add(
                                 notSupportedRow(
                                         q,
@@ -362,7 +373,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 CorpusDiagnostics corpusDiagnostics = corpusDiagnosticsFor(run, resolvedSnapId, preset);
                 if (!gate.compatible()) {
                     for (RagPresetQuestion q : questions) {
-                        bump.run();
+                        bumpItem.accept("skipped", corpusDiagnostics.overrideCode(gate.reasonCode()));
                         allRows.add(
                                 skippedRow(
                                         q,
@@ -384,7 +395,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
 
                 if (corpusDiagnostics.blocking()) {
                     for (RagPresetQuestion q : questions) {
-                        bump.run();
+                        bumpItem.accept("skipped", corpusDiagnostics.reasonCode());
                         allRows.add(
                                 skippedRow(
                                         q,
@@ -422,7 +433,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                     overlay.features(),
                                     impl,
                                     questions,
-                                    itemProgress == null ? null : (i, n) -> bump.run());
+                                    itemProgress == null ? null : (i, n) -> bumpItem.accept("executed", null));
                     List<Map<String, Object>> rows = toMutableRowMaps(batch.results());
                     if (!rows.isEmpty()) {
                         enrichRows(
@@ -441,7 +452,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     }
                 } catch (Exception ex) {
                     for (RagPresetQuestion q : questions) {
-                        bump.run();
+                        bumpItem.accept("failed", ErrorCode.UNSUPPORTED_RUNTIME_CONFIGURATION.name());
                         if (ex instanceof RagServiceException rse
                                 && rse.getErrorCode() == ErrorCode.UNSUPPORTED_RUNTIME_CONFIGURATION) {
                             allRows.add(

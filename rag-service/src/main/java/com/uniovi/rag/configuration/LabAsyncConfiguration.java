@@ -1,5 +1,6 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -21,6 +22,11 @@ public class LabAsyncConfiguration {
         ex.setMaxPoolSize(4);
         ex.setQueueCapacity(50);
         ex.setThreadNamePrefix("lab-async-");
+        ex.setTaskDecorator(
+                runnable -> {
+                    var snapshot = ContextPropagatingFutures.captureContext();
+                    return () -> ContextPropagatingFutures.withSnapshot(snapshot, runnable);
+                });
         ex.initialize();
         return ex;
     }
