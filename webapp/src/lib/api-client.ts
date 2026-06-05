@@ -7,7 +7,7 @@
  * GET `{prefix}/presets`, POST/DELETE `{prefix}/presets/{id}`. Auth: `{prefix}/auth/*`. See `webapp/README.md` and backend OpenAPI (`/v3/api-docs`).
  */
 import { getAccessToken, setAccessToken } from "@/lib/access-token";
-import { createTraceparent } from "@/lib/traceparent";
+import { currentTraceparent } from "@/lib/trace-session";
 import { mapUserFacingErrorMessageEnglish } from "@/lib/user-facing-error-messages";
 
 const DEBUG_BODY_PREVIEW_CHARS = 500;
@@ -192,7 +192,7 @@ function buildAuthHeaders(args: {
     headers.delete("Content-Type");
   }
   if (!skipTraceparent && !headers.has("traceparent")) {
-    headers.set("traceparent", createTraceparent());
+    headers.set("traceparent", currentTraceparent());
   }
   if (!skipCredentials) {
     const bearer = getAccessToken();

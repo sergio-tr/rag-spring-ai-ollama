@@ -19,6 +19,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { LabJobPollTimeoutError } from "@/lib/async-task";
 import { ApiError, apiFetch, apiProductPath, getSafeApiErrorMessage } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
+import { beginTraceSession, endTraceSession } from "@/lib/trace-session";
 import type { AsyncTaskStatusDto, LabJobAcceptedDto } from "@/types/api";
 import { useTranslations } from "next-intl";
 import type { MutableRefObject } from "react";
@@ -167,7 +168,10 @@ export function LabClassifierTrainPanel(
       setTrainRunning(true);
       setTrainErr(null);
       setTrainStoppedWaiting(false);
+      let traceSessionActive = false;
       try {
+        beginTraceSession();
+        traceSessionActive = true;
         const traceMessages = {
           queued: t("traceJobQueued"),
           running: t("traceJobRunning"),
@@ -195,6 +199,9 @@ export function LabClassifierTrainPanel(
           translate: t,
         });
       } finally {
+        if (traceSessionActive) {
+          endTraceSession();
+        }
         if (mountedTrainRef.current) {
           setTrainRunning(false);
         }
@@ -239,6 +246,7 @@ export function LabClassifierTrainPanel(
     setTrainStoppedWaiting(false);
     trainTraceDedupeRef.current = createLabJobTraceDedupe();
     let trainAsyncAccepted: LabJobAcceptedDto | null = null;
+    let traceSessionActive = false;
     try {
       const fd = new FormData();
       fd.append("file", trainFile);
@@ -258,6 +266,8 @@ export function LabClassifierTrainPanel(
         return;
       }
 
+      beginTraceSession();
+      traceSessionActive = true;
       const accepted = await apiFetch<LabJobAcceptedDto>(apiProductPath(path), {
         method: "POST",
         body: fd,
@@ -302,6 +312,9 @@ export function LabClassifierTrainPanel(
         translate: t,
       });
     } finally {
+      if (traceSessionActive) {
+        endTraceSession();
+      }
       if (mountedTrainRef.current) {
         setTrainRunning(false);
       }
@@ -497,7 +510,10 @@ export function LabClassifierEvalPanel(
     setEvalStoppedWaiting(false);
     setWatchStartedAtMs(Date.now());
     setEvalRunning(true);
+    let traceSessionActive = false;
     try {
+      beginTraceSession();
+      traceSessionActive = true;
       const done = await followClassifierEvalAccepted(rec.accepted, signal);
       finalizeSuccessfulClassifierEval(done);
     } catch (e) {
@@ -511,6 +527,9 @@ export function LabClassifierEvalPanel(
         translate: t,
       });
     } finally {
+      if (traceSessionActive) {
+        endTraceSession();
+      }
       if (mountedEvalRef.current) {
         setEvalRunning(false);
       }
@@ -539,7 +558,10 @@ export function LabClassifierEvalPanel(
     setEvalStoppedWaiting(false);
     traceLabJobResumedWatching(evalAccepted.jobId, t("traceJobResumedWatching"));
     setEvalRunning(true);
+    let traceSessionActive = false;
     try {
+      beginTraceSession();
+      traceSessionActive = true;
       const done = await followClassifierEvalAccepted(evalAccepted, signal);
       finalizeSuccessfulClassifierEval(done);
     } catch (e) {
@@ -553,6 +575,9 @@ export function LabClassifierEvalPanel(
         translate: t,
       });
     } finally {
+      if (traceSessionActive) {
+        endTraceSession();
+      }
       if (mountedEvalRef.current) {
         setEvalRunning(false);
       }
@@ -573,6 +598,7 @@ export function LabClassifierEvalPanel(
     setWatchStartedAtMs(null);
     evalTraceDedupeRef.current = createLabJobTraceDedupe();
     let evalAsyncAccepted: LabJobAcceptedDto | null = null;
+    let traceSessionActive = false;
     try {
       const fd = new FormData();
       if (evalFile) {
@@ -602,6 +628,8 @@ export function LabClassifierEvalPanel(
         return;
       }
 
+      beginTraceSession();
+      traceSessionActive = true;
       const accepted = await apiFetch<LabJobAcceptedDto>(apiProductPath(path), {
         method: "POST",
         body: evalFile ? fd : undefined,
@@ -633,6 +661,9 @@ export function LabClassifierEvalPanel(
         translate: t,
       });
     } finally {
+      if (traceSessionActive) {
+        endTraceSession();
+      }
       if (mountedEvalRef.current) {
         setEvalRunning(false);
       }

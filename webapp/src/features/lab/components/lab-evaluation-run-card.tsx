@@ -56,6 +56,7 @@ import {
 import { mapKnowledgeBaseApiError } from "@/features/lab/lib/evaluation-corpus-upload";
 import { extractTechnicalErrorCode } from "@/lib/user-facing-error-messages";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
+import { beginTraceSession, endTraceSession } from "@/lib/trace-session";
 import { useAppStore } from "@/store/app.store";
 import type {
   AsyncTaskStatusDto,
@@ -347,6 +348,7 @@ export function LabEvaluationRunCard({
       setRunning(false);
       setCancelling(false);
       setWatchLive(false);
+      endTraceSession();
     },
     onStreamError: (e) => {
       if (!mountedEvalCardRef.current) return;
@@ -708,6 +710,7 @@ export function LabEvaluationRunCard({
         body.embeddingDownstreamRag = draft.embeddingDownstreamRag;
       }
       const url = apiProductPath(`/lab/benchmarks/${benchmarkKind}/runs`);
+      beginTraceSession();
       const accRaw = await apiFetch<BenchmarkJobAcceptedDto>(url, {
         method: "POST",
         headers: {

@@ -48,6 +48,7 @@ import {
   writeProjectLlmModelPreference,
 } from "@/features/chat/lib/chat-model-persistence";
 import { followLabJob } from "@/lib/lab-job-follow";
+import { beginTraceSession, endTraceSession } from "@/lib/trace-session";
 import { cn } from "@/lib/utils";
 import { Link, useRouter } from "@/navigation";
 import { useAppStore } from "@/store/app.store";
@@ -786,6 +787,7 @@ function ChatPageInner() {
           metadata: { jobId: accepted.jobId },
         });
       } finally {
+        endTraceSession();
         setStreaming(false);
       }
     },
@@ -847,6 +849,7 @@ function ChatPageInner() {
         return;
       }
 
+      beginTraceSession();
       const accepted = await apiFetch<LabJobAcceptedDto>(
         apiProductPath(`/conversations/${targetConversationId}/messages`),
         {
@@ -914,6 +917,7 @@ function ChatPageInner() {
       setSendError(null);
       setAssistantPhase("sending");
       try {
+        beginTraceSession();
         const accepted = await apiFetch<LabJobAcceptedDto>(
           apiProductPath(`/conversations/${conversationId}/messages/${assistantMessageId}/retry`),
           { method: "POST", signal },

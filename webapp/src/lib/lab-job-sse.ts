@@ -6,7 +6,7 @@ import {
   sanitizePlainErrorTextForUi,
 } from "@/lib/api-client";
 import { getAccessToken } from "@/lib/access-token";
-import { createTraceparent } from "@/lib/traceparent";
+import { currentTraceparent } from "@/lib/trace-session";
 import type { AsyncTaskStatusDto, LabJobEventDto } from "@/types/api";
 
 export type LabJobStreamCallbacks = {
@@ -254,7 +254,7 @@ async function consumeSseStream(
   labSseDebug("resolved URL", { url });
   const headers: Record<string, string> = {
     Accept: "text/event-stream",
-    traceparent: createTraceparent(),
+    traceparent: currentTraceparent(),
   };
   const bearer = getAccessToken();
   if (bearer) {
