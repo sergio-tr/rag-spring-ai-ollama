@@ -1,5 +1,7 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.application.service.runtime.query.DefaultQueryClassifierAdapter;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
@@ -128,10 +130,25 @@ public final class ChatExecutionTelemetryMapper {
         String classifierStatus = trace.classifierStatus();
         if (classifierStatus != null && !classifierStatus.isBlank()) {
             m.put("classifierStatus", classifierStatus);
+            if ("INVALID_OUTPUT".equalsIgnoreCase(classifierStatus)
+                    || "UNAVAILABLE".equalsIgnoreCase(classifierStatus)) {
+                m.put("classifierFallback", true);
+            } else if ("OK".equalsIgnoreCase(classifierStatus)) {
+                m.put("classifierFallback", false);
+            }
         }
         String classifierLabel = trace.classifierLabel();
         if (classifierLabel != null && !classifierLabel.isBlank()) {
             m.put("classifierLabel", classifierLabel);
+            if ("OK".equalsIgnoreCase(classifierStatus)
+                    && !DefaultQueryClassifierAdapter.UNCLASSIFIED.equals(classifierLabel)) {
+                try {
+                    QueryType.valueOf(classifierLabel.trim());
+                    m.put("predictedQueryType", classifierLabel.trim());
+                } catch (IllegalArgumentException ignored) {
+                    // Leave predictedQueryType unset when label is not a Java enum constant.
+                }
+            }
         }
         if (trace.stages() == null) {
             return;
@@ -149,8 +166,20 @@ public final class ChatExecutionTelemetryMapper {
                 m.put("classifierModelId", modelId);
                 m.put("classifierModelIdUsed", modelId);
             }
+            String note = classifierNoteFromQuClassifyMessage(msg);
+            if (!note.isBlank() && Boolean.TRUE.equals(m.get("classifierFallback"))) {
+                m.put("classifierFallbackReason", note);
+            }
             return;
         }
+    }
+
+    private static String classifierNoteFromQuClassifyMessage(String msg) {
+        int start = msg.indexOf("note=");
+        if (start < 0) {
+            return "";
+        }
+        return msg.substring(start + "note=".length()).trim();
     }
 
     private static String classifierModelIdFromQuClassifyMessage(String msg) {

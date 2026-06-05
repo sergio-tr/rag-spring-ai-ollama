@@ -113,13 +113,22 @@ public class ClassifierServiceClient implements QueryClassifier {
             }
             throw new IllegalStateException("Classifier service returned non-2xx status=" + response.getStatusCode().value());
         } catch (HttpStatusCodeException e) {
+            String bodyPreview = safeBodyPreview(e.getResponseBodyAsString());
+            // Python contract validation: invalid model label -> 503 with "Invalid classifier output".
+            // Treat like unknown queryType so Java maps INVALID_OUTPUT (not UNAVAILABLE).
+            if (e.getStatusCode().value() == 503
+                    && bodyPreview.contains("Invalid classifier output")) {
+                log().warn(
+                        "[CLASSIFIER] Invalid classifier output (HTTP 503), returning null for INVALID_OUTPUT path");
+                return null;
+            }
             String detail =
                     "Classifier HTTP error status="
                             + e.getStatusCode().value()
                             + " url="
                             + url
                             + " body="
-                            + safeBodyPreview(e.getResponseBodyAsString());
+                            + bodyPreview;
             log().warn("[CLASSIFIER] {}", detail);
             throw new IllegalStateException(detail, e);
         } catch (RestClientException e) {

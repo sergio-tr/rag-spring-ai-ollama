@@ -135,6 +135,22 @@ class ClassifierServiceClientTest {
     }
 
     @Test
+    void classify_returnsNull_whenServiceReturns503InvalidClassifierOutput() {
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        server.expect(requestTo(base + "/classify"))
+                .andRespond(
+                        withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+                                .body(
+                                        "{\"code\":\"CLASSIFICATION_ERROR\",\"message\":\"Invalid classifier output: unknown label\"}")
+                                .contentType(MediaType.APPLICATION_JSON));
+
+        QueryType result = classifier.classify("any query");
+
+        server.verify();
+        assertNull(result);
+    }
+
+    @Test
     void classify_returnsNull_whenServiceReturnsInvalidQueryType() {
         String base = ClassifierClientTestSupport.defaultBaseUrl();
         server.expect(requestTo(base + "/classify"))
