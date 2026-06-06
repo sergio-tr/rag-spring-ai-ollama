@@ -55,8 +55,6 @@ import org.springframework.web.server.ResponseStatusException;
 public class EvaluationCorpusApplicationService {
 
     public static final String NO_CORPUS_SELECTED = "NO_CORPUS_SELECTED";
-    /** @deprecated Prefer {@link #KB_EMPTY}. */
-    public static final String NO_DOCUMENTS = "KB_EMPTY";
     public static final String KB_NOT_FOUND = "KB_NOT_FOUND";
     public static final String KB_EMPTY = "KB_EMPTY";
     public static final String NO_READY_DOCUMENTS = "NO_READY_DOCUMENTS";

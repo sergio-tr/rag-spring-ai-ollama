@@ -4,6 +4,7 @@ import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
@@ -149,9 +150,9 @@ class LabEvaluationCorpusControllerWebMvcTest {
     @Test
     void prepareIndex_configSnapshotUnavailable_returns422WithReasonCode() throws Exception {
         UUID corpusId = UUID.randomUUID();
-        org.mockito.Mockito.doThrow(
-                        new org.springframework.web.server.ResponseStatusException(
-                                org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+        doThrow(
+                        new ResponseStatusException(
+                                HttpStatus.UNPROCESSABLE_ENTITY,
                                 LabCorpusReasonCodes.RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE))
                 .when(evaluationCorpusIndexService)
                 .prepareIndex(userId, corpusId);

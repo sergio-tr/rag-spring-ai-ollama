@@ -205,8 +205,8 @@ class LabBenchmarkControllerWebMvcTest {
                                 "/api/v5/lab/jobs/" + taskId,
                                 "/api/v5/lab/jobs/" + taskId + "/events",
                                 Map.of("ok", true),
-                                java.time.Instant.parse("2026-01-01T00:00:00Z"),
-                                java.time.Instant.parse("2026-01-01T00:05:00Z"),
+                                Instant.parse("2026-01-01T00:00:00Z"),
+                                Instant.parse("2026-01-01T00:05:00Z"),
                                 true));
 
         mockMvc.perform(get(path("/lab/benchmarks/LLM_JUDGE_QA/runs/latest")))

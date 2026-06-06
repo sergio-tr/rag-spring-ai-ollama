@@ -1,5 +1,6 @@
 package com.uniovi.rag.interfaces.rest.dto;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -14,6 +15,6 @@ public record LatestLabRunRecoveryDto(
         String pollPath,
         String streamPath,
         Map<String, Object> result,
-        java.time.Instant startedAt,
-        java.time.Instant completedAt,
+        Instant startedAt,
+        Instant completedAt,
         boolean hasResults) {}
