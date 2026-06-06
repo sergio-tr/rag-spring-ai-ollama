@@ -91,17 +91,6 @@ public class LabEvaluationCorpusController {
                 requireUserId(principal), corpusId, resolveMultipartFiles(files, singleFile));
     }
 
-    /** @deprecated Prefer {@link #uploadDocuments}; kept for older clients. */
-    @PostMapping(value = "/{corpusId}/documents/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public EvaluationCorpusDocumentsUploadResponseDto uploadDocumentLegacy(
-            @AuthenticationPrincipal RagPrincipal principal,
-            @PathVariable UUID corpusId,
-            @RequestParam(value = "files", required = false) List<MultipartFile> files,
-            @RequestParam(value = "file", required = false) MultipartFile singleFile)
-            throws IOException {
-        return uploadDocuments(principal, corpusId, files, singleFile);
-    }
-
     @DeleteMapping("/{corpusId}/documents/{documentId}")
     public EvaluationCorpusSummaryDto removeDocument(
             @AuthenticationPrincipal RagPrincipal principal,

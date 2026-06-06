@@ -72,10 +72,10 @@ class LabJobEventServiceTest {
         when(asyncTaskRepository.findById(taskId)).thenReturn(Optional.of(task));
         when(asyncTaskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        var event = service.recordEvent(taskId, LabJobEventType.PROGRESS, "step 1");
+        var event = service.recordEvent(taskId, LabJobEventType.STARTED, "step 1");
 
         assertThat(event.eventId()).isEqualTo(1L);
-        assertThat(event.type()).isEqualTo("PROGRESS");
+        assertThat(event.type()).isEqualTo("STARTED");
         ArgumentCaptor<AsyncTaskEntity> captor = ArgumentCaptor.forClass(AsyncTaskEntity.class);
         verify(asyncTaskRepository).save(captor.capture());
         Map<String, Object> log = captor.getValue().getEventLogJson();

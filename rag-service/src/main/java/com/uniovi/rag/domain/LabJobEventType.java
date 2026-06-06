@@ -33,10 +33,6 @@ public enum LabJobEventType {
     FAILED,
     CANCELLING,
     CANCELLED,
-    /** @deprecated Use granular lifecycle events; kept for stored log backward compatibility. */
-    PROGRESS,
-    /** @deprecated Use {@link #RUN_COMPLETED}; kept for stored log backward compatibility. */
-    COMPLETED,
     /** Controller-only keepalive; not persisted in the event log. */
     HEARTBEAT
 }

@@ -271,7 +271,7 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
             return Map.of();
         }
         Map<String, String> out = new HashMap<>();
-        v.fields().forEachRemaining(e -> {
+        v.properties().forEach(e -> {
             if (e.getKey() == null || e.getKey().isBlank()) return;
             JsonNode val = e.getValue();
             if (val != null && val.isTextual()) {

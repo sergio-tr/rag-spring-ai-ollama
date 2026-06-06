@@ -32,7 +32,6 @@ public final class LabRuntimeConfigReasonCodes {
 
     public static final String INCOMPATIBLE_FEATURES = "INCOMPATIBLE_FEATURES";
 
-    /** @deprecated Prefer {@link #INCOMPATIBLE_FEATURES}; kept for catalog/runtime block mapping. */
     public static final String USE_ADVISOR_REQUIRES_RETRIEVAL = "USE_ADVISOR_REQUIRES_RETRIEVAL";
 
     public static final String STRUCTURED_SEARCH_WITH_RETRIEVAL_NOT_SUPPORTED =

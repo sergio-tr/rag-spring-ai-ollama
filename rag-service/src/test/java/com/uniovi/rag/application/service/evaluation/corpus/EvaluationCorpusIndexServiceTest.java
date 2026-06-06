@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.evaluation.corpus;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -109,9 +110,9 @@ class EvaluationCorpusIndexServiceTest {
                         isNull(),
                         eq(KnowledgeSnapshotOwnerType.EVALUATION_CORPUS),
                         eq(corpusId),
-                        org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any()))
+                        any(),
+                        any(),
+                        any()))
                 .thenReturn(UUID.randomUUID());
 
         service.prepareIndex(userId, corpusId);
@@ -133,14 +134,14 @@ class EvaluationCorpusIndexServiceTest {
                         eq(userId), eq(indexProjectId), eq(Optional.empty())))
                 .thenReturn(new ResolvedConfigSnapshotLinkage(UUID.randomUUID(), "c".repeat(64)));
         when(knowledgePipelineOrchestrator.rebuildScopeWithProfileOverride(
-                        org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any()))
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any()))
                 .thenThrow(
                         new IllegalArgumentException(
                                 "resolved_config_snapshot linkage required for knowledge_index_snapshot"));

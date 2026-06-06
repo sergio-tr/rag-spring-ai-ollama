@@ -50,15 +50,16 @@ public class FunctionCallingExecutor {
         this.resultMapper = resultMapper;
     }
 
+    @SuppressWarnings("deprecation")
     public FunctionCallingExecutionResult run(ExecutionContext ctx, QueryPlan plan, FunctionCallingDecision decision) {
         List<ExecutionStageTrace> stages = new ArrayList<>();
         String msgBase = "outcome=pending";
         try {
             String firstUser = FunctionCallingPrompts.buildFirstRoundUserMessage(plan);
             List<ToolCallback> callbacks = toolRegistry.callbacksFor(decision.exposedToolKinds());
-            List<FunctionCallback> asFunctions = new ArrayList<>(callbacks);
+            List<FunctionCallback> toolCallbacks = new ArrayList<>(callbacks);
             OllamaOptions.Builder optBuilder =
-                    OllamaOptions.builder().internalToolExecutionEnabled(false).toolCallbacks(asFunctions);
+                    OllamaOptions.builder().internalToolExecutionEnabled(false).toolCallbacks(toolCallbacks);
             ChatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(optBuilder::model);
 
             ChatResponse response1 =
