@@ -54,7 +54,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
     private JdbcTemplate jdbcTemplate;
 
     private UUID insertUser() {
-        UUID userId = insertUser();
+        UUID userId = UUID.randomUUID();
         jdbcTemplate.update(
                 "INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)",
                 userId,
