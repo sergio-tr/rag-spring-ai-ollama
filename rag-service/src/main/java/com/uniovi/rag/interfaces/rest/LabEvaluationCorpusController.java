@@ -1,6 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusAttachFromProjectRequest;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusCreateRequest;
@@ -36,12 +37,15 @@ public class LabEvaluationCorpusController {
 
     private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
     private final EvaluationCorpusReadinessService evaluationCorpusReadinessService;
+    private final EvaluationCorpusIndexService evaluationCorpusIndexService;
 
     public LabEvaluationCorpusController(
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
-            EvaluationCorpusReadinessService evaluationCorpusReadinessService) {
+            EvaluationCorpusReadinessService evaluationCorpusReadinessService,
+            EvaluationCorpusIndexService evaluationCorpusIndexService) {
         this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
         this.evaluationCorpusReadinessService = evaluationCorpusReadinessService;
+        this.evaluationCorpusIndexService = evaluationCorpusIndexService;
     }
 
     @PostMapping
@@ -62,6 +66,14 @@ public class LabEvaluationCorpusController {
     public EvaluationCorpusReadinessDto getReadiness(
             @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID corpusId) {
         return evaluationCorpusReadinessService.getReadiness(requireUserId(principal), corpusId);
+    }
+
+    @PostMapping("/{corpusId}/prepare-index")
+    public EvaluationCorpusReadinessDto prepareIndex(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID corpusId) {
+        UUID userId = requireUserId(principal);
+        evaluationCorpusIndexService.prepareIndex(userId, corpusId);
+        return evaluationCorpusReadinessService.getReadiness(userId, corpusId);
     }
 
     /**

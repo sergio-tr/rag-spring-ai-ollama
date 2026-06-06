@@ -3,6 +3,8 @@ package com.uniovi.rag.application.service.evaluation.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
@@ -84,7 +86,7 @@ class LabBenchmarkConfigPreflightServiceTest {
     }
 
     @Test
-    void ragRejectsP8WithoutActiveIndexEvenWhenAutoReindexEnabled() {
+    void ragAcceptsP8WithoutActiveIndexWhenAutoReindexEnabled() {
         UUID corpusId = UUID.randomUUID();
         when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.empty());
         StartBenchmarkRunRequest req =
@@ -106,6 +108,43 @@ class LabBenchmarkConfigPreflightServiceTest {
                         false,
                         null,
                         true,
+                        true,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
+        LabBenchmarkConfigPreflightResult result =
+                service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req);
+        assertThat(result.passed()).isTrue();
+    }
+
+    @Test
+    void ragRejectsP8WithoutActiveIndexWhenAutoReindexDisabled() {
+        UUID corpusId = UUID.randomUUID();
+        when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.empty());
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        UUID.randomUUID(),
+                        corpusId,
+                        null,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "n",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of("P8"),
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        false,
+                        null,
+                        false,
                         true,
                         true,
                         true,
@@ -166,6 +205,50 @@ class LabBenchmarkConfigPreflightServiceTest {
                         ex ->
                                 assertThat(((ResponseStatusException) ex).getReason())
                                         .isEqualTo(LabRuntimeConfigReasonCodes.SNAPSHOT_CONFIG_MISMATCH));
+    }
+
+    @Test
+    void embeddingRejectsDimensionMismatchForAnySelectedModel() {
+        doNothing().when(embeddingSpaceGuard).assertFitsPhysicalVectorColumn(eq("mxbai-embed-large:latest"));
+        doThrow(
+                        new ResponseStatusException(
+                                HttpStatus.UNPROCESSABLE_ENTITY,
+                                "EMBEDDING_DIMENSION_MISMATCH: incompatible"))
+                .when(embeddingSpaceGuard)
+                .assertFitsPhysicalVectorColumn(eq("nomic-embed-text:latest"));
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        null,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "n",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        List.of("mxbai-embed-large:latest", "nomic-embed-text:latest"),
+                        false,
+                        null,
+                        false,
+                        false,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
+        assertThatThrownBy(() -> service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.EMBEDDING_RETRIEVAL, req))
+                .satisfies(
+                        ex ->
+                                assertThat(((ResponseStatusException) ex).getReason())
+                                        .isEqualTo(LabRuntimeConfigReasonCodes.EMBEDDING_DIMENSION_MISMATCH));
     }
 
     @Test

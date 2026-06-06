@@ -91,7 +91,12 @@ public class LabBenchmarkConfigPreflightService {
         details.put("presetCodes", presets.stream().map(Enum::name).toList());
 
         if (request.corpusId() != null && strictIndexCheck) {
-            validateIndexForPresets(userId, request.corpusId(), presets, details);
+            if (request.autoReindexEffective()
+                    && knowledgeSnapshotService.findActiveCorpusSnapshot(request.corpusId()).isEmpty()) {
+                details.put("indexPreflight", "DEFERRED_AUTO_REINDEX");
+            } else {
+                validateIndexForPresets(userId, request.corpusId(), presets, details);
+            }
         }
 
         String embeddingModelId = resolveEmbeddingModelId(request);
@@ -109,17 +114,21 @@ public class LabBenchmarkConfigPreflightService {
     }
 
     private LabBenchmarkConfigPreflightResult validateEmbedding(StartBenchmarkRunRequest request) {
-        String embeddingModelId = resolveEmbeddingModelId(request);
-        if (embeddingModelId == null || embeddingModelId.isBlank()) {
+        List<String> embeddingModelIds = resolveEmbeddingModelIds(request);
+        if (embeddingModelIds.isEmpty()) {
             return okSummary(List.of(), null, request.autoReindexEffective(), false, Map.of());
         }
-        assertEmbeddingDimension(embeddingModelId.trim());
+        for (String embeddingModelId : embeddingModelIds) {
+            assertEmbeddingDimension(embeddingModelId);
+        }
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("embeddingModelIds", embeddingModelIds);
         return okSummary(
                 List.of(),
-                embeddingModelId.trim(),
+                embeddingModelIds.getFirst(),
                 request.autoReindexEffective(),
                 false,
-                Map.of("embeddingModelId", embeddingModelId.trim()));
+                details);
     }
 
     private void validateIndexForPresets(
@@ -226,14 +235,22 @@ public class LabBenchmarkConfigPreflightService {
         }
     }
 
-    private static String resolveEmbeddingModelId(StartBenchmarkRunRequest request) {
-        if (request.embeddingModelId() != null && !request.embeddingModelId().isBlank()) {
-            return request.embeddingModelId().trim();
-        }
+    private static List<String> resolveEmbeddingModelIds(StartBenchmarkRunRequest request) {
         if (request.embeddingModelIds() != null && !request.embeddingModelIds().isEmpty()) {
-            return request.embeddingModelIds().getFirst().trim();
+            return request.embeddingModelIds().stream()
+                    .filter(s -> s != null && !s.isBlank())
+                    .map(String::trim)
+                    .toList();
         }
-        return null;
+        if (request.embeddingModelId() != null && !request.embeddingModelId().isBlank()) {
+            return List.of(request.embeddingModelId().trim());
+        }
+        return List.of();
+    }
+
+    private static String resolveEmbeddingModelId(StartBenchmarkRunRequest request) {
+        List<String> ids = resolveEmbeddingModelIds(request);
+        return ids.isEmpty() ? null : ids.getFirst();
     }
 
     private static LabBenchmarkConfigPreflightResult okSummary(

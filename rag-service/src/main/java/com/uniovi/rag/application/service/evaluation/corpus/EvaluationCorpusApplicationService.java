@@ -107,10 +107,45 @@ public class EvaluationCorpusApplicationService {
         return toSummary(corpus);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public EvaluationCorpusSummaryDto getSummary(UUID userId, UUID corpusId) {
+        syncIndexProjectDocuments(userId, corpusId);
         EvaluationCorpusEntity corpus = requireOwnedCorpus(userId, corpusId);
         return toSummary(corpus);
+    }
+
+    @Transactional(readOnly = true)
+    public EvaluationCorpusEntity requireOwnedCorpusEntity(UUID userId, UUID corpusId) {
+        return requireOwnedCorpus(userId, corpusId);
+    }
+
+    /**
+     * Links READY {@link CorpusScope#PROJECT_SHARED} documents on the corpus index project missing from
+     * {@code evaluation_corpus_document} (e.g. uploaded via the project Documents page).
+     */
+    @Transactional
+    public int syncIndexProjectDocuments(UUID userId, UUID corpusId) {
+        EvaluationCorpusEntity corpus = requireOwnedCorpus(userId, corpusId);
+        UUID indexProjectId = corpus.getIndexProject().getId();
+        List<KnowledgeDocumentEntity> projectDocs =
+                knowledgeDocumentRepository.findByProject_IdAndCorpusScopeOrderByIdAsc(
+                        indexProjectId, CorpusScope.PROJECT_SHARED);
+        int linked = 0;
+        for (KnowledgeDocumentEntity doc : projectDocs) {
+            if (doc == null || doc.getId() == null || doc.getStatus() != ProjectDocumentStatus.READY) {
+                continue;
+            }
+            if (evaluationCorpusDocumentRepository.existsByCorpusIdAndDocumentId(corpusId, doc.getId())) {
+                continue;
+            }
+            evaluationCorpusDocumentRepository.save(
+                    EvaluationCorpusDocumentEntity.link(corpusId, doc.getId(), Instant.now()));
+            linked++;
+        }
+        if (linked > 0) {
+            corpus.setUpdatedAt(Instant.now());
+        }
+        return linked;
     }
 
     @Transactional(readOnly = true)

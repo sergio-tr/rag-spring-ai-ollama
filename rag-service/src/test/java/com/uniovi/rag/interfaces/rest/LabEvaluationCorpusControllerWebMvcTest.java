@@ -3,6 +3,7 @@ package com.uniovi.rag.interfaces.rest;
 import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
@@ -14,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexService;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
@@ -57,6 +59,9 @@ class LabEvaluationCorpusControllerWebMvcTest {
 
     @MockitoBean
     private EvaluationCorpusReadinessService evaluationCorpusReadinessService;
+
+    @MockitoBean
+    private EvaluationCorpusIndexService evaluationCorpusIndexService;
 
     private UUID userId;
 
@@ -111,6 +116,34 @@ class LabEvaluationCorpusControllerWebMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.primaryBlocker").value("NO_DOCUMENTS"))
                 .andExpect(jsonPath("$.runnable").value(false));
+    }
+
+    @Test
+    void prepareIndex_returnsReadiness() throws Exception {
+        UUID corpusId = UUID.randomUUID();
+        doNothing().when(evaluationCorpusIndexService).prepareIndex(userId, corpusId);
+        when(evaluationCorpusReadinessService.getReadiness(userId, corpusId))
+                .thenReturn(
+                        new EvaluationCorpusReadinessDto(
+                                corpusId,
+                                UUID.randomUUID(),
+                                1,
+                                1,
+                                0,
+                                0,
+                                null,
+                                null,
+                                UUID.randomUUID(),
+                                false,
+                                null,
+                                null,
+                                List.of(UUID.randomUUID()),
+                                true));
+
+        mockMvc.perform(post(path("/lab/evaluation-corpora/") + corpusId + "/prepare-index"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.runnable").value(true))
+                .andExpect(jsonPath("$.activeSnapshotId").exists());
     }
 
     @Test

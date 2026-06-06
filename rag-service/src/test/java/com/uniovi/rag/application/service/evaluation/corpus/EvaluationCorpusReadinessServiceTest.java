@@ -33,6 +33,7 @@ class EvaluationCorpusReadinessServiceTest {
     void getReadiness_emptyCorpus_returnsNoDocuments() {
         UUID corpusId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
+        when(evaluationCorpusApplicationService.syncIndexProjectDocuments(userId, corpusId)).thenReturn(0);
         when(evaluationCorpusApplicationService.requireContext(eq(userId), eq(corpusId)))
                 .thenReturn(
                         new EvaluationCorpusApplicationService.EvaluationCorpusContext(
@@ -48,6 +49,7 @@ class EvaluationCorpusReadinessServiceTest {
     void getReadiness_processingOnly_returnsNoReadyDocuments() {
         UUID corpusId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
+        when(evaluationCorpusApplicationService.syncIndexProjectDocuments(userId, corpusId)).thenReturn(0);
         KnowledgeDocumentEntity ingesting = mock(KnowledgeDocumentEntity.class);
         when(ingesting.getStatus()).thenReturn(ProjectDocumentStatus.INGESTING);
         when(evaluationCorpusApplicationService.requireContext(eq(userId), eq(corpusId)))
@@ -65,6 +67,7 @@ class EvaluationCorpusReadinessServiceTest {
     void getReadiness_readyDocsNoSnapshot_returnsNoActiveSnapshotBlocker() {
         UUID corpusId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
+        when(evaluationCorpusApplicationService.syncIndexProjectDocuments(userId, corpusId)).thenReturn(0);
         KnowledgeDocumentEntity ready = mock(KnowledgeDocumentEntity.class);
         when(ready.getStatus()).thenReturn(ProjectDocumentStatus.READY);
         when(evaluationCorpusApplicationService.requireContext(eq(userId), eq(corpusId)))

@@ -30,8 +30,9 @@ public class EvaluationCorpusReadinessService {
         this.knowledgeSnapshotService = knowledgeSnapshotService;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public EvaluationCorpusReadinessDto getReadiness(UUID userId, UUID corpusId) {
+        evaluationCorpusApplicationService.syncIndexProjectDocuments(userId, corpusId);
         EvaluationCorpusApplicationService.EvaluationCorpusContext context =
                 evaluationCorpusApplicationService.requireContext(userId, corpusId);
         List<KnowledgeDocumentEntity> docs =
