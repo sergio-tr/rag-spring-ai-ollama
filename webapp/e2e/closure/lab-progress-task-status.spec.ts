@@ -39,7 +39,7 @@ test.describe("Closure LAB progress and task status @closure @fullstack", () => 
     await cancelAllActiveLabJobs(page);
   });
 
-  test("LLM comparison shows campaign item counter and live subtasks", async ({ page }, testInfo) => {
+  test("LLM comparison shows campaign item counter and live subtasks", async ({ page }) => {
     test.setTimeout(900_000);
     fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
     fs.writeFileSync(path.join(EVIDENCE_DIR, "e2e-lab-progress-task-status.log"), "", "utf8");

@@ -128,10 +128,6 @@ export function ChatConfigurationPanelContent() {
     api?.llmModelChoice?.trim() ||
     api?.runtimeState?.conversationLlmModel?.trim() ||
     "";
-  const activeClassifierModel =
-    api?.classifierModelChoice?.trim() ||
-    api?.runtimeState?.conversationClassifierModelId?.trim() ||
-    "";
   const indexProfileQuery = useProjectIndexProfile(api?.projectId);
   const activeSnapQuery = useActiveProjectSnapshot(api?.projectId);
 

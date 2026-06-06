@@ -107,7 +107,7 @@ describe("useEvaluationCorpus", () => {
         parsedJson: { code: "KB_NOT_FOUND" },
       }),
     );
-    const { result } = renderHook(() => useEvaluationCorpus("stale-id", { onCorpusStale }), { wrapper });
+    renderHook(() => useEvaluationCorpus("stale-id", { onCorpusStale }), { wrapper });
 
     await waitFor(() => expect(onCorpusStale).toHaveBeenCalled());
     // Parent must clear draft corpusId; hook still receives prop until re-render.

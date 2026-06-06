@@ -1001,7 +1001,7 @@ export async function prepareLabRagActaKnowledgeBase(page: Page): Promise<string
     expect([200, 201], await bootstrapRes.text()).toContain(bootstrapRes.status());
   }
 
-  const attachedProjectDocIds = await attachProjectReadyDocumentsToCorpus(page, corpusId, 5);
+  await attachProjectReadyDocumentsToCorpus(page, corpusId, 5);
 
   await expect
     .poll(

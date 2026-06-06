@@ -82,7 +82,6 @@ test.describe("DEBUG RAG KB upload Not found @debug", () => {
 
     const log = (line: string) => {
       logLines.push(line);
-      // eslint-disable-next-line no-console
       console.log(line);
     };
 
