@@ -1004,6 +1004,33 @@ describe("ChatPage", () => {
     expect(trace).toHaveTextContent("default");
   });
 
+  it("shows trace metadata and i18n trace heading", async () => {
+    const user = userEvent.setup();
+    chatMessagesStore = [
+      {
+        id: "a-trace",
+        role: "ASSISTANT",
+        content: "Demo trace",
+        createdAt: "",
+        sources: [{ fileName: "doc.pdf", metadata: {} }],
+        queryType: "DOCUMENT",
+        pipelineSteps: [],
+        status: "DONE",
+        executionMetadata: {
+          traceId: "trace-demo",
+          workflowName: "DemoWorkflow",
+        },
+      },
+    ];
+
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+
+    expect(await screen.findByTestId("chat-trace")).toHaveTextContent(/Message trace/i);
+    expect(screen.queryByTestId("chat-trace-jaeger-not-run")).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-sources")).toHaveTextContent(/Sources \(1\)/i);
+  });
+
   it("T-M5-FE-sources: renders filename, date, chunk, and date warning", async () => {
     const user = userEvent.setup();
     chatMessagesStore = [
@@ -1600,11 +1627,16 @@ describe("ChatPage", () => {
 
     expect(screen.queryByText(/Unavailable capabilities/i)).not.toBeInTheDocument();
 
-    const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent ?? "");
+    // Edit mode exposes Document scope + Model & preset; index caps live under Technical details; runtime is Advanced options.
+    const headings = within(panel)
+      .getAllByRole("heading", { level: 3 })
+      .map((h) => h.textContent?.trim() ?? "");
     const idx = (s: string) => headings.findIndex((h) => h === s);
-    expect(idx("Document scope")).toBeLessThan(idx("Index/project capabilities"));
-    expect(idx("Index/project capabilities")).toBeLessThan(idx("Model & preset"));
-    expect(idx("Model & preset")).toBeLessThan(idx("Runtime configuration"));
+    expect(idx("Document scope")).toBeGreaterThanOrEqual(0);
+    expect(idx("Model & preset")).toBeGreaterThanOrEqual(0);
+    expect(idx("Document scope")).toBeLessThan(idx("Model & preset"));
+    expect(idx("Advanced options")).toBeGreaterThan(idx("Model & preset"));
+    expect(within(panel).getByTestId("chat-config-technical-details")).toBeInTheDocument();
 
     // Padding sanity: inner body is padded.
     const body = panel.querySelector("div.min-h-0.flex-1.overflow-y-auto") as HTMLElement | null;

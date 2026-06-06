@@ -1770,7 +1770,7 @@ function ChatPageInner() {
                   {m.role === "ASSISTANT" && Array.isArray(m.sources) && m.sources.length > 0 ? (
                     <div className="mt-2 border-border border-t pt-2" data-testid="chat-sources">
                       <p className="text-muted-foreground text-[11px] font-medium">
-                        Sources ({m.sources.length})
+                        {t("chatSourcesHeading", { count: m.sources.length })}
                       </p>
                       <ul className="mt-1 space-y-1 text-[11px]">
                         {m.sources.slice(0, 5).map((raw, idx) => {
@@ -1839,24 +1839,24 @@ function ChatPageInner() {
                   {m.role === "ASSISTANT" &&
                   (hasRuntimeTraceMetadata(m) || messageMetadataString(m, "abstentionReason")) ? (
                     <div className="mt-2 rounded-md border bg-muted/20 px-2 py-1 text-[11px]" data-testid="chat-trace">
-                      <p className="font-medium text-muted-foreground">Trace</p>
+                      <p className="font-medium text-muted-foreground">{t("chatTraceHeading")}</p>
                       <dl className="mt-1 grid grid-cols-1 gap-1 font-mono">
                         {messageMetadataString(m, "traceId") ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">traceId</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldTraceId")}</dt>
                             <dd className="break-all">{messageMetadataString(m, "traceId")}</dd>
                           </div>
                         ) : null}
                         {messageMetadataString(m, "workflowName") ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">workflow</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldWorkflow")}</dt>
                             <dd>{messageMetadataString(m, "workflowName")}</dd>
                           </div>
                         ) : null}
                         {messageMetadataString(m, "classifierModelIdUsed") ||
                         messageMetadataString(m, "classifierModelId") ? (
                           <div className="flex justify-between gap-2" data-testid="chat-trace-classifier-model">
-                            <dt className="text-muted-foreground">classifierModel</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldClassifierModel")}</dt>
                             <dd className="break-all">
                               {messageMetadataString(m, "classifierModelIdUsed") ??
                                 messageMetadataString(m, "classifierModelId")}
@@ -1865,73 +1865,73 @@ function ChatPageInner() {
                         ) : null}
                         {messageMetadataString(m, "classifierLabel") ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">classifierLabel</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldClassifierLabel")}</dt>
                             <dd>{messageMetadataString(m, "classifierLabel")}</dd>
                           </div>
                         ) : null}
                         {messageMetadataString(m, "classifierStatus") ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">classifierStatus</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldClassifierStatus")}</dt>
                             <dd>{messageMetadataString(m, "classifierStatus")}</dd>
                           </div>
                         ) : null}
                         {messageMetadataString(m, "predictedQueryType") ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">predictedQueryType</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldPredictedQueryType")}</dt>
                             <dd>{messageMetadataString(m, "predictedQueryType")}</dd>
                           </div>
                         ) : null}
                         {m.executionMetadata?.classifierFallback === true ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">classifierFallback</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldClassifierFallback")}</dt>
                             <dd>true</dd>
                           </div>
                         ) : null}
                         {messageMetadataString(m, "classifierFallbackReason") ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">classifierFallbackReason</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldClassifierFallbackReason")}</dt>
                             <dd>{messageMetadataString(m, "classifierFallbackReason")}</dd>
                           </div>
                         ) : null}
                         {messageMetadataString(m, "requestedDate") ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">requestedDate</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldRequestedDate")}</dt>
                             <dd>{messageMetadataString(m, "requestedDate")}</dd>
                           </div>
                         ) : null}
                         {messageMetadataList(m, "selectedSnapshotIds").length > 0 ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">snapshot</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldSnapshot")}</dt>
                             <dd className="break-all">{messageMetadataList(m, "selectedSnapshotIds").join(", ")}</dd>
                           </div>
                         ) : null}
                         {messageMetadataString(m, "topSourceDate") ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">topSourceDate</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldTopSourceDate")}</dt>
                             <dd>{messageMetadataString(m, "topSourceDate")}</dd>
                           </div>
                         ) : null}
                         {messageMetadataString(m, "closestAvailableDate") ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">closestAvailableDate</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldClosestAvailableDate")}</dt>
                             <dd>{messageMetadataString(m, "closestAvailableDate")}</dd>
                           </div>
                         ) : null}
                         {m.executionMetadata?.exactDocumentMatch != null ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">exactDocumentMatch</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldExactDocumentMatch")}</dt>
                             <dd>{String(m.executionMetadata.exactDocumentMatch)}</dd>
                           </div>
                         ) : null}
                         {m.executionMetadata?.documentBound != null ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">documentBound</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldDocumentBound")}</dt>
                             <dd>{String(m.executionMetadata.documentBound)}</dd>
                           </div>
                         ) : null}
                         {m.executionMetadata?.candidateSourceCountBeforeDateFilter != null ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">dateFilter</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldDateFilter")}</dt>
                             <dd>
                               {String(m.executionMetadata.candidateSourceCountBeforeDateFilter)}
                               {" -> "}
@@ -1941,19 +1941,19 @@ function ChatPageInner() {
                         ) : null}
                         {m.executionMetadata?.retrievalAfterCompressionCount != null ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">retrieval</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldRetrieval")}</dt>
                             <dd>{String(m.executionMetadata.retrievalAfterCompressionCount)} context chunks</dd>
                           </div>
                         ) : null}
                         {messageMetadataString(m, "groundingPolicyApplied") ? (
                           <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">dateGrounding</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldDateGrounding")}</dt>
                             <dd>{messageMetadataString(m, "groundingPolicyApplied")}</dd>
                           </div>
                         ) : null}
                         {messageMetadataString(m, "abstentionReason") ? (
                           <div className="col-span-full">
-                            <dt className="text-muted-foreground">abstentionReason</dt>
+                            <dt className="text-muted-foreground">{t("chatTraceFieldAbstentionReason")}</dt>
                             <dd>{messageMetadataString(m, "abstentionReason")}</dd>
                           </div>
                         ) : null}
