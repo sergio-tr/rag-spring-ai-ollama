@@ -10,6 +10,7 @@ import { LabEvaluationCorpusPanel } from "@/features/lab/components/lab-evaluati
 import { useEvaluationCorpus } from "@/features/lab/hooks/use-evaluation-corpus";
 import { ModelCheckboxGroup } from "@/features/lab/components/model-checkbox-group";
 import { LabBenchmarkResultsPanel } from "@/features/lab/components/lab-benchmark-results-panel";
+import { LabFailedJobResultsNotice } from "@/features/lab/components/lab-failed-job-results-notice";
 import { LabJobPanel } from "@/features/lab/components/lab-job-panel";
 import { LabJobStopConfirmDialog } from "@/features/lab/components/lab-job-stop-confirm-dialog";
 import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
@@ -159,7 +160,7 @@ function benchmarkAcceptedToLabAccepted(acc: BenchmarkJobAcceptedDto): LabJobAcc
   };
 }
 
-const BENCHMARK_EVIDENCE_FAILURE_CODES = new Set([
+const BENCHMARK_NON_VIEWABLE_FAILURE_CODES = new Set([
   "BENCHMARK_NO_EXECUTABLE_ITEMS",
   "BENCHMARK_ALL_ITEMS_SKIPPED",
   "COMPLETED_WITH_NO_EXECUTED_ITEMS",
@@ -171,7 +172,7 @@ const BENCHMARK_EVIDENCE_FAILURE_CODES = new Set([
 function taskHasViewableResults(taskStatus: AsyncTaskStatusDto | null): boolean {
   if (taskStatus?.terminal !== true) return false;
   const failureCode = taskStatus.failureCode?.trim();
-  if (failureCode && BENCHMARK_EVIDENCE_FAILURE_CODES.has(failureCode)) {
+  if (failureCode && BENCHMARK_NON_VIEWABLE_FAILURE_CODES.has(failureCode)) {
     return false;
   }
   const st = (taskStatus.status ?? "").trim().toUpperCase();
@@ -810,6 +811,11 @@ export function LabEvaluationRunCard({
 
   const effectiveTaskStatus = watchLive ? (liveJob.taskStatus ?? taskStatus) : taskStatus;
   const showResultsPanel = taskHasViewableResults(effectiveTaskStatus) && !!evaluationRunId?.trim();
+  const terminalStatus = (effectiveTaskStatus?.status ?? "").trim().toUpperCase();
+  const showFailedJobNotice =
+    effectiveTaskStatus?.terminal === true &&
+    terminalStatus === "FAILED" &&
+    !!evaluationRunId?.trim();
   const showStopButton = running || cancelling;
 
   const staleDatasetRow =
@@ -1409,6 +1415,13 @@ export function LabEvaluationRunCard({
               progressSnapshot={watchLive ? liveJob.progressSnapshot : undefined}
             />
           )}
+
+          {showFailedJobNotice ? (
+            <LabFailedJobResultsNotice
+              evaluationRunId={evaluationRunId!}
+              taskStatus={effectiveTaskStatus}
+            />
+          ) : null}
 
           <LabBenchmarkResultsPanel
             evaluationRunId={evaluationRunId}
