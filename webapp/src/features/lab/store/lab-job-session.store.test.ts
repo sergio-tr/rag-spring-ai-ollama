@@ -139,6 +139,19 @@ describe("useLabJobSessionStore", () => {
     expect(useLabJobSessionStore.getState().records.some((r) => r.jobId === "job-clear")).toBe(false);
   });
 
+  it("forgetLabJobWatching clears record and bumps forgetWatchNonce", () => {
+    useLabJobSessionStore.getState().upsertLabJobOnAccepted({
+      accepted: acc("job-forget"),
+      sectionKey: "evaluation-llm",
+      followMode: "poll",
+    });
+    useLabJobSessionStore.getState().requestResumeLabJob("evaluation-llm", "job-forget");
+    useLabJobSessionStore.getState().forgetLabJobWatching("job-forget");
+    expect(useLabJobSessionStore.getState().pendingResume).toBeNull();
+    expect(useLabJobSessionStore.getState().records.some((r) => r.jobId === "job-forget")).toBe(false);
+    expect(useLabJobSessionStore.getState().forgetWatchNonce).toBe(1);
+  });
+
   it("clearOtherLabJobsForSection keeps only the retained job id for that section", () => {
     useLabJobSessionStore.getState().upsertLabJobOnAccepted({
       accepted: acc("keep-me"),

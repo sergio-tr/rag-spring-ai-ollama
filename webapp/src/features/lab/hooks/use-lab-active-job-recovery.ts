@@ -174,6 +174,14 @@ export function computeLabActiveJobRecovery(params: LabActiveJobRecoveryInputs):
   }
 
   if (params.backendActiveJobsError) {
+    const sessionRecord = pickSessionOnlyRecord(params.sectionKey, params.sessionRecords);
+    if (sessionRecord) {
+      return {
+        kind: "session_only",
+        record: sessionRecord,
+        reason: "backend_active_jobs_error",
+      };
+    }
     return { kind: "none" };
   }
 

@@ -64,7 +64,7 @@ export function LabBackgroundJobBanner() {
   const router = useRouter();
   const records = useLabJobSessionStore((s) => s.records);
   const requestResume = useLabJobSessionStore((s) => s.requestResumeLabJob);
-  const clearRecord = useLabJobSessionStore((s) => s.clearLabJobRecord);
+  const clearRecord = useLabJobSessionStore((s) => s.forgetLabJobWatching);
   const dismissTerminal = useLabJobSessionStore((s) => s.dismissTerminalLabJob);
 
   const picked = pickPrimaryLabBannerRecord(records);

@@ -3,7 +3,7 @@ import { render, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
-import type { LatestLabRunRecoveryDto } from "@/types/api";
+import type { ActiveLabJobDto, LatestLabRunRecoveryDto } from "@/types/api";
 
 vi.mock("@/features/help/HelpPopover", () => ({
   HelpPopover: () => <button type="button">Help</button>,
@@ -71,29 +71,25 @@ vi.mock("@/features/lab/hooks/use-latest-lab-benchmark-run", () => ({
   useLatestLabBenchmarkRun: (...args: unknown[]) => latestRunMock(...args),
 }));
 
-vi.mock("@/features/lab/hooks/use-lab-job-live-stream", () => ({
-  useLabJobLiveStream: vi.fn(() => ({
-    connectionState: "idle" as const,
-    taskStatus: null,
-    lastEventId: null,
-    recentEvents: [],
-    progressSnapshot: undefined,
-    resume: vi.fn(),
-    stop: vi.fn(),
-  })),
+const liveStreamMock = vi.fn(() => ({
+  connectionState: "idle" as const,
+  taskStatus: null,
+  lastEventId: null,
+  recentEvents: [],
+  progressSnapshot: undefined,
+  resume: vi.fn(),
+  stop: vi.fn(),
 }));
 
+vi.mock("@/features/lab/hooks/use-lab-job-live-stream", () => ({
+  useLabJobLiveStream: (...args: unknown[]) => liveStreamMock(...args),
+}));
+
+const fetchLabJobStatusOnceMock = vi.fn();
+
 vi.mock("@/lib/async-task", () => ({
-  fetchLabJobStatusOnce: vi.fn(async () => ({
-    id: "latest-job",
-    taskType: "LAB",
-    status: "SUCCEEDED",
-    terminal: true,
-    progressText: null,
-    errorMessage: null,
-    failureCode: null,
-    result: { recovered: true },
-  })),
+  fetchLabJobStatusOnce: (...args: unknown[]) => fetchLabJobStatusOnceMock(...args),
+  pollLabJob: vi.fn(),
 }));
 
 vi.mock("@/store/app.store", () => ({
@@ -119,6 +115,35 @@ function completedLatestRun(): LatestLabRunRecoveryDto {
     pollPath: "/lab/jobs/latest-job",
     streamPath: "/lab/jobs/latest-job/events",
     result: { recovered: true },
+    hasResults: true,
+  };
+}
+
+function activeBackendJob(): ActiveLabJobDto {
+  return {
+    jobId: "active-job",
+    evaluationRunId: "550e8400-e29b-41d4-a716-446655440099",
+    benchmarkKind: "LLM_JUDGE_QA",
+    projectId: null,
+    datasetId: null,
+    status: "RUNNING",
+    progress: null,
+    startedAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:01:00Z",
+    pollPath: "/lab/jobs/active-job",
+    streamPath: "/lab/jobs/active-job/events",
+    cancellable: true,
+  };
+}
+
+function cardProps(radioGroupName: string) {
+  return {
+    benchmarkKind: "LLM_JUDGE_QA" as const,
+    sectionKey: "evaluation-llm" as const,
+    taskTypeHint: "LLM_EVALUATION",
+    cardTitle: "LLM evaluation",
+    runButtonTestId: "lab-llm-run",
+    radioGroupName,
   };
 }
 
@@ -126,7 +151,9 @@ describe("LabEvaluationRunCard latest run recovery", () => {
   beforeEach(() => {
     sessionStorage.removeItem("rag-lab-jobs");
     useLabJobSessionStore.persist.clearStorage();
-    useLabJobSessionStore.setState({ records: [], pendingResume: null, resumeNonce: 0 });
+    useLabJobSessionStore.setState({ records: [], pendingResume: null, resumeNonce: 0, forgetWatchNonce: 0 });
+    liveStreamMock.mockClear();
+    fetchLabJobStatusOnceMock.mockReset();
     vi.mocked(useActiveLabJobs).mockReturnValue({
       data: [],
       isFetched: true,
@@ -146,14 +173,7 @@ describe("LabEvaluationRunCard latest run recovery", () => {
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>
-          <LabEvaluationRunCard
-            benchmarkKind="LLM_JUDGE_QA"
-            sectionKey="evaluation-llm"
-            taskTypeHint="LLM_EVALUATION"
-            cardTitle="LLM evaluation"
-            runButtonTestId="lab-llm-run"
-            radioGroupName="latest-run"
-          />
+          <LabEvaluationRunCard {...cardProps("latest-run")} />
         </IntlTestProvider>
       </QueryClientProvider>,
     );
@@ -164,13 +184,63 @@ describe("LabEvaluationRunCard latest run recovery", () => {
     const panel = document.querySelector("[data-testid='lab-job-panel']")!;
     expect(within(panel as HTMLElement).getByRole("status")).toHaveTextContent(/Completed|finished/i);
   });
+
+  it("resumes from backend active job when sessionStorage is empty", async () => {
+    vi.mocked(useActiveLabJobs).mockReturnValue({
+      data: [activeBackendJob()],
+      isFetched: true,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as never);
+    fetchLabJobStatusOnceMock.mockResolvedValue({
+      id: "active-job",
+      taskType: "LLM_EVALUATION",
+      status: "RUNNING",
+      terminal: false,
+      progressText: null,
+      errorMessage: null,
+      failureCode: null,
+      result: null,
+      createdAt: "",
+      updatedAt: "",
+      startedAt: null,
+      completedAt: null,
+    });
+    latestRunMock.mockReturnValue({
+      data: undefined,
+      isFetched: false,
+      isLoading: false,
+      isError: false,
+    });
+
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <IntlTestProvider>
+          <LabEvaluationRunCard {...cardProps("active-job")} />
+        </IntlTestProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(fetchLabJobStatusOnceMock).toHaveBeenCalledWith("active-job");
+    });
+    await waitFor(() => {
+      expect(liveStreamMock).toHaveBeenCalled();
+    });
+    const lastCall = liveStreamMock.mock.calls.at(-1)?.[0] as { enabled?: boolean; jobId?: string };
+    expect(lastCall?.jobId).toBe("active-job");
+    expect(lastCall?.enabled).toBe(true);
+  });
 });
 
-describe("LabEvaluationRunCard forget job semantics", () => {
+describe("LabEvaluationRunCard stop watching semantics", () => {
   beforeEach(() => {
     sessionStorage.removeItem("rag-lab-jobs");
     useLabJobSessionStore.persist.clearStorage();
-    useLabJobSessionStore.setState({ records: [], pendingResume: null, resumeNonce: 0 });
+    useLabJobSessionStore.setState({ records: [], pendingResume: null, resumeNonce: 0, forgetWatchNonce: 0 });
+    liveStreamMock.mockClear();
+    fetchLabJobStatusOnceMock.mockReset();
     vi.mocked(useActiveLabJobs).mockReturnValue({
       data: [],
       isFetched: true,
@@ -186,7 +256,7 @@ describe("LabEvaluationRunCard forget job semantics", () => {
     });
   });
 
-  it("forget job clears session tracking but latest run remains recoverable", async () => {
+  it("stop watching clears session tracking and reloads latest run from backend", async () => {
     useLabJobSessionStore.getState().upsertLabJobOnAccepted({
       accepted: {
         jobId: "latest-job",
@@ -217,14 +287,7 @@ describe("LabEvaluationRunCard forget job semantics", () => {
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <IntlTestProvider>
-          <LabEvaluationRunCard
-            benchmarkKind="LLM_JUDGE_QA"
-            sectionKey="evaluation-llm"
-            taskTypeHint="LLM_EVALUATION"
-            cardTitle="LLM evaluation"
-            runButtonTestId="lab-llm-run"
-            radioGroupName="forget-job"
-          />
+          <LabEvaluationRunCard {...cardProps("stop-watching")} />
         </IntlTestProvider>
       </QueryClientProvider>,
     );
@@ -232,13 +295,61 @@ describe("LabEvaluationRunCard forget job semantics", () => {
     await waitFor(() => {
       expect(document.querySelector("[data-testid='lab-job-panel']")).toBeTruthy();
     });
-    useLabJobSessionStore.getState().clearLabJobRecord("latest-job");
+
+    useLabJobSessionStore.getState().forgetLabJobWatching("latest-job");
     expect(useLabJobSessionStore.getState().records).toHaveLength(0);
+    expect(useLabJobSessionStore.getState().forgetWatchNonce).toBe(1);
 
     await waitFor(() => {
       expect(document.querySelector("[data-testid='lab-job-panel']")).toBeTruthy();
     });
-    const panelAfterForget = document.querySelector("[data-testid='lab-job-panel']");
-    expect(panelAfterForget).toBeTruthy();
+  });
+
+  it("ignores stale non-terminal session when backend poll returns terminal", async () => {
+    useLabJobSessionStore.getState().upsertLabJobOnAccepted({
+      accepted: {
+        jobId: "stale-job",
+        status: "RUNNING",
+        pollPath: "/lab/jobs/stale-job",
+        streamPath: "/lab/jobs/stale-job/events",
+      },
+      sectionKey: "evaluation-llm",
+      followMode: "sse",
+      taskTypeHint: "LLM_EVALUATION",
+      evaluationRunId: "550e8400-e29b-41d4-a716-446655440099",
+    });
+    fetchLabJobStatusOnceMock.mockResolvedValue({
+      id: "stale-job",
+      taskType: "LLM_EVALUATION",
+      status: "SUCCEEDED",
+      terminal: true,
+      progressText: null,
+      errorMessage: null,
+      failureCode: null,
+      result: { recovered: true },
+      createdAt: "",
+      updatedAt: "",
+      startedAt: null,
+      completedAt: "",
+    });
+
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <IntlTestProvider>
+          <LabEvaluationRunCard {...cardProps("stale-session")} />
+        </IntlTestProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(fetchLabJobStatusOnceMock).toHaveBeenCalledWith("stale-job");
+    });
+    await waitFor(() => {
+      const panel = document.querySelector("[data-testid='lab-job-panel']");
+      expect(panel).toBeTruthy();
+      expect(within(panel as HTMLElement).getByRole("status")).toHaveTextContent(/Completed|finished/i);
+    });
+    const lastStreamOpts = liveStreamMock.mock.calls.at(-1)?.[0] as { enabled?: boolean } | undefined;
+    expect(lastStreamOpts?.enabled).not.toBe(true);
   });
 });

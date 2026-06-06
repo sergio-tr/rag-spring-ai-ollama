@@ -3,13 +3,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import type { BenchmarkKind, LatestLabRunRecoveryDto } from "@/types/api";
+import { latestLabBenchmarkRunQueryKey } from "@/features/lab/lib/lab-run-recovery";
 
-export function latestLabBenchmarkRunQueryKey(
-  benchmarkKind: BenchmarkKind,
-  projectId: string | null,
-) {
-  return ["lab", "benchmarks", benchmarkKind, "runs", "latest", projectId ?? "none"] as const;
-}
+export { latestLabBenchmarkRunQueryKey };
 
 /** Latest benchmark run for Lab page recovery when no active job is listed. */
 export function useLatestLabBenchmarkRun(options: Readonly<{

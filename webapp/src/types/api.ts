@@ -394,6 +394,9 @@ export type LatestLabRunRecoveryDto = {
   pollPath: string | null;
   streamPath: string | null;
   result: Record<string, unknown> | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  hasResults?: boolean;
 };
 
 /** POST `{product}/me/account/export|deletion` → HTTP 202 (poll via `/me/account/jobs/{id}`, not Lab). */

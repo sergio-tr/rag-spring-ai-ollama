@@ -17,6 +17,12 @@ import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
 import { activeJobMatchesCard } from "@/features/lab/hooks/use-lab-active-job-recovery";
 import { useAutoResumeLabJobs } from "@/features/lab/hooks/use-auto-resume-lab-jobs";
 import { useLatestLabBenchmarkRun } from "@/features/lab/hooks/use-latest-lab-benchmark-run";
+import {
+  labJobAcceptedFromLatestRun,
+  latestLabBenchmarkRunQueryKey,
+  shouldFetchLatestLabRun,
+  taskStatusFromLatestRun,
+} from "@/features/lab/lib/lab-run-recovery";
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
 import {
@@ -27,7 +33,7 @@ import {
 } from "@/features/lab/lib/experimental-preset-selection";
 import { useLabEvaluationDraft } from "@/features/lab/hooks/use-lab-evaluation-draft";
 import { useLabJobLiveStream } from "@/features/lab/hooks/use-lab-job-live-stream";
-import { pollLabJob } from "@/lib/async-task";
+import { fetchLabJobStatusOnce, pollLabJob } from "@/lib/async-task";
 import {
   LAB_DEFAULT_EMBEDDING_MODEL_ID,
   type LabEvaluationDraftKind,
@@ -50,10 +56,6 @@ import { resolveEmbeddingCampaignIndexSnapshotIds } from "@/features/lab/lib/emb
 import {
   filterCampaignCompatibleEmbeddingIds,
 } from "@/features/lab/lib/embedding-campaign-preferred-models";
-import {
-  LLM_CAMPAIGN_PREFERRED_MODEL_IDS,
-  missingPreferredLlmModels,
-} from "@/features/lab/lib/llm-campaign-preferred-models";
 import { mapKnowledgeBaseApiError } from "@/features/lab/lib/evaluation-corpus-upload";
 import { extractTechnicalErrorCode } from "@/lib/user-facing-error-messages";
 import { formatBenchmarkKindLabel, formatPresetSupportMessage } from "@/lib/product-copy";
@@ -66,11 +68,11 @@ import type {
   BenchmarkKind,
   ExperimentalDatasetListItemDto,
   LabJobAcceptedDto,
-  LatestLabRunRecoveryDto,
   StartBenchmarkRunRequest,
 } from "@/types/api";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type LabEvaluationRunCardProps = {
@@ -182,39 +184,6 @@ function taskHasViewableResults(taskStatus: AsyncTaskStatusDto | null): boolean 
   return st === "SUCCEEDED" || st === "CANCELLED" || st === "CANCELED";
 }
 
-function taskStatusFromLatestRun(
-  dto: LatestLabRunRecoveryDto,
-  taskTypeHint: string,
-): AsyncTaskStatusDto {
-  const jobId = dto.jobId?.trim() || dto.evaluationRunId;
-  return {
-    id: jobId,
-    taskType: taskTypeHint,
-    status: dto.status?.trim() || "UNKNOWN",
-    progressText: null,
-    result: dto.result ?? null,
-    errorMessage: null,
-    terminal: dto.terminal,
-    createdAt: "",
-    updatedAt: "",
-    startedAt: null,
-    completedAt: dto.terminal ? "" : null,
-    failureCode: null,
-  };
-}
-
-function labJobAcceptedFromLatestRun(dto: LatestLabRunRecoveryDto): LabJobAcceptedDto | null {
-  const jobId = dto.jobId?.trim();
-  if (!jobId) return null;
-  const pollPath = dto.pollPath?.trim() || `/lab/jobs/${jobId}`;
-  return {
-    jobId,
-    status: dto.status?.trim() || "UNKNOWN",
-    pollPath: pollPath as string,
-    streamPath: (dto.streamPath?.trim() || `${pollPath}/events`) as string,
-  };
-}
-
 /**
  * Shared lab benchmark runner (async POST + SSE live progress) for LLM, embedding retrieval, and RAG preset benchmarks.
  */
@@ -229,6 +198,7 @@ export function LabEvaluationRunCard({
 }: LabEvaluationRunCardProps) {
   const t = useTranslations("Lab");
   const tHelp = useTranslations("Help");
+  const queryClient = useQueryClient();
   const { data: labStatus } = useLabStatus();
   const activeJobs = useActiveLabJobs();
   const experimentalDatasets = useExperimentalDatasetsQuery();
@@ -255,6 +225,7 @@ export function LabEvaluationRunCard({
   const mountedEvalCardRef = useRef(true);
   const latestRunAppliedRef = useRef(false);
   const resumeNonce = useLabJobSessionStore((s) => s.resumeNonce);
+  const forgetWatchNonce = useLabJobSessionStore((s) => s.forgetWatchNonce);
   const sessionRecordForSection = useLabJobSessionStore((s) => s.pickLatestForSection(sectionKey));
 
   const compatibleRows = useMemo(() => {
@@ -281,10 +252,6 @@ export function LabEvaluationRunCard({
     if (benchmarkKind !== "LLM_JUDGE_QA") return false;
     return availableLlmModels.length > 0 && availableLlmModels.length < 2;
   }, [benchmarkKind, availableLlmModels.length]);
-  const missingPreferredLlmTags = useMemo(
-    () => missingPreferredLlmModels(availableLlmModels, LLM_CAMPAIGN_PREFERRED_MODEL_IDS),
-    [availableLlmModels],
-  );
   const availableEmbeddingModels = useMemo(
     () => embeddingModels.data?.map((m) => m.modelId).sort((a, b) => a.localeCompare(b)) ?? [],
     [embeddingModels.data],
@@ -388,6 +355,24 @@ export function LabEvaluationRunCard({
     },
     onStreamError: (e) => {
       if (!mountedEvalCardRef.current) return;
+      const recoverViaPoll = async () => {
+        const jobId = accepted?.jobId?.trim();
+        if (!jobId) return false;
+        try {
+          const status = await fetchLabJobStatusOnce(jobId);
+          useLabJobSessionStore.getState().patchLabJobFromTick(jobId, status);
+          if (status.terminal) {
+            setTaskStatus(status);
+            setResult(status.result);
+            setRunning(false);
+            setWatchLive(false);
+            return true;
+          }
+        } catch {
+          // fall through to user-facing error
+        }
+        return false;
+      };
       if (e instanceof ApiError && e.status === 404 && accepted?.jobId) {
         useLabJobSessionStore.getState().markLabJobStaleNotFound(accepted.jobId);
         setErr(t("jobRecoveryStaleShort"));
@@ -395,14 +380,20 @@ export function LabEvaluationRunCard({
         (e instanceof ApiError && e.status === 401) ||
         (e instanceof Error && "status" in e && Number((e as Error & { status?: number }).status) === 401)
       ) {
-        setErr(t("jobRecoverySessionExpired"));
+        void recoverViaPoll().then((recovered) => {
+          if (!recovered) {
+            setErr(t("jobRecoverySessionExpired"));
+          }
+        });
       } else if (e instanceof Error) {
         setUserFacingErr(e.message || t("evalError"));
       } else {
         setUserFacingErr(t("evalError"));
       }
-      setRunning(false);
-      setWatchLive(false);
+      if (!(e instanceof ApiError && e.status === 401)) {
+        setRunning(false);
+        setWatchLive(false);
+      }
     },
   });
 
@@ -450,6 +441,22 @@ export function LabEvaluationRunCard({
     });
   }, [resumeNonce, resumeFromPersisted, sectionKey]);
 
+  useEffect(() => {
+    if (forgetWatchNonce === 0) return;
+    setWatchLive(false);
+    setRunning(false);
+    setAccepted(null);
+    setEvaluationRunId(null);
+    setTaskStatus(null);
+    setResult(null);
+    setCancelling(false);
+    setErr(null);
+    latestRunAppliedRef.current = false;
+    void queryClient.invalidateQueries({
+      queryKey: latestLabBenchmarkRunQueryKey(benchmarkKind, activeProject?.id ?? null),
+    });
+  }, [forgetWatchNonce, benchmarkKind, activeProject?.id, queryClient]);
+
   const labRecovery = useAutoResumeLabJobs({
     sectionKey,
     benchmarkKind,
@@ -484,12 +491,12 @@ export function LabEvaluationRunCard({
     },
   });
 
-  const latestRunQueryEnabled =
-    labRecovery.decision.kind === "none" &&
-    !labRecovery.activeJobsLoading &&
-    !running &&
-    !accepted &&
-    !evaluationRunId;
+  const latestRunQueryEnabled = shouldFetchLatestLabRun({
+    activeJobsLoading: labRecovery.activeJobsLoading,
+    recoveryDecisionKind: labRecovery.decision.kind,
+    running,
+    watchLive,
+  });
 
   const latestRun = useLatestLabBenchmarkRun({
     benchmarkKind,
@@ -498,7 +505,7 @@ export function LabEvaluationRunCard({
   });
 
   useEffect(() => {
-    if (!latestRun.data || latestRunAppliedRef.current || running) {
+    if (!latestRun.data || latestRunAppliedRef.current || running || watchLive) {
       return;
     }
     const dto = latestRun.data;
@@ -527,7 +534,7 @@ export function LabEvaluationRunCard({
         });
       }
     });
-  }, [beginLiveWatch, latestRun.data, running, setLastEvaluationRunId, taskTypeHint]);
+  }, [beginLiveWatch, latestRun.data, running, watchLive, setLastEvaluationRunId, taskTypeHint]);
 
   const needsEvaluationCorpus =
     benchmarkKind === "RAG_PRESET_END_TO_END" || benchmarkKind === "EMBEDDING_RETRIEVAL";
@@ -584,7 +591,11 @@ export function LabEvaluationRunCard({
     (!hasEvaluationCorpus ||
       !evaluationCorpus.corpusRunnable ||
       evaluationCorpus.corpusProcessing ||
-      Boolean(corpusPrimaryBlocker));
+      evaluationCorpus.preparingIndex ||
+      Boolean(corpusPrimaryBlocker) ||
+      (benchmarkKind === "RAG_PRESET_END_TO_END" &&
+        evaluationCorpus.corpusReady &&
+        !evaluationCorpus.corpusIndexReady));
 
   const selectedDataset = useMemo(() => {
     const id = draft.datasetId?.trim();
@@ -1501,10 +1512,7 @@ export function LabEvaluationRunCard({
               data-testid="lab-llm-model-availability-blocked"
               className="block rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-950 dark:text-amber-100"
             >
-              {t("labLlmBlockedByModelAvailability", {
-                available: availableLlmModels.join(", ") || "—",
-                missing: missingPreferredLlmTags.join(", ") || "—",
-              })}
+              {t("labLlmBlockedByModelAvailability")}
             </output>
           ) : null}
 

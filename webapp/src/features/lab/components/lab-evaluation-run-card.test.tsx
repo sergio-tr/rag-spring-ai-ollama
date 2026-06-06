@@ -26,21 +26,29 @@ const defaultEvaluationCorpusApi = {
   fetching: false,
   error: null,
   refresh: vi.fn(),
+  refreshAll: vi.fn(),
   ensureCorpus: vi.fn(),
   uploadDocuments: vi.fn(),
   corpusReady: true,
   corpusRunnable: true,
-  readiness: { runnable: true, primaryBlocker: null, primaryBlockerMessage: null },
+  corpusIndexReady: true,
+  preparingIndex: false,
+  readiness: { runnable: true, primaryBlocker: null, primaryBlockerMessage: null, reindexRequired: false, activeSnapshotId: "snap-1" },
   corpusProcessing: false,
   attachFromProject: vi.fn(),
   deleteDocument: vi.fn(),
   deleteAllDocuments: vi.fn(),
   retryDocumentIngest: vi.fn(),
+  prepareIndex: vi.fn(),
 };
 
-vi.mock("@/features/lab/hooks/use-evaluation-corpus", () => ({
-  useEvaluationCorpus: (...args: unknown[]) => useEvaluationCorpusMock(...args),
-}));
+vi.mock("@/features/lab/hooks/use-evaluation-corpus", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/lab/hooks/use-evaluation-corpus")>();
+  return {
+    ...actual,
+    useEvaluationCorpus: (...args: unknown[]) => useEvaluationCorpusMock(...args),
+  };
+});
 
 vi.mock("@/features/help/HelpPopover", () => ({
   HelpPopover: () => <button type="button">Help</button>,
@@ -626,6 +634,7 @@ describe("LabEvaluationRunCard", () => {
     useEvaluationCorpusMock.mockReturnValue({
       ...defaultEvaluationCorpusApi,
       corpusRunnable: false,
+      corpusIndexReady: false,
       readiness: {
         runnable: false,
         primaryBlocker: "NO_DOCUMENTS",
@@ -654,6 +663,83 @@ describe("LabEvaluationRunCard", () => {
     );
     expect(screen.getByTestId("lab-corpus-not-ready-hint")).toBeInTheDocument();
     expect(screen.getByTestId("lab-rag-run")).toBeDisabled();
+  });
+
+  it("enables Run when corpus index is ready and runnable", () => {
+    useEvaluationCorpusMock.mockReturnValue({
+      ...defaultEvaluationCorpusApi,
+      corpusRunnable: true,
+      corpusIndexReady: true,
+      corpusReady: true,
+      readiness: {
+        runnable: true,
+        reindexRequired: false,
+        activeSnapshotId: "snap-1",
+        primaryBlocker: null,
+        primaryBlockerMessage: null,
+      },
+    });
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+      data: [ragDataset],
+      isLoading: false,
+      isFetched: true,
+      isSuccess: true,
+    } as never);
+    localStorage.setItem("lab:evaluation-draft:v1:RAG_PRESET_END_TO_END", storedRagDraft({}));
+    render(
+      <LabEvalHarness>
+        <LabEvaluationRunCard
+          benchmarkKind="RAG_PRESET_END_TO_END"
+          sectionKey="evaluation-rag"
+          taskTypeHint="RAG_EVALUATION"
+          cardTitle="RAG evaluation"
+          cardDescription="Benchmark retrieval presets."
+          runButtonTestId="lab-rag-run"
+          radioGroupName="follow-corpus-ready"
+        />
+      </LabEvalHarness>,
+    );
+    expect(screen.getByTestId("lab-rag-run")).toBeEnabled();
+    expect(screen.queryByTestId("lab-corpus-not-ready-hint")).not.toBeInTheDocument();
+  });
+
+  it("disables Run when index is not ready even if documents are runnable", () => {
+    useEvaluationCorpusMock.mockReturnValue({
+      ...defaultEvaluationCorpusApi,
+      corpusRunnable: true,
+      corpusIndexReady: false,
+      corpusReady: true,
+      readiness: {
+        runnable: true,
+        reindexRequired: true,
+        activeSnapshotId: null,
+        snapshotBlocker: "REINDEX_REQUIRED",
+        primaryBlocker: null,
+        primaryBlockerMessage: null,
+      },
+    });
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+      data: [ragDataset],
+      isLoading: false,
+      isFetched: true,
+      isSuccess: true,
+    } as never);
+    localStorage.setItem("lab:evaluation-draft:v1:RAG_PRESET_END_TO_END", storedRagDraft({}));
+    render(
+      <LabEvalHarness>
+        <LabEvaluationRunCard
+          benchmarkKind="RAG_PRESET_END_TO_END"
+          sectionKey="evaluation-rag"
+          taskTypeHint="RAG_EVALUATION"
+          cardTitle="RAG evaluation"
+          cardDescription="Benchmark retrieval presets."
+          runButtonTestId="lab-rag-run"
+          radioGroupName="follow-corpus-index-blocked"
+        />
+      </LabEvalHarness>,
+    );
+    expect(screen.getByTestId("lab-rag-run")).toBeDisabled();
+    expect(screen.getByTestId("lab-corpus-index-hint")).toBeInTheDocument();
   });
 
   it("shows evaluation corpus panel for RAG without active project", () => {

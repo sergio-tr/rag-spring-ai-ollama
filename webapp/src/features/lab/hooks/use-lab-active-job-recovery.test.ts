@@ -88,7 +88,7 @@ describe("computeLabActiveJobRecovery", () => {
     expect(d.kind).toBe("none");
   });
 
-  it("returns none when backend active jobs request fails (session is not source of truth)", () => {
+  it("falls back to session_only when backend active jobs request fails", () => {
     const rec = sessionRec({ jobId: "sess-err", sectionKey: "evaluation-embedding" });
     const d = computeLabActiveJobRecovery({
       sectionKey: "evaluation-embedding",
@@ -100,7 +100,7 @@ describe("computeLabActiveJobRecovery", () => {
       backendActiveJobsError: new Error("boom"),
       sessionRecords: [rec],
     });
-    expect(d.kind).toBe("none");
+    expect(d.kind).toBe("session_only");
   });
 
   it("returns none when backend active jobs request fails and session has no usable record", () => {
