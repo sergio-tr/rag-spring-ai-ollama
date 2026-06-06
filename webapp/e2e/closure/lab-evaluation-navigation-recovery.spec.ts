@@ -45,7 +45,7 @@ test.describe("LAB evaluation navigation recovery @fullstack", () => {
       await expect(panel.or(page.getByTestId("lab-benchmark-results-panel"))).toBeVisible({ timeout: 30_000 });
     }
 
-    const forget = page.getByRole("button", { name: /forget job|olvidar trabajo/i });
+    const forget = page.getByRole("button", { name: /stop watching|dejar de seguir|forget job|olvidar trabajo/i });
     if (await forget.isVisible().catch(() => false)) {
       await forget.click();
       await expect(panel.or(page.getByTestId("lab-benchmark-results-panel"))).toBeVisible({ timeout: 20_000 });

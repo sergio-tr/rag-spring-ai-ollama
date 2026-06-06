@@ -1619,6 +1619,70 @@ describe("ChatPage", () => {
     expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
   });
 
+  describe("chat layout width on desktop", () => {
+    it("uses centered narrow layout when configuration panel is closed", async () => {
+      const user = userEvent.setup();
+      renderChat();
+      await user.click(screen.getByRole("button", { name: /^T1$/ }));
+
+      const workspace = screen.getByTestId("chat-main-workspace");
+      const readable = screen.getByTestId("chat-readable-column");
+
+      expect(workspace).toHaveAttribute("data-chat-layout-mode", "centered");
+      expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
+      expect(readable.className).toMatch(/md:max-w-\[min\(50%,48rem\)\]/);
+      expect(readable.className).toMatch(/md:flex-none/);
+      expect(readable.className).toMatch(/md:mx-auto/);
+      expect(readable.className).not.toMatch(/md:flex-1/);
+    });
+
+    it("uses split two-column layout when configuration panel is open", async () => {
+      const user = userEvent.setup();
+      renderChat();
+      await user.click(screen.getByRole("button", { name: /^T1$/ }));
+      await user.click(screen.getByTestId("chat-config-trigger"));
+
+      const workspace = screen.getByTestId("chat-main-workspace");
+      const readable = screen.getByTestId("chat-readable-column");
+      const panel = screen.getByTestId("chat-configuration-side-panel");
+
+      expect(workspace).toHaveAttribute("data-chat-layout-mode", "split");
+      expect(workspace).toContainElement(panel);
+      expect(readable.className).toMatch(/md:flex-1/);
+      expect(readable.className).not.toMatch(/md:max-w-\[min\(50%,48rem\)\]/);
+    });
+
+    it("keeps the message thread inside the readable column, not inside the config panel", async () => {
+      const user = userEvent.setup();
+      renderChat();
+      await user.click(screen.getByRole("button", { name: /^T1$/ }));
+      await user.click(screen.getByTestId("chat-config-trigger"));
+
+      const readable = screen.getByTestId("chat-readable-column");
+      const thread = screen.getByTestId("chat-thread-dropzone");
+      const panel = screen.getByTestId("chat-configuration-side-panel");
+
+      expect(readable).toContainElement(thread);
+      expect(panel).not.toContainElement(thread);
+    });
+
+    it("returns to centered layout after closing the configuration panel", async () => {
+      const user = userEvent.setup();
+      renderChat();
+      await user.click(screen.getByRole("button", { name: /^T1$/ }));
+      await user.click(screen.getByTestId("chat-config-trigger"));
+      await user.click(screen.getByTestId("chat-config-trigger"));
+
+      const workspace = screen.getByTestId("chat-main-workspace");
+      const readable = screen.getByTestId("chat-readable-column");
+
+      expect(workspace).toHaveAttribute("data-chat-layout-mode", "centered");
+      expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
+      expect(readable.className).toMatch(/md:flex-none/);
+      expect(readable.className).not.toMatch(/md:flex-1/);
+    });
+  });
+
   it("keeps chat thread height stable when opening configuration on desktop", async () => {
     const user = userEvent.setup();
     renderChat();

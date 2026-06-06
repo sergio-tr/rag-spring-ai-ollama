@@ -295,6 +295,8 @@ function ChatPageInner() {
   const [newConvWizardOpen, setNewConvWizardOpen] = useState(false);
   const configPanelOpen = useChatConfigurationPanelStore((s) => s.open);
   const setConfigPanelOpen = useChatConfigurationPanelStore((s) => s.setOpen);
+  /** Desktop split: readable column + fixed-width config aside (not used on mobile drawer). */
+  const desktopConfigSplit = Boolean(conversationId && configPanelOpen);
   const abortRef = useRef<AbortController | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -1442,11 +1444,20 @@ function ChatPageInner() {
       )}
       <div
         data-testid="chat-main-workspace"
-        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row md:flex-nowrap md:gap-3"
+        data-chat-layout-mode={desktopConfigSplit ? "split" : "centered"}
+        className={cn(
+          "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row md:flex-nowrap md:gap-3",
+          !desktopConfigSplit && "md:justify-center",
+        )}
       >
         <div
           data-testid="chat-readable-column"
-          className="flex w-full min-h-0 min-w-0 flex-1 flex-col gap-3 px-2 sm:px-3 md:px-5"
+          className={cn(
+            "flex w-full min-h-0 min-w-0 flex-col gap-3 px-2 sm:px-3 md:px-5",
+            desktopConfigSplit
+              ? "md:min-w-0 md:flex-1"
+              : "md:mx-auto md:w-full md:max-w-[min(50%,48rem)] md:flex-none",
+          )}
         >
         {conversationId && active ? (
           <header className="flex flex-wrap items-end gap-3 gap-y-2 border-border border-b pb-3">
