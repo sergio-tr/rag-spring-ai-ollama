@@ -28,6 +28,7 @@ import {
   type ComparisonRow,
 } from "@/features/lab/lib/lab-benchmark-labels";
 import { mapUserFacingErrorMessage } from "@/lib/user-facing-error-messages";
+import { formatBenchmarkKindLabel } from "@/lib/product-copy";
 import {
   readGlobalOutcomeCounts,
   readMvpItems,
@@ -128,7 +129,11 @@ function toResultTableRow(row: unknown, idx: number, t: (key: string) => string)
     isExtensionPreset(presetCode)
       ? t("benchmarkNoteExtension")
       : outcome === "NOT_SUPPORTED"
-        ? unsupportedReason || formatOutcomeLabel("NOT_SUPPORTED", t)
+        ? mapUserFacingErrorMessage(
+            unsupportedReason,
+            t,
+            formatOutcomeLabel("NOT_SUPPORTED", t),
+          )
         : outcome === "SKIPPED"
           ? mapUserFacingErrorMessage(
               skipReasonCode || skipReason,
@@ -362,7 +367,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             {t("benchmarkResultsRunLine", {
               id: payload.run.id.slice(0, 8),
               status: payload.run.status,
-              kind: payload.run.benchmarkKind ?? "—",
+              kind: formatBenchmarkKindLabel(payload.run.benchmarkKind, t),
             })}
           </p>
           {macroExecuted && macroExecuted.n > 0 ? (

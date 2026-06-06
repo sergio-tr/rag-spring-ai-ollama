@@ -1,4 +1,8 @@
+import { formatBenchmarkKindLabel } from "@/lib/product-copy";
+
 /** Normalized display labels for LAB benchmark results, exports, and comparison tables. */
+
+export { formatBenchmarkKindLabel };
 
 export const MISSING_METADATA_KEY = "MISSING_METADATA";
 export const LEGACY_UNKNOWN_KEY = "_UNKNOWN";
@@ -77,9 +81,13 @@ export function formatGroupLabel(
 export function formatOutcomeLabel(outcome: string, t: (key: string) => string): string {
   const known = new Set(["EXECUTED", "FAILED", "SKIPPED", "NOT_SUPPORTED"]);
   if (known.has(outcome)) {
-    return t(`benchmarkOutcomeLabel.${outcome}`);
+    const key = `benchmarkOutcomeLabel.${outcome}`;
+    const out = t(key);
+    return out === key ? outcome : out;
   }
-  return outcome;
+  const unknownKey = "benchmarkOutcomeLabel.unknown";
+  const unknown = t(unknownKey);
+  return unknown === unknownKey ? outcome : unknown;
 }
 
 export function isNotAvailable(value: unknown): boolean {

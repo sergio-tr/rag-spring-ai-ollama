@@ -6,6 +6,7 @@ import {
   isCoreExperimentalPresetCode,
   isLabBenchmarkPresetSelectable,
   listCoreExperimentalPresetCodes,
+  sanitizeLabBenchmarkDraftPresetCodes,
 } from "./experimental-preset-selection";
 
 function preset(code: string, overrides: Partial<ExperimentalPresetCatalogItemDto> = {}): ExperimentalPresetCatalogItemDto {
@@ -68,5 +69,18 @@ describe("experimental-preset-selection", () => {
     const catalog = [preset("P0"), preset("P14", { singleTurnBenchmarkSelectable: false })];
     expect(findInvalidLabPresetSelections(["P0", "P14", "P99"], catalog)).toEqual(["P14", "P99"]);
     expect(filterLabBenchmarkSelectablePresets(catalog).map((p) => p.code)).toEqual(["P0"]);
+  });
+
+  it("sanitizeLabBenchmarkDraftPresetCodes removes P13/P14 before catalog loads", () => {
+    const { selected, removed } = sanitizeLabBenchmarkDraftPresetCodes(["P0", "P13", "P14"], undefined, false);
+    expect(selected).toEqual(["P0"]);
+    expect(removed).toEqual(["P13", "P14"]);
+  });
+
+  it("sanitizeLabBenchmarkDraftPresetCodes removes non-lab-selectable codes when catalog is ready", () => {
+    const catalog = [preset("P0"), preset("P14", { singleTurnBenchmarkSelectable: false, labSelectable: false })];
+    const { selected, removed } = sanitizeLabBenchmarkDraftPresetCodes(["P0", "P14", "P99"], catalog, true);
+    expect(selected).toEqual(["P0"]);
+    expect(removed).toEqual(["P14", "P99"]);
   });
 });

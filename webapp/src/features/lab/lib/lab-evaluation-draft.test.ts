@@ -8,6 +8,7 @@ import {
   LAB_DEFAULT_EMBEDDING_MODEL_ID,
   labEvaluationDraftStorageKey,
   loadLabEvaluationDraft,
+  loadLabEvaluationDraftWithSanitationReport,
   saveLabEvaluationDraft,
 } from "./lab-evaluation-draft";
 
@@ -88,6 +89,18 @@ describe("lab-evaluation-draft", () => {
       JSON.stringify({ v: 1, ...defaultLabEvaluationDraft(), followMode: "poll" }),
     );
     expect(loadLabEvaluationDraft("LLM_JUDGE_QA").followMode).toBe("sse");
+  });
+
+  it("sanitizes P13/P14 from RAG draft on load and persists cleaned selection", () => {
+    saveLabEvaluationDraft("RAG_PRESET_END_TO_END", {
+      ...defaultLabEvaluationDraft(),
+      datasetId: "ds-rag",
+      selectedExperimentalPresetCodes: ["P0", "P13", "P14"],
+    });
+    const { draft, removedPresets } = loadLabEvaluationDraftWithSanitationReport("RAG_PRESET_END_TO_END");
+    expect(removedPresets).toEqual(["P13", "P14"]);
+    expect(draft.selectedExperimentalPresetCodes).toEqual(["P0"]);
+    expect(loadLabEvaluationDraft("RAG_PRESET_END_TO_END").selectedExperimentalPresetCodes).toEqual(["P0"]);
   });
 
   it("flags presets unknown vs catalog", () => {

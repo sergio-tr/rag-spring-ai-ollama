@@ -5,13 +5,14 @@ import {
   computeLabEvaluationDraftWarnings,
   defaultLabEvaluationDraft,
   labEvaluationDraftStorageKey,
-  loadLabEvaluationDraft,
+  loadLabEvaluationDraftWithSanitationReport,
   saveLabEvaluationDraft,
   type LabEvaluationDraftKind,
   type LabEvaluationDraftStored,
   type LabEvaluationDraftWarnings,
 } from "@/features/lab/lib/lab-evaluation-draft";
-import type { ExperimentalDatasetListItemDto } from "@/types/api";
+import { sanitizeLabBenchmarkDraftPresetCodes } from "@/features/lab/lib/experimental-preset-selection";
+import type { ExperimentalDatasetListItemDto, ExperimentalPresetCatalogItemDto } from "@/types/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type LabEvaluationDraftPatch =
@@ -26,6 +27,7 @@ export type UseLabEvaluationDraftValidationInput = {
   availableEmbeddingModelIds: string[];
   catalogPresetCodes: string[];
   presetsCatalogReady: boolean;
+  catalogPresets?: ExperimentalPresetCatalogItemDto[];
 };
 
 function withoutStorageVersion(stored: LabEvaluationDraftStored): Omit<LabEvaluationDraftStored, "v"> {
@@ -45,6 +47,17 @@ function withoutStorageVersion(stored: LabEvaluationDraftStored): Omit<LabEvalua
   };
 }
 
+function initialDraftState(kind: LabEvaluationDraftKind): {
+  draft: Omit<LabEvaluationDraftStored, "v">;
+  sanitizedRemovedPresets: string[];
+} {
+  const { draft: loaded, removedPresets } = loadLabEvaluationDraftWithSanitationReport(kind);
+  return {
+    draft: withoutStorageVersion(loaded),
+    sanitizedRemovedPresets: removedPresets,
+  };
+}
+
 /**
  * Persists Lab evaluation form drafts per benchmark kind in {@code localStorage}
  * under {@code lab:evaluation-draft:v1:{kind}}.
@@ -53,13 +66,44 @@ export function useLabEvaluationDraft(
   kind: LabEvaluationDraftKind,
   validation: UseLabEvaluationDraftValidationInput,
 ) {
-  const [draft, setDraft] = useState<Omit<LabEvaluationDraftStored, "v">>(() => {
-    return withoutStorageVersion(loadLabEvaluationDraft(kind));
-  });
+  const [initial] = useState(() => initialDraftState(kind));
+  const [draft, setDraft] = useState(initial.draft);
+  const [sanitizedRemovedPresets, setSanitizedRemovedPresets] = useState(initial.sanitizedRemovedPresets);
 
   useEffect(() => {
     saveLabEvaluationDraft(kind, draft);
   }, [kind, draft]);
+
+  useEffect(() => {
+    if (kind !== "RAG_PRESET_END_TO_END" || !validation.presetsCatalogReady) {
+      return;
+    }
+    const { selected, removed } = sanitizeLabBenchmarkDraftPresetCodes(
+      draft.selectedExperimentalPresetCodes,
+      validation.catalogPresets,
+      true,
+    );
+    if (removed.length === 0) {
+      return;
+    }
+    queueMicrotask(() => {
+      setSanitizedRemovedPresets((prev) => Array.from(new Set([...prev, ...removed])));
+      setDraft((prev) => {
+        if (
+          prev.selectedExperimentalPresetCodes.length === selected.length &&
+          prev.selectedExperimentalPresetCodes.every((code, index) => code === selected[index])
+        ) {
+          return prev;
+        }
+        return { ...prev, selectedExperimentalPresetCodes: selected };
+      });
+    });
+  }, [
+    kind,
+    draft.selectedExperimentalPresetCodes,
+    validation.catalogPresets,
+    validation.presetsCatalogReady,
+  ]);
 
   const warnings: LabEvaluationDraftWarnings = useMemo(
     () =>
@@ -95,6 +139,7 @@ export function useLabEvaluationDraft(
     clearLabEvaluationDraftStorage(kind);
     const next = { ...defaultLabEvaluationDraft(), explicitDraftClear: true };
     setDraft(next);
+    setSanitizedRemovedPresets([]);
   }, [kind]);
 
   const resetToRecommended = useCallback(
@@ -117,6 +162,7 @@ export function useLabEvaluationDraft(
     resetToRecommended,
     setLastEvaluationRunId,
     warnings,
+    sanitizedRemovedPresets,
     storageKey: labEvaluationDraftStorageKey(kind),
   };
 }

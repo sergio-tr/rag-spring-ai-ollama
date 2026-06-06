@@ -74,7 +74,7 @@ describe("lab-benchmark-labels", () => {
     expect(isExtensionPreset("P14")).toBe(true);
     expect(formatGroupLabel("presetCode", "P3", t)).toBe("P3");
     expect(formatOutcomeLabel("CUSTOM", t)).toBe("CUSTOM");
-    expect(formatOutcomeLabel("FAILED", t)).toBe("benchmarkOutcomeLabel.FAILED");
+    expect(formatOutcomeLabel("FAILED", t)).toBe("FAILED");
     expect(isNotAvailable("NOT_AVAILABLE")).toBe(true);
   });
 

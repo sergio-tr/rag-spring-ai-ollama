@@ -130,6 +130,24 @@ export const FORBIDDEN_LAB_UI_PATTERNS: RegExp[] = [
   /embeddingDownstreamRag/i,
   /SSE:\s*\/lab/i,
   /\/api\/v5\/lab\/jobs\//i,
+  /\bRAG_PRESET_END_TO_END\b/,
+  /\bLLM_JUDGE_QA\b/,
+  /\bEMBEDDING_RETRIEVAL\b/,
+  /\bEMBEDDING_CAMPAIGN_STORE_DIMENSION\b/,
+  /Missing preferred/i,
+  /missing preferred/i,
+  /1024-dimension vector store/i,
+  /\bFUTURE_MULTI_TURN_NOT_SELECTABLE\b/,
+  /\bREQUIRES_MULTI_TURN\b/,
+  /\bLLM_MODEL_BASELINE\b/,
+  /\bRAG_PRESET_BENCHMARK\b/,
+  /\bM9\b|\bM10\b|\bM11\b|\bM12\b/i,
+  /\bTFG\b/i,
+  /claim map/i,
+  /\.cursor/i,
+  /Jaeger verified/i,
+  /RAG ladder complete/i,
+  /Do not claim/i,
 ];
 
 export async function collectVisibleMainText(page: Page): Promise<string> {
@@ -407,8 +425,8 @@ export async function selectLlmModelsForComparison(page: Page, count: number): P
  */
 const EMBEDDING_CAMPAIGN_INCOMPATIBLE_PATTERN = /nomic-embed|qwen3-embedding/i;
 
-/** Canonical 1024-dim pair for embedding campaign closure E2E (both probe as 1024 in Ollama). */
-export const EMBEDDING_CAMPAIGN_PREFERRED_MODEL_IDS = [
+/** E2E-only bootstrap tags when closure needs ≥2 store-compatible embeddings (not user requirements). */
+export const EMBEDDING_E2E_BOOTSTRAP_MODEL_IDS = [
   "mxbai-embed-large:latest",
   "bge-m3:latest",
 ] as const;
@@ -455,8 +473,6 @@ export type EmbeddingModelValidationSnapshot = {
   selectableCompatibleEmbeddingIds: string[];
   allowlistEmbeddingNames: string[];
   ollamaTags: string[];
-  preferred: string[];
-  missingPreferred: string[];
   excludedIncompatibleTags: string[];
   expectedStoreDimension: number;
   probeByModel: Record<string, { dimension: number | null; probeOk: boolean; dimensionCompatible: boolean }>;
@@ -465,10 +481,8 @@ export type EmbeddingModelValidationSnapshot = {
 
 /** Collects allowlist, Ollama tags, dimension probes, and 1024-dim-compatible selectable embeddings. */
 export async function collectEmbeddingModelValidation(page: Page): Promise<EmbeddingModelValidationSnapshot> {
-  const preferred = [...EMBEDDING_CAMPAIGN_PREFERRED_MODEL_IDS];
   const catalog = await fetchModelsCatalogSnapshot(page);
-  const selectableAll = await fetchSelectableEmbeddingModelIds(page);
-  const selectableCompatibleEmbeddingIds = filterCampaignCompatibleEmbeddingIds(selectableAll);
+  const selectableCompatibleEmbeddingIds = await fetchSelectableEmbeddingModelIds(page);
   const ollamaTags = listOllamaTagsViaDockerExec();
   const installed = ollamaTags.length > 0 ? ollamaTags : catalog.installedModelNames;
   const excludedIncompatibleTags = catalog.allowlistEmbeddingNames.filter(
@@ -476,7 +490,7 @@ export async function collectEmbeddingModelValidation(page: Page): Promise<Embed
   );
 
   const probeByModel: EmbeddingModelValidationSnapshot["probeByModel"] = {};
-  for (const modelId of preferred) {
+  for (const modelId of selectableCompatibleEmbeddingIds) {
     const dimension = installed.some((t) => t === modelId || t.startsWith(modelId.split(":")[0]))
       ? probeEmbeddingDimensionViaDockerExec(modelId)
       : null;
@@ -487,7 +501,6 @@ export async function collectEmbeddingModelValidation(page: Page): Promise<Embed
     };
   }
 
-  const missingPreferred = preferred.filter((id) => !selectableCompatibleEmbeddingIds.includes(id));
   const status: EmbeddingModelValidationSnapshot["status"] =
     selectableCompatibleEmbeddingIds.length >= 2 ? "READY" : "BLOCKED_BY_MODEL_AVAILABILITY";
 
@@ -496,8 +509,6 @@ export async function collectEmbeddingModelValidation(page: Page): Promise<Embed
     selectableCompatibleEmbeddingIds,
     allowlistEmbeddingNames: catalog.allowlistEmbeddingNames,
     ollamaTags: installed,
-    preferred,
-    missingPreferred,
     excludedIncompatibleTags,
     expectedStoreDimension: EMBEDDING_STORE_DIMENSION,
     probeByModel,
@@ -535,20 +546,20 @@ export async function ensureEmbeddingCampaignModelsReady(
   page: Page,
   minCount = 2,
 ): Promise<string[]> {
-  const preferred = [...EMBEDDING_CAMPAIGN_PREFERRED_MODEL_IDS];
-  let compatible = filterCampaignCompatibleEmbeddingIds(await fetchSelectableEmbeddingModelIds(page));
+  const bootstrap = [...EMBEDDING_E2E_BOOTSTRAP_MODEL_IDS];
+  let compatible = await fetchSelectableEmbeddingModelIds(page);
 
   if (compatible.length < minCount) {
     try {
-      ensureEmbeddingModelsAllowlisted(preferred);
+      ensureEmbeddingModelsAllowlisted(bootstrap);
     } catch {
       /* allowlist bootstrap is best-effort when Postgres is not reachable from the test runner */
     }
-    compatible = filterCampaignCompatibleEmbeddingIds(await fetchSelectableEmbeddingModelIds(page));
+    compatible = await fetchSelectableEmbeddingModelIds(page);
   }
 
   if (compatible.length < minCount) {
-    for (const model of preferred) {
+    for (const model of bootstrap) {
       if (compatible.includes(model)) continue;
       try {
         pullOllamaModelViaDockerExec(model);
@@ -559,23 +570,23 @@ export async function ensureEmbeddingCampaignModelsReady(
     await expect
       .poll(
         async () => {
-          compatible = filterCampaignCompatibleEmbeddingIds(await fetchSelectableEmbeddingModelIds(page));
+          compatible = await fetchSelectableEmbeddingModelIds(page);
           return compatible.length;
         },
         { timeout: 120_000, intervals: [2000, 5000, 10_000] },
       )
       .toBeGreaterThanOrEqual(minCount)
       .catch(() => undefined);
-    compatible = filterCampaignCompatibleEmbeddingIds(await fetchSelectableEmbeddingModelIds(page));
+    compatible = await fetchSelectableEmbeddingModelIds(page);
   }
 
   expect(
     compatible.length,
-    `BLOCKED_BY_MODEL_AVAILABILITY: need at least ${minCount} embedding models compatible with ${EMBEDDING_STORE_DIMENSION}-dim vector store (exclude nomic/qwen3). ` +
-      `Found: [${compatible.join(", ") || "none"}]. Ensure ${preferred.join(", ")} are allowlisted, probed OK in Ollama, and installed.`,
+    `BLOCKED_BY_MODEL_AVAILABILITY: need at least ${minCount} store-compatible embedding models for comparison. ` +
+      `Found: [${compatible.join(", ") || "none"}].`,
   ).toBeGreaterThanOrEqual(minCount);
 
-  const picked = preferred.filter((id) => compatible.includes(id));
+  const picked = bootstrap.filter((id) => compatible.includes(id));
   return (picked.length >= minCount ? picked : compatible).slice(0, minCount);
 }
 

@@ -60,6 +60,13 @@ const FORBIDDEN_IN_PRODUCT_MESSAGES = [
   /external appendix/i,
   /single-turn harness/i,
   /m9-lab-experimental-evidence/i,
+  /\bRAG_PRESET_END_TO_END\b/,
+  /\bLLM_JUDGE_QA\b/,
+  /\bEMBEDDING_RETRIEVAL\b/,
+  /\bFUTURE_MULTI_TURN_NOT_SELECTABLE\b/,
+  /\bLLM_MODEL_BASELINE\b/,
+  /\bRAG_PRESET_BENCHMARK\b/,
+  /\bEXECUTED\b.*\bSKIPPED\b.*\bFAILED\b/,
 ];
 
 const FORBIDDEN_IN_LAB_MESSAGES = FORBIDDEN_IN_PRODUCT_MESSAGES;

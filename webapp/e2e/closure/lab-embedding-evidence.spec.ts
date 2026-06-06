@@ -64,7 +64,7 @@ test.describe("Closure LAB embedding model evidence @closure @fullstack", () => 
 
     if (modelValidation.status === "BLOCKED_BY_MODEL_AVAILABILITY") {
       evidenceLog(
-        `BLOCKED_BY_MODEL_AVAILABILITY missingPreferred=[${modelValidation.missingPreferred.join(", ")}]`,
+        `BLOCKED_BY_MODEL_AVAILABILITY compatible=[${modelValidation.selectableCompatibleEmbeddingIds.join(", ")}]`,
       );
     }
 

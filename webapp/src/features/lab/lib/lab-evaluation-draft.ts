@@ -1,5 +1,6 @@
 import type { LabJobFollowMode } from "@/lib/lab-job-follow";
 import type { BenchmarkKind, ExperimentalDatasetListItemDto } from "@/types/api";
+import { sanitizeLabBenchmarkDraftPresetCodes } from "@/features/lab/lib/experimental-preset-selection";
 
 export type LabEvaluationDraftKind = Extract<
   BenchmarkKind,
@@ -91,6 +92,49 @@ function migrateV1FormParsed(kind: LabEvaluationDraftKind, parsed: Record<string
   return base;
 }
 
+function finalizeLoadedDraft(kind: LabEvaluationDraftKind, stored: LabEvaluationDraftStored): LabEvaluationDraftStored {
+  if (kind !== "RAG_PRESET_END_TO_END") {
+    return stored;
+  }
+  const { selected, removed } = sanitizeLabBenchmarkDraftPresetCodes(
+    stored.selectedExperimentalPresetCodes,
+    undefined,
+    false,
+  );
+  if (removed.length === 0) {
+    return stored;
+  }
+  const sanitized: LabEvaluationDraftStored = { ...stored, selectedExperimentalPresetCodes: selected };
+  saveLabEvaluationDraft(kind, sanitized);
+  return sanitized;
+}
+
+/** Loads draft and reports preset codes removed by static single-turn sanitation (P13/P14). */
+export function loadLabEvaluationDraftWithSanitationReport(kind: LabEvaluationDraftKind): {
+  draft: LabEvaluationDraftStored;
+  removedPresets: string[];
+} {
+  const key = labEvaluationDraftStorageKey(kind);
+  let rawCodes: readonly string[] = [];
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<LabEvaluationDraftStored>;
+      if (Array.isArray(parsed.selectedExperimentalPresetCodes)) {
+        rawCodes = parsed.selectedExperimentalPresetCodes.filter((x): x is string => typeof x === "string");
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  const draft = loadLabEvaluationDraft(kind);
+  if (kind !== "RAG_PRESET_END_TO_END") {
+    return { draft, removedPresets: [] };
+  }
+  const { removed } = sanitizeLabBenchmarkDraftPresetCodes(rawCodes, undefined, false);
+  return { draft, removedPresets: removed };
+}
+
 export function loadLabEvaluationDraft(kind: LabEvaluationDraftKind): LabEvaluationDraftStored {
   const key = labEvaluationDraftStorageKey(kind);
   try {
@@ -99,7 +143,7 @@ export function loadLabEvaluationDraft(kind: LabEvaluationDraftKind): LabEvaluat
       const parsed = JSON.parse(rawNew) as Record<string, unknown>;
       if (parsed && typeof parsed === "object" && parsed.v === 1) {
         const d = defaultLabEvaluationDraft();
-        return {
+        return finalizeLoadedDraft(kind, {
           v: 1,
           datasetId: typeof parsed.datasetId === "string" ? parsed.datasetId : parsed.datasetId === null ? null : d.datasetId,
           explicitDraftClear:
@@ -135,7 +179,7 @@ export function loadLabEvaluationDraft(kind: LabEvaluationDraftKind): LabEvaluat
               : parsed.corpusId === null
                 ? null
                 : d.corpusId,
-        };
+        });
       }
     }
 
@@ -147,7 +191,7 @@ export function loadLabEvaluationDraft(kind: LabEvaluationDraftKind): LabEvaluat
       const stored: LabEvaluationDraftStored = { v: 1, ...migrated };
       localStorage.setItem(key, JSON.stringify(stored));
       localStorage.removeItem(v1StorageKey);
-      return stored;
+      return finalizeLoadedDraft(kind, stored);
     }
   } catch {
     // corrupted storage — fall through
