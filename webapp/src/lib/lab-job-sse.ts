@@ -4,6 +4,7 @@ import {
   getRagApiProductPrefix,
   resolveLabJobApiUrl,
   sanitizePlainErrorTextForUi,
+  tryRefreshAccessToken,
 } from "@/lib/api-client";
 import { getAccessToken } from "@/lib/access-token";
 import { currentTraceparent } from "@/lib/trace-session";
@@ -263,11 +264,26 @@ async function consumeSseStream(
 
   options.callbacks?.onConnecting?.();
 
-  const res = await fetch(url, {
-    credentials: "include",
-    headers,
-    signal: options.signal,
-  });
+  const fetchOnce = () =>
+    fetch(url, {
+      credentials: "include",
+      headers,
+      signal: options.signal,
+    });
+
+  let res = await fetchOnce();
+  if (res.status === 401) {
+    const refreshed = await tryRefreshAccessToken();
+    if (refreshed) {
+      const bearerRetry = getAccessToken();
+      if (bearerRetry) {
+        headers.Authorization = `Bearer ${bearerRetry}`;
+      } else {
+        delete headers.Authorization;
+      }
+      res = await fetchOnce();
+    }
+  }
   const contentType = res.headers.get("content-type") ?? "";
   labSseDebug("response", { status: res.status, contentType, url });
   let bodyPreview = "";

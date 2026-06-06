@@ -9,6 +9,7 @@ import { useRouter } from "@/navigation";
 import type { ActiveLabJobDto } from "@/types/api";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
+import { formatBenchmarkKindLabel } from "@/lib/product-copy";
 
 function sectionHref(benchmarkKind: string | null | undefined): string {
   const k = (benchmarkKind ?? "").toUpperCase();
@@ -51,8 +52,7 @@ function ActiveJobRow(props: Readonly<{
   }
 
   const label = t("activeJobBanner", {
-    jobId: job.jobId,
-    benchmarkKind: job.benchmarkKind ?? "unknown",
+    benchmarkLabel: formatBenchmarkKindLabel(job.benchmarkKind, t),
     status: job.status,
   });
 

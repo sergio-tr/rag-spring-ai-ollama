@@ -1,6 +1,7 @@
 "use client";
 
 import type { LabJobSectionKey, PersistedLabJobRecord } from "@/features/lab/lib/lab-job-persistence";
+import { pickLatestRecordForSection } from "@/features/lab/lib/lab-job-persistence";
 import type { LabJobFollowMode } from "@/lib/lab-job-follow";
 import type { ActiveLabJobDto, BenchmarkKind, LabJobAcceptedDto } from "@/types/api";
 import { useMemo } from "react";
@@ -124,6 +125,39 @@ function toCandidate(
   };
 }
 
+export function sessionRecordToCandidate(
+  record: PersistedLabJobRecord,
+  sectionKey: LabJobSectionKey,
+  benchmarkKind: BenchmarkKind,
+  resolvedFollowMode: LabJobFollowMode,
+): LabActiveJobResumeCandidate {
+  return {
+    jobId: record.jobId,
+    evaluationRunId: record.evaluationRunId?.trim() ?? "",
+    sectionKey,
+    benchmarkKind,
+    projectId: null,
+    accepted: record.accepted,
+    resolvedFollowMode,
+    orderingTimestampMs: record.lastUpdatedMs,
+    source: "backend-active-job",
+  };
+}
+
+function pickSessionOnlyRecord(
+  sectionKey: LabJobSectionKey,
+  sessionRecords: readonly PersistedLabJobRecord[],
+): PersistedLabJobRecord | null {
+  const latest = pickLatestRecordForSection(sessionRecords, sectionKey);
+  if (!latest || latest.staleNotFound || latest.dismissedTerminal) {
+    return null;
+  }
+  if (latest.lastStatus?.terminal === true) {
+    return null;
+  }
+  return latest;
+}
+
 /**
  * Deterministic recovery decision: backend active jobs win over session cache when both exist.
  * Does not perform network I/O.
@@ -147,6 +181,14 @@ export function computeLabActiveJobRecovery(params: LabActiveJobRecoveryInputs):
   const matched = jobs.filter((j) => activeJobMatchesCard(j, params.benchmarkKind, params.activeProjectId));
 
   if (matched.length === 0) {
+    const sessionRecord = pickSessionOnlyRecord(params.sectionKey, params.sessionRecords);
+    if (sessionRecord) {
+      return {
+        kind: "session_only",
+        record: sessionRecord,
+        reason: "session_inflight_no_backend_active_job",
+      };
+    }
     return { kind: "none" };
   }
 

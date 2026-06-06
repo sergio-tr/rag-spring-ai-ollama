@@ -155,7 +155,7 @@ describe("computeLabActiveJobRecovery", () => {
     }
   });
 
-  it("returns none when no backend job matches even if session has non-terminal row", () => {
+  it("returns session_only when backend has no match but session has in-flight row", () => {
     const rec = sessionRec({ jobId: "sess-1", sectionKey: "evaluation-llm" });
     const d = computeLabActiveJobRecovery({
       sectionKey: "evaluation-llm",
@@ -167,7 +167,10 @@ describe("computeLabActiveJobRecovery", () => {
       backendActiveJobsError: null,
       sessionRecords: [rec],
     });
-    expect(d.kind).toBe("none");
+    expect(d.kind).toBe("session_only");
+    if (d.kind === "session_only") {
+      expect(d.record.jobId).toBe("sess-1");
+    }
   });
 
   it("returns none when no backend job matches and session has no non-terminal rows", () => {

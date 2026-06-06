@@ -42,7 +42,7 @@ describe("LabActiveJobsBanner", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("routes to the matching section based on benchmarkKind", () => {
+  it("routes to the matching section and shows human-readable benchmark label", () => {
     jobsMock.useActiveLabJobs.mockReturnValue({
       isLoading: false,
       data: [{ jobId: "j1", benchmarkKind: "RAG_PRESET_END_TO_END", status: "RUNNING", cancellable: false }],
@@ -53,6 +53,8 @@ describe("LabActiveJobsBanner", () => {
         <LabActiveJobsBanner />
       </IntlTestProvider>,
     );
+    expect(screen.getByTestId("lab-active-job-row-j1")).toHaveTextContent(/RAG preset evaluation/i);
+    expect(screen.queryByText(/RAG_PRESET_END_TO_END/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /view progress/i }));
     expect(routerMock.push).toHaveBeenCalledWith("/lab/evaluation/rag");
   });

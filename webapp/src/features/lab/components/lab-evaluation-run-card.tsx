@@ -16,6 +16,7 @@ import { LabJobStopConfirmDialog } from "@/features/lab/components/lab-job-stop-
 import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
 import { activeJobMatchesCard } from "@/features/lab/hooks/use-lab-active-job-recovery";
 import { useAutoResumeLabJobs } from "@/features/lab/hooks/use-auto-resume-lab-jobs";
+import { useLatestLabBenchmarkRun } from "@/features/lab/hooks/use-latest-lab-benchmark-run";
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
 import {
@@ -34,7 +35,9 @@ import {
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 import { useModelsByType } from "@/features/chat/hooks/use-models-by-type";
 import {
+  asyncTaskDtoFromSnapshot,
   type LabJobSectionKey,
+  type PersistedLabJobRecord,
 } from "@/features/lab/lib/lab-job-persistence";
 import {
   createLabJobTraceDedupe,
@@ -45,10 +48,7 @@ import {
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
 import { resolveEmbeddingCampaignIndexSnapshotIds } from "@/features/lab/lib/embedding-campaign-index-snapshots";
 import {
-  EMBEDDING_CAMPAIGN_PREFERRED_MODEL_IDS,
-  EMBEDDING_CAMPAIGN_STORE_DIMENSION,
   filterCampaignCompatibleEmbeddingIds,
-  missingPreferredEmbeddingModels,
 } from "@/features/lab/lib/embedding-campaign-preferred-models";
 import {
   LLM_CAMPAIGN_PREFERRED_MODEL_IDS,
@@ -56,6 +56,7 @@ import {
 } from "@/features/lab/lib/llm-campaign-preferred-models";
 import { mapKnowledgeBaseApiError } from "@/features/lab/lib/evaluation-corpus-upload";
 import { extractTechnicalErrorCode } from "@/lib/user-facing-error-messages";
+import { formatBenchmarkKindLabel, formatPresetSupportMessage } from "@/lib/product-copy";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import { beginTraceSession, endTraceSession } from "@/lib/trace-session";
 import { useAppStore } from "@/store/app.store";
@@ -65,6 +66,7 @@ import type {
   BenchmarkKind,
   ExperimentalDatasetListItemDto,
   LabJobAcceptedDto,
+  LatestLabRunRecoveryDto,
   StartBenchmarkRunRequest,
 } from "@/types/api";
 import { useTranslations } from "next-intl";
@@ -180,6 +182,39 @@ function taskHasViewableResults(taskStatus: AsyncTaskStatusDto | null): boolean 
   return st === "SUCCEEDED" || st === "CANCELLED" || st === "CANCELED";
 }
 
+function taskStatusFromLatestRun(
+  dto: LatestLabRunRecoveryDto,
+  taskTypeHint: string,
+): AsyncTaskStatusDto {
+  const jobId = dto.jobId?.trim() || dto.evaluationRunId;
+  return {
+    id: jobId,
+    taskType: taskTypeHint,
+    status: dto.status?.trim() || "UNKNOWN",
+    progressText: null,
+    result: dto.result ?? null,
+    errorMessage: null,
+    terminal: dto.terminal,
+    createdAt: "",
+    updatedAt: "",
+    startedAt: null,
+    completedAt: dto.terminal ? "" : null,
+    failureCode: null,
+  };
+}
+
+function labJobAcceptedFromLatestRun(dto: LatestLabRunRecoveryDto): LabJobAcceptedDto | null {
+  const jobId = dto.jobId?.trim();
+  if (!jobId) return null;
+  const pollPath = dto.pollPath?.trim() || `/lab/jobs/${jobId}`;
+  return {
+    jobId,
+    status: dto.status?.trim() || "UNKNOWN",
+    pollPath: pollPath as string,
+    streamPath: (dto.streamPath?.trim() || `${pollPath}/events`) as string,
+  };
+}
+
 /**
  * Shared lab benchmark runner (async POST + SSE live progress) for LLM, embedding retrieval, and RAG preset benchmarks.
  */
@@ -218,6 +253,9 @@ export function LabEvaluationRunCard({
   const abortRef = useRef<AbortController | null>(null);
   const traceDedupeRef = useRef(createLabJobTraceDedupe());
   const mountedEvalCardRef = useRef(true);
+  const latestRunAppliedRef = useRef(false);
+  const resumeNonce = useLabJobSessionStore((s) => s.resumeNonce);
+  const sessionRecordForSection = useLabJobSessionStore((s) => s.pickLatestForSection(sectionKey));
 
   const compatibleRows = useMemo(() => {
     const allowed = compatibleExperimentalTypes(benchmarkKind);
@@ -259,10 +297,6 @@ export function LabEvaluationRunCard({
     if (benchmarkKind !== "EMBEDDING_RETRIEVAL") return false;
     return compatibleEmbeddingModels.length > 0 && compatibleEmbeddingModels.length < 2;
   }, [benchmarkKind, compatibleEmbeddingModels.length]);
-  const missingPreferredEmbeddingTags = useMemo(
-    () => missingPreferredEmbeddingModels(compatibleEmbeddingModels, EMBEDDING_CAMPAIGN_PREFERRED_MODEL_IDS),
-    [compatibleEmbeddingModels],
-  );
 
   const setUserFacingErr = useCallback(
     (raw: string | null | undefined) => {
@@ -287,6 +321,7 @@ export function LabEvaluationRunCard({
       availableEmbeddingModelIds: availableEmbeddingModels,
       catalogPresetCodes: (experimentalPresets.data ?? []).map((p) => p.code),
       presetsCatalogReady: experimentalPresets.isSuccess,
+      catalogPresets: experimentalPresets.data ?? [],
     }),
     [
       compatibleRows,
@@ -299,7 +334,7 @@ export function LabEvaluationRunCard({
     ],
   );
 
-  const { draft, patchDraft, clearDraft, resetToRecommended, setLastEvaluationRunId, warnings } =
+  const { draft, patchDraft, clearDraft, resetToRecommended, setLastEvaluationRunId, warnings, sanitizedRemovedPresets } =
     useLabEvaluationDraft(benchmarkKind as LabEvaluationDraftKind, draftValidation);
 
   useEffect(() => {
@@ -356,6 +391,11 @@ export function LabEvaluationRunCard({
       if (e instanceof ApiError && e.status === 404 && accepted?.jobId) {
         useLabJobSessionStore.getState().markLabJobStaleNotFound(accepted.jobId);
         setErr(t("jobRecoveryStaleShort"));
+      } else if (
+        (e instanceof ApiError && e.status === 401) ||
+        (e instanceof Error && "status" in e && Number((e as Error & { status?: number }).status) === 401)
+      ) {
+        setErr(t("jobRecoverySessionExpired"));
       } else if (e instanceof Error) {
         setUserFacingErr(e.message || t("evalError"));
       } else {
@@ -378,6 +418,37 @@ export function LabEvaluationRunCard({
     },
     [t],
   );
+
+  const resumeFromPersisted = useCallback(
+    async (rec: PersistedLabJobRecord) => {
+      if (rec.lastStatus?.terminal === true) {
+        setAccepted(rec.accepted);
+        setEvaluationRunId(rec.evaluationRunId ?? null);
+        const snapStatus = asyncTaskDtoFromSnapshot(rec.jobId, rec.lastStatus);
+        if (snapStatus) {
+          setTaskStatus(snapStatus);
+          setResult(snapStatus.result);
+        }
+        setRunning(false);
+        setWatchLive(false);
+        return;
+      }
+      await beginLiveWatch({
+        accepted: rec.accepted,
+        evaluationRunId: rec.evaluationRunId,
+        jobId: rec.jobId,
+      });
+    },
+    [beginLiveWatch],
+  );
+
+  useEffect(() => {
+    const rec = useLabJobSessionStore.getState().consumePendingResume(sectionKey);
+    if (!rec) return;
+    queueMicrotask(() => {
+      void resumeFromPersisted(rec);
+    });
+  }, [resumeNonce, resumeFromPersisted, sectionKey]);
 
   const labRecovery = useAutoResumeLabJobs({
     sectionKey,
@@ -412,6 +483,51 @@ export function LabEvaluationRunCard({
       }
     },
   });
+
+  const latestRunQueryEnabled =
+    labRecovery.decision.kind === "none" &&
+    !labRecovery.activeJobsLoading &&
+    !running &&
+    !accepted &&
+    !evaluationRunId;
+
+  const latestRun = useLatestLabBenchmarkRun({
+    benchmarkKind,
+    projectId: activeProject?.id ?? null,
+    enabled: latestRunQueryEnabled,
+  });
+
+  useEffect(() => {
+    if (!latestRun.data || latestRunAppliedRef.current || running) {
+      return;
+    }
+    const dto = latestRun.data;
+    latestRunAppliedRef.current = true;
+    queueMicrotask(() => {
+      setEvaluationRunId(dto.evaluationRunId);
+      setLastEvaluationRunId(dto.evaluationRunId);
+      const status = taskStatusFromLatestRun(dto, taskTypeHint);
+      setTaskStatus(status);
+      if (dto.terminal) {
+        const acceptedFromLatest = labJobAcceptedFromLatestRun(dto);
+        if (acceptedFromLatest) {
+          setAccepted(acceptedFromLatest);
+        }
+        setResult(dto.result);
+        setRunning(false);
+        setWatchLive(false);
+        return;
+      }
+      const acceptedFromLatest = labJobAcceptedFromLatestRun(dto);
+      if (acceptedFromLatest) {
+        void beginLiveWatch({
+          accepted: acceptedFromLatest,
+          evaluationRunId: dto.evaluationRunId,
+          jobId: acceptedFromLatest.jobId,
+        });
+      }
+    });
+  }, [beginLiveWatch, latestRun.data, running, setLastEvaluationRunId, taskTypeHint]);
 
   const needsEvaluationCorpus =
     benchmarkKind === "RAG_PRESET_END_TO_END" || benchmarkKind === "EMBEDDING_RETRIEVAL";
@@ -456,6 +572,13 @@ export function LabEvaluationRunCard({
 
   const hasEvaluationCorpus = Boolean(resolvedCorpusId);
   const corpusPrimaryBlocker = evaluationCorpus.readiness?.primaryBlocker ?? null;
+  const corpusSnapshotBlocker =
+    evaluationCorpus.readiness?.snapshotBlocker &&
+    !evaluationCorpus.readiness?.primaryBlocker &&
+    evaluationCorpus.readiness?.reindexRequired &&
+    !evaluationCorpus.readiness?.activeSnapshotId
+      ? evaluationCorpus.readiness.snapshotBlocker
+      : null;
   const corpusBlocksRun =
     needsEvaluationCorpus &&
     (!hasEvaluationCorpus ||
@@ -478,22 +601,22 @@ export function LabEvaluationRunCard({
   const recommendedDraftPartial = useMemo(
     () => ({
       datasetId: defaultDataset?.id ?? null,
-      embeddingModelId: availableEmbeddingModels.includes(LAB_DEFAULT_EMBEDDING_MODEL_ID)
+      embeddingModelId: compatibleEmbeddingModels.includes(LAB_DEFAULT_EMBEDDING_MODEL_ID)
         ? LAB_DEFAULT_EMBEDDING_MODEL_ID
-        : (availableEmbeddingModels[0] ?? ""),
-      embeddingModelIds: availableEmbeddingModels.includes(LAB_DEFAULT_EMBEDDING_MODEL_ID)
+        : (compatibleEmbeddingModels[0] ?? ""),
+      embeddingModelIds: compatibleEmbeddingModels.includes(LAB_DEFAULT_EMBEDDING_MODEL_ID)
         ? [LAB_DEFAULT_EMBEDDING_MODEL_ID]
         : [],
     }),
-    [defaultDataset?.id, availableEmbeddingModels],
+    [defaultDataset?.id, compatibleEmbeddingModels],
   );
 
   useEffect(() => {
     if (benchmarkKind !== "EMBEDDING_RETRIEVAL" && benchmarkKind !== "RAG_PRESET_END_TO_END") return;
     if (draft.embeddingModelId.trim() !== "") return;
-    if (!availableEmbeddingModels.includes(LAB_DEFAULT_EMBEDDING_MODEL_ID)) return;
+    if (!compatibleEmbeddingModels.includes(LAB_DEFAULT_EMBEDDING_MODEL_ID)) return;
     patchDraft({ embeddingModelId: LAB_DEFAULT_EMBEDDING_MODEL_ID });
-  }, [benchmarkKind, draft.embeddingModelId, availableEmbeddingModels, patchDraft]);
+  }, [benchmarkKind, draft.embeddingModelId, compatibleEmbeddingModels, patchDraft]);
 
   useEffect(() => {
     if (draft.datasetId != null || draft.explicitDraftClear) return;
@@ -859,8 +982,9 @@ export function LabEvaluationRunCard({
               <p className="text-muted-foreground text-xs leading-relaxed">{t("adrDisclaimer")}</p>
             </CompactHelp>
             <p className="text-muted-foreground text-xs">{t("labAdvancedEvalHelp")}</p>
-            <p className="text-muted-foreground text-xs">
-              {t("labDeveloperEvalEndpoint", { kind: benchmarkKind })}
+            <p className="text-muted-foreground text-xs">{t("labEvalTechnicalHint")}</p>
+            <p className="text-muted-foreground text-xs" data-testid="lab-eval-benchmark-kind-label">
+              {formatBenchmarkKindLabel(benchmarkKind, t)}
             </p>
             <p className="text-muted-foreground text-xs">{t("benchmarkPromptProfileInfo")}</p>
             {benchmarkKind === "RAG_PRESET_END_TO_END" ? (
@@ -900,6 +1024,16 @@ export function LabEvaluationRunCard({
             </output>
           )}
 
+          {corpusSnapshotBlocker && needsEvaluationCorpus ? (
+            <output
+              role="status"
+              data-testid="lab-corpus-index-hint"
+              className="block text-muted-foreground text-xs"
+            >
+              {mapKnowledgeBaseApiError(corpusSnapshotBlocker, t, t("userError_REINDEX_REQUIRED"))}
+            </output>
+          ) : null}
+
           {corpusBlocksRun && needsEvaluationCorpus ? (
             <output
               role="status"
@@ -915,6 +1049,16 @@ export function LabEvaluationRunCard({
                     ),
                   })
                 : t("benchmarkCorpusNotReady")}
+            </output>
+          ) : null}
+
+          {sanitizedRemovedPresets.length > 0 ? (
+            <output
+              role="status"
+              data-testid="lab-draft-presets-sanitized"
+              className="block rounded-md border border-sky-500/40 bg-sky-500/10 p-3 text-sky-950 text-sm dark:text-sky-100"
+            >
+              {t("evalDraftPresetsSanitized")}
             </output>
           ) : null}
 
@@ -1141,11 +1285,11 @@ export function LabEvaluationRunCard({
 
           {(benchmarkKind === "EMBEDDING_RETRIEVAL" || benchmarkKind === "RAG_PRESET_END_TO_END") && (
             <div className="space-y-2">
-              {benchmarkKind === "EMBEDDING_RETRIEVAL" && availableEmbeddingModels.length > 0 ? (
+              {benchmarkKind === "EMBEDDING_RETRIEVAL" && compatibleEmbeddingModels.length > 0 ? (
                 <ModelCheckboxGroup
                   id={`lab-emb-model-${sectionKey}`}
                   label={t("benchmarkEmbeddingModelOptional")}
-                  availableModelIds={availableEmbeddingModels}
+                  availableModelIds={compatibleEmbeddingModels}
                   selectedIds={draft.embeddingModelIds}
                   disabled={running}
                   testIdPrefix="lab-benchmark-embedding-models"
@@ -1160,7 +1304,7 @@ export function LabEvaluationRunCard({
                     data-testid="lab-benchmark-embedding-model"
                     className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                     value={draft.embeddingModelId}
-                    disabled={running || availableEmbeddingModels.length === 0}
+                    disabled={running || compatibleEmbeddingModels.length === 0}
                     onChange={(e) => patchDraft({ embeddingModelId: e.target.value })}
                   >
                     <option value="">{t("benchmarkEmbeddingModelPlaceholder")}</option>
@@ -1169,13 +1313,13 @@ export function LabEvaluationRunCard({
                         {draft.embeddingModelId}
                       </option>
                     ) : null}
-                    {availableEmbeddingModels.map((name) => (
+                    {compatibleEmbeddingModels.map((name) => (
                       <option key={name} value={name}>
                         {name}
                       </option>
                     ))}
                   </select>
-                  {availableEmbeddingModels.length === 0 ? (
+                  {compatibleEmbeddingModels.length === 0 ? (
                     <output className="text-muted-foreground block text-xs">{t("noEmbeddingModelsAvailable")}</output>
                   ) : null}
                 </>
@@ -1262,10 +1406,12 @@ export function LabEvaluationRunCard({
                       </span>
                       {!labSelectable ? (
                         <span className="text-destructive block text-xs" data-testid={`lab-preset-blocked-${p.code}`}>
-                          {p.reasonIfUnsupported?.trim() || p.supportStatus || t("labConfigUnsupportedPreset")}
+                          {formatPresetSupportMessage(p.supportStatus, p.reasonIfUnsupported, t)}
                         </span>
                       ) : p.supportStatus && p.supportStatus !== "EXECUTABLE" ? (
-                        <span className="text-muted-foreground block text-xs">{p.supportStatus}</span>
+                        <span className="text-muted-foreground block text-xs">
+                          {formatPresetSupportMessage(p.supportStatus, p.reasonIfUnsupported, t)}
+                        </span>
                       ) : null}
                     </label>
                   );
@@ -1368,11 +1514,7 @@ export function LabEvaluationRunCard({
               data-testid="lab-embedding-model-availability-blocked"
               className="block rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-950 dark:text-amber-100"
             >
-              {t("labEmbeddingBlockedByModelAvailability", {
-                dimension: String(EMBEDDING_CAMPAIGN_STORE_DIMENSION),
-                available: compatibleEmbeddingModels.join(", ") || "—",
-                missing: missingPreferredEmbeddingTags.join(", ") || "—",
-              })}
+              {t("labEmbeddingBlockedByModelAvailability")}
             </output>
           ) : null}
 
@@ -1413,6 +1555,24 @@ export function LabEvaluationRunCard({
               watchElapsedSeconds={watchLive ? watchElapsedSeconds : undefined}
               recentEvents={watchLive ? liveJob.recentEvents : []}
               progressSnapshot={watchLive ? liveJob.progressSnapshot : undefined}
+              showResumeFallback={
+                !watchLive &&
+                !!accepted &&
+                !!taskStatus &&
+                taskStatus.terminal !== true &&
+                ((sessionRecordForSection?.jobId === accepted.jobId &&
+                  sessionRecordForSection.stoppedWatching === true) ||
+                  liveJob.connectionState === "configuration_error")
+              }
+              onResumeLive={() => {
+                if (!accepted) return;
+                void beginLiveWatch({
+                  accepted,
+                  evaluationRunId: evaluationRunId ?? undefined,
+                  jobId: accepted.jobId,
+                });
+                liveJob.resume();
+              }}
             />
           )}
 

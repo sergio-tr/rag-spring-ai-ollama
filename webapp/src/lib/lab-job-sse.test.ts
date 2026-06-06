@@ -135,6 +135,37 @@ describe("streamLabJob", () => {
     expect(h.Accept).toBe("text/event-stream");
   });
 
+  it("retries SSE once after 401 when token refresh succeeds", async () => {
+    vi.spyOn(apiClient, "tryRefreshAccessToken").mockResolvedValue(true);
+    let calls = 0;
+    vi.spyOn(accessToken, "getAccessToken").mockImplementation(() => (calls === 0 ? "expired" : "fresh"));
+    const fetchMock = vi.fn().mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          statusText: "Unauthorized",
+          headers: new Headers({ "content-type": "application/json" }),
+          text: () => Promise.resolve("UNAUTHENTICATED"),
+          clone: () => ({ text: () => Promise.resolve("UNAUTHENTICATED") }),
+        } as Response);
+      }
+      return Promise.resolve(
+        mockFetchWithStream([
+          encodeLines(['event: task', 'data: {"terminal":true,"status":"SUCCEEDED"}', ""]),
+        ]),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const out = await streamLabJob("/lab/jobs/j1/events", () => {});
+    expect(out.status).toBe("SUCCEEDED");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const retryInit = fetchMock.mock.calls[1]![1] as RequestInit;
+    expect((retryInit.headers as Record<string, string>).Authorization).toBe("Bearer fresh");
+  });
+
   it("throws when response is not ok", async () => {
     vi.stubGlobal(
       "fetch",

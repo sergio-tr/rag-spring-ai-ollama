@@ -10,6 +10,7 @@ import { useActiveLabJobs } from "./use-active-lab-jobs";
 import {
   type LabActiveJobRecoveryDecision,
   type LabActiveJobResumeCandidate,
+  sessionRecordToCandidate,
   useLabActiveJobRecovery,
 } from "./use-lab-active-job-recovery";
 
@@ -54,6 +55,7 @@ export function useAutoResumeLabJobs(options: UseAutoResumeLabJobsOptions): UseA
   } = options;
 
   const activeJobs = useActiveLabJobs();
+  const sessionRecords = useLabJobSessionStore((s) => s.records);
   const clearOtherLabJobsForSection = useLabJobSessionStore((s) => s.clearOtherLabJobsForSection);
   const autoFollowHandledRef = useRef<string | null>(null);
 
@@ -65,7 +67,7 @@ export function useAutoResumeLabJobs(options: UseAutoResumeLabJobsOptions): UseA
     backendActiveJobs: activeJobs.data ?? null,
     backendActiveJobsLoading: !activeJobs.isFetched,
     backendActiveJobsError: activeJobs.isError ? activeJobs.error : null,
-    sessionRecords: [],
+    sessionRecords,
   });
 
   const followCandidate = useCallback(
@@ -86,34 +88,67 @@ export function useAutoResumeLabJobs(options: UseAutoResumeLabJobsOptions): UseA
   );
 
   useEffect(() => {
-    if (!canAutoFollow || recovery.decision.kind !== "auto_follow") {
-      return;
-    }
-    const candidate = recovery.decision.candidate;
-    if (watchingJobId && watchingJobId !== candidate.jobId) {
-      return;
-    }
-    if (autoFollowHandledRef.current === candidate.jobId) {
+    if (!canAutoFollow) {
       return;
     }
 
-    autoFollowHandledRef.current = candidate.jobId;
-    void (async () => {
-      try {
-        await followCandidate(candidate);
-      } catch (e) {
-        autoFollowHandledRef.current = null;
-        if (e instanceof ApiError && e.status === 404) {
-          useLabJobSessionStore.getState().markLabJobStaleNotFound(candidate.jobId);
-        }
-        onFollowError?.(e, candidate);
+    if (recovery.decision.kind === "auto_follow") {
+      const candidate = recovery.decision.candidate;
+      if (watchingJobId && watchingJobId !== candidate.jobId) {
+        return;
       }
-    })();
+      if (autoFollowHandledRef.current === candidate.jobId) {
+        return;
+      }
+
+      autoFollowHandledRef.current = candidate.jobId;
+      void (async () => {
+        try {
+          await followCandidate(candidate);
+        } catch (e) {
+          autoFollowHandledRef.current = null;
+          if (e instanceof ApiError && e.status === 404) {
+            useLabJobSessionStore.getState().markLabJobStaleNotFound(candidate.jobId);
+          }
+          onFollowError?.(e, candidate);
+        }
+      })();
+      return;
+    }
+
+    if (recovery.decision.kind === "session_only") {
+      const record = recovery.decision.record;
+      if (watchingJobId && watchingJobId !== record.jobId) {
+        return;
+      }
+      if (autoFollowHandledRef.current === record.jobId) {
+        return;
+      }
+
+      autoFollowHandledRef.current = record.jobId;
+      const candidate = sessionRecordToCandidate(record, sectionKey, benchmarkKind, "sse");
+      void (async () => {
+        try {
+          const status = await fetchLabJobStatusOnce(record.jobId);
+          useLabJobSessionStore.getState().patchLabJobFromTick(record.jobId, status);
+          await onAutoFollow({ candidate, status });
+        } catch (e) {
+          autoFollowHandledRef.current = null;
+          if (e instanceof ApiError && e.status === 404) {
+            useLabJobSessionStore.getState().markLabJobStaleNotFound(record.jobId);
+          }
+          onFollowError?.(e, candidate);
+        }
+      })();
+    }
   }, [
     canAutoFollow,
+    benchmarkKind,
     followCandidate,
+    onAutoFollow,
     onFollowError,
     recovery.decision,
+    sectionKey,
     watchingJobId,
   ]);
 
