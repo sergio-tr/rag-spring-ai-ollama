@@ -46,6 +46,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: process.env.CI ? "off" : "on-first-retry",
     ignoreHTTPSErrors,
+    navigationTimeout: 30000,
   },
   projects: [
     {

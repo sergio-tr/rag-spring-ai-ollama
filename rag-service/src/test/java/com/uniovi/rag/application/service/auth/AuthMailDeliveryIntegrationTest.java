@@ -16,14 +16,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,7 +39,11 @@ import static org.mockito.Mockito.when;
             "management.otlp.tracing.endpoint=http://127.0.0.1:4318/v1/traces",
             "management.otlp.metrics.export.url=http://127.0.0.1:4318/v1/metrics"
         })
-@Import({TestAiStubConfiguration.class, TestcontainersDatasourceConfiguration.class})
+@Import({
+    TestAiStubConfiguration.class,
+    TestcontainersDatasourceConfiguration.class,
+    AuthMailDeliveryIntegrationTest.MailSenderTestConfiguration.class
+})
 @ActiveProfiles("test")
 @TestPropertySource(
         properties = {
@@ -64,7 +71,7 @@ class AuthMailDeliveryIntegrationTest {
     @Autowired
     private MailOutboxDeliveryService mailOutboxDeliveryService;
 
-    @MockBean
+    @Autowired
     private JavaMailSender javaMailSender;
 
     @Test
@@ -97,5 +104,14 @@ class AuthMailDeliveryIntegrationTest {
     @Test
     void outboxOnlyMode_doesNotInvokeJavaMailSender() {
         assertThat(mailOutboxDeliveryService).isNotNull();
+    }
+
+    @TestConfiguration
+    static class MailSenderTestConfiguration {
+        @Bean
+        @Primary
+        JavaMailSender javaMailSender() {
+            return mock(JavaMailSender.class);
+        }
     }
 }
