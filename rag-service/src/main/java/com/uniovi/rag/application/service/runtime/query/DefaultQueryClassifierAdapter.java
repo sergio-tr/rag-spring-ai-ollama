@@ -4,6 +4,7 @@ import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.infrastructure.classifier.ClassifierCallException;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import com.uniovi.rag.infrastructure.observability.TelemetryRedaction;
@@ -69,6 +70,10 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
             ClassifierOutcome ok = new ClassifierOutcome(out.name(), Optional.of(out), ClassifierStatus.OK, modelIdUsed, "OK");
             tagClassifierSpan(ok);
             return ok;
+        } catch (ClassifierCallException e) {
+            ClassifierOutcome recoverable = mapClassifierFailure(ctx, modelIdUsed, e);
+            tagClassifierSpan(recoverable);
+            return recoverable;
         } catch (Exception e) {
             log.debug(
                     "query_classifier_recoverable correlationId={} status=UNAVAILABLE modelId={} detail={}",
@@ -109,6 +114,28 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
         }
         String v = rag.classifierModelId();
         return v == null || v.isBlank() ? DEFAULT_MODEL_ID : v.trim();
+    }
+
+    private ClassifierOutcome mapClassifierFailure(ExecutionContext ctx, String modelIdUsed, ClassifierCallException e) {
+        ClassifierStatus status =
+                switch (e.kind()) {
+                    case INVALID_OUTPUT -> ClassifierStatus.INVALID_OUTPUT;
+                    case INVALID_REQUEST -> ClassifierStatus.INVALID_REQUEST;
+                    case TIMEOUT -> ClassifierStatus.TIMEOUT;
+                    case UNAVAILABLE -> ClassifierStatus.UNAVAILABLE;
+                };
+        log.debug(
+                "query_classifier_recoverable correlationId={} status={} modelId={} httpStatus={}",
+                ctx.correlationId(),
+                status,
+                modelIdUsed,
+                e.httpStatus());
+        return new ClassifierOutcome(
+                UNCLASSIFIED,
+                Optional.empty(),
+                status,
+                modelIdUsed,
+                status.name() + ": classifier call failed");
     }
 
     private static String safeMsg(Exception e) {

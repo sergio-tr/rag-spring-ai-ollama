@@ -129,7 +129,7 @@ class ClassifierServiceClientTest {
         server.expect(requestTo(base + "/classify"))
                 .andRespond(withServerError());
 
-        assertThrows(IllegalStateException.class, () -> classifier.classify("any query"));
+        assertThrows(ClassifierCallException.class, () -> classifier.classify("any query"));
 
         server.verify();
     }
@@ -168,13 +168,44 @@ class ClassifierServiceClientTest {
         server.expect(requestTo(base + "/classify"))
                 .andRespond(withStatus(HttpStatus.BAD_REQUEST));
 
-        assertThrows(IllegalStateException.class, () -> classifier.classify("any query"));
+        assertThrows(ClassifierCallException.class, () -> classifier.classify("any query"));
 
         server.verify();
     }
 
     @Test
-    void classifyWithText_throws_whenRestTemplateThrowsRestClientException_timeout() {
+    void classify_throwsUnavailable_whenUvicornProtocolRejection400() {
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        server.expect(requestTo(base + "/classify"))
+                .andRespond(
+                        withStatus(HttpStatus.BAD_REQUEST)
+                                .body("Invalid HTTP request received.")
+                                .contentType(MediaType.TEXT_PLAIN));
+
+        ClassifierCallException ex =
+                assertThrows(ClassifierCallException.class, () -> classifier.classify("any query"));
+        assertEquals(ClassifierCallException.Kind.UNAVAILABLE, ex.kind());
+        server.verify();
+    }
+
+    @Test
+    void classify_throwsInvalidRequest_whenStructuredValidation400() {
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        server.expect(requestTo(base + "/classify"))
+                .andRespond(
+                        withStatus(HttpStatus.BAD_REQUEST)
+                                .body(
+                                        "{\"success\":false,\"error\":{\"code\":\"VALIDATION_ERROR\",\"message\":\"empty\"}}")
+                                .contentType(MediaType.APPLICATION_JSON));
+
+        ClassifierCallException ex =
+                assertThrows(ClassifierCallException.class, () -> classifier.classify("any query"));
+        assertEquals(ClassifierCallException.Kind.INVALID_REQUEST, ex.kind());
+        server.verify();
+    }
+
+    @Test
+    void classifyWithText_throwsTimeout_whenRestTemplateThrowsRestClientException_timeout() {
         RestTemplate throwingRestTemplate = mock(RestTemplate.class);
         when(throwingRestTemplate.exchange(
                 Mockito.anyString(),
@@ -191,7 +222,7 @@ class ClassifierServiceClientTest {
                 throwingRestTemplate
         );
 
-        assertThrows(IllegalStateException.class, () -> c.classifyWithText("any query"));
+        assertThrows(ClassifierCallException.class, () -> c.classifyWithText("any query"));
     }
 
     @Test

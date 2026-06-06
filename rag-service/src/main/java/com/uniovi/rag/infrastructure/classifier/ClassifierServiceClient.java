@@ -4,6 +4,7 @@ import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -19,16 +20,15 @@ import org.springframework.web.client.RestTemplate;
 record ClassifyResponseDto(String queryType) {}
 
 /**
- * Query classifier that calls the classifier-service API over HTTP.
- * Uses the default pre-trained model (tag "default") so RAG classification is consistent.
+ * Query classifier that calls the classifier-service API over HTTP/1.1 POST JSON.
  * Request/response use camelCase for interoperability.
  * POST {baseUrl}/classify with body {"query": "...", "modelId": "default"}, expects {"queryType": "COUNT_DOCUMENTS"} etc.
- * On transport or HTTP failures throws a recoverable exception so the runtime trace records UNAVAILABLE
- * (instead of silently returning INVALID_OUTPUT).
+ * On transport or HTTP failures throws {@link ClassifierCallException} for recoverable runtime fallback.
  */
 public class ClassifierServiceClient implements QueryClassifier {
 
     private static final String DEFAULT_MODEL_ID = "default";
+    private static final MediaType JSON = MediaType.APPLICATION_JSON;
 
     private final String baseUrl;
     private final String modelId;
@@ -76,10 +76,10 @@ public class ClassifierServiceClient implements QueryClassifier {
         }
         try {
             QueryType qt = QueryType.valueOf(raw.trim());
-            log().info("[CLASSIFIER] Query type: {}", qt);
+            log().info("[CLASSIFIER] Query type resolved: {}", qt);
             return qt;
         } catch (IllegalArgumentException e) {
-            log().warn("[CLASSIFIER] Unknown queryType: '{}', returning null", raw);
+            log().warn("[CLASSIFIER] Unknown queryType value, returning null for INVALID_OUTPUT path");
             return null;
         }
     }
@@ -100,10 +100,12 @@ public class ClassifierServiceClient implements QueryClassifier {
         }
         String url = baseUrl + "/classify";
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setContentType(JSON);
+        headers.setAccept(List.of(JSON));
         String effectiveModelId = resolveEffectiveModelId(modelIdOverride);
         Map<String, String> body = Map.of("query", query, "modelId", effectiveModelId);
         HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+        int queryLen = query.length();
         try {
             ResponseEntity<ClassifyResponseDto> response =
                     restTemplate.exchange(url, HttpMethod.POST, request, ClassifyResponseDto.class);
@@ -111,30 +113,38 @@ public class ClassifierServiceClient implements QueryClassifier {
                 ClassifyResponseDto responseBody = response.getBody();
                 return (responseBody != null && responseBody.queryType() != null) ? responseBody.queryType() : null;
             }
-            throw new IllegalStateException("Classifier service returned non-2xx status=" + response.getStatusCode().value());
+            throw ClassifierHttpErrorSupport.fromHttpStatus(
+                    response.getStatusCode().value(), "", url, null);
         } catch (HttpStatusCodeException e) {
             String bodyPreview = safeBodyPreview(e.getResponseBodyAsString());
-            // Python contract validation: invalid model label -> 503 with "Invalid classifier output".
-            // Treat like unknown queryType so Java maps INVALID_OUTPUT (not UNAVAILABLE).
-            if (e.getStatusCode().value() == 503
-                    && bodyPreview.contains("Invalid classifier output")) {
+            if (e.getStatusCode().value() == 503 && bodyPreview.contains("Invalid classifier output")) {
                 log().warn(
-                        "[CLASSIFIER] Invalid classifier output (HTTP 503), returning null for INVALID_OUTPUT path");
+                        "[CLASSIFIER] invalid classifier output (HTTP 503) queryLen={} modelId={}",
+                        queryLen,
+                        effectiveModelId);
                 return null;
             }
-            String detail =
-                    "Classifier HTTP error status="
-                            + e.getStatusCode().value()
-                            + " url="
-                            + url
-                            + " body="
-                            + bodyPreview;
-            log().warn("[CLASSIFIER] {}", detail);
-            throw new IllegalStateException(detail, e);
+            ClassifierCallException failure =
+                    ClassifierHttpErrorSupport.fromHttpStatus(
+                            e.getStatusCode().value(), bodyPreview, url, e);
+            log().warn(
+                    "[CLASSIFIER] classify HTTP failure kind={} status={} queryLen={} modelId={} url={}",
+                    failure.kind(),
+                    failure.httpStatus(),
+                    queryLen,
+                    effectiveModelId,
+                    url);
+            throw failure;
         } catch (RestClientException e) {
-            String detail = "Classifier transport error url=" + url + " detail=" + e.getMessage();
-            log().warn("[CLASSIFIER] {}", detail);
-            throw new IllegalStateException(detail, e);
+            ClassifierCallException failure = ClassifierHttpErrorSupport.fromTransport(url, e);
+            log().warn(
+                    "[CLASSIFIER] classify transport failure kind={} queryLen={} modelId={} url={} detail={}",
+                    failure.kind(),
+                    queryLen,
+                    effectiveModelId,
+                    url,
+                    safeMessage(e));
+            throw failure;
         }
     }
 
@@ -147,6 +157,11 @@ public class ClassifierServiceClient implements QueryClassifier {
             return t;
         }
         return t.substring(0, 500) + "…";
+    }
+
+    private static String safeMessage(Throwable cause) {
+        String m = cause.getMessage();
+        return m != null && !m.isBlank() ? m.trim() : cause.getClass().getSimpleName();
     }
 
     private String resolveEffectiveModelId(String explicitModelId) {
@@ -163,9 +178,8 @@ public class ClassifierServiceClient implements QueryClassifier {
         return modelId;
     }
 
-    private static RestTemplate createDefaultRestTemplate(int timeoutMs) {
-        SimpleClientHttpRequestFactory factory =
-                new SimpleClientHttpRequestFactory();
+    static RestTemplate createDefaultRestTemplate(int timeoutMs) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofMillis(timeoutMs));
         factory.setReadTimeout(Duration.ofMillis(timeoutMs));
         RestTemplate rt = new RestTemplate();

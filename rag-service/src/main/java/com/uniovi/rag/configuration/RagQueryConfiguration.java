@@ -53,6 +53,7 @@ import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.cache.interceptor.KeyGenerator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.lang.Nullable;
 
@@ -149,8 +150,9 @@ public class RagQueryConfiguration {
     }
 
     /**
-     * Shared {@link RestTemplate} for classifier HTTP calls. Built via {@link RestTemplateBuilder} so
-     * Micrometer tracing injects W3C propagation on outbound requests (profile {@code infra}).
+     * Shared {@link RestTemplate} for classifier HTTP calls. Uses {@link SimpleClientHttpRequestFactory}
+     * (HTTP/1.1) so uvicorn receives plain POST JSON — not JDK HttpClient HTTP/2 upgrade attempts.
+     * Micrometer tracing still applies via {@link RestTemplateBuilder}.
      */
     @Bean(name = "classifierRestTemplate")
     public RestTemplate classifierRestTemplate(
@@ -158,8 +160,12 @@ public class RagQueryConfiguration {
             @Value("${rag.classifier.service.timeout-ms:5000}") int timeoutMs) {
         int t = timeoutMs > 0 ? timeoutMs : 5000;
         return restTemplateBuilder
-                .connectTimeout(Duration.ofMillis(t))
-                .readTimeout(Duration.ofMillis(t))
+                .requestFactory(() -> {
+                    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+                    factory.setConnectTimeout(Duration.ofMillis(t));
+                    factory.setReadTimeout(Duration.ofMillis(t));
+                    return factory;
+                })
                 .build();
     }
 

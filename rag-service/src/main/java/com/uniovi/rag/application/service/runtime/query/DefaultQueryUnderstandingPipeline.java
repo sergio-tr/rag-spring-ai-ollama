@@ -70,7 +70,7 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
             case OK -> "OK";
             case DISABLED -> QU_NOTE_DISABLED;
             case INVALID_OUTPUT -> QU_NOTE_FALLBACK;
-            case UNAVAILABLE -> QU_NOTE_ERROR;
+            case UNAVAILABLE, TIMEOUT, INVALID_REQUEST -> QU_NOTE_ERROR;
         };
         notes.add(stageNote("qu_classify", classifyStatus, msSince(t1),
                 "classifierStatus=" + c.classifierStatus().name()
