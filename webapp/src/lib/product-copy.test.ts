@@ -5,6 +5,7 @@ import {
   formatChatExperimentalPresetOptionLabel,
   formatClassifierFallbackNote,
   formatPresetSupportMessage,
+  sanitizeLabPrimarySurfaceCopy,
 } from "./product-copy";
 
 const labT = (key: string) => {
@@ -74,9 +75,16 @@ describe("product-copy humanizers", () => {
       "FUTURE_MULTI_TURN_NOT_SELECTABLE",
       "M9 experimental evidence",
       "Do not claim",
+      "Lab evaluation corpus",
+      "Missing preferred tags: llama3.1:8b",
     ];
     for (const sample of samples) {
       expect(FORBIDDEN_PRIMARY_UI_PATTERNS.some((re) => re.test(sample))).toBe(true);
     }
+  });
+
+  it("sanitizeLabPrimarySurfaceCopy replaces forbidden API-derived labels", () => {
+    expect(sanitizeLabPrimarySurfaceCopy("Lab evaluation corpus", "Knowledge base")).toBe("Knowledge base");
+    expect(sanitizeLabPrimarySurfaceCopy("My KB", "Knowledge base")).toBe("My KB");
   });
 });

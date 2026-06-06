@@ -29,7 +29,12 @@ export async function clearActiveProjectForLab(page: Page): Promise<void> {
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i += 1) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith("rag-lab-form-v1:") || key.startsWith("rag-lab-jobs"))) {
+        if (
+          key &&
+          (key.startsWith("rag-lab-form-v1:") ||
+            key.startsWith("rag-lab-jobs") ||
+            key.startsWith("lab:evaluation-draft:v1:"))
+        ) {
           keysToRemove.push(key);
         }
       }

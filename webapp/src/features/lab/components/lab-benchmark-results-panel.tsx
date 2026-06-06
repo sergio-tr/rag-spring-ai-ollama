@@ -28,7 +28,7 @@ import {
   type ComparisonRow,
 } from "@/features/lab/lib/lab-benchmark-labels";
 import { mapUserFacingErrorMessage } from "@/lib/user-facing-error-messages";
-import { formatBenchmarkKindLabel } from "@/lib/product-copy";
+import { formatBenchmarkKindLabel, sanitizeLabPrimarySurfaceCopy } from "@/lib/product-copy";
 import {
   readGlobalOutcomeCounts,
   readMvpItems,
@@ -351,12 +351,15 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
     const kb = (row as Record<string, unknown>).knowledgeBaseName;
     return typeof kb === "string" && kb.trim().length > 0;
   }) as Record<string, unknown> | undefined;
-  const knowledgeBaseLabel =
+  const knowledgeBaseLabelRaw =
     (typeof knowledgeBaseFromRuns?.corpusName === "string" ? knowledgeBaseFromRuns.corpusName.trim() : "") ||
     (typeof knowledgeBaseFromItems?.knowledgeBaseName === "string"
       ? knowledgeBaseFromItems.knowledgeBaseName.trim()
       : "") ||
     null;
+  const knowledgeBaseLabel = knowledgeBaseLabelRaw
+    ? sanitizeLabPrimarySurfaceCopy(knowledgeBaseLabelRaw, t("labCorpusTitle"))
+    : null;
 
   return (
     <div className="space-y-4 rounded-md border bg-muted/20 p-4" data-testid="lab-benchmark-results-panel">

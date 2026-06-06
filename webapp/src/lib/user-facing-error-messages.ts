@@ -60,6 +60,7 @@ export const LAB_USER_ERROR_I18N_KEYS: Record<string, string> = {
   RUNTIME_FEATURE_NOT_IMPLEMENTED: "labConfigNotImplemented",
   RUNTIME_NOT_IMPLEMENTED: "labConfigNotImplemented",
   CONFIG_VALIDATION_ERROR: "labConfigValidationError",
+  RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE: "userError_RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE",
   USE_ADVISOR_REQUIRES_RETRIEVAL: "labConfigAdvisorRetrieval",
   STRUCTURED_SEARCH_WITH_RETRIEVAL_NOT_SUPPORTED: "labConfigStructuredSearch",
 };
@@ -182,7 +183,7 @@ export function mapUserFacingErrorMessage(
     return fallback;
   }
 
-  return trimmed;
+  return trimmed.includes("corpus") || /Missing preferred/i.test(trimmed) ? fallback : trimmed;
 }
 
 /**

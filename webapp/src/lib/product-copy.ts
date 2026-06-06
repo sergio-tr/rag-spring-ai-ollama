@@ -119,4 +119,24 @@ export const FORBIDDEN_PRIMARY_UI_PATTERNS: RegExp[] = [
   /POST JSON/i,
   /Lab API —/i,
   /POST \/api/i,
+  /\bcorpus\b/i,
+  /Missing preferred/i,
+  /missing preferred/i,
 ];
+
+/** Drop or replace API-derived strings that must not appear in primary Lab UI surfaces. */
+export function sanitizeLabPrimarySurfaceCopy(
+  raw: string | null | undefined,
+  fallback: string,
+): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  for (const re of FORBIDDEN_PRIMARY_UI_PATTERNS) {
+    if (re.test(trimmed)) {
+      return fallback;
+    }
+  }
+  return trimmed;
+}

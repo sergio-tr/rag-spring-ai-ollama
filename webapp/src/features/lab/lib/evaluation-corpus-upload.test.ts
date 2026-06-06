@@ -138,12 +138,22 @@ describe("evaluation-corpus-upload", () => {
     expect(mapKnowledgeBaseApiError("SNAPSHOT_PREPARATION_FAILED", t, "fb")).toBe(
       "i18n:labRagSnapshotPreparationFailed",
     );
+    expect(mapKnowledgeBaseApiError("RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE", t, "fb")).toBe(
+      "i18n:userError_RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE",
+    );
   });
 
   it("mapKnowledgeBaseApiError returns raw message for unknown codes", () => {
     const t = (key: string) => key;
     expect(mapKnowledgeBaseApiError("CUSTOM detail", t, "fb")).toBe("CUSTOM detail");
     expect(mapKnowledgeBaseApiError("  ", t, "fb")).toBe("fb");
+  });
+
+  it("mapKnowledgeBaseApiError hides internal corpus terminology in unknown messages", () => {
+    const t = (key: string) => key;
+    expect(
+      mapKnowledgeBaseApiError("Failed to copy document into evaluation corpus: boom", t, "fb"),
+    ).toBe("fb");
   });
 
   it("mapKnowledgeBaseApiError humanizes technical substrings", () => {
