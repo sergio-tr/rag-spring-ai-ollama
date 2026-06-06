@@ -28,4 +28,19 @@ describe("trace-session", () => {
 
     expect(after).not.toBe(before);
   });
+
+  it("currentTraceparent lazily starts a session", () => {
+    endTraceSession();
+    const tp = currentTraceparent();
+    expect(tp).toBeTruthy();
+    expect(currentTraceparent()).toBe(tp);
+  });
+
+  it("traceIdFromTraceparent rejects malformed values", () => {
+    expect(traceIdFromTraceparent("00-abc")).toBeNull();
+    expect(traceIdFromTraceparent("00-1234-5678-01")).toBeNull();
+    expect(traceIdFromTraceparent("00-12345678901234567890123456789012-1234567890123456-01")).toBe(
+      "12345678901234567890123456789012",
+    );
+  });
 });
