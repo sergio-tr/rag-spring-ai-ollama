@@ -362,11 +362,6 @@ export async function expandChatConfigurationRuntimeSection(panel: Locator): Pro
   await expect(topK).toBeVisible({ timeout: 15_000 });
 }
 
-/** @deprecated Alias for {@link openChatConfigurationPanel} (edit controls expand automatically). */
-export async function openChatConfigurationEditPanel(page: Page): Promise<Locator> {
-  return openChatConfigurationPanel(page);
-}
-
 export async function openChatDocumentsSheet(page: Page): Promise<Locator> {
   const panel = await openChatConfigurationPanel(page);
   await panel.getByTestId("chat-open-documents-sheet").click();

@@ -4,7 +4,7 @@ import {
   activeJobMatchesCard,
   computeLabActiveJobRecovery,
 } from "./use-lab-active-job-recovery";
-import { useLabJobLiveEvents } from "./use-lab-job-live-events";
+import { useLabJobSse } from "./use-lab-job-sse";
 import * as asyncTask from "@/lib/async-task";
 import * as labJobSse from "@/lib/lab-job-sse";
 import type { LabJobStreamCallbacks } from "@/lib/lab-job-sse";
@@ -28,7 +28,7 @@ function activeJob(partial: Partial<ActiveLabJobDto> & Pick<ActiveLabJobDto, "jo
   };
 }
 
-describe("useLabJobLiveEvents recovery matching", () => {
+describe("useLabJobSse recovery matching", () => {
   it("matches lab-only jobs even when card has an active project", () => {
     const j = activeJob({ jobId: "x", benchmarkKind: "LLM_JUDGE_QA", projectId: null });
     expect(activeJobMatchesCard(j, "LLM_JUDGE_QA", "550e8400-e29b-41d4-a716-446655440099")).toBe(true);
@@ -75,7 +75,7 @@ const accepted: LabJobAcceptedDto = {
   streamPath: "/lab/jobs/job-live-1/events",
 };
 
-describe("useLabJobLiveEvents", () => {
+describe("useLabJobSse", () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.spyOn(asyncTask, "sleep").mockResolvedValue(undefined);
@@ -94,12 +94,12 @@ describe("useLabJobLiveEvents", () => {
 
   it("stays idle when job id or stream path is blank", () => {
     const { result: noJob } = renderHook(() =>
-      useLabJobLiveEvents({ accepted: { ...accepted, jobId: "  " } }),
+      useLabJobSse({ accepted: { ...accepted, jobId: "  " } }),
     );
     expect(noJob.current.connectionState).toBe("idle");
 
     const { result: noStream } = renderHook(() =>
-      useLabJobLiveEvents({ accepted: { ...accepted, streamPath: "" } }),
+      useLabJobSse({ accepted: { ...accepted, streamPath: "" } }),
     );
     expect(noStream.current.connectionState).toBe("idle");
   });
@@ -110,19 +110,19 @@ describe("useLabJobLiveEvents", () => {
       terminal: true,
       status: "WEIRD",
     });
-    const { result } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result } = renderHook(() => useLabJobSse({ accepted }));
     await waitFor(() => expect(result.current.connectionState).toBe("failed"));
   });
 
   it("sets idle when the stream aborts", async () => {
     vi.spyOn(labJobSse, "streamLabJobLive").mockRejectedValue(new DOMException("Aborted", "AbortError"));
-    const { result } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result } = renderHook(() => useLabJobSse({ accepted }));
     await waitFor(() => expect(result.current.connectionState).toBe("idle"));
   });
 
   it("reports idle when disabled", () => {
     const { result } = renderHook(() =>
-      useLabJobLiveEvents({ accepted, enabled: false }),
+      useLabJobSse({ accepted, enabled: false }),
     );
     expect(result.current.connectionState).toBe("idle");
   });
@@ -130,7 +130,7 @@ describe("useLabJobLiveEvents", () => {
   it("completes via live stream when enabled", async () => {
     const onTerminal = vi.fn();
     const { result } = renderHook(() =>
-      useLabJobLiveEvents({ accepted, onTerminal }),
+      useLabJobSse({ accepted, onTerminal }),
     );
 
     await waitFor(() => expect(result.current.connectionState).toBe("completed"));
@@ -152,7 +152,7 @@ describe("useLabJobLiveEvents", () => {
       () => new Promise(() => {}),
     );
 
-    const { result } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result } = renderHook(() => useLabJobSse({ accepted }));
     expect(result.current.connectionState).toBe("connecting");
 
     try {
@@ -183,7 +183,7 @@ describe("useLabJobLiveEvents", () => {
       () => new Promise(() => {}),
     );
 
-    const { result } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result } = renderHook(() => useLabJobSse({ accepted }));
     expect(result.current.connectionState).toBe("connecting");
 
     try {
@@ -200,7 +200,7 @@ describe("useLabJobLiveEvents", () => {
     vi.mocked(asyncTask.fetchLabJobStatusOnce).mockResolvedValue(terminalStatus);
     const onTerminal = vi.fn();
     const { result } = renderHook(() =>
-      useLabJobLiveEvents({ accepted, onTerminal }),
+      useLabJobSse({ accepted, onTerminal }),
     );
 
     await waitFor(() => expect(result.current.connectionState).toBe("completed"));
@@ -213,7 +213,7 @@ describe("useLabJobLiveEvents", () => {
       ...terminalStatus,
       status: "FAILED",
     });
-    const { result } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result } = renderHook(() => useLabJobSse({ accepted }));
 
     await waitFor(() => expect(result.current.connectionState).toBe("failed"));
   });
@@ -223,7 +223,7 @@ describe("useLabJobLiveEvents", () => {
       ...terminalStatus,
       status: "CANCELLED",
     });
-    const { result } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result } = renderHook(() => useLabJobSse({ accepted }));
 
     await waitFor(() => expect(result.current.connectionState).toBe("cancelled"));
   });
@@ -233,7 +233,7 @@ describe("useLabJobLiveEvents", () => {
       ...terminalStatus,
       status: "CANCELED",
     });
-    const { result } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result } = renderHook(() => useLabJobSse({ accepted }));
     await waitFor(() => expect(result.current.connectionState).toBe("cancelled"));
   });
 
@@ -246,7 +246,7 @@ describe("useLabJobLiveEvents", () => {
         releaseStream = () => resolve(terminalStatus);
       });
     });
-    const { result, unmount } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result, unmount } = renderHook(() => useLabJobSse({ accepted }));
     await waitFor(() => expect(streamCallbacks).toBeDefined());
     act(() => {
       streamCallbacks?.onLive?.();
@@ -262,7 +262,7 @@ describe("useLabJobLiveEvents", () => {
   });
 
   it("resume retriggers stream subscription", async () => {
-    const { result } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result } = renderHook(() => useLabJobSse({ accepted }));
     await waitFor(() => expect(result.current.connectionState).toBe("completed"));
 
     result.current.resume();
@@ -271,7 +271,7 @@ describe("useLabJobLiveEvents", () => {
 
   it("forwards onTick while the stream is running", async () => {
     const onTick = vi.fn();
-    renderHook(() => useLabJobLiveEvents({ accepted, onTick }));
+    renderHook(() => useLabJobSse({ accepted, onTick }));
     await waitFor(() => expect(onTick).toHaveBeenCalled());
   });
 
@@ -292,7 +292,7 @@ describe("useLabJobLiveEvents", () => {
     });
     const onStreamError = vi.fn();
     const { result, unmount } = renderHook(() =>
-      useLabJobLiveEvents({ accepted, onStreamError }),
+      useLabJobSse({ accepted, onStreamError }),
     );
 
     await waitFor(() => expect(result.current.connectionState).toBe("reconnecting"));
@@ -310,7 +310,7 @@ describe("useLabJobLiveEvents", () => {
       });
     });
 
-    const { result, unmount } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result, unmount } = renderHook(() => useLabJobSse({ accepted }));
     await waitFor(() => expect(streamCallbacks).toBeDefined());
     expect(result.current.connectionState).toBe("connecting");
     act(() => {
@@ -330,7 +330,7 @@ describe("useLabJobLiveEvents", () => {
         releaseStream = () => resolve(terminalStatus);
       });
     });
-    const { result, unmount } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result, unmount } = renderHook(() => useLabJobSse({ accepted }));
     await waitFor(() => expect(streamCallbacks).toBeDefined());
     expect(result.current.connectionState).toBe("connecting");
     act(() => {
@@ -351,7 +351,7 @@ describe("useLabJobLiveEvents", () => {
       });
     });
 
-    const { result, unmount } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result, unmount } = renderHook(() => useLabJobSse({ accepted }));
     await waitFor(() => expect(streamCallbacks).toBeDefined());
     act(() => {
       streamCallbacks?.onJobEvent?.({
@@ -380,7 +380,7 @@ describe("useLabJobLiveEvents", () => {
       });
     });
 
-    const { result, unmount } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result, unmount } = renderHook(() => useLabJobSse({ accepted }));
     await waitFor(() => expect(streamCallbacks).toBeDefined());
     act(() => {
       streamCallbacks?.onJobEvent?.({
@@ -409,7 +409,7 @@ describe("useLabJobLiveEvents", () => {
       });
     });
 
-    const { result, unmount } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result, unmount } = renderHook(() => useLabJobSse({ accepted }));
     await waitFor(() => expect(streamCallbacks).toBeDefined());
     act(() => {
       streamCallbacks?.onLive?.();
@@ -434,7 +434,7 @@ describe("useLabJobLiveEvents", () => {
       });
     });
 
-    const { result, unmount } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result, unmount } = renderHook(() => useLabJobSse({ accepted }));
     await waitFor(() => expect(streamCallbacks).toBeDefined());
     act(() => {
       streamCallbacks?.onLive?.();
@@ -476,7 +476,7 @@ describe("useLabJobLiveEvents", () => {
       return { ...terminalStatus, status: "CANCELED" };
     });
 
-    const { result } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result } = renderHook(() => useLabJobSse({ accepted }));
     await waitFor(() => expect(result.current.connectionState).toBe("cancelled"));
     expect(result.current.lastEventId).toBe(4);
   });
@@ -491,7 +491,7 @@ describe("useLabJobLiveEvents", () => {
       });
     });
 
-    const { result, unmount } = renderHook(() => useLabJobLiveEvents({ accepted }));
+    const { result, unmount } = renderHook(() => useLabJobSse({ accepted }));
     await waitFor(() => expect(streamCallbacks).toBeDefined());
 
     vi.useFakeTimers();

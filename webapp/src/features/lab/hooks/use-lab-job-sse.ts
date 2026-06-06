@@ -79,12 +79,6 @@ export type UseLabJobSseResult = Readonly<{
   stop: () => void;
 }>;
 
-/** @deprecated Use {@link UseLabJobSseOptions}. */
-export type UseLabJobLiveEventsOptions = UseLabJobSseOptions;
-
-/** @deprecated Use {@link UseLabJobSseResult}. */
-export type UseLabJobLiveEventsResult = UseLabJobSseResult;
-
 const RESUMED_FLASH_MS = 2_500;
 /** Recent SSE activity suppresses reconnecting UI. */
 const RECENT_EVENT_MS = 3_000;
@@ -501,6 +495,3 @@ export function useLabJobSse(options: UseLabJobSseOptions): UseLabJobSseResult {
     stop,
   };
 }
-
-/** @deprecated Use {@link useLabJobSse}. */
-export const useLabJobLiveEvents = useLabJobSse;
