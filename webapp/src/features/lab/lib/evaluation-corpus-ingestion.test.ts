@@ -5,7 +5,7 @@ import {
   mergeCorpusAfterUpload,
   uploadItemStatusToDocumentStatus,
 } from "./evaluation-corpus-ingestion";
-import type { EvaluationCorpusSummaryDto } from "@/types/api";
+import type { EvaluationCorpusDocumentsUploadResponseDto, EvaluationCorpusSummaryDto } from "@/types/api";
 
 const baseCorpus: EvaluationCorpusSummaryDto = {
   id: "corpus-1",
@@ -82,9 +82,8 @@ describe("evaluation-corpus-ingestion", () => {
   });
 
   it("mergeCorpusAfterUpload throws when corpus summary is missing", () => {
-    expect(() =>
-      mergeCorpusAfterUpload(undefined, { corpus: undefined, uploads: [] }),
-    ).toThrow(/missing corpus summary/);
+    const malformedUpload = { corpus: undefined, uploads: [] } as unknown as EvaluationCorpusDocumentsUploadResponseDto;
+    expect(() => mergeCorpusAfterUpload(undefined, malformedUpload)).toThrow(/missing corpus summary/);
   });
 
   it("corpusAllDocumentsTerminal treats empty summaries as terminal", () => {
