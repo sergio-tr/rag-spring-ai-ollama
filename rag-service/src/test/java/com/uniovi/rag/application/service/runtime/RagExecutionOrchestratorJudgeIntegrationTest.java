@@ -52,6 +52,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import org.springframework.beans.factory.ObjectProvider;
 
 class RagExecutionOrchestratorJudgeIntegrationTest {
 
@@ -124,7 +125,7 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(org.springframework.beans.factory.ObjectProvider.class));
+                        mock(ObjectProvider.class));
 
         var out = orchestrator.execute(in);
         assertThat(out.answerText()).isEqualTo("tool-answer");
@@ -213,7 +214,7 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(org.springframework.beans.factory.ObjectProvider.class));
+                        mock(ObjectProvider.class));
 
         var out = orchestrator.execute(in);
         assertThat(out.answerText()).isEqualTo("judged-answer");
@@ -278,7 +279,7 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(org.springframework.beans.factory.ObjectProvider.class));
+                        mock(ObjectProvider.class));
 
         var out = orchestrator.execute(in);
         assertThat(out.workflowName()).isEqualTo("clarification");

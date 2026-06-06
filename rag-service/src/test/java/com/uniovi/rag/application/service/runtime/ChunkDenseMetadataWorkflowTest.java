@@ -48,6 +48,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import java.util.LinkedHashMap;
+import org.mockito.Mockito;
 
 class ChunkDenseMetadataWorkflowTest {
 
@@ -431,7 +433,7 @@ class ChunkDenseMetadataWorkflowTest {
     }
 
     private static RetrievalCandidate dummyCandidateWithDate(String filename, String content, String dateIso) {
-        Map<String, Object> meta = new java.util.LinkedHashMap<>();
+        Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("filename", filename);
         if (dateIso != null) {
             meta.put("date_iso", dateIso);

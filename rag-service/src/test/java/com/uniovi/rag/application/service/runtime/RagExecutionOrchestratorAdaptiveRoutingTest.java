@@ -55,6 +55,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+import org.springframework.beans.factory.ObjectProvider;
 
 class RagExecutionOrchestratorAdaptiveRoutingTest {
 
@@ -131,7 +132,7 @@ class RagExecutionOrchestratorAdaptiveRoutingTest {
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(org.springframework.beans.factory.ObjectProvider.class));
+                        mock(ObjectProvider.class));
 
         var out = orchestrator.execute(in);
         assertEquals("tool-answer", out.answerText());

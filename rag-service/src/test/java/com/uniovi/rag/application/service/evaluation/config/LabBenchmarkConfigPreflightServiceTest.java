@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -127,7 +128,7 @@ class LabBenchmarkConfigPreflightServiceTest {
     @Test
     void ragRejectsHybridPresetWithChunkOnlySnapshotEvenWhenAutoReindexEnabled() {
         UUID corpusId = UUID.randomUUID();
-        KnowledgeIndexSnapshotEntity snap = org.mockito.Mockito.mock(KnowledgeIndexSnapshotEntity.class);
+        KnowledgeIndexSnapshotEntity snap = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
         when(snap.getId()).thenReturn(UUID.randomUUID());
         when(snap.getIndexProfileJsonb()).thenReturn(Map.of("materializationStrategy", "CHUNK_LEVEL", "supportsMetadata", true));
         when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.of(snap));

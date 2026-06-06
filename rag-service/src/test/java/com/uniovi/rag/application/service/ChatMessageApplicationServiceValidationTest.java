@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 class ChatMessageApplicationServiceValidationTest {
 
@@ -67,7 +68,7 @@ class ChatMessageApplicationServiceValidationTest {
                         mock(ChatMessageWorkService.class),
                         runtimeConfigValidationService,
                         chatPresetDefaults,
-                        mock(org.springframework.beans.factory.ObjectProvider.class));
+                        mock(ObjectProvider.class));
     }
 
     @Test

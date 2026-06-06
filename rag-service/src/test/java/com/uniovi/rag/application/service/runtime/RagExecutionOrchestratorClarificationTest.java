@@ -58,6 +58,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.ObjectProvider;
 
 class RagExecutionOrchestratorClarificationTest {
 
@@ -106,7 +108,7 @@ class RagExecutionOrchestratorClarificationTest {
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(org.springframework.beans.factory.ObjectProvider.class));
+                        mock(ObjectProvider.class));
 
         var out = orchestrator.execute(in);
 
@@ -263,7 +265,7 @@ class RagExecutionOrchestratorClarificationTest {
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(org.springframework.beans.factory.ObjectProvider.class));
+                        mock(ObjectProvider.class));
 
         orchestrator.execute(merged);
 

@@ -57,6 +57,8 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.ObjectProvider;
 
 class RagExecutionOrchestratorReasoningTest {
 
@@ -214,7 +216,7 @@ class RagExecutionOrchestratorReasoningTest {
                         mock(JudgeStrategy.class),
                         new StructuredAnswerPlanService(chatClient, new ObjectMapper()),
                         new AnswerVerificationService(chatClient),
-                        mock(org.springframework.beans.factory.ObjectProvider.class));
+                        mock(ObjectProvider.class));
 
         var out = orch.execute(base);
 

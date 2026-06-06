@@ -9,6 +9,7 @@ import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.application.result.chat.ChatSource;
 import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,6 +17,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -39,6 +41,9 @@ class ChatMessageWorkServiceTest {
 
     @Mock
     private ConversationRepository conversationRepository;
+
+    @Mock
+    private ObjectProvider<RuntimeObservability> runtimeObservability;
 
     @InjectMocks
     private ChatMessageWorkService chatMessageWorkService;

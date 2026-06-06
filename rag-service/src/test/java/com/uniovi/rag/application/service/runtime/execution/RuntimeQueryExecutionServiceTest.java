@@ -22,6 +22,7 @@ import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import java.net.ConnectException;
@@ -62,7 +63,7 @@ class RuntimeQueryExecutionServiceTest {
         @SuppressWarnings("unchecked")
         ObjectProvider<RuntimeQueryExecutionService> selfProvider = mock(ObjectProvider.class);
         @SuppressWarnings("unchecked")
-        ObjectProvider<com.uniovi.rag.infrastructure.observability.RuntimeObservability> runtimeObservability =
+        ObjectProvider<RuntimeObservability> runtimeObservability =
                 mock(ObjectProvider.class);
         service =
                 new RuntimeQueryExecutionService(
@@ -74,6 +75,7 @@ class RuntimeQueryExecutionServiceTest {
                         knowledgeDocumentRepository,
                         selfProvider,
                         runtimeObservability);
+        when(selfProvider.getIfAvailable()).thenReturn(service);
     }
 
     private static ResolvedRuntimeConfig minimalResolved(RagConfig rag) {
@@ -256,7 +258,7 @@ class RuntimeQueryExecutionServiceTest {
         @SuppressWarnings("unchecked")
         ObjectProvider<RuntimeQueryExecutionService> provider = mock(ObjectProvider.class);
         @SuppressWarnings("unchecked")
-        ObjectProvider<com.uniovi.rag.infrastructure.observability.RuntimeObservability> runtimeObservability =
+        ObjectProvider<RuntimeObservability> runtimeObservability =
                 mock(ObjectProvider.class);
         RuntimeQueryExecutionService self =
                 spy(new RuntimeQueryExecutionService(

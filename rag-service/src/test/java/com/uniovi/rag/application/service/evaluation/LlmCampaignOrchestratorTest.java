@@ -48,6 +48,8 @@ import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
+import org.junit.jupiter.api.BeforeEach;
+import org.mockito.Mockito;
 
 @ExtendWith(MockitoExtension.class)
 class LlmCampaignOrchestratorTest {
@@ -72,9 +74,9 @@ class LlmCampaignOrchestratorTest {
     @Mock private LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService;
     @Mock private ObjectProvider<RuntimeObservability> runtimeObservability;
 
-    @org.junit.jupiter.api.BeforeEach
+    @BeforeEach
     void stubCorpusReadiness() {
-        org.mockito.Mockito.lenient()
+        Mockito.lenient()
                 .when(evaluationCorpusReadinessService.getReadiness(any(), any()))
                 .thenReturn(
                         new EvaluationCorpusReadinessDto(
@@ -92,7 +94,7 @@ class LlmCampaignOrchestratorTest {
                                 null,
                                 List.of(),
                                 true));
-        org.mockito.Mockito.lenient()
+        Mockito.lenient()
                 .when(labBenchmarkConfigPreflightService.validateOrThrow(any(), any(), any()))
                 .thenReturn(
                         new LabBenchmarkConfigPreflightResult(

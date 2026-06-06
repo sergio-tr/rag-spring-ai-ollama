@@ -22,6 +22,8 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.ObjectProvider;
 
 /** Covers chat snapshot degradation ({@link RagExecutionOrchestrator#selectExecutableWorkflow}). */
 class RagExecutionOrchestratorSnapshotFallbackTest {
@@ -59,7 +61,7 @@ class RagExecutionOrchestratorSnapshotFallbackTest {
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(org.springframework.beans.factory.ObjectProvider.class));
+                        mock(ObjectProvider.class));
         return new OrchestratorHarness(orchestrator, direct);
     }
 
