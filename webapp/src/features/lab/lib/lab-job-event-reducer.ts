@@ -1,6 +1,5 @@
 import type { LabJobEventDto } from "@/types/api";
 import {
-  mergeLabProgressSnapshot,
   payloadNumber,
   payloadString,
   type LabProgressSnapshot,

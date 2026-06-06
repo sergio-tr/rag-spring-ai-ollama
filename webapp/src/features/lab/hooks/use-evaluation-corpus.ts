@@ -99,8 +99,10 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
     if (code === "KB_NOT_FOUND" || code === "CORPUS_UNAVAILABLE") {
       qc.removeQueries({ queryKey: evaluationCorpusQueryKey(effectiveCorpusId) });
       qc.removeQueries({ queryKey: evaluationCorpusReadinessQueryKey(effectiveCorpusId) });
-      setResolvedCorpusId(null);
-      options?.onCorpusStale?.();
+      queueMicrotask(() => {
+        setResolvedCorpusId(null);
+        options?.onCorpusStale?.();
+      });
     }
   }, [query.error, effectiveCorpusId, options, qc]);
 
