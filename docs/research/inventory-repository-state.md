@@ -23,19 +23,19 @@
 | **Persisted execution traces (product path)** | Domain `ExecutionTrace`, P15–P16 persistence narrative in `rag-service/README.md`; services under `application.service.runtime.trace*`. |
 | **Quality hub** | `docs/quality/README.md` — canonical `./mvnw clean verify`, mock policies, coverage gates. |
 | **External test harness** | `docs/testing/external-test-harness.md` — Ollama, classifier HTTP, OTLP mocking norms. |
-| **Thesis minimum scope** | `docs/overview/thesis-scope.md`. |
+| **Minimum scope** | `docs/overview/minimum-scope.md`. |
 | **Implementation roadmap (canonical blocks)** | `docs/architecture/implementation-roadmap.md` — block 9 “Experimentation / Lab” noted as partial. |
 | **Spring AI RAG supporting docs** | `docs/ai/spring-ai-rag-inventory.md`, `docs/ai/spring-ai-rag-pipeline-contracts.md`, `docs/ai/README.md`. |
 
 ---
 
-## Pending (not closed for thesis-grade evidence)
+## Pending (not closed for formal evidence)
 
 | Gap | Implication |
 | --- | --- |
 | **Formal run registry in-repo** | This `docs/research/` tree establishes templates and waves; operators must attach **stored exports** (paths/URLs) per run sheet — the repository does not store large CSV/ZIP blobs by default. |
 | **Uniform S0–S4 labelling across all Lab surfaces** | `implementation-roadmap.md` states scenario ladder mapping is not yet uniform — comparative claims must name **exact** benchmark kind and config snapshot IDs. |
-| **Explicit “Lab vs product” parity proof per scenario** | ADR 0009 is architectural intent; each thesis claim needs a **verification row** in `wave-*.md` or design matrix. |
+| **Explicit “Lab vs product” parity proof per scenario** | ADR 0009 is architectural intent; each evaluation claim needs a **verification row** in `wave-*.md` or design matrix. |
 | **Block 9 closure criteria in CI** | Roadmap: explicit closure criteria per block still evolving — gates use **documented** manual preconditions (G-build, optional stack integration) rather than a single new CI job. |
 
 ---
@@ -47,7 +47,7 @@
 | **Same resolved config + snapshots for Lab vs chat** | Create `resolved_config_snapshot` via `{product}/config/resolved-snapshots`, pin in RAG end-to-end benchmark; compare with product chat using same snapshot id (document both run ids). |
 | **Numeric reproducibility (Ollama)** | Same model tag, temperature, seed (if exposed); run **N≥3** repetitions for stochastic generator; record variance in run sheet. |
 | **`ExecutionTrace` coverage for each Lab benchmark kind** | Inspect export headers and persisted rows; document gaps where trace is placeholder-only. |
-| **Token metrics in Python micro-benchmarks** | Heuristic vs real tokenizer — document limitation in every thesis table that cites `benchmark-report-v1` estimated tokens. |
+| **Token metrics in Python micro-benchmarks** | Heuristic vs real tokenizer — document limitation in every published table that cites `benchmark-report-v1` estimated tokens. |
 
 ---
 

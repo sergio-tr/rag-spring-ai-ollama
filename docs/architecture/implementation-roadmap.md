@@ -18,7 +18,7 @@
 10. **Identity / HTTPS / Security** — Keycloak integration, HTTPS termination, hardening aligned with [ADR 0006](../adr/0006-keycloak-identity-and-https-foundation.md).
 11. **Frontend Product + Lab** — Webapp alignment with resolved config and lab surfaces.
 12. **Compliance / RGPD** — Data protection, retention, DPIA-oriented documentation and controls as required.
-13. **Final Evidence / Memory / Defense** — Thesis evidence package, memory baselines, defence rehearsal artefacts.
+13. **Final Evidence / Memory / Defense** — Evaluation evidence package, memory baselines, defence rehearsal artefacts.
 
 ## Per-block pattern (required when executing a block)
 

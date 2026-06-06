@@ -1,7 +1,7 @@
 # Data model (summary)
 
 **Source of truth:** Flyway migrations under `rag-service/src/main/resources/db/migration/`.  
-This page is the **compact logical + physical reference** for the platform (thesis figures; verify rare tables with SQL if needed).
+This page is the **compact logical + physical reference** for the platform (figures; verify rare tables with SQL if needed).
 
 **Operators:** database image and init layout — [../../db/README.md](../../db/README.md). **Domain concepts:** [../domain/conceptual-model.md](../domain/conceptual-model.md). **Lab vs production promotion:** [ADR 0001](../adr/0001-lab-promotion-modes.md). **Async Lab jobs and evaluation scope:** [ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md), [integration-flows.md](../architecture/integration-flows.md).
 
@@ -385,7 +385,7 @@ Do **not** conflate the two: a Lab “eval LLM” `async_task` is **not** an `ev
 | Risk | Mitigation |
 | ------ | ------------ |
 | JSON without strict DB schema | Write-time sanitization; characterization tests for merge; document keys (e.g. configuration schema in application). |
-| Duplicate datasets (same SHA) | Application-level dedup by **`(owner_id, sha256)`** when hashing is available; no mandatory UK in DB for thesis scope ([ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). |
+| Duplicate datasets (same SHA) | Application-level dedup by **`(owner_id, sha256)`** when hashing is available; no mandatory UK in DB for minimum scope ([ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). |
 | `artifact_path` not portable | Environment-specific prefixes; avoid hard-coded absolute paths. |
 | Two “run” concepts (`evaluation_run` vs `async_task`) | See [Section 10](DATA_MODEL.md#dm-s10); use the right table per flow. |
 | `evaluation_result` growth | Retention/partitioning later; index on `run_id` (V9). |

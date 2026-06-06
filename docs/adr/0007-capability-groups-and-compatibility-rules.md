@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The codebase uses **feature flags** and layered configuration. A flat flag forest leads to **inconsistent** combinations and unmaintainable conditionals, harming reproducibility for Lab and thesis defence.
+The codebase uses **feature flags** and layered configuration. A flat flag forest leads to **inconsistent** combinations and unmaintainable conditionals, harming reproducibility for Lab.
 
 ## Decision
 

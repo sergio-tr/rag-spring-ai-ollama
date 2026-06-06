@@ -31,7 +31,7 @@ The platform serves multiple **users** with **projects**, **documents**, and **c
 
 - Security reviews focus on **authorization** (users access only their projects unless ADMIN) and **correct FK usage**, not on DB-level tenant IDs beyond `user_id` / `owner_id`.
 - Scaling or compliance needs for **hard** multi-tenancy require a new ADR and likely schema or deployment changes.
-- Documentation and thesis scope should not claim isolated “tenants” beyond this model without updating this ADR.
+- Documentation and scope should not claim isolated “tenants” beyond this model without updating this ADR.
 
 ## References
 

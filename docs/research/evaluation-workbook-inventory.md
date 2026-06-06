@@ -17,7 +17,7 @@ This note records sheet structure and row counts for parser design (Phase 1). It
 | llm_reader_questions | id, question, context_text, expected_answer, query_type, difficulty, answer_mode, source_document_id, gold_evidence, unanswerable, evaluation_method | 36 | LLM baseline sheet |
 | embedding_retrieval_queries | id, query, query_variant_type, query_type, difficulty, expected_answer, gold_document_ids, gold_chunk_ids, must_retrieve_any, must_retrieve_all, notes | 60 | Embedding / retrieval eval |
 | rag_preset_questions_enriched | id, question, expected_answer, query_type, difficulty, answer_mode, gold_document_ids, gold_chunk_ids, expected_evidence_count, unanswerable, requires_multi_document, … | 60 | RAG preset questions (wide header) |
-| llm_candidates | candidate_id, model, role, priority, expected_fit, hardware_note, protocols | 5 | Model names for thesis |
+| llm_candidates | candidate_id, model, role, priority, expected_fit, hardware_note, protocols | 5 | Model names for evaluation |
 | embedding_candidates | candidate_id, model, role, priority, expected_fit, profile_notes, protocols | 4 | Embedding models |
 | rag_preset_catalog_P0_P14 | preset_id, family, name, retrieval, query_understanding, tools, memory, judges, main_or_complement, objective, dataset_policy | 15 | **P0–P14** definitions |
 | metric_spec | metric_id, scope, description, primary_for, formula_or_rule | 17 | Metric definitions |

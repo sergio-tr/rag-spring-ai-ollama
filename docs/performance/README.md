@@ -23,7 +23,7 @@ Gatling coverage and related pointers: [../testing/traceability-retired-tools.md
 | Concern | Prefer |
 | --- | --- |
 | RPS ramps, HTML reports, mixed traffic, authenticated flows | **Gatling** — `gatling.yml` when `GATLING_BASE_URL` is set |
-| Single-host product Chat latency samples, thesis baselines, **estimated** tokens | **Python** — `micro-benchmark.yml` (optional; no PR gates) |
+| Single-host product Chat latency samples, product baselines, **estimated** tokens | **Python** — `micro-benchmark.yml` (optional; no PR gates) |
 
 The Gatling workflow **skips** when `GATLING_BASE_URL` is unset.
 

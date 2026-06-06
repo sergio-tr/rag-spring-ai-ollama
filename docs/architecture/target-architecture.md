@@ -4,7 +4,7 @@
 
 **Related:** [rag-runtime-architecture.md](rag-runtime-architecture.md), [configuration-resolution-model.md](configuration-resolution-model.md), [knowledge-system-model.md](knowledge-system-model.md), [implementation-roadmap.md](implementation-roadmap.md), [integration-flows.md](integration-flows.md), [system-context.md](system-context.md).
 
-## Thesis context (product domain)
+## Product context (domain)
 
 The degree project centres on **RAG over neighbourhood meeting minutes** (*actas vecinales*) as the primary illustrative domain. The platform remains **API-first** with a **multi-user web product** and a **Lab** for reproducible empirical work; domain wording in UX or datasets may reflect meeting minutes while the architecture below applies to the whole system.
 
@@ -97,7 +97,7 @@ The degree project centres on **RAG over neighbourhood meeting minutes** (*actas
 
 ### 9. Governance & Compliance
 
-**Purpose:** ADRs, documentation governance, branch/PR policy, traceability for thesis defence, RGPD/compliance **as a roadmap block** (implementation follows [implementation-roadmap.md](implementation-roadmap.md)).
+**Purpose:** ADRs, documentation governance, branch/PR policy, traceability for demonstration, RGPD/compliance **as a roadmap block** (implementation follows [implementation-roadmap.md](implementation-roadmap.md)).
 
 **Owns:** Decision records, canonical docs under `docs/`, rules for `docs/` vs module READMEs ([documentation-guidelines.md](../development/documentation-guidelines.md)).
 

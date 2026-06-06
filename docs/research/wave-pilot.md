@@ -73,7 +73,7 @@
 | --- | --- |
 | `dataset_id` | EVAL-XLSX-CLASSPATH-V1 |
 | `content_sha256` | `4b525f4341cf57fb6275e709555dd6030318e516ade60abef420cee4f97b5b3d` |
-| `domain_notes` | Minutes-style items; language and domain bias per workbook content — declare in thesis. |
+| `domain_notes` | Minutes-style items; language and domain bias per workbook content — declare in external write-ups. |
 
 **Execution identifiers (fill on run)**
 
@@ -97,7 +97,7 @@
 2. **Separate quality gates from science metrics:** `mvn verify` success does not imply Lab success — keep run ids distinct (**RUN-PILOT-G-BUILD-001** vs **RUN-PILOT-LAB-001**).
 3. **Ollama readiness:** Compose readiness vs liveness — document which probe you waited on (`rag-service/README.md` notes `readiness` vs `liveness`).
 4. **Stochasticity:** If the pilot uses a non-deterministic chat model, set **N≥3** on the first real Lab execution or mark results exploratory only.
-5. **Export preservation:** Keep `#META:` header line with CSV exports — thesis appendices should store immutable copies.
+5. **Export preservation:** Keep `#META:` header line with CSV exports — external appendices should store immutable copies.
 
 ---
 

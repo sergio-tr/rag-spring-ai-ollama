@@ -1,6 +1,6 @@
 # Operations runbook (minimal)
 
-Quick reference for development, demo, and thesis validation. For compose ports and env vars, see [README.md](README.md).
+Quick reference for development, demo, and demo validation. For compose ports and env vars, see [README.md](README.md).
 
 ## View a distributed trace
 

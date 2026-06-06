@@ -1,6 +1,6 @@
 # Webapp module map (`webapp/`)
 
-**Navigation only** — thesis-friendly map. All setup, scripts, and testing: [webapp/README.md](../../webapp/README.md). API types: TypeDoc (`cd webapp && npm run doc`).
+**Navigation only** - All setup, scripts, and testing: [webapp/README.md](../../webapp/README.md). API types: TypeDoc (`cd webapp && npm run doc`).
 
 | Area | Path (typical) | Role |
 | ------ | ---------------- | ------ |
