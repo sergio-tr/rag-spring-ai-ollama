@@ -384,8 +384,6 @@ public class LabClasspathCorpusBootstrapService {
         String t = raw.trim();
         if (t.startsWith("classpath:/") && !t.startsWith("classpath*:")) {
             t = "classpath*:" + t.substring("classpath:".length());
-        } else if (t.startsWith("classpath:") && !t.startsWith("classpath*:")) {
-            t = "classpath*:" + t.substring("classpath:".length());
         }
         return t;
     }
@@ -407,7 +405,7 @@ public class LabClasspathCorpusBootstrapService {
     }
 
     /**
-     * Keeps thesis corpus files (PDF actas, text, markdown, HTML) and drops noise such as {@code .gitkeep}.
+     * Keeps corpus files (PDF actas, text, markdown, HTML) and drops noise such as {@code .gitkeep}.
      */
     static List<Resource> filterCorpusResources(List<Resource> raw) {
         List<Resource> out = new ArrayList<>();
