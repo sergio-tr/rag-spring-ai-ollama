@@ -443,17 +443,19 @@ export function LabEvaluationRunCard({
 
   useEffect(() => {
     if (forgetWatchNonce === 0) return;
-    setWatchLive(false);
-    setRunning(false);
-    setAccepted(null);
-    setEvaluationRunId(null);
-    setTaskStatus(null);
-    setResult(null);
-    setCancelling(false);
-    setErr(null);
-    latestRunAppliedRef.current = false;
-    void queryClient.invalidateQueries({
-      queryKey: latestLabBenchmarkRunQueryKey(benchmarkKind, activeProject?.id ?? null),
+    queueMicrotask(() => {
+      setWatchLive(false);
+      setRunning(false);
+      setAccepted(null);
+      setEvaluationRunId(null);
+      setTaskStatus(null);
+      setResult(null);
+      setCancelling(false);
+      setErr(null);
+      latestRunAppliedRef.current = false;
+      void queryClient.invalidateQueries({
+        queryKey: latestLabBenchmarkRunQueryKey(benchmarkKind, activeProject?.id ?? null),
+      });
     });
   }, [forgetWatchNonce, benchmarkKind, activeProject?.id, queryClient]);
 

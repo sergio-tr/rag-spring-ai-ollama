@@ -67,26 +67,30 @@ vi.mock("@/features/lab/hooks/use-lab-status", () => ({
   })),
 }));
 
-vi.mock("@/features/lab/hooks/use-evaluation-corpus", () => ({
-  useEvaluationCorpus: vi.fn(() => ({
-    summary: { documentCount: 1, readyCount: 1, documents: [] },
-    effectiveCorpusId: "corpus-1",
-    loading: false,
-    fetching: false,
-    error: null,
-    refresh: vi.fn(),
-    ensureCorpus: vi.fn(),
-    uploadDocuments: vi.fn(),
-    corpusReady: true,
-    corpusRunnable: true,
-    readiness: { runnable: true, primaryBlocker: null, primaryBlockerMessage: null },
-    corpusProcessing: false,
-    attachFromProject: vi.fn(),
-    deleteDocument: vi.fn(),
-    deleteAllDocuments: vi.fn(),
-    retryDocumentIngest: vi.fn(),
-  })),
-}));
+vi.mock("@/features/lab/hooks/use-evaluation-corpus", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/lab/hooks/use-evaluation-corpus")>();
+  return {
+    ...actual,
+    useEvaluationCorpus: vi.fn(() => ({
+      summary: { documentCount: 1, readyCount: 1, documents: [] },
+      effectiveCorpusId: "corpus-1",
+      loading: false,
+      fetching: false,
+      error: null,
+      refresh: vi.fn(),
+      ensureCorpus: vi.fn(),
+      uploadDocuments: vi.fn(),
+      corpusReady: true,
+      corpusRunnable: true,
+      readiness: { runnable: true, primaryBlocker: null, primaryBlockerMessage: null },
+      corpusProcessing: false,
+      attachFromProject: vi.fn(),
+      deleteDocument: vi.fn(),
+      deleteAllDocuments: vi.fn(),
+      retryDocumentIngest: vi.fn(),
+    })),
+  };
+});
 
 vi.mock("@/features/lab/hooks/use-experimental-datasets", () => ({
   useExperimentalDatasetsQuery: vi.fn(() => ({

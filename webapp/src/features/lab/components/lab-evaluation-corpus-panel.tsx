@@ -141,7 +141,7 @@ export function LabEvaluationCorpusPanel({
   const isIndexProject = Boolean(optionalProjectId && optionalProjectId === readiness?.indexProjectId);
   const attachableDocsQuery = useQuery({
     queryKey: [
-      ...evaluationCorpusAttachableDocsQueryKey(optionalProjectId),
+      ...evaluationCorpusAttachableDocsQueryKey(optionalProjectId ?? null),
       readiness?.indexProjectId,
       summary?.updatedAt,
       summary?.documentCount,

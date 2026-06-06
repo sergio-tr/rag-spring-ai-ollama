@@ -3,7 +3,8 @@ import { render, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
-import type { ActiveLabJobDto, LatestLabRunRecoveryDto } from "@/types/api";
+import type { ActiveLabJobDto, BenchmarkKind, LatestLabRunRecoveryDto } from "@/types/api";
+import type { UseLabJobLiveStreamOptions } from "@/features/lab/hooks/use-lab-job-live-stream";
 
 vi.mock("@/features/help/HelpPopover", () => ({
   HelpPopover: () => <button type="button">Help</button>,
@@ -68,21 +69,28 @@ vi.mock("@/features/lab/hooks/use-experimental-datasets", () => ({
 const latestRunMock = vi.fn();
 
 vi.mock("@/features/lab/hooks/use-latest-lab-benchmark-run", () => ({
-  useLatestLabBenchmarkRun: (...args: unknown[]) => latestRunMock(...args),
+  useLatestLabBenchmarkRun: (options: Readonly<{
+    benchmarkKind: BenchmarkKind;
+    projectId: string | null;
+    enabled?: boolean;
+  }>) => latestRunMock(options),
 }));
 
-const liveStreamMock = vi.fn(() => ({
-  connectionState: "idle" as const,
-  taskStatus: null,
-  lastEventId: null,
-  recentEvents: [],
-  progressSnapshot: undefined,
-  resume: vi.fn(),
-  stop: vi.fn(),
-}));
+const liveStreamMock = vi.fn((options: UseLabJobLiveStreamOptions) => {
+  void options;
+  return {
+    connectionState: "idle" as const,
+    taskStatus: null,
+    lastEventId: null,
+    recentEvents: [],
+    progressSnapshot: undefined,
+    resume: vi.fn(),
+    stop: vi.fn(),
+  };
+});
 
 vi.mock("@/features/lab/hooks/use-lab-job-live-stream", () => ({
-  useLabJobLiveStream: (...args: unknown[]) => liveStreamMock(...args),
+  useLabJobLiveStream: (options: UseLabJobLiveStreamOptions) => liveStreamMock(options),
 }));
 
 const fetchLabJobStatusOnceMock = vi.fn();
@@ -228,7 +236,7 @@ describe("LabEvaluationRunCard latest run recovery", () => {
     await waitFor(() => {
       expect(liveStreamMock).toHaveBeenCalled();
     });
-    const lastCall = liveStreamMock.mock.calls.at(-1)?.[0] as { enabled?: boolean; jobId?: string };
+    const lastCall = liveStreamMock.mock.lastCall?.[0];
     expect(lastCall?.jobId).toBe("active-job");
     expect(lastCall?.enabled).toBe(true);
   });
@@ -349,7 +357,7 @@ describe("LabEvaluationRunCard stop watching semantics", () => {
       expect(panel).toBeTruthy();
       expect(within(panel as HTMLElement).getByRole("status")).toHaveTextContent(/Completed|finished/i);
     });
-    const lastStreamOpts = liveStreamMock.mock.calls.at(-1)?.[0] as { enabled?: boolean } | undefined;
+    const lastStreamOpts = liveStreamMock.mock.lastCall?.[0];
     expect(lastStreamOpts?.enabled).not.toBe(true);
   });
 });
