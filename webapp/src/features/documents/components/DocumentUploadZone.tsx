@@ -129,6 +129,8 @@ async function pollDocumentStatus(options: {
 
 export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZoneProps>) {
   const t = useTranslations("Documents");
+  const tRef = useRef(t);
+  tRef.current = t;
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
@@ -142,7 +144,7 @@ export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZonePro
     [items],
   );
 
-  async function uploadSingle(file: File): Promise<ProjectDocumentDto> {
+  const uploadSingle = useCallback(async (file: File): Promise<ProjectDocumentDto> => {
     if (!projectId) throw new Error("no_project");
     const fd = new FormData();
     fd.append("file", file);
@@ -150,7 +152,7 @@ export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZonePro
       method: "POST",
       body: fd,
     });
-  }
+  }, [projectId]);
 
   async function reindexSingle(documentId: string, file: File): Promise<ProjectDocumentDto> {
     const fd = new FormData();
@@ -196,6 +198,8 @@ export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZonePro
   const processOneQueued = useCallback(
     async (item: UploadItem) => {
       if (!projectId || cancelledRef.current) return;
+      const live = itemsRef.current.find((x) => x.clientId === item.clientId);
+      if (!live || live.phase !== "queued") return;
       setItems((prev) =>
         prev.map((x) => (x.clientId === item.clientId ? { ...x, phase: "uploading", lastError: null } : x)),
       );
@@ -267,32 +271,18 @@ export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZonePro
         setItems((prev) =>
           prev.map((x) =>
             x.clientId === item.clientId
-              ? { ...x, phase: "error", lastError: e, errorMessage: uploadErrorDetail(e, t) }
+              ? { ...x, phase: "error", lastError: e, errorMessage: uploadErrorDetail(e, tRef.current) }
               : x,
           ),
         );
         invalidateProjectDocuments();
       }
     },
-    [invalidateProjectDocuments, projectId, t],
+    [invalidateProjectDocuments, projectId, uploadSingle],
   );
 
-  const drainUploadQueue = useCallback(async () => {
-    if (!projectId || drainingRef.current) return;
-    drainingRef.current = true;
-    try {
-      while (!cancelledRef.current) {
-        const next = itemsRef.current.find((i) => i.phase === "queued");
-        if (!next) break;
-        await processOneQueued(next);
-      }
-    } finally {
-      drainingRef.current = false;
-      if (!cancelledRef.current && itemsRef.current.some((i) => i.phase === "queued")) {
-        void drainUploadQueue();
-      }
-    }
-  }, [processOneQueued, projectId]);
+  const processOneQueuedRef = useRef(processOneQueued);
+  processOneQueuedRef.current = processOneQueued;
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -302,11 +292,14 @@ export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZonePro
   }, [projectId]);
 
   useEffect(() => {
-    if (!projectId) return;
-    if (items.some((i) => i.phase === "queued")) {
-      void drainUploadQueue();
-    }
-  }, [items, drainUploadQueue, projectId]);
+    if (!projectId || drainingRef.current) return;
+    const next = items.find((i) => i.phase === "queued");
+    if (!next) return;
+    drainingRef.current = true;
+    void processOneQueuedRef.current(next).finally(() => {
+      drainingRef.current = false;
+    });
+  }, [items, projectId]);
 
   const anyError = items.some((i) => i.phase === "error" || i.phase === "stalled");
 
