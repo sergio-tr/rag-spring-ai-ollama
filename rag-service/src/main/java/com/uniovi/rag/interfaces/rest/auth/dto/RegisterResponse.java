@@ -8,6 +8,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * - Otherwise: returns the same token payload as login.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record RegisterResponse(String status, LoginResponse login) {
+public record RegisterResponse(String status, LoginResponse login, String confirmationDelivery) {
 }
 

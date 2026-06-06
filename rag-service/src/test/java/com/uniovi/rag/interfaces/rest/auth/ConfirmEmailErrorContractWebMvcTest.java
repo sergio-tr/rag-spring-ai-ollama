@@ -1,5 +1,6 @@
 package com.uniovi.rag.interfaces.rest.auth;
 
+import com.uniovi.rag.application.service.auth.AuthPublicConfigService;
 import com.uniovi.rag.application.service.auth.AuthService;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.interfaces.rest.support.ApiEarlyExceptionResolver;
@@ -34,6 +35,9 @@ class ConfirmEmailErrorContractWebMvcTest {
 
     @MockitoBean
     private AuthService authService;
+
+    @MockitoBean
+    private AuthPublicConfigService authPublicConfigService;
 
     @MockitoBean
     private UserAccountPort userAccountPort;

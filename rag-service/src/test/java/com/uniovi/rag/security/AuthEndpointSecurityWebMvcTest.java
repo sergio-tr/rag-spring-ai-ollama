@@ -1,6 +1,7 @@
 package com.uniovi.rag.security;
 
 import com.uniovi.rag.application.port.out.UserAccountPort;
+import com.uniovi.rag.application.service.auth.AuthPublicConfigService;
 import com.uniovi.rag.application.service.auth.AuthService;
 import com.uniovi.rag.application.service.auth.OauthLoginService;
 import com.uniovi.rag.configuration.SecurityConfiguration;
@@ -72,6 +73,9 @@ class AuthEndpointSecurityWebMvcTest {
     private AuthService authService;
 
     @MockitoBean
+    private AuthPublicConfigService authPublicConfigService;
+
+    @MockitoBean
     private UserAccountPort userAccountPort;
 
     @MockitoBean
@@ -132,7 +136,7 @@ class AuthEndpointSecurityWebMvcTest {
     @Test
     void authRegister_withoutToken_returnsAccepted_whenPendingEmailVerification() throws Exception {
         when(authService.register(any()))
-                .thenReturn(new RegisterResponse("PENDING_EMAIL_VERIFICATION", null));
+                .thenReturn(new RegisterResponse("PENDING_EMAIL_VERIFICATION", null, "outbox-only"));
 
         mockMvc.perform(post("/api/v5/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)

@@ -1,7 +1,10 @@
 package com.uniovi.rag.interfaces.rest.auth;
 
+import com.uniovi.rag.application.service.auth.AuthPublicConfigService;
+import com.uniovi.rag.application.service.auth.AuthPublicConfig;
 import com.uniovi.rag.application.service.auth.AuthService;
 import com.uniovi.rag.application.port.out.UserAccountPort;
+import com.uniovi.rag.interfaces.rest.auth.dto.AuthPublicConfigResponse;
 import com.uniovi.rag.interfaces.rest.auth.dto.ConfirmEmailRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordResponse;
@@ -31,11 +34,25 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final AuthPublicConfigService authPublicConfigService;
     private final UserAccountPort userAccountPort;
 
-    public AuthController(AuthService authService, UserAccountPort userAccountPort) {
+    public AuthController(
+            AuthService authService,
+            AuthPublicConfigService authPublicConfigService,
+            UserAccountPort userAccountPort) {
         this.authService = authService;
+        this.authPublicConfigService = authPublicConfigService;
         this.userAccountPort = userAccountPort;
+    }
+
+    @GetMapping("/public-config")
+    public AuthPublicConfigResponse publicConfig() {
+        AuthPublicConfig config = authPublicConfigService.publicConfig();
+        return new AuthPublicConfigResponse(
+                config.emailConfirmationEnabled(),
+                config.passwordResetEnabled(),
+                config.mailDeliveryMode());
     }
 
     @PostMapping("/login")

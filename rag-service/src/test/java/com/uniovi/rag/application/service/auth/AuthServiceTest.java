@@ -12,6 +12,7 @@ import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RefreshRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RegisterRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RegisterResponse;
+import com.uniovi.rag.application.service.auth.EffectiveAuthMailDelivery.ResolvedMode;
 import com.uniovi.rag.interfaces.rest.auth.dto.ResendConfirmationRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.ResetPasswordRequest;
 import com.uniovi.rag.application.port.out.UserAccountPort;
@@ -67,6 +68,18 @@ class AuthServiceTest {
 	@Mock
 	private MailOutboxRepository mailOutboxRepository;
 
+	private static EffectiveAuthMailDelivery mailDeliveryDisabled() {
+		return new EffectiveAuthMailDelivery(false, ResolvedMode.DISABLED, false, false);
+	}
+
+	private static EffectiveAuthMailDelivery mailDeliverySmtp() {
+		return new EffectiveAuthMailDelivery(true, ResolvedMode.SMTP, true, true);
+	}
+
+	private static EffectiveAuthMailDelivery mailDeliveryOutboxOnly() {
+		return new EffectiveAuthMailDelivery(true, ResolvedMode.OUTBOX_ONLY, false, false);
+	}
+
 	private AuthService newService() {
 		return new AuthService(
 				userAccountPort,
@@ -75,6 +88,7 @@ class AuthServiceTest {
 				emailConfirmationTokenRepository,
 				passwordResetTokenRepository,
 				mailOutboxRepository,
+				mailDeliveryDisabled(),
 				false,
 				false,
 				false,
@@ -95,6 +109,7 @@ class AuthServiceTest {
 				emailConfirmationTokenRepository,
 				passwordResetTokenRepository,
 				mailOutboxRepository,
+				mailDeliveryDisabled(),
 				false,
 				true,
 				false,
@@ -115,6 +130,7 @@ class AuthServiceTest {
 				emailConfirmationTokenRepository,
 				passwordResetTokenRepository,
 				mailOutboxRepository,
+				mailDeliverySmtp(),
 				true,
 				true,
 				true,
@@ -135,6 +151,7 @@ class AuthServiceTest {
 				emailConfirmationTokenRepository,
 				passwordResetTokenRepository,
 				mailOutboxRepository,
+				mailDeliveryOutboxOnly(),
 				true,
 				false,
 				true,
@@ -155,6 +172,7 @@ class AuthServiceTest {
 				emailConfirmationTokenRepository,
 				passwordResetTokenRepository,
 				mailOutboxRepository,
+				mailDeliveryDisabled(),
 				false,
 				false,
 				false,
@@ -175,6 +193,7 @@ class AuthServiceTest {
 				emailConfirmationTokenRepository,
 				passwordResetTokenRepository,
 				mailOutboxRepository,
+				mailDeliverySmtp(),
 				true,
 				true,
 				true,
@@ -329,6 +348,7 @@ class AuthServiceTest {
 		verify(mailOutboxRepository).save(outbox.capture());
 		assertThat(outbox.getValue().getPurpose()).isEqualTo("EMAIL_CONFIRMATION");
 		assertThat(outbox.getValue().getBodyText()).contains("/en/confirm-email?token=");
+		assertThat(res.confirmationDelivery()).isEqualTo("smtp");
 	}
 
 	@Test

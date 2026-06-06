@@ -1,5 +1,6 @@
 package com.uniovi.rag.interfaces.rest.auth;
 
+import com.uniovi.rag.application.service.auth.AuthPublicConfigService;
 import com.uniovi.rag.application.service.auth.AuthService;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
@@ -45,6 +46,9 @@ class AuthControllerTest {
 
     @MockitoBean
     private AuthService authService;
+
+    @MockitoBean
+    private AuthPublicConfigService authPublicConfigService;
 
     @MockitoBean
     private UserAccountPort userAccountPort;
@@ -97,7 +101,7 @@ class AuthControllerTest {
     @Test
     void register_pendingEmailVerification_returnsAccepted() throws Exception {
         when(authService.register(any()))
-                .thenReturn(new RegisterResponse("PENDING_EMAIL_VERIFICATION", null));
+                .thenReturn(new RegisterResponse("PENDING_EMAIL_VERIFICATION", null, "outbox-only"));
 
         mockMvc.perform(post(AUTH_BASE + "/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -115,7 +119,7 @@ class AuthControllerTest {
                 "refresh",
                 new AuthUserDto(id, "a@b.com", "User", "USER"));
         when(authService.register(any()))
-                .thenReturn(new RegisterResponse("REGISTERED", login));
+                .thenReturn(new RegisterResponse("REGISTERED", login, null));
 
         mockMvc.perform(post(AUTH_BASE + "/register")
                         .contentType(MediaType.APPLICATION_JSON)

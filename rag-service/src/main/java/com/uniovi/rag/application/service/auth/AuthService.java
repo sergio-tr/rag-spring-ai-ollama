@@ -47,6 +47,7 @@ public class AuthService {
 	private final EmailConfirmationTokenRepository emailConfirmationTokenRepository;
 	private final PasswordResetTokenRepository passwordResetTokenRepository;
 	private final MailOutboxRepository mailOutboxRepository;
+	private final EffectiveAuthMailDelivery mailDelivery;
 
 	private final boolean emailConfirmationEnabled;
 	private final boolean passwordResetEnabled;
@@ -68,6 +69,7 @@ public class AuthService {
 			EmailConfirmationTokenRepository emailConfirmationTokenRepository,
 			PasswordResetTokenRepository passwordResetTokenRepository,
 			MailOutboxRepository mailOutboxRepository,
+			EffectiveAuthMailDelivery mailDelivery,
 			@Value("${rag.auth.email-confirmation.enabled:false}") boolean emailConfirmationEnabled,
 			@Value("${rag.auth.password-reset.enabled:false}") boolean passwordResetEnabled,
 			@Value("${rag.auth.mail.enabled:false}") boolean mailEnabled,
@@ -84,6 +86,7 @@ public class AuthService {
 		this.emailConfirmationTokenRepository = emailConfirmationTokenRepository;
 		this.passwordResetTokenRepository = passwordResetTokenRepository;
 		this.mailOutboxRepository = mailOutboxRepository;
+		this.mailDelivery = mailDelivery;
 		this.emailConfirmationEnabled = emailConfirmationEnabled;
 		this.passwordResetEnabled = passwordResetEnabled;
 		this.mailEnabled = mailEnabled;
@@ -119,9 +122,12 @@ public class AuthService {
 		u = userAccountPort.save(u);
 		if (emailConfirmationEnabled) {
 			issueEmailConfirmation(u, req.locale());
-			return new RegisterResponse("PENDING_EMAIL_VERIFICATION", null);
+			return new RegisterResponse(
+					"PENDING_EMAIL_VERIFICATION",
+					null,
+					mailEnabled ? mailDelivery.publicDeliveryMode() : null);
 		}
-		return new RegisterResponse("REGISTERED", tokensForUser(u));
+		return new RegisterResponse("REGISTERED", tokensForUser(u), null);
 	}
 
 	@Transactional

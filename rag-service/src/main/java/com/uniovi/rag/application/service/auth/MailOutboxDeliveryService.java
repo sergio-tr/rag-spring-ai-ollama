@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.auth;
 
+import com.uniovi.rag.configuration.RagAuthMailProperties;
 import com.uniovi.rag.infrastructure.persistence.MailOutboxRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.MailOutboxEntity;
 import jakarta.annotation.PostConstruct;
@@ -12,17 +13,16 @@ import java.time.Instant;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.lang.Nullable;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.lang.Nullable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Delivers queued authentication emails from {@code mail_outbox} through SMTP.
+ * Delivers queued authentication emails from {@code mail_outbox} through SMTP when delivery mode is SMTP.
  *
  * <p>Rows are marked with {@code sent_at} on successful delivery; failed rows are left unsent so they
  * remain observable and retryable in the next sweep.
@@ -35,33 +35,37 @@ public class MailOutboxDeliveryService {
     private final MailOutboxRepository mailOutboxRepository;
     @Nullable
     private final JavaMailSender mailSender;
-    private final boolean mailEnabled;
+    private final EffectiveAuthMailDelivery delivery;
     private final String mailFrom;
     private final String mailFromName;
 
     public MailOutboxDeliveryService(
             MailOutboxRepository mailOutboxRepository,
             @Nullable JavaMailSender mailSender,
-            @Value("${rag.auth.mail.enabled:false}") boolean mailEnabled,
-            @Value("${rag.auth.mail.from:no-reply@local.test}") String mailFrom,
-            @Value("${rag.auth.mail.from-name:RAG App}") String mailFromName) {
+            EffectiveAuthMailDelivery delivery,
+            RagAuthMailProperties mailProperties) {
         this.mailOutboxRepository = mailOutboxRepository;
         this.mailSender = mailSender;
-        this.mailEnabled = mailEnabled;
-        this.mailFrom = mailFrom != null ? mailFrom.trim() : "no-reply@local.test";
-        this.mailFromName = mailFromName != null ? mailFromName.trim() : "RAG App";
+        this.delivery = delivery;
+        this.mailFrom = mailProperties.getFrom() != null ? mailProperties.getFrom().trim() : "";
+        this.mailFromName =
+                mailProperties.getFromName() != null && !mailProperties.getFromName().isBlank()
+                        ? mailProperties.getFromName().trim()
+                        : "RAG App";
     }
 
     @PostConstruct
-    void warnIfFromAddressMissing() {
-        if (!mailEnabled || mailSender == null) {
+    void logResolvedDeliveryMode() {
+        if (!delivery.mailEnabled()) {
             return;
         }
-        if (mailFrom.isBlank()) {
+        if (delivery.resolvedMode() == EffectiveAuthMailDelivery.ResolvedMode.OUTBOX_ONLY) {
+            return;
+        }
+        if (delivery.resolvedMode() == EffectiveAuthMailDelivery.ResolvedMode.SMTP && mailFrom.isBlank()) {
             log.warn(
-                    "Mail delivery is enabled but rag.auth.mail.from is blank; SMTP From cannot be built "
-                            + "(JavaMail AddressException). Set RAG_AUTH_MAIL_FROM to your Gmail address "
-                            + "(normally the same value as SPRING_MAIL_USERNAME), then recreate the backend container.");
+                    "Auth mail SMTP delivery is active but rag.auth.mail.from is blank; "
+                            + "JavaMail AddressException may occur. Set RAG_AUTH_MAIL_FROM.");
         }
     }
 
@@ -70,11 +74,7 @@ public class MailOutboxDeliveryService {
             initialDelayString = "${rag.auth.mail.delivery-initial-delay-ms:5000}")
     @Transactional
     public void deliverPending() {
-        if (!mailEnabled) {
-            return;
-        }
-        if (mailSender == null) {
-            log.warn("Mail delivery is enabled but JavaMailSender bean is unavailable; skipping outbox sweep");
+        if (!delivery.shouldRunSmtpSweep()) {
             return;
         }
         List<MailOutboxEntity> pending = mailOutboxRepository.findTop50BySentAtIsNullOrderByCreatedAtAsc();
@@ -84,6 +84,17 @@ public class MailOutboxDeliveryService {
     }
 
     void deliverSingle(MailOutboxEntity entry) {
+        if (mailSender == null) {
+            return;
+        }
+        if (mailFrom.isBlank()) {
+            log.warn(
+                    "Mail outbox delivery skipped; rag.auth.mail.from is blank (id={}, purpose={}, recipientDomain={})",
+                    entry.getId(),
+                    entry.getPurpose(),
+                    recipientDomain(entry.getRecipient()));
+            return;
+        }
         try {
             MimeMessage msg = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(msg, false, StandardCharsets.UTF_8.name());
@@ -95,10 +106,12 @@ public class MailOutboxDeliveryService {
 
             entry.setSentAt(Instant.now());
             mailOutboxRepository.save(entry);
+            log.info(
+                    "Mail outbox row delivered (id={}, purpose={}, recipientDomain={})",
+                    entry.getId(),
+                    entry.getPurpose(),
+                    recipientDomain(entry.getRecipient()));
         } catch (MailException | MessagingException | UnsupportedEncodingException ex) {
-            // The exception message comes from JavaMail / Spring Mail (e.g. Gmail "535-5.7.8 Username
-            // and Password not accepted"). It does not contain our credentials. We log it truncated
-            // and without the stack trace so operators can act, but logs stay safe.
             log.warn(
                     "Mail outbox delivery failed; row remains pending (id={}, purpose={}, recipientDomain={}, error={}: {})",
                     entry.getId(),
@@ -122,7 +135,6 @@ public class MailOutboxDeliveryService {
         return trimmed.substring(at + 1);
     }
 
-    /** Truncates exception messages so SMTP errors stay readable without flooding logs. */
     private static String truncateForLog(@Nullable String message) {
         if (message == null) {
             return "<no message>";

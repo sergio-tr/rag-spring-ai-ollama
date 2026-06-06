@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.auth;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.uniovi.rag.configuration.RagAuthMailProperties;
 import com.uniovi.rag.infrastructure.persistence.MailOutboxRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.MailOutboxEntity;
 import jakarta.mail.AuthenticationFailedException;
@@ -12,14 +13,14 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Properties;
 import java.util.stream.Collectors;
-import org.slf4j.LoggerFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.mail.MailSendException;
+import org.slf4j.LoggerFactory;
 import org.springframework.mail.MailAuthenticationException;
+import org.springframework.mail.MailSendException;
 import org.springframework.mail.javamail.JavaMailSender;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,27 +49,47 @@ class MailOutboxDeliveryServiceTest {
         return e;
     }
 
+    private static RagAuthMailProperties mailProps() {
+        RagAuthMailProperties props = new RagAuthMailProperties();
+        props.setEnabled(true);
+        props.setFrom("sender@example.com");
+        props.setFromName("RAG App");
+        return props;
+    }
+
+    private MailOutboxDeliveryService service(EffectiveAuthMailDelivery delivery) {
+        return new MailOutboxDeliveryService(mailOutboxRepository, mailSender, delivery, mailProps());
+    }
+
     @Test
     void deliverPending_whenMailDisabled_skipsProcessing() {
-        MailOutboxDeliveryService svc =
-                new MailOutboxDeliveryService(mailOutboxRepository, mailSender, false, "no-reply@example.com", "RAG App");
-
-        svc.deliverPending();
+        EffectiveAuthMailDelivery delivery =
+                new EffectiveAuthMailDelivery(false, EffectiveAuthMailDelivery.ResolvedMode.DISABLED, false, false);
+        service(delivery).deliverPending();
 
         verify(mailOutboxRepository, never()).findTop50BySentAtIsNullOrderByCreatedAtAsc();
         verify(mailSender, never()).send(any(MimeMessage.class));
     }
 
     @Test
-    void deliverPending_success_sendsAndMarksSentAt() {
+    void deliverPending_outboxOnly_skipsProcessing() {
+        EffectiveAuthMailDelivery delivery =
+                new EffectiveAuthMailDelivery(true, EffectiveAuthMailDelivery.ResolvedMode.OUTBOX_ONLY, false, true);
+        service(delivery).deliverPending();
+
+        verify(mailOutboxRepository, never()).findTop50BySentAtIsNullOrderByCreatedAtAsc();
+        verify(mailSender, never()).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void deliverPending_smtpMode_success_sendsAndMarksSentAt() {
         MailOutboxEntity pending = newPending("EMAIL_CONFIRMATION");
         when(mailOutboxRepository.findTop50BySentAtIsNullOrderByCreatedAtAsc()).thenReturn(List.of(pending));
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
 
-        MailOutboxDeliveryService svc =
-                new MailOutboxDeliveryService(mailOutboxRepository, mailSender, true, "sender@example.com", "RAG App");
-
-        svc.deliverPending();
+        EffectiveAuthMailDelivery delivery =
+                new EffectiveAuthMailDelivery(true, EffectiveAuthMailDelivery.ResolvedMode.SMTP, true, true);
+        service(delivery).deliverPending();
 
         verify(mailSender).send(any(MimeMessage.class));
         ArgumentCaptor<MailOutboxEntity> saved = ArgumentCaptor.forClass(MailOutboxEntity.class);
@@ -83,10 +104,9 @@ class MailOutboxDeliveryServiceTest {
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
         doThrow(new MailSendException("smtp down")).when(mailSender).send(any(MimeMessage.class));
 
-        MailOutboxDeliveryService svc =
-                new MailOutboxDeliveryService(mailOutboxRepository, mailSender, true, "sender@example.com", "RAG App");
-
-        svc.deliverPending();
+        EffectiveAuthMailDelivery delivery =
+                new EffectiveAuthMailDelivery(true, EffectiveAuthMailDelivery.ResolvedMode.SMTP, true, true);
+        service(delivery).deliverPending();
 
         verify(mailSender).send(any(MimeMessage.class));
         verify(mailOutboxRepository, never()).save(any(MailOutboxEntity.class));
@@ -107,9 +127,9 @@ class MailOutboxDeliveryServiceTest {
         logbackLogger.addAppender(appender);
 
         try {
-            MailOutboxDeliveryService svc =
-                    new MailOutboxDeliveryService(mailOutboxRepository, mailSender, true, "sender@example.com", "RAG App");
-            svc.deliverPending();
+            EffectiveAuthMailDelivery delivery =
+                    new EffectiveAuthMailDelivery(true, EffectiveAuthMailDelivery.ResolvedMode.SMTP, true, true);
+            service(delivery).deliverPending();
         } finally {
             logbackLogger.detachAppender(appender);
             appender.stop();
@@ -139,7 +159,9 @@ class MailOutboxDeliveryServiceTest {
     void deliverPending_blankMailFrom_keepsSentAtNull_logsAddressException() {
         MailOutboxEntity pending = newPending("EMAIL_CONFIRMATION");
         when(mailOutboxRepository.findTop50BySentAtIsNullOrderByCreatedAtAsc()).thenReturn(List.of(pending));
-        when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
+
+        RagAuthMailProperties props = mailProps();
+        props.setFrom("   ");
 
         Logger logbackLogger = (Logger) LoggerFactory.getLogger(MailOutboxDeliveryService.class);
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
@@ -147,9 +169,9 @@ class MailOutboxDeliveryServiceTest {
         logbackLogger.addAppender(appender);
 
         try {
-            MailOutboxDeliveryService svc =
-                    new MailOutboxDeliveryService(mailOutboxRepository, mailSender, true, "   ", "RAG App");
-            svc.deliverPending();
+            EffectiveAuthMailDelivery delivery =
+                    new EffectiveAuthMailDelivery(true, EffectiveAuthMailDelivery.ResolvedMode.SMTP, true, true);
+            new MailOutboxDeliveryService(mailOutboxRepository, mailSender, delivery, props).deliverPending();
         } finally {
             logbackLogger.detachAppender(appender);
             appender.stop();
@@ -159,7 +181,7 @@ class MailOutboxDeliveryServiceTest {
         assertThat(pending.getSentAt()).isNull();
         String joined =
                 appender.list.stream().map(ILoggingEvent::getFormattedMessage).collect(Collectors.joining("\n"));
-        assertThat(joined).contains("AddressException");
+        assertThat(joined).contains("rag.auth.mail.from is blank");
         assertThat(joined).doesNotContain("token=");
     }
 
@@ -180,9 +202,9 @@ class MailOutboxDeliveryServiceTest {
         logbackLogger.addAppender(appender);
 
         try {
-            MailOutboxDeliveryService svc =
-                    new MailOutboxDeliveryService(mailOutboxRepository, mailSender, true, "sender@example.com", "RAG App");
-            svc.deliverPending();
+            EffectiveAuthMailDelivery delivery =
+                    new EffectiveAuthMailDelivery(true, EffectiveAuthMailDelivery.ResolvedMode.SMTP, true, true);
+            service(delivery).deliverPending();
         } finally {
             logbackLogger.detachAppender(appender);
             appender.stop();

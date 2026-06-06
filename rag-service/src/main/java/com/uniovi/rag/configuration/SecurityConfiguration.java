@@ -65,6 +65,7 @@ public class SecurityConfiguration {
                         .requestMatchers(
                                 productAuthBase + "/login",
                                 productAuthBase + "/register",
+                                productAuthBase + "/public-config",
                                 productAuthBase + "/refresh",
                                 productAuthBase + "/confirm-email",
                                 productAuthBase + "/resend-confirmation",
