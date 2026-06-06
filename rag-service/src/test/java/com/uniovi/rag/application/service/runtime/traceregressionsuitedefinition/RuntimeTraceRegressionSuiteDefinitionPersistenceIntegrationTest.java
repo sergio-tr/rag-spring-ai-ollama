@@ -19,7 +19,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.Optional;
@@ -47,16 +50,22 @@ class RuntimeTraceRegressionSuiteDefinitionPersistenceIntegrationTest {
 
     @Autowired private RuntimeTraceRegressionSuiteDefinitionService definitionService;
     @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private PlatformTransactionManager transactionManager;
 
     private UUID insertUser() {
-        UUID userId = UUID.randomUUID();
-        jdbcTemplate.update(
-                "INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)",
-                userId,
-                userId + "@trace-regression.local",
-                "{noop}test",
-                "USER");
-        return userId;
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        return tx.execute(
+                status -> {
+                    UUID userId = UUID.randomUUID();
+                    jdbcTemplate.update(
+                            "INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)",
+                            userId,
+                            userId + "@trace-regression.local",
+                            "{noop}test",
+                            "USER");
+                    return userId;
+                });
     }
 
     @Test
@@ -149,7 +158,7 @@ class RuntimeTraceRegressionSuiteDefinitionPersistenceIntegrationTest {
 
     @Test
     void update_delete_materialize_wrongUser_notFound() {
-        UUID owner = UUID.randomUUID();
+        UUID owner = insertUser();
         UUID other = UUID.randomUUID();
         UUID id =
                 definitionService.create(
