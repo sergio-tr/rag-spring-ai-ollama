@@ -13,7 +13,7 @@ Clients use a **browser** with the **Next.js** product UI. Traffic may pass thro
 | Telemetry and dashboards | [observability-pipeline.mmd](observability-pipeline.mmd) |
 | When OTLP is active in Spring | [observability-states.mmd](observability-states.mmd) |
 
-Export for the thesis: [thesis-diagrams.md](thesis-diagrams.md).
+Export for documentation: [diagram-export.md](diagram-export.md).
 
 ## Without repeating READMEs
 

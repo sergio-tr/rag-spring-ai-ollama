@@ -10,7 +10,7 @@
 | --- | --- |
 | **Architecture freeze (0.1 — target model)** | [architecture/target-architecture.md](architecture/target-architecture.md) — [rag-runtime-architecture.md](architecture/rag-runtime-architecture.md), [configuration-resolution-model.md](architecture/configuration-resolution-model.md), [knowledge-system-model.md](architecture/knowledge-system-model.md), [implementation-roadmap.md](architecture/implementation-roadmap.md); ADRs [0005–0013](adr/README.md) |
 | **Spring AI / RAG modernization** | [ai/README.md](ai/README.md) — inventory, pipeline contracts; [adr/0013](adr/0013-agentic-patterns-adoption-gate.md) |
-| Product scope and boundaries | [overview/README.md](overview/README.md) — [product-context.md](overview/product-context.md), [thesis-scope.md](overview/thesis-scope.md) |
+| Product scope and boundaries | [overview/README.md](overview/README.md) — [product-context.md](overview/product-context.md), [minimum-scope.md](overview/minimum-scope.md) |
 | System context and diagrams | [architecture/README.md](architecture/README.md), [architecture/system-context.md](architecture/system-context.md) |
 | Deployment (conceptual) | [architecture/deployment-model.md](architecture/deployment-model.md), [operations/README.md](operations/README.md) |
 | Observability (operator) | [operations/grafana-observability-guide.md](operations/grafana-observability-guide.md), [observability/README.md](../observability/README.md) |
@@ -53,7 +53,7 @@
 
 | Kind | Location |
 | --- | --- |
-| Diagram index and export guide | [architecture/README.md](architecture/README.md), [architecture/thesis-diagrams.md](architecture/thesis-diagrams.md) |
+| Diagram index and export guide | [architecture/README.md](architecture/README.md), [architecture/diagram-export.md](architecture/diagram-export.md) |
 | Mermaid sources | [architecture/](architecture/) (`*.mmd`) |
 | Backend package map (navigation) | [architecture/BACKEND_PACKAGES.md](architecture/BACKEND_PACKAGES.md) |
 | Frontend module map (navigation) | [architecture/FRONTEND_MODULES.md](architecture/FRONTEND_MODULES.md) |

@@ -1,15 +1,15 @@
-# Diagrams for thesis or external documentation
+# Diagrams for external documentation
 
 All **source** diagrams live in this directory as `.mmd` files (Mermaid). They are designed to be **exported** to PNG or SVG and embedded in Word, LaTeX, or PDF without duplicating operational detail from module READMEs.
 
 ## Principles
 
 - Diagrams show **structure and data flow**. Command lines, env file lists, and port tables stay in [../../docker/README.md](../../docker/README.md), [../../docker/scripts/README.md](../../docker/scripts/README.md), [../../observability/README.md](../../observability/README.md), and service READMEs.
-- After changing **topology** (new service, new OTLP hop, new Ollama mode), update the relevant `.mmd` and mention the PR in your thesis change log if applicable.
+- After changing **topology** (new service, new OTLP hop, new Ollama mode), update the relevant `.mmd` and mention the PR in your change log if applicable.
 
 ## Index of diagrams
 
-Suggested grouping for the thesis chapter outline: **context** → **services** → **webapp** → **Docker** → **Ollama** → **observability** → **behaviour**.
+Suggested grouping for the documentation outline: **context** → **services** → **webapp** → **Docker** → **Ollama** → **observability** → **behaviour**.
 
 | File | Use in document |
 | ------ | ----------------- |
@@ -46,7 +46,7 @@ mmdc -i context-level.mmd -o export/context-level.png -b transparent
 mmdc -i context-level.mmd -o export/context-level.svg
 ```
 
-Create `export/` for build artifacts. The repository **ignores** `docs/architecture/export/` so thesis binaries stay local unless you choose otherwise.
+Create `export/` for build artifacts. The repository **ignores** `docs/architecture/export/` so export binaries stay local unless you choose otherwise.
 
 ### Batch (POSIX shell)
 
@@ -65,7 +65,7 @@ done
 
 ## Captions
 
-Suggested pattern for thesis: **Figure N —** short title; one sentence in the body referencing this repo path (`docs/architecture/<file>.mmd`) for reproducibility.
+Suggested pattern for documentation: **Figure N —** short title; one sentence in the body referencing this repo path (`docs/architecture/<file>.mmd`) for reproducibility.
 
 ## Related
 

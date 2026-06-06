@@ -17,7 +17,7 @@ This monorepo implements a **RAG (Retrieval-Augmented Generation)** product: Spr
 ## Where to read next
 
 - Folder index: [README.md](README.md)
-- Thesis / degree **minimum scope** (official): [thesis-scope.md](thesis-scope.md) (includes **deploy path**: GitHub Actions → VM → Docker Compose — see [../operations/runbook-docker-vm.md](../operations/runbook-docker-vm.md))
+- **Minimum scope** (official): [minimum-scope.md](minimum-scope.md) (includes **deploy path**: GitHub Actions → VM → Docker Compose — see [../operations/runbook-docker-vm.md](../operations/runbook-docker-vm.md))
 - Module map and links: [../README.md](../README.md)
 - Architecture diagrams: [../architecture/README.md](../architecture/README.md)
 - Backend operations: [../../rag-service/README.md](../../rag-service/README.md)

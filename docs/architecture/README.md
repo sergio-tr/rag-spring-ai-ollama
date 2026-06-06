@@ -2,9 +2,9 @@
 
 **Conceptual** architecture: Mermaid **sources** (`.mmd`), navigation maps for packages and domain, and links to module READMEs for operational detail. Behaviour is still defined by **code**, **Flyway**, and **CI**.
 
-## Thesis and publication
+## Diagrams and publication
 
-- **[thesis-diagrams.md](thesis-diagrams.md)** — how to export `.mmd` to PNG/SVG with `mmdc`, batch tips, caption pattern.
+- **[diagram-export.md](diagram-export.md)** — how to export `.mmd` to PNG/SVG with `mmdc`, batch tips, caption pattern.
 - Diagram sources are plain text: version them in git; generate bitmaps locally into `export/` (ignored) for Word/LaTeX.
 
 ## Diagram catalogue
@@ -78,7 +78,7 @@ Incremental refactors of `rag-service` (naming, layers, statics, ArchUnit gates,
 
 | File | Role |
 | --- | --- |
-| [target-architecture.md](target-architecture.md) | Target subsystems, global rules, thesis domain pointer |
+| [target-architecture.md](target-architecture.md) | Target subsystems, global rules, product domain pointer |
 | [rag-runtime-architecture.md](rag-runtime-architecture.md) | Canonical RAG runtime vocabulary (orchestration, pipelines, judges) |
 | [configuration-resolution-model.md](configuration-resolution-model.md) | Capabilities, resolution, snapshots, prompt composition |
 | [knowledge-system-model.md](knowledge-system-model.md) | Workspace documents, artefacts, snapshots, materialization |
@@ -100,7 +100,7 @@ Incremental refactors of `rag-service` (naming, layers, statics, ArchUnit gates,
 ## How to render Mermaid
 
 - **GitHub / VS Code:** open `.mmd` or paste into a fenced `mermaid` block.
-- **Print quality:** `@mermaid-js/mermaid-cli` — see [thesis-diagrams.md](thesis-diagrams.md).
+- **Print quality:** `@mermaid-js/mermaid-cli` — see [diagram-export.md](diagram-export.md).
 
 ## Related
 
