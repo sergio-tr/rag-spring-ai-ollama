@@ -18,7 +18,7 @@ export function ChatConfigurationSidePanel({
       data-testid="chat-configuration-side-panel"
       className={cn(
         "hidden md:flex",
-        "min-h-0 w-[min(100%,22rem)] max-w-[min(100%,22rem)] shrink-0 flex-col overflow-hidden",
+        "h-full min-h-0 w-[min(100%,22rem)] max-w-[min(100%,22rem)] shrink-0 self-stretch flex-col overflow-hidden",
         "border-border border-l bg-background",
       )}
       aria-label="Chat configuration"

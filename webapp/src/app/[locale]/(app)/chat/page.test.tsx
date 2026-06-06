@@ -819,6 +819,12 @@ async function openChatConfigurationEdit(user: ReturnType<typeof userEvent.setup
   }
 }
 
+async function expandChatMessageMetadata(user: ReturnType<typeof userEvent.setup>) {
+  const toggle = await screen.findByTestId("chat-message-metadata-toggle");
+  await user.click(toggle);
+  await screen.findByTestId("chat-message-metadata-panel");
+}
+
 function renderChat() {
   const qc = new QueryClient({
     defaultOptions: {
@@ -961,11 +967,12 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
 
+    await expandChatMessageMetadata(user);
     expect(await screen.findByTestId("chat-trace")).toHaveTextContent("trace-m5");
-    expect(screen.getByTestId("chat-trace")).toHaveTextContent("documentBound");
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("Document bound");
     expect(screen.getByTestId("chat-trace")).toHaveTextContent("true");
     expect(screen.getByTestId("chat-trace")).toHaveTextContent("2025-02-24");
-    expect(screen.getByTestId("chat-trace")).toHaveTextContent("exactDocumentMatch");
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("Exact document match");
     expect(screen.getByTestId("chat-trace")).toHaveTextContent("3 -> 1");
   });
 
@@ -996,10 +1003,11 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
 
+    await expandChatMessageMetadata(user);
     const trace = await screen.findByTestId("chat-trace");
     expect(trace).toHaveTextContent("trace-m6");
-    expect(trace).toHaveTextContent("classifierStatus");
-    expect(trace).toHaveTextContent("predictedQueryType");
+    expect(trace).toHaveTextContent("Classifier status");
+    expect(trace).toHaveTextContent("Predicted query type");
     expect(trace).toHaveTextContent("COUNT_DOCUMENTS");
     expect(trace).toHaveTextContent("default");
   });
@@ -1038,6 +1046,7 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
 
+    await expandChatMessageMetadata(user);
     expect(await screen.findByTestId("chat-trace")).toHaveTextContent(/Message trace/i);
     expect(screen.queryByTestId("chat-trace-jaeger-not-run")).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-sources")).toHaveTextContent(/Sources \(1\)/i);
@@ -1099,6 +1108,10 @@ describe("ChatPage", () => {
 
     expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
     expect(screen.getByTestId("chat-answer")).toHaveTextContent("No exact acta");
+    expect(screen.getByTestId("chat-message-metadata-toggle")).toHaveTextContent(/More information/i);
+    expect(screen.getByTestId("chat-sources")).not.toBeVisible();
+    await expandChatMessageMetadata(user);
+    expect(screen.getByTestId("chat-sources")).toBeVisible();
     expect(screen.getByTestId("chat-sources")).toHaveTextContent("ACTA 5.pdf");
     expect(screen.getByTestId("chat-sources")).toHaveTextContent("date=2025-02-25");
     expect(screen.getByTestId("chat-sources")).toHaveTextContent("chunk=3");
@@ -1220,24 +1233,22 @@ describe("ChatPage", () => {
     );
   });
 
-  it("marks only P13/P14 experimental presets as REQUIRES_MULTI_TURN in option label", async () => {
+  it("does not show raw multi-turn enum codes in experimental preset option labels", async () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
 
     const presetSelect = screen.getByRole("combobox", { name: /^Preset$/i }) as HTMLSelectElement;
-    const optionTextByCode = new Map(
-      Array.from(presetSelect.options)
-        .map((o) => o.text)
-        .filter(Boolean)
-        .map((t) => [String(t).split(" — ")[0]?.trim() ?? "", String(t)]),
-    );
+    const optionTexts = Array.from(presetSelect.options)
+      .map((o) => o.text)
+      .filter(Boolean);
 
-    expect(optionTextByCode.get("P11") ?? "").not.toContain("[REQUIRES_MULTI_TURN]");
-    expect(optionTextByCode.get("P12") ?? "").not.toContain("[REQUIRES_MULTI_TURN]");
-    expect(optionTextByCode.get("P13") ?? "").toContain("[REQUIRES_MULTI_TURN]");
-    expect(optionTextByCode.get("P14") ?? "").toContain("[REQUIRES_MULTI_TURN]");
+    expect(optionTexts.some((t) => t.includes("P13 — Clarification loop"))).toBe(true);
+    expect(optionTexts.some((t) => t.includes("P14 — Memory flow"))).toBe(true);
+    for (const text of optionTexts) {
+      expect(text).not.toMatch(/REQUIRES_MULTI_TURN|FUTURE_MULTI_TURN|\[NOT_SUPPORTED/);
+    }
   });
 
   it("shows accumulated flags in runtime toggles when P8 is selected", async () => {
@@ -1599,9 +1610,67 @@ describe("ChatPage", () => {
 
     expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
     await user.click(screen.getByTestId("chat-config-trigger"));
-    expect(screen.getByTestId("chat-configuration-side-panel")).toBeInTheDocument();
+    const panel = screen.getByTestId("chat-configuration-side-panel");
+    expect(panel).toBeInTheDocument();
+    const workspace = screen.getByTestId("chat-main-workspace");
+    expect(workspace).toContainElement(panel);
+    expect(workspace).toContainElement(screen.getByTestId("chat-readable-column"));
     await user.click(screen.getByTestId("chat-config-trigger"));
     expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
+  });
+
+  it("keeps chat thread height stable when opening configuration on desktop", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    const thread = screen.getByTestId("chat-thread-dropzone");
+    const before = thread.getBoundingClientRect().height;
+    await openChatToolbarOverflow(user);
+    const after = thread.getBoundingClientRect().height;
+    expect(after).toBe(before);
+  });
+
+  it("does not show no-sources copy while assistant message is pending", async () => {
+    const user = userEvent.setup();
+    chatMessagesStore = [
+      {
+        id: "a-pending",
+        role: "ASSISTANT",
+        content: "Working on it…",
+        createdAt: "",
+        sources: [],
+        queryType: null,
+        pipelineSteps: null,
+        status: "PROCESSING",
+      },
+    ];
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    expect(screen.queryByTestId("chat-message-metadata")).not.toBeInTheDocument();
+    expect(screen.queryByText(/No sources were returned/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No sources available/i)).not.toBeInTheDocument();
+  });
+
+  it("shows short no-sources message inside collapsed metadata after completion", async () => {
+    const user = userEvent.setup();
+    chatMessagesStore = [
+      {
+        id: "a-empty",
+        role: "ASSISTANT",
+        content: "Direct answer",
+        createdAt: "",
+        sources: [],
+        queryType: null,
+        pipelineSteps: null,
+        status: "DONE",
+      },
+    ];
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    expect(screen.getByTestId("chat-message-metadata-toggle")).toBeInTheDocument();
+    expect(screen.queryByText(/No sources available for this answer/i)).not.toBeVisible();
+    await expandChatMessageMetadata(user);
+    expect(screen.getByTestId("chat-sources")).toHaveTextContent(/No sources available for this answer/i);
   });
 
   it("persists open state of the desktop panel in localStorage", async () => {

@@ -703,3 +703,11 @@ export async function sendChatMessage(page: Page, message: string, options?: Sen
       "and retry after starting a new conversation failed.",
   );
 }
+
+/** Expands the per-answer "More information" metadata section on the latest assistant message. */
+export async function expandChatMessageMetadata(page: Page): Promise<void> {
+  const toggle = page.getByTestId("chat-message-metadata-toggle").last();
+  await expect(toggle).toBeVisible({ timeout: 15_000 });
+  await toggle.click();
+  await expect(page.getByTestId("chat-message-metadata-panel").last()).toBeVisible({ timeout: 15_000 });
+}

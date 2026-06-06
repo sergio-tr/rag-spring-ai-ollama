@@ -304,7 +304,8 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     }));
     renderSubject();
     await openEditPanel();
-    expect(screen.getByTestId("chat-preset-support-badge")).toHaveTextContent("NOT_SUPPORTED");
+    expect(screen.getByTestId("chat-preset-support-badge")).toHaveTextContent(/multiturn/i);
+    expect(screen.queryByText(/NOT_SUPPORTED/i)).not.toBeInTheDocument();
   });
 
   it("shows custom badge when runtime state is marked custom", async () => {
@@ -420,12 +421,14 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     }));
     renderSubject();
     await openEditPanel();
-    expect(screen.getByText(/P13 — Multi turn \[REQUIRES_MULTI_TURN\]/)).toBeInTheDocument();
-    expect(screen.getByText(/P0 — Hidden \[NOT_SUPPORTED: not allowed\]/)).toBeInTheDocument();
-    // Supported selectable presets should render the base label without brackets.
+    expect(screen.getByText(/P13 — Multi turn \(requires multi turn\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/P0 — Hidden \(not allowed\)/i)).toBeInTheDocument();
+    // Supported selectable presets should render the base label without extra hints.
     expect(screen.getByText(/P2 — Supported selectable$/)).toBeInTheDocument();
-    // Not-supported but chat-selectable presets should still include status brackets.
-    expect(screen.getByText(/P3 — Not supported but selectable \[NOT_SUPPORTED: incompatible index\]/)).toBeInTheDocument();
+    // Not-supported but chat-selectable presets include a readable hint in parentheses.
+    expect(screen.getByText(/P3 — Not supported but selectable \(incompatible index\)/i)).toBeInTheDocument();
+    expect(screen.queryByText(/REQUIRES_MULTI_TURN/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\[NOT_SUPPORTED/i)).not.toBeInTheDocument();
   });
 
   it("disables experimental preset when active index profile is incompatible", async () => {

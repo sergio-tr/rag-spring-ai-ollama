@@ -69,6 +69,7 @@ import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
+import { ChatAssistantMessageExtras } from "@/features/chat/components/ChatAssistantMessageExtras";
 import { ChatConfigurationSidePanel } from "@/features/chat/components/ChatConfigurationSidePanel";
 import { useChatConfigurationPanelStore } from "@/features/chat/store/chat-configuration-panel.store";
 
@@ -139,25 +140,6 @@ function firstRuntimeBlockingCode(
   });
   if (!first) return null;
   return normalizeChatFailureCode(first.code) ?? (first.code ? String(first.code).trim() : null);
-}
-
-function sourceSupportsAnswer(source: Record<string, unknown>): boolean {
-  const meta = source.metadata;
-  if (meta && typeof meta === "object") {
-    const m = meta as Record<string, unknown>;
-    if (m.alternativeOnly === true) return false;
-    if (m.supportingAnswer === false) return false;
-  }
-  return true;
-}
-
-function sourceIsAlternativeOnly(source: Record<string, unknown>): boolean {
-  const meta = source.metadata;
-  if (meta && typeof meta === "object") {
-    const m = meta as Record<string, unknown>;
-    return m.alternativeOnly === true || m.supportingAnswer === false;
-  }
-  return false;
 }
 
 function streamDonePayloadFromAssistantMessage(m: MessageDto): StreamDonePayload {
@@ -232,90 +214,6 @@ function isAssistantClarificationTurn(m: MessageDto): boolean {
 
 function isAssistantRetryable(status: string | null | undefined): boolean {
   return status === "ERROR" || status === "CANCELLED";
-}
-
-function metadataString(meta: Record<string, unknown> | null | undefined, key: string): string | null {
-  const value = meta?.[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function messageMetadataString(message: MessageDto, key: string): string | null {
-  return metadataString(message.executionMetadata, key);
-}
-
-function messageMetadataList(message: MessageDto, key: string): string[] {
-  const value = message.executionMetadata?.[key];
-  if (Array.isArray(value)) return value.map(String).filter(Boolean);
-  if (typeof value === "string" && value.trim()) return value.split("|").map((x) => x.trim()).filter(Boolean);
-  return [];
-}
-
-function messageMetadataBool(message: MessageDto, key: string): boolean {
-  return coerceBool(message.executionMetadata?.[key]);
-}
-
-function hasRuntimeTraceMetadata(message: MessageDto): boolean {
-  const meta = message.executionMetadata ?? {};
-  return [
-    "traceId",
-    "workflowName",
-    "selectedSnapshotIds",
-    "retrievalDenseCandidateCount",
-    "retrievalAfterCompressionCount",
-    "requestedDate",
-    "dateMismatchDetected",
-    "groundingPolicyApplied",
-    "exactDocumentMatch",
-    "topSourceDate",
-    "closestAvailableDate",
-    "candidateSourceCountBeforeDateFilter",
-    "candidateSourceCountAfterDateFilter",
-    "dateBoostApplied",
-    "documentBound",
-    "answerPolicy",
-    "groundingPolicy",
-  ].some((key) => meta[key] !== undefined && meta[key] !== null && String(meta[key]).trim() !== "");
-}
-
-function sourceChunkIndex(source: Record<string, unknown>): string | null {
-  const direct = source.chunkIndex ?? source.chunk_index;
-  if (typeof direct === "number") return String(direct);
-  if (typeof direct === "string" && direct.trim()) return direct.trim();
-  const meta = source.metadata;
-  if (meta && typeof meta === "object") {
-    const fromMeta = meta as Record<string, unknown>;
-    const chunkId = metadataString(fromMeta, "chunkId");
-    if (chunkId) return chunkId;
-    const idx = fromMeta.chunkIndex ?? fromMeta.chunk_index;
-    if (typeof idx === "number") return String(idx);
-    if (typeof idx === "string" && idx.trim()) return idx.trim();
-  }
-  return null;
-}
-
-function sourceDetectedDate(source: Record<string, unknown>): string | null {
-  const direct = source.detectedDate ?? source.documentDate ?? source.date_iso ?? source.date;
-  if (typeof direct === "string" && direct.trim()) return direct.trim();
-  const meta = source.metadata;
-  if (meta && typeof meta === "object") {
-    const fromMeta = meta as Record<string, unknown>;
-    return metadataString(fromMeta, "detectedDate") ?? metadataString(fromMeta, "documentDate") ?? metadataString(fromMeta, "date_iso");
-  }
-  return null;
-}
-
-function sourceSnippet(source: Record<string, unknown>): string | null {
-  const value = source.snippet ?? source.excerpt ?? source.text ?? source.content;
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function sourceScore(source: Record<string, unknown>): string | null {
-  const value = source.distance ?? source.score;
-  return typeof value === "number" ? value.toFixed(4) : value != null ? String(value) : null;
-}
-
-function sourceDateMismatch(sourceDate: string | null, requestedDate: string | null): boolean {
-  return Boolean(sourceDate && requestedDate && sourceDate !== requestedDate);
 }
 
 /** Defers draft hydration so nested callbacks stay shallow (Sonar nesting limit). */
@@ -1542,7 +1440,10 @@ function ChatPageInner() {
           </div>
         </aside>
       )}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row md:gap-3">
+      <div
+        data-testid="chat-main-workspace"
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row md:flex-nowrap md:gap-3"
+      >
         <div
           data-testid="chat-readable-column"
           className="flex w-full min-h-0 min-w-0 flex-1 flex-col gap-3 px-2 sm:px-3 md:px-5"
@@ -1767,199 +1668,7 @@ function ChatPageInner() {
                   >
                     {m.content}
                   </p>
-                  {m.role === "ASSISTANT" && Array.isArray(m.sources) && m.sources.length > 0 ? (
-                    <div className="mt-2 border-border border-t pt-2" data-testid="chat-sources">
-                      <p className="text-muted-foreground text-[11px] font-medium">
-                        {t("chatSourcesHeading", { count: m.sources.length })}
-                      </p>
-                      <ul className="mt-1 space-y-1 text-[11px]">
-                        {m.sources.slice(0, 5).map((raw, idx) => {
-                          const s = raw as Record<string, unknown>;
-                          const file =
-                            s.fileName ?? s.filename ?? s.documentName ?? s.documentId ?? `source-${idx + 1}`;
-                          const requestedDate = messageMetadataString(m, "requestedDate");
-                          const detectedDate = sourceDetectedDate(s);
-                          const excerpt = sourceSnippet(s);
-                          const score = sourceScore(s);
-                          const chunk = sourceChunkIndex(s);
-                          const mismatched = sourceDateMismatch(detectedDate, requestedDate);
-                          const alternative = sourceIsAlternativeOnly(s);
-                          return (
-                            <li key={idx} className="rounded-sm bg-muted/20 px-2 py-1">
-                              <div className="flex items-baseline justify-between gap-2">
-                                <span className="truncate font-medium">{String(file)}</span>
-                                {score ? (
-                                  <span className="font-mono text-muted-foreground">{score}</span>
-                                ) : null}
-                              </div>
-                              {detectedDate ? (
-                                <p className="font-mono text-muted-foreground mt-0.5">
-                                  date={detectedDate}
-                                </p>
-                              ) : null}
-                              {chunk ? (
-                                <p className="font-mono text-muted-foreground mt-0.5">
-                                  chunk={chunk}
-                                </p>
-                              ) : null}
-                              {alternative ? (
-                                <p className="mt-0.5 text-amber-700 dark:text-amber-300" data-testid="chat-source-alternative">
-                                  {t("sourceAlternativeOnly")}
-                                </p>
-                              ) : null}
-                              {mismatched && !alternative ? (
-                                <p className="mt-0.5 text-amber-700 dark:text-amber-300" data-testid="chat-date-warning">
-                                  Source date differs from requested date {requestedDate}.
-                                </p>
-                              ) : null}
-                              {!sourceSupportsAnswer(s) && !alternative && !mismatched ? (
-                                <p className="mt-0.5 text-muted-foreground">{t("sourceNotSupportingAnswer")}</p>
-                              ) : null}
-                              {excerpt ? (
-                                <p className="text-muted-foreground mt-0.5 line-clamp-3 whitespace-pre-wrap">
-                                  {String(excerpt)}
-                                </p>
-                              ) : null}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {m.role === "ASSISTANT" && (!Array.isArray(m.sources) || m.sources.length === 0) ? (
-                    <div className="mt-2 border-border border-t pt-2 text-[11px] text-muted-foreground" data-testid="chat-sources">
-                      {t("sourcesEmptyExplanation")}
-                    </div>
-                  ) : null}
-                  {m.role === "ASSISTANT" && messageMetadataBool(m, "dateMismatchDetected") ? (
-                    <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px]" data-testid="chat-date-warning">
-                      Date grounding warning: requested {messageMetadataString(m, "requestedDate") ?? "date"} did not have an exact supported source.
-                    </div>
-                  ) : null}
-                  {m.role === "ASSISTANT" &&
-                  (hasRuntimeTraceMetadata(m) || messageMetadataString(m, "abstentionReason")) ? (
-                    <div className="mt-2 rounded-md border bg-muted/20 px-2 py-1 text-[11px]" data-testid="chat-trace">
-                      <p className="font-medium text-muted-foreground">{t("chatTraceHeading")}</p>
-                      <dl className="mt-1 grid grid-cols-1 gap-1 font-mono">
-                        {messageMetadataString(m, "traceId") ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldTraceId")}</dt>
-                            <dd className="break-all">{messageMetadataString(m, "traceId")}</dd>
-                          </div>
-                        ) : null}
-                        {messageMetadataString(m, "workflowName") ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldWorkflow")}</dt>
-                            <dd>{messageMetadataString(m, "workflowName")}</dd>
-                          </div>
-                        ) : null}
-                        {messageMetadataString(m, "classifierModelIdUsed") ||
-                        messageMetadataString(m, "classifierModelId") ? (
-                          <div className="flex justify-between gap-2" data-testid="chat-trace-classifier-model">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldClassifierModel")}</dt>
-                            <dd className="break-all">
-                              {messageMetadataString(m, "classifierModelIdUsed") ??
-                                messageMetadataString(m, "classifierModelId")}
-                            </dd>
-                          </div>
-                        ) : null}
-                        {messageMetadataString(m, "classifierLabel") ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldClassifierLabel")}</dt>
-                            <dd>{messageMetadataString(m, "classifierLabel")}</dd>
-                          </div>
-                        ) : null}
-                        {messageMetadataString(m, "classifierStatus") ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldClassifierStatus")}</dt>
-                            <dd>{messageMetadataString(m, "classifierStatus")}</dd>
-                          </div>
-                        ) : null}
-                        {messageMetadataString(m, "predictedQueryType") ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldPredictedQueryType")}</dt>
-                            <dd>{messageMetadataString(m, "predictedQueryType")}</dd>
-                          </div>
-                        ) : null}
-                        {m.executionMetadata?.classifierFallback === true ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldClassifierFallback")}</dt>
-                            <dd>true</dd>
-                          </div>
-                        ) : null}
-                        {messageMetadataString(m, "classifierFallbackReason") ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldClassifierFallbackReason")}</dt>
-                            <dd>{messageMetadataString(m, "classifierFallbackReason")}</dd>
-                          </div>
-                        ) : null}
-                        {messageMetadataString(m, "requestedDate") ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldRequestedDate")}</dt>
-                            <dd>{messageMetadataString(m, "requestedDate")}</dd>
-                          </div>
-                        ) : null}
-                        {messageMetadataList(m, "selectedSnapshotIds").length > 0 ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldSnapshot")}</dt>
-                            <dd className="break-all">{messageMetadataList(m, "selectedSnapshotIds").join(", ")}</dd>
-                          </div>
-                        ) : null}
-                        {messageMetadataString(m, "topSourceDate") ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldTopSourceDate")}</dt>
-                            <dd>{messageMetadataString(m, "topSourceDate")}</dd>
-                          </div>
-                        ) : null}
-                        {messageMetadataString(m, "closestAvailableDate") ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldClosestAvailableDate")}</dt>
-                            <dd>{messageMetadataString(m, "closestAvailableDate")}</dd>
-                          </div>
-                        ) : null}
-                        {m.executionMetadata?.exactDocumentMatch != null ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldExactDocumentMatch")}</dt>
-                            <dd>{String(m.executionMetadata.exactDocumentMatch)}</dd>
-                          </div>
-                        ) : null}
-                        {m.executionMetadata?.documentBound != null ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldDocumentBound")}</dt>
-                            <dd>{String(m.executionMetadata.documentBound)}</dd>
-                          </div>
-                        ) : null}
-                        {m.executionMetadata?.candidateSourceCountBeforeDateFilter != null ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldDateFilter")}</dt>
-                            <dd>
-                              {String(m.executionMetadata.candidateSourceCountBeforeDateFilter)}
-                              {" -> "}
-                              {String(m.executionMetadata.candidateSourceCountAfterDateFilter ?? "?")}
-                            </dd>
-                          </div>
-                        ) : null}
-                        {m.executionMetadata?.retrievalAfterCompressionCount != null ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldRetrieval")}</dt>
-                            <dd>{String(m.executionMetadata.retrievalAfterCompressionCount)} context chunks</dd>
-                          </div>
-                        ) : null}
-                        {messageMetadataString(m, "groundingPolicyApplied") ? (
-                          <div className="flex justify-between gap-2">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldDateGrounding")}</dt>
-                            <dd>{messageMetadataString(m, "groundingPolicyApplied")}</dd>
-                          </div>
-                        ) : null}
-                        {messageMetadataString(m, "abstentionReason") ? (
-                          <div className="col-span-full">
-                            <dt className="text-muted-foreground">{t("chatTraceFieldAbstentionReason")}</dt>
-                            <dd>{messageMetadataString(m, "abstentionReason")}</dd>
-                          </div>
-                        ) : null}
-                      </dl>
-                    </div>
-                  ) : null}
+                  {m.role === "ASSISTANT" ? <ChatAssistantMessageExtras message={m} /> : null}
                   {m.role === "USER" && m.id === lastUserMessageId && (
                     <Button
                       type="button"
@@ -2019,7 +1728,7 @@ function ChatPageInner() {
           )}
           <div ref={bottomRef} />
         </div>
-        <div className="flex w-full min-w-0 flex-col gap-2">
+        <div className="flex w-full min-w-0 shrink-0 flex-col gap-2" data-testid="chat-composer-dock">
           {editError && (
             <p className="text-destructive break-words text-xs" data-testid="chat-error" role="alert">
               {editError}

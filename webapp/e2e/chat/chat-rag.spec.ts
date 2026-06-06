@@ -5,6 +5,7 @@ import {
   createAndActivateProject,
   createNewChatConversation,
   expandChatConfigurationRuntimeSection,
+  expandChatMessageMetadata,
   loginAsSeedUser,
   openChatConfigurationPanel,
   productApiUrl,
@@ -76,6 +77,9 @@ test.describe("Chat RAG", () => {
     await sendChatMessage(page, "What is in my project documents?");
 
     await expect(page.getByText(/could not send message/i)).toHaveCount(0);
+    await expect(page.getByText(/No sources were returned/i)).toHaveCount(0);
+    await expect(page.getByText(/No sources available for this answer/i)).toHaveCount(0);
+
     await expect(page.getByText(/E2E stub reply/i)).toBeVisible({ timeout: 120_000 });
 
     const url = new URL(page.url());
@@ -99,6 +103,9 @@ test.describe("Chat RAG", () => {
     expect(Array.isArray(assistant?.sources) && assistant.sources.length > 0).toBe(true);
     expect(Array.isArray(assistant?.pipelineSteps) && assistant.pipelineSteps.length > 0).toBe(true);
 
+    await expect(page.getByTestId("chat-message-metadata-toggle")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("chat-sources")).not.toBeVisible();
+    await expandChatMessageMetadata(page);
     await expect(page.getByTestId("chat-sources")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("chat-answer")).toContainText(/E2E stub reply/i);
 

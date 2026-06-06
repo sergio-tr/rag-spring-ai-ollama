@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { formatChatExperimentalPresetOptionLabel, formatPresetSupportMessage } from "@/lib/product-copy";
+import { mapUserFacingErrorMessage } from "@/lib/user-facing-error-messages";
 import { buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -68,23 +70,6 @@ function DisabledReason({
   );
 }
 
-function experimentalPresetOptionLabel(p: {
-  code: string;
-  label: string;
-  supported: boolean;
-  supportStatus: string;
-  reasonIfUnsupported: string | null;
-  requiresMultiTurn: boolean;
-  chatSelectable: boolean;
-}) {
-  const base = `${p.code} — ${p.label}`;
-  if (p.requiresMultiTurn) return `${base} [REQUIRES_MULTI_TURN]`;
-  if (!p.chatSelectable)
-    return `${base} [${p.supportStatus || "NOT_SUPPORTED"}${p.reasonIfUnsupported ? `: ${p.reasonIfUnsupported}` : ""}]`;
-  if (p.supported) return base;
-  return `${base} [${p.supportStatus || "NOT_SUPPORTED"}${p.reasonIfUnsupported ? `: ${p.reasonIfUnsupported}` : ""}]`;
-}
-
 type EffectiveConfigMap = Record<string, unknown>;
 const NOT_LOADED_LABEL = "Not loaded";
 
@@ -105,6 +90,8 @@ function actionableIssueCode(issue: RuntimeConfigValidationIssueDto): string | n
 export function ChatConfigurationPanelContent() {
   const t = useTranslations("SectionActions");
   const tChat = useTranslations("Chat");
+  const tLab = useTranslations("Lab");
+  const presetCopyT = (key: string) => (key.startsWith("chat") ? tChat(key) : tLab(key));
   const api = useChatToolbarStore((s) => s.api);
 
   const modelSelectId = useId();
@@ -263,14 +250,22 @@ export function ChatConfigurationPanelContent() {
 
   const presetSupportBadge =
     api?.runtimeState?.preset && !api.runtimeState.preset.chatSelectable
-      ? api.runtimeState.preset.supportStatus || "NOT_SUPPORTED"
+      ? formatPresetSupportMessage(
+          api.runtimeState.preset.supportStatus,
+          api.runtimeState.preset.reasonIfUnsupported,
+          presetCopyT,
+          "chatPresetNotSelectable",
+        )
       : null;
-  const selectedPresetDisabledReason =
+  const selectedPresetDisabledReasonRaw =
     api?.runtimeState?.disabledPresetReason ??
     api?.runtimeState?.presetCompatibility?.disabledReason ??
     issueByField.get("preset")?.message ??
     issueByField.get("presetId")?.message ??
     null;
+  const selectedPresetDisabledReason = selectedPresetDisabledReasonRaw
+    ? mapUserFacingErrorMessage(selectedPresetDisabledReasonRaw, tLab, selectedPresetDisabledReasonRaw)
+    : null;
 
   function presetIndexDisabledReason(p: {
     chatSelectable: boolean;
@@ -282,14 +277,14 @@ export function ChatConfigurationPanelContent() {
     } | null;
   }): string | null {
     if (!p.chatSelectable) {
-      return p.reasonIfUnsupported || p.supportStatus || "This preset is not selectable in Chat.";
+      return formatPresetSupportMessage(p.supportStatus, p.reasonIfUnsupported, presetCopyT, "chatPresetNotSelectable");
     }
     const req = p.indexRequirements;
     if (!req) return null;
     const idx = api?.runtimeState?.indexCompatibility;
     const caps = idx?.activeSnapshotCapabilities;
     if (!idx?.hasActiveIndex || !caps) {
-      return "Create or reindex the project with a compatible index profile.";
+      return tChat("chatPresetRequiresCompatibleIndex");
     }
     const activeMat = caps.materializationStrategy;
     const requiredMat = req.requiredMaterializationStrategy;
@@ -298,10 +293,10 @@ export function ChatConfigurationPanelContent() {
       activeMat === requiredMat ||
       (activeMat === "HYBRID" && requiredMat === "CHUNK_LEVEL");
     if (!matOk) {
-      return "Create or reindex the project with a compatible index profile.";
+      return tChat("chatPresetRequiresCompatibleIndex");
     }
     if (req.requiresMetadataSupport && caps.supportsMetadata !== true) {
-      return "Create or reindex the project with metadata support enabled.";
+      return tChat("chatPresetRequiresMetadata");
     }
     return null;
   }
@@ -746,8 +741,8 @@ export function ChatConfigurationPanelContent() {
                         title={reason ?? undefined}
                       >
                         {reason && p.chatSelectable
-                          ? `${experimentalPresetOptionLabel(p)} [${reason}]`
-                          : experimentalPresetOptionLabel(p)}
+                          ? `${formatChatExperimentalPresetOptionLabel(p, presetCopyT)} (${reason})`
+                          : formatChatExperimentalPresetOptionLabel(p, presetCopyT)}
                       </option>
                     );
                   })}
