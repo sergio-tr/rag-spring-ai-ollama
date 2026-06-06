@@ -11,6 +11,7 @@ import com.uniovi.rag.domain.evaluation.EvaluationRunKind;
 import com.uniovi.rag.interfaces.rest.dto.BenchmarkJobAcceptedDto;
 import com.uniovi.rag.interfaces.rest.dto.CompareRunsResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationResultItemDto;
+import com.uniovi.rag.interfaces.rest.dto.LatestLabRunRecoveryDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationRunDetailDto;
 import com.uniovi.rag.interfaces.rest.dto.MetricsCompareRequestDto;
 import com.uniovi.rag.security.RagPrincipal;
@@ -122,6 +123,20 @@ public class LabBenchmarkController {
                 benchmarkRunOrchestrator.startClassifierMetrics(
                         requireUserId(principal), principal.roleName(), meta, modelId, includeImages, file);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(toAcceptedDto(accepted));
+    }
+
+    @GetMapping("/benchmarks/{kind}/runs/latest")
+    public LatestLabRunRecoveryDto getLatestRun(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable String kind,
+            @RequestParam(name = "projectId", required = false) UUID projectId) {
+        BenchmarkKind bk = parseBenchmarkKind(kind);
+        LatestLabRunRecoveryDto dto =
+                labEvaluationRunService.findLatestRunForRecovery(requireUserId(principal), bk, projectId);
+        if (dto == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No runs found for this benchmark");
+        }
+        return dto;
     }
 
     @GetMapping("/runs/{runId}")

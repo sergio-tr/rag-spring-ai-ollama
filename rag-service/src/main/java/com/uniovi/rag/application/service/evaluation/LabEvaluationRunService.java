@@ -14,6 +14,10 @@ import com.uniovi.rag.interfaces.rest.dto.EvaluationRunDetailDto;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpMetricsCalculator;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpRollupCalculator;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpSchema;
+import com.uniovi.rag.configuration.RagApiPathProperties;
+import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.interfaces.rest.dto.LatestLabRunRecoveryDto;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -142,14 +146,76 @@ public class LabEvaluationRunService {
     private final EvaluationRunRepository evaluationRunRepository;
     private final EvaluationResultRepository evaluationResultRepository;
     private final ObjectMapper objectMapper;
+    private final RagApiPathProperties apiPathProperties;
 
     public LabEvaluationRunService(
             EvaluationRunRepository evaluationRunRepository,
             EvaluationResultRepository evaluationResultRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            RagApiPathProperties apiPathProperties) {
         this.evaluationRunRepository = evaluationRunRepository;
         this.evaluationResultRepository = evaluationResultRepository;
         this.objectMapper = objectMapper;
+        this.apiPathProperties = apiPathProperties;
+    }
+
+    /**
+     * Latest run for benchmark kind + optional project scope (Lab recovery when no active job).
+     * Returns the most recently updated run owned by the user; project filter matches active-job semantics.
+     */
+    @Transactional(readOnly = true)
+    public LatestLabRunRecoveryDto findLatestRunForRecovery(
+            UUID userId, BenchmarkKind benchmarkKind, UUID projectIdOrNull) {
+        if (userId == null || benchmarkKind == null) {
+            return null;
+        }
+        List<EvaluationRunEntity> recent =
+                evaluationRunRepository.findRecentByUserAndBenchmarkKind(
+                        userId, benchmarkKind.name(), PageRequest.of(0, 8));
+        EvaluationRunEntity match =
+                recent.stream()
+                        .filter(r -> matchesProjectScope(r, projectIdOrNull))
+                        .findFirst()
+                        .orElse(null);
+        if (match == null) {
+            return null;
+        }
+        return toLatestRecoveryDto(match);
+    }
+
+    private static boolean matchesProjectScope(EvaluationRunEntity run, UUID projectIdOrNull) {
+        UUID runProject = run.getProject() != null ? run.getProject().getId() : null;
+        if (runProject == null) {
+            return true;
+        }
+        if (projectIdOrNull == null) {
+            return true;
+        }
+        return projectIdOrNull.equals(runProject);
+    }
+
+    private LatestLabRunRecoveryDto toLatestRecoveryDto(EvaluationRunEntity run) {
+        AsyncTaskEntity task = run.getAsyncTask();
+        UUID taskId = task != null ? task.getId() : null;
+        String status =
+                task != null && task.getStatus() != null ? task.getStatus().name() : "UNKNOWN";
+        boolean terminal = task != null && task.isTerminal();
+        Map<String, Object> result = task != null ? task.getResultJson() : null;
+        String base = taskId != null ? jobBasePath(taskId) : null;
+        return new LatestLabRunRecoveryDto(
+                run.getId(),
+                taskId,
+                run.getBenchmarkKind(),
+                run.getProject() != null ? run.getProject().getId() : null,
+                status,
+                terminal,
+                base,
+                base != null ? base + "/events" : null,
+                result);
+    }
+
+    private String jobBasePath(UUID taskId) {
+        return apiPathProperties.getProductBasePath() + "/lab/jobs/" + taskId;
     }
 
     @Transactional(readOnly = true)

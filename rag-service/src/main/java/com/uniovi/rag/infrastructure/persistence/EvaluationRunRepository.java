@@ -1,6 +1,7 @@
 package com.uniovi.rag.infrastructure.persistence;
 
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -118,4 +119,17 @@ public interface EvaluationRunRepository extends JpaRepository<EvaluationRunEnti
     boolean existsByLlmModelId(String llmModelId);
 
     boolean existsByEmbeddingModelId(String embeddingModelId);
+
+    @Query("""
+            SELECT r FROM EvaluationRunEntity r
+            JOIN FETCH r.asyncTask t
+            LEFT JOIN FETCH r.project p
+            WHERE r.user.id = :userId
+              AND r.benchmarkKind = :benchmarkKind
+            ORDER BY t.updatedAt DESC, r.createdAt DESC
+            """)
+    List<EvaluationRunEntity> findRecentByUserAndBenchmarkKind(
+            @Param("userId") UUID userId,
+            @Param("benchmarkKind") String benchmarkKind,
+            Pageable pageable);
 }

@@ -13,6 +13,7 @@ import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
 import com.uniovi.rag.interfaces.rest.dto.CompareRunsResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationRunDetailDto;
+import com.uniovi.rag.interfaces.rest.dto.LatestLabRunRecoveryDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.interfaces.rest.support.ApiGlobalExceptionHandler;
@@ -185,6 +186,42 @@ class LabBenchmarkControllerWebMvcTest {
         mockMvc.perform(get(path("/lab/runs/compare")).param("runA", a.toString()).param("runB", b.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.comparable").value(true));
+    }
+
+    @Test
+    void getLatestRun_returnsRecoveryDto() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        when(labEvaluationRunService.findLatestRunForRecovery(
+                        eq(userId), eq(BenchmarkKind.LLM_JUDGE_QA), eq(null)))
+                .thenReturn(
+                        new LatestLabRunRecoveryDto(
+                                runId,
+                                taskId,
+                                "LLM_JUDGE_QA",
+                                null,
+                                "SUCCEEDED",
+                                true,
+                                "/api/v5/lab/jobs/" + taskId,
+                                "/api/v5/lab/jobs/" + taskId + "/events",
+                                Map.of("ok", true)));
+
+        mockMvc.perform(get(path("/lab/benchmarks/LLM_JUDGE_QA/runs/latest")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.evaluationRunId").value(runId.toString()))
+                .andExpect(jsonPath("$.jobId").value(taskId.toString()))
+                .andExpect(jsonPath("$.terminal").value(true))
+                .andExpect(jsonPath("$.result.ok").value(true));
+    }
+
+    @Test
+    void getLatestRun_notFound_returns404() throws Exception {
+        when(labEvaluationRunService.findLatestRunForRecovery(
+                        eq(userId), eq(BenchmarkKind.LLM_JUDGE_QA), eq(null)))
+                .thenReturn(null);
+
+        mockMvc.perform(get(path("/lab/benchmarks/LLM_JUDGE_QA/runs/latest")))
+                .andExpect(status().isNotFound());
     }
 
     @Test
