@@ -1,4 +1,4 @@
--- Thesis experimental presets: DB parity with ExperimentalPresetCanonicalCatalog (Chat rag_preset.values + UI labels).
+-- Experimental presets: DB parity with ExperimentalPresetCanonicalCatalog (Chat rag_preset.values + UI labels).
 -- Fixes prior mislabeled rows from V44 (UUID order vs P11–P14 semantic codes) and exposes corpus-grounded P0/P1 naming.
 -- Safe for environments that already applied V51/V52; idempotent additive JSON merges where applicable.
 

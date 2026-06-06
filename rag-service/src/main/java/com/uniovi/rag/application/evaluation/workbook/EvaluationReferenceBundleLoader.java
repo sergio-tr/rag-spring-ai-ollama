@@ -18,7 +18,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * Loads the packaged thesis/reference workbook from the classpath, parses it with {@link EvaluationWorkbookParser},
+ * Loads the packaged reference workbook from the classpath, parses it with {@link EvaluationWorkbookParser},
  * and exposes a cached {@link ReferenceBundleSnapshot} (validation report + counts).
  */
 @Component

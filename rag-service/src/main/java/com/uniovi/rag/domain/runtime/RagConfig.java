@@ -45,7 +45,7 @@ public record RagConfig(
         /** Max characters for extractive curated retrieval context (advanced pipeline). */
         int advancedRetrievalMaxContextChars,
         /**
-         * Thesis/Lab P0 routing: when {@link #naiveFullCorpusInPromptEnabled()} is true without retrieval, select the direct
+         * Lab P0 routing: when {@link #naiveFullCorpusInPromptEnabled()} is true without retrieval, select the direct
          * corpus-grounded workflow instead of the naive full-corpus baseline workflow name/metrics path.
          */
         boolean corpusGroundedDirectWorkflow,

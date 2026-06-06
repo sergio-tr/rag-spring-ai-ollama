@@ -9,7 +9,7 @@ import java.util.OptionalInt;
 import java.util.stream.Stream;
 
 /**
- * Curated demo / thesis model ids exposed via the product model registry (read + pull); not the DB allowlist.
+ * Curated demo model ids exposed via the product model registry (read + pull); not the DB allowlist.
  */
 public enum ProductDemoModel {
     GEMMA3_4B("gemma3:4b", AllowedModelType.LLM, -1),
@@ -42,7 +42,7 @@ public enum ProductDemoModel {
     }
 
     /**
-     * Documented embedding width for thesis target models (from Ollama model cards). Empty for LLM rows.
+     * Documented embedding width for demo target models (from Ollama model cards). Empty for LLM rows.
      */
     public OptionalInt documentedOutputDimensions() {
         if (modelType != AllowedModelType.EMBEDDING || documentedOutputDimensions <= 0) {

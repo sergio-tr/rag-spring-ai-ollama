@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 class ProductDemoModelTest {
 
     @Test
-    void targetEmbeddingModels_documentedDimensions_matchThesisMatrix() {
+    void targetEmbeddingModels_documentedDimensions_matchReferenceMatrix() {
         assertThat(ProductDemoModel.MXBAI_EMBED_LARGE.documentedOutputDimensions()).hasValue(1024);
         assertThat(ProductDemoModel.NOMIC_EMBED_TEXT.documentedOutputDimensions()).hasValue(768);
         assertThat(ProductDemoModel.QWEN3_EMBEDDING.documentedOutputDimensions()).hasValue(1024);

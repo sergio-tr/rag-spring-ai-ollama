@@ -20,7 +20,7 @@ class ExperimentalPresetCanonicalCatalogMetadataTest {
     }
 
     @Test
-    void p8_and_p12_productPresetIds_matchStableThesisUuids_noDriftWithP11Ordering() {
+    void p8_and_p12_productPresetIds_matchStablePresetUuids_noDriftWithP11Ordering() {
         assertThat(ExperimentalPresetCanonicalCatalog.productPresetId(RagExperimentalPresetCode.P8))
                 .isEqualTo(UUID.fromString("cafe0001-0001-4001-8001-000000000018"));
         assertThat(ExperimentalPresetCanonicalCatalog.productPresetId(RagExperimentalPresetCode.P11))
@@ -30,7 +30,7 @@ class ExperimentalPresetCanonicalCatalogMetadataTest {
     }
 
     @Test
-    void p13_and_p14_areNotSingleTurnBenchmarkSelectable_butRemainInThesisCatalog() {
+    void p13_and_p14_areNotSingleTurnBenchmarkSelectable_butRemainInExperimentalCatalog() {
         assertThat(ExperimentalPresetCanonicalCatalog.singleTurnBenchmarkSelectable(RagExperimentalPresetCode.P13)).isFalse();
         assertThat(ExperimentalPresetCanonicalCatalog.singleTurnBenchmarkSelectable(RagExperimentalPresetCode.P14)).isFalse();
         assertThat(ExperimentalPresetCanonicalCatalog.requiresMultiTurn(RagExperimentalPresetCode.P13)).isTrue();

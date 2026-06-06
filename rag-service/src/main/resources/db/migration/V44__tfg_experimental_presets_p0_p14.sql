@@ -1,4 +1,4 @@
--- Thesis (TFG) experimental RAG presets P0–P14.
+-- TFG experimental RAG presets P0–P14.
 -- These are SYSTEM presets meant to be selectable in Chat as "experimental catalog" entries,
 -- but they are not returned by GET /presets (product presets) and are surfaced through GET /lab/experimental-presets.
 

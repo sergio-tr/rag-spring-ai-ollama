@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Chat-facing preset catalog.
  * <p>
- * Product presets and experimental thesis presets are intentionally kept distinct in the response so the UI can
+ * Product presets and experimental presets are intentionally kept distinct in the response so the UI can
  * render two explicit sections without hiding NOT_SUPPORTED items.
  */
 @RestController

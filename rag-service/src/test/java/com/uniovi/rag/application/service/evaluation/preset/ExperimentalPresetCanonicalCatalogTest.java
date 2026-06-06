@@ -126,8 +126,8 @@ class ExperimentalPresetCanonicalCatalogTest {
     }
 
     @Test
-    void thesisProtocolLadderMarkdown_containsP0ThroughP14OnceEach() {
-        String md = ExperimentalPresetCanonicalCatalog.thesisProtocolLadderMarkdownTable();
+    void protocolLadderMarkdown_containsP0ThroughP14OnceEach() {
+        String md = ExperimentalPresetCanonicalCatalog.protocolLadderMarkdownTable();
         for (RagExperimentalPresetCode c : RagExperimentalPresetCode.values()) {
             assertThat(md).contains("| " + c.name() + " |");
         }

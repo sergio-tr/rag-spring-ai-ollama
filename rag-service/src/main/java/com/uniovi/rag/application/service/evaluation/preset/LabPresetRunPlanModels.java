@@ -13,7 +13,7 @@ public final class LabPresetRunPlanModels {
 
     private LabPresetRunPlanModels() {}
 
-    /** Version tag for deterministic thesis run-plan semantics (grouping + compatibility rules). */
+    /** Version tag for deterministic Lab run-plan semantics (grouping + compatibility rules). */
     public static final int STRATEGY_VERSION = 2;
 
     public record LabPresetRunPlan(

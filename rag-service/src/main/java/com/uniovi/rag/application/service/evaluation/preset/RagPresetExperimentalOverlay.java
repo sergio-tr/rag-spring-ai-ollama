@@ -6,7 +6,7 @@ import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import java.util.Map;
 
 /**
- * Maps thesis workbook presets P0–P14 onto (1) {@link RagFeatureConfiguration} for document loading / metadata services
+ * Maps reference workbook presets P0–P14 onto (1) {@link RagFeatureConfiguration} for document loading / metadata services
  * and (2) terminal runtime JSON so {@link com.uniovi.rag.domain.runtime.RagConfig} merges include {@code naiveFullCorpusInPromptEnabled}, {@code topK}, etc.
  */
 public final class RagPresetExperimentalOverlay {

@@ -216,21 +216,21 @@ public class LabBenchmarkController {
                 .body(csv);
     }
 
-    /** MVP thesis export: nested metrics per item (JSON bundle). */
+    /** MVP export: nested metrics per item (JSON bundle). */
     @GetMapping(value = "/runs/{runId}/export/mvp/items.json", produces = MediaType.APPLICATION_JSON_VALUE)
     public Map<String, Object> exportMvpItemsJson(
             @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID runId) {
         return labEvaluationRunService.exportMvpItemsJsonBundle(requireUserId(principal), runId);
     }
 
-    /** MVP thesis export: rollups with explicit {@code outcomeCounts} (never mixes NOT_SUPPORTED into executed means). */
+    /** MVP export: rollups with explicit {@code outcomeCounts} (never mixes NOT_SUPPORTED into executed means). */
     @GetMapping(value = "/runs/{runId}/export/mvp/rollups.json", produces = MediaType.APPLICATION_JSON_VALUE)
     public Map<String, Object> exportMvpRollupsJson(
             @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID runId) {
         return labEvaluationRunService.exportMvpRollupsJson(requireUserId(principal), runId);
     }
 
-    /** MVP thesis export: flat CSV rows ({@code items.csv} semantics). */
+    /** MVP export: flat CSV rows ({@code items.csv} semantics). */
     @GetMapping(value = "/runs/{runId}/export/mvp/items.csv", produces = "text/csv;charset=UTF-8")
     public ResponseEntity<String> exportMvpItemsCsv(
             @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID runId) {

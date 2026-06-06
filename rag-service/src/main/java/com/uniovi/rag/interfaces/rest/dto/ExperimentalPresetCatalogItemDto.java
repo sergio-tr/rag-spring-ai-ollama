@@ -24,7 +24,7 @@ public record ExperimentalPresetCatalogItemDto(
         boolean requiresSnapshot,
         boolean requiresProjectDocuments,
         boolean singleTurnBenchmarkSelectable,
-        /** Ordinal stage P0=0 … P14=14 (thesis ladder). */
+        /** Ordinal stage P0=0 … P14=14 (protocol ladder). */
         int protocolStageIndex,
         /** Parent preset code in the cumulative ladder, or null for P0. */
         String parentPresetCode,

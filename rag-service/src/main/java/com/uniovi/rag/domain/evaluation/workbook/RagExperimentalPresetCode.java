@@ -3,7 +3,7 @@ package com.uniovi.rag.domain.evaluation.workbook;
 import java.util.Locale;
 import java.util.Optional;
 
-/** Protocol preset identifiers P0–P14 (thesis / workbook catalog). */
+/** Protocol preset identifiers P0–P14. */
 public enum RagExperimentalPresetCode {
     P0,
     P1,

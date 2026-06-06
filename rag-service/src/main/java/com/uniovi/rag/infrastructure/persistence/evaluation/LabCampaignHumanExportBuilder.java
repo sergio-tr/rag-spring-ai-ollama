@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Human-readable campaign export rows for thesis evidence (JSON/CSV labels).
+ * Human-readable campaign export rows for evaluation evidence (JSON/CSV labels).
  * Technical MVP metrics remain available under {@code mvp} / flat CSV columns.
  */
 public final class LabCampaignHumanExportBuilder {

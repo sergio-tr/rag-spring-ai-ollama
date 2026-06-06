@@ -428,7 +428,7 @@ public final class ExperimentalPresetCanonicalCatalog {
     /**
      * Markdown table of the P0–P14 protocol ladder for generating annexes (generated only from this catalog).
      */
-    public static String thesisProtocolLadderMarkdownTable() {
+    public static String protocolLadderMarkdownTable() {
         StringBuilder sb = new StringBuilder();
         sb.append("| Stage | Code | Parent | Product preset id | Effective materialization | Metadata | Multi-turn |\n");
         sb.append("| ---: | --- | --- | --- | --- | :---: | :---: |\n");

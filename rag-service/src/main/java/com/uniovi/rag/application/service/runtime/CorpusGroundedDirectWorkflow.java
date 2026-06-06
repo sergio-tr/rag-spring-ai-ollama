@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
- * Thesis P0: direct LLM generation using assembled documentary corpus (snapshot-backed chunks), without retrieval,
+ * Lab P0: direct LLM generation using assembled documentary corpus (snapshot-backed chunks), without retrieval,
  * hybrid fusion, ranker, tools, or function calling.
  */
 @Component

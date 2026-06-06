@@ -1,4 +1,4 @@
--- Canonical thesis (TFG) experimental presets P0–P14 (accumulative).
+-- Canonical TFG experimental presets P0–P14 (accumulative).
 -- This migration aligns the persisted rag_preset.values (Chat execution) with the canonical preset ladder
 -- used by Lab (ExperimentalPresetCanonicalCatalog).
 --
