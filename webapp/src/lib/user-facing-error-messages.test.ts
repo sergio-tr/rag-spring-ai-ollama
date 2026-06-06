@@ -32,6 +32,9 @@ describe("user-facing-error-messages", () => {
     expect(mapUserFacingErrorMessage("EMBEDDING_DIMENSION_MISMATCH: x", t, "fb")).toBe(
       "i18n:userError_EMBEDDING_DIMENSION_MISMATCH",
     );
+    expect(mapUserFacingErrorMessage("FEATURE_REQUIRES_INDEX", t, "fb")).toBe(
+      "i18n:labConfigRequiresIndex",
+    );
   });
 
   it("mapUserFacingErrorMessage hides unknown technical codes", () => {

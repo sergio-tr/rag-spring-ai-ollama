@@ -2,7 +2,7 @@ import type { ExperimentalPresetCatalogItemDto } from "@/types/api";
 
 /** Preset selectable for single-turn Lab RAG benchmark (P0–P12). */
 export function isLabBenchmarkPresetSelectable(p: ExperimentalPresetCatalogItemDto): boolean {
-  return p.supported && p.singleTurnBenchmarkSelectable && p.labSelectable;
+  return p.supported && (p.singleTurnBenchmarkSelectable ?? false) && p.labSelectable;
 }
 
 export function filterLabBenchmarkSelectablePresets(
@@ -11,7 +11,7 @@ export function filterLabBenchmarkSelectablePresets(
   return (presets ?? []).filter(isLabBenchmarkPresetSelectable);
 }
 
-/** Core single-turn ladder P0–P12 (thesis protocol spine). */
+/** Core single-turn preset codes P0–P12 for Lab RAG benchmark selection. */
 export function isCoreExperimentalPresetCode(code: string): boolean {
   return /^P(?:[0-9]|1[0-2])$/.test(code);
 }

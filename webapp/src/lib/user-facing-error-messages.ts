@@ -51,7 +51,6 @@ export const LAB_USER_ERROR_I18N_KEYS: Record<string, string> = {
   FEATURE_REQUIRES_INDEX: "labConfigRequiresIndex",
   FEATURE_REQUIRES_SNAPSHOT: "labConfigRequiresSnapshot",
   FEATURE_REQUIRES_REINDEX: "userError_REINDEX_REQUIRED",
-  REINDEX_REQUIRED: "userError_REINDEX_REQUIRED",
   SNAPSHOT_CONFIG_MISMATCH: "userError_NO_COMPATIBLE_SNAPSHOT",
   RUNTIME_FEATURE_NOT_IMPLEMENTED: "labConfigNotImplemented",
   RUNTIME_NOT_IMPLEMENTED: "labConfigNotImplemented",
