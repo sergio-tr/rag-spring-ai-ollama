@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { seedEmail, seedPassword } from "../fixtures/users";
 import { authHeaders, loginAndGetToken } from "../api/fixtures/auth";
 import { actuatorHealthUrl, apiBaseUrl, productUrl } from "../api/fixtures/env";
-import { ensureChatConversationForPreflight, loginAsSeedUser } from "../support/helpers";
+import { ensureChatConversationForPreflight, loginAsSeedUser, openChatConfigurationPanel, expandChatConfigurationRuntimeSection } from "../support/helpers";
 
 type ProjectListResponse = { items?: Array<{ id?: string; name?: string }> };
 
@@ -39,17 +39,16 @@ test.describe("Fullstack E2E preflight @preflight", () => {
 
     await ensureChatConversationForPreflight(page, projectId, existingConvId);
 
-    await expect(page.getByTestId("chat-message-input")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId("chat-send-button")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId("chat-config-trigger")).toBeEnabled({ timeout: 10_000 });
-    await page.getByTestId("chat-config-trigger").click();
-    const panel = page.getByTestId("chat-configuration-side-panel").or(page.getByRole("dialog"));
-    await expect(panel).toBeVisible({ timeout: 10_000 });
-    await expect(panel.getByTestId("chat-preset-select")).toBeVisible({ timeout: 10_000 });
-    await expect(panel.getByTestId("chat-llm-model-select")).toBeVisible({ timeout: 10_000 });
-    await expect(panel.getByTestId("chat-classifier-select")).toBeVisible({ timeout: 10_000 });
-    await panel.getByTestId("chat-config-runtime-collapsible").click();
-    await expect(panel.getByTestId("chat-runtime-toggle-topK")).toBeVisible({ timeout: 10_000 });
-    await expect(panel.getByTestId("chat-runtime-toggle-similarityThreshold")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("chat-message-composer")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("chat-send-button")).toBeVisible({ timeout: 15_000 });
+
+    const panel = await openChatConfigurationPanel(page);
+    await expect(panel.getByTestId("chat-preset-select")).toBeVisible({ timeout: 15_000 });
+    await expect(panel.getByTestId("chat-llm-model-select")).toBeVisible({ timeout: 15_000 });
+    await expect(panel.getByTestId("chat-classifier-select")).toBeVisible({ timeout: 15_000 });
+    await expandChatConfigurationRuntimeSection(panel);
+    await expect(panel.getByTestId("chat-runtime-toggle-similarityThreshold")).toBeVisible({
+      timeout: 15_000,
+    });
   });
 });

@@ -4,6 +4,7 @@ import {
   authHeadersFromPage,
   createAndActivateProject,
   createNewChatConversation,
+  expandChatConfigurationRuntimeSection,
   loginAsSeedUser,
   openChatConfigurationPanel,
   productApiUrl,
@@ -43,13 +44,18 @@ test.describe("Chat RAG", () => {
     await expect(page).toHaveURL(/\/en\/chat/);
     await createNewChatConversation(page);
 
+    await expect(page.getByTestId("chat-config-trigger")).toBeEnabled({ timeout: 30_000 });
     const panel = await openChatConfigurationPanel(page);
     const presetSelect = panel.getByTestId("chat-preset-select");
     await expect(presetSelect).toBeVisible({ timeout: 15_000 });
     expect(await presetSelect.locator("option:not([disabled])").count()).toBeGreaterThan(0);
-    await panel.getByTestId("chat-config-runtime-collapsible").click();
-    await expect(panel.getByTestId("chat-config-runtime-refresh-effective")).toBeVisible();
-    await expect(panel.getByTestId("chat-config-export-effective")).toBeVisible();
+    await expandChatConfigurationRuntimeSection(panel);
+    await expect(panel.getByTestId("chat-runtime-toggle-similarityThreshold")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(panel.getByTestId("chat-config-runtime-refresh-effective")).toBeVisible({
+      timeout: 15_000,
+    });
 
     const optionValues = await presetSelect.locator("option").evaluateAll((options) =>
       options

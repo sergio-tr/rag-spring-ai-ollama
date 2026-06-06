@@ -254,6 +254,8 @@ export async function preflightLabE2eHarness(
   await expect(page.getByRole("heading", { name: /research lab|laboratorio/i }).first()).toBeVisible({
     timeout: 12_000,
   });
+  await expect(page.getByTestId("lab-overview-compact")).toBeVisible({ timeout: 12_000 });
+  await expect(page.getByTestId("lab-workflow-card-llm")).toBeVisible({ timeout: 12_000 });
   log.push("LAB overview page OK");
 
   writeHarnessEvidence("preflight.log", log, evidenceDir);

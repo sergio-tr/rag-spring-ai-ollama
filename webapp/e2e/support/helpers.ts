@@ -328,16 +328,43 @@ export type SendChatMessageOptions = {
 
 export async function openChatConfigurationPanel(page: Page): Promise<Locator> {
   const visiblePanel = page.getByTestId("chat-configuration-side-panel").or(page.getByRole("dialog"));
-  if (await visiblePanel.isVisible().catch(() => false)) {
-    return visiblePanel;
+  let panel = visiblePanel;
+  if (!(await visiblePanel.isVisible().catch(() => false))) {
+    const trigger = page.getByTestId("chat-config-trigger");
+    await expect(trigger).toBeVisible({ timeout: 15_000 });
+    await expect(trigger).toBeEnabled({ timeout: 15_000 });
+    await expect(trigger).toHaveAttribute("aria-controls", /chat-configuration-(side-panel|drawer)/);
+    await trigger.click();
+    panel = page.getByTestId("chat-configuration-side-panel").or(page.getByRole("dialog"));
+    await expect(panel).toBeVisible({ timeout: 15_000 });
   }
-  const trigger = page.getByTestId("chat-config-trigger");
-  await expect(trigger).toBeVisible({ timeout: 15_000 });
-  await expect(trigger).toBeEnabled({ timeout: 15_000 });
-  await trigger.click();
-  const openedPanel = page.getByTestId("chat-configuration-side-panel").or(page.getByRole("dialog"));
-  await expect(openedPanel).toBeVisible({ timeout: 15_000 });
-  return openedPanel;
+
+  const preset = panel.getByTestId("chat-preset-select");
+  if (!(await preset.isVisible().catch(() => false))) {
+    const editButton = panel.getByTestId("chat-config-edit-button");
+    await expect(editButton).toBeVisible({ timeout: 15_000 });
+    await editButton.scrollIntoViewIfNeeded();
+    await editButton.click();
+    await expect(preset).toBeVisible({ timeout: 15_000 });
+  }
+  return panel;
+}
+
+/** Expands the runtime overrides block inside an open configuration panel. */
+export async function expandChatConfigurationRuntimeSection(panel: Locator): Promise<void> {
+  const topK = panel.getByTestId("chat-runtime-toggle-topK");
+  if (await topK.isVisible().catch(() => false)) {
+    return;
+  }
+  const collapsible = panel.getByTestId("chat-config-runtime-collapsible");
+  await collapsible.scrollIntoViewIfNeeded();
+  await collapsible.click();
+  await expect(topK).toBeVisible({ timeout: 15_000 });
+}
+
+/** @deprecated Alias for {@link openChatConfigurationPanel} (edit controls expand automatically). */
+export async function openChatConfigurationEditPanel(page: Page): Promise<Locator> {
+  return openChatConfigurationPanel(page);
 }
 
 export async function openChatDocumentsSheet(page: Page): Promise<Locator> {
