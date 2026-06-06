@@ -485,7 +485,11 @@ public class LabCampaignService {
     private static String humanCorpusName(EvaluationRunEntity run) {
         EvaluationCorpusEntity corpus = run.getEvaluationCorpus();
         if (corpus != null && corpus.getName() != null && !corpus.getName().isBlank()) {
-            return corpus.getName().trim();
+            String name = corpus.getName().trim();
+            if (name.toLowerCase().contains("corpus")) {
+                return "Lab knowledge base";
+            }
+            return name;
         }
         return "";
     }
