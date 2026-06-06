@@ -266,7 +266,7 @@ Avoid using query paths as the basic connectivity smoke; keep smoke checks non-s
 
 ## Pre-release validation pack (operator)
 
-Before tagging a release or thesis snapshot, capture evidence for:
+Before tagging a release or snapshot, capture evidence for:
 
 1. **Compose syntax:** `docker compose … config -q` for `docker-compose.yml` with **`--profile logs`** (and other profiles as needed), for `docker-compose.yml` + `compose.obs.yml` + **`--profile observability`**, and for `docker-compose.yml` + `compose.prod.yml` (same env-file pattern as CI — see [`.github/workflows/observability-smoke.yml`](../../.github/workflows/observability-smoke.yml)).
 2. **Runtime:** [`rag-service/scripts/smoke-test.sh`](../../rag-service/scripts/smoke-test.sh) against the running backend; Actuator health/readiness.

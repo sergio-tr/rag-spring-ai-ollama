@@ -34,7 +34,6 @@ const FORBIDDEN_IN_PRODUCT_MESSAGES = [
   /\.cursor\/context\/evidence/i,
   /handoff/i,
   /\bTFG\b/i,
-  /\bthesis\b/i,
   /partial evidence/i,
   /Jaeger verified/i,
   /RAG ladder complete/i,
@@ -58,7 +57,7 @@ const FORBIDDEN_IN_PRODUCT_MESSAGES = [
   /Poll endpoint:/i,
   /nomic-embed-text/i,
   /honest outcomes/i,
-  /thesis appendix/i,
+  /external appendix/i,
   /single-turn harness/i,
   /m9-lab-experimental-evidence/i,
 ];

@@ -123,5 +123,5 @@ logs/
 !.yarn/versions
 # Environment variables
 !**/.env.example
-# Mermaid CLI raster exports for thesis (sources remain *.mmd)
+# Mermaid CLI raster exports (sources remain *.mmd)
 !/docs/coverage/
