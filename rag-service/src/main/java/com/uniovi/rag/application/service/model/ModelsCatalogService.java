@@ -29,11 +29,15 @@ public class ModelsCatalogService {
 
     private final AllowedModelRepository allowedModelRepository;
     private final OllamaApiClient ollamaApiClient;
+    private final EmbeddingModelStoreCompatibility embeddingModelStoreCompatibility;
 
     public ModelsCatalogService(
-            AllowedModelRepository allowedModelRepository, OllamaApiClient ollamaApiClient) {
+            AllowedModelRepository allowedModelRepository,
+            OllamaApiClient ollamaApiClient,
+            EmbeddingModelStoreCompatibility embeddingModelStoreCompatibility) {
         this.allowedModelRepository = allowedModelRepository;
         this.ollamaApiClient = ollamaApiClient;
+        this.embeddingModelStoreCompatibility = embeddingModelStoreCompatibility;
     }
 
     /**
@@ -94,6 +98,10 @@ public class ModelsCatalogService {
             if (!row.isInAllowlist()) continue;
             boolean available = OllamaInstalledModelMatcher.matchesInstalledName(row.getName(), installed);
             if (!available) continue;
+            if (type == AllowedModelType.EMBEDDING
+                    && !embeddingModelStoreCompatibility.isSelectableForLabEmbeddingBenchmark(row.getName())) {
+                continue;
+            }
             out.add(new SelectableModelDto(
                     row.getName(),
                     row.getDisplayName(),

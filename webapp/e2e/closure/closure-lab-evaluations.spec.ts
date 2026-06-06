@@ -54,6 +54,43 @@ test.describe("Closure LAB evaluations @closure @fullstack", () => {
     await assertNoForbiddenLabCopy(page);
   });
 
+  test("embedding evaluation offers only compatible models and concise comparison hint @closure @fullstack", async ({
+    page,
+  }) => {
+    await gotoLabEvaluationPage(page, "embedding");
+    await assertLabDatasetControlsVisible(page);
+
+    const incompatiblePattern = /nomic-embed|qwen3-embedding/i;
+    const group = page.getByTestId("lab-benchmark-embedding-models-group");
+    const select = page.getByTestId("lab-benchmark-embedding-model");
+
+    if (await group.isVisible().catch(() => false)) {
+      const boxes = group.locator('input[type="checkbox"]');
+      const count = await boxes.count();
+      for (let i = 0; i < count; i += 1) {
+        const testId = (await boxes.nth(i).getAttribute("data-testid")) ?? "";
+        expect(testId, `Incompatible embedding offered in UI: ${testId}`).not.toMatch(incompatiblePattern);
+      }
+    } else if (await select.isVisible().catch(() => false)) {
+      const options = select.locator("option");
+      const optionCount = await options.count();
+      for (let i = 0; i < optionCount; i += 1) {
+        const value = (await options.nth(i).getAttribute("value")) ?? "";
+        if (!value) continue;
+        expect(value, `Incompatible embedding offered in UI: ${value}`).not.toMatch(incompatiblePattern);
+      }
+    }
+
+    const blocked = page.getByTestId("lab-embedding-model-availability-blocked");
+    if (await blocked.isVisible().catch(() => false)) {
+      await expect(blocked).toHaveText(/At least two compatible embedding models are required for comparison\./i);
+      await expect(blocked).not.toContainText(/Missing preferred/i);
+      await expect(blocked).not.toContainText(/bge-m3/i);
+    }
+
+    await assertNoForbiddenLabCopy(page);
+  });
+
   test("RAG evaluation page loads dataset controls @closure @fullstack", async ({ page }) => {
     await gotoLabEvaluationPage(page, "rag");
     await assertLabDatasetControlsVisible(page);

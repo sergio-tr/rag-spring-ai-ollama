@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  EMBEDDING_CAMPAIGN_PREFERRED_MODEL_IDS,
   embeddingComparisonAvailabilityStatus,
   filterCampaignCompatibleEmbeddingIds,
   isCampaignCompatibleEmbeddingModel,
   isEmbeddingDimensionCompatible,
-  missingPreferredEmbeddingModels,
 } from "@/features/lab/lib/embedding-campaign-preferred-models";
 
 describe("embedding-campaign-preferred-models", () => {
@@ -15,7 +13,7 @@ describe("embedding-campaign-preferred-models", () => {
     expect(isCampaignCompatibleEmbeddingModel("mxbai-embed-large:latest")).toBe(true);
   });
 
-  it("filters selectable ids", () => {
+  it("filters selectable ids without requiring bge-m3", () => {
     expect(
       filterCampaignCompatibleEmbeddingIds([
         "mxbai-embed-large:latest",
@@ -23,12 +21,6 @@ describe("embedding-campaign-preferred-models", () => {
         "bge-m3:latest",
       ]),
     ).toEqual(["mxbai-embed-large:latest", "bge-m3:latest"]);
-  });
-
-  it("reports missing preferred tags", () => {
-    expect(missingPreferredEmbeddingModels(["mxbai-embed-large:latest"], EMBEDDING_CAMPAIGN_PREFERRED_MODEL_IDS)).toEqual([
-      "bge-m3:latest",
-    ]);
   });
 
   it("reports READY when two compatible models exist", () => {
