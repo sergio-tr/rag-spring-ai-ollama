@@ -113,15 +113,22 @@ describe("useEvaluationCorpus", () => {
     // Parent must clear draft corpusId; hook still receives prop until re-render.
   });
 
-  it("refresh refetches by id", async () => {
+  it("refresh refetches summary and readiness", async () => {
     mockCorpusFetch();
     const { result } = renderHook(() => useEvaluationCorpus("corpus-1"), { wrapper });
     await waitFor(() => expect(result.current.summary).toEqual(corpus));
 
-    const updated = { ...corpus, documentCount: 3 };
-    vi.mocked(apiFetch).mockResolvedValue(updated);
+    const updated = { ...corpus, documentCount: 3, readyCount: 2 };
+    const updatedReadiness = { ...readinessRunnable, documentCount: 3, readyCount: 2, runnable: true };
+    vi.mocked(apiFetch).mockImplementation((url: string) => {
+      if (String(url).includes("/readiness")) {
+        return Promise.resolve(updatedReadiness);
+      }
+      return Promise.resolve(updated);
+    });
     await result.current.refresh("corpus-1");
     await waitFor(() => expect(result.current.summary?.documentCount).toBe(3));
+    await waitFor(() => expect(result.current.readiness?.readyCount).toBe(2));
   });
 
   it("ensureCorpus creates when no corpusId", async () => {

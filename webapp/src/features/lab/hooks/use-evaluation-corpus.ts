@@ -45,15 +45,10 @@ export type EvaluationCorpusApi = ReturnType<typeof useEvaluationCorpus>;
 
 export function useEvaluationCorpus(corpusId: string | null, options?: UseEvaluationCorpusOptions) {
   const qc = useQueryClient();
-  const [resolvedCorpusId, setResolvedCorpusId] = useState<string | null>(corpusId);
+  /** Corpus id created locally when the draft prop is still null (e.g. first upload). */
+  const [localCorpusId, setLocalCorpusId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!corpusId) return;
-    const timer = globalThis.setTimeout(() => setResolvedCorpusId(corpusId), 0);
-    return () => globalThis.clearTimeout(timer);
-  }, [corpusId]);
-
-  const effectiveCorpusId = corpusId ?? resolvedCorpusId;
+  const effectiveCorpusId = corpusId ?? localCorpusId;
 
   const query = useQuery({
     queryKey: evaluationCorpusQueryKey(effectiveCorpusId),
@@ -79,15 +74,25 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
     enabled: Boolean(effectiveCorpusId),
     queryFn: () => fetchEvaluationCorpusReadiness(effectiveCorpusId!),
     refetchInterval: (q) => {
-      const summary = query.data;
-      if (!summary || !corpusHasProcessingDocuments(summary)) {
-        return false;
+      const summary = qc.getQueryData<EvaluationCorpusSummaryDto>(
+        evaluationCorpusQueryKey(effectiveCorpusId),
+      );
+      if (summary && corpusHasProcessingDocuments(summary)) {
+        return CORPUS_POLL_MS;
       }
       const readiness = q.state.data;
-      if (readiness && readiness.runnable && !readiness.processingCount) {
+      if (readiness && !readiness.runnable && (readiness.processingCount ?? 0) > 0) {
+        return CORPUS_POLL_MS;
+      }
+      if (
+        summary &&
+        corpusHasReadyDocuments(summary) &&
+        readiness?.reindexRequired &&
+        !readiness.activeSnapshotId
+      ) {
         return false;
       }
-      return CORPUS_POLL_MS;
+      return false;
     },
   });
 
@@ -100,32 +105,53 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
       qc.removeQueries({ queryKey: evaluationCorpusQueryKey(effectiveCorpusId) });
       qc.removeQueries({ queryKey: evaluationCorpusReadinessQueryKey(effectiveCorpusId) });
       queueMicrotask(() => {
-        setResolvedCorpusId(null);
+        setLocalCorpusId(null);
         options?.onCorpusStale?.();
       });
     }
   }, [query.error, effectiveCorpusId, options, qc]);
 
-  const refresh = useCallback(
+  const syncCorpusQueries = useCallback(
     async (id: string) => {
-      const summary = await qc.fetchQuery({
-        queryKey: evaluationCorpusQueryKey(id),
-        queryFn: () => fetchEvaluationCorpus(id),
-      });
-      await qc.fetchQuery({
-        queryKey: evaluationCorpusReadinessQueryKey(id),
-        queryFn: () => fetchEvaluationCorpusReadiness(id),
-      });
-      return summary;
+      await qc.invalidateQueries({ queryKey: evaluationCorpusQueryKey(id) });
+      await qc.invalidateQueries({ queryKey: evaluationCorpusReadinessQueryKey(id) });
+      const [summary, readiness] = await Promise.all([
+        qc.fetchQuery({
+          queryKey: evaluationCorpusQueryKey(id),
+          queryFn: () => fetchEvaluationCorpus(id),
+        }),
+        qc.fetchQuery({
+          queryKey: evaluationCorpusReadinessQueryKey(id),
+          queryFn: () => fetchEvaluationCorpusReadiness(id),
+        }),
+      ]);
+      return { summary, readiness };
     },
     [qc],
+  );
+
+  const refresh = useCallback(
+    async (id: string) => {
+      const { summary } = await syncCorpusQueries(id);
+      return summary;
+    },
+    [syncCorpusQueries],
   );
 
   const waitForReadyDocuments = useCallback(
     async (id: string) => {
       let latest = await refresh(id);
       for (let attempt = 0; attempt < CORPUS_POLL_MAX_ATTEMPTS; attempt += 1) {
-        if (corpusHasReadyDocuments(latest) || !corpusHasProcessingDocuments(latest)) {
+        const readiness = qc.getQueryData<EvaluationCorpusReadinessDto>(
+          evaluationCorpusReadinessQueryKey(id),
+        );
+        if (
+          corpusHasReadyDocuments(latest) &&
+          (readiness?.runnable || !corpusHasProcessingDocuments(latest))
+        ) {
+          return latest;
+        }
+        if (corpusHasReadyDocuments(latest) && !corpusHasProcessingDocuments(latest)) {
           return latest;
         }
         await new Promise((resolve) => setTimeout(resolve, CORPUS_POLL_MS));
@@ -133,7 +159,7 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
       }
       return latest;
     },
-    [refresh],
+    [qc, refresh],
   );
 
   const ensureCorpus = useCallback(async () => {
@@ -146,8 +172,12 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ name: "Lab knowledge base" }),
       });
-      setResolvedCorpusId(created.id);
+      setLocalCorpusId(created.id);
       qc.setQueryData(evaluationCorpusQueryKey(created.id), created);
+      await qc.prefetchQuery({
+        queryKey: evaluationCorpusReadinessQueryKey(created.id),
+        queryFn: () => fetchEvaluationCorpusReadiness(created.id),
+      });
       return created;
     } catch (e) {
       const code = extractApiErrorCode(e);
@@ -177,9 +207,10 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
       qc.setQueryData(key, merged);
       const refreshed = await waitForReadyDocuments(id);
       qc.setQueryData(key, refreshed);
+      await syncCorpusQueries(id);
       return { response: data, corpus: refreshed };
     },
-    [qc, waitForReadyDocuments],
+    [qc, syncCorpusQueries, waitForReadyDocuments],
   );
 
   const deleteDocument = useCallback(
@@ -202,7 +233,7 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
           { method: "DELETE" },
         );
         qc.setQueryData(key, data);
-        await qc.invalidateQueries({ queryKey: evaluationCorpusReadinessQueryKey(id) });
+        await syncCorpusQueries(id);
         return data;
       } catch (e) {
         if (previous) {
@@ -211,7 +242,7 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
         throw e;
       }
     },
-    [qc],
+    [qc, syncCorpusQueries],
   );
 
   const deleteAllDocuments = useCallback(
@@ -244,7 +275,7 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
           { method: "DELETE" },
         );
         qc.setQueryData(key, data);
-        await qc.invalidateQueries({ queryKey: evaluationCorpusReadinessQueryKey(id) });
+        await syncCorpusQueries(id);
         return data;
       } catch (e) {
         if (previous) {
@@ -253,7 +284,7 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
         throw e;
       }
     },
-    [qc],
+    [qc, syncCorpusQueries],
   );
 
   const retryDocumentIngest = useCallback(
@@ -266,9 +297,10 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
       qc.setQueryData(key, data);
       const refreshed = await waitForReadyDocuments(id);
       qc.setQueryData(key, refreshed);
+      await syncCorpusQueries(id);
       return refreshed;
     },
-    [qc, waitForReadyDocuments],
+    [qc, syncCorpusQueries, waitForReadyDocuments],
   );
 
   const attachFromProject = useCallback(
@@ -282,9 +314,28 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
         },
       );
       qc.setQueryData(evaluationCorpusQueryKey(id), data);
-      return waitForReadyDocuments(id);
+      const refreshed = await waitForReadyDocuments(id);
+      qc.setQueryData(evaluationCorpusQueryKey(id), refreshed);
+      await syncCorpusQueries(id);
+      return refreshed;
     },
-    [qc, waitForReadyDocuments],
+    [qc, syncCorpusQueries, waitForReadyDocuments],
+  );
+
+  const prepareIndex = useCallback(
+    async (id: string) => {
+      const readiness = await apiFetch<EvaluationCorpusReadinessDto>(
+        apiProductPath(`/lab/evaluation-corpora/${id}/prepare-index`),
+        {
+          method: "POST",
+          headers: { Accept: "application/json" },
+        },
+      );
+      qc.setQueryData(evaluationCorpusReadinessQueryKey(id), readiness);
+      const { summary } = await syncCorpusQueries(id);
+      return { summary, readiness };
+    },
+    [qc, syncCorpusQueries],
   );
 
   const summary = effectiveCorpusId ? (query.data ?? null) : null;
@@ -301,6 +352,7 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
           : null;
 
   const corpusRunnable = readiness?.runnable ?? corpusHasReadyDocuments(summary);
+  const indexReady = Boolean(readiness?.activeSnapshotId) || !readiness?.reindexRequired;
 
   return {
     summary,
@@ -313,6 +365,7 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
     errorCode,
     corpusReady: corpusHasReadyDocuments(summary),
     corpusRunnable,
+    corpusIndexReady: indexReady,
     corpusProcessing: corpusHasProcessingDocuments(summary),
     refresh,
     ensureCorpus,
@@ -321,5 +374,6 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
     deleteDocument,
     deleteAllDocuments,
     retryDocumentIngest,
+    prepareIndex,
   };
 }

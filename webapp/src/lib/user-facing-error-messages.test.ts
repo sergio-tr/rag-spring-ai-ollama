@@ -88,4 +88,14 @@ describe("user-facing-error-messages", () => {
     expect(mapUserFacingErrorMessageEnglish("Please retry later", "fb")).toBe("Please retry later");
     expect(mapUserFacingErrorMessageEnglish("FAILED_EMBEDDING", "fb")).toContain("Embedding");
   });
+
+  it("mapUserFacingErrorMessage maps preset and multi-turn reason codes", () => {
+    expect(mapUserFacingErrorMessage("FUTURE_MULTI_TURN_NOT_SELECTABLE", t, "fb")).toBe(
+      "i18n:labConfigNotSingleTurn",
+    );
+    expect(mapUserFacingErrorMessage("REQUIRES_MULTI_TURN", t, "fb")).toBe("i18n:labConfigNotSingleTurn");
+    expect(mapUserFacingErrorMessage("PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED", t, "fb")).toBe(
+      "i18n:labConfigP13",
+    );
+  });
 });

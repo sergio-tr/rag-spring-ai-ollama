@@ -17,7 +17,17 @@ import { mapUserFacingErrorMessage } from "@/lib/user-facing-error-messages";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import type { ProjectDocumentDto } from "@/types/api";
 import { useTranslations } from "next-intl";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef, useState } from "react";
+
+function isAttachableProjectDocument(
+  doc: Pick<ProjectDocumentDto, "status"> & { corpusScope?: ProjectDocumentDto["corpusScope"] | null },
+): boolean {
+  return (
+    doc.status === "READY" &&
+    (doc.corpusScope == null || doc.corpusScope === "PROJECT_SHARED")
+  );
+}
 
 export type LabEvaluationCorpusPanelProps = {
   corpusId: string | null;
@@ -89,11 +99,13 @@ export function LabEvaluationCorpusPanel({
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [localErr, setLocalErr] = useState<string | null>(null);
   const [localWarn, setLocalWarn] = useState<string | null>(null);
+  const [preparingIndex, setPreparingIndex] = useState(false);
   const internalCorpus = useEvaluationCorpus(evaluationCorpusProp ? null : corpusId);
   const corpusApi = evaluationCorpusProp ?? internalCorpus;
   const {
     summary,
     readiness,
+    effectiveCorpusId,
     loading,
     error,
     ensureCorpus,
@@ -103,6 +115,7 @@ export function LabEvaluationCorpusPanel({
     deleteAllDocuments,
     retryDocumentIngest,
     refresh,
+    prepareIndex,
   } = corpusApi;
 
   const mapUploadError = useCallback(
@@ -111,11 +124,41 @@ export function LabEvaluationCorpusPanel({
   );
 
   const ensureReady = useCallback(async () => {
-    if (corpusId) return corpusId;
+    const id = corpusId ?? effectiveCorpusId;
+    if (id) return id;
     const created = await ensureCorpus();
     onCorpusIdChange(created.id);
     return created.id;
-  }, [corpusId, ensureCorpus, onCorpusIdChange]);
+  }, [corpusId, effectiveCorpusId, ensureCorpus, onCorpusIdChange]);
+
+  const refreshCorpusId = corpusId ?? effectiveCorpusId;
+
+  const isIndexProject = Boolean(optionalProjectId && optionalProjectId === readiness?.indexProjectId);
+  const attachableDocsQuery = useQuery({
+    queryKey: [
+      "lab",
+      "corpus-attachable-project-docs",
+      optionalProjectId,
+      readiness?.indexProjectId,
+      summary?.updatedAt,
+      summary?.documentCount,
+    ],
+    enabled: Boolean(optionalProjectId) && !isIndexProject,
+    queryFn: async () => {
+      const docs = await apiFetch<ProjectDocumentDto[]>(
+        apiProductPath(`/projects/${optionalProjectId}/documents`),
+      );
+      return docs.filter(isAttachableProjectDocument).length;
+    },
+    staleTime: 30_000,
+  });
+  const attachableProjectDocCount = !optionalProjectId
+    ? null
+    : isIndexProject
+      ? 0
+      : attachableDocsQuery.isError
+        ? null
+        : (attachableDocsQuery.data ?? null);
 
   async function onUploadSelected(files: FileList | null | undefined) {
     const list = files ? Array.from(files).filter((f) => f.size > 0) : [];
@@ -180,16 +223,32 @@ export function LabEvaluationCorpusPanel({
   }
 
   async function onRefresh() {
-    if (!corpusId || disabled) return;
+    const id = refreshCorpusId;
+    if (!id || disabled) return;
     setBusy(true);
     setLocalErr(null);
     try {
-      await refresh(corpusId);
+      await refresh(id);
     } catch (e) {
       const raw = corpusUploadErrorMessage(e, t("labCorpusRefreshFailed"));
       setLocalErr(mapUploadError(raw));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onPrepareIndex() {
+    const id = refreshCorpusId;
+    if (!id || disabled || preparingIndex) return;
+    setPreparingIndex(true);
+    setLocalErr(null);
+    try {
+      await prepareIndex(id);
+    } catch (e) {
+      const raw = corpusUploadErrorMessage(e, t("labCorpusPrepareIndexFailed"));
+      setLocalErr(mapUploadError(raw));
+    } finally {
+      setPreparingIndex(false);
     }
   }
 
@@ -222,9 +281,9 @@ export function LabEvaluationCorpusPanel({
       const docs = await apiFetch<ProjectDocumentDto[]>(
         apiProductPath(`/projects/${optionalProjectId}/documents`),
       );
-      const sharedIds = docs.filter((d) => d.corpusScope === "PROJECT_SHARED").map((d) => d.id);
+      const sharedIds = docs.filter(isAttachableProjectDocument).map((d) => d.id);
       if (sharedIds.length === 0) {
-        setLocalErr(t("labCorpusNoProjectDocuments"));
+        setLocalErr(t("labCorpusAttachNoSharedDocuments"));
         return;
       }
       await attachFromProject(id, optionalProjectId, sharedIds);
@@ -243,6 +302,21 @@ export function LabEvaluationCorpusPanel({
   }, [localErr, error, t]);
   const docCount = summary?.documentCount ?? 0;
   const readyCount = summary?.readyCount ?? 0;
+  const showPrepareIndex =
+    Boolean(readiness?.reindexRequired) &&
+    !readiness?.activeSnapshotId &&
+    !readiness?.primaryBlocker &&
+    readyCount > 0;
+  const showAttachFromProject =
+    Boolean(optionalProjectId) &&
+    optionalProjectId !== readiness?.indexProjectId &&
+    attachableProjectDocCount !== 0;
+  const showAttachUnavailableHint =
+    Boolean(optionalProjectId) &&
+    optionalProjectId !== readiness?.indexProjectId &&
+    attachableProjectDocCount === 0;
+  const showIndexProjectAttachHint =
+    Boolean(optionalProjectId) && optionalProjectId === readiness?.indexProjectId;
 
   return (
     <div
@@ -264,7 +338,7 @@ export function LabEvaluationCorpusPanel({
             size="sm"
             variant="outline"
             data-testid="lab-corpus-refresh"
-            disabled={disabled || busy || loading || !corpusId}
+            disabled={disabled || busy || loading || !refreshCorpusId}
             onClick={() => void onRefresh()}
           >
             {t("labCorpusRefresh")}
@@ -303,19 +377,31 @@ export function LabEvaluationCorpusPanel({
       ) : null}
 
       {readiness?.snapshotBlocker && !readiness.primaryBlocker ? (
-        <output
-          role="status"
-          className="block text-amber-700 dark:text-amber-400 text-xs"
-          data-testid="lab-corpus-snapshot-hint"
-        >
-          {t("labCorpusSnapshotHint", {
-            reason: mapKnowledgeBaseApiError(
+        <div className="flex flex-wrap items-center gap-2">
+          <output
+            role="status"
+            className="block text-amber-700 dark:text-amber-400 text-xs"
+            data-testid="lab-corpus-snapshot-hint"
+          >
+            {mapKnowledgeBaseApiError(
               readiness.snapshotBlocker,
               t,
-              readiness.primaryBlockerMessage ?? "",
-            ),
-          })}
-        </output>
+              t("userError_REINDEX_REQUIRED"),
+            )}
+          </output>
+          {showPrepareIndex ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              data-testid="lab-corpus-prepare-index"
+              disabled={disabled || busy || loading || preparingIndex}
+              onClick={() => void onPrepareIndex()}
+            >
+              {preparingIndex ? t("labCorpusPrepareIndexInProgress") : t("labCorpusPrepareIndex")}
+            </Button>
+          ) : null}
+        </div>
       ) : null}
 
       {!optionalProjectId ? (
@@ -388,7 +474,7 @@ export function LabEvaluationCorpusPanel({
             onChange={(e) => void onUploadSelected(e.target.files)}
           />
         </div>
-        {optionalProjectId ? (
+        {showAttachFromProject ? (
           <Button
             type="button"
             size="sm"
@@ -401,6 +487,18 @@ export function LabEvaluationCorpusPanel({
           </Button>
         ) : null}
       </div>
+
+      {showAttachUnavailableHint ? (
+        <p className="text-muted-foreground text-xs" data-testid="lab-corpus-attach-unavailable-hint">
+          {t("labCorpusAttachNoSharedDocuments")}
+        </p>
+      ) : null}
+
+      {showIndexProjectAttachHint ? (
+        <p className="text-muted-foreground text-xs" data-testid="lab-corpus-index-project-hint">
+          {t("labCorpusAttachIndexProjectHint")}
+        </p>
+      ) : null}
 
       {uploadProgress ? (
         <output className="text-muted-foreground block text-xs" data-testid="lab-corpus-upload-progress">

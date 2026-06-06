@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
@@ -104,6 +104,30 @@ const llmDataset = {
   description: null,
 };
 
+const embeddingDataset = {
+  id: "emb00000-0000-0000-0000-000000000001",
+  name: "emb-ds",
+  experimentalDatasetType: "EMBEDDING_MODEL_BASELINE",
+  readOnly: false,
+  datasetType: "EMBEDDING",
+  validationStatus: "VALID",
+  questionCounts: {
+    llmReaderQuestions: 0,
+    embeddingQueries: 4,
+    ragPresetQuestions: 0,
+    presetCatalog: 0,
+    chunkRegistry: 0,
+  },
+  isReferenceBundle: false,
+  isDemoDataset: false,
+  canRunLlmBaseline: false,
+  canRunEmbeddingBaseline: true,
+  canRunRagPresetBenchmark: false,
+  validationIssues: [],
+  uploadedAt: "2026-01-01T00:00:00Z",
+  description: null,
+};
+
 const ragDataset = {
   id: "ragguid-ragguid-ragguid-ragguid-000001",
   name: "rag-ds",
@@ -175,8 +199,8 @@ function presetCodesFixture() {
     description: "",
     requiredCapabilities: [] as string[],
     supported: true,
-    supportStatus: "EXECUTABLE" as const,
-    reasonIfUnsupported: null,
+    supportStatus: i >= 13 ? "REQUIRES_MULTI_TURN" : "EXECUTABLE",
+    reasonIfUnsupported: i >= 13 ? "FUTURE_MULTI_TURN_NOT_SELECTABLE" : null,
     requiresMultiTurn: i >= 13,
     mapsToRuntimeCapabilities: {},
     allowedOutcomes: ["EXECUTED", "FAILED", "SKIPPED", "NOT_SUPPORTED"] as const,
@@ -335,7 +359,7 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.getByRole("button", { name: /Run evaluation/i })).toBeDisabled();
   });
 
-  it("keeps developer endpoint hint inside technical disclosure by default", async () => {
+  it("keeps benchmark kind label inside technical disclosure by default", async () => {
     const user = userEvent.setup();
     render(
       <LabEvalHarness>
@@ -352,12 +376,51 @@ describe("LabEvaluationRunCard", () => {
     );
     const developerDetails = screen.getByTestId("lab-eval-technical-details");
     expect(developerDetails).not.toHaveAttribute("open");
+    expect(screen.queryByText(/LLM_JUDGE_QA/i)).not.toBeInTheDocument();
     await user.click(screen.getByText(/Technical details/i));
-    expect(developerDetails).toHaveTextContent(/Benchmark kind/i);
+    expect(screen.getByTestId("lab-eval-benchmark-kind-label")).toHaveTextContent(/LLM evaluation/i);
     expect(screen.queryByText(/POST \/api/i)).not.toBeInTheDocument();
   });
 
-  it("disables non-lab-selectable presets and blocks run when only P13 is selected", async () => {
+  it("sanitizes saved P13/P14 from draft on load and shows product message", async () => {
+    localStorage.setItem(
+      "lab:evaluation-draft:v1:RAG_PRESET_END_TO_END",
+      storedRagDraft({
+        selectedExperimentalPresetCodes: ["P0", "P13", "P14"],
+      }),
+    );
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+      data: [ragDataset],
+      isLoading: false,
+      isFetched: true,
+      isSuccess: true,
+    } as never);
+    render(
+      <LabEvalHarness>
+        <LabEvaluationRunCard
+          benchmarkKind="RAG_PRESET_END_TO_END"
+          sectionKey="evaluation-rag"
+          taskTypeHint="RAG_EVALUATION"
+          cardTitle="RAG evaluation"
+          cardDescription="Benchmark retrieval presets."
+          runButtonTestId="lab-rag-run"
+          radioGroupName="follow-test-rag-sanitize"
+        />
+      </LabEvalHarness>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("lab-draft-presets-sanitized")).toHaveTextContent(
+        /not available for this evaluation type and were removed/i,
+      );
+    });
+    expect(screen.queryByText(/FUTURE_MULTI_TURN_NOT_SELECTABLE/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/cannot run in this evaluation/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("lab-experimental-preset-P0")).toBeChecked();
+    expect(screen.getByTestId("lab-experimental-preset-P13")).not.toBeChecked();
+    expect(screen.getByTestId("lab-experimental-preset-P13")).toBeDisabled();
+  });
+
+  it("disables non-lab-selectable presets when only P13 remains after sanitation", async () => {
     localStorage.setItem(
       "lab:evaluation-draft:v1:RAG_PRESET_END_TO_END",
       JSON.stringify({
@@ -382,6 +445,12 @@ describe("LabEvaluationRunCard", () => {
     );
     expect(screen.getByTestId("lab-experimental-preset-P13")).toBeDisabled();
     expect(screen.getByTestId("lab-rag-run")).toBeDisabled();
+    expect(screen.getByTestId("lab-draft-presets-sanitized")).toHaveTextContent(
+      /not available for this evaluation type and were removed/i,
+    );
+    expect(screen.queryByText(/evalDraftWarnPresetsNotLabSelectable|cannot run in this evaluation/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/FUTURE_MULTI_TURN_NOT_SELECTABLE/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/REQUIRES_MULTI_TURN/i)).not.toBeInTheDocument();
   });
 
   it("shows experimental preset catalog in RAG benchmark mode without long unsupported reasons visible", () => {
@@ -401,6 +470,10 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.getByTestId("lab-experimental-presets-list")).toBeInTheDocument();
     expect(screen.getByText(/PX_OBSOLETE — Clarification loop/i)).toBeInTheDocument();
     expect(screen.getByTestId("lab-preset-blocked-PX_OBSOLETE")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-preset-blocked-PX_OBSOLETE")).toHaveTextContent(
+      /not available for this evaluation type/i,
+    );
+    expect(screen.queryByText(/PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("lab-experimental-presets-select-core")).toBeInTheDocument();
   });
 
@@ -520,7 +593,7 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.getByTestId("lab-benchmark-llm-models-llama:judge")).toBeChecked();
   });
 
-  it("restores RAG preset picks P0–P14 from localStorage", () => {
+  it("restores RAG preset picks P0–P12 from localStorage and sanitizes P13/P14", () => {
     localStorage.setItem("lab:evaluation-draft:v1:RAG_PRESET_END_TO_END", storedRagDraft({}));
     vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
       data: [ragDataset],
@@ -541,9 +614,12 @@ describe("LabEvaluationRunCard", () => {
         />
       </LabEvalHarness>,
     );
-    for (let i = 0; i <= 14; i += 1) {
+    expect(screen.getByTestId("lab-draft-presets-sanitized")).toBeInTheDocument();
+    for (let i = 0; i <= 12; i += 1) {
       expect(screen.getByTestId(`lab-experimental-preset-P${i}`)).toBeChecked();
     }
+    expect(screen.getByTestId("lab-experimental-preset-P13")).not.toBeChecked();
+    expect(screen.getByTestId("lab-experimental-preset-P14")).not.toBeChecked();
   });
 
   it("disables Run when corpus readiness reports NO_DOCUMENTS blocker", () => {
@@ -663,11 +739,96 @@ describe("LabEvaluationRunCard", () => {
     await user.click(screen.getByTestId("lab-llm-run"));
 
     expect(vi.mocked(apiFetch)).toHaveBeenCalled();
-    const call = vi.mocked(apiFetch).mock.calls.find((c) => c[0]?.includes("/lab/benchmarks/LLM_JUDGE_QA/runs"));
+    const call = vi.mocked(apiFetch).mock.calls.find((c) => {
+      const url = String(c[0] ?? "");
+      const method = (c[1] as RequestInit | undefined)?.method ?? "GET";
+      return url.includes("/lab/benchmarks/LLM_JUDGE_QA/runs") && !url.includes("/runs/latest") && method === "POST";
+    });
     expect(call).toBeTruthy();
     const init = call?.[1] as RequestInit | undefined;
     const body = JSON.parse(String(init?.body ?? "{}")) as { llmModelIds?: string[]; campaignName?: string };
     expect(body.llmModelIds).toEqual(["llama:judge", "llama:fast", "llama:quality"]);
     expect(body.campaignName).toBeTruthy();
+  });
+
+  describe("EMBEDDING_RETRIEVAL model compatibility", () => {
+    beforeEach(() => {
+      useEvaluationCorpusMock.mockReturnValue({
+        ...defaultEvaluationCorpusApi,
+        effectiveCorpusId: "corpus-emb",
+      });
+      vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+        data: [embeddingDataset],
+        isLoading: false,
+        isFetched: true,
+        isSuccess: true,
+      } as never);
+    });
+
+    it("shows concise blocked message when only one compatible embedding is available", () => {
+      vi.mocked(useModelsByType).mockImplementation(((type: string) => ({
+        data:
+          type === "EMBEDDING"
+            ? [{ modelId: "mxbai-embed-large:latest", displayName: "mxbai", type: "EMBEDDING" }]
+            : [],
+        isLoading: false,
+        isSuccess: true,
+      })) as never);
+
+      render(
+        <LabEvalHarness>
+          <LabEvaluationRunCard
+            benchmarkKind="EMBEDDING_RETRIEVAL"
+            sectionKey="evaluation-embedding"
+            taskTypeHint="EMBEDDING_EVALUATION"
+            cardTitle="Embedding evaluation"
+            cardDescription="Compare embedding models."
+            runButtonTestId="lab-embedding-run"
+            radioGroupName="follow-embedding-one"
+          />
+        </LabEvalHarness>,
+      );
+
+      const blocked = screen.getByTestId("lab-embedding-model-availability-blocked");
+      expect(blocked).toHaveTextContent(
+        "At least two compatible embedding models are required for comparison.",
+      );
+      expect(blocked.textContent).not.toMatch(/Missing preferred/i);
+      expect(blocked.textContent).not.toMatch(/bge-m3/i);
+      expect(blocked.textContent).not.toMatch(/EMBEDDING_CAMPAIGN_STORE_DIMENSION/);
+    });
+
+    it("does not offer incompatible embedding tags in the checkbox group", () => {
+      vi.mocked(useModelsByType).mockImplementation(((type: string) => ({
+        data:
+          type === "EMBEDDING"
+            ? [
+                { modelId: "mxbai-embed-large:latest", displayName: "mxbai", type: "EMBEDDING" },
+                { modelId: "nomic-embed-text:latest", displayName: "nomic", type: "EMBEDDING" },
+                { modelId: "qwen3-embedding:latest", displayName: "qwen3", type: "EMBEDDING" },
+              ]
+            : [],
+        isLoading: false,
+        isSuccess: true,
+      })) as never);
+
+      render(
+        <LabEvalHarness>
+          <LabEvaluationRunCard
+            benchmarkKind="EMBEDDING_RETRIEVAL"
+            sectionKey="evaluation-embedding"
+            taskTypeHint="EMBEDDING_EVALUATION"
+            cardTitle="Embedding evaluation"
+            cardDescription="Compare embedding models."
+            runButtonTestId="lab-embedding-run"
+            radioGroupName="follow-embedding-filter"
+          />
+        </LabEvalHarness>,
+      );
+
+      expect(screen.getByTestId("lab-benchmark-embedding-models-mxbai-embed-large:latest")).toBeInTheDocument();
+      expect(screen.queryByTestId("lab-benchmark-embedding-models-nomic-embed-text:latest")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("lab-benchmark-embedding-models-qwen3-embedding:latest")).not.toBeInTheDocument();
+    });
   });
 });

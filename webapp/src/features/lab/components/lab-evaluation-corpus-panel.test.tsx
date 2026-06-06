@@ -1,8 +1,11 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { LabEvaluationCorpusPanel } from "./lab-evaluation-corpus-panel";
 import * as apiClient from "@/lib/api-client";
+import { createTestQueryClient } from "@/test-utils/query-client";
+import type { ReactElement } from "react";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string, values?: Record<string, string | number>) => {
@@ -45,6 +48,7 @@ const attachFromProject = vi.fn().mockResolvedValue(undefined);
 const deleteDocument = vi.fn().mockResolvedValue(undefined);
 const deleteAllDocuments = vi.fn().mockResolvedValue(undefined);
 const retryDocumentIngest = vi.fn().mockResolvedValue(undefined);
+const prepareIndex = vi.fn().mockResolvedValue(undefined);
 const apiFetch = vi.fn();
 
 vi.mock("@/lib/api-client", async (importOriginal) => {
@@ -61,6 +65,10 @@ const useEvaluationCorpus = vi.fn();
 vi.mock("@/features/lab/hooks/use-evaluation-corpus", () => ({
   useEvaluationCorpus: () => useEvaluationCorpus(),
 }));
+
+function renderPanel(ui: ReactElement) {
+  return render(<QueryClientProvider client={createTestQueryClient()}>{ui}</QueryClientProvider>);
+}
 
 function corpusSummary(
   overrides: Partial<{
@@ -92,6 +100,15 @@ function corpusSummary(
     deleteDocument,
     deleteAllDocuments,
     retryDocumentIngest,
+    prepareIndex,
+    effectiveCorpusId: "corpus-1",
+    readiness: null as {
+      reindexRequired?: boolean;
+      activeSnapshotId?: string | null;
+      primaryBlocker?: string | null;
+      indexProjectId?: string | null;
+      snapshotBlocker?: string | null;
+    } | null,
   };
 }
 
@@ -109,7 +126,7 @@ describe("LabEvaluationCorpusPanel", () => {
   });
 
   it("renders without requiring active project", () => {
-    render(
+    renderPanel(
       <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
     );
     expect(screen.getByTestId("lab-evaluation-corpus-panel")).toBeInTheDocument();
@@ -121,32 +138,62 @@ describe("LabEvaluationCorpusPanel", () => {
     expect(screen.getByTestId("lab-corpus-doc-status-d5")).toHaveTextContent(/QUEUED/);
   });
 
-  it("shows attach-from-project only when optional project is set", async () => {
-    const { rerender } = render(
+  it("shows attach-from-project only when optional project has shared docs", async () => {
+    const { rerender } = renderPanel(
       <LabEvaluationCorpusPanel corpusId={null} onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
     );
     expect(screen.queryByTestId("lab-corpus-attach-project")).not.toBeInTheDocument();
 
+    useEvaluationCorpus.mockReturnValue({
+      ...corpusSummary(),
+      effectiveCorpusId: null,
+    });
     rerender(
-      <LabEvaluationCorpusPanel corpusId={null} onCorpusIdChange={vi.fn()} optionalProjectId="p1" />,
+      <QueryClientProvider client={createTestQueryClient()}>
+        <LabEvaluationCorpusPanel corpusId={null} onCorpusIdChange={vi.fn()} optionalProjectId="p1" />
+      </QueryClientProvider>,
     );
-    expect(screen.getByTestId("lab-corpus-attach-project")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("lab-corpus-attach-project")).toBeInTheDocument());
     await userEvent.click(screen.getByTestId("lab-corpus-attach-project"));
     await waitFor(() => expect(attachFromProject).toHaveBeenCalledWith("corpus-new", "p1", ["d1"]));
   });
 
-  it("shows error when project has no shared documents", async () => {
+  it("hides attach when project has no shared ready documents", async () => {
     apiFetch.mockResolvedValueOnce([{ id: "d9", corpusScope: "PRIVATE", fileName: "x.pdf", status: "READY" }]);
-    render(
+    renderPanel(
       <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId="p1" />,
     );
-    await userEvent.click(screen.getByTestId("lab-corpus-attach-project"));
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/No project documents/));
+    await waitFor(() =>
+      expect(screen.getByTestId("lab-corpus-attach-unavailable-hint")).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("lab-corpus-attach-project")).not.toBeInTheDocument();
+  });
+
+  it("shows prepare index when snapshot is required", () => {
+    useEvaluationCorpus.mockReturnValue({
+      ...corpusSummary({ readyCount: 1 }),
+      readiness: {
+        reindexRequired: true,
+        activeSnapshotId: null,
+        primaryBlocker: null,
+        snapshotBlocker: "REINDEX_REQUIRED",
+        indexProjectId: "idx-proj",
+      },
+    });
+    renderPanel(
+      <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
+    );
+    expect(screen.getByTestId("lab-corpus-prepare-index")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-corpus-snapshot-hint")).toBeInTheDocument();
   });
 
   it("creates corpus on upload when corpusId is null", async () => {
     const onCorpusIdChange = vi.fn();
-    render(
+    useEvaluationCorpus.mockReturnValue({
+      ...corpusSummary(),
+      effectiveCorpusId: null,
+    });
+    renderPanel(
       <LabEvaluationCorpusPanel corpusId={null} onCorpusIdChange={onCorpusIdChange} optionalProjectId={null} />,
     );
     const input = screen.getByTestId("lab-corpus-upload-input");
@@ -157,7 +204,7 @@ describe("LabEvaluationCorpusPanel", () => {
   });
 
   it("ignores empty file selection", async () => {
-    render(
+    renderPanel(
       <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
     );
     const input = screen.getByTestId("lab-corpus-upload-input");
@@ -167,7 +214,7 @@ describe("LabEvaluationCorpusPanel", () => {
 
   it("maps upload ApiError codes to user-facing messages", async () => {
     uploadDocuments.mockRejectedValueOnce(new apiClient.ApiError(413, "too big"));
-    render(
+    renderPanel(
       <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
     );
     const input = screen.getByTestId("lab-corpus-upload-input");
@@ -182,7 +229,7 @@ describe("LabEvaluationCorpusPanel", () => {
       },
       corpus: {},
     });
-    render(
+    renderPanel(
       <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
     );
     await userEvent.upload(
@@ -193,7 +240,7 @@ describe("LabEvaluationCorpusPanel", () => {
   });
 
   it("does not upload when disabled", async () => {
-    render(
+    renderPanel(
       <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} disabled />,
     );
     const input = screen.getByTestId("lab-corpus-upload-input");
@@ -209,7 +256,7 @@ describe("LabEvaluationCorpusPanel", () => {
       },
       corpus: {},
     });
-    render(
+    renderPanel(
       <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
     );
     await userEvent.upload(
@@ -221,7 +268,7 @@ describe("LabEvaluationCorpusPanel", () => {
   });
 
   it("deletes document via hook", async () => {
-    render(
+    renderPanel(
       <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
     );
     await userEvent.click(screen.getByTestId("lab-corpus-delete-d1"));
@@ -233,7 +280,7 @@ describe("LabEvaluationCorpusPanel", () => {
       ...corpusSummary(),
       error: "Corpus load failed",
     });
-    render(
+    renderPanel(
       <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("Corpus load failed");
