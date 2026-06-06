@@ -18,6 +18,14 @@ export type LoginResponse = {
 export type RegisterResponse = {
   status: "REGISTERED" | "PENDING_EMAIL_VERIFICATION";
   login?: LoginResponse | null;
+  /** smtp | outbox-only when email confirmation is pending; omitted otherwise. */
+  confirmationDelivery?: "smtp" | "outbox-only" | "disabled" | null;
+};
+
+export type AuthPublicConfig = {
+  emailConfirmationEnabled: boolean;
+  passwordResetEnabled: boolean;
+  mailDeliveryMode: "disabled" | "outbox-only" | "smtp";
 };
 
 export type MeResponse = {
@@ -373,6 +381,19 @@ export type ActiveLabJobDto = {
   pollPath: string | null;
   streamPath: string | null;
   cancellable: boolean;
+};
+
+/** GET /lab/benchmarks/{kind}/runs/latest — Lab recovery when no active job. */
+export type LatestLabRunRecoveryDto = {
+  evaluationRunId: string;
+  jobId: string | null;
+  benchmarkKind: string;
+  projectId: string | null;
+  status: string;
+  terminal: boolean;
+  pollPath: string | null;
+  streamPath: string | null;
+  result: Record<string, unknown> | null;
 };
 
 /** POST `{product}/me/account/export|deletion` → HTTP 202 (poll via `/me/account/jobs/{id}`, not Lab). */

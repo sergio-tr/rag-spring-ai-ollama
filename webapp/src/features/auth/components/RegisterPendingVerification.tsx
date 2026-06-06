@@ -1,21 +1,71 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { ApiError, apiFetch, authApiPath } from "@/lib/api-client";
 import { Link } from "@/navigation";
+import type { AuthPublicConfig } from "@/types/api";
+
+type PendingDeliveryMode = AuthPublicConfig["mailDeliveryMode"] | null;
+
+function introKey(mode: PendingDeliveryMode): string {
+  if (mode === "outbox-only") {
+    return "registerPendingIntroOutboxOnly";
+  }
+  if (mode === "smtp") {
+    return "registerPendingIntroSmtp";
+  }
+  return "registerPendingIntro";
+}
+
+function resendSentKey(mode: PendingDeliveryMode): string {
+  if (mode === "outbox-only") {
+    return "registerPendingResendQueuedOutbox";
+  }
+  return "registerPendingResendSent";
+}
 
 export function RegisterPendingVerification() {
   const t = useTranslations("Auth");
   const locale = useLocale();
   const searchParams = useSearchParams();
   const email = searchParams.get("email")?.trim() ?? "";
+  const deliveryFromQuery = searchParams.get("delivery")?.trim().toLowerCase() ?? "";
 
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deliveryMode, setDeliveryMode] = useState<PendingDeliveryMode>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const config = await apiFetch<AuthPublicConfig>(authApiPath("/public-config"), {
+          skipCredentials: true,
+        });
+        if (!cancelled) {
+          setDeliveryMode(config.mailDeliveryMode);
+        }
+      } catch {
+        if (!cancelled) {
+          setDeliveryMode(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const effectiveDelivery = useMemo<PendingDeliveryMode>(() => {
+    if (deliveryFromQuery === "smtp" || deliveryFromQuery === "outbox-only") {
+      return deliveryFromQuery;
+    }
+    return deliveryMode;
+  }, [deliveryFromQuery, deliveryMode]);
 
   async function onResend() {
     if (!email) {
@@ -32,7 +82,7 @@ export function RegisterPendingVerification() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, locale }),
       });
-      setMessage(t("registerPendingResendSent"));
+      setMessage(t(resendSentKey(effectiveDelivery)));
     } catch (e) {
       if (e instanceof ApiError) {
         setError(t("registerPendingResendFailed"));
@@ -46,7 +96,7 @@ export function RegisterPendingVerification() {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-muted-foreground text-sm">{t("registerPendingIntro")}</p>
+      <p className="text-muted-foreground text-sm">{t(introKey(effectiveDelivery))}</p>
       {email ? (
         <p className="text-sm">
           <span className="text-muted-foreground">{t("registerPendingEmailLabel")}</span>{" "}

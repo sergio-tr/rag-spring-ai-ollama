@@ -60,7 +60,11 @@ export function RegisterForm() {
         }),
       });
       if (data.status === "PENDING_EMAIL_VERIFICATION") {
-        router.push(`/register/pending?email=${encodeURIComponent(values.email)}`);
+        const delivery =
+          data.confirmationDelivery === "smtp" || data.confirmationDelivery === "outbox-only"
+            ? `&delivery=${encodeURIComponent(data.confirmationDelivery)}`
+            : "";
+        router.push(`/register/pending?email=${encodeURIComponent(values.email)}${delivery}`);
         router.refresh();
         return;
       }
