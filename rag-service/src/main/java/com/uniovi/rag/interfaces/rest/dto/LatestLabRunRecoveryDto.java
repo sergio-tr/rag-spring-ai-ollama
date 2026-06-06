@@ -13,4 +13,7 @@ public record LatestLabRunRecoveryDto(
         boolean terminal,
         String pollPath,
         String streamPath,
-        Map<String, Object> result) {}
+        Map<String, Object> result,
+        java.time.Instant startedAt,
+        java.time.Instant completedAt,
+        boolean hasResults) {}

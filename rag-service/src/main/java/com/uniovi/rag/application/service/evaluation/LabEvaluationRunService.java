@@ -202,6 +202,7 @@ public class LabEvaluationRunService {
         boolean terminal = task != null && task.isTerminal();
         Map<String, Object> result = task != null ? task.getResultJson() : null;
         String base = taskId != null ? jobBasePath(taskId) : null;
+        boolean hasResults = result != null && !result.isEmpty();
         return new LatestLabRunRecoveryDto(
                 run.getId(),
                 taskId,
@@ -211,7 +212,10 @@ public class LabEvaluationRunService {
                 terminal,
                 base,
                 base != null ? base + "/events" : null,
-                result);
+                result,
+                task != null ? task.getStartedAt() : null,
+                task != null ? task.getCompletedAt() : null,
+                hasResults);
     }
 
     private String jobBasePath(UUID taskId) {

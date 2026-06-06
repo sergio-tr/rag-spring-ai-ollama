@@ -206,6 +206,7 @@ class LabEvaluationRunServiceTest {
         assertThat(dto.evaluationRunId()).isEqualTo(runId);
         assertThat(dto.jobId()).isEqualTo(taskId);
         assertThat(dto.terminal()).isTrue();
+        assertThat(dto.hasResults()).isTrue();
         assertThat(dto.pollPath()).isEqualTo("/api/v5/lab/jobs/" + taskId);
         assertThat(dto.streamPath()).isEqualTo("/api/v5/lab/jobs/" + taskId + "/events");
     }
