@@ -12,6 +12,8 @@ export const LAB_USER_ERROR_I18N_KEYS: Record<string, string> = {
   NO_DOCUMENTS: "userError_NO_DOCUMENTS",
   KB_EMPTY: "userError_NO_DOCUMENTS",
   KB_NOT_FOUND: "labKbNotFound",
+  LAB_KB_LOAD_FAILED: "labKbLoadFailed",
+  LAB_KB_CREATE_FAILED: "labKbCreateFailed",
   CORPUS_UNAVAILABLE: "labKbNotFound",
   STALE_CORPUS_SELECTION: "labCorpusStale",
   CORPUS_STALE: "labCorpusStale",

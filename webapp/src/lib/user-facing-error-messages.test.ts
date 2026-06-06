@@ -35,6 +35,7 @@ describe("user-facing-error-messages", () => {
     expect(mapUserFacingErrorMessage("FEATURE_REQUIRES_INDEX", t, "fb")).toBe(
       "i18n:labConfigRequiresIndex",
     );
+    expect(mapUserFacingErrorMessage("LAB_KB_LOAD_FAILED", t, "fb")).toBe("i18n:labKbLoadFailed");
   });
 
   it("mapUserFacingErrorMessage hides unknown technical codes", () => {

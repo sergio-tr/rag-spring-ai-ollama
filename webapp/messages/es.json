@@ -560,6 +560,8 @@
     "embeddingCampaignMissingSnapshots": "No hay snapshot de índice preparado para: {models}. Reconstruye o prepara el índice del proyecto para cada modelo de embedding y vuelve a ejecutar.",
     "benchmarkCorpusNotReady": "Espera a que al menos un documento de la base de conocimiento esté listo antes de ejecutar.",
     "labKbNotFound": "La base de conocimiento seleccionada no existe o no tienes acceso.",
+    "labKbLoadFailed": "No se pudo cargar la base de conocimiento.",
+    "labKbCreateFailed": "No se pudo crear la base de conocimiento.",
     "labCorpusStale": "La base de conocimiento guardada ya no existe. Se creará una nueva al subir documentos.",
     "labCorpusReadinessBlocked": "Aún no se puede evaluar: {reason}",
     "labCorpusSnapshotHint": "Snapshot de índice: {reason}",

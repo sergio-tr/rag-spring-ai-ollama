@@ -20,6 +20,14 @@ test.describe("LAB UX copy guards @fullstack", () => {
       await expect(page.getByRole("heading", { name: /research lab|laboratorio/i }).first()).toBeVisible({
         timeout: 12_000,
       });
+      if (path.includes("/embedding")) {
+        await expect(page.getByTestId("lab-embedding-eval-page")).toBeVisible({ timeout: 12_000 });
+        await expect(page.getByTestId("lab-evaluation-corpus-panel")).toBeVisible({ timeout: 12_000 });
+      } else if (path.includes("/llm")) {
+        await expect(page.getByTestId("lab-llm-eval-page")).toBeVisible({ timeout: 12_000 });
+      } else if (path.includes("/rag")) {
+        await expect(page.getByTestId("lab-rag-eval-page")).toBeVisible({ timeout: 12_000 });
+      }
       await assertNoForbiddenLabCopy(page);
     });
   }

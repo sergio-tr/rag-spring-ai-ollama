@@ -560,6 +560,8 @@
     "embeddingCampaignMissingSnapshots": "No prepared index snapshot for: {models}. Rebuild or prepare the project index for each embedding model, then run again.",
     "benchmarkCorpusNotReady": "Wait until at least one knowledge base document is ready before running.",
     "labKbNotFound": "The selected knowledge base does not exist or you do not have access.",
+    "labKbLoadFailed": "Could not load the knowledge base.",
+    "labKbCreateFailed": "Could not create the knowledge base.",
     "labCorpusStale": "The saved knowledge base was removed or is no longer available. A new one will be created when you upload.",
     "labCorpusReadinessBlocked": "Cannot run yet: {reason}",
     "labCorpusSnapshotHint": "Index snapshot: {reason}",

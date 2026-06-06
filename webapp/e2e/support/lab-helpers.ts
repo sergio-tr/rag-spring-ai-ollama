@@ -132,10 +132,41 @@ export const FORBIDDEN_LAB_UI_PATTERNS: RegExp[] = [
   /\/api\/v5\/lab\/jobs\//i,
 ];
 
+export async function collectVisibleMainText(page: Page): Promise<string> {
+  return page.locator("main").evaluate((main) => {
+    const parts: string[] = [];
+    const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      const textNode = node as Text;
+      const parent = textNode.parentElement;
+      if (parent) {
+        const details = parent.closest("details");
+        const inClosedDetails = details && !details.open && !parent.closest("summary");
+        const style = window.getComputedStyle(parent);
+        const hidden =
+          style.display === "none" ||
+          style.visibility === "hidden" ||
+          style.opacity === "0" ||
+          parent.closest("[hidden]") != null ||
+          parent.closest('[aria-hidden="true"]') != null;
+        if (!inClosedDetails && !hidden) {
+          const text = textNode.textContent?.trim();
+          if (text) {
+            parts.push(text);
+          }
+        }
+      }
+      node = walker.nextNode();
+    }
+    return parts.join("\n");
+  });
+}
+
 export async function assertNoForbiddenLabCopy(page: Page): Promise<void> {
   const main = page.locator("main");
   await expect(main).toBeVisible({ timeout: 8_000 });
-  const text = (await main.innerText().catch(() => "")) ?? "";
+  const text = await collectVisibleMainText(page);
   for (const re of FORBIDDEN_LAB_UI_PATTERNS) {
     expect(text, `Forbidden copy matched ${re}`).not.toMatch(re);
   }

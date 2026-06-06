@@ -151,7 +151,7 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
       return created;
     } catch (e) {
       const code = extractApiErrorCode(e);
-      const msg = code ?? (e instanceof ApiError ? e.message : "Failed to create evaluation corpus");
+      const msg = code ?? (e instanceof ApiError ? e.message : "LAB_KB_CREATE_FAILED");
       throw new Error(msg, { cause: e });
     }
   }, [effectiveCorpusId, qc, refresh]);
@@ -297,7 +297,7 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
       : query.error instanceof Error
         ? query.error.message
         : query.error
-          ? "Failed to load evaluation corpus"
+          ? "LAB_KB_LOAD_FAILED"
           : null;
 
   const corpusRunnable = readiness?.runnable ?? corpusHasReadyDocuments(summary);
