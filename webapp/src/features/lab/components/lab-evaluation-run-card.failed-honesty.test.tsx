@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { useEffect, useRef } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
@@ -25,9 +26,10 @@ vi.mock("@/features/lab/hooks/use-auto-resume-lab-jobs", () => ({
       status: { terminal: boolean; status: string; errorMessage: string };
     }) => void | Promise<void>;
   }) => {
-    const { useEffect } = require("react") as typeof import("react");
+    const onAutoFollowRef = useRef(opts.onAutoFollow);
+    onAutoFollowRef.current = opts.onAutoFollow;
     useEffect(() => {
-      void opts.onAutoFollow?.({
+      void onAutoFollowRef.current?.({
         candidate: {
           jobId: "job-failed-m10",
           accepted: {
@@ -44,7 +46,7 @@ vi.mock("@/features/lab/hooks/use-auto-resume-lab-jobs", () => ({
           errorMessage: "NullPointerException",
         },
       });
-    }, [opts]);
+    }, []);
     return { decision: { kind: "none" as const }, followCandidate: vi.fn() };
   },
 }));
@@ -144,7 +146,8 @@ vi.mock("@/store/app.store", () => ({
 }));
 
 vi.mock("@/features/lab/components/lab-benchmark-results-panel", () => ({
-  LabBenchmarkResultsPanel: () => <div data-testid="lab-benchmark-results-panel-stub" />,
+  LabBenchmarkResultsPanel: ({ loadEnabled }: { loadEnabled?: boolean }) =>
+    loadEnabled ? <div data-testid="lab-benchmark-results-panel-stub" /> : null,
 }));
 
 import { LabEvaluationRunCard } from "./lab-evaluation-run-card";

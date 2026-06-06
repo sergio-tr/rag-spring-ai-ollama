@@ -1,7 +1,22 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { IntlTestProvider } from "@/test-utils/intl";
+import type { AsyncTaskStatusDto } from "@/types/api";
 import { LabFailedJobResultsNotice } from "./lab-failed-job-results-notice";
+
+const failedTaskStatus: AsyncTaskStatusDto = {
+  id: "task-1",
+  taskType: "RAG_EVALUATION",
+  status: "FAILED",
+  progressText: null,
+  result: null,
+  errorMessage: "NullPointerException",
+  terminal: true,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+  startedAt: null,
+  completedAt: "2026-01-01T00:00:01Z",
+};
 
 describe("LabFailedJobResultsNotice", () => {
   it("shows failed notice with runId and error message", () => {
@@ -9,11 +24,7 @@ describe("LabFailedJobResultsNotice", () => {
       <IntlTestProvider>
         <LabFailedJobResultsNotice
           evaluationRunId="fc9ea380-b255-43e2-b203-3b900804ffc9"
-          taskStatus={{
-            terminal: true,
-            status: "FAILED",
-            errorMessage: "NullPointerException",
-          }}
+          taskStatus={failedTaskStatus}
         />
       </IntlTestProvider>,
     );
