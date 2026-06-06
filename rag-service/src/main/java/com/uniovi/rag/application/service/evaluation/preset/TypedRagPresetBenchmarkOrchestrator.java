@@ -49,6 +49,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 /**
@@ -185,7 +186,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
 
         int totalOps = codesForPlan.size() * Math.max(1, questions.size());
         AtomicInteger progressed = new AtomicInteger(0);
-        java.util.function.BiConsumer<String, String> bumpItem =
+        BiConsumer<String, String> bumpItem =
                 (itemStatus, skipReason) -> {
                     if (cancellationCheck != null) {
                         cancellationCheck.run();
