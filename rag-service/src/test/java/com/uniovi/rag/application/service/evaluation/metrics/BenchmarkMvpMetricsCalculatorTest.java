@@ -168,7 +168,8 @@ class BenchmarkMvpMetricsCalculatorTest {
         Map<String, Object> mvp = BenchmarkMvpMetricsCalculator.computeMvpMetrics(e, null);
         @SuppressWarnings("unchecked")
         Map<String, Object> op = (Map<String, Object>) mvp.get("operational");
-        assertThat(op.get("unsupportedReason")).isEqualTo("PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED");
+        assertThat(op.get("unsupportedReason"))
+                .isEqualTo("Clarification preset (P13) is not supported in the Lab single-turn harness.");
     }
 
     @Test
