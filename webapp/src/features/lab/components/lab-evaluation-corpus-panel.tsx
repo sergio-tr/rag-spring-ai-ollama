@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
   useEvaluationCorpus,
+  evaluationCorpusAttachableDocsQueryKey,
   type EvaluationCorpusApi,
 } from "@/features/lab/hooks/use-evaluation-corpus";
 import { humanizeIngestionErrorMessage } from "@/features/lab/lib/evaluation-corpus-ingestion";
@@ -79,6 +80,9 @@ function formatDocumentStatus(
   if (status === "READY") {
     return t("labCorpusStatusReady");
   }
+  if (status === "QUEUED" || status === "PENDING") {
+    return t("labCorpusStatusQueued");
+  }
   return status;
 }
 
@@ -99,7 +103,7 @@ export function LabEvaluationCorpusPanel({
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [localErr, setLocalErr] = useState<string | null>(null);
   const [localWarn, setLocalWarn] = useState<string | null>(null);
-  const [preparingIndex, setPreparingIndex] = useState(false);
+  const [localSuccess, setLocalSuccess] = useState<string | null>(null);
   const internalCorpus = useEvaluationCorpus(evaluationCorpusProp ? null : corpusId);
   const corpusApi = evaluationCorpusProp ?? internalCorpus;
   const {
@@ -114,8 +118,9 @@ export function LabEvaluationCorpusPanel({
     deleteDocument,
     deleteAllDocuments,
     retryDocumentIngest,
-    refresh,
+    refreshAll,
     prepareIndex,
+    preparingIndex,
   } = corpusApi;
 
   const mapUploadError = useCallback(
@@ -136,9 +141,7 @@ export function LabEvaluationCorpusPanel({
   const isIndexProject = Boolean(optionalProjectId && optionalProjectId === readiness?.indexProjectId);
   const attachableDocsQuery = useQuery({
     queryKey: [
-      "lab",
-      "corpus-attachable-project-docs",
-      optionalProjectId,
+      ...evaluationCorpusAttachableDocsQueryKey(optionalProjectId),
       readiness?.indexProjectId,
       summary?.updatedAt,
       summary?.documentCount,
@@ -166,6 +169,7 @@ export function LabEvaluationCorpusPanel({
     setBusy(true);
     setLocalErr(null);
     setLocalWarn(null);
+    setLocalSuccess(null);
     setUploadProgress(t("labCorpusUploadProgress", { current: 0, total: list.length }));
     try {
       const id = await ensureReady();
@@ -179,6 +183,8 @@ export function LabEvaluationCorpusPanel({
       const partial = summarizeCorpusUploadFailuresForDisplay(response, t);
       if (partial) {
         setLocalErr(t("labCorpusUploadPartialFailed", { details: partial }));
+      } else {
+        setLocalSuccess(t("labCorpusDocumentsAdded"));
       }
     } catch (e) {
       const raw = corpusUploadErrorMessage(e, t("labCorpusUploadFailed"));
@@ -227,8 +233,9 @@ export function LabEvaluationCorpusPanel({
     if (!id || disabled) return;
     setBusy(true);
     setLocalErr(null);
+    setLocalSuccess(null);
     try {
-      await refresh(id);
+      await refreshAll(id, { invalidateAttachableProjectId: optionalProjectId ?? null });
     } catch (e) {
       const raw = corpusUploadErrorMessage(e, t("labCorpusRefreshFailed"));
       setLocalErr(mapUploadError(raw));
@@ -240,15 +247,16 @@ export function LabEvaluationCorpusPanel({
   async function onPrepareIndex() {
     const id = refreshCorpusId;
     if (!id || disabled || preparingIndex) return;
-    setPreparingIndex(true);
     setLocalErr(null);
+    setLocalSuccess(null);
     try {
-      await prepareIndex(id);
+      const { readiness: updatedReadiness } = await prepareIndex(id);
+      if (updatedReadiness.activeSnapshotId || !updatedReadiness.reindexRequired) {
+        setLocalSuccess(t("labCorpusIndexReady"));
+      }
     } catch (e) {
       const raw = corpusUploadErrorMessage(e, t("labCorpusPrepareIndexFailed"));
       setLocalErr(mapUploadError(raw));
-    } finally {
-      setPreparingIndex(false);
     }
   }
 
@@ -276,6 +284,7 @@ export function LabEvaluationCorpusPanel({
     setBusy(true);
     setLocalErr(null);
     setLocalWarn(null);
+    setLocalSuccess(null);
     try {
       const id = await ensureReady();
       const docs = await apiFetch<ProjectDocumentDto[]>(
@@ -287,6 +296,7 @@ export function LabEvaluationCorpusPanel({
         return;
       }
       await attachFromProject(id, optionalProjectId, sharedIds);
+      setLocalSuccess(t("labCorpusDocumentsAdded"));
     } catch (e) {
       const raw = corpusUploadErrorMessage(e, t("labCorpusAttachFailed"));
       setLocalErr(mapUploadError(raw));
@@ -503,6 +513,26 @@ export function LabEvaluationCorpusPanel({
       {uploadProgress ? (
         <output className="text-muted-foreground block text-xs" data-testid="lab-corpus-upload-progress">
           {uploadProgress}
+        </output>
+      ) : null}
+
+      {preparingIndex ? (
+        <output
+          role="status"
+          className="block text-muted-foreground text-xs"
+          data-testid="lab-corpus-prepare-index-progress"
+        >
+          {t("labCorpusPrepareIndexInProgress")}
+        </output>
+      ) : null}
+
+      {localSuccess ? (
+        <output
+          role="status"
+          className="block text-emerald-700 dark:text-emerald-400 text-xs"
+          data-testid="lab-corpus-success"
+        >
+          {localSuccess}
         </output>
       ) : null}
 

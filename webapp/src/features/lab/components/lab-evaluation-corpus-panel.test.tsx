@@ -31,11 +31,17 @@ vi.mock("next-intl", () => ({
       labCorpusUploadFailed: "Upload failed",
       labCorpusAttachFailed: "Attach failed",
       labCorpusNoProjectDocuments: "No project documents",
+      labCorpusDocumentsAdded: "Documents added.",
+      labCorpusIndexReady: "Index is ready.",
+      labCorpusPrepareIndexInProgress: "Preparing index…",
+      labCorpusPrepareIndexFailed: "Index preparation failed.",
+      labCorpusRefresh: "Refresh",
     };
     return map[key] ?? key;
   },
 }));
 
+const refreshAll = vi.fn().mockResolvedValue(undefined);
 const refresh = vi.fn().mockResolvedValue(undefined);
 const ensureCorpus = vi.fn().mockResolvedValue({
   id: "corpus-new",
@@ -62,9 +68,13 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
 
 const useEvaluationCorpus = vi.fn();
 
-vi.mock("@/features/lab/hooks/use-evaluation-corpus", () => ({
-  useEvaluationCorpus: () => useEvaluationCorpus(),
-}));
+vi.mock("@/features/lab/hooks/use-evaluation-corpus", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/lab/hooks/use-evaluation-corpus")>();
+  return {
+    ...actual,
+    useEvaluationCorpus: () => useEvaluationCorpus(),
+  };
+});
 
 function renderPanel(ui: ReactElement) {
   return render(<QueryClientProvider client={createTestQueryClient()}>{ui}</QueryClientProvider>);
@@ -94,6 +104,7 @@ function corpusSummary(
     loading: false,
     error: null,
     refresh,
+    refreshAll,
     ensureCorpus,
     uploadDocuments,
     attachFromProject,
@@ -101,6 +112,7 @@ function corpusSummary(
     deleteAllDocuments,
     retryDocumentIngest,
     prepareIndex,
+    preparingIndex: false,
     effectiveCorpusId: "corpus-1",
     readiness: null as {
       reindexRequired?: boolean;
@@ -135,7 +147,7 @@ describe("LabEvaluationCorpusPanel", () => {
     expect(screen.getByTestId("lab-corpus-doc-status-d1")).toHaveTextContent(/Ready/);
     expect(screen.getByTestId("lab-corpus-doc-status-d2")).toHaveTextContent(/Processing/);
     expect(screen.getByTestId("lab-corpus-doc-status-d3")).toHaveTextContent(/Failed \(bad\)/);
-    expect(screen.getByTestId("lab-corpus-doc-status-d5")).toHaveTextContent(/QUEUED/);
+    expect(screen.getByTestId("lab-corpus-doc-status-d5")).toHaveTextContent(/queued|en cola/i);
   });
 
   it("shows attach-from-project only when optional project has shared docs", async () => {
@@ -284,5 +296,47 @@ describe("LabEvaluationCorpusPanel", () => {
       <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("Corpus load failed");
+  });
+
+  it("refresh button refetches all corpus state including attachable project docs", async () => {
+    renderPanel(
+      <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId="p1" />,
+    );
+    await userEvent.click(screen.getByTestId("lab-corpus-refresh"));
+    await waitFor(() =>
+      expect(refreshAll).toHaveBeenCalledWith("corpus-1", { invalidateAttachableProjectId: "p1" }),
+    );
+  });
+
+  it("shows documents added after successful upload", async () => {
+    renderPanel(
+      <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
+    );
+    await userEvent.upload(
+      screen.getByTestId("lab-corpus-upload-input"),
+      new File(["x"], "ok.pdf", { type: "application/pdf" }),
+    );
+    await waitFor(() => expect(screen.getByTestId("lab-corpus-success")).toHaveTextContent("Documents added."));
+  });
+
+  it("prepare index shows progress and success message", async () => {
+    useEvaluationCorpus.mockReturnValue({
+      ...corpusSummary({ readyCount: 1 }),
+      readiness: {
+        reindexRequired: true,
+        activeSnapshotId: null,
+        primaryBlocker: null,
+        snapshotBlocker: "REINDEX_REQUIRED",
+        indexProjectId: "idx-proj",
+      },
+      prepareIndex: vi.fn().mockResolvedValue({
+        readiness: { reindexRequired: false, activeSnapshotId: "snap-1" },
+      }),
+    });
+    renderPanel(
+      <LabEvaluationCorpusPanel corpusId="corpus-1" onCorpusIdChange={vi.fn()} optionalProjectId={null} />,
+    );
+    await userEvent.click(screen.getByTestId("lab-corpus-prepare-index"));
+    await waitFor(() => expect(screen.getByTestId("lab-corpus-success")).toHaveTextContent("Index is ready."));
   });
 });

@@ -129,6 +129,70 @@ describe("useEvaluationCorpus", () => {
     await result.current.refresh("corpus-1");
     await waitFor(() => expect(result.current.summary?.documentCount).toBe(3));
     await waitFor(() => expect(result.current.readiness?.readyCount).toBe(2));
+    expect(vi.mocked(apiFetch).mock.calls.filter((c) => String(c[0]).includes("/readiness")).length).toBeGreaterThan(
+      1,
+    );
+    expect(vi.mocked(apiFetch).mock.calls.filter((c) => String(c[0]).endsWith("/corpus-1")).length).toBeGreaterThan(
+      1,
+    );
+  });
+
+  it("refreshAll refetches summary, readiness, and attachable project docs", async () => {
+    mockCorpusFetch();
+    const { result } = renderHook(() => useEvaluationCorpus("corpus-1"), { wrapper });
+    await waitFor(() => expect(result.current.summary).toEqual(corpus));
+
+    vi.mocked(apiFetch).mockImplementation((url: string) => {
+      if (String(url).includes("/readiness")) {
+        return Promise.resolve(readinessRunnable);
+      }
+      if (String(url).includes("/projects/p1/documents")) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve(corpus);
+    });
+
+    await result.current.refreshAll("corpus-1", { invalidateAttachableProjectId: "p1" });
+    expect(vi.mocked(apiFetch).mock.calls.some((c) => String(c[0]).includes("/readiness"))).toBe(true);
+    expect(vi.mocked(apiFetch).mock.calls.some((c) => String(c[0]).includes("/corpus-1"))).toBe(true);
+  });
+
+  it("prepareIndex polls readiness until index is ready", async () => {
+    mockCorpusFetch();
+    const { result } = renderHook(() => useEvaluationCorpus("corpus-1"), { wrapper });
+    await waitFor(() => expect(result.current.summary).toEqual(corpus));
+
+    let readinessCalls = 0;
+    vi.mocked(apiFetch).mockImplementation((url: string, init) => {
+      if (init?.method === "POST" && String(url).includes("/prepare-index")) {
+        return Promise.resolve({
+          ...readinessRunnable,
+          reindexRequired: true,
+          activeSnapshotId: null,
+        });
+      }
+      if (String(url).includes("/readiness")) {
+        readinessCalls += 1;
+        if (readinessCalls >= 2) {
+          return Promise.resolve({
+            ...readinessRunnable,
+            reindexRequired: false,
+            activeSnapshotId: "snap-1",
+          });
+        }
+        return Promise.resolve({
+          ...readinessRunnable,
+          reindexRequired: true,
+          activeSnapshotId: null,
+        });
+      }
+      return Promise.resolve(corpus);
+    });
+
+    const out = await result.current.prepareIndex("corpus-1");
+    expect(out.readiness.activeSnapshotId).toBe("snap-1");
+    await waitFor(() => expect(result.current.readiness?.activeSnapshotId).toBe("snap-1"));
+    await waitFor(() => expect(result.current.preparingIndex).toBe(false));
   });
 
   it("ensureCorpus creates when no corpusId", async () => {
@@ -183,6 +247,9 @@ describe("useEvaluationCorpus", () => {
       if (init?.method === "POST" && String(url).includes("/documents")) {
         return uploadResponse;
       }
+      if (String(url).includes("/readiness")) {
+        return Promise.resolve({ ...readinessRunnable, readyCount: 1, runnable: true });
+      }
       return readyCorpus;
     });
 
@@ -191,6 +258,7 @@ describe("useEvaluationCorpus", () => {
     expect(out.response.uploads).toHaveLength(1);
     expect(out.corpus.documents).toHaveLength(1);
     expect(out.corpus.documents[0]?.status).toBe("READY");
+    await waitFor(() => expect(result.current.readiness?.readyCount).toBe(1));
     expect(apiFetch).toHaveBeenCalledWith(
       "/lab/evaluation-corpora/corpus-1/documents",
       expect.objectContaining({ method: "POST" }),

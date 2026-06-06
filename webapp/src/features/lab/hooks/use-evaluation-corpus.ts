@@ -23,6 +23,10 @@ export function evaluationCorpusReadinessQueryKey(corpusId: string | null) {
   return [...evaluationCorpusQueryKey(corpusId), "readiness"] as const;
 }
 
+export function evaluationCorpusAttachableDocsQueryKey(projectId: string | null) {
+  return ["lab", "corpus-attachable-project-docs", projectId] as const;
+}
+
 async function fetchEvaluationCorpus(id: string): Promise<EvaluationCorpusSummaryDto> {
   return apiFetch<EvaluationCorpusSummaryDto>(apiProductPath(`/lab/evaluation-corpora/${id}`));
 }
@@ -43,10 +47,16 @@ export type UseEvaluationCorpusOptions = {
 
 export type EvaluationCorpusApi = ReturnType<typeof useEvaluationCorpus>;
 
+export type RefreshCorpusOptions = {
+  /** When set, also refetches attachable project document counts for the Lab KB panel. */
+  invalidateAttachableProjectId?: string | null;
+};
+
 export function useEvaluationCorpus(corpusId: string | null, options?: UseEvaluationCorpusOptions) {
   const qc = useQueryClient();
   /** Corpus id created locally when the draft prop is still null (e.g. first upload). */
   const [localCorpusId, setLocalCorpusId] = useState<string | null>(null);
+  const [preparingIndex, setPreparingIndex] = useState(false);
 
   const effectiveCorpusId = corpusId ?? localCorpusId;
 
@@ -73,27 +83,21 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
     queryKey: evaluationCorpusReadinessQueryKey(effectiveCorpusId),
     enabled: Boolean(effectiveCorpusId),
     queryFn: () => fetchEvaluationCorpusReadiness(effectiveCorpusId!),
-    refetchInterval: (q) => {
-      const summary = qc.getQueryData<EvaluationCorpusSummaryDto>(
-        evaluationCorpusQueryKey(effectiveCorpusId),
-      );
-      if (summary && corpusHasProcessingDocuments(summary)) {
-        return CORPUS_POLL_MS;
-      }
-      const readiness = q.state.data;
-      if (readiness && !readiness.runnable && (readiness.processingCount ?? 0) > 0) {
-        return CORPUS_POLL_MS;
-      }
-      if (
-        summary &&
-        corpusHasReadyDocuments(summary) &&
-        readiness?.reindexRequired &&
-        !readiness.activeSnapshotId
-      ) {
-        return false;
-      }
-      return false;
-    },
+    refetchInterval: preparingIndex
+      ? CORPUS_POLL_MS
+      : (q) => {
+          const summary = qc.getQueryData<EvaluationCorpusSummaryDto>(
+            evaluationCorpusQueryKey(effectiveCorpusId),
+          );
+          if (summary && corpusHasProcessingDocuments(summary)) {
+            return CORPUS_POLL_MS;
+          }
+          const readiness = q.state.data;
+          if (readiness && !readiness.runnable && (readiness.processingCount ?? 0) > 0) {
+            return CORPUS_POLL_MS;
+          }
+          return false;
+        },
   });
 
   useEffect(() => {
@@ -113,8 +117,10 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
 
   const syncCorpusQueries = useCallback(
     async (id: string) => {
-      await qc.invalidateQueries({ queryKey: evaluationCorpusQueryKey(id) });
-      await qc.invalidateQueries({ queryKey: evaluationCorpusReadinessQueryKey(id) });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: evaluationCorpusQueryKey(id), refetchType: "active" }),
+        qc.invalidateQueries({ queryKey: evaluationCorpusReadinessQueryKey(id), refetchType: "active" }),
+      ]);
       const [summary, readiness] = await Promise.all([
         qc.fetchQuery({
           queryKey: evaluationCorpusQueryKey(id),
@@ -130,36 +136,71 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
     [qc],
   );
 
+  const refreshAll = useCallback(
+    async (id: string, refreshOptions?: RefreshCorpusOptions) => {
+      const result = await syncCorpusQueries(id);
+      const projectId = refreshOptions?.invalidateAttachableProjectId;
+      if (projectId) {
+        await qc.invalidateQueries({
+          queryKey: evaluationCorpusAttachableDocsQueryKey(projectId),
+          refetchType: "active",
+        });
+      }
+      return result;
+    },
+    [qc, syncCorpusQueries],
+  );
+
   const refresh = useCallback(
-    async (id: string) => {
-      const { summary } = await syncCorpusQueries(id);
+    async (id: string, refreshOptions?: RefreshCorpusOptions) => {
+      const { summary } = await refreshAll(id, refreshOptions);
       return summary;
     },
-    [syncCorpusQueries],
+    [refreshAll],
   );
 
   const waitForReadyDocuments = useCallback(
-    async (id: string) => {
-      let latest = await refresh(id);
+    async (id: string, minDocumentCount = 0) => {
+      let latest = (await refreshAll(id)).summary;
       for (let attempt = 0; attempt < CORPUS_POLL_MAX_ATTEMPTS; attempt += 1) {
         const readiness = qc.getQueryData<EvaluationCorpusReadinessDto>(
           evaluationCorpusReadinessQueryKey(id),
         );
+        const hasExpectedDocuments = latest.documentCount >= minDocumentCount;
         if (
+          hasExpectedDocuments &&
           corpusHasReadyDocuments(latest) &&
           (readiness?.runnable || !corpusHasProcessingDocuments(latest))
         ) {
           return latest;
         }
-        if (corpusHasReadyDocuments(latest) && !corpusHasProcessingDocuments(latest)) {
+        if (
+          hasExpectedDocuments &&
+          corpusHasReadyDocuments(latest) &&
+          !corpusHasProcessingDocuments(latest)
+        ) {
           return latest;
         }
         await new Promise((resolve) => setTimeout(resolve, CORPUS_POLL_MS));
-        latest = await refresh(id);
+        latest = (await refreshAll(id)).summary;
       }
       return latest;
     },
-    [qc, refresh],
+    [qc, refreshAll],
+  );
+
+  const waitForIndexReady = useCallback(
+    async (id: string) => {
+      for (let attempt = 0; attempt < CORPUS_POLL_MAX_ATTEMPTS; attempt += 1) {
+        const { summary, readiness } = await syncCorpusQueries(id);
+        if (readiness.activeSnapshotId || !readiness.reindexRequired) {
+          return { summary, readiness };
+        }
+        await new Promise((resolve) => setTimeout(resolve, CORPUS_POLL_MS));
+      }
+      return syncCorpusQueries(id);
+    },
+    [syncCorpusQueries],
   );
 
   const ensureCorpus = useCallback(async () => {
@@ -205,7 +246,8 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
       const previous = qc.getQueryData<EvaluationCorpusSummaryDto>(key);
       const merged = mergeCorpusAfterUpload(previous ?? data.corpus, data);
       qc.setQueryData(key, merged);
-      const refreshed = await waitForReadyDocuments(id);
+      const minDocumentCount = merged.documentCount;
+      const refreshed = await waitForReadyDocuments(id, minDocumentCount);
       qc.setQueryData(key, refreshed);
       await syncCorpusQueries(id);
       return { response: data, corpus: refreshed };
@@ -324,18 +366,23 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
 
   const prepareIndex = useCallback(
     async (id: string) => {
-      const readiness = await apiFetch<EvaluationCorpusReadinessDto>(
-        apiProductPath(`/lab/evaluation-corpora/${id}/prepare-index`),
-        {
-          method: "POST",
-          headers: { Accept: "application/json" },
-        },
-      );
-      qc.setQueryData(evaluationCorpusReadinessQueryKey(id), readiness);
-      const { summary } = await syncCorpusQueries(id);
-      return { summary, readiness };
+      setPreparingIndex(true);
+      try {
+        const initialReadiness = await apiFetch<EvaluationCorpusReadinessDto>(
+          apiProductPath(`/lab/evaluation-corpora/${id}/prepare-index`),
+          {
+            method: "POST",
+            headers: { Accept: "application/json" },
+          },
+        );
+        qc.setQueryData(evaluationCorpusReadinessQueryKey(id), initialReadiness);
+        const result = await waitForIndexReady(id);
+        return result;
+      } finally {
+        setPreparingIndex(false);
+      }
     },
-    [qc, syncCorpusQueries],
+    [qc, waitForIndexReady],
   );
 
   const summary = effectiveCorpusId ? (query.data ?? null) : null;
@@ -367,7 +414,9 @@ export function useEvaluationCorpus(corpusId: string | null, options?: UseEvalua
     corpusRunnable,
     corpusIndexReady: indexReady,
     corpusProcessing: corpusHasProcessingDocuments(summary),
+    preparingIndex,
     refresh,
+    refreshAll,
     ensureCorpus,
     uploadDocuments,
     attachFromProject,
