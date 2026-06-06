@@ -163,6 +163,30 @@ describe("LabBenchmarkResultsPanel", () => {
     expect(screen.queryByTestId("lab-benchmark-trend-empty")).not.toBeInTheDocument();
   });
 
+  it("renders benchmark run summary without internal documentation copy", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      benchmarkKind: "LLM_JUDGE_QA",
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: {
+        outcomeCounts: { EXECUTED: 36 },
+        onExecuted: { n: 36, meanNormalizedExactMatch: 0.5 },
+      },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({ items: [] });
+
+    renderPanel({ evaluationRunId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" });
+
+    await waitFor(() => expect(screen.getByTestId("lab-benchmark-results-panel")).toBeInTheDocument());
+    expect(screen.queryByTestId("lab-benchmark-m9-export-path")).not.toBeInTheDocument();
+    expect(screen.queryByText(/\bM9\b/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/partial evidence/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\.cursor/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Do not claim/i)).not.toBeInTheDocument();
+  });
+
   it("shows trend empty state for RAG preset runs without scored rows", async () => {
     vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
       ...baseRun,

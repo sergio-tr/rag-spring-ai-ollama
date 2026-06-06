@@ -57,6 +57,10 @@ export default function LabOverviewPage() {
   const ragReady = status?.evaluations.rag ?? false;
   const classifierReady = status?.classifier.configured ?? false;
 
+  const enabledLabel = t("statusEnabled");
+  const enabledTooltip = t("statusEnabledTooltip");
+  const disabledLabel = t("statusOff");
+
   return (
     <div className="space-y-4" data-testid="lab-overview-compact">
       <p className="text-muted-foreground text-sm">{t("compactHomeLead")}</p>
@@ -69,7 +73,8 @@ export default function LabOverviewPage() {
           testId="lab-workflow-card-llm"
           title={t("compactCardLlmTitle")}
           tagline={t("compactCardLlmTagline")}
-          statusLabel={llmReady ? t("statusOn") : t("statusOff")}
+          statusLabel={llmReady ? enabledLabel : disabledLabel}
+          statusTooltip={llmReady ? enabledTooltip : undefined}
           statusVariant={llmReady ? "default" : "secondary"}
           href="/lab/evaluation/llm"
           cta={t("flowCtaOpen")}
@@ -78,7 +83,8 @@ export default function LabOverviewPage() {
           testId="lab-workflow-card-embedding"
           title={t("compactCardEmbeddingTitle")}
           tagline={t("compactCardEmbeddingTagline")}
-          statusLabel={datasetsReady ? t("statusOn") : t("statusOff")}
+          statusLabel={datasetsReady ? enabledLabel : disabledLabel}
+          statusTooltip={datasetsReady ? enabledTooltip : undefined}
           statusVariant={datasetsReady ? "default" : "secondary"}
           href="/lab/evaluation/embedding"
           cta={t("flowCtaOpen")}
@@ -87,7 +93,8 @@ export default function LabOverviewPage() {
           testId="lab-workflow-card-rag"
           title={t("compactCardRagTitle")}
           tagline={t("compactCardRagTagline")}
-          statusLabel={ragReady ? t("statusOn") : t("statusOff")}
+          statusLabel={ragReady ? enabledLabel : disabledLabel}
+          statusTooltip={ragReady ? enabledTooltip : undefined}
           statusVariant={ragReady ? "default" : "secondary"}
           href="/lab/evaluation/rag"
           cta={t("flowCtaOpen")}
@@ -96,7 +103,8 @@ export default function LabOverviewPage() {
           testId="lab-workflow-card-classifier"
           title={t("compactCardClassifierTitle")}
           tagline={t("compactCardClassifierTagline")}
-          statusLabel={classifierReady ? t("statusOn") : t("statusOff")}
+          statusLabel={classifierReady ? enabledLabel : disabledLabel}
+          statusTooltip={classifierReady ? enabledTooltip : undefined}
           statusVariant={classifierReady ? "default" : "destructive"}
           href="/lab/classifier"
           cta={t("flowCtaOpen")}
@@ -140,7 +148,8 @@ export default function LabOverviewPage() {
             {status.message?.trim() ? (
               <details className="text-sm">
                 <summary className="cursor-pointer text-muted-foreground">{t("statusServerNoteToggle")}</summary>
-                <p className="text-muted-foreground mt-2 text-xs">{status.message}</p>
+                <p className="text-muted-foreground mt-2 text-xs">{t("statusServerMessageQualifier")}</p>
+                <p className="text-muted-foreground mt-1 text-xs font-mono">{status.message}</p>
               </details>
             ) : null}
             <div className="grid gap-3 sm:grid-cols-2">
@@ -150,8 +159,11 @@ export default function LabOverviewPage() {
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={(status.datasetKindsReady ?? status.datasets.enabled) ? "default" : "secondary"}>
-                      {(status.datasetKindsReady ?? status.datasets.enabled) ? t("statusOn") : t("statusOff")}
+                    <Badge
+                      variant={(status.datasetKindsReady ?? status.datasets.enabled) ? "default" : "secondary"}
+                      title={(status.datasetKindsReady ?? status.datasets.enabled) ? enabledTooltip : undefined}
+                    >
+                      {(status.datasetKindsReady ?? status.datasets.enabled) ? enabledLabel : disabledLabel}
                     </Badge>
                     {status.countsByDatasetKind ? (
                       <span className="text-muted-foreground text-xs">
@@ -175,11 +187,15 @@ export default function LabOverviewPage() {
                   <CardTitle className="text-base">{t("statusEvaluations")}</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-2 text-xs">
-                  <Badge variant="outline">LLM: {status.evaluations.llm ? t("statusOn") : t("statusOff")}</Badge>
-                  <Badge variant="outline">RAG: {status.evaluations.rag ? t("statusOn") : t("statusOff")}</Badge>
-                  <Badge variant="outline">
+                  <Badge variant="outline" title={status.evaluations.llm ? enabledTooltip : undefined}>
+                    LLM: {status.evaluations.llm ? enabledLabel : disabledLabel}
+                  </Badge>
+                  <Badge variant="outline" title={status.evaluations.rag ? enabledTooltip : undefined}>
+                    RAG: {status.evaluations.rag ? enabledLabel : disabledLabel}
+                  </Badge>
+                  <Badge variant="outline" title={status.evaluations.classifierProxy ? enabledTooltip : undefined}>
                     {t("statusClassifierProxy")}:{" "}
-                    {status.evaluations.classifierProxy ? t("statusOn") : t("statusOff")}
+                    {status.evaluations.classifierProxy ? enabledLabel : disabledLabel}
                   </Badge>
                   {status.evaluations.asyncJobs !== false ? (
                     <Badge variant="outline">{t("statusAsyncJobs")}</Badge>

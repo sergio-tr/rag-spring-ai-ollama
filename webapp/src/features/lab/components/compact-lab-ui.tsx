@@ -72,6 +72,8 @@ export type LabWorkflowCardProps = Readonly<{
   title: string;
   tagline: string;
   statusLabel: string;
+  /** Optional tooltip for workflow card status badge. */
+  statusTooltip?: string;
   statusVariant?: "default" | "secondary" | "destructive" | "outline";
   href: string;
   cta: string;
@@ -83,6 +85,7 @@ export function LabWorkflowCard({
   title,
   tagline,
   statusLabel,
+  statusTooltip,
   statusVariant = "secondary",
   href,
   cta,
@@ -93,7 +96,11 @@ export function LabWorkflowCard({
       <CardHeader className="gap-1 pb-2">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base">{title}</CardTitle>
-          <Badge variant={statusVariant} className="shrink-0 text-[10px]">
+          <Badge
+            variant={statusVariant}
+            className="shrink-0 text-[10px]"
+            title={statusTooltip}
+          >
             {statusLabel}
           </Badge>
         </div>

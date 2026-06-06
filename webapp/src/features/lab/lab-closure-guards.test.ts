@@ -23,10 +23,25 @@ function flattenStrings(node: unknown, out: string[] = []): string[] {
   return out;
 }
 
-const FORBIDDEN_IN_LAB_MESSAGES = [
+const FORBIDDEN_IN_PRODUCT_MESSAGES = [
   /POST JSON/i,
   /canonical benchmark API/i,
   /canonical benchmarks/i,
+  /\bM9 experimental evidence\b/i,
+  /\bM10\b|\bM11\b|\bM12\b|\bM9\b/i,
+  /Do not claim/i,
+  /claim map/i,
+  /\.cursor\/context\/evidence/i,
+  /handoff/i,
+  /\bTFG\b/i,
+  /\bthesis\b/i,
+  /partial evidence/i,
+  /Jaeger verified/i,
+  /RAG ladder complete/i,
+  /not comparable to P0 bench/i,
+  /Historical audit only/i,
+  /Canonical paths refer to/i,
+  /unsupported by design/i,
   /Stopped watching here/i,
   /Stopped waiting — the server job/i,
   /corpus and snapshot preparation are project-scoped/i,
@@ -42,7 +57,13 @@ const FORBIDDEN_IN_LAB_MESSAGES = [
   /SSE endpoint:/i,
   /Poll endpoint:/i,
   /nomic-embed-text/i,
+  /honest outcomes/i,
+  /thesis appendix/i,
+  /single-turn harness/i,
+  /m9-lab-experimental-evidence/i,
 ];
+
+const FORBIDDEN_IN_LAB_MESSAGES = FORBIDDEN_IN_PRODUCT_MESSAGES;
 
 const FORBIDDEN_IN_LAB_SRC = [
   /Lab API —/i,
@@ -77,6 +98,18 @@ describe("LAB closure i18n guards", () => {
       const strings = flattenStrings(lab);
       for (const s of strings) {
         for (const re of FORBIDDEN_IN_LAB_MESSAGES) {
+          expect(s, `Forbidden pattern ${re} in: ${s.slice(0, 80)}`).not.toMatch(re);
+        }
+      }
+    });
+
+    it(`Chat namespace in ${locale}.json has no forbidden user-facing copy`, () => {
+      const all = readMessages(locale);
+      const chat = all.Chat as Record<string, unknown> | undefined;
+      expect(chat).toBeDefined();
+      const strings = flattenStrings(chat);
+      for (const s of strings) {
+        for (const re of FORBIDDEN_IN_PRODUCT_MESSAGES) {
           expect(s, `Forbidden pattern ${re} in: ${s.slice(0, 80)}`).not.toMatch(re);
         }
       }

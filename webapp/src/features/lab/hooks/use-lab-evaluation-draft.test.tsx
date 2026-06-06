@@ -60,7 +60,7 @@ describe("useLabEvaluationDraft", () => {
         embeddingModelIds: [],
         embeddingDownstreamRag: false,
         selectedExperimentalPresetCodes: ["P0", "P1"],
-        runName: "thesis run",
+        runName: "benchmark run",
         followMode: "sse",
         lastEvaluationRunId: "run-1",
       }),

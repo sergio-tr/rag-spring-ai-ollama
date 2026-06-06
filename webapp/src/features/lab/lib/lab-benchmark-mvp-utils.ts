@@ -1,4 +1,4 @@
-/** Helpers for MVP thesis JSON shapes produced by `GET …/export/mvp/*`. */
+/** Helpers for MVP export JSON shapes produced by `GET …/export/mvp/*`. */
 
 export function readRollupOutcomeCounts(rollupBucket: unknown): Record<string, number> {
   if (!rollupBucket || typeof rollupBucket !== "object") {

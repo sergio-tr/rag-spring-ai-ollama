@@ -356,7 +356,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
   return (
     <div className="space-y-4 rounded-md border bg-muted/20 p-4" data-testid="lab-benchmark-results-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
+        <div className="space-y-2">
           <Label className="text-base">{t("benchmarkResultsTitle")}</Label>
           <p className="text-muted-foreground text-xs">
             {t("benchmarkResultsRunLine", {

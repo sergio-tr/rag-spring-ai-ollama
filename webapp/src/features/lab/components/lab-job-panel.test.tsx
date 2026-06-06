@@ -117,7 +117,7 @@ describe("LabJobPanel", () => {
         />
       </IntlTestProvider>,
     );
-    expect(screen.getByRole("status")).toHaveTextContent(/Completed/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/Job finished/i);
   });
 
   it("shows failed chip when task ends in FAILED terminal state", () => {

@@ -21,6 +21,7 @@ describe("LabRagEvalPage", () => {
     expect(screen.getByTestId("lab-rag-eval-page")).toBeInTheDocument();
     expect(screen.queryByText(/How to read P0/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("lab-rag-preset-help")).toBeInTheDocument();
+    expect(screen.queryByTestId("lab-unsupported-preset-card")).not.toBeInTheDocument();
     expect(screen.getByTestId("lab-eval-run-card")).toBeInTheDocument();
   });
 });

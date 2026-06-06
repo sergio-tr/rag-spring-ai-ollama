@@ -286,11 +286,42 @@ describe("LabOverviewPage", () => {
     expect(technical).not.toHaveAttribute("open");
     const serverDetails = screen.getByText(/Server note/i).closest("details");
     expect(serverDetails).not.toHaveAttribute("open");
+    expect(serverDetails).toHaveTextContent(/Additional detail/i);
     expect(serverDetails).toHaveTextContent(/Research Lab is ready/i);
     await user.click(screen.getByText(/Technical details/i));
     expect(technical).toHaveAttribute("open");
     await user.click(screen.getByText(/Server note/i));
     expect(serverDetails).toHaveAttribute("open");
+  });
+
+  it("does not show internal evidence or phase documentation on overview", () => {
+    vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
+      data: {
+        datasetKindsReady: true,
+        datasets: { enabled: true, datasetKindsReady: true },
+        evaluations: { llm: true, rag: true, classifierProxy: false, asyncJobs: true },
+        classifier: { configured: true, train: true, evaluate: true },
+        message: "",
+      },
+      isError: false,
+      isLoading: false,
+      refetch: vi.fn(),
+    }));
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <IntlTestProvider>
+          <LabOverviewPage />
+        </IntlTestProvider>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByTestId("lab-overview-compact")).toBeInTheDocument();
+    expect(screen.queryByTestId("lab-m9-limitation-banner")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-m9-evidence-panel")).not.toBeInTheDocument();
+    expect(screen.queryByText(/M9 experimental evidence/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\.cursor/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Do not claim/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Research Lab is ready/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Enabled/i).length).toBeGreaterThan(0);
   });
 
   it("does not surface forbidden technical API copy on the overview when status loads", () => {
