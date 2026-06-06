@@ -147,6 +147,21 @@ class LabEvaluationCorpusControllerWebMvcTest {
     }
 
     @Test
+    void prepareIndex_configSnapshotUnavailable_returns422WithReasonCode() throws Exception {
+        UUID corpusId = UUID.randomUUID();
+        org.mockito.Mockito.doThrow(
+                        new org.springframework.web.server.ResponseStatusException(
+                                org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                                LabCorpusReasonCodes.RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE))
+                .when(evaluationCorpusIndexService)
+                .prepareIndex(userId, corpusId);
+
+        mockMvc.perform(post(path("/lab/evaluation-corpora/") + corpusId + "/prepare-index"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value(LabCorpusReasonCodes.RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE));
+    }
+
+    @Test
     void getCorpus_missing_returnsKbNotFoundCode() throws Exception {
         UUID corpusId = UUID.randomUUID();
         when(evaluationCorpusApplicationService.getSummary(userId, corpusId))

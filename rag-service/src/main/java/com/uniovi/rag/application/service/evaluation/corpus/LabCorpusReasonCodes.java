@@ -41,6 +41,9 @@ public final class LabCorpusReasonCodes {
     /** Client-only: persisted corpus id no longer exists on server. */
     public static final String STALE_CORPUS_SELECTION = "STALE_CORPUS_SELECTION";
 
+    /** Could not resolve or persist runtime config snapshot required for corpus index build. */
+    public static final String RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE = "RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE";
+
     /** Alias for {@link #STALE_CORPUS_SELECTION} (plan registry name). */
     public static final String CORPUS_STALE = STALE_CORPUS_SELECTION;
 

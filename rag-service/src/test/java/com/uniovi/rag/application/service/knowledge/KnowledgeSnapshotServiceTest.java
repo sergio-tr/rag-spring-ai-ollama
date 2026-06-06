@@ -21,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -89,5 +90,23 @@ class KnowledgeSnapshotServiceTest {
 
         assertThat(out.getStatus()).isEqualTo(IndexSnapshotStatus.BUILDING);
         assertThat(out.getSignatureHash()).isEqualTo("sighex");
+    }
+
+    @Test
+    void createBuildingSnapshot_requiresResolvedConfigSnapshotLinkage() {
+        ProjectEntity project = mock(ProjectEntity.class);
+        assertThatThrownBy(
+                        () ->
+                                knowledgeSnapshotService.createBuildingSnapshot(
+                                        project,
+                                        null,
+                                        KnowledgeSnapshotScopeType.PROJECT,
+                                        "sighex",
+                                        null,
+                                        null,
+                                        Map.of(),
+                                        "profile-hash"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("resolved_config_snapshot");
     }
 }

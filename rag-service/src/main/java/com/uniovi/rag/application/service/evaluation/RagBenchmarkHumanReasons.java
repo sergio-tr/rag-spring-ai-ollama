@@ -64,6 +64,8 @@ public final class RagBenchmarkHumanReasons {
                     "The document has no stored file; re-upload it in the project first.";
             case "NO_ACTIVE_SNAPSHOT" ->
                     "No active index snapshot exists for this knowledge base yet.";
+            case "RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE" ->
+                    "Could not resolve runtime configuration for the knowledge base index.";
             case "STALE_CORPUS_SELECTION" ->
                     "The saved knowledge base selection is no longer valid.";
             case "BACKEND_ERROR" -> "A server error occurred. Check logs and retry.";
