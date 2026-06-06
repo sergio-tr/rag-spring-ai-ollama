@@ -9,10 +9,11 @@ test.describe("Lab overview", () => {
     await loginAsSeedUser(page);
     await page.goto("/en/lab");
     await expect(
-      page.getByRole("heading", { name: /research lab|laboratorio|lab status|estado del lab/i }),
+      page.getByRole("heading", { name: /^Research Lab$/i }),
     ).toBeVisible({
       timeout: 15_000,
     });
+    await expect(page.getByTestId("lab-overview-status-technical")).toBeVisible();
     await expect(page.locator("pre")).toContainText("{", { timeout: 20_000 });
   });
 });

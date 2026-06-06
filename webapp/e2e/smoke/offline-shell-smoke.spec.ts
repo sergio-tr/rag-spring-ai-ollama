@@ -56,7 +56,11 @@ test.describe("Offline shell smoke", () => {
     await expect(page.getByRole("heading", { name: /^Research Lab$/i })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByText(/Lab status|Estado del lab/i).first()).toBeVisible();
+    await expect(page.getByTestId("lab-overview-compact")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("lab-workflow-card-llm")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("lab-overview-status-technical")).toContainText(
+      /Technical details|Detalles técnicos/i,
+    );
   });
 
   test("settings data tab renders summary card @smoke", async ({ page }) => {

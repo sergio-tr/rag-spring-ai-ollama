@@ -109,7 +109,7 @@ export function LabActiveJobsBanner() {
     );
   }
 
-  const jobs = data ?? [];
+  const jobs = Array.isArray(data) ? data : [];
   if (jobs.length === 0) {
     return null;
   }

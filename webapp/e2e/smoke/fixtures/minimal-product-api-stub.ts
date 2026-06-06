@@ -114,6 +114,11 @@ export async function installMinimalProductApiStub(page: Page): Promise<void> {
       return;
     }
 
+    if (path === "/lab/jobs/active") {
+      await fulfillJson([]);
+      return;
+    }
+
     if (path === "/lab/experimental-datasets") {
       await fulfillJson([]);
       return;
