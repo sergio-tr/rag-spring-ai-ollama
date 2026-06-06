@@ -81,4 +81,68 @@ describe("reduceLabJobEvents", () => {
     expect(view.technicalEvents).toHaveLength(1);
     expect(view.phase).toBe("KNOWLEDGE_BASE");
   });
+
+  it("tracks failed, skipped, export, and terminal phases", () => {
+    const view = reduceLabJobEvents([
+      ev({ eventId: 1, type: "CAMPAIGN_PLANNED", message: "Planned 3 presets" }),
+      ev({ eventId: 2, type: "SNAPSHOT_PREPARATION_STARTED", message: "Indexing…" }),
+      ev({ eventId: 3, type: "ITEM_FAILED", message: "Item failed" }),
+      ev({ eventId: 4, type: "ITEM_SKIPPED", message: "Item skipped" }),
+      ev({ eventId: 5, type: "EXPORT_GENERATED", message: "Export ready" }),
+      ev({ eventId: 6, type: "FAILED", message: "Campaign failed" }),
+    ]);
+    expect(view.phase).toBe("FAILED");
+    expect(view.itemsFailed).toBe(1);
+    expect(view.itemsSkipped).toBe(1);
+    expect(view.subtasks.some((s) => s.status === "failed")).toBe(true);
+  });
+
+  it("ignores heartbeat and snapshot noise", () => {
+    const view = reduceLabJobEvents([
+      ev({ eventId: 1, type: "HEARTBEAT", message: "ping" }),
+      ev({ eventId: 2, type: "SNAPSHOT", message: "snap" }),
+      ev({ eventId: 3, type: "COMPLETED", message: "Done" }),
+    ]);
+    expect(view.phase).toBe("COMPLETED");
+    expect(view.subtasks).toHaveLength(1);
+  });
+
+  it("uses payload phase, labels, and model metadata", () => {
+    const view = reduceLabJobEvents([
+      ev({
+        eventId: 1,
+        type: "SNAPSHOT_PREPARATION_STARTED",
+        message: "Indexing snapshot",
+        payload: { phase: "INDEXING", label: "Custom label" },
+        currentPresetCode: " P2 ",
+        currentModelId: " llama ",
+      }),
+    ]);
+    expect(view.phase).toBe("INDEXING");
+    expect(view.presetCode).toBe("P2");
+    expect(view.currentModelId).toBe("llama");
+    expect(view.subtasks[0]?.label).toBe("Custom label");
+  });
+
+  it("progressPercent returns null when totals are missing", () => {
+    expect(progressPercent(reduceLabJobEvents([]))).toBeNull();
+    expect(
+      progressPercent({
+        phase: "RUNNING",
+        phaseLabel: null,
+        presetCode: null,
+        currentModelId: null,
+        currentItem: 1,
+        totalItems: 0,
+        globalCompleted: null,
+        globalTotal: null,
+        itemsCompleted: 0,
+        itemsFailed: 0,
+        itemsSkipped: 0,
+        lastAction: null,
+        subtasks: [],
+        technicalEvents: [],
+      }),
+    ).toBeNull();
+  });
 });

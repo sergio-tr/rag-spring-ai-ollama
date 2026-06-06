@@ -147,7 +147,35 @@ describe("getLabJobUiPhase", () => {
     expect(getLabJobUiPhase({ taskStatus: null, connectionState: "failed" })).toBe("failed");
     expect(getLabJobUiPhase({ taskStatus: null, connectionState: "cancelled" })).toBe("cancelled");
     expect(getLabJobUiPhase({ taskStatus: null, connectionState: "connecting" })).toBe("connecting");
+    expect(getLabJobUiPhase({ taskStatus: null, connectionState: "accepted" })).toBe("connecting");
+    expect(getLabJobUiPhase({ taskStatus: null, connectionState: "connected" })).toBe("live");
+    expect(getLabJobUiPhase({ taskStatus: null, connectionState: "reconnecting" })).toBe("reconnecting");
+    expect(getLabJobUiPhase({ taskStatus: null, connectionState: "resuming" })).toBe("reconnecting");
+    expect(getLabJobUiPhase({ taskStatus: null, connectionState: "stream_unavailable" })).toBe("failed");
+    expect(getLabJobUiPhase({ taskStatus: null, connectionState: "configuration_error" })).toBe("failed");
     expect(getLabJobUiPhase({ taskStatus: null, connectionState: "resumed" })).toBe("resumed");
+  });
+
+  it("maps live connection terminal success to completed", () => {
+    expect(
+      getLabJobUiPhase({
+        taskStatus: task({ status: "SUCCEEDED", terminal: true }),
+        connectionState: "live",
+      }),
+    ).toBe("completed");
+  });
+
+  it("maps PENDING and unknown terminal statuses without live connection", () => {
+    expect(
+      getLabJobUiPhase({
+        taskStatus: task({ status: "PENDING", terminal: false }),
+      }),
+    ).toBe("queued");
+    expect(
+      getLabJobUiPhase({
+        taskStatus: task({ status: "MYSTERY", terminal: true }),
+      }),
+    ).toBe("failed");
   });
 
   it("treats missing status string as unknown_running", () => {
@@ -205,6 +233,55 @@ describe("getLabJobStatusLabel", () => {
       "Live stream configuration error",
     );
   });
+
+  it("returns nuanced completed and failed labels from benchmark closure", () => {
+    const succeeded = task({
+      status: "SUCCEEDED",
+      terminal: true,
+      result: {
+        benchmarkClosure: {
+          expectedItems: 10,
+          executedItems: 8,
+          failedItems: 2,
+          classification: "COMPLETED_WITH_FAILURES",
+        },
+      },
+    });
+    expect(getLabJobStatusLabel("completed", labels, null, succeeded)).toBe("Completed with failures");
+    expect(
+      getLabJobStatusLabel(
+        "completed",
+        labels,
+        null,
+        task({
+          status: "SUCCEEDED",
+          terminal: true,
+          result: {
+            benchmarkClosure: {
+              expectedItems: 10,
+              executedItems: 8,
+              notSupportedItems: 2,
+              classification: "COMPLETED_WITH_UNSUPPORTED",
+            },
+          },
+        }),
+      ),
+    ).toBe("Completed with unsupported presets");
+    expect(
+      getLabJobStatusLabel(
+        "failed",
+        labels,
+        null,
+        task({
+          status: "SUCCEEDED",
+          terminal: true,
+          result: {
+            benchmarkClosure: { expectedItems: 10, executedItems: 0, skippedItems: 10 },
+          },
+        }),
+      ),
+    ).toBe("No items executed");
+  });
 });
 
 describe("labTraceStatusForJob", () => {
@@ -222,6 +299,24 @@ describe("labTraceStatusForJob", () => {
               failedItems: 0,
               skippedItems: 2,
               notSupportedItems: 0,
+            },
+          },
+        }),
+      ),
+    ).toBe("warning");
+    expect(
+      labTraceStatusForJob(
+        "completed",
+        task({
+          status: "SUCCEEDED",
+          terminal: true,
+          result: {
+            benchmarkClosure: {
+              expectedItems: 10,
+              executedItems: 8,
+              failedItems: 0,
+              skippedItems: 0,
+              notSupportedItems: 2,
             },
           },
         }),
@@ -262,5 +357,8 @@ describe("labPhaseToTraceStatus", () => {
     expect(labPhaseToTraceStatus("stopped_waiting")).toBe("warning");
     expect(labPhaseToTraceStatus("running")).toBe("in_progress");
     expect(labPhaseToTraceStatus("idle")).toBe("info");
+    expect(labPhaseToTraceStatus("live")).toBe("in_progress");
+    expect(labPhaseToTraceStatus("connecting")).toBe("in_progress");
+    expect(labPhaseToTraceStatus("cancelling")).toBe("warning");
   });
 });

@@ -50,7 +50,46 @@ describe("evaluation-corpus-ingestion", () => {
   });
 
   it("humanizes ingestion errors to stable codes", () => {
+    expect(humanizeIngestionErrorMessage(null)).toBeNull();
     expect(humanizeIngestionErrorMessage("unsupported type for file")).toBe("UNSUPPORTED_FILE");
     expect(humanizeIngestionErrorMessage("Document indexing failed")).toBe("INDEX_ERROR");
+    expect(humanizeIngestionErrorMessage("DUPLICATE_FILE: a.txt")).toBe("DUPLICATE_FILE");
+    expect(humanizeIngestionErrorMessage("parse failed at line 1")).toBe("PARSE_ERROR");
+    expect(humanizeIngestionErrorMessage("embed model context limit")).toBe("EMBEDDING_ERROR");
+    expect(humanizeIngestionErrorMessage("empty upload")).toBe("EMPTY_FILE");
+    expect(humanizeIngestionErrorMessage("ingestion timed out watchdog")).toBe("INGESTION_TIMEOUT");
+    expect(humanizeIngestionErrorMessage("FAILED_PARSING")).toBe("PARSE_ERROR");
+    expect(humanizeIngestionErrorMessage("custom operator message")).toBe("custom operator message");
+  });
+
+  it("maps duplicate and error upload statuses", () => {
+    expect(uploadItemStatusToDocumentStatus("DUPLICATE")).toBe("READY");
+    expect(uploadItemStatusToDocumentStatus("ERROR")).toBe("ERROR");
+  });
+
+  it("mergeCorpusAfterUpload skips duplicates and preserves error details", () => {
+    const merged = mergeCorpusAfterUpload(baseCorpus, {
+      corpus: baseCorpus,
+      uploads: [
+        { documentId: "d1", fileName: "bad.txt", status: "FAILED", error: "FAILED_INDEX" },
+        { documentId: null, fileName: "dup.txt", status: "DUPLICATE", error: null },
+      ],
+    });
+    expect(merged.documents).toHaveLength(1);
+    expect(merged.documents[0]?.status).toBe("ERROR");
+    expect(merged.documents[0]?.errorMessage).toBe("FAILED_INDEX");
+    expect(merged.failedCount).toBe(1);
+  });
+
+  it("mergeCorpusAfterUpload throws when corpus summary is missing", () => {
+    expect(() =>
+      mergeCorpusAfterUpload(undefined, { corpus: undefined, uploads: [] }),
+    ).toThrow(/missing corpus summary/);
+  });
+
+  it("corpusAllDocumentsTerminal treats empty summaries as terminal", () => {
+    expect(corpusAllDocumentsTerminal(null)).toBe(true);
+    expect(corpusAllDocumentsTerminal({ documents: [] })).toBe(true);
+    expect(corpusAllDocumentsTerminal({ documents: [{ status: "PROCESSING" }] })).toBe(false);
   });
 });
