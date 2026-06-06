@@ -14,7 +14,7 @@ import java.util.TreeMap;
 import java.util.function.Function;
 
 /**
- * MVP rollups for thesis exports — {@code outcomeCounts} always splits EXECUTED vs other outcomes; retrieval/generation
+ * MVP rollups for exports — {@code outcomeCounts} always splits EXECUTED vs other outcomes; retrieval/generation
  * means use **EXECUTED** rows only (never blended with NOT_SUPPORTED / SKIPPED).
  */
 public final class BenchmarkMvpRollupCalculator {

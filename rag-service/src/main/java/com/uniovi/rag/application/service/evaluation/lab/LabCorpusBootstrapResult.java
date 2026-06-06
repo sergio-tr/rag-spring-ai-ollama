@@ -32,7 +32,7 @@ public record LabCorpusBootstrapResult(
         m.put("enabled", enabled);
         m.put("classpathDocsLocation", classpathDocsLocation);
         m.put("corpusScope", corpusScope);
-        // Stable thesis / Lab audit keys (camelCase).
+        // Stable Lab audit keys (camelCase).
         m.put("bootstrapDocumentsFound", discoveredCount);
         m.put("bootstrapDocumentsCreated", createdCount);
         m.put("bootstrapDocumentsSkipped", skippedCount);

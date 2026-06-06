@@ -25,7 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Metrics comparison for thesis workflows: compares N compatible runs and exports summary + long-form table CSV.
+ * Metrics comparison for workflows: compares N compatible runs and exports summary + long-form table CSV.
  */
 @Service
 public class LabMetricsComparisonService {

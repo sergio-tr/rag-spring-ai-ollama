@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Canonical thesis experimental presets P0–P14.
+ * Canonical experimental presets P0–P14.
  *
  * <p>This is the single source of truth for:
  * <ul>
@@ -54,7 +54,7 @@ public final class ExperimentalPresetCanonicalCatalog {
     private static final EnumMap<RagExperimentalPresetCode, CanonicalPreset> PRESETS = new EnumMap<>(RagExperimentalPresetCode.class);
 
     static {
-        // IMPORTANT: This ladder is intentionally cumulative and matches the thesis protocol in the repo.
+        // IMPORTANT: This ladder is intentionally cumulative and matches the protocol in the repo.
         define(
                 RagExperimentalPresetCode.P0,
                 uuid("cafe0001-0001-4001-8001-000000000010"),
@@ -343,7 +343,7 @@ public final class ExperimentalPresetCanonicalCatalog {
     }
 
     /**
-     * All thesis experimental presets (P0–P14) are defined for project-scoped document-backed evaluation; the runtime
+     * All experimental presets (P0–P14) are defined for project-scoped document-backed evaluation; the runtime
      * still enforces evidence availability per workflow (single-turn Lab uses P0–P12 only).
      */
     public static boolean corpusRequired(RagExperimentalPresetCode code) {
@@ -426,7 +426,7 @@ public final class ExperimentalPresetCanonicalCatalog {
     }
 
     /**
-     * Markdown table of the P0–P14 protocol ladder for thesis annexes (generated only from this catalog).
+     * Markdown table of the P0–P14 protocol ladder for generating annexes (generated only from this catalog).
      */
     public static String thesisProtocolLadderMarkdownTable() {
         StringBuilder sb = new StringBuilder();

@@ -268,7 +268,7 @@ public class LabEvaluationRunService {
     }
 
     /**
-     * Thesis MVP export: one JSON object per item including nested {@code mvp} metrics ({@code items.json} bundle).
+     * One JSON object per item including nested {@code mvp} metrics ({@code items.json} bundle).
      */
     @Transactional(readOnly = true)
     public Map<String, Object> exportMvpItemsJsonBundle(UUID userId, UUID runId) {

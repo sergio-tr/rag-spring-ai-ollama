@@ -8,7 +8,7 @@ public final class BenchmarkResultRowKeys {
     /** Protocol label for baseline runners ({@link com.uniovi.rag.domain.evaluation.BenchmarkEvaluationProtocol}). */
     public static final String EVALUATION_PROTOCOL = "evaluation_protocol";
 
-    /** Thesis workbook preset id (e.g. {@code P7}). */
+    /** Workbook preset id (e.g. {@code P7}). */
     public static final String PRESET_CODE = "preset_code";
     public static final String PRESET_LABEL = "preset_label";
 
