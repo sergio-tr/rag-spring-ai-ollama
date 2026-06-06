@@ -49,18 +49,18 @@ Use the Lab navigation tabs:
    - **Dataset**: use the internal reference bundle if present, or upload a typed Excel workbook (template: *LLM baseline*).
    - **Run**: start the evaluation and wait for the async job to finish.
    - **Results**: review per-item outcomes and rollups.
-   - **Export**: use the MVP export buttons (CSV + JSON) to capture thesis tables/appendix artifacts.
+   - **Export**: use the MVP export buttons (CSV + JSON) to download run artifacts.
 
 2. **Embedding baseline** (`Lab → Embedding evaluation`)
    - **Dataset**: typed embedding baseline workbook (template: *Embedding baseline*).
    - **What it measures**: retrieval quality against labelled evidence (e.g. Recall@K, MRR when available).
    - **Export**: same MVP export buttons after the run succeeds.
 
-3. **RAG preset benchmark (P0–P14)** (`Lab → RAG evaluation`)
+3. **RAG preset benchmark** (`Lab → RAG evaluation`)
    - **Dataset**: typed RAG preset benchmark workbook (template: *RAG preset benchmark*) or internal reference bundle.
-   - **Selection**: optionally select protocol presets P0–P14 (leave all unchecked to run the full workbook catalog).
-   - **Outcomes**: runs record honest outcomes like `EXECUTED`, `NOT_SUPPORTED`, and `FAILED`.
-   - **Export**: use the MVP exports to capture preset-level results for the thesis.
+   - **Selection**: optionally select protocol presets (leave all unchecked to run the full workbook catalog).
+   - **Outcomes**: runs record outcomes like `EXECUTED`, `NOT_SUPPORTED`, and `FAILED`.
+   - **Export**: use the MVP exports to download preset-level results.
 
 ## Manual validation checklist
 
