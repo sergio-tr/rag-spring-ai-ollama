@@ -112,7 +112,7 @@ export function AppShell({ children, panelBody }: Readonly<AppShellProps>) {
               className={cn(
                 "mx-auto flex w-full min-w-0 flex-col",
                 isChat
-                  ? "h-full min-h-0 flex-1 px-4 md:px-8 max-w-6xl"
+                  ? "h-full min-h-0 flex-1 px-4 md:px-8 max-w-none w-full"
                   : "px-4 py-6 md:px-8 max-w-5xl",
               )}
             >

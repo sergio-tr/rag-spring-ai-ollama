@@ -120,7 +120,7 @@ describe("AppShell", () => {
     pathnameMock = "/chat";
   });
 
-  it("uses a wider readable max-width container on chat routes", () => {
+  it("uses a full-width container on chat routes", () => {
     pathnameMock = "/chat";
     const { container } = render(
       <IntlTestProvider>
@@ -130,9 +130,9 @@ describe("AppShell", () => {
       </IntlTestProvider>,
     );
     expect(screen.getByText("chat-child")).toBeInTheDocument();
-    const shell = container.querySelector("main .max-w-6xl");
+    const shell = container.querySelector("main .max-w-none");
     expect(shell).toBeTruthy();
-    expect(shell?.className).toMatch(/max-w-6xl/);
+    expect(shell?.className).toMatch(/max-w-none/);
     expect(shell?.className).toMatch(/mx-auto/);
     expect(shell?.className).not.toMatch(/py-6/);
   });

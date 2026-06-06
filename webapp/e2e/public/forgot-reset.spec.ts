@@ -1,15 +1,17 @@
 import { expect, test } from "@playwright/test";
 
 async function typeResetPasswords(page: import("@playwright/test").Page, password: string, repeat: string) {
-  const form = page.locator("form").first();
-  const passwordInput = form.getByLabel(/^Password$/i);
-  const repeatPasswordInput = form.getByLabel(/^Repeat password$/i);
+  await expect(page.getByRole("heading", { name: /choose new password/i })).toBeVisible({ timeout: 15_000 });
+  const passwordInput = page.locator("#password");
+  const repeatPasswordInput = page.locator("#confirmPassword");
   await expect(passwordInput).toBeVisible();
   await expect(repeatPasswordInput).toBeVisible();
+  await passwordInput.click();
   await passwordInput.fill(password);
+  await repeatPasswordInput.click();
   await repeatPasswordInput.fill(repeat);
-  await expect(passwordInput).toHaveValue(password);
-  await expect(repeatPasswordInput).toHaveValue(repeat);
+  await expect(passwordInput).toHaveValue(password, { timeout: 10_000 });
+  await expect(repeatPasswordInput).toHaveValue(repeat, { timeout: 10_000 });
 }
 
 test.describe("Forgot/reset public flows", () => {

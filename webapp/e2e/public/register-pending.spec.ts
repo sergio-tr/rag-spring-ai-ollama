@@ -17,6 +17,7 @@ test.describe("Register pending flow", () => {
         body: JSON.stringify({
           status: "PENDING_EMAIL_VERIFICATION",
           login: null,
+          confirmationDelivery: "outbox-only",
         }),
       });
     });
