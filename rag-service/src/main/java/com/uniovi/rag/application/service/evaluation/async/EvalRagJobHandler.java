@@ -25,10 +25,12 @@ import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusAppl
 import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
 import com.uniovi.rag.application.result.evaluation.RagPresetBenchmarkRunPayload;
 import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
+import com.uniovi.rag.application.service.evaluation.LabRagRunDiagnostics;
 import com.uniovi.rag.application.service.evaluation.preset.TypedRagPresetBenchmarkOrchestrator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +39,8 @@ import java.util.UUID;
 
 @Component
 class EvalRagJobHandler implements LabJobHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(EvalRagJobHandler.class);
 
     private final RagFeatureConfiguration featureConfiguration;
     private final RagImplementationProperties implementationProperties;
@@ -132,6 +136,17 @@ class EvalRagJobHandler implements LabJobHandler {
                                             new IllegalStateException(
                                                     "evaluation_run not found: " + evaluationRunId));
 
+            LabRagRunDiagnostics.logHandlerStart(
+                    log,
+                    taskId,
+                    evaluationRunId,
+                    ctx.corpusId(),
+                    ctx.projectId(),
+                    ctx.requestedPresetCodes(),
+                    ctx.aggregatesJson());
+            LabRagRunDiagnostics.requireCorpusId(ctx.corpusId());
+            LabRagRunDiagnostics.requireConfigPreflightPresent(ctx.aggregatesJson());
+
             if (ctx.corpusBootstrapEnabled()) {
                 try {
                     LabCorpusBootstrapResult corpusResult =
@@ -160,6 +175,17 @@ class EvalRagJobHandler implements LabJobHandler {
                                     + corpusResult.corpusScope()
                                     + " pattern="
                                     + corpusResult.classpathDocsLocation());
+                    LabRagRunDiagnostics.logStage(
+                            log,
+                            "corpus_bootstrap",
+                            LabRagRunDiagnostics.fields(
+                                    "runId", evaluationRunId,
+                                    "taskId", taskId,
+                                    "corpusId", ctx.corpusId(),
+                                    "documentCount", corpusResult.discoveredCount(),
+                                    "readyDocumentCount", corpusResult.readyCount(),
+                                    "reasonCode",
+                                    corpusResult.failedCount() > 0 ? "BOOTSTRAP_PARTIAL_FAILURE" : "OK"));
                 } catch (IllegalStateException ex) {
                     evaluationRunRagJobContextLoader.mergeAggregatesJson(
                             evaluationRunId,
@@ -204,6 +230,9 @@ class EvalRagJobHandler implements LabJobHandler {
             Set<RagExperimentalPresetCode> requestedPresets = requestedPresets(ctx);
             int questionCount = rag.questions() != null ? rag.questions().size() : 0;
             int presetCount = rag.presetCatalog() != null ? rag.presetCatalog().size() : 0;
+            LabRagRunDiagnostics.requireDatasetItems(questionCount);
+            LabRagRunDiagnostics.requirePresetsResolvable(
+                    requestedPresets.size(), presetCount, ctx.requestedPresetCodes());
             int selectedPresetCount =
                     requestedPresets.isEmpty() ? presetCount : requestedPresets.size();
             int runTotalItems = (int) ((long) questionCount * (long) Math.max(1, selectedPresetCount));
@@ -211,7 +240,20 @@ class EvalRagJobHandler implements LabJobHandler {
                     requestedPresets.isEmpty() ? null : requestedPresets.iterator().next().name();
 
             UUID campaignId = LabJobPayloads.campaignId(task.getRequestPayload());
-            Map<String, Object> corpusReadinessPayload = readCorpusReadinessFromAggregates(ctx.aggregatesJson());
+            Map<String, Object> corpusReadinessPayload =
+                    LabRagRunDiagnostics.copyCorpusReadinessFromAggregates(
+                            log, evaluationRunId, taskId, ctx.aggregatesJson());
+            LabRagRunDiagnostics.logStage(
+                    log,
+                    "corpus_readiness_loaded",
+                    LabRagRunDiagnostics.fields(
+                            "runId", evaluationRunId,
+                            "taskId", taskId,
+                            "corpusId", ctx.corpusId(),
+                            "documentCount", corpusReadinessPayload.get("documentCount"),
+                            "readyDocumentCount", corpusReadinessPayload.get("readyCount"),
+                            "reasonCode",
+                            corpusReadinessPayload.getOrDefault("primaryBlocker", "OK")));
             labJobProgressTracker.emitRagEvaluationAccepted(
                     taskId,
                     evaluationRunId,
@@ -254,6 +296,16 @@ class EvalRagJobHandler implements LabJobHandler {
             if (hasDemoId) {
                 throw new IllegalStateException("Demo dataset_question_id RAG_Q1 detected; aborting benchmark.");
             }
+            LabRagRunDiagnostics.logStage(
+                    log,
+                    "benchmark_execution_start",
+                    LabRagRunDiagnostics.fields(
+                            "runId", evaluationRunId,
+                            "taskId", taskId,
+                            "corpusId", ctx.corpusId(),
+                            "presetKey", presetCode,
+                            "plannedPresetCount", selectedPresetCount,
+                            "questionCount", questionCount));
             RagPresetBenchmarkRunPayload res =
                     typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
                             evaluationRunId,
@@ -299,23 +351,5 @@ class EvalRagJobHandler implements LabJobHandler {
             RagExperimentalPresetCode.tryParse(row).ifPresent(out::add);
         }
         return out;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> readCorpusReadinessFromAggregates(Map<String, Object> aggregatesJson) {
-        if (aggregatesJson == null || aggregatesJson.isEmpty()) {
-            return Map.of();
-        }
-        Object raw = aggregatesJson.get("corpusReadiness");
-        if (!(raw instanceof Map<?, ?> map) || map.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> e : map.entrySet()) {
-            if (e.getKey() != null) {
-                out.put(String.valueOf(e.getKey()), e.getValue());
-            }
-        }
-        return Map.copyOf(out);
     }
 }
