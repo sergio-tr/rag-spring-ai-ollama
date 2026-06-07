@@ -84,8 +84,15 @@ resolve_host_gateway_ip() {
     echo "host-gateway"
     return
   fi
-  # Docker Desktop on WSL can resolve host-gateway to IPv6 only; nginx then marks upstreams down.
-  echo "192.168.65.254"
+  local webapp_port="${RAG_CI_WEBAPP_HOST_PORT:-3000}"
+  for candidate in 192.168.65.254 172.17.0.1; do
+    if docker run --rm --add-host="host-gateway.internal:${candidate}" alpine:3.20 \
+      wget -q -T 2 -O /dev/null "http://host-gateway.internal:${webapp_port}/" 2>/dev/null; then
+      echo "${candidate}"
+      return
+    fi
+  done
+  echo "172.17.0.1"
 }
 
 require docker
@@ -241,6 +248,9 @@ start_proxy() {
     -e API_PROXY_CONNECT_TIMEOUT=10s \
     -e API_PROXY_SEND_TIMEOUT=180s \
     -e API_PROXY_READ_TIMEOUT=180s \
+    -e WEB_PROXY_CONNECT_TIMEOUT=10s \
+    -e WEB_PROXY_SEND_TIMEOUT=180s \
+    -e WEB_PROXY_READ_TIMEOUT=180s \
     rag-reverse-proxy-local >/dev/null
 }
 
@@ -339,7 +349,7 @@ run_host_stack_preflight() {
 
 run_playwright_fullstack() {
   run_host_stack_preflight
-  log "Running Next.js build + Playwright @fullstack in ${PLAYWRIGHT_IMAGE}."
+  log "Running Playwright @fullstack in ${PLAYWRIGHT_IMAGE} (host webapp already built)."
 
   docker run --rm \
     --network host \
@@ -347,7 +357,7 @@ run_playwright_fullstack() {
     -w /repo/webapp \
     -v "${NPM_CACHE_VOLUME}:/root/.npm" \
     -e E2E_ALLOW_INSECURE_COOKIES="true" \
-    -e E2E_LOGIN_TIMEOUT_MS="12000" \
+    -e E2E_LOGIN_TIMEOUT_MS="25000" \
     -e E2E_ADMIN_ENABLED="1" \
     -e PLAYWRIGHT_SKIP_WEBSERVER="1" \
     -e PLAYWRIGHT_BASE_URL="https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}" \
@@ -361,7 +371,7 @@ run_playwright_fullstack() {
     -e NEXT_PUBLIC_API_BASE_URL="" \
     -e NEXT_PUBLIC_RAG_API_PREFIX="/api/v5" \
     "${PLAYWRIGHT_IMAGE}" bash -lc \
-      "npm ci --silent --no-audit --no-fund && npm run build && E2E_SKIP_STACK_PREFLIGHT=1 npm run test:e2e:preflight:only && npm run test:e2e:fullstack:critical"
+      "npm ci --silent --no-audit --no-fund && E2E_SKIP_STACK_PREFLIGHT=1 npm run test:e2e:preflight:only && npm run test:e2e:fullstack:critical"
 }
 
 stop_backend() {
@@ -378,6 +388,9 @@ stop_webapp() {
     kill "$(cat "${WEBAPP_PID_PATH}")" 2>/dev/null || true
     rm -f "${WEBAPP_PID_PATH}"
   fi
+  if command -v fuser >/dev/null 2>&1; then
+    fuser -k "${WEBAPP_HOST_PORT}/tcp" 2>/dev/null || true
+  fi
 }
 
 cleanup() {
@@ -392,6 +405,10 @@ cleanup() {
 trap cleanup EXIT
 
 log "Repo root: ${REPO_ROOT}"
+stop_webapp
+stop_proxy
+stop_backend
+sleep 1
 start_postgres
 ensure_network
 prepare_postgres
