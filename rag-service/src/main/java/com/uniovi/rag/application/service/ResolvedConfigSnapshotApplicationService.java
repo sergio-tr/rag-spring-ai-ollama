@@ -109,6 +109,16 @@ public class ResolvedConfigSnapshotApplicationService {
     }
 
     /**
+     * Same as {@link #persistIngestionDefaultSnapshot} but returns a persistence-free linkage for application callers.
+     */
+    @Transactional
+    public ResolvedConfigSnapshotLinkage persistIngestionDefaultSnapshotLinkage(
+            UUID userId, UUID projectId, Optional<UUID> conversationId) {
+        ResolvedConfigSnapshotEntity entity = persistIngestionDefaultSnapshot(userId, projectId, conversationId);
+        return new ResolvedConfigSnapshotLinkage(entity.getId(), entity.getConfigHash());
+    }
+
+    /**
      * Persists a resolved snapshot for knowledge execute-without-pin; {@code knowledgeNested} is merged under
      * {@link com.uniovi.rag.application.service.knowledge.KnowledgeBuildProjectionMapper#PAYLOAD_KEY}.
      */

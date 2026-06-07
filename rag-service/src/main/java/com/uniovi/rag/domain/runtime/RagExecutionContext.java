@@ -6,7 +6,7 @@ import java.util.List;
  * Per-request execution context flowing through the RAG pipeline (Bloque 1.4).
  *
  * @param conversationId optional conversation id when chat persistence is enabled
- * @param userId         optional user id (null for legacy single-tenant API calls)
+ * @param userId         optional user id (null for unscoped execution)
  * @param projectId      optional project scope for retrieval filtering
  * @param resolvedConfig merged {@link RagConfig}
  * @param documentFilter list of document UUIDs to restrict retrieval, or "all" semantics when empty/sentinel
@@ -23,10 +23,8 @@ public record RagExecutionContext(
 
     public static final String ALL_DOCUMENTS = "all";
 
-    /**
-     * Legacy API path: no multi-tenant scope; retrieval behaves as before (no project filter).
-     */
-    public static RagExecutionContext forLegacyPipeline(RagConfig resolvedConfig, String traceId) {
+    /** Unscoped execution: no conversation/user/project; retrieval uses {@link #ALL_DOCUMENTS} sentinel. */
+    public static RagExecutionContext forUnscopedExecution(RagConfig resolvedConfig, String traceId) {
         return new RagExecutionContext(null, null, null, resolvedConfig, List.of(ALL_DOCUMENTS), traceId);
     }
 

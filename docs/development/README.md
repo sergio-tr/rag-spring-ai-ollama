@@ -7,7 +7,7 @@
 - [Documentation inventory](documentation-inventory.md) — classification of `docs/**` areas (canonical vs planning vs outdated risk).
 - [E2E testing strategy — workflows vs gates](e2e-testing-strategy.md) — canonical alignment with CI and `deploy.yml`.
 - [SonarCloud analysis locally (CI parity)](sonar-local-analysis.md) — `scripts/sonar-local.sh`.
-- [Thesis scope (official)](../overview/thesis-scope.md) — minimum vs deferred.
+- [Minimum scope (official)](../overview/minimum-scope.md) — minimum vs deferred.
 
 ## Related
 

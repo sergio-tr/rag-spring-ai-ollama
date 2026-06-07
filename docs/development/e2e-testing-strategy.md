@@ -2,7 +2,7 @@
 
 **Purpose:** Align **workflow runs**, **quality gates**, and **test layers** for this monorepo. Complements [testing/README.md](../testing/README.md).
 
-**See also:** [../testing/README.md](../testing/README.md) (matrix, RTL guidance), [../operations/deploy-workflow-audit.md](../operations/deploy-workflow-audit.md) (deploy gate), [../operations/local-ci-parity.md](../operations/local-ci-parity.md), [../testing/traceability-legacy-tools.md](../testing/traceability-legacy-tools.md) (load-tool mapping).
+**See also:** [../testing/README.md](../testing/README.md) (matrix, RTL guidance), [../operations/deploy-workflow-audit.md](../operations/deploy-workflow-audit.md) (deploy gate), [../operations/local-ci-parity.md](../operations/local-ci-parity.md), [../testing/traceability-retired-tools.md](../testing/traceability-retired-tools.md) (load-tool mapping).
 
 ---
 

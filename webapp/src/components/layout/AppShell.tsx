@@ -98,11 +98,22 @@ export function AppShell({ children, panelBody }: Readonly<AppShellProps>) {
               <ThemeLanguageMenu />
             </div>
           </header>
-          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+          <div
+            data-testid="app-main-scroll"
+            data-scroll-mode={isChat ? "chat-locked" : "document"}
+            className={cn(
+              "min-h-0 flex-1 min-w-0",
+              isChat
+                ? "flex flex-col overflow-hidden"
+                : "overflow-x-hidden overflow-y-auto",
+            )}
+          >
             <div
               className={cn(
-                "mx-auto w-full px-4 py-6 md:px-8",
-                isChat ? "max-w-6xl" : "max-w-5xl",
+                "mx-auto flex w-full min-w-0 flex-col",
+                isChat
+                  ? "h-full min-h-0 flex-1 px-4 md:px-8 max-w-none w-full"
+                  : "px-4 py-6 md:px-8 max-w-5xl",
               )}
             >
               {children}

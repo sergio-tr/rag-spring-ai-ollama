@@ -1,7 +1,7 @@
 package com.uniovi.rag.infrastructure.observability;
 
 import com.uniovi.rag.domain.model.Cluster;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;

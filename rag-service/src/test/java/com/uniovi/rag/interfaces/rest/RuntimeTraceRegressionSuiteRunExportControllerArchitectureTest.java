@@ -60,9 +60,8 @@ class RuntimeTraceRegressionSuiteRunExportControllerArchitectureTest {
                     "RuntimeTraceReplayBatchService",
                     "RuntimeTraceQueryService",
                     "RagExecutionOrchestrator",
-                    "ProcessQueryService",
-                    "SimpleProcessQueryService",
-                    "TaskExecutor",
+                    "RuntimeQueryExecutionService",
+                                        "TaskExecutor",
                     "AsyncTaskExecutor",
                     "ThreadPoolTaskExecutor",
                     "JpaRepository",
@@ -71,7 +70,7 @@ class RuntimeTraceRegressionSuiteRunExportControllerArchitectureTest {
                     "RuntimeTraceRegressionSuiteRunExportFacade",
                     "RuntimeTraceRegressionSuiteRunExportOrchestrator",
                     "RuntimeTraceRegressionSuiteRunReadService",
-                    "RuntimeTraceRegressionSuiteRunQueryService",
+                    "RuntimeTraceRegressionSuiteRunQueryExecutionService",
                     "RuntimeTraceRegressionSuiteRunPersistenceService");
 
     private static ArchCondition<JavaClass> doesNotDependOnFd28Forbidden() {

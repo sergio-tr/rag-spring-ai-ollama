@@ -1,9 +1,9 @@
 package com.uniovi.rag.infrastructure.observability;
 
-import com.uniovi.rag.application.model.PostStepOutput;
+import com.uniovi.rag.application.result.reasoning.PostStepOutput;
 import com.uniovi.rag.domain.model.QueryType;
-import com.uniovi.rag.application.model.ReasoningPreOutput;
-import com.uniovi.rag.service.reasoning.ReasoningStrategy;
+import com.uniovi.rag.application.result.reasoning.ReasoningPreOutput;
+import com.uniovi.rag.application.service.runtime.reasoning.ReasoningStrategy;
 import org.json.JSONObject;
 
 import java.util.Map;

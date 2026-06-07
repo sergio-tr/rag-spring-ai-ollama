@@ -1,22 +1,21 @@
 package com.uniovi.rag.infrastructure.observability;
 
+import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
+import com.uniovi.rag.application.service.evaluation.EvaluationTestFixtures;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
-import com.uniovi.rag.service.evaluation.EvaluationService;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import io.micrometer.tracing.test.simple.SimpleTracer;
+import com.uniovi.rag.application.service.evaluation.EvaluationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
+import java.util.List;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
-/**
- * Tests for {@link TracedEvaluationService}.
- */
 class TracedEvaluationServiceTest {
 
     private EvaluationService delegate;
@@ -26,39 +25,40 @@ class TracedEvaluationServiceTest {
     @BeforeEach
     void setUp() {
         delegate = mock(EvaluationService.class);
-        observability = new ObservabilitySupport(new SimpleTracer(), new SimpleMeterRegistry());
+        observability = mock(ObservabilitySupport.class);
         traced = new TracedEvaluationService(delegate, observability);
+        when(observability.recordTimer(anyString(), any())).thenAnswer(inv -> {
+            Supplier<?> supplier = inv.getArgument(1);
+            return supplier.get();
+        });
+        when(observability.runWithSpan(anyString(), any(), anyString(), any())).thenAnswer(inv -> {
+            Supplier<?> supplier = inv.getArgument(3);
+            return supplier.get();
+        });
+        doAnswer(inv -> {
+            Runnable runnable = inv.getArgument(2);
+            runnable.run();
+            return null;
+        })
+                .when(observability)
+                .runWithSpan(anyString(), any(), any(Runnable.class));
     }
 
     @Test
-    void evaluate_delegatesAndReturnsResult() {
-        Map<String, Object> result = Map.of("score", 0.85);
-        when(delegate.evaluate()).thenReturn(result);
-        assertEquals(result, traced.evaluate());
-        verify(delegate).evaluate();
-    }
-
-    @Test
-    void evaluateWithConfiguration_delegates() {
-        RagFeatureConfiguration config = new RagFeatureConfiguration();
-        RagImplementationProperties impl = new RagImplementationProperties();
-        Map<String, Object> result = Map.of("score", 0.9);
-        when(delegate.evaluateWithConfiguration(any(), any())).thenReturn(result);
-        assertEquals(result, traced.evaluateWithConfiguration(config, impl));
-        verify(delegate).evaluateWithConfiguration(config, impl);
-    }
-
-    @Test
-    void evaluateAllConfigurations_delegates() {
-        Map<String, Map<String, Object>> result = Map.of("c1", Map.of("score", 0.8));
-        when(delegate.evaluateAllConfigurations()).thenReturn(result);
-        assertEquals(result, traced.evaluateAllConfigurations());
-        verify(delegate).evaluateAllConfigurations();
+    void evaluateTypedLlm_delegates() {
+        LlmJudgeEvaluationBatchResult result = EvaluationTestFixtures.emptyLlmBatch();
+        RagFeatureConfiguration config = mock(RagFeatureConfiguration.class);
+        RagImplementationProperties impl = mock(RagImplementationProperties.class);
+        when(delegate.evaluateWithConfigurationForLlmReaderQuestions(config, impl, List.of(), null))
+                .thenReturn(result);
+        assertEquals(
+                result,
+                traced.evaluateWithConfigurationForLlmReaderQuestions(config, impl, List.of(), null));
+        verify(delegate).evaluateWithConfigurationForLlmReaderQuestions(config, impl, List.of(), null);
     }
 
     @Test
     void loadData_delegates() {
-        doNothing().when(delegate).loadData();
         traced.loadData();
         verify(delegate).loadData();
     }

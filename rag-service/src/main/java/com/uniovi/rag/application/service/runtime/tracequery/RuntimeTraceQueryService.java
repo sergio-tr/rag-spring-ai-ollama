@@ -2,11 +2,16 @@ package com.uniovi.rag.application.service.runtime.tracequery;
 
 import com.uniovi.rag.infrastructure.persistence.jpa.RuntimeExecutionTraceEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RuntimeExecutionTraceRepository;
+import com.uniovi.rag.infrastructure.persistence.MessageRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
+import com.uniovi.rag.domain.MessageRole;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceDetailDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceSummaryDto;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,13 +28,16 @@ public class RuntimeTraceQueryService {
 
     private final RuntimeExecutionTraceRepository repository;
     private final ProjectAccessService projectAccessService;
+    private final MessageRepository messageRepository;
 
     public RuntimeTraceQueryService(
             RuntimeExecutionTraceRepository repository,
-            ProjectAccessService projectAccessService
+            ProjectAccessService projectAccessService,
+            MessageRepository messageRepository
     ) {
         this.repository = repository;
         this.projectAccessService = projectAccessService;
+        this.messageRepository = messageRepository;
     }
 
     public Page<RuntimeExecutionTraceSummaryDto> listConversationTraceSummaries(
@@ -74,11 +82,46 @@ public class RuntimeTraceQueryService {
         projectAccessService.requireConversationForUser(userId, conversationId);
         RuntimeExecutionTraceEntity e =
                 repository.findFirstByUserIdAndMessageIdOrderByCreatedAtDesc(userId, messageId)
-                        .orElseThrow(() -> new NotFoundException("trace not found"));
+                        .orElseGet(
+                                () -> resolveUserMessageIdFromAssistant(conversationId, messageId)
+                                        .flatMap(mid -> repository.findFirstByUserIdAndMessageIdOrderByCreatedAtDesc(userId, mid))
+                                        .orElseThrow(() -> new NotFoundException("trace not found")));
         if (e.getConversationId() != null && !e.getConversationId().equals(conversationId)) {
             throw new NotFoundException("trace not found");
         }
         return toDetailDto(e);
+    }
+
+    /**
+     * Runtime traces are persisted against the USER message id (the request turn). Some clients ask for the
+     * assistant message id; when possible, we resolve it to the immediately preceding USER message in the same
+     * conversation (seq-1).
+     */
+    private Optional<UUID> resolveUserMessageIdFromAssistant(UUID conversationId, UUID messageId) {
+        if (messageRepository == null || conversationId == null || messageId == null) {
+            return Optional.empty();
+        }
+        Optional<MessageEntity> m = messageRepository.findById(messageId);
+        if (m.isEmpty()) {
+            return Optional.empty();
+        }
+        MessageEntity msg = m.get();
+        if (msg.getConversation() == null || msg.getConversation().getId() == null) {
+            return Optional.empty();
+        }
+        if (!conversationId.equals(msg.getConversation().getId())) {
+            return Optional.empty();
+        }
+        if (msg.getRole() != MessageRole.ASSISTANT) {
+            return Optional.empty();
+        }
+        int prevSeq = msg.getSeq() - 1;
+        if (prevSeq < 0) {
+            return Optional.empty();
+        }
+        return messageRepository.findByConversation_IdAndSeqAndDeletedAtIsNull(conversationId, prevSeq)
+                .filter(prev -> prev.getRole() == MessageRole.USER)
+                .map(MessageEntity::getId);
     }
 
     public Page<RuntimeExecutionTraceSummaryDto> listTraceSummariesByCorrelationId(
@@ -173,11 +216,19 @@ public class RuntimeTraceQueryService {
     }
 
     private static Map<String, Object> safeMap(Map<String, Object> m) {
-        return m == null ? Map.of() : Map.copyOf(m);
+        if (m == null || m.isEmpty()) {
+            return Map.of();
+        }
+        // Map.copyOf rejects null values; traces may contain nulls.
+        return new LinkedHashMap<>(m);
     }
 
     private static List<Map<String, Object>> safeListMap(List<Map<String, Object>> m) {
-        return m == null ? List.of() : List.copyOf(m);
+        if (m == null || m.isEmpty()) {
+            return List.of();
+        }
+        // List.copyOf rejects null elements; keep the original ordering while tolerating null maps.
+        return new ArrayList<>(m);
     }
 }
 

@@ -1,6 +1,6 @@
 # Webapp module map (`webapp/`)
 
-**Navigation only** — thesis-friendly map. All setup, scripts, and testing: [webapp/README.md](../../webapp/README.md). API types: TypeDoc (`cd webapp && npm run doc`).
+**Navigation only** - All setup, scripts, and testing: [webapp/README.md](../../webapp/README.md). API types: TypeDoc (`cd webapp && npm run doc`).
 
 | Area | Path (typical) | Role |
 | ------ | ---------------- | ------ |
@@ -10,4 +10,4 @@
 | Types | `src/types/` | DTOs aligned with Spring OpenAPI (maintain manually or generate) |
 | i18n | `messages/`, `next-intl` config | Locales for UI strings |
 
-**Security note:** Browser calls **product** paths with JWT (cookie or header per implementation); legacy paths may be used only for specific tooling.
+**Security note:** Browser calls **product** paths with JWT (cookie or header per implementation); non-product prefixes are not used by the shipped UI.

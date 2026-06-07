@@ -96,6 +96,24 @@ class OllamaApiClientTest {
         }
     }
 
+    @Test
+    void probeEmbeddingDetailed_usesModernEmbedEndpoint() throws Exception {
+        try (AutoCloseableServer s = serverWithEmbed(200, "{\"embeddings\":[[0.1,0.2]]}")) {
+            OllamaApiClient client = new OllamaApiClient(s.baseUrl(), healthProps());
+            var result = client.probeEmbeddingDetailed("qwen3-embedding:latest", "ping", 5_000L);
+            assertTrue(result.ok());
+        }
+    }
+
+    @Test
+    void probeEmbeddingDetailed_fallsBackToLegacyEmbeddingsEndpoint() throws Exception {
+        try (AutoCloseableServer s = serverWithEmbedAndLegacy(200, "{\"embedding\":[0.1,0.2]}")) {
+            OllamaApiClient client = new OllamaApiClient(s.baseUrl(), healthProps());
+            var result = client.probeEmbeddingDetailed("e:latest", "ping", 5_000L);
+            assertTrue(result.ok());
+        }
+    }
+
     /** Small helper: tags + pull on same server. */
     private static final class AutoCloseableServer implements AutoCloseable {
         private final HttpServer server;
@@ -135,6 +153,39 @@ class OllamaApiClientTest {
             }
             ex.getRequestBody().readAllBytes();
             write(ex, status, body);
+        });
+        server.start();
+        return new AutoCloseableServer(server, "http://127.0.0.1:" + port);
+    }
+
+    private AutoCloseableServer serverWithEmbed(int status, String body) throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        int port = server.getAddress().getPort();
+        server.createContext("/api/embed", ex -> {
+            if (!"POST".equals(ex.getRequestMethod())) {
+                ex.sendResponseHeaders(405, -1);
+                ex.close();
+                return;
+            }
+            ex.getRequestBody().readAllBytes();
+            write(ex, status, body);
+        });
+        server.start();
+        return new AutoCloseableServer(server, "http://127.0.0.1:" + port);
+    }
+
+    private AutoCloseableServer serverWithEmbedAndLegacy(int legacyStatus, String legacyBody) throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        int port = server.getAddress().getPort();
+        server.createContext("/api/embed", ex -> write(ex, 404, "missing"));
+        server.createContext("/api/embeddings", ex -> {
+            if (!"POST".equals(ex.getRequestMethod())) {
+                ex.sendResponseHeaders(405, -1);
+                ex.close();
+                return;
+            }
+            ex.getRequestBody().readAllBytes();
+            write(ex, legacyStatus, legacyBody);
         });
         server.start();
         return new AutoCloseableServer(server, "http://127.0.0.1:" + port);

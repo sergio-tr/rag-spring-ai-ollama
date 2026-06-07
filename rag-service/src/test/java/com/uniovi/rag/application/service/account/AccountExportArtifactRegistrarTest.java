@@ -5,7 +5,7 @@ import com.uniovi.rag.infrastructure.persistence.AccountExportArtifactRepository
 import com.uniovi.rag.infrastructure.persistence.jpa.AccountExportArtifactEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
-import com.uniovi.rag.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Map;

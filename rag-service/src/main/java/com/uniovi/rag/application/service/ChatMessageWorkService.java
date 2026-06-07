@@ -4,10 +4,14 @@ import com.uniovi.rag.domain.MessageProcessingStatus;
 import com.uniovi.rag.domain.MessageRole;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.MessageRepository;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.interfaces.rest.support.UserFacingErrorSanitizer;
+import com.uniovi.rag.application.result.chat.ChatSource;
+import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
 import io.micrometer.tracing.Tracer;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,14 +33,17 @@ public class ChatMessageWorkService {
     private final MessageRepository messageRepository;
     private final ConversationRepository conversationRepository;
     private final Tracer tracer;
+    private final ObjectProvider<RuntimeObservability> runtimeObservability;
 
     public ChatMessageWorkService(
             MessageRepository messageRepository,
             ConversationRepository conversationRepository,
-            @Autowired(required = false) Tracer tracer) {
+            @Autowired(required = false) Tracer tracer,
+            ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
         this.tracer = tracer;
+        this.runtimeObservability = runtimeObservability;
     }
 
     @Transactional
@@ -51,15 +58,40 @@ public class ChatMessageWorkService {
             UUID assistantMessageId,
             UUID conversationId,
             String answer,
-            List<Map<String, Object>> sources,
+            List<ChatSource> sources,
             String queryType,
             String traceId,
             List<Map<String, Object>> pipelineSteps,
             String llmModel,
             Duration duration) {
+        applyAssistantSuccess(
+                assistantMessageId,
+                conversationId,
+                answer,
+                sources,
+                queryType,
+                traceId,
+                pipelineSteps,
+                llmModel,
+                duration,
+                Map.of());
+    }
+
+    @Transactional
+    public void applyAssistantSuccess(
+            UUID assistantMessageId,
+            UUID conversationId,
+            String answer,
+            List<ChatSource> sources,
+            String queryType,
+            String traceId,
+            List<Map<String, Object>> pipelineSteps,
+            String llmModel,
+            Duration duration,
+            Map<String, Object> chatTelemetry) {
         MessageEntity m = messageRepository.findById(assistantMessageId).orElseThrow();
         m.setContent(answer != null ? answer : "");
-        m.setSources(sources);
+        m.setSources(ChatSourceMapper.toPersistedMapsFromInternal(sources));
         m.setQueryType(queryType);
         m.setTraceId(traceId);
         m.setPipelineSteps(pipelineSteps);
@@ -70,8 +102,18 @@ public class ChatMessageWorkService {
         }
         meta.put("durationMs", duration != null ? duration.toMillis() : null);
         meta.put("documentCount", sources != null ? sources.size() : 0);
+        if (chatTelemetry != null && !chatTelemetry.isEmpty()) {
+            meta.putAll(chatTelemetry);
+        }
         m.setExecutionMetadata(meta);
         messageRepository.save(m);
+        RuntimeObservability obs = runtimeObservability.getIfAvailable();
+        if (obs != null) {
+            obs.chatPersist(
+                    assistantMessageId,
+                    sources != null ? sources.size() : 0,
+                    duration != null ? duration.toMillis() : 0L);
+        }
         touchConversation(conversationId);
     }
 

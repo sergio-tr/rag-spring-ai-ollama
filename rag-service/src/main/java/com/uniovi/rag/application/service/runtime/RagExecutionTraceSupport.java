@@ -16,6 +16,8 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -75,6 +77,7 @@ public final class RagExecutionTraceSupport {
 			List<ExecutionStageTrace> clarificationStagesBeforeQu,
 			List<ExecutionStageTrace> memoryStagesBeforeQu,
 			List<ExecutionStageTrace> quStages,
+			List<ExecutionStageTrace> reasoningStages,
 			List<ExecutionStageTrace> clarificationStagesAfterQu,
 			List<ExecutionStageTrace> routingStages,
 			List<ExecutionStageTrace> toolStages,
@@ -92,6 +95,7 @@ public final class RagExecutionTraceSupport {
 		all.addAll(clarificationStagesBeforeQu);
 		all.addAll(memoryStagesBeforeQu);
 		all.addAll(quStages);
+		all.addAll(reasoningStages);
 		all.addAll(clarificationStagesAfterQu);
 		all.addAll(routingStages);
 		all.addAll(toolStages);
@@ -105,6 +109,18 @@ public final class RagExecutionTraceSupport {
 		String toolDetail = buildToolDetail(toolResult);
 		boolean pendingConsumed = ctx.pendingClarificationLoadedForTrace();
 		boolean questionAsked = clarificationDecision.ask();
+
+		String originalQuery = ctx.userQuery() != null ? ctx.userQuery() : "";
+		String retrievalQuery = qp != null ? safe(qp.rewrittenQueryText()) : "";
+		String packedPreview = extractPackedContextPreview(all);
+		List<String> retrievedDocumentNames = extractRetrievedDocumentNames(partial.responseSources());
+		int sourceCount = partial.responseSources() != null ? partial.responseSources().size() : 0;
+		ParsedRuntimeAnswerMeta meta = ParsedRuntimeAnswerMeta.fromWorkflowStages(partial.workflowStageTraces());
+		String answerPolicy = meta.policy() != null ? meta.policy() : "";
+		int promptContextChars =
+				meta.contextChars() >= 0 ? meta.contextChars() : packedPreview.length();
+		boolean abstentionTriggered = meta.present() && meta.abstention();
+		String abstentionReason = meta.reason() != null ? meta.reason() : "";
 		return new ExecutionTrace(
 				List.copyOf(all),
 				workflowName,
@@ -157,7 +173,132 @@ public final class RagExecutionTraceSupport {
 				true,
 				clarificationDecision.terminalOutcome().name(),
 				pendingConsumed,
-				questionAsked);
+				questionAsked,
+				originalQuery,
+				retrievalQuery,
+				packedPreview,
+				meta.sourceCount() >= 0 ? meta.sourceCount() : sourceCount,
+				retrievedDocumentNames,
+				answerPolicy,
+				promptContextChars,
+				abstentionTriggered,
+				abstentionReason);
+	}
+
+	private record ParsedRuntimeAnswerMeta(
+			boolean present,
+			String policy,
+			int contextChars,
+			int sourceCount,
+			boolean abstention,
+			String reason) {
+
+		static ParsedRuntimeAnswerMeta fromWorkflowStages(List<ExecutionStageTrace> workflowStages) {
+			if (workflowStages == null || workflowStages.isEmpty()) {
+				return new ParsedRuntimeAnswerMeta(false, "", -1, -1, false, "");
+			}
+			for (ExecutionStageTrace st : workflowStages) {
+				if (st != null && "runtime_answer_meta".equals(st.stageName())) {
+					return parseMessage(st.message());
+				}
+			}
+			return new ParsedRuntimeAnswerMeta(false, "", -1, -1, false, "");
+		}
+
+		static ParsedRuntimeAnswerMeta parseMessage(String msg) {
+			if (msg == null || msg.isBlank()) {
+				return new ParsedRuntimeAnswerMeta(true, "", -1, -1, false, "");
+			}
+			String policy = tokenAfter(msg, "policy=");
+			int cc = positiveIntOr(tokenAfter(msg, "contextChars="), -1);
+			int sc = positiveIntOr(tokenAfter(msg, "sourceCount="), -1);
+			String abstRaw = tokenAfter(msg, "abstention=");
+			boolean abstention = "true".equalsIgnoreCase(abstRaw);
+			int ri = msg.indexOf("reason=");
+			String reason = ri >= 0 ? msg.substring(ri + "reason=".length()).trim() : "";
+			return new ParsedRuntimeAnswerMeta(true, policy, cc, sc, abstention, reason);
+		}
+
+		private static String tokenAfter(String msg, String key) {
+			int i = msg.indexOf(key);
+			if (i < 0) {
+				return "";
+			}
+			int start = i + key.length();
+			int sp = msg.indexOf(' ', start);
+			int nextKey = nextMetaKey(msg, start);
+			int end = msg.length();
+			if (sp >= 0 && sp < end) {
+				end = Math.min(end, sp);
+			}
+			if (nextKey >= 0 && nextKey < end) {
+				end = Math.min(end, nextKey);
+			}
+			return msg.substring(start, end).trim();
+		}
+
+		private static int nextMetaKey(String msg, int from) {
+			int best = -1;
+			for (String k : List.of("policy=", "contextChars=", "sourceCount=", "abstention=", "reason=")) {
+				int idx = msg.indexOf(k, from + 1);
+				if (idx >= 0 && (best < 0 || idx < best)) {
+					best = idx;
+				}
+			}
+			return best;
+		}
+
+		private static int positiveIntOr(String raw, int dflt) {
+			if (raw == null || raw.isBlank()) {
+				return dflt;
+			}
+			try {
+				return Integer.parseInt(raw.trim());
+			} catch (NumberFormatException e) {
+				return dflt;
+			}
+		}
+	}
+
+	private static String extractPackedContextPreview(List<ExecutionStageTrace> stages) {
+		if (stages == null || stages.isEmpty()) {
+			return "";
+		}
+		for (ExecutionStageTrace st : stages) {
+			if (st == null) {
+				continue;
+			}
+			if (!"packed_context_preview".equals(st.stageName())) {
+				continue;
+			}
+			String msg = st.message();
+			if (msg == null) {
+				return "";
+			}
+			int idx = msg.indexOf("preview=");
+			if (idx < 0) {
+				return msg.trim();
+			}
+			return msg.substring(idx + "preview=".length()).trim();
+		}
+		return "";
+	}
+
+	private static List<String> extractRetrievedDocumentNames(List<Map<String, Object>> sources) {
+		if (sources == null || sources.isEmpty()) {
+			return List.of();
+		}
+		return sources.stream()
+				.filter(m -> m != null && m.get("filename") != null)
+				.map(m -> String.valueOf(m.get("filename")).trim())
+				.filter(s -> !s.isBlank())
+				.distinct()
+				.limit(16)
+				.toList();
+	}
+
+	private static String safe(String s) {
+		return s == null ? "" : s;
 	}
 
 	public static String buildToolDetail(DeterministicToolExecutionResult toolResult) {

@@ -16,8 +16,8 @@ on:
         options:
           - simulations.ActuatorHealthSimulation
           - simulations.ActuatorThroughputTiersSimulation
-          - simulations.LegacyQueryLoadSimulation
-          - simulations.LegacyQuerySpikeSimulation
+          - simulations.MixedRealisticLoadSimulation
+          - simulations.MixedRealisticSpikeSimulation
           - simulations.ProductAuthenticatedSimulation
           - simulations.ProductUnauthenticatedSimulation
           - simulations.AuthLoginNegativeSimulation
@@ -94,7 +94,7 @@ jobs:
         working-directory: tests/gatling
         env:
           GATLING_BASE_URL: ${{ steps.cfg.outputs.base }}
-          GATLING_LEGACY_PREFIX: ${{ vars.GATLING_LEGACY_PREFIX }}
+          GATLING_HISTORICAL_QUERY_PREFIX: ${{ vars.GATLING_HISTORICAL_QUERY_PREFIX }}
           GATLING_PRODUCT_PREFIX: ${{ vars.GATLING_PRODUCT_PREFIX }}
           GATLING_LOGIN_EMAIL: ${{ vars.GATLING_LOGIN_EMAIL }}
           GATLING_LOGIN_PASSWORD: ${{ vars.GATLING_LOGIN_PASSWORD }}

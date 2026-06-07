@@ -55,7 +55,7 @@ sum by (status) (rate(rag_classifier_calls_total{job="backend"}[5m]))
 histogram_quantile(0.95, sum by (le) (rate(rag_query_generate_seconds_bucket{job="backend"}[5m])))
 ```
 
-## Sample evidence to attach (thesis / PR)
+## Sample evidence to attach
 
 - One **Jaeger** screenshot or trace ID string showing `rag-backend` + `classifier-service` + `rag.documents.search`.  
 - One **Grafana** screenshot of RAG Overview with non-empty classifier and retrieval panels.  

@@ -138,6 +138,45 @@ describe("useTraceStore", () => {
     expect(useTraceStore.getState().events[0]?.metadata).toEqual({ code: "200", correlationId: "abc" });
   });
 
+  it("generates trace ids via getRandomValues when randomUUID is unavailable", () => {
+    const cryptoObj = globalThis.crypto;
+    const getRandomValues = vi
+      .fn()
+      .mockImplementation((arr: Uint8Array) => {
+        arr.fill(7);
+        return arr;
+      });
+    Object.defineProperty(globalThis, "crypto", {
+      configurable: true,
+      value: { getRandomValues },
+    });
+    try {
+      const id = useTraceStore.getState().addTraceEvent({
+        section: "global",
+        action: "rng",
+        message: "m",
+        status: "info",
+      });
+      expect(id.startsWith("trace-")).toBe(true);
+      expect(getRandomValues).toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(globalThis, "crypto", { configurable: true, value: cryptoObj });
+    }
+  });
+
+  it("updateTraceEvent can patch message only without touching status", () => {
+    const id = useTraceStore.getState().addTraceEvent({
+      section: "lab",
+      action: "run",
+      message: "queued",
+      status: "in_progress",
+    });
+    expect(useTraceStore.getState().updateTraceEvent(id, { message: "running" })).toBe(true);
+    const ev = useTraceStore.getState().events.find((e) => e.id === id);
+    expect(ev?.message).toBe("running");
+    expect(ev?.status).toBe("in_progress");
+  });
+
   it("covers representative sections and statuses through typings", () => {
     const matrix: ReadonlyArray<{ section: TraceSection; status: TraceStatus }> = [
       { section: "projects", status: "info" },

@@ -1,6 +1,6 @@
 package com.uniovi.rag.infrastructure.observability;
 
-import com.uniovi.rag.service.query.ResponseValidator;
+import com.uniovi.rag.application.service.runtime.validation.ResponseValidator;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.test.simple.SimpleTracer;
 import org.junit.jupiter.api.BeforeEach;

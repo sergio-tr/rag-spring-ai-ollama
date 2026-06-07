@@ -121,6 +121,11 @@ class OpenApiJsonExportIntegrationTest {
         assertPublicAuthOperation(paths, "/api/v5/auth/oauth/google/start", "get");
         assertPublicAuthOperation(paths, "/api/v5/auth/oauth/google/callback", "get");
         assertPublicAuthOperation(paths, "/api/v5/auth/oauth/exchange", "post");
+
+        assertTrue(!paths.has("/api/auth/login"), "OpenAPI must not expose unprefixed /api/auth/* backend mirror");
+        assertTrue(!paths.has("/api/admin/health"), "OpenAPI must not expose unprefixed /api/admin/* backend mirror");
+        assertTrue(!paths.has("/api/v5/lab/evaluations/llm"), "OpenAPI must not expose removed /lab/evaluations/* routes");
+        assertTrue(!paths.has("/api/v5/lab/evaluations/rag"), "OpenAPI must not expose removed /lab/evaluations/* routes");
     }
 
     private static void assertPublicAuthOperation(JsonNode paths, String path, String method) {

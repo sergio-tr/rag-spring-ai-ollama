@@ -1,8 +1,8 @@
 package com.uniovi.rag.infrastructure.persistence;
 
 import com.uniovi.rag.infrastructure.persistence.impl.MinuteDocumentRepositoryImpl;
-import com.uniovi.rag.service.document.MetadataMinuteDocumentService;
-import com.uniovi.rag.service.document.SimpleDocumentService;
+import com.uniovi.rag.application.service.knowledge.document.MetadataMinuteDocumentService;
+import com.uniovi.rag.application.service.knowledge.document.SimpleDocumentService;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;

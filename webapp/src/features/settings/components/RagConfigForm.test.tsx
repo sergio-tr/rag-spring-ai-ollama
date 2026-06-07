@@ -147,7 +147,7 @@ describe("RagConfigForm", () => {
     expect(screen.getByText(/no configurable fields/i)).toBeInTheDocument();
   });
 
-  it("shows product-oriented project description without legacy HTTP copy in the card body", async () => {
+  it("shows product-oriented project description without removed HTTP copy in the card body", async () => {
     mockSchemaState.data = { fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }] };
     mockProjectState.data = { topK: 3 };
     render(
@@ -160,7 +160,7 @@ describe("RagConfigForm", () => {
     expect(screen.getByText(/These values apply only while this project is selected/i)).toBeInTheDocument();
   });
 
-  it("surfaces REST paths only inside the optional technical reference section", async () => {
+  it("shows human technical reference copy without REST path literals", async () => {
     mockSchemaState.data = { fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }] };
     mockProjectState.data = { topK: 3 };
     const user = userEvent.setup();
@@ -171,7 +171,9 @@ describe("RagConfigForm", () => {
     );
     await waitFor(() => expect(screen.getByText(/Technical reference/i)).toBeInTheDocument());
     await user.click(screen.getByText(/Technical reference \(API\)/i));
-    expect(screen.getByText(/\/config\/project\/proj-77/)).toBeInTheDocument();
+    expect(screen.getByText(/obtained from the project configuration/i)).toBeInTheDocument();
+    expect(screen.queryByText(/\/config\/project\//)).not.toBeInTheDocument();
+    expect(screen.queryByText(/GET \/config/i)).not.toBeInTheDocument();
   });
 
   it("confirms before clearing project overrides and preserves DELETE semantics", async () => {

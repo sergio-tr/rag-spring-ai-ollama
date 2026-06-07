@@ -17,28 +17,26 @@ import com.uniovi.rag.infrastructure.observability.TracedReasoningStrategy;
 import com.uniovi.rag.infrastructure.observability.TracedResponseRanker;
 import com.uniovi.rag.infrastructure.observability.TracedResponseValidator;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
-import com.uniovi.rag.service.analyser.MinuteNERQueryAnalyser;
-import com.uniovi.rag.service.analyser.NERQueryEnricher;
-import com.uniovi.rag.service.analyser.NoOpQueryAnalyser;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
-import com.uniovi.rag.service.expand.MinuteDocumentStructureExpander;
-import com.uniovi.rag.service.expand.QueryExpander;
-import com.uniovi.rag.service.guard.DateExistenceGuard;
-import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
-import com.uniovi.rag.service.guard.QueryDateExtractor;
-import com.uniovi.rag.service.query.LLMResponseValidatorService;
+import com.uniovi.rag.application.service.runtime.query.analyser.MinuteNERQueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.analyser.NERQueryEnricher;
+import com.uniovi.rag.application.service.runtime.query.analyser.NoOpQueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.expand.MinuteDocumentStructureExpander;
+import com.uniovi.rag.application.service.runtime.query.expand.QueryExpander;
+import com.uniovi.rag.application.service.runtime.query.guard.DateExistenceGuard;
+import com.uniovi.rag.application.service.runtime.query.guard.DefaultDateExistenceGuard;
+import com.uniovi.rag.application.service.runtime.query.guard.QueryDateExtractor;
+import com.uniovi.rag.application.service.runtime.execution.QueryExecutionService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.application.service.runtime.validation.LlmResponseValidatorService;
+import com.uniovi.rag.application.service.runtime.validation.ResponseValidator;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
-import com.uniovi.rag.service.query.ProcessQueryService;
-import com.uniovi.rag.service.query.QueryService;
-import com.uniovi.rag.service.query.ResponseValidator;
-import com.uniovi.rag.service.query.SimpleProcessQueryService;
-import com.uniovi.rag.service.query.SimpleQueryService;
-import com.uniovi.rag.service.ranker.FaithfulnessRanker;
-import com.uniovi.rag.service.ranker.LLMAsJudgeRanker;
-import com.uniovi.rag.service.ranker.ResponseRanker;
-import com.uniovi.rag.service.reasoning.ReasoningStrategy;
-import com.uniovi.rag.service.reasoning.SelectingReasoningStrategy;
-import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.ranking.FaithfulnessRanker;
+import com.uniovi.rag.application.service.runtime.ranking.LLMAsJudgeRanker;
+import com.uniovi.rag.application.service.runtime.ranking.ResponseRanker;
+import com.uniovi.rag.application.service.runtime.reasoning.ReasoningStrategy;
+import com.uniovi.rag.application.service.runtime.reasoning.SelectingReasoningStrategy;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -55,7 +53,9 @@ import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.cache.interceptor.KeyGenerator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.lang.Nullable;
 
 @Configuration
 public class RagQueryConfiguration {
@@ -81,7 +81,7 @@ public class RagQueryConfiguration {
     public ResponseValidator responseValidator(
             @Autowired(required = false) ObservabilitySupport observability
     ) {
-        ResponseValidator raw = new LLMResponseValidatorService();
+        ResponseValidator raw = new LlmResponseValidatorService();
         if (observability != null) {
             return new TracedResponseValidator(raw, observability);
         }
@@ -150,8 +150,9 @@ public class RagQueryConfiguration {
     }
 
     /**
-     * Shared {@link RestTemplate} for classifier HTTP calls. Built via {@link RestTemplateBuilder} so
-     * Micrometer tracing injects W3C propagation on outbound requests (profile {@code infra}).
+     * Shared {@link RestTemplate} for classifier HTTP calls. Uses {@link SimpleClientHttpRequestFactory}
+     * (HTTP/1.1) so uvicorn receives plain POST JSON — not JDK HttpClient HTTP/2 upgrade attempts.
+     * Micrometer tracing still applies via {@link RestTemplateBuilder}.
      */
     @Bean(name = "classifierRestTemplate")
     public RestTemplate classifierRestTemplate(
@@ -159,8 +160,12 @@ public class RagQueryConfiguration {
             @Value("${rag.classifier.service.timeout-ms:5000}") int timeoutMs) {
         int t = timeoutMs > 0 ? timeoutMs : 5000;
         return restTemplateBuilder
-                .connectTimeout(Duration.ofMillis(t))
-                .readTimeout(Duration.ofMillis(t))
+                .requestFactory(() -> {
+                    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+                    factory.setConnectTimeout(Duration.ofMillis(t));
+                    factory.setReadTimeout(Duration.ofMillis(t));
+                    return factory;
+                })
                 .build();
     }
 
@@ -186,12 +191,20 @@ public class RagQueryConfiguration {
 
     @Bean
     public QueryAnalyser queryAnalyser(
-            ChatClient chatClient,
+            @Nullable ChatClient chatClient,
             RagImplementationProperties implProps,
             @Autowired(required = false) ObservabilitySupport observability
     ) {
         String impl = implProps.getAnalyserImpl() != null ? implProps.getAnalyserImpl().trim().toLowerCase() : "minute-ner";
-        QueryAnalyser raw = "no-op".equals(impl) ? new NoOpQueryAnalyser() : new MinuteNERQueryAnalyser(chatClient);
+        QueryAnalyser raw;
+        if ("no-op".equals(impl)) {
+            raw = new NoOpQueryAnalyser();
+        } else if (chatClient == null) {
+            // Degrade gracefully when Spring AI chat client is not configured.
+            raw = new NoOpQueryAnalyser();
+        } else {
+            raw = new MinuteNERQueryAnalyser(chatClient);
+        }
         if (observability != null) {
             return new TracedQueryAnalyser(raw, observability);
         }
@@ -245,43 +258,22 @@ public class RagQueryConfiguration {
     }
 
     @Bean
-    public QueryService queryService(
-            QueryExpander expander,
-            QueryAnalyser analyser,
-            ContextRetriever retriever,
+    public QueryExecutionService queryService(
             ChatClient chatClient,
             OllamaConnectivityChecker ollamaConnectivityChecker,
             ExecutionContextFactory executionContextFactory,
             RagExecutionOrchestrator ragExecutionOrchestrator,
             RuntimeTracePersistenceService runtimeTracePersistenceService,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
-            RagImplementationProperties implProps,
-            @Autowired(required = false) ObservabilitySupport observability
-    ) {
-        String impl = implProps.getQueryServiceImpl() != null ? implProps.getQueryServiceImpl().trim().toLowerCase() : "process";
-        QueryService raw;
-        switch (impl) {
-            case "simple":
-                raw = new SimpleQueryService(expander, analyser, retriever, chatClient, ollamaConnectivityChecker);
-                break;
-            case "simple-process":
-                raw =
-                        new SimpleProcessQueryService(
-                                executionContextFactory,
-                                ragExecutionOrchestrator,
-                                runtimeTracePersistenceService,
-                                ollamaConnectivityChecker);
-                break;
-            default:
-                raw = new ProcessQueryService(
+            @Autowired(required = false) ObservabilitySupport observability) {
+        QueryExecutionService raw =
+                new RuntimeQueryExecutionService(
                         executionContextFactory,
                         ragExecutionOrchestrator,
                         runtimeTracePersistenceService,
                         chatClient,
                         ollamaConnectivityChecker,
                         knowledgeDocumentRepository);
-                break;
-        }
         if (observability != null) {
             return new TracedQueryService(raw, observability);
         }

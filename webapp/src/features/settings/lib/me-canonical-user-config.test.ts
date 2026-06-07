@@ -26,12 +26,12 @@ describe("me-canonical-user-config", () => {
   describe("buildPreferencesPutPayload", () => {
     it("preserves keys outside structured locale", () => {
       const payload = buildPreferencesPutPayload(
-        { locale: "en", legacyTheme: "dark", nested: { a: 1 } },
+        { locale: "en", obsoleteTheme: "dark", nested: { a: 1 } },
         { locale: "es" },
       );
       expect(payload).toEqual({
         locale: "es",
-        legacyTheme: "dark",
+        obsoleteTheme: "dark",
         nested: { a: 1 },
       });
     });

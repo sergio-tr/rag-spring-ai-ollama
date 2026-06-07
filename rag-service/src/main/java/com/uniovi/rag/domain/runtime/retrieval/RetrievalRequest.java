@@ -24,7 +24,9 @@ public record RetrievalRequest(
         UUID projectId,
         Optional<String> conversationId,
         List<String> documentAllowlist,
-        boolean documentAllowlistIsAll) {
+        boolean documentAllowlistIsAll,
+        /** Ollama embedding tag from the active snapshot profile; selects the {@code PgVectorStore} for query embedding. */
+        Optional<String> denseRetrievalEmbeddingModelId) {
 
     public RetrievalRequest {
         Objects.requireNonNull(queryText, "queryText");
@@ -36,5 +38,7 @@ public record RetrievalRequest(
         snapshotIds = List.copyOf(Objects.requireNonNull(snapshotIds, "snapshotIds"));
         conversationId = Objects.requireNonNullElseGet(conversationId, Optional::empty);
         documentAllowlist = List.copyOf(Objects.requireNonNull(documentAllowlist, "documentAllowlist"));
+        denseRetrievalEmbeddingModelId =
+                Objects.requireNonNullElseGet(denseRetrievalEmbeddingModelId, Optional::empty);
     }
 }

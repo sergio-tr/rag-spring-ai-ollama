@@ -1,6 +1,7 @@
 package com.uniovi.rag.infrastructure.persistence.jpa;
 
 import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
+import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -13,8 +14,11 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -31,6 +35,13 @@ public class KnowledgeIndexSnapshotEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "scope_type", nullable = false, length = 32)
     private KnowledgeSnapshotScopeType scopeType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "owner_type", length = 32)
+    private KnowledgeSnapshotOwnerType ownerType;
+
+    @Column(name = "owner_id")
+    private UUID ownerId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id")
@@ -49,6 +60,16 @@ public class KnowledgeIndexSnapshotEntity {
 
     @Column(name = "resolved_config_hash", length = 128)
     private String resolvedConfigHash;
+
+    @Column(name = "index_profile_jsonb", nullable = false, columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private Map<String, Object> indexProfileJsonb;
+
+    @Column(name = "index_profile_hash", length = 128)
+    private String indexProfileHash;
+
+    @Column(name = "embedding_dimensions")
+    private Integer embeddingDimensions;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -78,6 +99,22 @@ public class KnowledgeIndexSnapshotEntity {
 
     public void setScopeType(KnowledgeSnapshotScopeType scopeType) {
         this.scopeType = scopeType;
+    }
+
+    public KnowledgeSnapshotOwnerType getOwnerType() {
+        return ownerType;
+    }
+
+    public void setOwnerType(KnowledgeSnapshotOwnerType ownerType) {
+        this.ownerType = ownerType;
+    }
+
+    public UUID getOwnerId() {
+        return ownerId;
+    }
+
+    public void setOwnerId(UUID ownerId) {
+        this.ownerId = ownerId;
     }
 
     public ProjectEntity getProject() {
@@ -118,6 +155,30 @@ public class KnowledgeIndexSnapshotEntity {
 
     public void setResolvedConfigHash(String resolvedConfigHash) {
         this.resolvedConfigHash = resolvedConfigHash;
+    }
+
+    public Map<String, Object> getIndexProfileJsonb() {
+        return indexProfileJsonb;
+    }
+
+    public void setIndexProfileJsonb(Map<String, Object> indexProfileJsonb) {
+        this.indexProfileJsonb = indexProfileJsonb;
+    }
+
+    public String getIndexProfileHash() {
+        return indexProfileHash;
+    }
+
+    public void setIndexProfileHash(String indexProfileHash) {
+        this.indexProfileHash = indexProfileHash;
+    }
+
+    public Integer getEmbeddingDimensions() {
+        return embeddingDimensions;
+    }
+
+    public void setEmbeddingDimensions(Integer embeddingDimensions) {
+        this.embeddingDimensions = embeddingDimensions;
     }
 
     public Instant getCreatedAt() {

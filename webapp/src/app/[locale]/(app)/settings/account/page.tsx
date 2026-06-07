@@ -1,8 +1,10 @@
 "use client";
 
 import { AccountExportPanel } from "@/features/settings/components/AccountExportPanel";
+import { clearSessionCookie } from "@/features/auth/lib/session-client";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -14,34 +16,85 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
-import type { AccountJobAcceptedDto } from "@/types/api";
+import { pollAccountJob } from "@/lib/async-task";
+import type { AccountJobAcceptedDto, AuthUser } from "@/types/api";
+
+const DELETE_LITERAL = "DELETE_ACCOUNT_AND_ALL_DATA";
+const DELETE_POLL_MAX_MS = 180_000;
 
 export default function SettingsAccountPage() {
   const t = useTranslations("Settings");
+  const router = useRouter();
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleteEmail, setDeleteEmail] = useState("");
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [deleteStatus, setDeleteStatus] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
-  async function runDeletion() {
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const me = await apiFetch<AuthUser>(apiProductPath("/auth/me"));
+        if (!cancelled) {
+          setSessionEmail(me.email);
+        }
+      } catch {
+        if (!cancelled) {
+          setSessionEmail(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const confirmValid = deleteConfirm === DELETE_LITERAL;
+  const emailValid =
+    sessionEmail != null &&
+    deleteEmail.trim().toLowerCase() === sessionEmail.trim().toLowerCase();
+  const canDelete = confirmValid && emailValid && !deleteBusy;
+
+  const runDeletion = useCallback(async () => {
+    if (!canDelete) {
+      return;
+    }
     setDeleteBusy(true);
     setDeleteStatus(null);
     try {
-      await apiFetch<AccountJobAcceptedDto>(apiProductPath("/me/account/deletion"), {
+      const accepted = await apiFetch<AccountJobAcceptedDto>(apiProductPath("/me/account/deletion"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          confirm: "DELETE_ACCOUNT_AND_ALL_DATA",
+          confirm: DELETE_LITERAL,
           email: deleteEmail.trim(),
         }),
       });
-      setDeleteStatus(t("accountDeletionQueued"));
+      setDeleteStatus(t("accountDeletionPolling"));
+      const terminal = await pollAccountJob(accepted.jobId, () => undefined, {
+        maxWaitMs: DELETE_POLL_MAX_MS,
+      });
+      if (terminal.status === "SUCCEEDED") {
+        await clearSessionCookie();
+        setDeleteStatus(t("accountDeletionSucceeded"));
+        router.replace("/login");
+        return;
+      }
+      setDeleteStatus(terminal.errorMessage ?? t("accountDeletionError"));
     } catch (e) {
       setDeleteStatus(e instanceof Error ? e.message : t("accountDeletionError"));
     } finally {
       setDeleteBusy(false);
     }
-  }
+  }, [canDelete, deleteEmail, router, t]);
+
+  const deleteHint = useMemo(() => {
+    if (!confirmValid || !emailValid) {
+      return t("accountDeletionConfirmHint");
+    }
+    return null;
+  }, [confirmValid, emailValid, t]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -69,14 +122,16 @@ export default function SettingsAccountPage() {
               id="del-confirm"
               value={deleteConfirm}
               onChange={(e) => setDeleteConfirm(e.target.value)}
-              placeholder="DELETE_ACCOUNT_AND_ALL_DATA"
+              placeholder={DELETE_LITERAL}
             />
           </div>
+          {deleteHint && <p className="text-muted-foreground text-sm">{deleteHint}</p>}
           <Button
             type="button"
             variant="destructive"
+            data-testid="account-delete-request"
             onClick={() => void runDeletion()}
-            disabled={deleteBusy}
+            disabled={!canDelete}
           >
             {deleteBusy ? t("accountDeletionRunning") : t("accountDeletionCta")}
           </Button>

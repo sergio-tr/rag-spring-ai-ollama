@@ -13,6 +13,7 @@ describe("optimisticConsumed", () => {
       {
         id: "1",
         role: "USER",
+        seq: 1,
         content: "  hello  ",
         createdAt: "",
         sources: null,
@@ -28,6 +29,7 @@ describe("optimisticConsumed", () => {
       {
         id: "1",
         role: "ASSISTANT",
+        seq: 2,
         content: "hello",
         createdAt: "",
         sources: null,

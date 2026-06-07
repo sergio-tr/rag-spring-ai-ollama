@@ -31,7 +31,7 @@
 
 | Threat | Mitigation used | Residual risk |
 | --- | --- | --- |
-| **Dataset bias** (minutes-only, language) | Manifest + domain notes in pilot sheet | External validity limited — state clearly in thesis. |
+| **Dataset bias** (minutes-only, language) | Manifest + domain notes in pilot sheet | External validity limited — state clearly in external write-ups. |
 | **Non-reproducibility** (Ollama, temperature) | Freeze model tags; `N≥3` if stochastic | Residual variance — report spread. |
 | **Concurrent engineering change** | SHA freeze + wave ids | Low if protocol followed; high if hotfixes unlogged. |
 | **Metric mismatch** | Lab for quality; micro-benchmark for latency only | Low if tables never mix roles. |
@@ -59,7 +59,7 @@
 
 ---
 
-## 6. Failure conditions (thesis review)
+## 6. Failure conditions (formal review)
 
 Per plan — declare failure and revise before strong claims if:
 

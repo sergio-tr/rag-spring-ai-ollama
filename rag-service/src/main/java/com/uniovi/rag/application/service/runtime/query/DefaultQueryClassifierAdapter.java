@@ -4,10 +4,17 @@ import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.infrastructure.classifier.ClassifierCallException;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
-import com.uniovi.rag.service.query.pipeline.ClassifierOverrides;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
+import com.uniovi.rag.infrastructure.observability.TelemetryRedaction;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -21,9 +28,16 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
     public static final String DEFAULT_MODEL_ID = "default";
 
     private final QueryClassifier classifier;
+    private final ObjectProvider<RuntimeObservability> runtimeObservability;
+    private final Tracer tracer;
 
-    public DefaultQueryClassifierAdapter(QueryClassifier classifier) {
+    public DefaultQueryClassifierAdapter(
+            QueryClassifier classifier,
+            ObjectProvider<RuntimeObservability> runtimeObservability,
+            ObjectProvider<Tracer> tracer) {
         this.classifier = classifier;
+        this.runtimeObservability = runtimeObservability;
+        this.tracer = tracer.getIfAvailable();
     }
 
     @Override
@@ -31,28 +45,67 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
         RagConfig rag = ctx.resolved().toRagConfig();
         String modelIdUsed = resolveClassifierModelIdUsed(rag);
         if (!rag.toolsEnabled()) {
-            return new ClassifierOutcome(UNCLASSIFIED, Optional.empty(), ClassifierStatus.DISABLED, modelIdUsed, "DISABLED");
+            ClassifierOutcome disabled =
+                    new ClassifierOutcome(UNCLASSIFIED, Optional.empty(), ClassifierStatus.DISABLED, modelIdUsed, "DISABLED");
+            tagClassifierSpan(disabled);
+            return disabled;
         }
         try {
-            QueryType out = classifier.classify(normalizedText);
+            QueryType out = classifier.classify(normalizedText, modelIdUsed);
             out = ClassifierOverrides.apply(normalizedText, out);
             if (out == null) {
                 log.debug(
                         "query_classifier_recoverable correlationId={} status=INVALID_OUTPUT modelId={}",
                         ctx.correlationId(),
                         modelIdUsed);
-                return new ClassifierOutcome(UNCLASSIFIED, Optional.empty(), ClassifierStatus.INVALID_OUTPUT, modelIdUsed, "INVALID_OUTPUT");
+                RuntimeObservability obs = runtimeObservability.getIfAvailable();
+                if (obs != null) {
+                    obs.classifierInvalidOutput();
+                }
+                ClassifierOutcome invalid =
+                        new ClassifierOutcome(UNCLASSIFIED, Optional.empty(), ClassifierStatus.INVALID_OUTPUT, modelIdUsed, "INVALID_OUTPUT");
+                tagClassifierSpan(invalid);
+                return invalid;
             }
-            return new ClassifierOutcome(out.name(), Optional.of(out), ClassifierStatus.OK, modelIdUsed, "OK");
+            ClassifierOutcome ok = new ClassifierOutcome(out.name(), Optional.of(out), ClassifierStatus.OK, modelIdUsed, "OK");
+            tagClassifierSpan(ok);
+            return ok;
+        } catch (ClassifierCallException e) {
+            ClassifierOutcome recoverable = mapClassifierFailure(ctx, modelIdUsed, e);
+            tagClassifierSpan(recoverable);
+            return recoverable;
         } catch (Exception e) {
             log.debug(
                     "query_classifier_recoverable correlationId={} status=UNAVAILABLE modelId={} detail={}",
                     ctx.correlationId(),
                     modelIdUsed,
                     safeMsg(e));
-            return new ClassifierOutcome(UNCLASSIFIED, Optional.empty(), ClassifierStatus.UNAVAILABLE, modelIdUsed,
-                    "UNAVAILABLE: " + safeMsg(e));
+            ClassifierOutcome unavailable =
+                    new ClassifierOutcome(UNCLASSIFIED, Optional.empty(), ClassifierStatus.UNAVAILABLE, modelIdUsed,
+                            "UNAVAILABLE: " + safeMsg(e));
+            tagClassifierSpan(unavailable);
+            return unavailable;
         }
+    }
+
+    private void tagClassifierSpan(ClassifierOutcome outcome) {
+        if (tracer == null || outcome == null) {
+            return;
+        }
+        Span span = tracer.currentSpan();
+        if (span == null) {
+            return;
+        }
+        Map<String, String> tags = new LinkedHashMap<>();
+        tags.put("classifierModelId", outcome.classifierModelIdUsed());
+        tags.put("classifierStatus", outcome.classifierStatus().name());
+        if (outcome.note() != null && !outcome.note().isBlank()) {
+            tags.put("classifierFallbackReason", outcome.note());
+        }
+        if (outcome.classifierQueryType().isPresent()) {
+            tags.put("predictedQueryType", outcome.classifierQueryType().get().name());
+        }
+        TelemetryRedaction.safeAttributes(tags).forEach(span::tag);
     }
 
     private static String resolveClassifierModelIdUsed(RagConfig rag) {
@@ -61,6 +114,28 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
         }
         String v = rag.classifierModelId();
         return v == null || v.isBlank() ? DEFAULT_MODEL_ID : v.trim();
+    }
+
+    private ClassifierOutcome mapClassifierFailure(ExecutionContext ctx, String modelIdUsed, ClassifierCallException e) {
+        ClassifierStatus status =
+                switch (e.kind()) {
+                    case INVALID_OUTPUT -> ClassifierStatus.INVALID_OUTPUT;
+                    case INVALID_REQUEST -> ClassifierStatus.INVALID_REQUEST;
+                    case TIMEOUT -> ClassifierStatus.TIMEOUT;
+                    case UNAVAILABLE -> ClassifierStatus.UNAVAILABLE;
+                };
+        log.debug(
+                "query_classifier_recoverable correlationId={} status={} modelId={} httpStatus={}",
+                ctx.correlationId(),
+                status,
+                modelIdUsed,
+                e.httpStatus());
+        return new ClassifierOutcome(
+                UNCLASSIFIED,
+                Optional.empty(),
+                status,
+                modelIdUsed,
+                status.name() + ": classifier call failed");
     }
 
     private static String safeMsg(Exception e) {

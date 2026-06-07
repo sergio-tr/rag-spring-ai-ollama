@@ -24,6 +24,8 @@
         <xmlunit.version>2.11.0</xmlunit.version>
         <commons-lang3.version>3.20.0</commons-lang3.version>
         <flyway.version>10.21.0</flyway.version>
+        <!-- Root holds sonar-project.properties (Java + Python + TS); keep scanner base dir aligned with CI/local scripts. -->
+        <sonar.projectBaseDir>${project.basedir}/..</sonar.projectBaseDir>
     </properties>
 
     <dependencies>
@@ -309,6 +311,8 @@
                 <version>3.5.7</version>
             </plugin>
 
+            <!-- Reference bundle XLSX is shipped as a classpath resource under src/main/resources/evaluation/. -->
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
@@ -356,6 +360,13 @@
             </plugin>
 
             <!-- JaCoCo: code coverage for SonarCloud -->
+            <!-- SonarScanner for Maven: run from this directory after coverage inputs exist (see ../sonar-project.properties). -->
+            <plugin>
+                <groupId>org.sonarsource.scanner.maven</groupId>
+                <artifactId>sonar-maven-plugin</artifactId>
+                <version>5.1.0.4751</version>
+            </plugin>
+
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
@@ -388,31 +399,28 @@
                     <!-- Keep aligned with ../sonar-project.properties sonar.coverage.exclusions (same intent). -->
                     <!-- Heavy-package <excludes> below: per-pattern unit / WebMvc / IT exit contract and prerequisites -->
                     <!-- (docs/testing/rag-service-heavy-package-coverage-exit-contracts.md). -->
-                    <!-- Wave 6.03: removed legacy no-op patterns (no matching packages in main bytecode):
+                    <!-- Wave 6.03: removed obsolete no-op patterns (no matching packages in main bytecode):
                          com.uniovi.rag.model, com.uniovi.rag.exception, com.uniovi.rag.api.v5.dto, com.uniovi.rag.api.auth.dto. -->
                     <excludes>
                         <exclude>com/uniovi/Application.class</exclude>
                         <!-- Application orchestration: covered by WebMvc slices, integration tests, and focused unit tests -->
-                        <!-- ProcessQueryService / SimpleProcessQueryService: covered by ProcessQueryServiceTest + SimpleProcessQueryServiceTest (included in coverage) -->
+                        <!-- RuntimeQueryExecutionService: RuntimeQueryExecutionServiceTest (included in coverage) -->
                         <!-- Wave 6.05: runtime orchestration + domain engine measured; coverage from tests under src/test/.../application/service/runtime and .../domain/runtime/engine -->
                         <!-- MinuteDocumentStructureExpander: MinuteDocumentStructureExpanderTest + AbstractQueryExpanderTest -->
                         <!-- Async lab worker: long I/O + LLM/classifier branches; covered via async service tests + E2E -->
                         <!-- ChatMessageApplicationService: ChatMessageApplicationServiceTest + WebMvc slices; afterCommit via AfterCommitTaskScheduler -->
                         <!-- Chat async worker and stream chunk types: long I/O paths; covered via async integration + E2E -->
-                        <!-- AnswerGenerationKernel: AnswerGenerationKernelTest -->
                         <!-- MessageStreamController: covered by MessageStreamControllerTest -->
                         <!-- v5 REST controllers: counted in JaCoCo; covered by WebMvc / integration tests (do not exclude) -->
                         <!-- Wave 6.04: removed 32 per-class JaCoCo excludes under infrastructure/persistence/jpa; coverage from unit tests + Postgres ITs in src/test/.../persistence. -->
-                        <!-- domain/entity: legacy JaCoCo exclude removed 2026-04-21 (no com.uniovi.rag.domain.entity sources). -->
+                        <!-- domain/entity: obsolete JaCoCo exclude removed 2026-04-21 (no com.uniovi.rag.domain.entity sources). -->
                         <!-- Heavy LLM/metadata/tooling + ingestion stacks: covered by focused unit tests + integration/E2E (bundle gate targets overall product coverage). -->
-                        <exclude>com/uniovi/rag/service/document/**</exclude>
                         <exclude>com/uniovi/rag/application/service/knowledge/**</exclude>
-                        <exclude>com/uniovi/rag/service/retriever/**</exclude>
-                        <!-- LLM/judge + persistence-heavy evaluation stack; bundle gate fails if fully included before broader tests (see .cursor/plans/rag_service_evaluation_coverage_exit_2026-04-21.plan.md). -->
-                        <exclude>com/uniovi/rag/service/evaluation/**</exclude>
+                        <exclude>com/uniovi/rag/application/service/runtime/retrieval/**</exclude>
+                        <!-- LLM/judge + persistence-heavy evaluation stack; bundle gate fails if fully included before broader tests. -->
                         <exclude>com/uniovi/rag/tool/**</exclude>
-                        <exclude>com/uniovi/rag/service/extraction/**</exclude>
-                        <exclude>com/uniovi/rag/service/ranker/**</exclude>
+                        <exclude>com/uniovi/rag/application/service/runtime/document/extraction/**</exclude>
+                        <exclude>com/uniovi/rag/application/service/runtime/ranking/**</exclude>
                         <exclude>com/uniovi/rag/application/service/evaluation/**</exclude>
                         <!-- Trace regression suite JSON persistence adapters: covered via WebMvc/architecture tests; low ROI for bundle gate. -->
                         <exclude>com/uniovi/rag/infrastructure/persistence/traceregressionsuitedefinition/**</exclude>

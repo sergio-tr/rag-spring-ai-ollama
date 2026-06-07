@@ -3,7 +3,7 @@ package com.uniovi.rag.configuration;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedMeetingMinutesToolsAdapter;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
 import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.tool.Tool;
 import org.junit.jupiter.api.Test;

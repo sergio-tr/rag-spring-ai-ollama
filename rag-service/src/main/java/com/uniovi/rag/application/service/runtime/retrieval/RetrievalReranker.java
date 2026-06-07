@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
+import com.uniovi.rag.application.service.runtime.DateGroundingSupport;
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.retrieval.RerankOutcome;
@@ -24,6 +25,8 @@ public class RetrievalReranker {
     private static final double W_ENTITY = 50.0;
     private static final double W_SLOT = 30.0;
     private static final double W_LOCALITY = 10.0;
+    private static final double W_EXACT_DATE = 500.0;
+    private static final double W_DATE_MISMATCH = -500.0;
 
     public RerankResult rerank(RetrievalRequest req, QueryPlan plan, List<RetrievalCandidate> candidates) {
         int windowMin = computeLocalityWindowMin(candidates, 10);
@@ -32,7 +35,12 @@ public class RetrievalReranker {
             double entityOverlap = entityOverlap(plan.entityExtractionResult(), plan.targetEntities(), c);
             double slotMatch = slotMatch(plan, c);
             double locality = localityBonus(c, windowMin);
-            double s = W_RRF * c.fusedRrfScore() + W_ENTITY * entityOverlap + W_SLOT * slotMatch + W_LOCALITY * locality;
+            double dateScore = dateScore(req, c);
+            double s = W_RRF * c.fusedRrfScore()
+                    + W_ENTITY * entityOverlap
+                    + W_SLOT * slotMatch
+                    + W_LOCALITY * locality
+                    + dateScore;
             scored.add(new Scored(c, s));
         }
         scored.sort(
@@ -127,6 +135,14 @@ public class RetrievalReranker {
             return false;
         }
         return haystack.toLowerCase(Locale.ROOT).contains(needle.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private static double dateScore(RetrievalRequest req, RetrievalCandidate c) {
+        return DateGroundingSupport.requestedDate(req.queryText(), req.entities().dates())
+                .map(requested -> DateGroundingSupport.candidateMatchesRequestedDate(c, requested)
+                        ? W_EXACT_DATE
+                        : W_DATE_MISMATCH)
+                .orElse(0.0);
     }
 
     private static double slotMatch(QueryPlan plan, RetrievalCandidate c) {

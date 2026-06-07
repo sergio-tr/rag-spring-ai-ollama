@@ -9,4 +9,6 @@ import java.util.UUID;
 public interface EvaluationResultRepository extends JpaRepository<EvaluationResultEntity, UUID> {
 
     List<EvaluationResultEntity> findByRun_IdOrderByEvaluatedAtAsc(UUID runId);
+
+    List<EvaluationResultEntity> findByRun_IdInOrderByEvaluatedAtAsc(List<UUID> runIds);
 }

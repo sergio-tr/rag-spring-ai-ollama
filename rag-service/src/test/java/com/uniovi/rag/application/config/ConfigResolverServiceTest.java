@@ -102,7 +102,7 @@ class ConfigResolverServiceTest {
 
         verify(ragConfigurationResolver).resolve(user, project, null, null, runtime);
         assertEquals(10, resolved.resolvedCoreConfig().topK());
-        assertSame(resolved.toRagConfig(), resolved.legacyProjection());
+        assertSame(resolved.toRagConfig(), resolved.configProjection());
     }
 
     @Test

@@ -6,11 +6,11 @@ import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTraceP
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedEvaluationService;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
-import com.uniovi.rag.service.document.DocumentService;
-import com.uniovi.rag.service.evaluation.DatasetMinuteEvaluationService;
-import com.uniovi.rag.service.evaluation.EvaluationService;
-import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
-import com.uniovi.rag.service.query.QueryService;
+import com.uniovi.rag.application.service.knowledge.document.DocumentService;
+import com.uniovi.rag.application.service.evaluation.ReferenceBundleMinuteEvaluationService;
+import com.uniovi.rag.application.service.evaluation.EvaluationService;
+import com.uniovi.rag.application.service.evaluation.EvaluationServiceFactory;
+import com.uniovi.rag.application.service.runtime.execution.QueryExecutionService;
 import org.springframework.ai.chat.client.ChatClient.Builder;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.evaluation.RelevancyEvaluator;
@@ -85,13 +85,19 @@ public class RagEvaluationConfiguration {
         RagImplementationProperties implementationProperties,
         ChatClient chatClient,
         DocumentService documentService,
-        QueryService queryService,
+        QueryExecutionService queryService,
         EvaluationServiceFactory evaluationServiceFactory,
         @Value("${evaluation.clean-before-load:true}") boolean cleanBeforeLoad,
         @Autowired(required = false) ObservabilitySupport observability
     ) {
-        DatasetMinuteEvaluationService service = new DatasetMinuteEvaluationService(
-                featureConfig, implementationProperties, chatClient, documentService, queryService, cleanBeforeLoad);
+        ReferenceBundleMinuteEvaluationService service =
+                new ReferenceBundleMinuteEvaluationService(
+                        featureConfig,
+                        implementationProperties,
+                        chatClient,
+                        documentService,
+                        queryService,
+                        cleanBeforeLoad);
         service.setEvaluationServiceFactory(evaluationServiceFactory);
         if (observability != null) {
             return new TracedEvaluationService(service, observability);

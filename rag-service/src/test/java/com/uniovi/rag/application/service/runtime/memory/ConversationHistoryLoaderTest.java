@@ -126,6 +126,7 @@ class ConversationHistoryLoaderTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 q,
                 q,
                 Optional.empty(),

@@ -29,12 +29,12 @@ public final class RetrievalPolicyResolver {
 
     /**
      * Whether the stock QuestionAnswerAdvisor fast path may run. Post-retrieval on forces manual path
-     * unless {@code legacyAdvisorWithPostRetrieval} is true.
+     * unless {@code advisorWithPostRetrieval} is true.
      */
     public static boolean allowQuestionAnswerAdvisor(
             RagFeatureConfiguration global,
             boolean advisorBeanPresent,
-            boolean legacyAdvisorWithPostRetrieval) {
+            boolean advisorWithPostRetrieval) {
         if (!advisorBeanPresent) {
             return false;
         }
@@ -42,7 +42,7 @@ public final class RetrievalPolicyResolver {
             return false;
         }
         if (RagEffectiveFeatures.postRetrievalEnabled(global)) {
-            return legacyAdvisorWithPostRetrieval;
+            return advisorWithPostRetrieval;
         }
         return true;
     }

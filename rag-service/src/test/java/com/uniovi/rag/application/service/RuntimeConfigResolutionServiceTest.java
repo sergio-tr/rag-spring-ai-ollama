@@ -7,11 +7,13 @@ import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.runtime.ConfigProfileType;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.Set;
 import java.util.UUID;
@@ -28,6 +30,9 @@ class RuntimeConfigResolutionServiceTest {
 
     @Mock
     private ConfigResolverService configResolverService;
+
+    @Mock
+    private ObjectProvider<RuntimeObservability> runtimeObservability;
 
     @InjectMocks
     private RuntimeConfigResolutionService service;

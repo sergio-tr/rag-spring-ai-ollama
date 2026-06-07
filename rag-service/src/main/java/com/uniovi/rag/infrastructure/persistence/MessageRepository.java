@@ -25,4 +25,13 @@ public interface MessageRepository extends JpaRepository<MessageEntity, UUID> {
             UUID conversationId, int seq);
 
     Optional<MessageEntity> findByConversation_IdAndSeqAndDeletedAtIsNull(UUID conversationId, int seq);
+
+    @Query(
+            """
+            SELECT m FROM MessageEntity m
+            JOIN m.conversation c
+            WHERE c.user.id = :userId
+            ORDER BY c.id, m.seq
+            """)
+    List<MessageEntity> findAllByConversationUser_Id(@Param("userId") UUID userId);
 }

@@ -40,8 +40,8 @@ Do not remove an exclude and re-add an equivalent pattern under another name. Na
 | Configuration | *(removed 6.03 — measured)* | *(removed 6.03 — measured)* | Wave **6.03**: JaCoCo and Sonar no longer blanket-hide `configuration/**` or all `*Configuration.java` / `*Properties.java`. |
 | Properties beans | *(measured)* | *(measured)* | `RagOllamaProperties`, `RagHealthProperties`, and `CompatibilityRulesConfiguration` are now in the measured set with the rest of the wiring. |
 | JPA entities (32 classes) | *(removed 6.04 — measured)* | *(removed 6.04 — measured)* | Wave **6.04**: dropped per-class `jpa/*.java` Sonar lines matching the former JaCoCo list; **no** `**/jpa/**` glob substitute. |
-| `model` | *(legacy `com.uniovi.rag.model/**` removed 6.03 — was no-op)* | Enumerated `domain/model`, `infrastructure/model`, `service/model` only | **`application/model` measured** (6.03). |
-| `exception` | *(legacy `com.uniovi.rag.exception/**` removed 6.03 — was no-op)* | `domain/exception/**` enumerated only | **`application/exception` measured** (6.03). |
+| `model` | *(removed `com.uniovi.rag.model/**` removed 6.03 — was no-op)* | Enumerated `domain/model`, `infrastructure/model`, `service/model` only | **`application/model` measured** (6.03). |
+| `exception` | *(removed `com.uniovi.rag.exception/**` removed 6.03 — was no-op)* | `domain/exception/**` enumerated only | **`application/exception` measured** (6.03). |
 | `application/service/runtime/**` | *(removed 6.05 — measured)* | *(removed 6.05 — measured)* | Wave **6.05**: JaCoCo and Sonar no longer hide the full runtime orchestration tree; tests under `src/test/.../application/service/runtime/**`. |
 | `domain/runtime/engine/**` | *(removed 6.05 — measured)* | *(removed 6.05 — measured)* | Wave **6.05**: engine records + orchestration paths covered; tests under `src/test/.../domain/runtime/engine/**`. |
 | Package info | — | `**/package-info.java` | Sonar only. |
@@ -58,7 +58,7 @@ POM comments reference types that are **in** the instrumented bundle (not in the
 
 | Area | Examples |
 | ------ | ----------- |
-| Query / chat | `ProcessQueryService`, `SimpleProcessQueryService`, `AnswerGenerationKernel`, `MessageStreamController` |
+| Query / chat | `RuntimeQueryExecutionService`, `RagExecutionOrchestrator`, `MessageStreamController`, `ChatMessageJobHandler` |
 | Web / API | `api.v5.*Controller` (product REST), `LabBenchmarkController` |
 | Application | `ChatMessageApplicationService`, `application.service.me.*`, `ConfigProfileApplicationService`, … |
 | Expanders | `MinuteDocumentStructureExpander` |
@@ -72,7 +72,7 @@ POM comments reference types that are **in** the instrumented bundle (not in the
 | ------------ | ---------------- | --------------- | ---------- | ---------------------- | ---------------- | --------------- | ------------- | ------------------------ | ------------------ |
 | EXC-001 | `com/uniovi/Application.class` | `**/Application.java` | Config_wiring | Bootstrap entry | Low | N/A / smoke only | **6.09** | RESIDUAL: single main class; optional tiny smoke | Team may keep minimal exclude for Sonar noise |
 | EXC-002 | `com/uniovi/rag/configuration/**` | `**/*Configuration.java` (+ partial overlap) | Config_wiring | Spring wiring; gate 0.80 | Med | ContextRunner, `@JsonTest`, slices + mocks | **6.03** | — | Sonar wider than JaCoCo — converge in 6.09 |
-| EXC-003 | `com/uniovi/rag/model/**` | `**/model/**` (wider) | DTOs_records_enums | Legacy / thin models | Low | **Verified:** no `com.uniovi.rag.model` package in main — pattern **no-op** | **6.03** | — | Remove JaCoCo line in hygiene wave; fix Sonar `**/model/**` via enumeration |
+| EXC-003 | `com/uniovi/rag/model/**` | `**/model/**` (wider) | DTOs_records_enums | Removed / thin models | Low | **Verified:** no `com.uniovi.rag.model` package in main — pattern **no-op** | **6.03** | — | Remove JaCoCo line in hygiene wave; fix Sonar `**/model/**` via enumeration |
 | EXC-004 | `com/uniovi/rag/application/model/**` | `**/model/**` (wider) | DTOs_records_enums | Thin SSE / query records | Med | Unit + factories; JsonTest if JSON | **6.03** | — | Sonar `**/model/**` must narrow when measuring `application/model` |
 | EXC-005 | `com/uniovi/rag/exception/**` | `**/exception/**` (wider) | API_error_mapping | Centralized errors | Med | **Verified:** no `com.uniovi.rag.exception`; exceptions under `application/exception`, `domain/exception` | **6.03** | — | JaCoCo no-op; Sonar still excludes `**/exception/**` |
 | EXC-006 | `com/uniovi/rag/service/document/**` | `**/service/document/**` | Service_integrations | Document I/O + vector | High | Unit + fixtures; JDBC IT; mock ChatClient/PgVectorStore | **6.07** | — | — |
@@ -89,7 +89,7 @@ POM comments reference types that are **in** the instrumented bundle (not in the
 | EXC-017 | `com/uniovi/rag/domain/runtime/functioncalling/**` | `**/domain/runtime/functioncalling/**` | DTOs_records_enums | P9 records | Med | Unit invariants | **6.03** | — | — |
 | EXC-018 | `com/uniovi/rag/domain/runtime/advisor/**` | `**/domain/runtime/advisor/**` | DTOs_records_enums | P10 advisor domain | Med | Unit (`PackedContextSet`, etc.) | **6.03** | — | — |
 | EXC-019 | `com/uniovi/rag/domain/runtime/retrieval/**` | `**/domain/runtime/retrieval/**` | DTOs_records_enums | Retrieval diagnostics | Med | Unit invariants | **6.03** | — | — |
-| EXC-020 | **removed 6.21** (was `com/uniovi/rag/domain/entity/**`) | **removed 6.21** (was `**/domain/entity/**`) | DTOs_records_enums | Legacy dead pattern (no package) | — | N/A | **6.21** done | — | See `.cursor/plans/rag_service_domain_entity_coverage_decision_2026-04-21.plan.md` |
+| EXC-020 | **removed 6.21** (was `com/uniovi/rag/domain/entity/**`) | **removed 6.21** (was `**/domain/entity/**`) | DTOs_records_enums | Removed dead pattern (no package) | — | N/A | **6.21** done | — | Domain entity coverage decision |
 | EXC-021 | `com/uniovi/rag/api/v5/dto/**` | `**/api/v5/dto/**` | DTOs_records_enums | API DTOs | Low | **Verified:** no `com.uniovi.rag.api` tree | **6.03** | — | Dead JaCoCo; clean Sonar line |
 | EXC-022 | `com/uniovi/rag/interfaces/rest/dto/**` | `**/interfaces/rest/dto/**/*.java` | DTOs_records_enums | REST records | Med | `@JsonTest`, factory tests | **6.03** | — | Large tree — prioritize Jackson |
 | EXC-023 | `com/uniovi/rag/api/auth/dto/**` | `**/api/auth/dto/**` | DTOs_records_enums | Auth DTOs | Low | **Verified:** no package | **6.03** | — | Dead JaCoCo |
@@ -125,14 +125,12 @@ POM comments reference types that are **in** the instrumented bundle (not in the
 | EXC-JPA-18 | `.../MessageEntity.class` | `**/MessageEntity.java` | JPA_entities | Gate | High | Postgres IT | **6.04** | — | — |
 | EXC-JPA-19 | `.../MessageFeedbackEntity.class` | `**/MessageFeedbackEntity.java` | JPA_entities | Gate | Med | Postgres IT | **6.04** | — | — |
 | EXC-JPA-20 | `.../ProjectEntity.class` | `**/ProjectEntity.java` | JPA_entities | Gate | High | Postgres IT | **6.04** | — | — |
-| EXC-JPA-21 | `.../PromptTemplateEntity.class` | `**/PromptTemplateEntity.java` | JPA_entities | Gate | Med | Postgres IT | **6.04** | — | — |
 | EXC-JPA-22 | `.../RagConfigurationEntity.class` | `**/RagConfigurationEntity.java` | JPA_entities | Gate | High | Postgres IT | **6.04** | — | — |
 | EXC-JPA-23 | `.../RagConfigurationEntityFactory.class` | `**/RagConfigurationEntityFactory.java` | JPA_entities | Factory | High | Unit | **6.04** | — | — |
 | EXC-JPA-24 | `.../RagPresetEntity.class` | `**/RagPresetEntity.java` | JPA_entities | Gate | Med | Postgres IT | **6.04** | — | — |
 | EXC-JPA-25 | `.../RagPresetProfileRefEntity.class` | `**/RagPresetProfileRefEntity.java` | JPA_entities | Composite | Med | Postgres IT | **6.04** | — | — |
 | EXC-JPA-26 | `.../RagPresetProfileRefId.class` | `**/RagPresetProfileRefId.java` | JPA_entities | Embeddable | Med | Unit + IT | **6.04** | — | — |
 | EXC-JPA-27 | `.../ReindexEventEntity.class` | `**/ReindexEventEntity.java` | JPA_entities | Gate | Med | Postgres IT | **6.04** | — | — |
-| EXC-JPA-28 | `.../ScheduledEvaluationEntity.class` | `**/ScheduledEvaluationEntity.java` | JPA_entities | Gate | Med | Postgres IT | **6.04** | — | — |
 | EXC-JPA-29 | `.../UserEntity.class` | `**/UserEntity.java` | JPA_entities | Gate | High | Postgres IT | **6.04** | — | — |
 | EXC-JPA-30 | `.../UserEntityFactory.class` | `**/UserEntityFactory.java` | JPA_entities | Factory | High | Unit | **6.04** | — | — |
 | EXC-JPA-31 | `.../UserPersonalizationEntity.class` | `**/UserPersonalizationEntity.java` | JPA_entities | Gate | Med | Postgres IT | **6.04** | — | — |
@@ -219,7 +217,7 @@ _Update SHA when merging if different._
   - **D — single source of truth**: `rag-service/src/test/resources/application.properties` (`rag.api.product-base-path=/api/v5`).
 - **Fixes applied**:
   - **C — DisplayName**: removed literal `/api/v5` from `RuntimeTraceRegressionSuiteP60EndToEndContractTest` slice display name.
-  - **B — redundant property override**: removed `rag.api.product-base-path=/api/v5` from `OllamaModelControllerTest` (legacy controllers are being removed; prefer product-only tests).
+  - **B — redundant property override**: removed `rag.api.product-base-path=/api/v5` from `OllamaModelControllerTest` (removed controllers are being removed; prefer product-only tests).
 
 ### Skipped / conditional tests inventory (rag-service)
 
@@ -298,7 +296,7 @@ _Update SHA when merging if different._
 
 | Check | Result |
 | ------- | -------- |
-| JaCoCo `<excludes>` removed | **Yes** — legacy no-op (`model`, `exception`, `api/v5/dto`, `api/auth/dto`); `configuration/**`; `application/model/**`; `domain/runtime/{functioncalling,advisor,retrieval}/**`; `interfaces/rest/dto/**`. **No** compensating globs added. |
+| JaCoCo `<excludes>` removed | **Yes** — removed no-op (`model`, `exception`, `api/v5/dto`, `api/auth/dto`); `configuration/**`; `application/model/**`; `domain/runtime/{functioncalling,advisor,retrieval}/**`; `interfaces/rest/dto/**`. **No** compensating globs added. |
 | Sonar `sonar.coverage.exclusions` | **Aligned** — dropped `**/*Configuration.java`, `**/*Properties.java`, broad `**/model/**`, `**/exception/**`, `api/*` dto dead paths, `interfaces/rest/dto`, and the three `domain/runtime/*` packs matching JaCoCo; **enumerated** residual model + `domain/exception` paths only. |
 | Tests added | Domain runtime (`FunctionCallingDomainTypesTest`, `AdvisorAndPackingDomainTest`, `RetrievalDomainRecordsTest`), `ApplicationModelTest`, `RestDtoRecordInstantiationCoverageTest` (+ strict Jackson / executor / async / CORS / properties / E2e stub / security slice / `RagConfiguration` / extended `RagQueryConfigurationTest`). |
 | `./mvnw test` + `./mvnw verify` (from `rag-service/`) | **PASS** |

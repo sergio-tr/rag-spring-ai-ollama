@@ -4,6 +4,7 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.domain.runtime.reasoning.StructuredAnswerPlan;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.ollama.api.OllamaOptions;
@@ -34,19 +35,16 @@ public abstract class AbstractExecutionWorkflow implements ExecutionWorkflow {
     }
 
     private String invokeChatUnscoped(ExecutionContext ctx, String systemPrompt, String userMessage) {
-        var spec = chatClient.prompt();
+        var builder = chatClient.prompt();
         if (systemPrompt != null && !systemPrompt.isBlank()) {
-            spec = spec.system(systemPrompt);
+            builder = builder.system(systemPrompt);
         }
-        spec = spec.user(userMessage);
-        var chatModelOverride = ctx.chatModelOverride();
-        if (chatModelOverride.isPresent()) {
-            String m = chatModelOverride.get().trim();
-            if (!m.isBlank()) {
-                spec = spec.options(OllamaOptions.builder().model(m).build());
-            }
-        }
-        String out = spec.call().content();
+        var userSpec = builder.user(userMessage);
+        var withModel =
+                ChatGenerationModelSelector.effectiveChatModelId(ctx)
+                        .map(m -> userSpec.options(OllamaOptions.builder().model(m).build()))
+                        .orElse(userSpec);
+        String out = withModel.call().content();
         return out != null ? out : "";
     }
 
@@ -58,6 +56,18 @@ public abstract class AbstractExecutionWorkflow implements ExecutionWorkflow {
             throw new IllegalStateException("rewrittenQueryText must be non-blank");
         }
         return q;
+    }
+
+    protected static String answerPlanBlock(ExecutionContext ctx) {
+        if (ctx == null) {
+            return null;
+        }
+        StructuredAnswerPlan plan = ctx.structuredAnswerPlan().orElse(null);
+        if (plan == null) {
+            return null;
+        }
+        String block = plan.toPromptBlock(800);
+        return block != null && !block.isBlank() ? block : null;
     }
 
     protected static ExecutionStageTrace stage(

@@ -16,11 +16,13 @@ import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryExecutionResult;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
+import com.uniovi.rag.domain.runtime.reasoning.StructuredAnswerPlan;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
-import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.application.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
 import io.micrometer.tracing.Tracer;
 import java.util.List;
 import java.util.Optional;
@@ -108,21 +110,36 @@ public class ExecutionContextFactory {
                 originatingUserMessageId);
     }
 
-    public ExecutionContext buildForLegacyHttp(String rawUserQuery, String chatModelOverride) {
+    /** Lab evaluation and other HTTP-scoped turns without a conversation (uses thread-local lab context when set). */
+    public ExecutionContext buildForHttpQuery(String rawUserQuery, String chatModelOverride) {
         String correlationId =
                 Optional.ofNullable(TraceMdcBridge.currentCorrelationTraceId(tracer))
                         .orElseGet(() -> UUID.randomUUID().toString());
         Optional<String> model = validateAndNormalizeChatModel(chatModelOverride);
+        JsonNode benchmarkTerminal =
+                LabBenchmarkExecutionContext.currentTerminalOverride().orElse(null);
+        LabBenchmarkExecutionContext.LabRuntimeContext labCtx =
+                LabBenchmarkExecutionContext.currentLabRuntimeContext().orElse(null);
+        UUID projectId = labCtx != null ? labCtx.projectId() : null;
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(
-                        null, null, null, correlationId);
-        KnowledgeSnapshotSelection snapshots = knowledgeRuntimeSnapshotSelector.select(null, null);
+                        null, projectId, benchmarkTerminal, correlationId);
+        KnowledgeSnapshotSelection snapshots;
+        if (labCtx != null && labCtx.snapshotIds() != null && !labCtx.snapshotIds().isEmpty()) {
+            snapshots = knowledgeRuntimeSnapshotSelector.selectExplicit(projectId, labCtx.snapshotIds());
+        } else if (labCtx != null && labCtx.forcedSnapshotSelection()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "LAB_FORCED_SNAPSHOT_SELECTION_REQUIRES_SNAPSHOT_IDS");
+        } else {
+            snapshots = knowledgeRuntimeSnapshotSelector.select(projectId, null);
+        }
         return buildWithClarification(
                 null,
-                null,
+                projectId,
                 null,
                 rawUserQuery,
-                RuntimeOperationKind.LEGACY_HTTP,
+                RuntimeOperationKind.STATELESS_HTTP,
                 resolved,
                 snapshots,
                 correlationId,
@@ -198,6 +215,7 @@ public class ExecutionContextFactory {
                 chatModelOverride,
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 preMemory,
                 boot.effectivePlanningInputText(),
                 Optional.empty(),
@@ -244,6 +262,7 @@ public class ExecutionContextFactory {
                 base.chatModelOverride(),
                 base.queryPlan(),
                 base.advisorPackedContextSet(),
+                base.structuredAnswerPlan(),
                 preMemory,
                 mem.finalPlanningInputText(),
                 mem.slice(),
@@ -304,6 +323,7 @@ public class ExecutionContextFactory {
                 ctx.chatModelOverride(),
                 Optional.of(plan),
                 Optional.empty(),
+                ctx.structuredAnswerPlan(),
                 ctx.preMemoryPlanningInputText(),
                 ctx.effectivePlanningInputText(),
                 ctx.memorySlice(),
@@ -357,6 +377,61 @@ public class ExecutionContextFactory {
                 ctx.chatModelOverride(),
                 ctx.queryPlan(),
                 Optional.of(packedContextSet),
+                ctx.structuredAnswerPlan(),
+                ctx.preMemoryPlanningInputText(),
+                ctx.effectivePlanningInputText(),
+                ctx.memorySlice(),
+                ctx.memoryOutcome(),
+                ctx.memoryStageTraces(),
+                ctx.memoryAttempted(),
+                ctx.memoryHistoryLoaded(),
+                ctx.memoryCondensationAttempted(),
+                ctx.memoryCondensationUsed(),
+                ctx.memoryFallbackApplied(),
+                ctx.pendingClarificationLoadedForTrace(),
+                ctx.validPendingExistedAtLoad(),
+                ctx.invalidPendingRecoveredThisTurn(),
+                ctx.clarificationDisableReason(),
+                ctx.originatingUserMessageId(),
+                ctx.routingAttempted(),
+                ctx.routingOutcome(),
+                ctx.routingRouteKind(),
+                ctx.routingFallbackApplied(),
+                ctx.routingFallbackRouteKind(),
+                ctx.routingWorkflowSelectorInvoked(),
+                ctx.routingStageTraces());
+    }
+
+    /**
+     * Attaches a safe structured answer plan for R8A.
+     */
+    public ExecutionContext attachStructuredAnswerPlan(ExecutionContext ctx, StructuredAnswerPlan plan) {
+        if (ctx == null) {
+            throw new IllegalArgumentException("ctx must not be null");
+        }
+        if (plan == null) {
+            throw new IllegalArgumentException("plan must not be null");
+        }
+        if (ctx.structuredAnswerPlan().isPresent()) {
+            throw new IllegalStateException("ExecutionContext already contains a StructuredAnswerPlan");
+        }
+        return new ExecutionContext(
+                ctx.userId(),
+                ctx.projectId(),
+                ctx.conversationId(),
+                ctx.userQuery(),
+                ctx.operationKind(),
+                ctx.resolved(),
+                ctx.effectiveSystemPrompt(),
+                ctx.knowledgeSnapshotSelection(),
+                ctx.configHash(),
+                ctx.pinnedResolvedConfigSnapshotId(),
+                ctx.correlationId(),
+                ctx.documentFilter(),
+                ctx.chatModelOverride(),
+                ctx.queryPlan(),
+                ctx.advisorPackedContextSet(),
+                Optional.of(plan),
                 ctx.preMemoryPlanningInputText(),
                 ctx.effectivePlanningInputText(),
                 ctx.memorySlice(),

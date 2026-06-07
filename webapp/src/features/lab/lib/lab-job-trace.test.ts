@@ -65,6 +65,43 @@ describe("lab-job-trace", () => {
     expect(useTraceStore.getState().events.filter((e) => e.action === "lab_job_completed")).toHaveLength(1);
   });
 
+  it("emitLabJobTraceForTick maps FAILED terminal status to failed trace", () => {
+    const d = createLabJobTraceDedupe();
+    emitLabJobTraceForTick(d, task({ status: "FAILED", terminal: true }), "j1", messages);
+    expect(useTraceStore.getState().events.filter((e) => e.action === "lab_job_failed")).toHaveLength(1);
+  });
+
+  it("emitLabJobTraceForTick maps CANCELLED terminal status to cancelled trace", () => {
+    const d = createLabJobTraceDedupe();
+    emitLabJobTraceForTick(d, task({ status: "CANCELLED", terminal: true }), "j1", messages);
+    expect(useTraceStore.getState().events.filter((e) => e.action === "lab_job_cancelled")).toHaveLength(1);
+  });
+
+  it("emitLabJobTraceForTick maps CANCELED terminal status to cancelled trace (US spelling)", () => {
+    const d = createLabJobTraceDedupe();
+    emitLabJobTraceForTick(d, task({ status: "CANCELED", terminal: true }), "j1", messages);
+    expect(useTraceStore.getState().events.filter((e) => e.action === "lab_job_cancelled")).toHaveLength(1);
+  });
+
+  it("emitLabJobTraceForTick treats unknown terminal statuses as failed", () => {
+    const d = createLabJobTraceDedupe();
+    emitLabJobTraceForTick(d, task({ status: "WEIRD", terminal: true }), "j1", messages);
+    expect(useTraceStore.getState().events.filter((e) => e.action === "lab_job_failed")).toHaveLength(1);
+  });
+
+  it("emitLabJobTraceForTick emits running for PROCESSING as well", () => {
+    const d = createLabJobTraceDedupe();
+    emitLabJobTraceForTick(d, task({ status: "PROCESSING", terminal: false }), "j1", messages);
+    expect(useTraceStore.getState().events.filter((e) => e.action === "lab_job_running")).toHaveLength(1);
+  });
+
+  it("emitLabJobTraceForTick does not emit running for non-terminal non-running statuses", () => {
+    const d = createLabJobTraceDedupe();
+    emitLabJobTraceForTick(d, task({ status: "QUEUED", terminal: false }), "j1", messages);
+    expect(useTraceStore.getState().events.filter((e) => e.action === "lab_job_running")).toHaveLength(0);
+    expect(useTraceStore.getState().events.filter((e) => e.action === "lab_job_completed")).toHaveLength(0);
+  });
+
   it("traceLabJobResumedWatching emits one lab trace row per call", () => {
     traceLabJobResumedWatching("jid", "resumed");
     traceLabJobResumedWatching("jid", "resumed again");

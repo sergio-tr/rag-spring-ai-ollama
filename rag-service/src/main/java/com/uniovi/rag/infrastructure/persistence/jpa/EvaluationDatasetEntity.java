@@ -1,6 +1,7 @@
 package com.uniovi.rag.infrastructure.persistence.jpa;
 
 import com.uniovi.rag.domain.EvaluationDatasetType;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationIssuePayload;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -16,6 +17,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -71,7 +73,25 @@ public class EvaluationDatasetEntity {
     @Column(name = "benchmark_kinds_allowed", columnDefinition = "jsonb")
     private Map<String, Object> benchmarkKindsAllowed;
 
+    @Column(columnDefinition = "text")
+    private String description;
+
+    @Column(name = "experimental_kind", length = 64)
+    private String experimentalKind;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "validation_report_json", columnDefinition = "jsonb")
+    private List<ValidationIssuePayload> validationIssues;
+
+    @Column(name = "validation_status", length = 16)
+    private String validationStatus;
+
     protected EvaluationDatasetEntity() {
+    }
+
+    /** Application-layer factory for Lab uploads (protected JPA constructor). */
+    public static EvaluationDatasetEntity newLabUploadPlaceholder() {
+        return new EvaluationDatasetEntity();
     }
 
     public UUID getId() {
@@ -192,5 +212,37 @@ public class EvaluationDatasetEntity {
 
     public void setBenchmarkKindsAllowed(Map<String, Object> benchmarkKindsAllowed) {
         this.benchmarkKindsAllowed = benchmarkKindsAllowed;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public String getExperimentalKind() {
+        return experimentalKind;
+    }
+
+    public void setExperimentalKind(String experimentalKind) {
+        this.experimentalKind = experimentalKind;
+    }
+
+    public List<ValidationIssuePayload> getValidationIssues() {
+        return validationIssues;
+    }
+
+    public void setValidationIssues(List<ValidationIssuePayload> validationIssues) {
+        this.validationIssues = validationIssues;
+    }
+
+    public String getValidationStatus() {
+        return validationStatus;
+    }
+
+    public void setValidationStatus(String validationStatus) {
+        this.validationStatus = validationStatus;
     }
 }

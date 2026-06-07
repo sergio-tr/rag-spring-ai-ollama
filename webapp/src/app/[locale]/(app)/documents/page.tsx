@@ -5,13 +5,13 @@ import { StatusBadge } from "@/features/documents/components/StatusBadge";
 import {
   useDeleteProjectDocument,
   useProjectDocuments,
+  useRetryProjectDocumentIngest,
 } from "@/features/documents/hooks/use-project-documents";
 import { useSyncActiveProjectFromDocumentsUrl } from "@/features/projects/hooks/use-sync-active-project-from-documents-url";
 import { buildProjectScopedDocumentsHref } from "@/features/projects/lib/open-project-navigation";
 import { ApiError } from "@/lib/api-client";
 import { useAppStore } from "@/store/app.store";
 import { Link, useRouter } from "@/navigation";
-import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo } from "react";
@@ -39,28 +39,15 @@ function DocumentsPageInner() {
 
   const active = useAppStore((s) => s.activeProject);
   const projectId = active?.id;
-  const qc = useQueryClient();
   const { data, isLoading, isError, error } = useProjectDocuments(projectId);
   const del = useDeleteProjectDocument(projectId);
+  const retryIngest = useRetryProjectDocumentIngest(projectId);
   const rows = useMemo(() => data ?? [], [data]);
 
   useEffect(() => {
     if (!projectId || urlProjectId) return;
     router.replace(buildProjectScopedDocumentsHref(projectId));
   }, [projectId, urlProjectId, router]);
-
-  const hasIngesting = useMemo(
-    () => rows.some((d) => d.status === "INGESTING"),
-    [rows],
-  );
-
-  useEffect(() => {
-    if (!projectId || !hasIngesting) return;
-    const id = globalThis.setInterval(() => {
-      void qc.invalidateQueries({ queryKey: ["project-documents", projectId] });
-    }, 2000);
-    return () => globalThis.clearInterval(id);
-  }, [hasIngesting, projectId, qc]);
 
   if (!projectId) {
     return (
@@ -109,6 +96,7 @@ function DocumentsPageInner() {
                 <th className="p-3 font-medium">{t("colStatus")}</th>
                 <th className="p-3 font-medium">{t("colChunks")}</th>
                 <th className="p-3 font-medium">{t("colUploaded")}</th>
+                <th className="p-3 font-medium">{t("colError")}</th>
                 <th className="p-3 font-medium">{t("colActions")}</th>
               </tr>
             </thead>
@@ -123,16 +111,33 @@ function DocumentsPageInner() {
                   <td className="p-3 text-muted-foreground">
                     {new Date(row.uploadedAt).toLocaleString()}
                   </td>
+                  <td className="p-3 text-muted-foreground text-xs max-w-[220px]">
+                    {row.status === "ERROR" && row.errorMessage ? row.errorMessage : "—"}
+                  </td>
                   <td className="p-3">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={del.isPending}
-                      onClick={() => del.mutate(row.id)}
-                    >
-                      {t("delete")}
-                    </Button>
+                    <div className="flex flex-wrap gap-1">
+                      {row.status === "ERROR" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={retryIngest.isPending}
+                          data-testid={`doc-retry-${row.id}`}
+                          onClick={() => retryIngest.mutate(row.id)}
+                        >
+                          {t("retryIngest")}
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={del.isPending}
+                        onClick={() => del.mutate(row.id)}
+                      >
+                        {t("delete")}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}

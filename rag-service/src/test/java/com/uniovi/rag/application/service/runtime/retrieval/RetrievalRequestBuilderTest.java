@@ -69,7 +69,7 @@ class RetrievalRequestBuilderTest {
                 resolved,
                 "sys",
                 new KnowledgeSnapshotSelection(
-                                List.of(sid), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
+                                List.of(sid), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
                 Optional.empty(),
                 Optional.empty(),
                 "c",

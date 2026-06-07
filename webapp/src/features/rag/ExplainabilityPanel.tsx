@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useChatExplainStore } from "@/store/chat-explain.store";
+import type { ChatSourceDto } from "@/types/api";
 
 /** Right-rail explainability: query type, pipeline steps, future sources. */
 export function ExplainabilityPanel() {
@@ -49,15 +50,50 @@ export function ExplainabilityPanel() {
           </ol>
         </section>
       )}
+      {last?.runtimeTelemetry && Object.keys(last.runtimeTelemetry).length > 0 && (
+        <section data-testid="explain-runtime-telemetry">
+          <h3 className="mb-1 font-medium text-xs uppercase tracking-wide text-muted-foreground">
+            {t("runtimeTelemetry")}
+          </h3>
+          <dl className="space-y-1 font-mono text-[11px] text-muted-foreground">
+            {Object.entries(last.runtimeTelemetry).map(([k, v]) => (
+              <div key={k} className="flex flex-col gap-0.5 rounded-md border bg-muted/20 px-2 py-1">
+                <dt className="text-foreground">{k}</dt>
+                <dd className="break-all">{typeof v === "object" ? JSON.stringify(v) : String(v)}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
       {last?.sources && last.sources.length > 0 && (
         <section>
           <h3 className="mb-1 font-medium text-xs uppercase tracking-wide text-muted-foreground">
             {t("sources")}
           </h3>
           <ul className="space-y-2">
-            {last.sources.map((s, i) => (
+            {last.sources.map((s: ChatSourceDto, i: number) => (
               <li key={i} className="rounded-md border p-2 text-xs">
-                <pre className="whitespace-pre-wrap break-words">{JSON.stringify(s, null, 2)}</pre>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="font-medium text-foreground">
+                      {s.filename ?? s.documentId ?? "Source"}
+                    </span>
+                    {typeof s.distance === "number" && (
+                      <span className="font-mono text-[11px] text-muted-foreground">
+                        {s.distanceLabel ?? "distance"}={s.distance.toFixed(4)}
+                      </span>
+                    )}
+                  </div>
+                  {(s.detectedDate || s.documentId) && (
+                    <div className="flex flex-col gap-0.5 font-mono text-[11px] text-muted-foreground">
+                      {s.documentId && <div>documentId={s.documentId}</div>}
+                      {s.detectedDate && <div>detectedDate={s.detectedDate}</div>}
+                    </div>
+                  )}
+                  {s.snippet && (
+                    <p className="whitespace-pre-wrap break-words text-muted-foreground">{s.snippet}</p>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

@@ -19,12 +19,18 @@ import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.interfaces.rest.dto.ChatMessageAcceptedDto;
 import com.uniovi.rag.interfaces.rest.dto.ConversationDraftDto;
 import com.uniovi.rag.interfaces.rest.dto.PostMessageRequest;
-import com.uniovi.rag.service.async.AsyncLabTaskRunner;
-import com.uniovi.rag.service.async.AsyncTaskMutationService;
-import com.uniovi.rag.service.async.chat.ChatJobCancellationRegistry;
-import com.uniovi.rag.service.async.chat.ChatJobPayloadKeys;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeIndexCompatibilityDto;
+import com.uniovi.rag.application.service.async.AsyncLabTaskRunner;
+import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.application.service.chat.async.ChatJobCancellationRegistry;
+import com.uniovi.rag.application.service.chat.async.ChatJobPayloadKeys;
+import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
+import com.uniovi.rag.application.service.config.ChatPresetDefaults;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -46,6 +52,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -89,6 +96,15 @@ class ChatMessageApplicationServiceTest {
     @Mock
     private ChatMessageWorkService chatMessageWorkService;
 
+    @Mock
+    private RuntimeConfigValidationService runtimeConfigValidationService;
+
+    @Mock
+    private ChatPresetDefaults chatPresetDefaults;
+
+    @Mock
+    private ObjectProvider<RuntimeObservability> runtimeObservability;
+
     @InjectMocks
     private ChatMessageApplicationService service;
 
@@ -116,6 +132,34 @@ class ChatMessageApplicationServiceTest {
                             }
                             return m;
                         });
+    }
+
+    @BeforeEach
+    void stubRuntimeValidationAcceptsCurrentConfig() {
+        lenient()
+                .when(chatPresetDefaults.effectivePresetIdForApi(any()))
+                .thenReturn(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID);
+        lenient()
+                .when(runtimeConfigValidationService.validate(any(), any()))
+                .thenReturn(
+                        new RuntimeConfigValidateResponse(
+                                true,
+                                true,
+                                Map.of(),
+                                List.of(),
+                                List.of(),
+                                "wf",
+                                new RuntimeIndexCompatibilityDto(
+                                        null,
+                                        null,
+                                        null,
+                                        Map.of(),
+                                        false,
+                                        null,
+                                        null,
+                                        true,
+                                        "UNKNOWN"),
+                                false));
     }
 
     @BeforeEach
@@ -182,6 +226,64 @@ class ChatMessageApplicationServiceTest {
     }
 
     @Test
+    void enqueueMessage_payloadPrefersRequestLlmOverPersistedConversationLlm() {
+        UUID userId = UUID.randomUUID();
+        UUID conversationId = UUID.randomUUID();
+
+        ConversationEntity conv = mock(ConversationEntity.class);
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(conv.getProject()).thenReturn(project);
+        when(conv.getDocumentFilter()).thenReturn(List.of());
+        when(conv.getLlmModel()).thenReturn("persisted-llm");
+        when(projectAccessService.requireConversationForUser(userId, conversationId)).thenReturn(conv);
+
+        when(asyncTaskRepository.findByUser_IdAndTaskTypeAndStatusIn(
+                        eq(userId), eq(AsyncTaskType.CHAT_MESSAGE), any()))
+                .thenReturn(List.of());
+
+        when(messageRepository.findMaxSeqByConversationId(conversationId)).thenReturn(0);
+
+        UserEntity user = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        service.enqueueMessage(userId, conversationId, new PostMessageRequest("hi", "request-llm", null));
+
+        ArgumentCaptor<AsyncTaskEntity> taskCap = ArgumentCaptor.forClass(AsyncTaskEntity.class);
+        verify(asyncTaskRepository).save(taskCap.capture());
+        Map<String, Object> payload = taskCap.getValue().getRequestPayload();
+        assertThat(payload.get(ChatJobPayloadKeys.LLM_MODEL)).isEqualTo("request-llm");
+    }
+
+    @Test
+    void enqueueMessage_payloadUsesPersistedConversationLlmWhenRequestOmitsModel() {
+        UUID userId = UUID.randomUUID();
+        UUID conversationId = UUID.randomUUID();
+
+        ConversationEntity conv = mock(ConversationEntity.class);
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(conv.getProject()).thenReturn(project);
+        when(conv.getDocumentFilter()).thenReturn(List.of());
+        when(conv.getLlmModel()).thenReturn("persisted-llm");
+        when(projectAccessService.requireConversationForUser(userId, conversationId)).thenReturn(conv);
+
+        when(asyncTaskRepository.findByUser_IdAndTaskTypeAndStatusIn(
+                        eq(userId), eq(AsyncTaskType.CHAT_MESSAGE), any()))
+                .thenReturn(List.of());
+
+        when(messageRepository.findMaxSeqByConversationId(conversationId)).thenReturn(0);
+
+        UserEntity user = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        service.enqueueMessage(userId, conversationId, new PostMessageRequest("hi", null, null));
+
+        ArgumentCaptor<AsyncTaskEntity> taskCap = ArgumentCaptor.forClass(AsyncTaskEntity.class);
+        verify(asyncTaskRepository).save(taskCap.capture());
+        Map<String, Object> payload = taskCap.getValue().getRequestPayload();
+        assertThat(payload.get(ChatJobPayloadKeys.LLM_MODEL)).isEqualTo("persisted-llm");
+    }
+
+    @Test
     void enqueueMessage_continueBranch_reusesUserMessage() {
         UUID userId = UUID.randomUUID();
         UUID conversationId = UUID.randomUUID();
@@ -217,6 +319,47 @@ class ChatMessageApplicationServiceTest {
 
         assertThat(dto.jobId()).isNotNull();
         verify(asyncLabTaskRunner).execute(any(UUID.class));
+    }
+
+    @Test
+    void enqueueMessage_continueBranch_appendsAssistantAfterMaxSeqNotBeforeUser() {
+        UUID userId = UUID.randomUUID();
+        UUID conversationId = UUID.randomUUID();
+        UUID continueId = UUID.randomUUID();
+
+        ConversationEntity conv = mock(ConversationEntity.class);
+        when(conv.getId()).thenReturn(conversationId);
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(conv.getProject()).thenReturn(project);
+        when(conv.getDocumentFilter()).thenReturn(null);
+        when(projectAccessService.requireConversationForUser(userId, conversationId)).thenReturn(conv);
+        when(asyncTaskRepository.findByUser_IdAndTaskTypeAndStatusIn(
+                        eq(userId), eq(AsyncTaskType.CHAT_MESSAGE), any()))
+                .thenReturn(List.of());
+
+        MessageEntity existingUser = mock(MessageEntity.class);
+        when(existingUser.getConversation()).thenReturn(conv);
+        when(existingUser.getRole()).thenReturn(MessageRole.USER);
+        when(existingUser.getDeletedAt()).thenReturn(null);
+        when(existingUser.getContent()).thenReturn("edited question");
+        when(existingUser.getId()).thenReturn(continueId);
+        when(existingUser.getSeq()).thenReturn(3);
+        when(messageRepository.findById(continueId)).thenReturn(Optional.of(existingUser));
+        when(messageRepository.findMaxSeqByConversationId(conversationId)).thenReturn(5);
+
+        UserEntity user = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        ArgumentCaptor<MessageEntity> saved = ArgumentCaptor.forClass(MessageEntity.class);
+
+        service.enqueueMessage(
+                userId, conversationId, new PostMessageRequest("edited question", null, continueId));
+
+        verify(messageRepository).save(saved.capture());
+        MessageEntity assistant = saved.getValue();
+        assertThat(assistant.getRole()).isEqualTo(MessageRole.ASSISTANT);
+        assertThat(assistant.getSeq()).isGreaterThan(existingUser.getSeq());
+        assertThat(assistant.getSeq()).isEqualTo(6);
     }
 
     @Test
@@ -376,6 +519,7 @@ class ChatMessageApplicationServiceTest {
         verify(tail1).setDeletedAt(any(Instant.class));
         verify(tail2).setDeletedAt(any(Instant.class));
         verify(edited).setContent("new content");
+        verify(edited, never()).setSeq(anyInt());
         verify(projectAccessService).requireConversationForUser(userId, conversationId);
     }
 

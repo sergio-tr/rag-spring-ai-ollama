@@ -15,11 +15,16 @@ public final class KnowledgeIndexSnapshotMapper {
                 e.getId(),
                 e.getSignatureHash(),
                 e.getScopeType(),
-                e.getProject().getId(),
+                e.getOwnerType(),
+                e.getOwnerId(),
+                e.getProject() != null ? e.getProject().getId() : null,
                 e.getConversation() != null ? e.getConversation().getId() : null,
                 e.getStatus(),
                 e.getResolvedConfigSnapshotId(),
                 e.getResolvedConfigHash(),
+                e.getIndexProfileJsonb(),
+                e.getIndexProfileHash(),
+                e.getEmbeddingDimensions(),
                 e.getCreatedAt(),
                 e.getUpdatedAt());
     }

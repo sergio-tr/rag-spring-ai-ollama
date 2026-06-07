@@ -17,7 +17,7 @@ class DeterministicToolKindMappingsTest {
     }
 
     @Test
-    void fromDeclaredToolName_acceptsLegacyEnumConstantNames() {
+    void fromDeclaredToolName_acceptsHistoricalEnumConstantNames() {
         assertThat(DeterministicToolKindMappings.fromDeclaredToolName("COUNT_DOCUMENTS_TOOL"))
                 .contains(DeterministicToolKind.COUNT_DOCUMENTS_TOOL);
     }

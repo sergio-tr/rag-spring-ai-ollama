@@ -16,7 +16,7 @@ import com.uniovi.rag.domain.config.validation.CompatibilityViolation;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigPreviewRequest;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.config.UserProjectConfigurationService;
+import com.uniovi.rag.application.service.config.UserProjectConfigurationService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

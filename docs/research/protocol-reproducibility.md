@@ -10,7 +10,7 @@
 
 1. **Name the wave:** e.g. `W-PILOT-001`, `W-COMP-001` (use the same id in all run sheets for that wave).
 2. **Freeze git state:** record **full SHA** of the repository used to build/run the backend (and classifier/webapp if they participate in the experiment). No silent drift: if SHA changes mid-wave, **close the wave** and open a new one with new baselines.
-3. **Freeze runtime configuration intent:** list active Spring profiles (`dev`, `docker`, `e2e`, …) and **effective** overrides from environment (names only; no secrets in this repo — store redacted copies in secure thesis annex if required).
+3. **Freeze runtime configuration intent:** list active Spring profiles (`dev`, `docker`, `e2e`, …) and **effective** overrides from environment (names only; no secrets in this repo — store redacted copies in secure secure annex if required).
 4. **Single large policy change per wave:** do not simultaneously change application code, Ollama model tag, and evaluation dataset between rows of the same ablation matrix. If a hotfix is mandatory, **re-tag the wave**, repeat the **full baseline** row, then continue.
 
 ---
@@ -21,7 +21,7 @@
 | --- | --- | --- |
 | Git full SHA | Yes | Run sheet + `#META` export header when using Lab CSV/JSON export. |
 | `rag.runtime.workflow-schema-version` | Yes if comparing runtime semantics | Environment / `application.properties` value in run sheet. |
-| Ollama **chat** model id + digest (if available) | Yes for LLM-backed benchmarks | Run sheet; capture `ollama show <model>` output in thesis annex. |
+| Ollama **chat** model id + digest (if available) | Yes for LLM-backed benchmarks | Run sheet; capture `ollama show <model>` output in secure annex. |
 | Ollama **embedding** model id + digest | Yes when retrieval/embeddings participate | Same as above. |
 | Docker image digests | If using Compose images | `docker compose images -q` or inspect in run sheet annex. |
 | Lab `evaluation_run.id` (UUID) | Yes for Lab-backed evidence | Run sheet + link to stored export file. |
@@ -32,7 +32,7 @@
 
 ## 3. Dataset manifest (minimum fields)
 
-Each dataset used for thesis evidence must have one manifest row (can live in the run sheet annex table or a small `datasets-manifest.csv` in this folder).
+Each dataset used for evaluation evidence must have one manifest row (can live in the run sheet annex table or a small `datasets-manifest.csv` in this folder).
 
 | Field | Description |
 | --- | --- |
@@ -43,7 +43,7 @@ Each dataset used for thesis evidence must have one manifest row (can live in th
 | `domain_notes` | Bias / coverage statement (language, topic, legal sensitivity). |
 | `owner_scope` | User/project id if project-scoped uploads apply. |
 
-**Canonical internal reference dataset:** `evaluation/evaluation_dataset.xlsx` (classpath) — still record `content_sha256` from the built JAR or source file used in the run.
+**Canonical internal reference workbook:** `evaluation/rag_experiment_datasets_and_protocols.xlsx` (classpath in `rag-service`) — record `content_sha256` from the built artifact or source file. User-typed datasets record upload id + stored bytes hash per `evaluation_dataset` row.
 
 ---
 

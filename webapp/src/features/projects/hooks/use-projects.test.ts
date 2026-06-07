@@ -59,10 +59,49 @@ describe("use-projects hooks", () => {
     const { wrapper, qc } = createWrapper();
     const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
     const { result } = renderHook(() => useCreateProject(), { wrapper });
-    await result.current.mutateAsync({ name: "Created" });
+    const outcome = await result.current.mutateAsync({ name: "Created" });
+    expect(outcome.project.id).toBe("new1");
     expect(useAppStore.getState().activeProject).toEqual({ id: "new1", name: "Created" });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["projects"] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["config", "project", "new1"] });
+  });
+
+  it("useCreateProject succeeds when activate fails after POST", async () => {
+    apiFetch
+      .mockResolvedValueOnce(summary("new2", "Created2"))
+      .mockRejectedValueOnce(new apiClient.ApiError(503, "activate down"));
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCreateProject(), { wrapper });
+    const outcome = await result.current.mutateAsync({ name: "Created2" });
+    expect(outcome.project.id).toBe("new2");
+    expect(outcome.activateFailed).toBe(true);
+    expect(result.current.isError).toBe(false);
+  });
+
+  it("useCreateProject succeeds when activate returns 401 after POST (no create error)", async () => {
+    useAppStore.getState().setActiveProject({ id: "x", name: "X" });
+    apiFetch
+      .mockResolvedValueOnce(summary("new3", "Created3"))
+      .mockRejectedValueOnce(new apiClient.ApiError(401, "Unauthorized"));
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCreateProject(), { wrapper });
+    const outcome = await result.current.mutateAsync({ name: "Created3" });
+    expect(outcome.activateFailed).toBe(true);
+    expect(result.current.isError).toBe(false);
+    expect(useAppStore.getState().activeProject).toBeNull();
+  });
+
+  it("useCreateProject reconciles from list when POST fails transiently", async () => {
+    apiFetch
+      .mockRejectedValueOnce(new apiClient.ApiError(503, "gateway"))
+      .mockResolvedValueOnce({ items: [summary("rec1", "Reconciled")], total: 1 })
+      .mockResolvedValueOnce({ activeProjectId: "rec1" });
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCreateProject(), { wrapper });
+    const outcome = await result.current.mutateAsync({ name: "Reconciled" });
+    expect(outcome.project.id).toBe("rec1");
+    expect(outcome.reconciledFromList).toBe(true);
+    expect(result.current.isError).toBe(false);
   });
 
   it("useCreateProject clears active project on 401 ApiError", async () => {

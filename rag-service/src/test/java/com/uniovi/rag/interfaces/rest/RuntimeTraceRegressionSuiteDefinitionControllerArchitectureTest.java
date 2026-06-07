@@ -35,8 +35,8 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimportp
 import com.uniovi.rag.application.service.runtime.tracereplay.RuntimeTraceReplayService;
 import com.uniovi.rag.application.service.runtime.tracereplaybatchexport.RuntimeTraceReplayBatchExportService;
 import com.uniovi.rag.application.service.runtime.tracereplayexport.RuntimeTraceReplayExportService;
-import com.uniovi.rag.service.query.ProcessQueryService;
-import com.uniovi.rag.service.query.SimpleProcessQueryService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -78,18 +78,18 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
      * controllerDoesNotDependOnComparisonBatchService,
      * controllerDoesNotDependOnComparisonService,
      * controllerDoesNotDependOnReplayService,
-     * controllerDoesNotDependOnTraceQueryService,
+     * controllerDoesNotDependOnTraceQueryExecutionService,
      * controllerDoesNotDependOnRepositories,
      * controllerDoesNotDependOnInfrastructurePersistence,
      * controllerDoesNotDependOnExportServices,
      * controllerDoesNotDependOnOrchestrator,
-     * controllerDoesNotDependOnProcessQueryServices,
+     * controllerDoesNotDependOnRuntimeQueryExecutionServices,
      * controllerDoesNotUseAsyncOrExecutors.
      */
 
     private static final Set<String> P50_P52_P53_FD_O_FORBIDDEN_SIMPLE_NAMES =
             Set.of(
-                    "RuntimeTraceRegressionSuiteDefinitionRunQueryService",
+                    "RuntimeTraceRegressionSuiteDefinitionRunQueryExecutionService",
                     "RuntimeTraceRegressionSuiteDefinitionRunReadFacade",
                     "RuntimeTraceRegressionSuiteDefinitionRunQueryOrchestrator",
                     "RuntimeTraceRegressionSuiteDefinitionRunQueryApplicationService",
@@ -465,7 +465,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
                     .areAssignableTo(RuntimeTraceReplayService.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnTraceQueryService =
+    static final ArchRule controllerDoesNotDependOnTraceQueryExecutionService =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceRegressionSuiteDefinitionController")
@@ -528,16 +528,16 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
                     .areAssignableTo(RagExecutionOrchestrator.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnProcessQueryServices =
+    static final ArchRule controllerDoesNotDependOnRuntimeQueryExecutionServices =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceRegressionSuiteDefinitionController")
                     .should()
                     .dependOnClassesThat()
-                    .areAssignableTo(ProcessQueryService.class)
+                    .areAssignableTo(RuntimeQueryExecutionService.class)
                     .orShould()
                     .dependOnClassesThat()
-                    .areAssignableTo(SimpleProcessQueryService.class);
+                    .areAssignableTo(RuntimeQueryExecutionService.class);
 
     @ArchTest
     static final ArchRule controllerDoesNotUseAsyncOrExecutors =

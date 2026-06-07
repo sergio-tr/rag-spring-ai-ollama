@@ -32,12 +32,26 @@ class ClassifierLabClientTest {
     void setUp() {
         restTemplate = new RestTemplate();
         server = MockRestServiceServer.bindTo(restTemplate).build();
-        client = new ClassifierLabClient("http://localhost:8888/", 5000, new ObjectMapper(), restTemplate);
+        client =
+                new ClassifierLabClient(
+                        "http://localhost:8888/",
+                        5000,
+                        240_000,
+                        new ObjectMapper(),
+                        restTemplate,
+                        restTemplate);
     }
 
     @Test
     void constructor_stripsTrailingSlashesFromBaseUrl() throws Exception {
-        ClassifierLabClient c = new ClassifierLabClient("http://example.test///", 1000, new ObjectMapper(), restTemplate);
+        ClassifierLabClient c =
+                new ClassifierLabClient(
+                        "http://example.test///",
+                        1000,
+                        240_000,
+                        new ObjectMapper(),
+                        restTemplate,
+                        restTemplate);
         var f = ClassifierLabClient.class.getDeclaredField("baseUrl");
         f.setAccessible(true);
         assertThat(f.get(c)).isEqualTo("http://example.test");
@@ -45,7 +59,8 @@ class ClassifierLabClientTest {
 
     @Test
     void isConfigured_falseWhenBaseUrlBlank() {
-        ClassifierLabClient empty = new ClassifierLabClient("", 5000, new ObjectMapper(), restTemplate);
+        ClassifierLabClient empty =
+                new ClassifierLabClient("", 5000, 240_000, new ObjectMapper(), restTemplate, restTemplate);
         assertThat(empty.isConfigured()).isFalse();
     }
 
@@ -61,7 +76,8 @@ class ClassifierLabClientTest {
 
     @Test
     void trainBytes_notConfigured_throws503() {
-        ClassifierLabClient noUrl = new ClassifierLabClient("", 5000, new ObjectMapper(), restTemplate);
+        ClassifierLabClient noUrl =
+                new ClassifierLabClient("", 5000, 240_000, new ObjectMapper(), restTemplate, restTemplate);
         assertThatThrownBy(
                         () ->
                                 noUrl.trainBytes(

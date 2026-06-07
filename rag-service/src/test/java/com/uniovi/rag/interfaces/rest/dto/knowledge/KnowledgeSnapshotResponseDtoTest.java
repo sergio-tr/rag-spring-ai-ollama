@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
 import com.uniovi.rag.domain.knowledge.KnowledgeIndexSnapshot;
+import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -20,11 +22,16 @@ class KnowledgeSnapshotResponseDtoTest {
                 id,
                 "sig-hash",
                 KnowledgeSnapshotScopeType.PROJECT,
+                KnowledgeSnapshotOwnerType.PROJECT,
+                projId,
                 projId,
                 convId,
                 IndexSnapshotStatus.ACTIVE,
                 cfgId,
                 "cfg-hash",
+                Map.of(),
+                "profile-hash",
+                null,
                 created,
                 updated);
     }

@@ -132,6 +132,24 @@ public class ConversationEntity {
         this.runtimeOverride = runtimeOverride != null ? new LinkedHashMap<>(runtimeOverride) : new LinkedHashMap<>();
     }
 
+    /** Per-conversation LLM id (canonical); merged after {@code runtime_override_jsonb} into RAG config for this chat. */
+    public String getLlmModel() {
+        return llmModel;
+    }
+
+    public void setLlmModel(String llmModel) {
+        this.llmModel = llmModel;
+    }
+
+    /** Classifier-service inference tag for this chat (canonical); merged after runtime JSON. */
+    public String getClassifierModelId() {
+        return classifierModelId;
+    }
+
+    public void setClassifierModelId(String classifierModelId) {
+        this.classifierModelId = classifierModelId;
+    }
+
     public Map<String, Object> getPendingClarification() {
         return pendingClarification;
     }

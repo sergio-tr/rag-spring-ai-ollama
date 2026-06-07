@@ -55,6 +55,10 @@ public class AsyncTaskEntity {
     @Column(name = "result_json", columnDefinition = "jsonb")
     private Map<String, Object> resultJson;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "event_log_json", columnDefinition = "jsonb")
+    private Map<String, Object> eventLogJson;
+
     @Column(name = "error_message", columnDefinition = "text")
     private String errorMessage;
 
@@ -115,6 +119,14 @@ public class AsyncTaskEntity {
 
     public void setResultJson(Map<String, Object> resultJson) {
         this.resultJson = resultJson;
+    }
+
+    public Map<String, Object> getEventLogJson() {
+        return eventLogJson;
+    }
+
+    public void setEventLogJson(Map<String, Object> eventLogJson) {
+        this.eventLogJson = eventLogJson;
     }
 
     public String getErrorMessage() {

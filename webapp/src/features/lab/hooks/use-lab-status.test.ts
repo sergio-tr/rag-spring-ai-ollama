@@ -22,9 +22,13 @@ function createWrapper() {
 }
 
 const statusPayload = {
-  datasets: { enabled: true, questionCount: 1 },
+  datasetKindsReady: true,
+  datasets: { enabled: true, datasetKindsReady: true },
   evaluations: { llm: true, rag: true, classifierProxy: true, asyncJobs: true },
   classifier: { configured: true, train: true, evaluate: true },
+  referenceBundleAvailable: true,
+  referenceBundleValid: true,
+  countsByDatasetKind: { llmReaderQuestions: 1, embeddingRetrievalQueries: 1, ragPresetQuestions: 1 },
   message: "ok",
 };
 

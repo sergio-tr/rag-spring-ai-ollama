@@ -46,15 +46,16 @@ public class OllamaProvisioningGateFilter extends OncePerRequestFilter {
         if (!path.startsWith("/api")) {
             return true;
         }
+        String productBase = apiPathProperties.getProductBasePath();
         // Auth must remain available even when Ollama models are still downloading.
-        if (path.startsWith("/api/auth/")) {
+        if (path.startsWith(productBase + "/auth/")) {
             return true;
         }
         // Allow admin endpoints to recover Ollama (trigger pulls, inspect health, etc.).
-        if (path.startsWith("/api/admin/")) {
+        if (path.startsWith(productBase + "/admin/")) {
             return true;
         }
-        // Legacy tooling endpoint to pull models must remain reachable too.
+        // Model pull endpoint to pull models must remain reachable too.
         if (path.contains("/ollama/")) {
             return true;
         }
@@ -79,8 +80,8 @@ public class OllamaProvisioningGateFilter extends OncePerRequestFilter {
             return !"GET".equalsIgnoreCase(method);
         }
 
-        // Lab evaluations and benchmarks can call LLM / embeddings.
-        if (path.startsWith(product + "/lab/evaluations") || path.startsWith(product + "/lab/benchmarks")) {
+        // Lab benchmarks can call LLM / embeddings.
+        if (path.startsWith(product + "/lab/benchmarks")) {
             return true;
         }
 

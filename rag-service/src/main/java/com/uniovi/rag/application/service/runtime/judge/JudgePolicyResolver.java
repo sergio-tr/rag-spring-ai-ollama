@@ -12,6 +12,11 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Default judge behaviour when {@code judgeEnabled=true}: evaluate the workflow candidate answer, accept or reject
+ * without retry when retries are disallowed, and perform at most one bounded regeneration retry when the candidate
+ * comes from the primary workflow path ({@link JudgeCandidateSource#WORKFLOW}).
+ */
 @Service
 public class JudgePolicyResolver {
 

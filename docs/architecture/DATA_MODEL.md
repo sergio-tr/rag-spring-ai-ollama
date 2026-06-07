@@ -1,7 +1,7 @@
 # Data model (summary)
 
 **Source of truth:** Flyway migrations under `rag-service/src/main/resources/db/migration/`.  
-This page is the **compact logical + physical reference** for the platform (thesis figures; verify rare tables with SQL if needed).
+This page is the **compact logical + physical reference** for the platform (figures; verify rare tables with SQL if needed).
 
 **Operators:** database image and init layout — [../../db/README.md](../../db/README.md). **Domain concepts:** [../domain/conceptual-model.md](../domain/conceptual-model.md). **Lab vs production promotion:** [ADR 0001](../adr/0001-lab-promotion-modes.md). **Async Lab jobs and evaluation scope:** [ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md), [integration-flows.md](../architecture/integration-flows.md).
 
@@ -187,7 +187,7 @@ There is **no** single global “active_config” row. **Effective** RAG paramet
 5. **Conversation runtime JSON:** `conversations.runtime_override_jsonb` when a `conversation_id` is supplied (load-only port); merged **before** the terminal request override.
 6. **Terminal request JSON:** HTTP request body override map; wins over the conversation runtime map on key conflicts when both are present.
 
-Chat execution paths that pass a **single** merged JSON node (e.g. legacy chat overlay) still delegate to the same resolver entrypoints; they do not reimplement merge.
+Chat execution paths that pass a **single** merged JSON node still delegate to the same resolver entrypoints; they do not reimplement merge.
 
 **ADR:** [0002-multitenancy-assumption.md](../adr/0002-multitenancy-assumption.md).
 
@@ -208,7 +208,7 @@ This table stores a **reproducible, append-only** persisted trace artefact for o
 | Column | Required on product insert | Purpose |
 | -------- | ---------------------------- | --------- |
 | `id`, `created_at` | yes (DB-generated) | Primary key and timestamp. |
-| `payload_jsonb` | yes | Versioned **projection** of transitional `RagConfig` (`toValueMap()` at write time); audit/replay, not the canonical domain model. May include fixed key **`knowledgeBuildProjection`** (nested JSON from `KnowledgeBuildProjectionMapper`, `projectionVersion` ≥ 1) when the row is created for knowledge execute-without-pin. |
+| `payload_jsonb` | yes | Versioned **projection** of effective `RagConfig` (`toValueMap()` at write time); audit/replay, not the canonical domain model. May include fixed key **`knowledgeBuildProjection`** (nested JSON from `KnowledgeBuildProjectionMapper`, `projectionVersion` ≥ 1) when the row is created for knowledge execute-without-pin. |
 | `capability_set_jsonb` | yes | `CapabilitySet` JSON (mapper-owned shape). |
 | `compatibility_result_jsonb` | yes | Compatibility rule engine output. |
 | `reindex_impact_jsonb` | yes | `ReindexImpact` (V25). |
@@ -217,7 +217,7 @@ This table stores a **reproducible, append-only** persisted trace artefact for o
 | `provenance_jsonb` | yes | Domain provenance plus **`schema_version`** (int), **`creatingUserId`** (UUID string), optional **`correlationId`**, optional **`projectId`** (UUID string) for knowledge pin validation. |
 | `config_hash` | yes | `ResolvedRuntimeConfigHasher` SHA-256 over canonical `ResolvedRuntimeConfig` JSON; when `payload_jsonb` carries **`knowledgeBuildProjection`**, the same hasher appends that nested map so the digest covers the knowledge slice. |
 | `conversation_id`, `message_id`, `job_id` | optional | Optional linkage when the client supplies them. |
-| `prompt_stack_preview_jsonb` | omit (null) | Legacy; not written for new rows. |
+| `prompt_stack_preview_jsonb` | omit (null) | Retired column; not written for new rows. |
 
 **Forward compatibility:** new snapshot JSON keys and new nullable columns should be **additive** only; readers ignore unknown keys where possible.
 
@@ -330,7 +330,7 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 | `users` | V2 | |
 | `projects` | V3 | |
 | `project_documents` | V4 | |
-| `documents`, `vector_store` | V1 + V4 | Legacy corpus + `project_id` scope |
+| `documents`, `vector_store` | V1 + V4 | Shared corpus tables + `project_id` scope |
 | `default_system_configuration`, `rag_configuration` | V5 | |
 | `rag_preset` | V6 | |
 | `conversations`, `messages` | V7 | |
@@ -339,9 +339,9 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 | `classifier_model` | V10 | |
 | `message_feedback` | V11 | |
 | `audit_log` | V12 | |
-| `scheduled_evaluation` | V13 | |
-| `prompt_template` | V14 | |
-| `response_cache` | V15 | |
+| ~~`scheduled_evaluation`~~ | V13 → **dropped V56** | Was schema-only; no scheduler API |
+| ~~`prompt_template`~~ | V14 → **dropped V56** | Was schema-only; judge uses Spring `PromptTemplate`, not DB |
+| ~~`response_cache`~~ | V15 → **dropped V56** | Was schema-only; metadata tools use Spring `@Cacheable` (`MetadataLlmResponseCacheService`) |
 | seed / demo | V16, V18 | |
 | `async_task` | V17 | |
 | `evaluation_run.project_id`, `async_task.project_id` | V19 | Nullable FK to `projects`, `ON DELETE SET NULL`; see ADR 0003 |
@@ -385,7 +385,7 @@ Do **not** conflate the two: a Lab “eval LLM” `async_task` is **not** an `ev
 | Risk | Mitigation |
 | ------ | ------------ |
 | JSON without strict DB schema | Write-time sanitization; characterization tests for merge; document keys (e.g. configuration schema in application). |
-| Duplicate datasets (same SHA) | Application-level dedup by **`(owner_id, sha256)`** when hashing is available; no mandatory UK in DB for thesis scope ([ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). |
+| Duplicate datasets (same SHA) | Application-level dedup by **`(owner_id, sha256)`** when hashing is available; no mandatory UK in DB for minimum scope ([ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). |
 | `artifact_path` not portable | Environment-specific prefixes; avoid hard-coded absolute paths. |
 | Two “run” concepts (`evaluation_run` vs `async_task`) | See [Section 10](DATA_MODEL.md#dm-s10); use the right table per flow. |
 | `evaluation_result` growth | Retention/partitioning later; index on `run_id` (V9). |
@@ -401,7 +401,7 @@ Do **not** conflate the two: a Lab “eval LLM” `async_task` is **not** an `ev
 
 ---
 
-## Legacy corpus vs project scope
+## Corpus tables vs project scope
 
-- `documents` / `vector_store` originate from the **V1** corpus model; later migrations add **`project_id`** on `vector_store` and **`project_documents`** for per-project ingestion status.
+- `documents` / `vector_store` originate from the **V1** shared-corpus model; later migrations add **`project_id`** on `vector_store` and **`project_documents`** for per-project ingestion status.
 - Chat retrieval should respect **active project** and filters from the product API; see [RAG.md](../RAG.md).

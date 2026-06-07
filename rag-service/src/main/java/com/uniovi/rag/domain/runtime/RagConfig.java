@@ -44,6 +44,11 @@ public record RagConfig(
         int naiveFullCorpusMaxChars,
         /** Max characters for extractive curated retrieval context (advanced pipeline). */
         int advancedRetrievalMaxContextChars,
+        /**
+         * Lab P0 routing: when {@link #naiveFullCorpusInPromptEnabled()} is true without retrieval, select the direct
+         * corpus-grounded workflow instead of the naive full-corpus baseline workflow name/metrics path.
+         */
+        boolean corpusGroundedDirectWorkflow,
         MaterializationStrategy materializationStrategy
 ) {
 
@@ -51,6 +56,62 @@ public record RagConfig(
     public static final int DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS = 24_000;
 
     private static final String JSON_MATERIALIZATION_STRATEGY = "materializationStrategy";
+
+    /**
+     * Convenience constructor for positional call sites (defaults {@code corpusGroundedDirectWorkflow=false}).
+     */
+    public RagConfig(
+            boolean expansionEnabled,
+            boolean nerEnabled,
+            boolean toolsEnabled,
+            boolean metadataEnabled,
+            boolean reasoningEnabled,
+            boolean rankerEnabled,
+            boolean postRetrievalEnabled,
+            boolean functionCallingEnabled,
+            boolean useRetrieval,
+            boolean useAdvisor,
+            boolean clarificationEnabled,
+            boolean memoryEnabled,
+            boolean adaptiveRoutingEnabled,
+            boolean judgeEnabled,
+            int topK,
+            double similarityThreshold,
+            String llmModel,
+            String embeddingModel,
+            String classifierModelId,
+            String reasoningStrategy,
+            boolean naiveFullCorpusInPromptEnabled,
+            int naiveFullCorpusMaxChars,
+            int advancedRetrievalMaxContextChars,
+            MaterializationStrategy materializationStrategy) {
+        this(
+                expansionEnabled,
+                nerEnabled,
+                toolsEnabled,
+                metadataEnabled,
+                reasoningEnabled,
+                rankerEnabled,
+                postRetrievalEnabled,
+                functionCallingEnabled,
+                useRetrieval,
+                useAdvisor,
+                clarificationEnabled,
+                memoryEnabled,
+                adaptiveRoutingEnabled,
+                judgeEnabled,
+                topK,
+                similarityThreshold,
+                llmModel,
+                embeddingModel,
+                classifierModelId,
+                reasoningStrategy,
+                naiveFullCorpusInPromptEnabled,
+                naiveFullCorpusMaxChars,
+                advancedRetrievalMaxContextChars,
+                false,
+                materializationStrategy);
+    }
 
     /**
      * Backwards-compatible constructor for call sites that predate P13.
@@ -104,6 +165,7 @@ public record RagConfig(
                 naiveFullCorpusInPromptEnabled,
                 naiveFullCorpusMaxChars,
                 advancedRetrievalMaxContextChars,
+                false,
                 materializationStrategy);
     }
 
@@ -160,6 +222,7 @@ public record RagConfig(
                 naiveFullCorpusInPromptEnabled,
                 naiveFullCorpusMaxChars,
                 advancedRetrievalMaxContextChars,
+                false,
                 materializationStrategy);
     }
 
@@ -195,6 +258,7 @@ public record RagConfig(
                 false,
                 DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
                 DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                false,
                 MaterializationStrategy.CHUNK_LEVEL
         );
     }
@@ -235,6 +299,7 @@ public record RagConfig(
                 readBool(json, "naiveFullCorpusInPromptEnabled", base.naiveFullCorpusInPromptEnabled),
                 maxChars,
                 advMax,
+                readBool(json, "corpusGroundedDirectWorkflow", base.corpusGroundedDirectWorkflow),
                 readMaterializationStrategy(json, base.materializationStrategy)
         );
     }
@@ -296,6 +361,7 @@ public record RagConfig(
         m.put("naiveFullCorpusInPromptEnabled", naiveFullCorpusInPromptEnabled);
         m.put("naiveFullCorpusMaxChars", naiveFullCorpusMaxChars);
         m.put("advancedRetrievalMaxContextChars", advancedRetrievalMaxContextChars);
+        m.put("corpusGroundedDirectWorkflow", corpusGroundedDirectWorkflow);
         m.put(JSON_MATERIALIZATION_STRATEGY, materializationStrategy.name());
         return m;
     }

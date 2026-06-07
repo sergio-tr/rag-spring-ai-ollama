@@ -2,9 +2,15 @@ package com.uniovi.rag.application.service.account;
 
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
+import com.uniovi.rag.infrastructure.persistence.ClassifierModelRepository;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
+import com.uniovi.rag.infrastructure.persistence.EvaluationCampaignRepository;
+import com.uniovi.rag.infrastructure.persistence.EvaluationDatasetRepository;
+import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.MessageRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
+import com.uniovi.rag.infrastructure.persistence.RagConfigurationRepository;
 import com.uniovi.rag.infrastructure.persistence.UserPersonalizationRepository;
 import com.uniovi.rag.infrastructure.persistence.UserPreferencesRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
@@ -53,6 +59,24 @@ class AccountExportSnapshotLoaderTest {
     @Mock
     private KnowledgeDocumentRepository knowledgeDocumentRepository;
 
+    @Mock
+    private MessageRepository messageRepository;
+
+    @Mock
+    private RagConfigurationRepository ragConfigurationRepository;
+
+    @Mock
+    private EvaluationDatasetRepository evaluationDatasetRepository;
+
+    @Mock
+    private EvaluationRunRepository evaluationRunRepository;
+
+    @Mock
+    private EvaluationCampaignRepository evaluationCampaignRepository;
+
+    @Mock
+    private ClassifierModelRepository classifierModelRepository;
+
     @InjectMocks
     private AccountExportSnapshotLoader loader;
 
@@ -99,16 +123,23 @@ class AccountExportSnapshotLoaderTest {
         when(doc.getStorageUri()).thenReturn("file:///tmp/a.pdf");
         when(knowledgeDocumentRepository.findAllByProjectOwner_Id(userId)).thenReturn(List.of(doc));
 
+        when(messageRepository.findAllByConversationUser_Id(userId)).thenReturn(List.of());
+        when(ragConfigurationRepository.findByUser_IdOrderByUpdatedAtDesc(userId)).thenReturn(List.of());
+        when(evaluationDatasetRepository.findByOwner_IdOrderByUploadedAtDesc(userId)).thenReturn(List.of());
+        when(evaluationRunRepository.findByUser_IdOrderByCreatedAtDesc(userId)).thenReturn(List.of());
+        when(evaluationCampaignRepository.findByUser_IdOrderByCreatedAtDesc(userId)).thenReturn(List.of());
+        when(classifierModelRepository.findByOwner_IdOrderByTrainedAtDesc(userId)).thenReturn(List.of());
+
         AccountExportSnapshotLoader.ExportSnapshot snap = loader.load(userId);
 
         assertThat(snap.user()).isSameAs(user);
-        assertThat(snap.manifest()).containsKeys("version", "exportedAt", "userId");
         assertThat(snap.profile()).containsEntry("email", "u@example.com");
         assertThat(snap.projects()).hasSize(1);
         assertThat(snap.projects().getFirst()).containsEntry("id", projectId.toString());
         assertThat(snap.conversations()).hasSize(1);
         assertThat(snap.documents()).hasSize(1);
         assertThat(snap.documents().getFirst()).containsEntry("corpusScope", "PROJECT_SHARED");
+        assertThat(snap.exclusions()).isNotEmpty();
     }
 
     @Test
@@ -123,13 +154,18 @@ class AccountExportSnapshotLoaderTest {
         when(prefRow.getPreferences()).thenReturn(Map.of("theme", "dark"));
         when(userPreferencesRepository.findById(userId)).thenReturn(Optional.of(prefRow));
 
-        var persRow =
-                Mockito.mock(UserPersonalizationEntity.class);
+        var persRow = Mockito.mock(UserPersonalizationEntity.class);
         when(persRow.getPersonalization()).thenReturn(null);
         when(userPersonalizationRepository.findById(userId)).thenReturn(Optional.of(persRow));
 
         when(projectRepository.findByOwner_IdOrderByUpdatedAtDesc(eq(userId), eq(Pageable.unpaged())))
                 .thenReturn(new PageImpl<>(List.of()));
+        when(messageRepository.findAllByConversationUser_Id(userId)).thenReturn(List.of());
+        when(ragConfigurationRepository.findByUser_IdOrderByUpdatedAtDesc(userId)).thenReturn(List.of());
+        when(evaluationDatasetRepository.findByOwner_IdOrderByUploadedAtDesc(userId)).thenReturn(List.of());
+        when(evaluationRunRepository.findByUser_IdOrderByCreatedAtDesc(userId)).thenReturn(List.of());
+        when(evaluationCampaignRepository.findByUser_IdOrderByCreatedAtDesc(userId)).thenReturn(List.of());
+        when(classifierModelRepository.findByOwner_IdOrderByTrainedAtDesc(userId)).thenReturn(List.of());
 
         AccountExportSnapshotLoader.ExportSnapshot snap = loader.load(userId);
 

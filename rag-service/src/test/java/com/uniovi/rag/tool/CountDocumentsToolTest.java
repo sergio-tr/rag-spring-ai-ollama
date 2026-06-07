@@ -1,8 +1,8 @@
 package com.uniovi.rag.tool;
 
 import com.uniovi.rag.domain.model.QueryType;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;

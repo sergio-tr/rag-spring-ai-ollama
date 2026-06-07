@@ -5,13 +5,18 @@ import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.evaluation.BenchmarkJobAccepted;
 import com.uniovi.rag.application.service.evaluation.BenchmarkRunOrchestrator;
 import com.uniovi.rag.application.service.evaluation.LabEvaluationRunService;
+import com.uniovi.rag.application.service.evaluation.LabDatasetGateException;
+import com.uniovi.rag.application.service.evaluation.LabMetricsComparisonService;
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
 import com.uniovi.rag.interfaces.rest.dto.CompareRunsResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationRunDetailDto;
+import com.uniovi.rag.interfaces.rest.dto.LatestLabRunRecoveryDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.interfaces.rest.support.ApiGlobalExceptionHandler;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +34,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -42,7 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = LabBenchmarkController.class)
 @ContextConfiguration(classes = RagWebMvcTestApplication.class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import(LabBenchmarkController.class)
+@Import({LabBenchmarkController.class, ApiGlobalExceptionHandler.class})
 class LabBenchmarkControllerWebMvcTest {
 
     @Autowired
@@ -53,6 +59,9 @@ class LabBenchmarkControllerWebMvcTest {
 
     @MockitoBean
     private LabEvaluationRunService labEvaluationRunService;
+
+    @MockitoBean
+    private LabMetricsComparisonService labMetricsComparisonService;
 
     @MockitoBean
     private RagApiPathProperties apiPathProperties;
@@ -92,6 +101,47 @@ class LabBenchmarkControllerWebMvcTest {
                 .andExpect(jsonPath("$.evaluationRunId").value(runId.toString()))
                 .andExpect(jsonPath("$.asyncTaskId").value(taskId.toString()))
                 .andExpect(jsonPath("$.status").value("ACCEPTED"));
+    }
+
+    @Test
+    void postRagBenchmark_withCorpusIdAndNoProjectId_returns202() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID ds = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
+        when(benchmarkRunOrchestrator.startJsonBenchmark(
+                        eq(userId), eq("USER"), eq(BenchmarkKind.RAG_PRESET_END_TO_END), any(StartBenchmarkRunRequest.class)))
+                .thenReturn(BenchmarkJobAccepted.of(runId, taskId));
+
+        String body = String.format(
+                "{\"datasetId\":\"%s\",\"corpusId\":\"%s\",\"runKind\":\"PRODUCT_EXPLORATION\"}", ds, corpusId);
+
+        mockMvc.perform(
+                        post(path("/lab/benchmarks/RAG_PRESET_END_TO_END/runs"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(body))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.evaluationRunId").value(runId.toString()));
+    }
+
+    @Test
+    void postBenchmark_rejectedByDatasetGate_returns422WithStructuredError() throws Exception {
+        UUID ds = UUID.randomUUID();
+        when(benchmarkRunOrchestrator.startJsonBenchmark(
+                        eq(userId), eq("USER"), eq(BenchmarkKind.RAG_PRESET_END_TO_END), any(StartBenchmarkRunRequest.class)))
+                .thenThrow(new LabDatasetGateException(
+                        "DATASET_TOO_SMALL",
+                        "Dataset is not eligible for RAG_PRESET_END_TO_END (see validationIssues).",
+                        new ValidationReport()));
+
+        String body = String.format(
+                "{\"datasetId\":\"%s\",\"runKind\":\"PRODUCT_EXPLORATION\"}", ds);
+
+        mockMvc.perform(post(path("/lab/benchmarks/RAG_PRESET_END_TO_END/runs")).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("DATASET_TOO_SMALL"))
+                .andExpect(jsonPath("$.error.code").value("DATASET_TOO_SMALL"));
     }
 
     @Test
@@ -136,5 +186,55 @@ class LabBenchmarkControllerWebMvcTest {
         mockMvc.perform(get(path("/lab/runs/compare")).param("runA", a.toString()).param("runB", b.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.comparable").value(true));
+    }
+
+    @Test
+    void getLatestRun_returnsRecoveryDto() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        when(labEvaluationRunService.findLatestRunForRecovery(
+                        eq(userId), eq(BenchmarkKind.LLM_JUDGE_QA), eq(null)))
+                .thenReturn(
+                        new LatestLabRunRecoveryDto(
+                                runId,
+                                taskId,
+                                "LLM_JUDGE_QA",
+                                null,
+                                "SUCCEEDED",
+                                true,
+                                "/api/v5/lab/jobs/" + taskId,
+                                "/api/v5/lab/jobs/" + taskId + "/events",
+                                Map.of("ok", true),
+                                Instant.parse("2026-01-01T00:00:00Z"),
+                                Instant.parse("2026-01-01T00:05:00Z"),
+                                true));
+
+        mockMvc.perform(get(path("/lab/benchmarks/LLM_JUDGE_QA/runs/latest")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.evaluationRunId").value(runId.toString()))
+                .andExpect(jsonPath("$.jobId").value(taskId.toString()))
+                .andExpect(jsonPath("$.terminal").value(true))
+                .andExpect(jsonPath("$.result.ok").value(true));
+    }
+
+    @Test
+    void getLatestRun_notFound_returns404() throws Exception {
+        when(labEvaluationRunService.findLatestRunForRecovery(
+                        eq(userId), eq(BenchmarkKind.LLM_JUDGE_QA), eq(null)))
+                .thenReturn(null);
+
+        mockMvc.perform(get(path("/lab/benchmarks/LLM_JUDGE_QA/runs/latest")))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void exportMvpItemsJson_returnsBundle() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(labEvaluationRunService.exportMvpItemsJsonBundle(userId, runId))
+                .thenReturn(Map.of("mvpSchemaVersion", "1", "items", List.of()));
+
+        mockMvc.perform(get(path("/lab/runs/") + runId + "/export/mvp/items.json"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mvpSchemaVersion").value("1"));
     }
 }

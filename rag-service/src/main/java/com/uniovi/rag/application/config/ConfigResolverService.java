@@ -148,7 +148,7 @@ public class ConfigResolverService {
 
     /**
      * Terminal JSON: explicit runtime override wins; otherwise when no persisted {@code presetId}, fall back to
-     * {@code presetPayload} (legacy preview).
+     * {@code presetPayload} (inline preview).
      */
     private static JsonNode resolveRequestRuntimeOverrideNode(RuntimeConfigResolutionInput input) {
         return input.runtimeOverride()

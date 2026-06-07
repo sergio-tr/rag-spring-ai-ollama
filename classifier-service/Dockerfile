@@ -10,6 +10,11 @@ ENV PORT=${PORT} MODELS_DIR=${MODELS_DIR} DATA_DIR=${DATA_DIR}
 
 WORKDIR /app
 
+# curl for Docker healthcheck (same as Dockerfile.dev)
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends curl \
+  && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -17,7 +22,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Application (app/ + entrypoint)
 COPY uvicorn_entry.py ./
 COPY app/ ./app/
-# Runtime fix-ups for legacy model artifacts
+# Runtime fix-ups for older model artifacts
 COPY scripts/ ./scripts/
 # Default model and trained models (models/default/ + trained)
 COPY models/ ./models/

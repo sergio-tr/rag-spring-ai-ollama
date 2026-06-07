@@ -109,7 +109,7 @@ require_jdk21() {
   local line
   line=$(java -version 2>&1 | head -n 1)
   if [[ "$line" =~ version\ \"1\.[0-9]+\. ]]; then
-    echo "ERROR: JDK 21+ required; found legacy ${line}" >&2
+    echo "ERROR: JDK 21+ required; found outdated JDK ${line}" >&2
     print_java21_hint
     exit 1
   fi
@@ -234,13 +234,17 @@ chmod +x rag-service/mvnw
 echo "==> Classifier: pytest + coverage.xml"
 (
   cd classifier-service
-  python -m pip install -r requirements.txt
+  CLASSIFIER_PYTHON="python3"
+  if command -v python3.11 >/dev/null 2>&1; then
+    CLASSIFIER_PYTHON="python3.11"
+  fi
+  "${CLASSIFIER_PYTHON}" -m pip install -r requirements.txt
   export MODELS_DIR=./models
   export DATA_DIR=./data
-  python -m pytest tests/unit tests/regression/test_baseline_lib.py \
+  "${CLASSIFIER_PYTHON}" -m pytest tests/unit tests/regression/test_baseline_lib.py \
     -m "not integration and not slow" \
     -v
-  python scripts/patch_coverage_xml_for_sonar.py
+  "${CLASSIFIER_PYTHON}" scripts/patch_coverage_xml_for_sonar.py
 )
 
 echo "==> Webapp: Vitest coverage (lcov.info)"

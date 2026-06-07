@@ -2,8 +2,8 @@ package com.uniovi.rag.infrastructure.persistence.impl;
 
 import com.uniovi.rag.domain.model.AddResult;
 import com.uniovi.rag.domain.model.Minute;
-import com.uniovi.rag.service.document.DocumentService;
-import com.uniovi.rag.service.document.MetadataMinuteDocumentService;
+import com.uniovi.rag.application.service.knowledge.document.DocumentService;
+import com.uniovi.rag.application.service.knowledge.document.MetadataMinuteDocumentService;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;

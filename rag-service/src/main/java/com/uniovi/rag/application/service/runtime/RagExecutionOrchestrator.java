@@ -14,6 +14,8 @@ import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallin
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
+import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
@@ -44,12 +46,14 @@ import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -70,6 +74,9 @@ public class RagExecutionOrchestrator {
     private final ClarificationStrategy clarificationStrategy;
     private final AdaptiveRoutingStrategy adaptiveRoutingStrategy;
     private final JudgeStrategy judgeStrategy;
+    private final StructuredAnswerPlanService structuredAnswerPlanService;
+    private final AnswerVerificationService answerVerificationService;
+    private final ObjectProvider<RuntimeObservability> runtimeObservability;
 
     public RagExecutionOrchestrator(
             WorkflowSelector workflowSelector,
@@ -84,7 +91,10 @@ public class RagExecutionOrchestrator {
             ClarificationPolicyResolver clarificationPolicyResolver,
             ClarificationStrategy clarificationStrategy,
             AdaptiveRoutingStrategy adaptiveRoutingStrategy,
-            JudgeStrategy judgeStrategy) {
+            JudgeStrategy judgeStrategy,
+            StructuredAnswerPlanService structuredAnswerPlanService,
+            AnswerVerificationService answerVerificationService,
+            ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.workflowSelector = workflowSelector;
         this.snapshotFallbackDirectLlmWorkflow = snapshotFallbackDirectLlmWorkflow;
         this.queryUnderstandingPipeline = queryUnderstandingPipeline;
@@ -98,6 +108,9 @@ public class RagExecutionOrchestrator {
         this.clarificationStrategy = clarificationStrategy;
         this.adaptiveRoutingStrategy = adaptiveRoutingStrategy;
         this.judgeStrategy = judgeStrategy;
+        this.structuredAnswerPlanService = structuredAnswerPlanService;
+        this.answerVerificationService = answerVerificationService;
+        this.runtimeObservability = runtimeObservability;
     }
 
     public RagExecutionResult execute(ExecutionContext ctx) {
@@ -299,6 +312,7 @@ public class RagExecutionOrchestrator {
                         clarifyBeforeQu,
                         memoryBeforeQu,
                         quStages,
+                        List.of(),
                         clarifyAfterQu,
                         routing.routingStages(),
                         RagExecutionTraceSupport.projectDeterministicToolStages(toolResult),
@@ -334,7 +348,8 @@ public class RagExecutionOrchestrator {
                 DeterministicToolKindMappings.toQueryType(kind),
                 true,
                 List.of(),
-                Optional.empty());
+                Optional.empty(),
+                List.of());
     }
 
     private ExecutionOutcome executeFunctionCallingRoute(
@@ -424,6 +439,7 @@ public class RagExecutionOrchestrator {
                         clarifyBeforeQu,
                         memoryBeforeQu,
                         quStages,
+                        List.of(),
                         clarifyAfterQu,
                         routing.routingStages(),
                         RagExecutionTraceSupport.projectDeterministicToolStages(toolResult),
@@ -459,7 +475,8 @@ public class RagExecutionOrchestrator {
                 DeterministicToolKindMappings.toQueryType(k),
                 true,
                 List.of(),
-                Optional.empty());
+                Optional.empty(),
+                List.of());
     }
 
     private ExecutionOutcome executeAdvisorRoute(
@@ -564,15 +581,44 @@ public class RagExecutionOrchestrator {
             DeterministicToolExecutionResult toolResult,
             FcGate fcGate,
             AdvisorSnapshot advisorSnapshot) {
+        List<ExecutionStageTrace> reasoningStages = new ArrayList<>();
+        ExecutionContext effectiveCtx = ctxForWorkflow;
+        var rag = ctxForWorkflow.resolved().toRagConfig();
+        if (rag.reasoningEnabled()) {
+            var planResult = structuredAnswerPlanService.plan(ctxForWorkflow, plan);
+            reasoningStages.addAll(planResult.stageTraces());
+            if (planResult.plan().isPresent()) {
+                effectiveCtx = executionContextFactory.attachStructuredAnswerPlan(ctxForWorkflow, planResult.plan().get());
+            }
+        }
+
         ExecutionWorkflow workflow =
-                selectExecutableWorkflow(ctxForWorkflow, workflowSelector.select(ctxForWorkflow));
+                selectExecutableWorkflow(effectiveCtx, workflowSelector.select(effectiveCtx));
         String wname = workflow.workflowName();
-        RagExecutionContextHolder.set(toLegacy(ctxForWorkflow));
+        RagExecutionContextHolder.set(toRagExecutionContextHolder(effectiveCtx));
         try {
-            RagExecutionResult partial = workflow.execute(ctxForWorkflow);
+            RuntimeObservability obs = runtimeObservability != null ? runtimeObservability.getIfAvailable() : null;
+            final int promptChars =
+                    plan != null && plan.rewrittenQueryText() != null ? plan.rewrittenQueryText().length() : 0;
+            final String workflowFamily = wname;
+            final ExecutionContext workflowCtx = effectiveCtx;
+            RagExecutionResult partial =
+                    obs != null
+                            ? obs.promptCompose(workflowFamily, promptChars, () -> workflow.execute(workflowCtx))
+                            : workflow.execute(effectiveCtx);
+
+            // Minimal post-verification (no retry): only when reasoning is enabled and strategy explicitly requests verify.
+            if (rag.reasoningEnabled()
+                    && rag.reasoningStrategy() != null
+                    && "PLAN_AND_VERIFY".equalsIgnoreCase(rag.reasoningStrategy())) {
+                String contextPreview = extractPackedContextPreview(partial.workflowStageTraces());
+                var v = answerVerificationService.verify(effectiveCtx, plan.rewrittenQueryText(), contextPreview, partial.answerText());
+                reasoningStages.add(v.stageTrace());
+            }
+
             JudgeSnapshot judge =
                     runJudge(
-                            ctxForWorkflow,
+                            effectiveCtx,
                             plan,
                             routing.routeKind(),
                             wname,
@@ -581,12 +627,13 @@ public class RagExecutionOrchestrator {
             RagExecutionResult judgedPartial = applyJudgeToResult(partial, judge);
             ExecutionTrace trace =
                     RagExecutionTraceSupport.assembleTrace(
-                            ctxForWorkflow,
+                            effectiveCtx,
                             judgedPartial,
                             wname,
                             clarifyBeforeQu,
                             memoryBeforeQu,
                             quStages,
+                            reasoningStages,
                             clarifyAfterQu,
                             routing.routingStages(),
                             toolStages,
@@ -617,6 +664,23 @@ public class RagExecutionOrchestrator {
             return "ChunkDenseMetadataWorkflow";
         }
         return "ChunkDenseRagWorkflow";
+    }
+
+    private static String extractPackedContextPreview(List<ExecutionStageTrace> stages) {
+        if (stages == null || stages.isEmpty()) {
+            return "";
+        }
+        for (ExecutionStageTrace s : stages) {
+            if (s != null && "packed_context_preview".equals(s.stageName()) && s.message() != null) {
+                String m = s.message();
+                int idx = m.indexOf("preview=");
+                if (idx >= 0) {
+                    return m.substring(idx + "preview=".length()).trim();
+                }
+                return m.trim();
+            }
+        }
+        return "";
     }
 
     private RagExecutionResult finishClarificationAskShortCircuit(
@@ -651,6 +715,7 @@ public class RagExecutionOrchestrator {
                         clarifyBeforeQu,
                         memoryBeforeQu,
                         quStages,
+                        List.of(),
                         clarifyAfterQu,
                         List.of(),
                         toolStages,
@@ -703,10 +768,11 @@ public class RagExecutionOrchestrator {
                     base.usedKnowledgeSnapshotIds(),
                     base.executionTrace(),
                     base.toolUsedLabel(),
-                    base.queryTypeForLegacy(),
+                    base.resolvedQueryType(),
                     base.usedTool(),
                     base.workflowStageTraces(),
-                    base.retrievalDiagnostics());
+                    base.retrievalDiagnostics(),
+                    base.responseSources());
         }
         return base;
     }
@@ -811,7 +877,7 @@ public class RagExecutionOrchestrator {
                 || "ChunkDenseMetadataWorkflow".equals(workflowName);
     }
 
-    private static RagExecutionContext toLegacy(ExecutionContext ctx) {
+    private static RagExecutionContext toRagExecutionContextHolder(ExecutionContext ctx) {
         return new RagExecutionContext(
                 ctx.conversationId() != null ? ctx.conversationId().toString() : null,
                 ctx.userId() != null ? ctx.userId().toString() : null,

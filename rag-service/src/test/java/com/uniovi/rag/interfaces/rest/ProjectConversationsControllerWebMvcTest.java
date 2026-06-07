@@ -4,7 +4,7 @@ package com.uniovi.rag.interfaces.rest;
 import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.ConversationApplicationService;
 import com.uniovi.rag.application.service.MoveConversationApplicationService;
-import com.uniovi.rag.service.config.ChatPresetDefaults;
+import com.uniovi.rag.application.service.config.ChatPresetDefaults;
 import com.uniovi.rag.interfaces.rest.dto.ConversationDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
@@ -25,6 +25,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -104,6 +105,7 @@ class ProjectConversationsControllerWebMvcTest {
                         Instant.parse("2024-06-01T12:00:00Z"),
                         null,
                         List.of(),
+                        Map.of(),
                         ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID));
 
         mockMvc.perform(

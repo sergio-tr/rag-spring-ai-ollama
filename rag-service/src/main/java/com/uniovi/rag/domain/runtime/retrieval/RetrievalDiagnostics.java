@@ -1,5 +1,6 @@
 package com.uniovi.rag.domain.runtime.retrieval;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -13,12 +14,24 @@ public record RetrievalDiagnostics(
         int denseCandidateCount,
         int sparseCandidateCount,
         int afterFusionCount,
+        int beforePostRetrievalCount,
         int afterRerankCount,
         int afterFilterCount,
-        int afterCompressionCount) {
+        int afterCompressionCount,
+        int protectedCandidateCount,
+        int droppedCandidateCount,
+        boolean rerankApplied,
+        List<String> beforeRerankTopCandidateIds,
+        List<String> afterRerankTopCandidateIds,
+        Optional<String> rerankScoreSummary) {
 
     public RetrievalDiagnostics {
         fusionMode = Objects.requireNonNullElseGet(fusionMode, Optional::empty);
         snapshotIdsJoined = snapshotIdsJoined == null ? "" : snapshotIdsJoined;
+        beforeRerankTopCandidateIds =
+                List.copyOf(Objects.requireNonNullElse(beforeRerankTopCandidateIds, List.of()));
+        afterRerankTopCandidateIds =
+                List.copyOf(Objects.requireNonNullElse(afterRerankTopCandidateIds, List.of()));
+        rerankScoreSummary = Objects.requireNonNullElseGet(rerankScoreSummary, Optional::empty);
     }
 }

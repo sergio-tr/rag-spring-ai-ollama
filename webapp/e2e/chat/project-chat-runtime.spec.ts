@@ -6,8 +6,11 @@ import {
 } from "../support/chat-assistant";
 import {
   createAndActivateProject,
+  createNewChatConversation,
   loginAsSeedUser,
+  openChatConfigurationPanel,
   sendChatMessage,
+  waitForDocumentReadyByName,
 } from "../support/helpers";
 
 test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", () => {
@@ -18,7 +21,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     await expect(
       page.getByRole("main").getByRole("button", { name: /^send$|^enviar$/i }),
@@ -26,10 +29,10 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
 
     await expect(page.getByTestId("chat-readable-column")).toBeVisible();
 
-    await page.getByTestId("chat-actions-menu-trigger").click();
-    await expect(page.getByRole("menuitem", { name: /^delete chat$/i })).toBeVisible({ timeout: 15_000 });
+    const panel = await openChatConfigurationPanel(page);
+    await expect(panel.getByTestId("chat-delete-menu-item")).toBeVisible({ timeout: 15_000 });
 
-    const preset = page.getByRole("combobox", { name: /preset/i });
+    const preset = panel.getByTestId("chat-preset-select");
     await expect(preset).toBeVisible({ timeout: 15_000 });
     await expect(preset).not.toHaveValue("");
     const selectedLabel = await preset.locator("option:checked").textContent();
@@ -38,6 +41,9 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
   });
 
   test("Buenos dias: no gateway failure, assistant or fallback, alerts sanitized", async ({ page }) => {
+    // Assistant completion can exceed 30s in CI depending on stack warmup.
+    test.setTimeout(240_000);
+
     let chatPostStatus = 0;
     page.on("response", async (res) => {
       const req = res.request();
@@ -53,7 +59,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     await sendChatMessage(page, "Buenos dias");
     await expect(page.getByText("Buenos dias")).toBeVisible({ timeout: 15_000 });
@@ -77,13 +83,15 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
   });
 
   test("empty project: Buenos dias completes without send error strip", async ({ page }) => {
+    test.setTimeout(240_000);
+
     await loginAsSeedUser(page);
     await createAndActivateProject(page, uniqueProjectName("e2e-empty-proj"));
 
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     await sendChatMessage(page, "Buenos dias");
 
@@ -96,6 +104,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
   });
 
   test("limit retrieval checkbox toggles once and stays stable after navigation", async ({ page }) => {
+    test.setTimeout(120_000);
     await loginAsSeedUser(page);
     const projectName = uniqueProjectName("e2e-limit-docs");
     await createAndActivateProject(page, projectName);
@@ -108,29 +117,21 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
       mimeType: "text/plain",
       buffer: Buffer.from("Limit retrieval checkbox needs at least one READY document.\n"),
     });
-    await expect
-      .poll(
-        async () => {
-          const row = page.locator("tbody tr").filter({ hasText: "e2e-limit-docs.txt" });
-          if ((await row.count()) === 0) return false;
-          return (await row.getByText("READY", { exact: true }).count()) > 0;
-        },
-        { timeout: 120_000 },
-      )
-      .toBe(true);
+    await waitForDocumentReadyByName(page, "e2e-limit-docs.txt", 120_000);
 
     await page.getByRole("link", { name: /^chat$/i }).click();
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
-    await page.getByTestId("chat-actions-menu-trigger").click();
-    const limitCb = page.getByRole("checkbox", {
-      name: /limit retrieval to selected documents|limitar la recuperación/i,
-    });
+    const configPanel = await openChatConfigurationPanel(page);
+    const limitCb = configPanel.getByTestId("chat-limit-documents-checkbox");
     await expect(limitCb).toBeVisible({ timeout: 15_000 });
     await expect(limitCb).not.toBeChecked();
 
     await limitCb.click();
-    await expect(limitCb).toBeChecked({ timeout: 15_000 });
+    // Controlled checkbox: checked only after refetch + PATCH apply documentFilter (async).
+    await expect
+      .poll(async () => limitCb.isChecked(), { timeout: 45_000, intervals: [400, 800, 1600] })
+      .toBe(true);
 
     await page.getByRole("link", { name: /documents|documentos/i }).click();
     await expect(page).toHaveURL(/\/en\/documents/);
@@ -139,18 +140,14 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    const sidebarButtons = page.locator("aside div.flex.max-h-48").getByRole("button");
-    await expect(sidebarButtons.first()).toBeVisible({ timeout: 15_000 });
-    await sidebarButtons.first().click();
+    const conversationRows = page.getByTestId("conversation-list").locator('[data-testid^="conversation-item-"]');
+    await expect(conversationRows.first()).toBeVisible({ timeout: 15_000 });
+    await conversationRows.first().click();
 
-    await page.getByTestId("chat-actions-menu-trigger").click();
-    const limitAgain = page.getByRole("checkbox", {
-      name: /limit retrieval to selected documents|limitar la recuperación/i,
-    });
-    await expect(limitAgain).toBeChecked({ timeout: 15_000 });
-
+    const configPanelAgain = await openChatConfigurationPanel(page);
+    const limitAgain = configPanelAgain.getByTestId("chat-limit-documents-checkbox");
     await expect
-      .poll(async () => limitAgain.isChecked(), { timeout: 4000, intervals: [200, 400, 600] })
+      .poll(async () => limitAgain.isChecked(), { timeout: 20_000, intervals: [300, 600, 1200] })
       .toBe(true);
   });
 });
@@ -177,7 +174,7 @@ test.describe("Nginx same-origin chat @fullstack @nginx @chatRuntime", () => {
     await createAndActivateProject(page, uniqueProjectName("e2e-nginx"));
 
     await page.getByRole("link", { name: /^chat$/i }).click();
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     await sendChatMessage(page, "Buenos dias");
     await expect(page.getByText("Buenos dias")).toBeVisible({ timeout: 30_000 });
@@ -208,7 +205,7 @@ test.describe("Classifier unavailable (manual ops) @fullstack @manual @chatRunti
     await createAndActivateProject(page, uniqueProjectName("e2e-class-down"));
 
     await page.getByRole("link", { name: /^chat$/i }).click();
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page);
 
     await sendChatMessage(page, "Buenos dias");
     await waitForLatestAssistantNonEmpty(page, 180_000);

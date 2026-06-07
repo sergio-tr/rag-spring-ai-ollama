@@ -4,14 +4,14 @@
 
 **Related:** [rag-runtime-architecture.md](rag-runtime-architecture.md), [configuration-resolution-model.md](configuration-resolution-model.md), [knowledge-system-model.md](knowledge-system-model.md), [implementation-roadmap.md](implementation-roadmap.md), [integration-flows.md](integration-flows.md), [system-context.md](system-context.md).
 
-## Thesis context (product domain)
+## Product context (domain)
 
 The degree project centres on **RAG over neighbourhood meeting minutes** (*actas vecinales*) as the primary illustrative domain. The platform remains **API-first** with a **multi-user web product** and a **Lab** for reproducible empirical work; domain wording in UX or datasets may reflect meeting minutes while the architecture below applies to the whole system.
 
 ## Global rules
 
 1. **Single RAG execution engine** — Product and Lab/benchmark share the same runtime semantics (see [ADR 0009](../adr/0009-unified-product-and-lab-execution-engine.md)).
-2. **No legacy without real use** — Legacy surfaces or code paths must either prove active use or carry an explicit sunset justification and removal criterion (documented here or in an ADR).
+2. **No duplicate surfaces** — Alternate HTTP paths or parallel implementations must either prove active use or carry an explicit sunset justification and removal criterion (documented here or in an ADR).
 3. **Keycloak and HTTPS** — Identity and transport security foundations are closed decisions ([ADR 0006](../adr/0006-keycloak-identity-and-https-foundation.md)).
 4. **Configuration** — Feature flags may exist as inputs, but **governing semantics** are capabilities, compatibility rules, presets, resolved runtime configuration, and workflow selection — not a forest of ad-hoc conditionals ([ADR 0007](../adr/0007-capability-groups-and-compatibility-rules.md)).
 
@@ -97,7 +97,7 @@ The degree project centres on **RAG over neighbourhood meeting minutes** (*actas
 
 ### 9. Governance & Compliance
 
-**Purpose:** ADRs, documentation governance, branch/PR policy, traceability for thesis defence, RGPD/compliance **as a roadmap block** (implementation follows [implementation-roadmap.md](implementation-roadmap.md)).
+**Purpose:** ADRs, documentation governance, branch/PR policy, traceability for demonstration, RGPD/compliance **as a roadmap block** (implementation follows [implementation-roadmap.md](implementation-roadmap.md)).
 
 **Owns:** Decision records, canonical docs under `docs/`, rules for `docs/` vs module READMEs ([documentation-guidelines.md](../development/documentation-guidelines.md)).
 
@@ -111,12 +111,12 @@ Users and agents interact through Workspace / Product or Lab. Each **RAG request
 
 ### What already exists
 
-- Spring Boot **product** and **legacy** HTTP surfaces, JWT auth, projects/documents/conversations, presets, Lab endpoints, classifier HTTP clients — see [integration-flows.md](integration-flows.md) and [BACKEND_PACKAGES.md](BACKEND_PACKAGES.md).
-- Ingestion and retrieval services, tool routing, retrievers, rankers (e.g. faithfulness), reasoning strategies — partial mapping to target runtime vocabulary.
+- Spring Boot **product** HTTP surface (`rag.api.product-base-path`), JWT auth, projects/documents/conversations, presets, Lab endpoints, classifier HTTP clients — see [integration-flows.md](integration-flows.md) and [BACKEND_PACKAGES.md](BACKEND_PACKAGES.md).
+- Ingestion and retrieval services, tool routing, retrievers, rankers (e.g. faithfulness), reasoning strategies — uneven mapping to target runtime vocabulary in docs and types.
 - Compose-based deployment and observability overlays; **JWT** auth (not yet Keycloak as IdP in the described stack).
 - ADRs 0001–0004 and ER in [DATA_MODEL.md](DATA_MODEL.md).
 
-### What is partial
+### Gaps vs target model
 
 - **Capability-group / compatibility-rule / resolved-snapshot** model is not fully explicit in code or docs as named here; configuration is layered (system → user → project) with flags and presets.
 - **Keycloak** and **HTTPS** as described in ADR 0006 are **decisions**; full integration may not be complete.
@@ -128,5 +128,5 @@ Users and agents interact through Workspace / Product or Lab. Each **RAG request
 - Full alignment of Java/TS modules with every **named runtime component** in [rag-runtime-architecture.md](rag-runtime-architecture.md) (or explicit deprecation of gaps).
 - **`SystemPromptComposer`** and four-layer prompt stack as the **only** documented composition path for effective system prompts.
 - **`ReindexImpactAnalyzer`** (or equivalent) as a first-class concept tied to config changes.
-- Removal of **unused legacy** per policy.
+- Removal of **unused alternate surfaces** per policy above.
 - **Compliance / RGPD** block execution beyond high-level Governance placeholder.
