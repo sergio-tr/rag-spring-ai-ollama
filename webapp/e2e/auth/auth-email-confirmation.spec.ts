@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { gotoWithProxyRetry } from "../support/helpers";
 import {
   fetchConfirmTokenFromOutbox,
   uniqueM2AuthEmail,
@@ -21,7 +22,7 @@ test.describe("Auth email confirmation lifecycle @fullstack @critical", () => {
       await route.fulfill({ status: 500, body: "should-not-be-called" });
     });
 
-    await page.goto("/en/register", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await gotoWithProxyRetry(page, "/en/register");
     const form = page.locator("form").first();
     await form.getByLabel(/^Display name$/i).fill("M2 E2E User");
     await form.getByLabel(/^Email$/i).fill(email);
@@ -42,7 +43,7 @@ test.describe("Auth email confirmation lifecycle @fullstack @critical", () => {
 
   test("E2E-M2-02 login blocked before confirmation @fullstack @critical", async ({ page }) => {
     const email = uniqueM2AuthEmail();
-    await page.goto("/en/register", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await gotoWithProxyRetry(page, "/en/register");
     const form = page.locator("form").first();
     await form.getByLabel(/^Display name$/i).fill("M2 Blocked");
     await form.getByLabel(/^Email$/i).fill(email);
@@ -53,7 +54,7 @@ test.describe("Auth email confirmation lifecycle @fullstack @critical", () => {
     await form.getByRole("button", { name: /register/i }).click();
     await expect(page).toHaveURL(/\/register\/pending/, { timeout: 20_000 });
 
-    await page.goto("/en/login", { waitUntil: "domcontentloaded" });
+    await gotoWithProxyRetry(page, "/en/login");
     await page.getByLabel(/email|correo/i).fill(email);
     await page.getByLabel(/^password$/i).fill(REGISTER_PASSWORD);
     await page.getByRole("button", { name: /continue|sign in|iniciar/i }).click();
@@ -68,7 +69,7 @@ test.describe("Auth email confirmation lifecycle @fullstack @critical", () => {
     request,
   }) => {
     const email = uniqueM2AuthEmail();
-    await page.goto("/en/register", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await gotoWithProxyRetry(page, "/en/register");
     const form = page.locator("form").first();
     await form.getByLabel(/^Display name$/i).fill("M2 Confirm");
     await form.getByLabel(/^Email$/i).fill(email);
@@ -80,9 +81,7 @@ test.describe("Auth email confirmation lifecycle @fullstack @critical", () => {
     await expect(page).toHaveURL(/\/register\/pending/, { timeout: 20_000 });
 
     const token = await fetchConfirmTokenFromOutbox(request, email);
-    await page.goto(`/en/confirm-email?token=${encodeURIComponent(token)}`, {
-      waitUntil: "domcontentloaded",
-    });
+    await gotoWithProxyRetry(page, `/en/confirm-email?token=${encodeURIComponent(token)}`);
     await expect(page.getByText(/confirmed|confirmado/i).first()).toBeVisible({ timeout: 20_000 });
   });
 
@@ -91,7 +90,7 @@ test.describe("Auth email confirmation lifecycle @fullstack @critical", () => {
     request,
   }) => {
     const email = uniqueM2AuthEmail();
-    await page.goto("/en/register", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await gotoWithProxyRetry(page, "/en/register");
     const form = page.locator("form").first();
     await form.getByLabel(/^Display name$/i).fill("M2 Login After");
     await form.getByLabel(/^Email$/i).fill(email);
@@ -103,12 +102,10 @@ test.describe("Auth email confirmation lifecycle @fullstack @critical", () => {
     await expect(page).toHaveURL(/\/register\/pending/, { timeout: 20_000 });
 
     const token = await fetchConfirmTokenFromOutbox(request, email);
-    await page.goto(`/en/confirm-email?token=${encodeURIComponent(token)}`, {
-      waitUntil: "domcontentloaded",
-    });
+    await gotoWithProxyRetry(page, `/en/confirm-email?token=${encodeURIComponent(token)}`);
     await expect(page.getByText(/confirmed|confirmado/i).first()).toBeVisible({ timeout: 20_000 });
 
-    await page.goto("/en/login", { waitUntil: "domcontentloaded" });
+    await gotoWithProxyRetry(page, "/en/login");
     await page.getByLabel(/email|correo/i).fill(email);
     await page.getByLabel(/^password$/i).fill(REGISTER_PASSWORD);
     await page.getByRole("button", { name: /continue|sign in|iniciar/i }).click();

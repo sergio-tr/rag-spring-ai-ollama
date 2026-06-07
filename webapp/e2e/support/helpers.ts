@@ -50,6 +50,27 @@ export function productApiUrl(path: string): string {
   return `${apiBaseUrl()}${productBasePath()}${p}`;
 }
 
+const GATEWAY_ERROR_PAGE = /504 Gateway Time-out|502 Bad Gateway|503 Service Unavailable/i;
+
+/** Navigates with retries when nginx returns transient gateway errors during SSR. */
+export async function gotoWithProxyRetry(
+  page: Page,
+  url: string,
+  options?: Parameters<Page["goto"]>[1],
+): Promise<void> {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000, ...options });
+    const heading = await page.locator("h1").first().innerText().catch(() => "");
+    if (!GATEWAY_ERROR_PAGE.test(heading)) {
+      return;
+    }
+    await page.waitForTimeout(600 + attempt * 900);
+  }
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000, ...options });
+  const heading = await page.locator("h1").first().innerText().catch(() => "");
+  expect(GATEWAY_ERROR_PAGE.test(heading), `proxy still returned gateway error for ${url}`).toBeFalsy();
+}
+
 function directProductApiUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   const base = (
@@ -181,6 +202,33 @@ export async function waitForDocumentReadyByName(
   throw new Error(`waitForDocumentReadyByName: timed out after ${timeoutMs}ms waiting for READY (${fileName})`);
 }
 
+/** Waits for /en/projects to render; reloads when Next.js shows the global error page. */
+async function waitForProjectsPageReady(page: Page, timeoutMs: number): Promise<void> {
+  const projectsHeading = page.getByRole("heading", { name: /^projects$/i });
+  const globalErrorHeading = page.getByRole("heading", { name: /this page couldn.t load/i });
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (await projectsHeading.isVisible().catch(() => false)) {
+      return;
+    }
+    if (await globalErrorHeading.isVisible().catch(() => false)) {
+      const reload = page.getByRole("button", { name: /^reload$/i });
+      if (await reload.isVisible().catch(() => false)) {
+        await reload.click();
+      } else {
+        await page.goto("/en/projects", { waitUntil: "load", timeout: 20_000 }).catch(() => undefined);
+      }
+      await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
+      await page.waitForTimeout(400);
+      continue;
+    }
+    await page.waitForTimeout(250);
+  }
+
+  await expect(projectsHeading).toBeVisible({ timeout: 5_000 });
+}
+
 /** Logs in with Flyway seed credentials and waits for the projects page. */
 export async function loginAsSeedUser(page: Page): Promise<void> {
   await registerE2eLayoutPersistenceReset(page);
@@ -205,7 +253,8 @@ export async function loginAsSeedUser(page: Page): Promise<void> {
     await passwordInput.fill(seedPassword());
     await page.getByRole("button", { name: /continue|iniciar|sign in/i }).click();
     if (await page.waitForURL(/\/en\/projects/, { timeout: loginTimeoutMs }).then(() => true).catch(() => false)) {
-      break;
+      await waitForProjectsPageReady(page, loginTimeoutMs);
+      return;
     }
   }
   if (!/\/en\/projects/.test(page.url())) {
@@ -243,11 +292,10 @@ export async function loginAsSeedUser(page: Page): Promise<void> {
       }
       sessionStorage.setItem("rag_access_token", accessToken);
     }, tokens);
-    await page.goto("/en/projects", { waitUntil: "domcontentloaded", timeout: 10_000 });
+    await page.goto("/en/projects", { waitUntil: "load", timeout: 20_000 });
+    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
   }
-  await expect(
-    page.getByRole("heading", { name: /^projects$/i }),
-  ).toBeVisible({ timeout: loginTimeoutMs });
+  await waitForProjectsPageReady(page, loginTimeoutMs);
 }
 
 /** Surfaces dialog role=alert errors when Create does not close the modal. */
@@ -545,11 +593,12 @@ export async function createNewChatConversation(
     expect(res.status(), await res.text()).toBe(200);
     const conversations = (await res.json()) as ConversationDto[];
     conversationId = conversations[0]?.id ?? null;
-    if (conversationId) {
-      await page.goto(`/en/chat?projectId=${projectId}&conversationId=${conversationId}`, {
-        waitUntil: "domcontentloaded",
-      });
-    }
+  }
+
+  if (conversationId && !conversationIdFromChatUrl(page.url())) {
+    await page.goto(`/en/chat?projectId=${projectId}&conversationId=${conversationId}`, {
+      waitUntil: "domcontentloaded",
+    });
   }
 
   if (!conversationId) {

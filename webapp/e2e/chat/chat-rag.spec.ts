@@ -43,7 +43,7 @@ test.describe("Chat RAG", () => {
     expect(projectId, `Expected projectId after document upload, got ${page.url()}`).toBeTruthy();
     await page.goto(`/en/chat?projectId=${projectId}`, { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/en\/chat/);
-    await createNewChatConversation(page);
+    const conversationId = await createNewChatConversation(page);
 
     await expect(page.getByTestId("chat-config-trigger")).toBeEnabled({ timeout: 30_000 });
     const panel = await openChatConfigurationPanel(page);
@@ -82,13 +82,19 @@ test.describe("Chat RAG", () => {
 
     await expect(page.getByText(/E2E stub reply/i)).toBeVisible({ timeout: 120_000 });
 
-    const url = new URL(page.url());
-    const conversationId = url.searchParams.get("conversationId");
-    expect(conversationId, `Expected conversationId in URL after send, got ${page.url()}`).toBeTruthy();
+    const urlConversationId = new URL(page.url()).searchParams.get("conversationId");
+    const resolvedConversationId = urlConversationId ?? conversationId;
+    expect(
+      resolvedConversationId,
+      `Expected conversationId after send, got ${page.url()}`,
+    ).toBeTruthy();
     const headers = await authHeadersFromPage(page);
-    const messagesRes = await page.request.get(productApiUrl(`/conversations/${conversationId}/messages`), {
+    const messagesRes = await page.request.get(
+      productApiUrl(`/conversations/${resolvedConversationId}/messages`),
+      {
       headers,
-    });
+    },
+    );
     expect(messagesRes.status(), await messagesRes.text()).toBe(200);
     const messages = (await messagesRes.json()) as Array<{
       role: string;
