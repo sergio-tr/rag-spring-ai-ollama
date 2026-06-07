@@ -4,6 +4,7 @@ import {
   assertNoForbiddenLabCopy,
   gotoLabEvaluationPage,
   prepareLabE2eTest,
+  uploadLabCorpusFileViaUi,
 } from "../support/lab-helpers";
 
 test.describe("Closure LAB knowledge base upload @closure @fullstack @wave2", () => {
@@ -19,9 +20,7 @@ test.describe("Closure LAB knowledge base upload @closure @fullstack @wave2", ()
     await expect(kbPanel.getByText(/\bcorpus\b/i)).toHaveCount(0);
     await assertNoForbiddenLabCopy(page);
 
-    const uploadInput = page.getByTestId("lab-corpus-upload-input");
-    await expect(uploadInput).toBeAttached({ timeout: 10_000 });
-    await uploadInput.setInputFiles(sampleTextFilePath());
+    await uploadLabCorpusFileViaUi(page, sampleTextFilePath());
 
     await expect
       .poll(

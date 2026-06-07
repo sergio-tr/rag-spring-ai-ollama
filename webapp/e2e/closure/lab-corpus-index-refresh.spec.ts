@@ -4,14 +4,15 @@ import {
   assertNoForbiddenLabCopy,
   gotoLabEvaluationPage,
   prepareLabE2eTest,
+  uploadLabCorpusFileViaUi,
 } from "../support/lab-helpers";
 
-test.describe("Closure LAB corpus index refresh @closure @fullstack @wave2", () => {
+test.describe("Closure LAB document-centric RAG @closure @fullstack @wave2", () => {
   test.beforeEach(async ({ page }) => {
     await prepareLabE2eTest(page);
   });
 
-  test("import, prepare index, and run enable without page refresh @closure", async ({ page }) => {
+  test("upload, run without manual index or project steps @closure", async ({ page }) => {
     test.setTimeout(360_000);
 
     await gotoLabEvaluationPage(page, "rag");
@@ -19,12 +20,17 @@ test.describe("Closure LAB corpus index refresh @closure @fullstack @wave2", () 
     await expect(kbPanel).toBeVisible({ timeout: 15_000 });
     await assertNoForbiddenLabCopy(page);
 
+    await expect(page.getByTestId("lab-corpus-import-hint")).toHaveCount(0);
+    await expect(page.getByTestId("lab-corpus-attach-project")).toHaveCount(0);
+    await expect(page.getByTestId("lab-corpus-prepare-index")).toHaveCount(0);
+    await expect(page.getByText(/No active project selected/i)).toHaveCount(0);
+
     const runBtn = page.getByTestId("lab-rag-run");
     await expect(runBtn).toBeDisabled();
 
     const actaPath = actaKnowledgeBaseFilePath();
     const actaName = /acta-24-02-2025\.txt/i;
-    await page.getByTestId("lab-corpus-upload-input").setInputFiles(actaPath);
+    await uploadLabCorpusFileViaUi(page, actaPath);
 
     await expect
       .poll(
@@ -36,8 +42,6 @@ test.describe("Closure LAB corpus index refresh @closure @fullstack @wave2", () 
         { timeout: 120_000, intervals: [500, 1500, 3000, 5000] },
       )
       .toBe(true);
-
-    await expect(kbPanel.getByTestId("lab-corpus-document-list").locator("li").filter({ hasText: actaName })).toBeVisible();
 
     await expect
       .poll(
@@ -54,25 +58,18 @@ test.describe("Closure LAB corpus index refresh @closure @fullstack @wave2", () 
       )
       .toBe(true);
 
-    const prepareBtn = page.getByTestId("lab-corpus-prepare-index");
-    const prepareVisible = await prepareBtn.isVisible().catch(() => false);
-    if (prepareVisible) {
-      await prepareBtn.click();
-      await expect(page.getByTestId("lab-corpus-prepare-index-progress")).toBeVisible({ timeout: 10_000 });
-      await expect
-        .poll(
-          async () => {
-            const success = await page.getByTestId("lab-corpus-success").count();
-            const hint = await page.getByTestId("lab-corpus-index-hint").count();
-            return success > 0 || hint === 0;
-          },
-          { timeout: 180_000, intervals: [1000, 2000, 4000] },
-        )
-        .toBe(true);
-    }
-
+    await expect(page.getByTestId("lab-corpus-index-will-prepare")).toBeVisible({ timeout: 15_000 });
     await expect(runBtn).toBeEnabled({ timeout: 60_000 });
     await expect(page.getByTestId("lab-corpus-not-ready-hint")).toHaveCount(0);
-    await expect(page.getByText(/REINDEX_REQUIRED|NO_ACTIVE_SNAPSHOT/i)).toHaveCount(0);
+    await expect(page.getByText(/REINDEX_REQUIRED|NO_ACTIVE_SNAPSHOT|INDEX_PREPARATION_REQUIRED/i)).toHaveCount(
+      0,
+    );
+
+    await page.getByTestId("lab-experimental-presets-select-core").click();
+    await runBtn.click();
+
+    await expect(page.getByTestId("lab-eval-preparation-progress")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Preparing documents and indexes|Preparando documentos e índices/i)).toBeVisible();
+    await assertNoForbiddenLabCopy(page);
   });
 });
