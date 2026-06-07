@@ -771,6 +771,31 @@ describe("LabEvaluationRunCard", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows evaluation corpus panel for embedding without active project", () => {
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+      data: [embeddingDataset],
+      isLoading: false,
+      isFetched: true,
+      isSuccess: true,
+    } as never);
+    render(
+      <LabEvalHarness>
+        <LabEvaluationRunCard
+          benchmarkKind="EMBEDDING_RETRIEVAL"
+          sectionKey="evaluation-embedding"
+          taskTypeHint="EMBEDDING_EVALUATION"
+          cardTitle="Embedding evaluation"
+          cardDescription="Compare embedding models."
+          runButtonTestId="lab-embedding-run"
+          radioGroupName="follow-corpus-embedding"
+        />
+      </LabEvalHarness>,
+    );
+    expect(screen.getByTestId("lab-evaluation-corpus-panel")).toBeInTheDocument();
+    expect(screen.queryByText(/No active project selected/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-corpus-import-hint")).not.toBeInTheDocument();
+  });
+
   it("shows draft warning when stored dataset id no longer exists", () => {
     localStorage.setItem(
       "lab:evaluation-draft:v1:LLM_JUDGE_QA",

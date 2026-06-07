@@ -48,6 +48,12 @@ export async function fetchCampaignComparison(campaignId: string): Promise<Recor
   );
 }
 
+export async function fetchCampaignItemsBundle(campaignId: string): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>(
+    apiProductPath(`/lab/campaigns/${encodeURIComponent(campaignId)}/export/campaign-items.json`),
+  );
+}
+
 export async function fetchMvpRollupsJson(runId: string): Promise<Record<string, unknown>> {
   return apiFetch<Record<string, unknown>>(
     apiProductPath(`/lab/runs/${encodeURIComponent(runId)}/export/mvp/rollups.json`),

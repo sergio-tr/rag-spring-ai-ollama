@@ -1049,10 +1049,8 @@ export function LabEvaluationRunCard({
             <LabEvaluationCorpusPanel
               corpusId={resolvedCorpusId}
               evaluationCorpus={evaluationCorpus}
-              documentCentric={benchmarkKind === "RAG_PRESET_END_TO_END"}
-              optionalProjectId={
-                benchmarkKind === "RAG_PRESET_END_TO_END" ? null : (activeProject?.id ?? null)
-              }
+              documentCentric
+              optionalProjectId={null}
               disabled={running}
               onCorpusIdChange={(id) => patchDraft({ corpusId: id })}
               onRefreshed={() => {
@@ -1061,7 +1059,7 @@ export function LabEvaluationRunCard({
             />
           ) : null}
 
-          {benchmarkKind !== "RAG_PRESET_END_TO_END" ? (
+          {benchmarkKind !== "RAG_PRESET_END_TO_END" && benchmarkKind !== "EMBEDDING_RETRIEVAL" ? (
             activeProject ? (
               <p className="text-muted-foreground text-xs">
                 {t("projectScopeActive", { name: activeProject.name })}

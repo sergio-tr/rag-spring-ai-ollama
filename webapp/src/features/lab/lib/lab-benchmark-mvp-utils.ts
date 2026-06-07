@@ -83,3 +83,18 @@ export function readMvpItems(bundle: Record<string, unknown>): unknown[] {
   const items = bundle.items;
   return Array.isArray(items) ? items : [];
 }
+
+export function countOutcomesFromItems(items: unknown[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const op = readMvpItemOperational(item);
+    const outcome =
+      op?.outcome ??
+      (typeof rec.status === "string" && rec.status.trim() ? rec.status.trim() : "");
+    if (!outcome) continue;
+    counts[outcome] = (counts[outcome] ?? 0) + 1;
+  }
+  return counts;
+}

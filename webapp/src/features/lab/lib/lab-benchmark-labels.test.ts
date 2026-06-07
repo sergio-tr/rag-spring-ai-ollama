@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  aggregateComparisonOutcomeCounts,
   comparisonAxisForKind,
   formatGroupLabel,
   formatMetricCell,
@@ -8,9 +9,12 @@ import {
   isExtensionPreset,
   isMissingMetadata,
   isNotAvailable,
+  isPresetComparisonAxis,
   metricUnavailableReasonKey,
   normalizeMetadataKey,
   parseComparisonRows,
+  resolveComparisonRowLabel,
+  resolvePresetKeyFromComparisonRow,
   shouldShowPresetTrend,
   shouldShowTrendEmptyState,
   sortComparisonRows,
@@ -115,14 +119,42 @@ describe("lab-benchmark-labels", () => {
     expect(parseComparisonRows(null)).toEqual([]);
     expect(parseComparisonRows({ rows: "bad" })).toEqual([]);
     const rows = parseComparisonRows({
+      comparisonAxis: "PRESET_CODE",
       rows: [
         { modelLabel: "llama3", meanExactMatch: 0.5 },
-        { presetLabel: "P2 — Baseline", axisValue: "P2", meanExactMatch: 0.7 },
+        { presetLabel: "Baseline", axisValue: "P2", meanExactMatch: 0.7 },
         { comparisonLabel: "custom", meanExactMatch: 0.1 },
       ],
     });
     expect(rows[0]?.comparisonLabel).toBe("llama3");
     expect(rows[1]?.comparisonLabel).toBe("P2 — Baseline");
     expect(rows[2]?.comparisonLabel).toBe("custom");
+  });
+
+  it("resolves preset labels on preset comparison axis instead of model ids", () => {
+    expect(isPresetComparisonAxis("PRESET_CODE")).toBe(true);
+    const row = {
+      presetKey: "P2",
+      presetLabel: "Document-level dense retrieval",
+      modelLabel: "gemma3:4b",
+      axisValue: "P2",
+    };
+    expect(resolvePresetKeyFromComparisonRow(row)).toBe("P2");
+    expect(resolveComparisonRowLabel(row, "PRESET_CODE")).toBe("P2 — Document-level dense retrieval");
+    const parsed = parseComparisonRows({
+      comparisonAxis: "PRESET_CODE",
+      rows: [row],
+    });
+    expect(parsed[0]?.comparisonLabel).toBe("P2 — Document-level dense retrieval");
+    expect(parsed[0]?.comparisonLabel).not.toContain("gemma3");
+  });
+
+  it("aggregates comparison outcome counts across rows", () => {
+    const totals = aggregateComparisonOutcomeCounts([
+      { executed: 60, skipped: 0, failed: 0, notSupported: 0 },
+      { executed: 0, skipped: 60, failed: 0, notSupported: 0 },
+    ]);
+    expect(totals.EXECUTED).toBe(60);
+    expect(totals.SKIPPED).toBe(60);
   });
 });
