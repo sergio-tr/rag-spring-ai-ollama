@@ -22,7 +22,7 @@
         <logback.version>1.5.32</logback.version>
         <json-smart.version>2.6.0</json-smart.version>
         <xmlunit.version>2.11.0</xmlunit.version>
-        <commons-lang3.version>3.19.0</commons-lang3.version>
+        <commons-lang3.version>3.20.0</commons-lang3.version>
         <flyway.version>10.21.0</flyway.version>
         <!-- Root holds sonar-project.properties (Java + Python + TS); keep scanner base dir aligned with CI/local scripts. -->
         <sonar.projectBaseDir>${project.basedir}/..</sonar.projectBaseDir>
@@ -271,7 +271,7 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
-            <version>1.21.3</version>
+            <version>1.21.4</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -316,7 +316,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
-                <version>3.10.1</version>
+                <version>3.12.0</version>
                 <configuration>
                     <source>${java.version}</source>
                     <doclint>none</doclint>
