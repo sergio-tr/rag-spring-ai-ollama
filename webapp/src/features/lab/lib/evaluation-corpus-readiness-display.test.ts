@@ -4,7 +4,26 @@ import {
   isHardIndexSnapshotBlocker,
   resolveDocumentCentricReadinessDisplay,
 } from "./evaluation-corpus-readiness-display";
-import type { EvaluationCorpusReadinessDto, EvaluationCorpusSummaryDto } from "@/types/api";
+import type { EvaluationCorpusReadinessDto, EvaluationCorpusSummaryDto, ProjectDocumentDto } from "@/types/api";
+
+function corpusDocument(
+  overrides: Partial<ProjectDocumentDto> & Pick<ProjectDocumentDto, "status">,
+): ProjectDocumentDto {
+  return {
+    id: "d1",
+    fileName: "a.pdf",
+    chunkCount: null,
+    errorMessage: null,
+    uploadedAt: "2026-01-01T00:00:00Z",
+    reindexedAt: null,
+    corpusScope: "PROJECT_SHARED",
+    conversationId: null,
+    currentIndexSnapshotId: null,
+    indexSignatureHash: null,
+    storagePresent: true,
+    ...overrides,
+  };
+}
 
 function readiness(
   overrides: Partial<EvaluationCorpusReadinessDto> = {},
@@ -38,7 +57,7 @@ function summary(
     documentCount: 1,
     readyCount: 1,
     failedCount: 0,
-    documents: [{ id: "d1", fileName: "a.pdf", status: "READY", errorMessage: null }],
+    documents: [corpusDocument({ status: "READY" })],
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     ...overrides,
@@ -68,7 +87,7 @@ describe("evaluation-corpus-readiness-display", () => {
       }),
       summary({
         readyCount: 0,
-        documents: [{ id: "d1", fileName: "a.pdf", status: "INGESTING", errorMessage: null }],
+        documents: [corpusDocument({ status: "INGESTING" })],
       }),
     );
     expect(display?.messageKey).toBe("labEvalDocumentsProcessing");
