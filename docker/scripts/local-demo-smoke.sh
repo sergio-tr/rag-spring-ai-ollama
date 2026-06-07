@@ -10,6 +10,7 @@ DOCKER_DIR="$ROOT_DIR/docker"
 WITH_OBS=false
 WITH_OBS_PRIVATE=false
 WITH_OLLAMA=false
+WITH_MAIL=false
 SKIP_UP=false
 DOWN_AFTER=false
 TIMEOUT_SECONDS=180
@@ -17,10 +18,11 @@ EVIDENCE_DIR="${DEMO_SMOKE_EVIDENCE_DIR:-}"
 
 usage() {
   local code="${1:-2}"
-  echo "Usage: $0 [--obs] [--obs-private] [--ollama] [--skip-up] [--down-after] [--timeout <seconds>]" >&2
+  echo "Usage: $0 [--obs] [--obs-private] [--ollama] [--mail] [--skip-up] [--down-after] [--timeout <seconds>]" >&2
   echo "  --obs        Include Prometheus/Grafana/Jaeger/OTEL checks." >&2
   echo "  --obs-private Include observability without publishing UI ports; skips localhost UI checks unless URLs are provided." >&2
   echo "  --ollama     Optional in-stack Ollama; requires NVIDIA Container Toolkit." >&2
+  echo "  --mail       Start Mailpit and wire backend SMTP (profile dev-mail)." >&2
   echo "  --skip-up    Validate and smoke an already running stack." >&2
   echo "  --down-after Stop the stack after checks." >&2
   exit "$code"
@@ -39,6 +41,10 @@ while [ $# -gt 0 ]; do
       ;;
     --ollama|--gpu)
       WITH_OLLAMA=true
+      shift
+      ;;
+    --mail)
+      WITH_MAIL=true
       shift
       ;;
     --skip-up)
@@ -83,6 +89,7 @@ COMPOSE_ARGS+=(-f "$DOCKER_DIR/compose.prod-host-ports.yml")
 
 [ "$WITH_OBS" = true ] && COMPOSE_ARGS+=(--profile observability)
 [ "$WITH_OLLAMA" = true ] && COMPOSE_ARGS+=(--profile ollama)
+[ "$WITH_MAIL" = true ] && COMPOSE_ARGS+=(-f "$DOCKER_DIR/compose.prod-mail.yml" --profile dev-mail)
 
 add_env_file() {
   local f="$1"
@@ -182,11 +189,13 @@ UP_FLAGS=(prod --no-env-prompt)
 [ "$WITH_OBS" = true ] && UP_FLAGS+=(--obs)
 [ "$WITH_OBS_PRIVATE" = true ] && UP_FLAGS+=(--obs-private)
 [ "$WITH_OLLAMA" = true ] && UP_FLAGS+=(--ollama)
+[ "$WITH_MAIL" = true ] && UP_FLAGS+=(--mail)
 
 DOWN_FLAGS=(prod)
 [ "$WITH_OBS" = true ] && DOWN_FLAGS+=(--obs)
 [ "$WITH_OBS_PRIVATE" = true ] && DOWN_FLAGS+=(--obs-private)
 [ "$WITH_OLLAMA" = true ] && DOWN_FLAGS+=(--ollama)
+[ "$WITH_MAIL" = true ] && DOWN_FLAGS+=(--mail)
 
 echo "Compose config validation ..."
 "$SCRIPT_DIR/docker-compose.sh" config "${UP_FLAGS[@]}"
@@ -239,6 +248,9 @@ if missing:
 BACKEND_DIRECT_PORT="${BACKEND_PORT:-9000}"
 
 wait_for_url "${BASE_URL}/en/login" "webapp via reverse-proxy"
+if [ "$WITH_MAIL" = true ]; then
+  wait_for_url "http://127.0.0.1:${MAILPIT_HTTP_PORT:-8025}/" "Mailpit UI"
+fi
 check_ollama_models
 wait_for_url "http://127.0.0.1:${BACKEND_DIRECT_PORT}/actuator/health/liveness" "backend liveness (host :${BACKEND_DIRECT_PORT})"
 wait_for_url "http://127.0.0.1:${BACKEND_DIRECT_PORT}/actuator/health/readiness" "backend readiness (host :${BACKEND_DIRECT_PORT})"
@@ -248,7 +260,11 @@ wait_for_url "${BASE_URL}/actuator/prometheus" "backend actuator prometheus via 
 check_model_registry "$BASE_URL"
 
 init_evidence_dir
-"$SCRIPT_DIR/capture-runtime-evidence.sh" ${WITH_OBS:+--obs} --out "$EVIDENCE_DIR" || true
+CAPTURE_FLAGS=()
+[ "$WITH_OBS" = true ] && CAPTURE_FLAGS+=(--obs)
+[ "$WITH_MAIL" = true ] && CAPTURE_FLAGS+=(--mail)
+[ "$WITH_OLLAMA" = true ] && CAPTURE_FLAGS+=(--ollama)
+"$SCRIPT_DIR/capture-runtime-evidence.sh" "${CAPTURE_FLAGS[@]}" --out "$EVIDENCE_DIR" || true
 echo "Smoke evidence: $EVIDENCE_DIR"
 
 if [ "$WITH_OBS" = true ]; then

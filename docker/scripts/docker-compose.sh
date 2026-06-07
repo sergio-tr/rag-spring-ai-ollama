@@ -12,7 +12,7 @@
 #   --no-env-prompt  skip interactive set-env.sh question
 #
 # dev:
-#   [--all] [--gpu] [--ollama] [--obs] [--classifier] [--classifier-gpu] [--logs] [--infra] [--rag] [--proxy] [--ollama-remote] [--down] [--volumes]
+#   [--all] [--gpu] [--ollama] [--obs] [--classifier] [--classifier-gpu] [--logs] [--infra] [--mail] [--rag] [--proxy] [--ollama-remote] [--down] [--volumes]
 #   --rag: Spring backend (backend-dev) + webapp in Docker, plus infra as selected.
 #   --proxy: with --rag only. Publishes nginx (default :8080 → webapp + API); hides webapp/backend direct host ports.
 #   With command "up":   --down / --volumes tear down the dev stack (same as "down dev").
@@ -24,7 +24,7 @@
 #   --all  = --gpu --obs --classifier --logs --infra --rag (no --proxy; add --proxy to use nginx in dev)
 #
 # prod:
-#   [--all] [--obs] [--obs-private] [--gpu] [--ollama] [--classifier-gpu] [--ollama-remote] [--logs] [--infra] [--volumes]
+#   [--all] [--obs] [--obs-private] [--gpu] [--ollama] [--classifier-gpu] [--ollama-remote] [--logs] [--infra] [--mail] [--volumes]
 #   --volumes only applies to "down prod".
 #   --all  = --obs --gpu --logs --infra (and for down: removes volumes)
 #
@@ -38,8 +38,8 @@ usage() {
   echo "Usage: $0 <build|config|up|down> <dev|prod> [options]" >&2
   echo "  down: <dev|prod> optional (defaults to prod)" >&2
   echo "  Env: --env <db|obs|rag|classifier|ollama|all> ..., --no-env-prompt" >&2
-  echo "  dev:  [--all] [--gpu|--ollama] [--ollama-remote] [--obs] [--classifier] [--classifier-gpu] [--logs] [--infra] [--rag] [--proxy] [--down] [--volumes]" >&2
-  echo "  prod: [--all] [--obs] [--obs-private] [--gpu|--ollama] [--ollama-remote] [--classifier-gpu] [--logs] [--infra] [--volumes]" >&2
+  echo "  dev:  [--all] [--gpu|--ollama] [--ollama-remote] [--obs] [--classifier] [--classifier-gpu] [--logs] [--infra] [--mail] [--rag] [--proxy] [--down] [--volumes]" >&2
+  echo "  prod: [--all] [--obs] [--obs-private] [--gpu|--ollama] [--ollama-remote] [--classifier-gpu] [--logs] [--infra] [--mail] [--volumes]" >&2
   exit 1
 }
 
@@ -155,6 +155,7 @@ if [ "$MODE" = dev ]; then
   WITH_CLASSIFIER_GPU=false
   WITH_LOGS=false
   WITH_INFRA=false
+  WITH_MAIL=false
   WITH_RAG_BACKEND=false
   WITH_DEV_PROXY=false
   WITH_OLLAMA_REMOTE=false
@@ -184,6 +185,7 @@ if [ "$MODE" = dev ]; then
       --classifier-gpu) WITH_CLASSIFIER_GPU=true ;;
       --logs)       WITH_LOGS=true ;;
       --infra)      WITH_INFRA=true ;;
+      --mail)       WITH_MAIL=true ;;
       --rag)        WITH_RAG_BACKEND=true ;;
       --proxy)      WITH_DEV_PROXY=true ;;
       --down)       ACTION=down ;;
@@ -249,11 +251,13 @@ if [ "$MODE" = dev ]; then
     COMPOSE_FILES+=(-f "compose.gpu.yml")
   fi
   [ "$WITH_RAG_BACKEND" = true ] && [ "$WITH_OBS" = true ] && COMPOSE_FILES+=(-f "compose.rag-dev-obs.yml")
+  [ "$WITH_MAIL" = true ] && COMPOSE_FILES+=(-f "compose.dev-mail.yml")
 
   PROFILE_ARGS=()
   [ "$WITH_OBS" = true ] && PROFILE_ARGS+=(--profile observability)
   [ "$WITH_LOGS" = true ] && PROFILE_ARGS+=(--profile logs)
   [ "$WITH_INFRA" = true ] && PROFILE_ARGS+=(--profile infra)
+  [ "$WITH_MAIL" = true ] && PROFILE_ARGS+=(--profile dev-mail)
   if [ "$WITH_GPU" = true ] && [ "$WITH_NVIDIA" = true ] && [ "$WITH_OLLAMA_REMOTE" != true ]; then
     PROFILE_ARGS+=(--profile ollama)
   fi
@@ -303,13 +307,13 @@ if [ "$MODE" = dev ]; then
     BUILD_ARGS=("${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}")
     BUILD_ARGS+=(build)
     docker compose "${BUILD_ARGS[@]}"
-    echo "Dev images built (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, classifier=$WITH_CLASSIFIER, rag_backend=$WITH_RAG_BACKEND, dev_proxy=$WITH_DEV_PROXY, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+    echo "Dev images built (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, classifier=$WITH_CLASSIFIER, rag_backend=$WITH_RAG_BACKEND, dev_proxy=$WITH_DEV_PROXY, logs=$WITH_LOGS, infra=$WITH_INFRA, mail=$WITH_MAIL)."
     exit 0
   fi
 
   if [ "$ACTION" = config ]; then
     docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" config -q
-    echo "Dev compose config OK (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, classifier=$WITH_CLASSIFIER, rag_backend=$WITH_RAG_BACKEND, dev_proxy=$WITH_DEV_PROXY, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+    echo "Dev compose config OK (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, classifier=$WITH_CLASSIFIER, rag_backend=$WITH_RAG_BACKEND, dev_proxy=$WITH_DEV_PROXY, logs=$WITH_LOGS, infra=$WITH_INFRA, mail=$WITH_MAIL)."
     exit 0
   fi
 
@@ -332,6 +336,7 @@ if [ "$MODE" = dev ]; then
   if [ "$WITH_DEV_PROXY" = true ] && [ "$WITH_RAG_BACKEND" = true ]; then
     SERVICES+=(reverse-proxy)
   fi
+  [ "$WITH_MAIL" = true ] && SERVICES+=(mailpit)
 
   docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" up -d "${SERVICES[@]}"
 
@@ -386,6 +391,19 @@ if [ "$MODE" = dev ]; then
   [ "$WITH_OBS" = true ] && echo "Jaeger available at:    localhost:${JAEGER_UI_PORT:-16686}"
   [ "$WITH_LOGS" = true ] && echo "Loki / Promtail:        host ports from observability/.env (LOKI_HOST_PORT, PROMTAIL_HOST_PORT)"
   [ "$WITH_INFRA" = true ] && echo "node-exporter: NODE_EXPORTER_HOST_PORT in observability/.env (cAdvisor: optional --profile cadvisor in docker-compose.yml)"
+  if [ "$WITH_MAIL" = true ]; then
+    echo "Mailpit UI:           http://127.0.0.1:${MAILPIT_HTTP_PORT:-8025}/"
+    echo "Mailpit SMTP:         127.0.0.1:${MAILPIT_SMTP_PORT:-1025} (in-stack host: mailpit:1025)"
+    if [ "$WITH_RAG_BACKEND" = true ]; then
+      if [ "$WITH_DEV_PROXY" = true ]; then
+        echo "Auth email links:     set RAG_AUTH_WEBAPP_BASE_URL=http://127.0.0.1 (or https://127.0.0.1:${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}) in rag-service/.env"
+      else
+        echo "Auth email links:     set RAG_AUTH_WEBAPP_BASE_URL to match how you open the webapp (see WEBAPP_HTTP_PORT in webapp/.env)"
+      fi
+    else
+      echo "Auth email (local backend): set SPRING_MAIL_HOST=127.0.0.1 and SPRING_MAIL_PORT=${MAILPIT_SMTP_PORT:-1025} in rag-service/.env"
+    fi
+  fi
   exit 0
 fi
 
@@ -395,6 +413,7 @@ WITH_OBS_PRIVATE=false
 WITH_GPU=false
 WITH_LOGS=false
 WITH_INFRA=false
+WITH_MAIL=false
 WITH_VOLUMES=false
 ALL=false
 WITH_CLASSIFIER_GPU=false
@@ -412,6 +431,7 @@ for arg in "$@"; do
     --classifier-gpu) WITH_CLASSIFIER_GPU=true ;;
     --logs) WITH_LOGS=true ;;
     --infra) WITH_INFRA=true ;;
+    --mail) WITH_MAIL=true ;;
     --volumes) WITH_VOLUMES=true ;;
     *)
       echo "Unknown argument: $arg" >&2
@@ -451,11 +471,13 @@ COMPOSE_FILES+=(-f "compose.prod-host-ports.yml")
 if [ "$WITH_NVIDIA" = true ] && [ "$WITH_CLASSIFIER_GPU" = true ]; then
   COMPOSE_FILES+=(-f "compose.gpu.yml")
 fi
+[ "$WITH_MAIL" = true ] && COMPOSE_FILES+=(-f "compose.prod-mail.yml")
 
 PROFILE_ARGS=()
 [ "$WITH_OBS" = true ] && PROFILE_ARGS+=(--profile observability)
 [ "$WITH_LOGS" = true ] && PROFILE_ARGS+=(--profile logs)
 [ "$WITH_INFRA" = true ] && PROFILE_ARGS+=(--profile infra)
+[ "$WITH_MAIL" = true ] && PROFILE_ARGS+=(--profile dev-mail)
 if [ "$WITH_GPU" = true ] && [ "$WITH_NVIDIA" = true ] && [ "$WITH_OLLAMA_REMOTE" != true ]; then
   PROFILE_ARGS+=(--profile ollama)
 fi
@@ -489,28 +511,33 @@ if [ "$CMD" = down ]; then
     DOWN_ARGS=( "${DOWN_ARGS[@]}" -v )
   fi
   docker compose "${DOWN_ARGS[@]}"
-  echo "Prod local stopped (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, logs=$WITH_LOGS, infra=$WITH_INFRA, volumes=$WITH_VOLUMES)."
+  echo "Prod local stopped (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, logs=$WITH_LOGS, infra=$WITH_INFRA, mail=$WITH_MAIL, volumes=$WITH_VOLUMES)."
   exit 0
 fi
 
 if [ "$CMD" = build ]; then
   maybe_run_env_setup build
   docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" build
-  echo "Prod local images built (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+  echo "Prod local images built (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, logs=$WITH_LOGS, infra=$WITH_INFRA, mail=$WITH_MAIL)."
   exit 0
 fi
 
 if [ "$CMD" = config ]; then
   docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" config -q
-  echo "Prod compose config OK (obs=$WITH_OBS, obs_private=$WITH_OBS_PRIVATE, ollama_gpu=$WITH_GPU, ollama_remote=$WITH_OLLAMA_REMOTE, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+  echo "Prod compose config OK (obs=$WITH_OBS, obs_private=$WITH_OBS_PRIVATE, ollama_gpu=$WITH_GPU, ollama_remote=$WITH_OLLAMA_REMOTE, logs=$WITH_LOGS, infra=$WITH_INFRA, mail=$WITH_MAIL)."
   exit 0
 fi
 
 maybe_run_env_setup up
 docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" up -d
 
-echo "Prod local started (obs=$WITH_OBS, obs_private=$WITH_OBS_PRIVATE, ollama_gpu=$WITH_GPU, ollama_remote=$WITH_OLLAMA_REMOTE, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+echo "Prod local started (obs=$WITH_OBS, obs_private=$WITH_OBS_PRIVATE, ollama_gpu=$WITH_GPU, ollama_remote=$WITH_OLLAMA_REMOTE, logs=$WITH_LOGS, infra=$WITH_INFRA, mail=$WITH_MAIL)."
 echo "Reverse-proxy HTTP: http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/ (set REVERSE_PROXY_HTTP_PORT if 80 is not free)."
+if [ "$WITH_MAIL" = true ]; then
+  echo "Mailpit UI:         http://127.0.0.1:${MAILPIT_HTTP_PORT:-8025}/"
+  echo "Mailpit SMTP:       127.0.0.1:${MAILPIT_SMTP_PORT:-1025} (in-stack host: mailpit:1025)"
+  echo "Auth email links:   set RAG_AUTH_WEBAPP_BASE_URL=http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80} in rag-service/.env"
+fi
 if [ "$WITH_OBS" = true ] && [ "$WITH_OBS_PRIVATE" != true ]; then
   echo "Prometheus:         http://127.0.0.1:${PROMETHEUS_PORT:-9090}/"
   echo "Grafana:            http://127.0.0.1:${GRAFANA_PORT:-3000}/"

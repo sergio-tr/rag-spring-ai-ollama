@@ -20,22 +20,32 @@ except ImportError as e:  # pragma: no cover
     raise SystemExit(1) from e
 
 
-def service_summary(svc: dict) -> tuple[str, str]:
-    """Return (kind, detail) where kind is image|build|partial|empty."""
+def format_profiles(svc: dict) -> str:
+    profiles = svc.get("profiles") if isinstance(svc, dict) else None
+    if not profiles:
+        return "—"
+    if isinstance(profiles, list):
+        return ",".join(str(p) for p in profiles)
+    return str(profiles)
+
+
+def service_summary(svc: dict) -> tuple[str, str, str]:
+    """Return (kind, detail, profiles) where kind is image|build|partial|empty."""
+    profiles = format_profiles(svc)
     if not isinstance(svc, dict):
-        return "empty", ""
+        return "empty", "", profiles
     if "image" in svc:
-        return "image", str(svc["image"])
+        return "image", str(svc["image"]), profiles
     if "build" in svc:
         b = svc["build"]
         if isinstance(b, str):
-            return "build", f"context={b!r} (implicit dockerfile)"
+            return "build", f"context={b!r} (implicit dockerfile)", profiles
         if isinstance(b, dict):
             ctx = b.get("context", "")
             df = b.get("dockerfile", "")
-            return "build", f"context={ctx!r} dockerfile={df!r}"
-        return "build", repr(b)
-    return "partial", "(override only — no image/build in this fragment)"
+            return "build", f"context={ctx!r} dockerfile={df!r}", profiles
+        return "build", repr(b), profiles
+    return "partial", "(override only — no image/build in this fragment)", profiles
 
 
 def main() -> int:
@@ -52,35 +62,35 @@ def main() -> int:
     files = sorted(
         list(docker_dir.glob("docker-compose*.yml")) + list(docker_dir.glob("compose*.yml"))
     )
-    rows: list[tuple[str, str, str, str]] = []
+    rows: list[tuple[str, str, str, str, str]] = []
 
     for path in files:
         try:
             data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except Exception as e:
-            rows.append((path.name, "—", "error", str(e)))
+            rows.append((path.name, "—", "error", str(e), "—"))
             continue
         services = data.get("services") or {}
         if not services:
-            rows.append((path.name, "—", "empty", "no services key"))
+            rows.append((path.name, "—", "empty", "no services key", "—"))
             continue
         for name, spec in services.items():
-            kind, detail = service_summary(spec if isinstance(spec, dict) else {})
-            rows.append((path.name, name, kind, detail))
+            kind, detail, profiles = service_summary(spec if isinstance(spec, dict) else {})
+            rows.append((path.name, name, kind, detail, profiles))
 
     if args.format == "markdown":
-        print("| Compose file | Service | Kind | Detail |")
-        print("| --- | --- | --- | --- |")
-        for f, s, k, d in rows:
+        print("| Compose file | Service | Kind | Profiles | Detail |")
+        print("| --- | --- | --- | --- | --- |")
+        for f, s, k, d, p in rows:
             esc = d.replace("|", r"\|")
-            print(f"| {f} | {s} | {k} | {esc} |")
+            print(f"| {f} | {s} | {k} | {p} | {esc} |")
     else:
         prev = None
-        for f, s, k, d in rows:
+        for f, s, k, d, p in rows:
             if f != prev:
                 print(f"\n== {f} ==")
                 prev = f
-            print(f"  {s:30}  {k:10}  {d}")
+            print(f"  {s:30}  {k:10}  profiles={p:20}  {d}")
 
     print(f"\nTotal: {len(files)} compose file(s), {len(rows)} service row(s).")
     return 0

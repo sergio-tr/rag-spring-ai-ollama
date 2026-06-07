@@ -54,7 +54,7 @@ With **no extra flags**, **`up.sh dev`** starts **`postgres` only** (see [`docke
 
 Env bootstrap (optional): `./docker/scripts/up.sh dev … --env all` or **`--env db,rag,webapp,classifier,obs`**.
 
-**Mailpit (`dev-mail` profile):** `mailpit` is defined in [`docker/docker-compose.yml`](../../docker/docker-compose.yml) but **`docker-compose.sh` does not map a flag** to `--profile dev-mail`. To start Mailpit alongside an existing stack, from **`docker/`** add **`--profile dev-mail`** and **`up -d mailpit`** using the **same** `-f` / `--env-file` chain as your scenario (see §H).
+**Mailpit (`dev-mail` profile):** enable with **`--mail`** on [`docker/scripts/up.sh`](../../docker/scripts/up.sh) (same flag on `build`, `down`, and `config`). Example: `./docker/scripts/up.sh dev --rag --proxy --mail --no-env-prompt`. UI: `http://127.0.0.1:${MAILPIT_HTTP_PORT:-8025}/`.
 
 ## D. Ollama on the host
 
@@ -95,7 +95,7 @@ Defaults vary with **`webapp/.env`**, **`observability/.env`**, and **`REVERSE_P
 | OTEL gRPC / HTTP | **`4317`**, **`4318`** (host ports from **`observability/.env`**) |
 | Loki / Promtail | **`${LOKI_HOST_PORT:-3100}`**, **`${PROMTAIL_HOST_PORT:-9080}`** |
 | node-exporter | **`${NODE_EXPORTER_HOST_PORT:-9100}`** |
-| Mailpit | **`http://127.0.0.1:${MAILPIT_HTTP_PORT:-8025}`**, SMTP **`${MAILPIT_SMTP_PORT:-1025}`** when **`--profile dev-mail`** is active |
+| Mailpit | **`http://127.0.0.1:${MAILPIT_HTTP_PORT:-8025}`**, SMTP **`${MAILPIT_SMTP_PORT:-1025}`** when **`--mail`** / **`--profile dev-mail`** is active |
 
 ## F. HTTPS locally
 
@@ -124,7 +124,7 @@ Defaults vary with **`webapp/.env`**, **`observability/.env`**, and **`REVERSE_P
 | **Google OAuth CTA missing** | **`NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED`** not **`true`** at **build** time; rebuild webapp. Check [`webapp/README.md`](../../webapp/README.md). |
 | **`redirect_uri_mismatch`** | Google Console must list **`RAG_AUTH_BACKEND_BASE_URL` + `RAG_AUTH_OAUTH_GOOGLE_REDIRECT_PATH`** exactly; see [`rag-service/README.md`](../../rag-service/README.md), [`rag-service/.env.example`](../../rag-service/.env.example). |
 | **Register logs in immediately** | Email confirmation disabled — **`RAG_AUTH_EMAIL_CONFIRMATION_ENABLED`** not **`true`** in **`rag-service/.env`**. |
-| **No verification / reset email** | **`RAG_AUTH_MAIL_ENABLED`**, SMTP settings, **`SPRING_MAIL_*`**; invalid SMTP creds make **readiness** fail if mail health is in the readiness group. Prefer **Mailpit** locally (`dev-mail` profile) and point Spring mail host to **`mailpit`**. |
+| **No verification / reset email** | Enable **`--mail`** (or set **`SPRING_MAIL_HOST=mailpit`** manually). Check **`RAG_AUTH_PASSWORD_RESET_ENABLED`**, **`RAG_AUTH_MAIL_ENABLED`**, and **`RAG_AUTH_WEBAPP_BASE_URL`**. Invalid real SMTP creds can make **readiness** fail when mail health is in the readiness group. |
 | **Backend cannot reach Ollama** | Wrong **`SPRING_AI_OLLAMA_BASE_URL`**; host firewall; models not pulled. Use **`host.docker.internal:11434`** on Docker Desktop or Linux with **`extra_hosts`** (see §D). |
 | **502 from nginx** | Upstream down or **readiness** failing; check **`docker compose ps`** and **`docker logs`** for **`backend-dev`** / **`webapp`**. |
 | **Stale `NEXT_PUBLIC_*`** | Rebuild webapp image; restart container — see §G. |
@@ -141,11 +141,5 @@ Never commit or push:
 - **`*.env`** files filled with real production values  
 
 Use **`.env.example`** templates and local-only overrides ignored by git.
-
-## Optional improvement (scripts)
-
-**Mailpit** requires **`--profile dev-mail`** today; **`docker-compose.sh` has no `--mail` flag**. A small enhancement would map **`--mail`** → **`--profile dev-mail`** and include **`mailpit`** in the **`SERVICES`** list when requested.
-
----
 
 Related: [`docker/scripts/README.md`](../../docker/scripts/README.md), [`docker/README.md`](../../docker/README.md), [`docs/devops/README.md`](README.md).
