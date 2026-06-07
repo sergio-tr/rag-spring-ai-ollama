@@ -11,7 +11,9 @@ test.describe("Lab classifier", () => {
     await page.goto("/en/lab/classifier");
     await expect(page.getByText(/classifier|clasificador/i).first()).toBeVisible({ timeout: 15_000 });
 
-    const unavailableNotice = page.getByText(/not configured|no.*configurad/i).first();
+    const unavailableNotice = page.getByText(
+      /Classifier is not configured in the backend|El clasificador no está configurado en el backend/i,
+    );
     const registry = page.getByTestId("classifier-registry-table");
     await expect
       .poll(
@@ -22,11 +24,12 @@ test.describe("Lab classifier", () => {
       )
       .toBe(true);
 
-    if (await unavailableNotice.isVisible().catch(() => false)) {
-      await expect(page.getByTestId("lab-classifier-train")).toBeDisabled();
-    } else {
+    if (await registry.isVisible().catch(() => false)) {
       await expect(registry).toContainText(/default|classifier/i);
       await expect(page.getByTestId("lab-classifier-train")).toBeEnabled();
+    } else {
+      await expect(unavailableNotice).toBeVisible();
+      await expect(page.getByTestId("lab-classifier-train")).toBeDisabled();
     }
   });
 

@@ -4,6 +4,7 @@ import {
   assertLabJobPanelShowsActivePhase,
   assertLabRunButtonEnabled,
   assertLabRunStarted,
+  cancelAllActiveLabJobs,
   ensureFirstLlmModelSelectedForRun,
   fetchActiveLabJobs,
   gotoLabEvaluationPage,
@@ -48,7 +49,14 @@ test.describe("LAB evaluation navigation recovery @fullstack", () => {
     const forget = page.getByRole("button", { name: /stop watching|dejar de seguir|forget job|olvidar trabajo/i });
     if (await forget.isVisible().catch(() => false)) {
       await forget.click();
-      await expect(panel.or(page.getByTestId("lab-benchmark-results-panel"))).toBeVisible({ timeout: 20_000 });
+      // After stop-watching, the job panel hides while the server job may still run; run controls stay visible.
+      await expect(
+        panel
+          .or(page.getByTestId("lab-benchmark-results-panel"))
+          .or(page.getByTestId("lab-llm-run")),
+      ).toBeVisible({ timeout: 20_000 });
     }
+
+    await cancelAllActiveLabJobs(page);
   });
 });
