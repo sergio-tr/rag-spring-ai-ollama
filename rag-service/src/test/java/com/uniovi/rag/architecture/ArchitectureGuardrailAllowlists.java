@@ -148,6 +148,7 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.evaluation.LabJobStaleReconciliationRunner", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.async.ClassifierEvalJobHandler", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.async.ClassifierTrainJobHandler", // ARCH-DEBT-LAB
