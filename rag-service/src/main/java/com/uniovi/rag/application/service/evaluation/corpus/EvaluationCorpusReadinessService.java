@@ -79,7 +79,7 @@ public class EvaluationCorpusReadinessService {
         boolean reindexRequired = false;
         if (primaryBlocker == null) {
             if (activeSnapshotId == null) {
-                snapshotBlocker = LabCorpusReasonCodes.REINDEX_REQUIRED;
+                snapshotBlocker = LabCorpusReasonCodes.INDEX_PREPARATION_REQUIRED;
                 snapshotBlockerDetailCode = "NO_ACTIVE_INDEX";
                 reindexRequired = true;
             } else {

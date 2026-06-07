@@ -1,5 +1,7 @@
 package com.uniovi.rag.application.service.evaluation.preset;
 
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexPrepareResult;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexService;
 import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
@@ -45,6 +47,7 @@ public class LabEvaluationSnapshotService {
     private final KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
     private final ProjectIndexProfileService projectIndexProfileService;
     private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
+    private final EvaluationCorpusIndexService evaluationCorpusIndexService;
     private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
     private final EvaluationRunRepository evaluationRunRepository;
     private final ProjectRepository projectRepository;
@@ -55,6 +58,7 @@ public class LabEvaluationSnapshotService {
             KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
             ProjectIndexProfileService projectIndexProfileService,
             LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
+            EvaluationCorpusIndexService evaluationCorpusIndexService,
             KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
             EvaluationRunRepository evaluationRunRepository,
             ProjectRepository projectRepository,
@@ -63,6 +67,7 @@ public class LabEvaluationSnapshotService {
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
         this.projectIndexProfileService = projectIndexProfileService;
         this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
+        this.evaluationCorpusIndexService = evaluationCorpusIndexService;
         this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
         this.evaluationRunRepository = evaluationRunRepository;
         this.projectRepository = projectRepository;
@@ -179,6 +184,33 @@ public class LabEvaluationSnapshotService {
 
         UUID projectId = resolveIndexProjectId(run);
         UUID corpusId = resolveCorpusId(run);
+        UUID userId = run.getUser() != null ? run.getUser().getId() : null;
+
+        if (corpusId != null && userId != null) {
+            emitSnapshotPreparation(run, groupKey, corpusId, true);
+            boolean allowBuild = policy.enabled() && policy.allowActiveSnapshotMutation();
+            EvaluationCorpusIndexPrepareResult prepared =
+                    evaluationCorpusIndexService.prepareForPresetRequirements(
+                            userId, corpusId, groupKey, requirements, embeddingModelIdOverride, allowBuild);
+            if (prepared.succeeded()) {
+                KnowledgeIndexSnapshotEntity built =
+                        knowledgeIndexSnapshotRepository.findById(prepared.knowledgeIndexSnapshotId()).orElse(null);
+                ResolvedSnapshot resolved = resolved(built, prepared.status() == EvaluationCorpusIndexPrepareResult.IndexBuildStatus.BUILT);
+                emitSnapshotPreparationCompleted(run, groupKey, corpusId, prepared.knowledgeIndexSnapshotId());
+                return toPrepareResult(prepared, resolved);
+            }
+            if (!policy.enabled()) {
+                return PrepareResult.incompatible(
+                        prepared.reasonCode() != null ? prepared.reasonCode() : REINDEX_REQUIRED,
+                        prepared.reasonMessage() != null
+                                ? prepared.reasonMessage()
+                                : "Auto-reindex is disabled for this run.");
+            }
+            return PrepareResult.incompatible(
+                    prepared.reasonCode() != null ? prepared.reasonCode() : REINDEX_FAILED,
+                    prepared.reasonMessage() != null ? prepared.reasonMessage() : "Index preparation failed.");
+        }
+
         if (projectId == null) {
             throw new IllegalStateException("AUTO_REINDEX_REQUIRES_CORPUS_INDEX_CONTEXT");
         }
@@ -232,7 +264,9 @@ public class LabEvaluationSnapshotService {
                             caps,
                             true,
                             ownerType,
-                            ownerId));
+                            ownerId),
+                    resolvedConfigSnapshotId,
+                    effective.profileHash());
         }
 
         IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profileJson);
@@ -243,7 +277,17 @@ public class LabEvaluationSnapshotService {
         }
         UUID preparedSnapshotId = built != null && built.getId() != null ? built.getId() : newSnapId;
         emitSnapshotPreparationCompleted(run, groupKey, corpusId, preparedSnapshotId);
-        return PrepareResult.built(resolved(built, true));
+        ResolvedSnapshot resolvedSnap = resolved(built, true);
+        UUID cfgId = built != null ? built.getResolvedConfigSnapshotId() : resolvedConfigSnapshotId;
+        return PrepareResult.built(resolvedSnap, cfgId, resolvedSnap.indexProfileHash());
+    }
+
+    private static PrepareResult toPrepareResult(
+            EvaluationCorpusIndexPrepareResult prepared, ResolvedSnapshot resolved) {
+        if (prepared.status() == EvaluationCorpusIndexPrepareResult.IndexBuildStatus.REUSED) {
+            return PrepareResult.reused(resolved, prepared.resolvedConfigSnapshotId(), prepared.indexProfileHash());
+        }
+        return PrepareResult.built(resolved, prepared.resolvedConfigSnapshotId(), prepared.indexProfileHash());
     }
 
     private void emitSnapshotPreparation(
@@ -343,18 +387,43 @@ public class LabEvaluationSnapshotService {
             String action,
             String status,
             ResolvedSnapshot snapshot,
+            UUID resolvedConfigSnapshotId,
+            String indexProfileHash,
             String errorCode,
             String errorReason) {
         static PrepareResult reused(ResolvedSnapshot snapshot) {
-            return new PrepareResult("REUSE_COMPATIBLE_SNAPSHOT", "REUSED", snapshot, null, null);
+            return reused(snapshot, null, snapshot != null ? snapshot.indexProfileHash() : null);
         }
 
         static PrepareResult built(ResolvedSnapshot snapshot) {
-            return new PrepareResult("BUILD_AND_ACTIVATE", "BUILT", snapshot, null, null);
+            return built(snapshot, null, snapshot != null ? snapshot.indexProfileHash() : null);
+        }
+
+        static PrepareResult reused(ResolvedSnapshot snapshot, UUID resolvedConfigSnapshotId, String indexProfileHash) {
+            return new PrepareResult(
+                    "REUSE_COMPATIBLE_SNAPSHOT",
+                    "REUSED",
+                    snapshot,
+                    resolvedConfigSnapshotId,
+                    indexProfileHash,
+                    null,
+                    null);
+        }
+
+        static PrepareResult built(ResolvedSnapshot snapshot, UUID resolvedConfigSnapshotId, String indexProfileHash) {
+            return new PrepareResult(
+                    "BUILD_AND_ACTIVATE",
+                    "BUILT",
+                    snapshot,
+                    resolvedConfigSnapshotId,
+                    indexProfileHash,
+                    null,
+                    null);
         }
 
         static PrepareResult incompatible(String code, String reason) {
-            return new PrepareResult("NONE", "INCOMPATIBLE", ResolvedSnapshot.missing(), code, reason);
+            return new PrepareResult(
+                    "NONE", "INCOMPATIBLE", ResolvedSnapshot.missing(), null, null, code, reason);
         }
     }
 

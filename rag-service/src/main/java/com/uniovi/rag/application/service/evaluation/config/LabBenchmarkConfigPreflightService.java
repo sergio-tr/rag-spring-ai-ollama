@@ -91,8 +91,7 @@ public class LabBenchmarkConfigPreflightService {
         details.put("presetCodes", presets.stream().map(Enum::name).toList());
 
         if (request.corpusId() != null && strictIndexCheck) {
-            if (request.autoReindexEffective()
-                    && knowledgeSnapshotService.findActiveCorpusSnapshot(request.corpusId()).isEmpty()) {
+            if (request.autoReindexEffective()) {
                 details.put("indexPreflight", "DEFERRED_AUTO_REINDEX");
             } else {
                 validateIndexForPresets(userId, request.corpusId(), presets, details);

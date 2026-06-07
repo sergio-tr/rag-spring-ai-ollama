@@ -27,6 +27,8 @@ public final class RagBenchmarkHumanReasons {
             case "REINDEX_IN_PROGRESS" -> "Another index operation is already in progress.";
             case "REINDEX_REQUIRED", "NO_ACTIVE_INDEX", "FEATURE_REQUIRES_REINDEX", "INDEX_REQUIRES_REINDEX" ->
                     "The project index must be rebuilt before this preset can run.";
+            case "INDEX_PREPARATION_REQUIRED" ->
+                    "Documents are ready; the search index will be prepared when the evaluation runs.";
             case "SNAPSHOT_INCOMPATIBLE", "NO_COMPATIBLE_SNAPSHOT", "SNAPSHOT_CONFIG_MISMATCH" ->
                     "No compatible index snapshot exists for this preset.";
             case "PRESET_NOT_SUPPORTED", "NOT_SUPPORTED" ->
