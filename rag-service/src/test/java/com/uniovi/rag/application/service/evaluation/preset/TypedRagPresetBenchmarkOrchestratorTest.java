@@ -24,6 +24,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntit
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
 import com.uniovi.rag.application.service.evaluation.AbstractEvaluationService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexService;
 import com.uniovi.rag.application.result.evaluation.RagPresetBenchmarkRunPayload;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
 import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
@@ -68,7 +69,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     @Mock private KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
     @Mock private ProjectIndexProfileService projectIndexProfileService;
     @Mock private LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
-    @Mock private com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexService evaluationCorpusIndexService;
+    @Mock private EvaluationCorpusIndexService evaluationCorpusIndexService;
     @Mock private CorpusAvailabilityGate corpusAvailabilityGate;
 
     @BeforeEach

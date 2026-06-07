@@ -23,6 +23,7 @@ import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
+import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import java.time.Instant;
@@ -113,7 +114,7 @@ class EvaluationCorpusIndexServiceTest {
 
         ExperimentalPresetCanonicalCatalog.IndexRequirements req =
                 ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(
-                        com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode.P3);
+                        RagExperimentalPresetCode.P3);
 
         EvaluationCorpusIndexPrepareResult result =
                 service.prepareForPresetRequirements(
@@ -177,7 +178,7 @@ class EvaluationCorpusIndexServiceTest {
 
         ExperimentalPresetCanonicalCatalog.IndexRequirements req =
                 ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(
-                        com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode.P8);
+                        RagExperimentalPresetCode.P8);
 
         EvaluationCorpusIndexPrepareResult result =
                 service.prepareForPresetRequirements(
