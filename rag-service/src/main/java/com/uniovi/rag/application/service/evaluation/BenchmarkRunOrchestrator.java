@@ -20,6 +20,7 @@ import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPr
 import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
 import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
@@ -82,7 +83,7 @@ public class BenchmarkRunOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(BenchmarkRunOrchestrator.class);
 
-    static final String AGG_KEY_REQUESTED_PRESET_CODES = "requested_preset_codes";
+    public static final String AGG_KEY_REQUESTED_PRESET_CODES = "requested_preset_codes";
     static final String AGG_KEY_AUTO_REINDEX_POLICY = "autoReindexPolicy";
     static final String AGG_KEY_AUTO_REINDEX_LOCK_ACQUIRED = "autoReindexLockAcquired";
     static final String AGG_KEY_AUTO_REINDEX_MODE = "autoReindexMode";
@@ -110,6 +111,7 @@ public class BenchmarkRunOrchestrator {
     private final EvaluationCorpusReadinessService evaluationCorpusReadinessService;
     private final EvaluationCorpusRepository evaluationCorpusRepository;
     private final LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService;
+    private final LabPresetAxisSupport labPresetAxisSupport;
     private final ObjectProvider<RuntimeObservability> runtimeObservability;
 
     @Autowired(required = false)
@@ -135,6 +137,7 @@ public class BenchmarkRunOrchestrator {
             EvaluationCorpusReadinessService evaluationCorpusReadinessService,
             EvaluationCorpusRepository evaluationCorpusRepository,
             LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService,
+            LabPresetAxisSupport labPresetAxisSupport,
             ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.userRepository = userRepository;
         this.evaluationDatasetRepository = evaluationDatasetRepository;
@@ -155,6 +158,7 @@ public class BenchmarkRunOrchestrator {
         this.evaluationCorpusReadinessService = evaluationCorpusReadinessService;
         this.evaluationCorpusRepository = evaluationCorpusRepository;
         this.labBenchmarkConfigPreflightService = labBenchmarkConfigPreflightService;
+        this.labPresetAxisSupport = labPresetAxisSupport;
         this.runtimeObservability = runtimeObservability;
     }
 
@@ -180,9 +184,19 @@ public class BenchmarkRunOrchestrator {
         validateRunKind(roleName, request.runKind());
         validateAutoReindexRequest(kind, request);
         validateClasspathCorpusBootstrapRequest(kind, request);
+        EvaluationCorpusReadinessDto ragReadiness = null;
+        if (kind == BenchmarkKind.RAG_PRESET_END_TO_END) {
+            LabRagRunDiagnostics.logIncomingRequest(log, userId, request);
+            if (request.corpusId() != null) {
+                ragReadiness = evaluationCorpusReadinessService.getReadiness(userId, request.corpusId());
+            }
+        }
         validateDocumentBackedCorpus(userId, kind, request);
         LabBenchmarkConfigPreflightResult configPreflight =
                 validateAndRecordConfigPreflight(userId, kind, request);
+        if (kind == BenchmarkKind.RAG_PRESET_END_TO_END) {
+            LabRagRunDiagnostics.logConfigPreflight(log, null, configPreflight);
+        }
         requireNoActiveLabJob(userId, resolveConcurrencyScopeId(userId, request));
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
@@ -212,6 +226,20 @@ public class BenchmarkRunOrchestrator {
                 };
 
         attachTaskAndRunning(run, taskId);
+        if (kind == BenchmarkKind.RAG_PRESET_END_TO_END) {
+            UUID resolvedConfigId =
+                    run.getResolvedConfigSnapshot() != null ? run.getResolvedConfigSnapshot().getId() : null;
+            UUID indexSnapshotId = run.getIndexSnapshot() != null ? run.getIndexSnapshot().getId() : null;
+            LabRagRunDiagnostics.logRunAccepted(
+                    log,
+                    run.getId(),
+                    taskId,
+                    request.corpusId(),
+                    request.experimentalPresetCodes(),
+                    resolvedConfigId,
+                    indexSnapshotId,
+                    ragReadiness);
+        }
         RuntimeObservability obs = runtimeObservability.getIfAvailable();
         if (obs != null) {
             obs.labRunAccepted(
@@ -390,6 +418,7 @@ public class BenchmarkRunOrchestrator {
             applyOptionalLinks(run, childReq);
             applyCorpusReadinessAggregates(userId, run, childReq);
             applyConfigPreflightAggregates(run, configPreflight);
+            labPresetAxisSupport.enrichRagPresetChildRun(run, camp.getId(), presetCode);
             run = evaluationRunRepository.save(run);
 
             if (firstRunId == null) {
@@ -1131,22 +1160,9 @@ public class BenchmarkRunOrchestrator {
         if (run.getAggregatesJson() != null && !run.getAggregatesJson().isEmpty()) {
             agg.putAll(run.getAggregatesJson());
         }
-        Map<String, Object> snapshot = new LinkedHashMap<>();
-        snapshot.put("corpusId", request.corpusId().toString());
-        snapshot.put("documentCount", readiness.documentCount());
-        snapshot.put("readyCount", readiness.readyCount());
-        snapshot.put("processingCount", readiness.processingCount());
-        snapshot.put("failedCount", readiness.failedCount());
-        snapshot.put("primaryBlocker", readiness.primaryBlocker());
-        snapshot.put("snapshotBlocker", readiness.snapshotBlocker());
-        snapshot.put("snapshotBlockerDetailCode", readiness.snapshotBlockerDetailCode());
-        snapshot.put("reindexRequired", readiness.reindexRequired());
-        snapshot.put(
-                "selectedSnapshotIds",
-                readiness.selectedSnapshotIds() != null
-                        ? readiness.selectedSnapshotIds().stream().map(UUID::toString).toList()
-                        : List.of());
-        agg.put(AGG_KEY_CORPUS_READINESS, Collections.unmodifiableMap(snapshot));
+        agg.put(
+                AGG_KEY_CORPUS_READINESS,
+                LabCorpusReadinessAggregates.toSnapshot(request.corpusId(), readiness));
         run.setAggregatesJson(new LinkedHashMap<>(agg));
     }
 

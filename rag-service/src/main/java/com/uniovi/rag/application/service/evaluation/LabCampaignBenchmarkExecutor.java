@@ -7,6 +7,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,16 +31,19 @@ public class LabCampaignBenchmarkExecutor {
     private final EvaluationCampaignRepository evaluationCampaignRepository;
     private final LabJobEventService labJobEventService;
     private final LabBenchmarkCompletionService labBenchmarkCompletionService;
+    private final LabPresetAxisSupport labPresetAxisSupport;
 
     public LabCampaignBenchmarkExecutor(
             EvaluationRunRepository evaluationRunRepository,
             EvaluationCampaignRepository evaluationCampaignRepository,
             LabJobEventService labJobEventService,
-            LabBenchmarkCompletionService labBenchmarkCompletionService) {
+            LabBenchmarkCompletionService labBenchmarkCompletionService,
+            LabPresetAxisSupport labPresetAxisSupport) {
         this.evaluationRunRepository = evaluationRunRepository;
         this.evaluationCampaignRepository = evaluationCampaignRepository;
         this.labJobEventService = labJobEventService;
         this.labBenchmarkCompletionService = labBenchmarkCompletionService;
+        this.labPresetAxisSupport = labPresetAxisSupport;
     }
 
     public void runCampaign(
@@ -119,12 +123,16 @@ public class LabCampaignBenchmarkExecutor {
         }
         List<CampaignExecutionPlan.CampaignRunAxis> axes = new ArrayList<>();
         for (EvaluationRunEntity run : runs) {
-            String label =
-                    run.getLlmModelId() != null
-                            ? run.getLlmModelId()
-                            : run.getEmbeddingModelId() != null
-                                    ? run.getEmbeddingModelId()
-                                    : resolvePresetAxisLabel(run);
+            String label;
+            if (LabPresetAxisSupport.isRagPresetCampaignRun(run)) {
+                label = labPresetAxisSupport.comparisonLabel(run);
+            } else if (run.getLlmModelId() != null && !run.getLlmModelId().isBlank()) {
+                label = run.getLlmModelId().trim();
+            } else if (run.getEmbeddingModelId() != null && !run.getEmbeddingModelId().isBlank()) {
+                label = run.getEmbeddingModelId().trim();
+            } else {
+                label = resolvePresetAxisLabel(run);
+            }
             axes.add(new CampaignExecutionPlan.CampaignRunAxis(run.getId(), label, perAxisItemCount));
         }
         if (plannedTotalItems <= 0 && perAxisItemCount > 0) {
