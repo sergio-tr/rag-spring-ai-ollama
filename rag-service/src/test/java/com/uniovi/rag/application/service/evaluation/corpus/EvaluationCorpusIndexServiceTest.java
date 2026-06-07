@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotLinkage;
+import com.uniovi.rag.application.service.evaluation.preset.CorpusAvailabilityGate;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunGroupKey;
 import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
@@ -49,6 +50,7 @@ class EvaluationCorpusIndexServiceTest {
     @Mock private ProjectIndexProfileService projectIndexProfileService;
     @Mock private LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     @Mock private ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
+    @Mock private CorpusAvailabilityGate corpusAvailabilityGate;
 
     @InjectMocks private EvaluationCorpusIndexService service;
 
@@ -115,6 +117,7 @@ class EvaluationCorpusIndexServiceTest {
         ExperimentalPresetCanonicalCatalog.IndexRequirements req =
                 ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(
                         RagExperimentalPresetCode.P3);
+        when(corpusAvailabilityGate.snapshotHasVectorRows(userId, corpusId, snapshotId)).thenReturn(true);
 
         EvaluationCorpusIndexPrepareResult result =
                 service.prepareForPresetRequirements(
@@ -150,6 +153,57 @@ class EvaluationCorpusIndexServiceTest {
                         ex ->
                                 assertThat(((ResponseStatusException) ex).getReason())
                                         .isEqualTo(LabCorpusReasonCodes.RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE));
+    }
+
+    @Test
+    void prepareForPresetRequirements_buildsWhenCompatibleSnapshotHasZeroVectorRows() {
+        UUID userId = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
+        UUID indexProjectId = UUID.randomUUID();
+        UUID emptySnapshotId = UUID.randomUUID();
+        UUID builtId = UUID.randomUUID();
+        stubReadyCorpus(userId, corpusId, indexProjectId);
+
+        KnowledgeIndexSnapshotEntity emptyCompatible = mock(KnowledgeIndexSnapshotEntity.class);
+        when(emptyCompatible.getId()).thenReturn(emptySnapshotId);
+        when(emptyCompatible.getIndexProfileJsonb()).thenReturn(Map.of("materializationStrategy", "DOCUMENT_LEVEL"));
+        when(knowledgeSnapshotService.findCompatibleCorpusSnapshot(eq(corpusId), any()))
+                .thenAnswer(
+                        inv -> {
+                            @SuppressWarnings("unchecked")
+                            Predicate<KnowledgeIndexSnapshotEntity> predicate = inv.getArgument(1);
+                            return predicate.test(emptyCompatible) ? Optional.of(emptyCompatible) : Optional.empty();
+                        });
+        when(corpusAvailabilityGate.snapshotHasVectorRows(userId, corpusId, emptySnapshotId)).thenReturn(false);
+
+        ProjectIndexProfile base = defaultProfile(indexProjectId);
+        ProjectIndexProfile effective = defaultProfile(indexProjectId);
+        when(projectIndexProfileService.ensureDefault(indexProjectId)).thenReturn(base);
+        when(labIndexProfileOverrideFactory.buildEffectiveProfile(eq(base), any(), eq(LabPresetRunGroupKey.DOCUMENT_LEVEL)))
+                .thenReturn(effective);
+        when(resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshotLinkage(
+                        eq(userId), eq(indexProjectId), eq(Optional.empty())))
+                .thenReturn(new ResolvedConfigSnapshotLinkage(UUID.randomUUID(), "e".repeat(64)));
+        when(knowledgePipelineOrchestrator.rebuildScopeWithProfileOverride(
+                        any(), any(), any(), any(), any(), any(), any(), eq(effective)))
+                .thenReturn(builtId);
+        KnowledgeIndexSnapshotEntity built = mock(KnowledgeIndexSnapshotEntity.class);
+        when(built.getId()).thenReturn(builtId);
+        when(built.getIndexProfileHash()).thenReturn(effective.profileHash());
+        when(knowledgeSnapshotService.findCorpusSnapshots(corpusId)).thenReturn(List.of(built));
+
+        ExperimentalPresetCanonicalCatalog.IndexRequirements req =
+                ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(RagExperimentalPresetCode.P2);
+
+        EvaluationCorpusIndexPrepareResult result =
+                service.prepareForPresetRequirements(
+                        userId, corpusId, LabPresetRunGroupKey.DOCUMENT_LEVEL, req, null, true);
+
+        assertThat(result.status()).isEqualTo(EvaluationCorpusIndexPrepareResult.IndexBuildStatus.BUILT);
+        assertThat(result.knowledgeIndexSnapshotId()).isEqualTo(builtId);
+        verify(knowledgePipelineOrchestrator)
+                .rebuildScopeWithProfileOverride(
+                        any(), any(), any(), any(), any(), any(), any(), eq(effective));
     }
 
     @Test

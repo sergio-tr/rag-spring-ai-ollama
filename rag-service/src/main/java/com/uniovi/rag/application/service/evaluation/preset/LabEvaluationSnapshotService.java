@@ -20,6 +20,7 @@ import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -41,6 +42,7 @@ public class LabEvaluationSnapshotService {
     public static final String REINDEX_REQUIRED = "REINDEX_REQUIRED";
     public static final String REINDEX_IN_PROGRESS = "REINDEX_IN_PROGRESS";
     public static final String REINDEX_FAILED = "REINDEX_FAILED";
+    public static final String REBUILD_REQUIRED = "REBUILD_REQUIRED";
     public static final String MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE";
 
     private final KnowledgeSnapshotService knowledgeSnapshotService;
@@ -48,6 +50,7 @@ public class LabEvaluationSnapshotService {
     private final ProjectIndexProfileService projectIndexProfileService;
     private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     private final EvaluationCorpusIndexService evaluationCorpusIndexService;
+    private final CorpusAvailabilityGate corpusAvailabilityGate;
     private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
     private final EvaluationRunRepository evaluationRunRepository;
     private final ProjectRepository projectRepository;
@@ -59,6 +62,7 @@ public class LabEvaluationSnapshotService {
             ProjectIndexProfileService projectIndexProfileService,
             LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
             EvaluationCorpusIndexService evaluationCorpusIndexService,
+            CorpusAvailabilityGate corpusAvailabilityGate,
             KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
             EvaluationRunRepository evaluationRunRepository,
             ProjectRepository projectRepository,
@@ -68,6 +72,7 @@ public class LabEvaluationSnapshotService {
         this.projectIndexProfileService = projectIndexProfileService;
         this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
         this.evaluationCorpusIndexService = evaluationCorpusIndexService;
+        this.corpusAvailabilityGate = corpusAvailabilityGate;
         this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
         this.evaluationRunRepository = evaluationRunRepository;
         this.projectRepository = projectRepository;
@@ -113,7 +118,7 @@ public class LabEvaluationSnapshotService {
             ExperimentalPresetCanonicalCatalog.IndexRequirements requirements,
             String embeddingModelIdOverride) {
         KnowledgeIndexSnapshotEntity explicit = run != null ? run.getIndexSnapshot() : null;
-        if (isCompatibleSnapshot(explicit, requirements, embeddingModelIdOverride)) {
+        if (isUsableSnapshot(run, explicit, requirements, embeddingModelIdOverride)) {
             return resolved(explicit, false);
         }
 
@@ -121,13 +126,15 @@ public class LabEvaluationSnapshotService {
         if (corpusId != null) {
             Optional<KnowledgeIndexSnapshotEntity> compatible =
                     knowledgeSnapshotService.findCompatibleCorpusSnapshot(
-                            corpusId, s -> isCompatibleSnapshot(s, requirements, embeddingModelIdOverride));
+                            corpusId,
+                            s -> isUsableSnapshot(run, s, requirements, embeddingModelIdOverride));
             if (compatible.isPresent()) {
                 return resolved(compatible.get(), false);
             }
             Optional<KnowledgeIndexSnapshotEntity> active =
                     knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId);
-            if (active.isPresent() && isCompatibleSnapshot(active.get(), requirements, embeddingModelIdOverride)) {
+            if (active.isPresent()
+                    && isUsableSnapshot(run, active.get(), requirements, embeddingModelIdOverride)) {
                 return resolved(active.get(), false);
             }
         }
@@ -137,12 +144,13 @@ public class LabEvaluationSnapshotService {
             Optional<KnowledgeIndexSnapshotEntity> activeOpt =
                     knowledgeSnapshotService.findActiveProjectSnapshot(projectId);
             if (activeOpt.isPresent()
-                    && isCompatibleSnapshot(activeOpt.get(), requirements, embeddingModelIdOverride)) {
+                    && isUsableSnapshot(run, activeOpt.get(), requirements, embeddingModelIdOverride)) {
                 return resolved(activeOpt.get(), false);
             }
             Optional<KnowledgeIndexSnapshotEntity> compatible =
                     knowledgeSnapshotService.findCompatibleProjectSnapshot(
-                            projectId, s -> isCompatibleSnapshot(s, requirements, embeddingModelIdOverride));
+                            projectId,
+                            s -> isUsableSnapshot(run, s, requirements, embeddingModelIdOverride));
             if (compatible.isPresent()) {
                 return resolved(compatible.get(), false);
             }
@@ -152,9 +160,20 @@ public class LabEvaluationSnapshotService {
         }
 
         if (explicit != null && explicit.getId() != null) {
-            return resolved(explicit, false);
+            if (isUsableSnapshot(run, explicit, requirements, embeddingModelIdOverride)) {
+                return resolved(explicit, false);
+            }
+            return incompatible(explicit);
         }
         return ResolvedSnapshot.missing();
+    }
+
+    /** Whether {@code snapshotId} has non-empty vector rows when preset requirements need retrieval materialization. */
+    public boolean hasRequiredVectorRows(
+            EvaluationRunEntity run,
+            UUID snapshotId,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
+        return snapshotHasRequiredVectorRows(run, snapshotId, requirements);
     }
 
     public PrepareResult prepareSnapshotIfNeeded(
@@ -166,25 +185,33 @@ public class LabEvaluationSnapshotService {
         Objects.requireNonNull(policy, "policy");
         if (!policy.enabled()) {
             ResolvedSnapshot resolved = resolveCompatibleSnapshot(run, requirements, embeddingModelIdOverride);
-            if (resolved.hasUsableSnapshot()) {
+            if (resolved.hasUsableSnapshot()
+                    && snapshotHasRequiredVectorRows(run, resolved.snapshotId(), requirements)) {
                 return PrepareResult.reused(resolved);
             }
-            return PrepareResult.incompatible(REINDEX_REQUIRED, "Auto-reindex is disabled for this run.");
+            return PrepareResult.rebuildRequired(
+                    REINDEX_REQUIRED, "Auto-reindex is disabled for this run.");
         }
 
         ResolvedSnapshot existing = resolveCompatibleSnapshot(run, requirements, embeddingModelIdOverride);
-        if (existing.hasUsableSnapshot()) {
+        if (existing.hasUsableSnapshot() && snapshotHasRequiredVectorRows(run, existing.snapshotId(), requirements)) {
             return PrepareResult.reused(existing);
         }
 
         if (!policy.allowActiveSnapshotMutation()) {
-            return PrepareResult.incompatible(
-                    NO_COMPATIBLE_SNAPSHOT, "No compatible snapshot exists and active snapshot mutation is disabled.");
+            return PrepareResult.rebuildRequired(
+                    NO_COMPATIBLE_SNAPSHOT,
+                    "No compatible snapshot exists and active snapshot mutation is disabled.");
         }
 
         UUID projectId = resolveIndexProjectId(run);
         UUID corpusId = resolveCorpusId(run);
-        UUID userId = run.getUser() != null ? run.getUser().getId() : null;
+        UUID userId = resolveUserId(run);
+
+        if (corpusId != null && userId == null) {
+            throw new IllegalStateException(
+                    "Evaluation run owner is missing for corpus-scoped index preparation.");
+        }
 
         if (corpusId != null && userId != null) {
             emitSnapshotPreparation(run, groupKey, corpusId, true);
@@ -194,8 +221,10 @@ public class LabEvaluationSnapshotService {
                             userId, corpusId, groupKey, requirements, embeddingModelIdOverride, allowBuild);
             if (prepared.succeeded()) {
                 KnowledgeIndexSnapshotEntity built =
-                        knowledgeIndexSnapshotRepository.findById(prepared.knowledgeIndexSnapshotId()).orElse(null);
-                ResolvedSnapshot resolved = resolved(built, prepared.status() == EvaluationCorpusIndexPrepareResult.IndexBuildStatus.BUILT);
+                        knowledgeIndexSnapshotRepository
+                                .findById(prepared.knowledgeIndexSnapshotId())
+                                .orElse(null);
+                ResolvedSnapshot resolved = resolvedFromPrepare(prepared, built, corpusId);
                 emitSnapshotPreparationCompleted(run, groupKey, corpusId, prepared.knowledgeIndexSnapshotId());
                 return toPrepareResult(prepared, resolved);
             }
@@ -319,6 +348,43 @@ public class LabEvaluationSnapshotService {
                                 run.getAsyncTask().getId(), run.getId(), groupKey, snapshotId, corpusId));
     }
 
+    private boolean isUsableSnapshot(
+            EvaluationRunEntity run,
+            KnowledgeIndexSnapshotEntity snapshot,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements,
+            String embeddingModelIdOverride) {
+        return isCompatibleSnapshot(snapshot, requirements, embeddingModelIdOverride)
+                && snapshotHasRequiredVectorRows(run, snapshot != null ? snapshot.getId() : null, requirements);
+    }
+
+    private boolean snapshotHasRequiredVectorRows(
+            EvaluationRunEntity run,
+            UUID snapshotId,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
+        if (!requirementsNeedVectorRows(requirements) || snapshotId == null) {
+            return true;
+        }
+        UUID userId = resolveUserId(run);
+        UUID corpusId = resolveCorpusId(run);
+        if (userId != null && corpusId != null) {
+            return corpusAvailabilityGate.snapshotHasVectorRows(userId, corpusId, snapshotId);
+        }
+        UUID indexProjectId = resolveIndexProjectId(run);
+        if (indexProjectId != null) {
+            return corpusAvailabilityGate.countVectorRows(indexProjectId, List.of(snapshotId)) > 0L;
+        }
+        return false;
+    }
+
+    private static boolean requirementsNeedVectorRows(
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
+        if (requirements == null || requirements.requiredMaterialization() == null) {
+            return false;
+        }
+        return requirements.requiredMaterialization()
+                != ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE;
+    }
+
     public boolean isCompatibleSnapshot(
             KnowledgeIndexSnapshotEntity snapshot,
             ExperimentalPresetCanonicalCatalog.IndexRequirements requirements,
@@ -335,6 +401,27 @@ public class LabEvaluationSnapshotService {
             return false;
         }
         return IndexCompatibilityResult.check(requirements, true, caps).compatible();
+    }
+
+    private static ResolvedSnapshot resolvedFromPrepare(
+            EvaluationCorpusIndexPrepareResult prepared,
+            KnowledgeIndexSnapshotEntity built,
+            UUID corpusId) {
+        if (built != null && built.getId() != null) {
+            return resolved(
+                    built, prepared.status() == EvaluationCorpusIndexPrepareResult.IndexBuildStatus.BUILT);
+        }
+        if (!prepared.succeeded() || prepared.knowledgeIndexSnapshotId() == null) {
+            return ResolvedSnapshot.missing();
+        }
+        return new ResolvedSnapshot(
+                true,
+                prepared.knowledgeIndexSnapshotId(),
+                prepared.indexProfileHash(),
+                IndexSnapshotCapabilities.fromIndexProfile(Map.of()),
+                prepared.status() == EvaluationCorpusIndexPrepareResult.IndexBuildStatus.BUILT,
+                KnowledgeSnapshotOwnerType.EVALUATION_CORPUS,
+                corpusId);
     }
 
     private static ResolvedSnapshot resolved(KnowledgeIndexSnapshotEntity snap, boolean preparedDuringRun) {
@@ -425,6 +512,11 @@ public class LabEvaluationSnapshotService {
             return new PrepareResult(
                     "NONE", "INCOMPATIBLE", ResolvedSnapshot.missing(), null, null, code, reason);
         }
+
+        static PrepareResult rebuildRequired(String code, String reason) {
+            return new PrepareResult(
+                    REBUILD_REQUIRED, "PENDING", ResolvedSnapshot.missing(), null, null, code, reason);
+        }
     }
 
     public record AutoReindexPolicy(
@@ -450,6 +542,20 @@ public class LabEvaluationSnapshotService {
                     m.get("failOnReindexFailure") == null || Boolean.TRUE.equals(m.get("failOnReindexFailure"));
             return new AutoReindexPolicy(enabled, allowMut, reuse, fail);
         }
+    }
+
+    /** Async-safe user lookup when the run entity was loaded without {@code JOIN FETCH r.user}. */
+    UUID resolveUserId(EvaluationRunEntity run) {
+        if (run == null) {
+            return null;
+        }
+        if (run.getUser() != null && run.getUser().getId() != null) {
+            return run.getUser().getId();
+        }
+        if (run.getId() == null) {
+            return null;
+        }
+        return evaluationRunRepository.findUserIdByRunId(run.getId()).orElse(null);
     }
 
     /** Ensures run project is wired from evaluation corpus index sandbox when only corpus is set. */

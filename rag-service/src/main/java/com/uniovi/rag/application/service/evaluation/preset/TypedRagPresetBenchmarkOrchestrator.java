@@ -29,11 +29,14 @@ import com.uniovi.rag.application.service.evaluation.RagBenchmarkHumanReasons;
 import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
 import com.uniovi.rag.application.service.evaluation.EvaluationSummaryBuilder;
+import com.uniovi.rag.application.service.evaluation.LabRagRunDiagnostics;
 import com.uniovi.rag.application.service.evaluation.baseline.ExperimentalSnapshotFactory;
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.domain.exception.ErrorCode;
 import com.uniovi.rag.application.service.async.LabJobCancelledException;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
@@ -58,6 +61,8 @@ import java.util.function.Function;
  */
 @Service
 public class TypedRagPresetBenchmarkOrchestrator {
+
+    private static final Logger log = LoggerFactory.getLogger(TypedRagPresetBenchmarkOrchestrator.class);
 
     private static final String JSON_KEY_CORRECT_ANSWER = "correct_answer";
     private static final String JSON_KEY_GENERATED_ANSWER = "generated_answer";
@@ -130,7 +135,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 applicationFeatureDefaults != null ? applicationFeatureDefaults : new RagFeatureConfiguration();
 
         EvaluationRunEntity run =
-                evaluationRunId != null ? evaluationRunRepository.findById(evaluationRunId).orElse(null) : null;
+                evaluationRunId != null
+                        ? evaluationRunRepository.findByIdFetchDatasetAndCorpus(evaluationRunId).orElse(null)
+                        : null;
         if (evaluationRunId != null) {
             labEvaluationSnapshotService.ensureRunIndexProjectByRunId(evaluationRunId);
         }
@@ -179,6 +186,26 @@ public class TypedRagPresetBenchmarkOrchestrator {
         if (evaluationRunId != null) {
             labEvaluationSnapshotService.ensureRunIndexProjectByRunId(evaluationRunId);
         }
+        UUID resolvedConfigSnapshotId =
+                run != null && run.getResolvedConfigSnapshot() != null
+                        ? run.getResolvedConfigSnapshot().getId()
+                        : null;
+        UUID knowledgeIndexSnapshotId =
+                run != null && run.getIndexSnapshot() != null ? run.getIndexSnapshot().getId() : null;
+        LabRagRunDiagnostics.logStage(
+                log,
+                "orchestrator_start",
+                LabRagRunDiagnostics.fields(
+                        "runId", evaluationRunId,
+                        "corpusId",
+                        run != null && run.getEvaluationCorpus() != null
+                                ? run.getEvaluationCorpus().getId()
+                                : null,
+                        "presetKeys", codesForPlan.stream().map(Enum::name).toList(),
+                        "resolvedConfigSnapshotId", resolvedConfigSnapshotId,
+                        "knowledgeIndexSnapshotId", knowledgeIndexSnapshotId,
+                        "questionCount", questions != null ? questions.size() : 0,
+                        "autoReindex", autoReindexPolicy.enabled()));
 
         Map<RagExperimentalPresetCode, RagPresetDefinition> defByPreset =
                 catalog.stream()
@@ -329,6 +356,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     continue;
                 }
                 RagExperimentalPresetCode preset = parsed.get();
+                LabRagRunDiagnostics.logPresetExecution(
+                        log, evaluationRunId, preset.name(), questions != null ? questions.size() : 0);
                 RagPresetDefinition def = defByPreset.get(preset);
                 if (def == null) {
                     String label = preset.name();
@@ -424,7 +453,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                         LabBenchmarkExecutionContext.openLab(
                                 overlay.terminalRuntimeJson(),
                                 evaluationRunId,
-                                run != null && run.getProject() != null ? run.getProject().getId() : null,
+                                labEvaluationSnapshotService.resolveIndexProjectId(run),
                                 resolvedSnapId != null ? List.of(resolvedSnapId) : List.of(),
                                 gk != null ? gk.name() : null,
                                 preset != null ? preset.name() : null,
@@ -538,8 +567,10 @@ public class TypedRagPresetBenchmarkOrchestrator {
         UUID corpusId =
                 runId != null ? evaluationRunRepository.findCorpusIdByRunId(runId).orElse(null) : null;
         List<UUID> snapshotIds = resolveCorpusSnapshotIds(snapshotId, preset);
-        CorpusAvailabilityGate.Result result = corpusAvailabilityGate.evaluate(userId, corpusId, snapshotIds);
-        Map<String, Object> metrics = corpusAvailabilityGate.probe(userId, corpusId, snapshotIds);
+        CorpusAvailabilityGate.Result result =
+                corpusAvailabilityGate.evaluateForPreset(userId, corpusId, snapshotIds, preset);
+        Map<String, Object> metrics =
+                corpusAvailabilityGate.probeForPreset(userId, corpusId, snapshotIds, preset);
         return new CorpusDiagnostics(result, metrics);
     }
 
@@ -701,6 +732,16 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 labEvaluationSnapshotService.prepareSnapshotIfNeeded(
                         run, group.groupKey(), req, policy, run.getEmbeddingModelId());
 
+        if ("REUSE_COMPATIBLE_SNAPSHOT".equals(prepared.action())
+                && prepared.snapshot() != null
+                && prepared.snapshot().snapshotId() != null
+                && !labEvaluationSnapshotService.hasRequiredVectorRows(
+                        run, prepared.snapshot().snapshotId(), req)) {
+            throw new IllegalStateException(
+                    CorpusAvailabilityGate.SNAPSHOT_VECTOR_ROWS_MISSING
+                            + ": snapshot has no vector rows for the evaluation corpus");
+        }
+
         if (prepared.snapshot() != null && prepared.snapshot().hasUsableSnapshot()) {
             return exec.withReindexAction(prepared.action())
                     .withReindexStatus(prepared.status())
@@ -772,13 +813,15 @@ public class TypedRagPresetBenchmarkOrchestrator {
 
         LabEvaluationSnapshotService.ResolvedSnapshot resolved =
                 labEvaluationSnapshotService.resolveCompatibleSnapshot(run, req);
-        boolean hasUsableSnapshot = resolved.hasUsableSnapshot();
-        boolean hasSnapshot = hasUsableSnapshot || resolved.snapshotId() != null;
+        boolean hasUsableSnapshot =
+                resolved.hasUsableSnapshot()
+                        && (resolved.snapshotId() == null
+                                || labEvaluationSnapshotService.hasRequiredVectorRows(run, resolved.snapshotId(), req));
         IndexSnapshotCapabilities caps =
                 resolved.capabilities() != null
                         ? resolved.capabilities()
                         : IndexSnapshotCapabilities.fromIndexProfile(Map.of());
-        IndexCompatibilityResult idx = labIndexCompatibility(req, hasSnapshot, caps, preset);
+        IndexCompatibilityResult idx = labIndexCompatibility(req, hasUsableSnapshot, caps, preset);
         return new PreflightIndexCompatibility(
                 idx.compatible(),
                 idx.requiresReindex(),
@@ -946,10 +989,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                         ? overrideErrorCode
                         : gate != null && gate.reasonCode() != null ? gate.reasonCode() : "INDEX_REQUIRES_REINDEX";
         row.put(BenchmarkResultRowKeys.ERROR_CODE, code);
-        String humanReason =
-                overrideReason != null
-                        ? overrideReason
-                        : gate != null && gate.message() != null ? gate.message() : code;
+        String humanReason = RagBenchmarkHumanReasons.terminalSkipHumanize(code);
         row.put(BenchmarkResultRowKeys.REASON, humanReason);
         row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
         LabPresetRunGroupKey gk =

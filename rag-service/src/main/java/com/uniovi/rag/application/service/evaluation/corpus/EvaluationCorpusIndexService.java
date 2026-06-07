@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.evaluation.corpus;
 
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotLinkage;
+import com.uniovi.rag.application.service.evaluation.preset.CorpusAvailabilityGate;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunGroupKey;
 import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
@@ -14,6 +15,7 @@ import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
 import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -32,6 +34,7 @@ public class EvaluationCorpusIndexService {
     private final ProjectIndexProfileService projectIndexProfileService;
     private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     private final ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
+    private final CorpusAvailabilityGate corpusAvailabilityGate;
 
     public EvaluationCorpusIndexService(
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
@@ -39,13 +42,15 @@ public class EvaluationCorpusIndexService {
             KnowledgeSnapshotService knowledgeSnapshotService,
             ProjectIndexProfileService projectIndexProfileService,
             LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
-            ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService) {
+            ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService,
+            CorpusAvailabilityGate corpusAvailabilityGate) {
         this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.projectIndexProfileService = projectIndexProfileService;
         this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
         this.resolvedConfigSnapshotApplicationService = resolvedConfigSnapshotApplicationService;
+        this.corpusAvailabilityGate = corpusAvailabilityGate;
     }
 
     /** Manual prepare-index API: builds default-profile corpus snapshot. */
@@ -97,11 +102,24 @@ public class EvaluationCorpusIndexService {
             UUID corpusId,
             ExperimentalPresetCanonicalCatalog.IndexRequirements requirements,
             String embeddingModelIdOverride) {
+        return findCompatibleSnapshot(null, corpusId, null, requirements, embeddingModelIdOverride);
+    }
+
+    public Optional<KnowledgeIndexSnapshotEntity> findCompatibleSnapshot(
+            UUID userId,
+            UUID corpusId,
+            UUID indexProjectId,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements,
+            String embeddingModelIdOverride) {
         if (corpusId == null) {
             return Optional.empty();
         }
         return knowledgeSnapshotService.findCompatibleCorpusSnapshot(
-                corpusId, snapshot -> isCompatibleSnapshot(snapshot, requirements, embeddingModelIdOverride));
+                corpusId,
+                snapshot ->
+                        isCompatibleSnapshot(snapshot, requirements, embeddingModelIdOverride)
+                                && snapshotUsableForReuse(
+                                        userId, corpusId, indexProjectId, snapshot, requirements));
     }
 
     private EvaluationCorpusIndexPrepareResult prepareOrReuse(
@@ -115,7 +133,7 @@ public class EvaluationCorpusIndexService {
         evaluationCorpusApplicationService.syncIndexProjectDocuments(userId, corpusId);
 
         Optional<KnowledgeIndexSnapshotEntity> compatible =
-                findCompatibleSnapshot(corpusId, requirements, embeddingModelIdOverride);
+                findCompatibleSnapshot(userId, corpusId, context.indexProjectId(), requirements, embeddingModelIdOverride);
         if (compatible.isPresent()) {
             KnowledgeIndexSnapshotEntity snap = compatible.get();
             return EvaluationCorpusIndexPrepareResult.reused(
@@ -213,5 +231,35 @@ public class EvaluationCorpusIndexService {
     private static boolean isResolvedConfigLinkageFailure(Throwable e) {
         String msg = e.getMessage();
         return msg != null && msg.contains("resolved_config_snapshot");
+    }
+
+    private boolean snapshotUsableForReuse(
+            UUID userId,
+            UUID corpusId,
+            UUID indexProjectId,
+            KnowledgeIndexSnapshotEntity snapshot,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
+        if (snapshot == null || snapshot.getId() == null) {
+            return false;
+        }
+        if (!requirementsNeedVectorRows(requirements)) {
+            return true;
+        }
+        if (userId != null && corpusId != null) {
+            return corpusAvailabilityGate.snapshotHasVectorRows(userId, corpusId, snapshot.getId());
+        }
+        if (indexProjectId != null) {
+            return corpusAvailabilityGate.countVectorRows(indexProjectId, List.of(snapshot.getId())) > 0L;
+        }
+        return false;
+    }
+
+    private static boolean requirementsNeedVectorRows(
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
+        if (requirements == null || requirements.requiredMaterialization() == null) {
+            return false;
+        }
+        return requirements.requiredMaterialization()
+                != ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE;
     }
 }
