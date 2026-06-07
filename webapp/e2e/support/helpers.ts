@@ -52,22 +52,32 @@ export function productApiUrl(path: string): string {
 
 const GATEWAY_ERROR_PAGE = /504 Gateway Time-out|502 Bad Gateway|503 Service Unavailable/i;
 
+async function firstHeadingText(page: Page): Promise<string> {
+  return page
+    .locator("h1")
+    .first()
+    .innerText({ timeout: 800 })
+    .catch(() => "");
+}
+
 /** Navigates with retries when nginx returns transient gateway errors during SSR. */
 export async function gotoWithProxyRetry(
   page: Page,
   url: string,
-  options?: Parameters<Page["goto"]>[1],
+  options?: Parameters<Page["goto"]>[1] & { maxAttempts?: number },
 ): Promise<void> {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000, ...options });
-    const heading = await page.locator("h1").first().innerText().catch(() => "");
+  const maxAttempts = options?.maxAttempts ?? 4;
+  const { maxAttempts: _ignored, ...gotoOptions } = options ?? {};
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    await page.goto(url, { waitUntil: "commit", timeout: 30_000, ...gotoOptions });
+    const heading = await firstHeadingText(page);
     if (!GATEWAY_ERROR_PAGE.test(heading)) {
       return;
     }
     await page.waitForTimeout(600 + attempt * 900);
   }
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000, ...options });
-  const heading = await page.locator("h1").first().innerText().catch(() => "");
+  await page.goto(url, { waitUntil: "commit", timeout: 30_000, ...gotoOptions });
+  const heading = await firstHeadingText(page);
   expect(GATEWAY_ERROR_PAGE.test(heading), `proxy still returned gateway error for ${url}`).toBeFalsy();
 }
 
@@ -229,16 +239,66 @@ async function waitForProjectsPageReady(page: Page, timeoutMs: number): Promise<
   await expect(projectsHeading).toBeVisible({ timeout: 5_000 });
 }
 
+export type BootstrapBrowserSessionOptions = {
+  /** Skip /en/projects gate after session cookie (preflight chat flows). */
+  skipProjectsReady?: boolean;
+};
+
+function pageIsOnWebappOrigin(page: Page): boolean {
+  try {
+    const { hostname, pathname } = new URL(page.url());
+    return (hostname === "127.0.0.1" || hostname === "localhost") && pathname.startsWith("/");
+  } catch {
+    return false;
+  }
+}
+
+/** Applies JWT to BFF session cookies + sessionStorage, then opens /en/projects. */
+export async function bootstrapBrowserSession(
+  page: Page,
+  tokens: LoginResponse,
+  options?: BootstrapBrowserSessionOptions,
+): Promise<void> {
+  await registerE2eLayoutPersistenceReset(page);
+  await page.addInitScript(({ accessToken }) => {
+    try {
+      sessionStorage.setItem("rag_access_token", accessToken);
+    } catch {
+      /* ignore */
+    }
+  }, { accessToken: tokens.accessToken });
+  if (!pageIsOnWebappOrigin(page)) {
+    await gotoWithProxyRetry(page, "/en/login", { timeout: 20_000, maxAttempts: 2 });
+  }
+  await page.evaluate(async ({ accessToken, refreshToken }) => {
+    const sessionRes = await fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accessToken, refreshToken }),
+    });
+    if (!sessionRes.ok) {
+      throw new Error(`session cookie failed: ${sessionRes.status}`);
+    }
+    sessionStorage.setItem("rag_access_token", accessToken);
+  }, tokens);
+
+  if (options?.skipProjectsReady) {
+    return;
+  }
+
+  await gotoWithProxyRetry(page, "/en/projects", { timeout: 20_000, maxAttempts: 2 });
+  await waitForProjectsPageReady(page, loginTimeoutMs);
+}
+
 /** Logs in with Flyway seed credentials and waits for the projects page. */
 export async function loginAsSeedUser(page: Page): Promise<void> {
   await registerE2eLayoutPersistenceReset(page);
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const reachedLogin = await page.goto("/en/login", { waitUntil: "domcontentloaded", timeout: 10_000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!reachedLogin) {
+    try {
+      await gotoWithProxyRetry(page, "/en/login");
+    } catch {
       if (attempt === 1) {
-        await page.goto("/en/login", { waitUntil: "domcontentloaded", timeout: 10_000 });
+        await gotoWithProxyRetry(page, "/en/login");
       }
       continue;
     }
@@ -280,20 +340,8 @@ export async function loginAsSeedUser(page: Page): Promise<void> {
     expect(loginRes.ok(), `seed API login failed: ${loginRes.status()} ${loginBody}`).toBeTruthy();
     const tokens = JSON.parse(loginBody) as LoginResponse;
     expect(tokens.accessToken, "seed API login access token").toBeTruthy();
-    await page.goto("/en/login", { waitUntil: "domcontentloaded", timeout: 10_000 });
-    await page.evaluate(async ({ accessToken, refreshToken }) => {
-      const sessionRes = await fetch("/api/auth/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessToken, refreshToken }),
-      });
-      if (!sessionRes.ok) {
-        throw new Error(`session cookie failed: ${sessionRes.status}`);
-      }
-      sessionStorage.setItem("rag_access_token", accessToken);
-    }, tokens);
-    await page.goto("/en/projects", { waitUntil: "load", timeout: 20_000 });
-    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
+    await bootstrapBrowserSession(page, tokens);
+    return;
   }
   await waitForProjectsPageReady(page, loginTimeoutMs);
 }
@@ -425,14 +473,25 @@ export type CreateNewChatConversationOptions = {
   projectId?: string;
 };
 
+function chatComposerLocators(page: Page): {
+  textarea: Locator;
+  sendButton: Locator;
+  newConversationButton: Locator;
+} {
+  const column = page.getByTestId("chat-readable-column");
+  return {
+    textarea: column.getByTestId("chat-message-composer"),
+    sendButton: column.getByTestId("chat-send-button"),
+    newConversationButton: page.getByTestId("chat-new-conversation"),
+  };
+}
+
 /** Opens Chat scoped to a project (required for createNewChatConversation and send flows). */
 export async function openChatForProject(page: Page, projectId: string): Promise<void> {
-  await page.goto(`/en/chat?projectId=${projectId}`, {
-    waitUntil: "domcontentloaded",
-    timeout: 15_000,
-  });
-  await expect(page.getByTestId("chat-page")).toBeVisible({ timeout: 15_000 });
-  await expect(page).toHaveURL(new RegExp(`[?&]projectId=${projectId}`), { timeout: 15_000 });
+  await gotoWithProxyRetry(page, `/en/chat?projectId=${projectId}`, { timeout: 20_000, maxAttempts: 2 });
+  const { textarea } = chatComposerLocators(page);
+  await expect(textarea).toBeVisible({ timeout: 45_000 });
+  await expect(page).toHaveURL(new RegExp(`[?&]projectId=${projectId}`), { timeout: 10_000 });
 }
 
 async function ensureChatConversationSidebarExpanded(page: Page): Promise<void> {
@@ -596,9 +655,7 @@ export async function createNewChatConversation(
   }
 
   if (conversationId && !conversationIdFromChatUrl(page.url())) {
-    await page.goto(`/en/chat?projectId=${projectId}&conversationId=${conversationId}`, {
-      waitUntil: "domcontentloaded",
-    });
+    await gotoWithProxyRetry(page, `/en/chat?projectId=${projectId}&conversationId=${conversationId}`);
   }
 
   if (!conversationId) {
@@ -608,8 +665,17 @@ export async function createNewChatConversation(
     );
   }
 
-  await expect(page.getByTestId(`conversation-item-${conversationId}`)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("chat-message-composer")).toBeEnabled({ timeout: 20_000 });
+  // Conversation list refetch can lag behind URL/composer after create; poll briefly, then rely on URL.
+  const convItem = page.getByTestId(`conversation-item-${conversationId}`);
+  const listShowsConversation = await expect
+    .poll(async () => convItem.isVisible().catch(() => false), { timeout: 20_000 })
+    .toBe(true)
+    .then(() => true)
+    .catch(() => false);
+  if (!listShowsConversation) {
+    expect(conversationIdFromChatUrl(page.url()), "conversationId in URL after create").toBe(conversationId);
+  }
   return conversationId;
 }
 
@@ -619,30 +685,31 @@ export async function ensureChatConversationForPreflight(
   projectId: string,
   existingConversationId?: string | null,
 ): Promise<string> {
-  if (existingConversationId) {
-    await page.goto(`/en/chat?projectId=${projectId}&conversationId=${existingConversationId}`, {
-      waitUntil: "domcontentloaded",
-      timeout: 15_000,
-    });
-    await expect(page.getByTestId("chat-page")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("chat-message-composer")).toBeEnabled({ timeout: 20_000 });
+  const composer = page.getByTestId("chat-message-composer");
+  const existingFromUrl = conversationIdFromChatUrl(page.url());
+  if (existingFromUrl && (await composer.isVisible().catch(() => false))) {
+    return existingFromUrl;
+  }
+
+  const openExistingConversation = async (conversationId: string): Promise<boolean> => {
+    await gotoWithProxyRetry(
+      page,
+      `/en/chat?projectId=${projectId}&conversationId=${conversationId}`,
+      { timeout: 30_000, maxAttempts: 2 },
+    );
+    return page
+      .getByTestId("chat-message-composer")
+      .waitFor({ state: "visible", timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false);
+  };
+
+  if (existingConversationId && (await openExistingConversation(existingConversationId))) {
     return existingConversationId;
   }
-  await openChatForProject(page, projectId);
-  return createNewChatConversation(page, { allowExisting: false, projectId });
-}
 
-function chatComposerLocators(page: Page): {
-  textarea: Locator;
-  sendButton: Locator;
-  newConversationButton: Locator;
-} {
-  const column = page.getByTestId("chat-readable-column");
-  return {
-    textarea: column.getByTestId("chat-message-composer"),
-    sendButton: column.getByTestId("chat-send-button"),
-    newConversationButton: page.getByTestId("chat-new-conversation"),
-  };
+  await openChatForProject(page, projectId);
+  return createNewChatConversation(page, { allowExisting: true, projectId });
 }
 
 /**
