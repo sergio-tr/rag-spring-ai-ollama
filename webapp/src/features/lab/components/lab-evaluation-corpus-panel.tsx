@@ -204,7 +204,9 @@ export function LabEvaluationCorpusPanel({
   }
 
   const onUploadSelectedRef = useRef(onUploadSelected);
-  onUploadSelectedRef.current = onUploadSelected;
+  useEffect(() => {
+    onUploadSelectedRef.current = onUploadSelected;
+  });
   const uploadListenerCleanupRef = useRef<(() => void) | null>(null);
 
   const bindUploadInput = useCallback((node: HTMLInputElement | null) => {

@@ -67,7 +67,8 @@ export async function gotoWithProxyRetry(
   options?: Parameters<Page["goto"]>[1] & { maxAttempts?: number },
 ): Promise<void> {
   const maxAttempts = options?.maxAttempts ?? 4;
-  const { maxAttempts: _ignored, ...gotoOptions } = options ?? {};
+  const gotoOptions = { ...(options ?? {}) };
+  delete (gotoOptions as { maxAttempts?: number }).maxAttempts;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     await page.goto(url, { waitUntil: "commit", timeout: 30_000, ...gotoOptions });
     const heading = await firstHeadingText(page);
