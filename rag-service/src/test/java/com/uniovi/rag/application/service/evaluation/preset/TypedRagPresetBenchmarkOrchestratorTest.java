@@ -68,6 +68,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     @Mock private KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
     @Mock private ProjectIndexProfileService projectIndexProfileService;
     @Mock private LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
+    @Mock private com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexService evaluationCorpusIndexService;
     @Mock private CorpusAvailabilityGate corpusAvailabilityGate;
 
     @BeforeEach
@@ -98,6 +99,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         knowledgePipelineOrchestrator,
                         projectIndexProfileService,
                         labIndexProfileOverrideFactory,
+                        evaluationCorpusIndexService,
                         knowledgeIndexSnapshotRepository,
                         evaluationRunRepository,
                         projectRepository,

@@ -88,7 +88,6 @@ class LabBenchmarkConfigPreflightServiceTest {
     @Test
     void ragAcceptsP8WithoutActiveIndexWhenAutoReindexEnabled() {
         UUID corpusId = UUID.randomUUID();
-        when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.empty());
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         UUID.randomUUID(),
@@ -165,7 +164,44 @@ class LabBenchmarkConfigPreflightServiceTest {
     }
 
     @Test
-    void ragRejectsHybridPresetWithChunkOnlySnapshotEvenWhenAutoReindexEnabled() {
+    void ragDefersIndexCheckWhenAutoReindexEnabledEvenWithIncompatibleSnapshot() {
+        UUID corpusId = UUID.randomUUID();
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        UUID.randomUUID(),
+                        corpusId,
+                        null,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "n",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of("P8"),
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        false,
+                        null,
+                        true,
+                        true,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
+        LabBenchmarkConfigPreflightResult result =
+                service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req);
+        assertThat(result.passed()).isTrue();
+        assertThat(result.details()).containsEntry("indexPreflight", "DEFERRED_AUTO_REINDEX");
+    }
+
+    @Test
+    void ragRejectsHybridPresetWithChunkOnlySnapshotWhenAutoReindexDisabled() {
         UUID corpusId = UUID.randomUUID();
         KnowledgeIndexSnapshotEntity snap = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
         when(snap.getId()).thenReturn(UUID.randomUUID());
@@ -189,7 +225,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         List.of(),
                         false,
                         null,
-                        true,
+                        false,
                         true,
                         true,
                         true,
