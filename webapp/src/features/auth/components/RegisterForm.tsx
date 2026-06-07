@@ -20,6 +20,18 @@ import {
 import { shouldCommitRegisterSessionAfterRegister } from "@/features/auth/lib/register-session-policy";
 import type { RegisterResponse } from "@/types/api";
 
+function apiErrorCode(error: ApiError): string | undefined {
+  const parsed = error.meta?.parsedJson;
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const root = parsed as Record<string, unknown>;
+  if (typeof root.code === "string") return root.code;
+  const nested = root.error;
+  if (nested && typeof nested === "object" && typeof (nested as { code?: unknown }).code === "string") {
+    return (nested as { code: string }).code;
+  }
+  return undefined;
+}
+
 export function RegisterForm() {
   const t = useTranslations("Auth");
   const locale = useLocale();
@@ -95,6 +107,15 @@ export function RegisterForm() {
         }
       }
       if (e instanceof ApiError && (e.status === 409 || e.status === 400)) {
+        const code = apiErrorCode(e);
+        if (
+          code === "LEGAL_VERSION_REQUIRED" ||
+          code === "PRIVACY_VERSION_MISMATCH" ||
+          code === "TERMS_VERSION_MISMATCH"
+        ) {
+          setFormError(t("registerLegalVersionMismatch"));
+          return;
+        }
         setFormError(t("registerFailed"));
         return;
       }

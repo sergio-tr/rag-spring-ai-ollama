@@ -51,6 +51,7 @@
     "loginLink": "Inicia sesión",
     "invalidCredentials": "Correo o contraseña incorrectos.",
     "registerFailed": "No se pudo registrar. Prueba otro correo.",
+    "registerLegalVersionMismatch": "No se pudo registrar. Las versiones de privacidad/términos están desactualizadas — reconstruye el webapp tras actualizar .env.",
     "registerVerificationRequired": "Cuenta creada. Verifica tu correo antes de iniciar sesión.",
     "registerPendingTitle": "Revisa tu correo",
     "registerPendingLoading": "Cargando…",

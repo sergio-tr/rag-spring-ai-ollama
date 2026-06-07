@@ -51,6 +51,7 @@
     "loginLink": "Sign in",
     "invalidCredentials": "Invalid email or password.",
     "registerFailed": "Could not register. Try another email.",
+    "registerLegalVersionMismatch": "Could not register. Legal document versions are out of date — rebuild the webapp after updating .env.",
     "registerVerificationRequired": "Account created. Please verify your email before signing in.",
     "registerPendingTitle": "Check your inbox",
     "registerPendingLoading": "Loading…",
