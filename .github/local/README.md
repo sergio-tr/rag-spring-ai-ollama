@@ -69,6 +69,9 @@ INTEGRATION_REQUIRE_CLASSIFIER=1 .github/local/run-integration-ci-like.sh
 # Fullstack E2E (proxy-mode parity, fast-fail)
 .github/local/run-e2e-fullstack-ci-like.sh
 
+# Re-run Playwright only (reuse postgres, backend, webapp, proxy, npm/m2 caches):
+.github/local/run-e2e-fullstack-ci-like.sh --reuse-stack
+
 # Performance smoke (Gatling + infra probe JSON under .github/local/results/performance/)
 .github/local/run-performance-ci-like.sh --stop-after
 ```

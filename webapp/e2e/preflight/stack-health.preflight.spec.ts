@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { gotoWithProxyRetry } from "../support/helpers";
 import { actuatorHealthUrl } from "../api/fixtures/env";
 
 /**
@@ -10,7 +11,7 @@ test.describe("Stack health @preflight @stack-health", () => {
     const backendLiveness = await request.get(actuatorHealthUrl("/liveness"), { timeout: 12_000 });
     expect(backendLiveness.status(), await backendLiveness.text()).toBe(200);
 
-    const webResponse = await page.goto("/en/login", { waitUntil: "domcontentloaded", timeout: 12_000 });
-    expect(webResponse?.ok(), "web login page should be reachable").toBeTruthy();
+    await gotoWithProxyRetry(page, "/en/login");
+    expect(page.url(), "web login page should be reachable").toMatch(/\/en\/login/);
   });
 });

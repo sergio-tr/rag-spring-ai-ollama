@@ -25,19 +25,38 @@ BACKEND_HOST_PORT="${RAG_CI_BACKEND_HOST_PORT:-9000}"
 WEBAPP_HOST_PORT="${RAG_CI_WEBAPP_HOST_PORT:-3000}"
 REVERSE_PROXY_HTTPS_PORT="${REVERSE_PROXY_HTTPS_PORT:-8443}"
 HOST_GATEWAY_IP="${RAG_CI_HOST_GATEWAY_IP:-}"
+# Cold local runs download Maven deps inside the backend container; CI caches ~/.m2 on the runner.
+BACKEND_READINESS_MAX_ATTEMPTS="${RAG_CI_BACKEND_READINESS_MAX_ATTEMPTS:-120}"
+BACKEND_READINESS_SLEEP_SEC="${RAG_CI_BACKEND_READINESS_SLEEP_SEC:-2}"
 
 # Playwright runs in a Linux container for parity (browser deps included).
 PLAYWRIGHT_IMAGE="${RAG_PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.60.0-jammy}"
 NPM_CACHE_VOLUME="${RAG_WEBAPP_NPM_CACHE_VOLUME:-rag-webapp-npm-cache}"
 
 REUSE_POSTGRES="${RAG_CI_REUSE_POSTGRES:-0}"
+REUSE_STACK="${RAG_CI_REUSE_STACK:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --stop-after) STOP_AFTER=1; shift ;;
     --reuse-postgres) REUSE_POSTGRES=1; shift ;;
+    --reuse-stack) REUSE_STACK=1; REUSE_POSTGRES=1; shift ;;
     -h|--help)
-      echo "Usage: $0 [--stop-after] [--reuse-postgres]"
+      cat <<'EOF'
+Usage: run-e2e-fullstack-ci-like.sh [options]
+
+Options:
+  --reuse-postgres   Keep rag-ci-pg if it already exists (still runs bootstrap SQL).
+  --reuse-stack      Keep postgres/backend/webapp/proxy when already healthy; skip npm/build
+                     when node_modules and .next exist; leave stack up on exit unless --stop-after.
+  --stop-after       Tear down containers/processes when the script finishes.
+
+Fast re-run after a successful stack boot:
+  .github/local/run-e2e-fullstack-ci-like.sh --reuse-stack
+
+Force webapp rebuild while reusing backend/proxy:
+  RAG_CI_FORCE_WEBAPP_BUILD=1 .github/local/run-e2e-fullstack-ci-like.sh --reuse-stack
+EOF
       exit 0
       ;;
     *) echo "Unknown option: $1"; exit 1 ;;
@@ -62,12 +81,21 @@ is_tcp_port_busy() {
 check_host_port_available() {
   local name="$1"
   local port="$2"
-  if is_tcp_port_busy "${port}"; then
-    echo "error: ${name} host port ${port} is already in use." >&2
-    echo "Choose a free port and rerun, for example:" >&2
-    echo "  RAG_CI_WEBAPP_HOST_PORT=3100 RAG_CI_BACKEND_HOST_PORT=9100 $0" >&2
-    exit 1
+  if ! is_tcp_port_busy "${port}"; then
+    return 0
   fi
+  if [[ "${REUSE_STACK}" == "1" ]]; then
+    if [[ "${name}" == "backend" ]] && backend_is_ready; then
+      return 0
+    fi
+    if [[ "${name}" == "webapp" ]] && webapp_is_ready; then
+      return 0
+    fi
+  fi
+  echo "error: ${name} host port ${port} is already in use." >&2
+  echo "Choose a free port and rerun, for example:" >&2
+  echo "  RAG_CI_WEBAPP_HOST_PORT=3100 RAG_CI_BACKEND_HOST_PORT=9100 $0" >&2
+  exit 1
 }
 
 resolve_host_gateway_ip() {
@@ -98,6 +126,26 @@ resolve_host_gateway_ip() {
 require docker
 require curl
 require npm
+
+backend_is_ready() {
+  [[ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${BACKEND_HOST_PORT}/actuator/health/readiness" 2>/dev/null || true)" == "200" ]]
+}
+
+webapp_is_ready() {
+  curl -fsS "http://127.0.0.1:${WEBAPP_HOST_PORT}/" >/dev/null 2>&1
+}
+
+proxy_is_ready() {
+  curl -skf "https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}/" >/dev/null 2>&1
+}
+
+webapp_deps_up_to_date() {
+  [[ -d "${WEBAPP_DIR}/node_modules" ]] && [[ ! "${WEBAPP_DIR}/package-lock.json" -nt "${WEBAPP_DIR}/node_modules" ]]
+}
+
+webapp_build_present() {
+  [[ -f "${WEBAPP_DIR}/.next/BUILD_ID" ]]
+}
 
 if [[ ! -f "${REPO_ROOT}/.github/local/ci-postgres-extensions.sql" ]]; then
   echo "error: missing .github/local/ci-postgres-extensions.sql" >&2
@@ -176,6 +224,10 @@ prepare_postgres() {
 }
 
 start_backend() {
+  if [[ "${REUSE_STACK}" == "1" ]] && docker ps --format '{{.Names}}' | grep -qx "${BACKEND_CONTAINER}" && backend_is_ready; then
+    log "Reusing backend ${BACKEND_CONTAINER} (readiness OK on :${BACKEND_HOST_PORT})."
+    return 0
+  fi
   log "Starting backend container (Spring Boot, profile=e2e)."
   docker rm -f "${BACKEND_CONTAINER}" >/dev/null 2>&1 || true
   docker run -d --name "${BACKEND_CONTAINER}" --network "${CI_NETWORK}" -p "${BACKEND_HOST_PORT}:9000" \
@@ -199,8 +251,9 @@ SPRING_LOG_PATH="${SPRING_LOG_PATH:-/tmp/spring-e2e-docker.log}"
 
 wait_for_backend() {
   local readiness_url="http://127.0.0.1:${BACKEND_HOST_PORT}/actuator/health/readiness"
-  log "Waiting for backend readiness (fail-fast on Flyway): ${readiness_url}"
-  for i in $(seq 1 45); do
+  local max_wait_sec=$((BACKEND_READINESS_MAX_ATTEMPTS * BACKEND_READINESS_SLEEP_SEC))
+  log "Waiting for backend readiness (fail-fast on Flyway): ${readiness_url} (up to ${max_wait_sec}s)"
+  for i in $(seq 1 "${BACKEND_READINESS_MAX_ATTEMPTS}"); do
     docker logs --tail 150 "${BACKEND_CONTAINER}" > "${SPRING_LOG_PATH}" 2>&1 || true
     if grep -qE 'FlywayValidateException|Migration checksum mismatch|Application run failed' "${SPRING_LOG_PATH}" 2>/dev/null; then
       echo "error: Spring failed during startup (see backend log tail)." >&2
@@ -212,9 +265,18 @@ wait_for_backend() {
       log "Backend ready after ${i} attempt(s)."
       return 0
     fi
-    sleep 2
+    if (( i == 1 || i % 15 == 0 )); then
+      if grep -qE 'Downloading from central:|Building .*rag-service|spring-boot:run' "${SPRING_LOG_PATH}" 2>/dev/null \
+        && ! grep -q 'Tomcat started on port' "${SPRING_LOG_PATH}" 2>/dev/null; then
+        log "Backend still bootstrapping Maven/Spring (attempt ${i}/${BACKEND_READINESS_MAX_ATTEMPTS})..."
+      else
+        log "Backend not ready yet (attempt ${i}/${BACKEND_READINESS_MAX_ATTEMPTS}, HTTP ${code:-000})..."
+      fi
+    fi
+    sleep "${BACKEND_READINESS_SLEEP_SEC}"
   done
-  echo "error: backend readiness never returned 200 (${readiness_url})" >&2
+  echo "error: backend readiness never returned 200 (${readiness_url}) after ${max_wait_sec}s" >&2
+  echo "hint: first local run may need longer; try RAG_CI_BACKEND_READINESS_MAX_ATTEMPTS=180 $0" >&2
   curl -sS "http://127.0.0.1:${BACKEND_HOST_PORT}/actuator/health" 2>/dev/null || true
   echo "" >&2
   curl -sS "${readiness_url}" 2>/dev/null || true
@@ -231,6 +293,14 @@ wait_for_seed_logins() {
 }
 
 start_proxy() {
+  if [[ "${REUSE_STACK}" == "1" ]] && docker ps --format '{{.Names}}' | grep -qx "${PROXY_CONTAINER}" && proxy_is_ready; then
+    log "Reusing reverse-proxy container ${PROXY_CONTAINER} (https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT})."
+    return 0
+  fi
+  if [[ "${REUSE_STACK}" == "1" ]] && proxy_is_ready; then
+    log "Reusing reverse-proxy on https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}."
+    return 0
+  fi
   log "Starting reverse-proxy container for HTTPS proxy-mode E2E."
   local host_gateway
   host_gateway="$(resolve_host_gateway_ip)"
@@ -272,12 +342,24 @@ WEBAPP_PID_PATH="${WEBAPP_PID_PATH:-/tmp/webapp-e2e.pid}"
 PROXY_LOG_PATH="${PROXY_LOG_PATH:-/tmp/proxy-e2e.log}"
 
 start_webapp() {
+  if [[ "${REUSE_STACK}" == "1" ]] && webapp_is_ready; then
+    log "Reusing webapp on http://127.0.0.1:${WEBAPP_HOST_PORT}."
+    return 0
+  fi
   log "Building and starting Next.js webapp for proxy mode."
   rm -f "${WEBAPP_PID_PATH}" "${WEBAPP_LOG_PATH}"
   (
     cd "${WEBAPP_DIR}"
-    NEXT_PUBLIC_API_BASE_URL="" NEXT_PUBLIC_RAG_API_PREFIX="/api/v5" npm install --no-audit --no-fund
-    NEXT_PUBLIC_API_BASE_URL="" NEXT_PUBLIC_RAG_API_PREFIX="/api/v5" npm run build
+    if webapp_deps_up_to_date; then
+      log "Skipping npm install (node_modules matches package-lock.json)."
+    else
+      NEXT_PUBLIC_API_BASE_URL="" NEXT_PUBLIC_RAG_API_PREFIX="/api/v5" npm install --no-audit --no-fund
+    fi
+    if [[ "${RAG_CI_FORCE_WEBAPP_BUILD:-0}" == "1" ]] || ! webapp_build_present; then
+      NEXT_PUBLIC_API_BASE_URL="" NEXT_PUBLIC_RAG_API_PREFIX="/api/v5" npm run build
+    else
+      log "Skipping next build (.next present; set RAG_CI_FORCE_WEBAPP_BUILD=1 to rebuild)."
+    fi
     nohup env NEXT_PUBLIC_API_BASE_URL="" NEXT_PUBLIC_RAG_API_PREFIX="/api/v5" npm run start -- -H 0.0.0.0 -p "${WEBAPP_HOST_PORT}" > "${WEBAPP_LOG_PATH}" 2>&1 &
     echo $! > "${WEBAPP_PID_PATH}"
   )
@@ -371,7 +453,7 @@ run_playwright_fullstack() {
     -e NEXT_PUBLIC_API_BASE_URL="" \
     -e NEXT_PUBLIC_RAG_API_PREFIX="/api/v5" \
     "${PLAYWRIGHT_IMAGE}" bash -lc \
-      "npm ci --silent --no-audit --no-fund && E2E_SKIP_STACK_PREFLIGHT=1 npm run test:e2e:preflight:only && npm run test:e2e:fullstack:critical"
+      "if [ ! -d node_modules ]; then npm ci --silent --no-audit --no-fund; fi && E2E_SKIP_STACK_PREFLIGHT=1 npm run test:e2e:preflight:only && npm run test:e2e:fullstack:critical"
 }
 
 stop_backend() {
@@ -394,6 +476,10 @@ stop_webapp() {
 }
 
 cleanup() {
+  if [[ "${REUSE_STACK}" == "1" && "${STOP_AFTER}" != "1" ]]; then
+    log "Leaving E2E stack running (--reuse-stack). Use --stop-after to tear down."
+    return 0
+  fi
   stop_proxy
   stop_webapp
   stop_backend
@@ -405,10 +491,14 @@ cleanup() {
 trap cleanup EXIT
 
 log "Repo root: ${REPO_ROOT}"
-stop_webapp
-stop_proxy
-stop_backend
-sleep 1
+if [[ "${REUSE_STACK}" != "1" ]]; then
+  stop_webapp
+  stop_proxy
+  stop_backend
+  sleep 1
+else
+  log "Reuse mode: keeping healthy postgres/backend/webapp/proxy when present."
+fi
 start_postgres
 ensure_network
 prepare_postgres

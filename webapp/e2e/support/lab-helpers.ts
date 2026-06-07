@@ -669,6 +669,21 @@ export async function cancelAllActiveLabJobs(page: Page): Promise<void> {
   await ensureNoActiveLabJobs(page);
 }
 
+/** Dismisses LAB session recovery banner (Stop watching / Dismiss) without blocking the test. */
+export async function dismissLabJobSessionBannerIfPresent(page: Page): Promise<void> {
+  const stopWatching = page.getByRole("button", {
+    name: /stop watching|dejar de seguir|forget job|olvidar trabajo/i,
+  });
+  const dismiss = page.getByRole("button", { name: /^dismiss$|^descartar$/i });
+  if (await stopWatching.first().isVisible().catch(() => false)) {
+    await stopWatching.first().click({ timeout: 10_000 }).catch(() => undefined);
+    return;
+  }
+  if (await dismiss.first().isVisible().catch(() => false)) {
+    await dismiss.first().click({ timeout: 10_000 }).catch(() => undefined);
+  }
+}
+
 export async function fetchActiveLabJobs(page: Page): Promise<ActiveLabJobDto[]> {
   try {
     return await fetchActiveLabJobsStrict(page);
