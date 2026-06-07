@@ -1,0 +1,12 @@
+# Dev overlay when ./docker/scripts/up.sh dev --mail (profile dev-mail).
+services:
+  backend-dev:
+    depends_on:
+      mailpit:
+        condition: service_started
+    environment:
+      SPRING_MAIL_HOST: mailpit
+      SPRING_MAIL_PORT: "1025"
+      RAG_AUTH_MAIL_ENABLED: "true"
+      RAG_AUTH_EMAIL_CONFIRMATION_ENABLED: "true"
+      RAG_AUTH_PASSWORD_RESET_ENABLED: "true"

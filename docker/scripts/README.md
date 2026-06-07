@@ -28,7 +28,7 @@ SKIP_DOCKER=1 ./tests/full-stack-verify.sh
 MAVEN_ON_HOST=1 ./tests/full-stack-verify.sh   # host mvnw (JDK 21)
 ```
 
-**Note:** Optional tiers use **Compose profiles** in `docker-compose.yml` (`observability`, `logs`, `infra`, `ollama`, `cadvisor`). `compose.gpu.yml` adds NVIDIA to the classifier when the runtime is available. They target **Linux** host semantics.
+**Note:** Optional tiers use **Compose profiles** in `docker-compose.yml` (`observability`, `logs`, `infra`, `ollama`, `dev-mail`, `cadvisor`). `compose.gpu.yml` adds NVIDIA to the classifier when the runtime is available. They target **Linux** host semantics.
 
 ## Create default .env
 
@@ -76,7 +76,7 @@ Requires **Python 3** and **PyYAML** (same as the compose helpers below).
 | [`compose_inventory.py`](compose_inventory.py) | Lists every `docker/*.yml` and each service with `image` vs `build` (per-file, not merged stacks). |
 | [`compose_guard.py`](compose_guard.py) | Policy rules: no `image:` in `docker/*.yml`, valid `build:` blocks, optional env/port/healthcheck strictness. Full run may report **violations** for `environment_literal` / `healthcheck_*` during migration. **CI** uses `--only-rules image_forbidden,yaml_error,build_invalid,build_missing_context,build_missing_dockerfile` (see [`.github/workflows/docker-compose-ci.yml`](../../.github/workflows/docker-compose-ci.yml)). |
 
-**Mailpit** (`docker-compose.yml`, profile `dev-mail`): upstream image is pinned via **`docker/mailpit/Dockerfile`** and build arg **`MAILPIT_BASE_IMAGE`** (default `axllent/mailpit:v1.29.7`), because Compose services must use **`build:`** only — never a top-level **`image:`**.
+**Mailpit** (`docker-compose.yml`, profile `dev-mail`): upstream image is pinned via **`docker/mailpit/Dockerfile`** and build arg **`MAILPIT_BASE_IMAGE`** (default `axllent/mailpit:v1.29.7`), because Compose services must use **`build:`** only — never a top-level **`image:`**. Enable with **`--mail`** on `up` / `build` / `down` / `config` (adds **`--profile dev-mail`**, service `mailpit`, and overlay **`compose.dev-mail.yml`** / **`compose.prod-mail.yml`** to point `backend-dev` / `backend` at `mailpit:1025`). UI: `http://127.0.0.1:${MAILPIT_HTTP_PORT:-8025}/`.
 
 ```bash
 python3 ./docker/scripts/compose_inventory.py
@@ -118,6 +118,13 @@ Entry point: [`docker-compose.sh`](docker-compose.sh). Shortcuts: [`up.sh`](up.s
 ./docker/scripts/docker-compose.sh config prod --obs --obs-private --no-env-prompt
 ./docker/scripts/docker-compose.sh config prod --obs --ollama --no-env-prompt
 ./docker/scripts/docker-compose.sh config dev --rag --obs --no-env-prompt
+./docker/scripts/docker-compose.sh config dev --rag --proxy --mail --no-env-prompt
+```
+
+**Full dev stack with Mailpit (auth email + password reset):**
+
+```bash
+./docker/scripts/up.sh dev --rag --proxy --obs --classifier --logs --infra --gpu --ollama-remote --mail --no-env-prompt
 ```
 
 **Stop dev stack** (same compose chain as `up dev`): `./docker/scripts/up.sh dev --down` or `./docker/scripts/docker-compose.sh down dev [same flags as up dev]`.
@@ -145,9 +152,11 @@ Env setup runs **before** `compose up`, not before `dev --down`.
 
 **`--rag` (dev only):** starts **`backend-dev`** and the **`webapp`** in Docker (plus `classifier-service` when needed): `rag-service/` volume, compile loop, and **Spring Boot DevTools**. **`--proxy`** (only with `--rag`) publishes **nginx** like prod (`/` → webapp, `/api/*` → backend-dev); default host HTTP port is **`80`** (`REVERSE_PROXY_DEV_HTTP_PORT`). Without `--proxy`, the webapp uses **`WEBAPP_HTTP_PORT` default 80** (`80:3000`); Grafana uses **`GRAFANA_PORT` default 3000**. With **`--proxy`**, leave the webapp API base URL empty for same-origin nginx. **`prod`** always includes `reverse-proxy` (`compose.prod.yml`). Set **`SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`** only when using in-stack Ollama (`--gpu` / `--ollama`). Optional variable: **`RAG_DEV_POLL_INTERVAL`**.
 
-**Compose layout:** `docker-compose.yml` (core + optional services behind **profiles**: `observability`, `logs`, `infra`, `ollama`, `cadvisor`, and **`rag`** for `backend-dev`). Overlays: `compose.dev.yml` (includes webapp ordering for `--rag`), `compose.dev-direct-ports.yml` (`--rag` without `--proxy`), `compose.dev-proxy.yml` (`--rag --proxy`, adds **`--profile proxy`**), `compose.obs.yml` (Spring OTLP for `backend` / `classifier-service`), `compose.gpu.yml`, `compose.rag-dev-obs.yml` (`--rag --obs`), `compose.prod.yml`, and `compose.prod-obs.yml` only with `prod --obs --obs-private`. Ollama HTTP URL is always from **`rag-service/.env`**; **`--ollama-remote`** only affects whether the **`ollama`** profile is started together with **`--gpu`/`--ollama`**.
+**Compose layout:** `docker-compose.yml` (core + optional services behind **profiles**: `observability`, `logs`, `infra`, `ollama`, `dev-mail`, `cadvisor`, and **`rag`** for `backend-dev`). Overlays: `compose.dev.yml` (includes webapp ordering for `--rag`), `compose.dev-direct-ports.yml` (`--rag` without `--proxy`), `compose.dev-proxy.yml` (`--rag --proxy`, adds **`--profile proxy`**), `compose.dev-mail.yml` / `compose.prod-mail.yml` (`--mail`, SMTP + auth flags for Docker backends), `compose.obs.yml` (Spring OTLP for `backend` / `classifier-service`), `compose.gpu.yml`, `compose.rag-dev-obs.yml` (`--rag --obs`), `compose.prod.yml`, and `compose.prod-obs.yml` only with `prod --obs --obs-private`. Ollama HTTP URL is always from **`rag-service/.env`**; **`--ollama-remote`** only affects whether the **`ollama`** profile is started together with **`--gpu`/`--ollama`**.
 
-**Flags**: `dev`: `--all`, `--gpu`, `--ollama`, `--obs`, `--classifier`, `--logs`, `--infra`, `--rag`, **`--proxy`**, `--down`, `--volumes`. `prod`: `--all`, `--obs`, `--obs-private`, `--gpu`, `--ollama`, `--logs`, `--infra` (nginx always). **`down.sh`**: same flags as `up` for `dev` or `prod`. For **`down dev`** / **`build dev`**, pass the **same** flags as `up dev` (including `--rag`, **`--proxy`**, `--all`).
+**Flags**: `dev`: `--all`, `--gpu`, `--ollama`, `--obs`, `--classifier`, `--logs`, `--infra`, **`--mail`**, `--rag`, **`--proxy`**, `--down`, `--volumes`. `prod`: `--all`, `--obs`, `--obs-private`, `--gpu`, `--ollama`, `--logs`, `--infra`, **`--mail`** (nginx always). **`down.sh`**: same flags as `up` for `dev` or `prod`. For **`down dev`** / **`build dev`**, pass the **same** flags as `up dev` (including `--rag`, **`--proxy`**, `--mail`, `--all`).
+
+**Auth email with `--mail`:** set **`RAG_AUTH_WEBAPP_BASE_URL`** in `rag-service/.env` to the URL users open in the browser (e.g. `http://127.0.0.1` with **`--proxy`**, or `http://127.0.0.1:3000` for `npm run dev`). **`RAG_AUTH_MAIL_FROM`** must be non-empty (default `no-reply@local.test` is fine for Mailpit).
 
 ## Running Compose manually
 
@@ -161,7 +170,7 @@ From `docker/` (env files are optional; compose uses defaults if a file is missi
 
 **Prod local** starts the stack with `compose.prod.yml` (reverse proxy + hardened ports for internal services).
 
-- Start: `./docker/scripts/up.sh prod [--all] [--obs] [--obs-private] [--gpu| --ollama] [--logs] [--infra]`
+- Start: `./docker/scripts/up.sh prod [--all] [--obs] [--obs-private] [--gpu| --ollama] [--logs] [--infra] [--mail]`
 - Build images: `./docker/scripts/build.sh prod` with the **same** flags as `up prod`
 - Stop: `./docker/scripts/down.sh` with the **same** flags you used for `up` (e.g. `--all` = obs + GPU + logs + infra + `-v`)
 
@@ -170,7 +179,7 @@ Notes:
 - **`--obs`** adds `compose.obs.yml` and **`--profile observability`** (opt-in). In local/demo mode, Prometheus, Grafana, and Jaeger publish host ports so screenshots can be captured.
 - **`--obs-private`** adds `compose.prod-obs.yml` on top of `--obs` and keeps Prometheus, Grafana, Jaeger, and OTEL ports internal.
 - `--gpu` and `--ollama` → same: **`--profile ollama`** if the Docker host has the NVIDIA runtime.
-- `--logs` → **`--profile logs`** (Loki + Promtail); `--infra` → **`--profile infra`** (node-exporter). cAdvisor: **`--profile cadvisor`** (see `docker/README.md`).
+- `--logs` → **`--profile logs`** (Loki + Promtail); `--infra` → **`--profile infra`** (node-exporter); **`--mail`** → **`--profile dev-mail`** (Mailpit + `compose.dev-mail.yml`). cAdvisor: **`--profile cadvisor`** (see `docker/README.md`).
 
 ## Database backup / restore
 
