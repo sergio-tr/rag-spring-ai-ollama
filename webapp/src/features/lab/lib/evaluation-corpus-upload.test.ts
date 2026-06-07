@@ -134,9 +134,12 @@ describe("evaluation-corpus-upload", () => {
       "i18n:userError_DOCUMENT_PROCESSING_FAILED",
     );
     expect(mapKnowledgeBaseApiError("NO_CORPUS_SELECTED", t, "fb")).toBe("i18n:benchmarkNeedsCorpus");
-    expect(mapKnowledgeBaseApiError("REINDEX_FAILED", t, "fb")).toBe("i18n:labRagSnapshotPreparationFailed");
+    expect(mapKnowledgeBaseApiError("REINDEX_FAILED", t, "fb")).toBe("i18n:labEvalIndexPrepareFailed");
     expect(mapKnowledgeBaseApiError("SNAPSHOT_PREPARATION_FAILED", t, "fb")).toBe(
-      "i18n:labRagSnapshotPreparationFailed",
+      "i18n:labEvalIndexPrepareFailed",
+    );
+    expect(mapKnowledgeBaseApiError("INDEX_PREPARATION_REQUIRED", t, "fb")).toBe(
+      "i18n:labEvalIndexWillPrepare",
     );
     expect(mapKnowledgeBaseApiError("RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE", t, "fb")).toBe(
       "i18n:userError_RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE",
@@ -168,8 +171,9 @@ describe("evaluation-corpus-upload", () => {
       "i18n:labImportDocumentNotFound",
     );
     expect(mapKnowledgeBaseApiError("NO_ACTIVE_SNAPSHOT", t, "fb")).toBe(
-      "i18n:userError_NO_ACTIVE_SNAPSHOT",
+      "i18n:labEvalIndexWillPrepare",
     );
+    expect(mapKnowledgeBaseApiError("REINDEX_REQUIRED", t, "fb")).toBe("i18n:labEvalIndexWillPrepare");
   });
 
   it("extractApiErrorCode reads code from ApiError JSON", () => {

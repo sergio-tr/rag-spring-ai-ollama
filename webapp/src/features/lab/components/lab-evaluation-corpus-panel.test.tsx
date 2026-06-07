@@ -36,6 +36,12 @@ vi.mock("next-intl", () => ({
       labCorpusPrepareIndexInProgress: "Preparing index…",
       labCorpusPrepareIndexFailed: "Index preparation failed.",
       labCorpusRefresh: "Refresh",
+      labEvalAddDocuments: "Add documents to run this evaluation.",
+      labEvalDocumentsProcessing: "Documents are still being processed.",
+      labEvalIndexWillPrepare: "The system will prepare the required index before running.",
+      labEvalIndexPrepareFailed: "The system could not prepare the required index.",
+      labEvalIndexPrepareFailedDetails: "Technical details",
+      labCorpusHelpDocumentCentric: "Add documents for this evaluation.",
     };
     return map[key] ?? key;
   },
@@ -338,5 +344,69 @@ describe("LabEvaluationCorpusPanel", () => {
     );
     await userEvent.click(screen.getByTestId("lab-corpus-prepare-index"));
     await waitFor(() => expect(screen.getByTestId("lab-corpus-success")).toHaveTextContent("Index is ready."));
+  });
+
+  it("document-centric mode hides project attach and prepare index UI", async () => {
+    useEvaluationCorpus.mockReturnValue({
+      ...corpusSummary({ readyCount: 1 }),
+      readiness: {
+        reindexRequired: true,
+        activeSnapshotId: null,
+        primaryBlocker: null,
+        snapshotBlocker: "INDEX_PREPARATION_REQUIRED",
+        runnable: true,
+      },
+    });
+    renderPanel(
+      <LabEvaluationCorpusPanel
+        corpusId="corpus-1"
+        onCorpusIdChange={vi.fn()}
+        optionalProjectId="p1"
+        documentCentric
+      />,
+    );
+    expect(screen.queryByTestId("lab-corpus-attach-project")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-corpus-import-hint")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-corpus-prepare-index")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-corpus-attach-unavailable-hint")).not.toBeInTheDocument();
+    expect(screen.getByTestId("lab-corpus-index-will-prepare")).toHaveTextContent(
+      /prepare the required index/i,
+    );
+    expect(screen.queryByText(/INDEX_PREPARATION_REQUIRED/)).not.toBeInTheDocument();
+  });
+
+  it("document-centric mode shows add-documents message when empty", () => {
+    useEvaluationCorpus.mockReturnValue({
+      ...corpusSummary({ documentCount: 0, readyCount: 0, documents: [] }),
+      readiness: {
+        primaryBlocker: "NO_DOCUMENTS",
+        runnable: false,
+        documentCount: 0,
+        readyCount: 0,
+      },
+    });
+    renderPanel(
+      <LabEvaluationCorpusPanel
+        corpusId="corpus-1"
+        onCorpusIdChange={vi.fn()}
+        documentCentric
+      />,
+    );
+    expect(screen.getByTestId("lab-corpus-readiness-blocker")).toHaveTextContent(
+      /Add documents to run this evaluation/i,
+    );
+  });
+
+  it("refresh invokes onRefreshed callback", async () => {
+    const onRefreshed = vi.fn();
+    renderPanel(
+      <LabEvaluationCorpusPanel
+        corpusId="corpus-1"
+        onCorpusIdChange={vi.fn()}
+        onRefreshed={onRefreshed}
+      />,
+    );
+    await userEvent.click(screen.getByTestId("lab-corpus-refresh"));
+    await waitFor(() => expect(onRefreshed).toHaveBeenCalled());
   });
 });

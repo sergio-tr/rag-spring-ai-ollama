@@ -703,7 +703,7 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.queryByTestId("lab-corpus-not-ready-hint")).not.toBeInTheDocument();
   });
 
-  it("disables Run when index is not ready even if documents are runnable", () => {
+  it("enables Run when index is missing but documents are runnable", () => {
     useEvaluationCorpusMock.mockReturnValue({
       ...defaultEvaluationCorpusApi,
       corpusRunnable: true,
@@ -713,7 +713,7 @@ describe("LabEvaluationRunCard", () => {
         runnable: true,
         reindexRequired: true,
         activeSnapshotId: null,
-        snapshotBlocker: "REINDEX_REQUIRED",
+        snapshotBlocker: "INDEX_PREPARATION_REQUIRED",
         primaryBlocker: null,
         primaryBlockerMessage: null,
       },
@@ -738,8 +738,9 @@ describe("LabEvaluationRunCard", () => {
         />
       </LabEvalHarness>,
     );
-    expect(screen.getByTestId("lab-rag-run")).toBeDisabled();
-    expect(screen.getByTestId("lab-corpus-index-hint")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-rag-run")).toBeEnabled();
+    expect(screen.queryByTestId("lab-corpus-index-hint")).not.toBeInTheDocument();
+    expect(screen.getByTestId("lab-corpus-index-will-prepare")).toBeInTheDocument();
   });
 
   it("shows evaluation corpus panel for RAG without active project", () => {
@@ -763,6 +764,8 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
     expect(screen.getByTestId("lab-evaluation-corpus-panel")).toBeInTheDocument();
+    expect(screen.queryByText(/No active project selected/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-corpus-import-hint")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Select an active project before running a RAG preset benchmark/i),
     ).not.toBeInTheDocument();
