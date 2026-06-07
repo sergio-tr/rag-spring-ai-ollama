@@ -5,6 +5,7 @@ import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileApplicati
 import com.uniovi.rag.interfaces.rest.dto.ProjectIndexProfileDto;
 import com.uniovi.rag.interfaces.rest.dto.UpsertProjectIndexProfileRequest;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
+import com.uniovi.rag.infrastructure.persistence.EvaluationCorpusRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
@@ -30,11 +31,14 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class ProjectServiceTest {
@@ -62,6 +66,9 @@ class ProjectServiceTest {
 
     @Mock
     private ProjectIndexProfileApplicationService projectIndexProfileApplicationService;
+
+    @Mock
+    private EvaluationCorpusRepository evaluationCorpusRepository;
 
     @InjectMocks
     private ProjectService projectService;
@@ -267,10 +274,26 @@ class ProjectServiceTest {
         UUID pid = UUID.randomUUID();
         ProjectEntity p = ProjectEntityTestFactory.project(pid, "x", null);
         when(projectAccessService.requireOwnedProject(userId, pid)).thenReturn(p);
+        when(evaluationCorpusRepository.existsByIndexProject_Id(pid)).thenReturn(false);
 
         projectService.delete(userId, pid);
 
         verify(projectRepository).deleteById(pid);
+    }
+
+    @Test
+    void delete_rejectsLabCorpusIndexProject() {
+        UUID userId = UUID.randomUUID();
+        UUID pid = UUID.randomUUID();
+        ProjectEntity p = ProjectEntityTestFactory.project(pid, "Lab knowledge base · demo", null);
+        when(projectAccessService.requireOwnedProject(userId, pid)).thenReturn(p);
+        when(evaluationCorpusRepository.existsByIndexProject_Id(pid)).thenReturn(true);
+
+        assertThatThrownBy(() -> projectService.delete(userId, pid))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining(ProjectService.LAB_CORPUS_INDEX_PROJECT_PROTECTED);
+
+        verify(projectRepository, never()).deleteById(pid);
     }
 
     @Test

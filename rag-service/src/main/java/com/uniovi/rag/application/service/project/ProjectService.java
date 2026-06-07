@@ -9,6 +9,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntityFactory;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
+import com.uniovi.rag.infrastructure.persistence.EvaluationCorpusRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
@@ -31,6 +32,10 @@ import java.util.UUID;
 @Service
 public class ProjectService {
 
+    /** Deleting this internal index project cascades to the whole Lab knowledge base. */
+    public static final String LAB_CORPUS_INDEX_PROJECT_PROTECTED =
+            "LAB_CORPUS_INDEX_PROJECT_PROTECTED";
+
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
@@ -39,6 +44,7 @@ public class ProjectService {
     private final PresetService presetService;
     private final AuditApplicationService auditApplicationService;
     private final ProjectIndexProfileApplicationService projectIndexProfileApplicationService;
+    private final EvaluationCorpusRepository evaluationCorpusRepository;
 
     public ProjectService(
             ProjectRepository projectRepository,
@@ -48,7 +54,8 @@ public class ProjectService {
             ProjectAccessService projectAccessService,
             PresetService presetService,
             AuditApplicationService auditApplicationService,
-            ProjectIndexProfileApplicationService projectIndexProfileApplicationService) {
+            ProjectIndexProfileApplicationService projectIndexProfileApplicationService,
+            EvaluationCorpusRepository evaluationCorpusRepository) {
         this.projectRepository = projectRepository;
         this.userRepository = userRepository;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
@@ -57,6 +64,7 @@ public class ProjectService {
         this.presetService = presetService;
         this.auditApplicationService = auditApplicationService;
         this.projectIndexProfileApplicationService = projectIndexProfileApplicationService;
+        this.evaluationCorpusRepository = evaluationCorpusRepository;
     }
 
     @Transactional(readOnly = true)
@@ -138,6 +146,13 @@ public class ProjectService {
     @Transactional
     public void delete(UUID userId, UUID projectId) {
         projectAccessService.requireOwnedProject(userId, projectId);
+        if (evaluationCorpusRepository.existsByIndexProject_Id(projectId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    LAB_CORPUS_INDEX_PROJECT_PROTECTED
+                            + ": this project backs a Lab knowledge base; remove documents from the Lab"
+                            + " evaluation page instead of deleting the project.");
+        }
         projectRepository.deleteById(projectId);
     }
 
