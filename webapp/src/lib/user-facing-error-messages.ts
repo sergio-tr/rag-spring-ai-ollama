@@ -119,10 +119,25 @@ export function extractTechnicalErrorCode(raw: string | null | undefined): strin
   return null;
 }
 
+function looksLikeInfrastructureErrorMessage(trimmed: string): boolean {
+  const lower = trimmed.toLowerCase();
+  return (
+    lower.includes("preparedstatementcallback") ||
+    lower.includes("badsqlgrammarexception") ||
+    lower.includes("bad sql grammar") ||
+    lower.includes("psqlexception") ||
+    lower.includes("nullpointerexception") ||
+    lower.includes("operator does not exist")
+  );
+}
+
 export function isTechnicalErrorMessage(raw: string | null | undefined): boolean {
   const trimmed = (raw ?? "").trim();
   if (!trimmed) {
     return false;
+  }
+  if (looksLikeInfrastructureErrorMessage(trimmed)) {
+    return true;
   }
   const code = extractTechnicalErrorCode(trimmed);
   if (!code) {
