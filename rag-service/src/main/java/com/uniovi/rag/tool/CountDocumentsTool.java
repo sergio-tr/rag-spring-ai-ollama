@@ -1,7 +1,7 @@
 package com.uniovi.rag.tool;
 
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;

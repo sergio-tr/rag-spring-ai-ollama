@@ -13,7 +13,7 @@ import com.uniovi.rag.infrastructure.persistence.mapper.ResolvedConfigSnapshotEn
 import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceDetailDto;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 

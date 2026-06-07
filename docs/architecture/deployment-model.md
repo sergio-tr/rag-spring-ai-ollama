@@ -12,7 +12,7 @@
 | Developer hybrid vs all-in-Docker vs prod-local | [deployment-modes.mmd](deployment-modes.mmd) |
 | Inter-service calls at runtime | [service-runtime-integrations.mmd](service-runtime-integrations.mmd) |
 
-For **export** to PNG/SVG for the thesis, see [thesis-diagrams.md](thesis-diagrams.md).
+For **export** to PNG/SVG, see [diagram-export.md](diagram-export.md).
 
 ## Environments (narrative)
 

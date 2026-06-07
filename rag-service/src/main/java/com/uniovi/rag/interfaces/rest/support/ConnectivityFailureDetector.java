@@ -1,5 +1,6 @@
 package com.uniovi.rag.interfaces.rest.support;
 
+import com.uniovi.rag.application.service.knowledge.EmbeddingContextLimitFailures;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -88,6 +89,10 @@ public final class ConnectivityFailureDetector {
             cur = cur.getCause();
         }
         return false;
+    }
+
+    public static boolean isContextLimitFailure(Throwable t) {
+        return EmbeddingContextLimitFailures.isContextLimitFailure(t);
     }
 
     private static boolean isOllamaModelMissingMessage(String msg) {

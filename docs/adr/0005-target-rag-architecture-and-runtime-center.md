@@ -18,7 +18,7 @@ The system combines a **product API**, a **webapp**, **Lab/benchmark** flows, co
 
 - Refactors and new features must preserve or update the **named runtime components** in lockstep with `rag-runtime-architecture.md`.
 - New orchestration paths require an ADR if they change boundaries or semantics of the runtime centre.
-- Documentation and thesis narrative should treat “RAG execution” as the primary technical thread.
+- Documentation and product narrative should treat “RAG execution” as the primary technical thread.
 
 ## References
 

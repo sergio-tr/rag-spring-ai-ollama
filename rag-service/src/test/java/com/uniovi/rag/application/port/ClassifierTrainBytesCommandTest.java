@@ -7,6 +7,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ClassifierTrainBytesCommandTest {
 
     @Test
+    void trainArtifactOwnerId_partOfEquality() {
+        byte[] file1 = new byte[] {1, 2};
+        byte[] file2 = new byte[] {1, 2};
+        byte[] labels1 = new byte[] {3};
+        byte[] labels2 = new byte[] {3};
+
+        ClassifierTrainBytesCommand a =
+                new ClassifierTrainBytesCommand(file1, "ds.csv", "m", "{\"a\":1}", labels1, "labels.json", 2, 8, "u1");
+        ClassifierTrainBytesCommand b =
+                new ClassifierTrainBytesCommand(file2, "ds.csv", "m", "{\"a\":1}", labels2, "labels.json", 2, 8, "u2");
+
+        assertThat(a).isNotEqualTo(b);
+    }
+
+    @Test
     void equalsAndHashCode_considerArrayContents_andToStringIncludesLengths() {
         byte[] file1 = new byte[] {1, 2};
         byte[] file2 = new byte[] {1, 2};

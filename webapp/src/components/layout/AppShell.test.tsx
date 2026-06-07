@@ -120,7 +120,7 @@ describe("AppShell", () => {
     pathnameMock = "/chat";
   });
 
-  it("uses a wider readable max-width container on chat routes", () => {
+  it("uses a full-width container on chat routes", () => {
     pathnameMock = "/chat";
     const { container } = render(
       <IntlTestProvider>
@@ -130,10 +130,11 @@ describe("AppShell", () => {
       </IntlTestProvider>,
     );
     expect(screen.getByText("chat-child")).toBeInTheDocument();
-    const shell = container.querySelector("main .max-w-6xl");
+    const shell = container.querySelector("main .max-w-none");
     expect(shell).toBeTruthy();
-    expect(shell?.className).toMatch(/max-w-6xl/);
+    expect(shell?.className).toMatch(/max-w-none/);
     expect(shell?.className).toMatch(/mx-auto/);
+    expect(shell?.className).not.toMatch(/py-6/);
   });
 
   it("uses the standard max-width container on non-chat routes", () => {
@@ -149,5 +150,34 @@ describe("AppShell", () => {
     const shell = container.querySelector("main .max-w-5xl");
     expect(shell).toBeTruthy();
     expect(shell?.className).not.toMatch(/max-w-6xl/);
+    expect(shell?.className).toMatch(/py-6/);
+  });
+
+  it("locks main scroll on chat and enables document scroll elsewhere", () => {
+    pathnameMock = "/chat";
+    const { container: chatContainer, unmount: unmountChat } = render(
+      <IntlTestProvider>
+        <AppShell panelBody={null}>
+          <span>chat</span>
+        </AppShell>
+      </IntlTestProvider>,
+    );
+    const chatScroll = chatContainer.querySelector('[data-testid="app-main-scroll"]');
+    expect(chatScroll?.getAttribute("data-scroll-mode")).toBe("chat-locked");
+    expect(chatScroll?.className).toMatch(/overflow-hidden/);
+    expect(chatScroll?.className).not.toMatch(/overflow-y-auto/);
+    unmountChat();
+
+    pathnameMock = "/lab";
+    const { container: labContainer } = render(
+      <IntlTestProvider>
+        <AppShell panelBody={null}>
+          <span>lab</span>
+        </AppShell>
+      </IntlTestProvider>,
+    );
+    const labScroll = labContainer.querySelector('[data-testid="app-main-scroll"]');
+    expect(labScroll?.getAttribute("data-scroll-mode")).toBe("document");
+    expect(labScroll?.className).toMatch(/overflow-y-auto/);
   });
 });

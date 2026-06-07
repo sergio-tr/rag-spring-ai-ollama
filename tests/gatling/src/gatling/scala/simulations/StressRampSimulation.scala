@@ -6,7 +6,7 @@ import io.gatling.http.Predef._
 import scala.concurrent.duration.DurationInt
 
 /**
- * Ramp VUs on a cheap endpoint to observe error rate / latency (breakpoint-style, documented for thesis).
+ * Ramp VUs on a cheap endpoint to observe error rate / latency (breakpoint-style, documented for benchmarks).
  * Use actuator health by default to avoid burning LLM capacity.
  */
 class StressRampSimulation extends Simulation {

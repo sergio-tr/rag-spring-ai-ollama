@@ -2,12 +2,6 @@
 # Enable with ./docker/scripts/docker-compose.sh up dev --rag --proxy (adds --profile proxy).
 
 services:
-  backend-dev:
-    ports: []
-
-  webapp:
-    ports: []
-
   reverse-proxy:
     profiles:
       - proxy
@@ -28,6 +22,8 @@ services:
       WEBAPP_HOST: webapp
       WEBAPP_INTERNAL_PORT: ${WEBAPP_CONTAINER_PORT:-3000}
       REVERSE_PROXY_ENFORCE_HTTPS: ${REVERSE_PROXY_ENFORCE_HTTPS:-0}
+      # Non-443 host TLS port (dev maps host 8444 -> container 443) for HTTP->HTTPS redirects.
+      REVERSE_PROXY_HTTPS_PORT_SUFFIX: ":${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}"
       API_PROXY_CONNECT_TIMEOUT: ${API_PROXY_CONNECT_TIMEOUT:-10s}
       API_PROXY_SEND_TIMEOUT: ${API_PROXY_SEND_TIMEOUT:-180s}
       API_PROXY_READ_TIMEOUT: ${API_PROXY_READ_TIMEOUT:-180s}

@@ -41,7 +41,7 @@ Production bytecode matching these **Ant-style** paths is excluded from the JaCo
 9. `com/uniovi/rag/application/service/evaluation/**`
 10. `com/uniovi/rag/infrastructure/persistence/traceregressionsuitedefinition/**`
 
-**Note:** `com/uniovi/rag/domain/entity/**` and `com/uniovi/rag/service/analyser/**` were **removed** from `<excludes>` in 2026-04-21 (dead pattern vs. small deterministic package, respectively); see `.cursor/plans/rag_service_domain_entity_coverage_decision_2026-04-21.plan.md` and the evaluation/analyser notes in the coverage ledger.
+**Note:** `com/uniovi/rag/domain/entity/**` and `com/uniovi/rag/service/analyser/**` were **removed** from `<excludes>` in 2026-04-21 (dead pattern vs. small deterministic package, respectively).
 
 ### Failsafe
 

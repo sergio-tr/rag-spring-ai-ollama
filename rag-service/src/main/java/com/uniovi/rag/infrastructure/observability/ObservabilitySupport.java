@@ -49,7 +49,8 @@ public class ObservabilitySupport {
         Span span = tracer.nextSpan().name(spanName).start();
         try (Tracer.SpanInScope ws = tracer.withSpan(span)) {
             if (inputAttributes != null) {
-                inputAttributes.forEach((k, v) -> span.tag(sanitizeKey(k), truncate(v)));
+                TelemetryRedaction.safeAttributes(inputAttributes)
+                        .forEach((k, v) -> span.tag(sanitizeKey(k), truncate(v)));
             }
             T result = callable.get();
             if (outputTagName != null && result != null) {

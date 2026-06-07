@@ -1,11 +1,11 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
-import com.uniovi.rag.service.retriever.BasicContextRetriever;
-import com.uniovi.rag.service.retriever.ContextRetriever;
-import com.uniovi.rag.service.retriever.FilteredContextRetriever;
-import com.uniovi.rag.service.retriever.MinuteDocumentContextRetriever;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.retrieval.post.PostRetrievalProcessor;
+import com.uniovi.rag.application.service.runtime.retrieval.BasicContextRetriever;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.retrieval.FilteredContextRetriever;
+import com.uniovi.rag.application.service.runtime.retrieval.MinuteDocumentContextRetriever;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;

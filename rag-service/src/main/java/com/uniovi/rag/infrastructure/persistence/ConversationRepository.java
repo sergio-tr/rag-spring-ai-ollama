@@ -15,6 +15,7 @@ public interface ConversationRepository extends JpaRepository<ConversationEntity
 
     @Query(
             "SELECT c FROM ConversationEntity c "
+                    + "LEFT JOIN FETCH c.project "
                     + "LEFT JOIN FETCH c.config "
                     + "LEFT JOIN FETCH c.preset "
                     + "WHERE c.id = :id")

@@ -9,23 +9,25 @@ import { InlineHelpStatus } from "@/features/help/InlineHelpStatus";
 import { ChatConversationDocumentsSheet } from "@/features/chat/components/ChatConversationDocumentsSheet";
 import { DeleteConversationDialog } from "@/features/chat/components/DeleteConversationDialog";
 import { MoveConversationDialog } from "@/features/chat/components/MoveConversationDialog";
+import { NewConversationDialog } from "@/features/chat/components/NewConversationDialog";
 import {
-  CHAT_DETERMINISTIC_DEFAULT_PRESET_ID,
-  findPresetById,
-  resolveChatPresetSelectValue,
-} from "@/features/chat/lib/conversation-preset-ui";
-import {
+  conversationMessagesQueryKey,
   useConversationMessages,
   useConversations,
   useCreateConversation,
   usePatchConversation,
 } from "@/features/chat/hooks/use-conversations";
+import {
+  applyUserMessageEditOptimistic,
+  sortMessagesBySeq,
+} from "@/features/chat/lib/chat-message-order";
+import { useChatRuntimeState } from "@/features/chat/hooks/use-chat-runtime-state";
 import { optimisticConsumed } from "@/features/chat/lib/chat-optimistic";
 import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
-import { useRagPresets } from "@/features/chat/hooks/use-rag-presets";
+import { useChatPresetsCatalog } from "@/features/chat/hooks/use-chat-presets-catalog";
 import {
-  useProjectDocuments,
-  useUploadProjectDocument,
+  useProjectDocumentsForConversation,
+  useUploadConversationOverlayDocument,
 } from "@/features/documents/hooks/use-project-documents";
 import { useProjectList } from "@/features/projects/hooks/use-projects";
 import { useSyncActiveProjectFromChatUrl } from "@/features/projects/hooks/use-sync-active-project-from-chat-url";
@@ -38,8 +40,16 @@ import {
   getSafeApiErrorMessage,
   sanitizePlainErrorTextForUi,
 } from "@/lib/api-client";
-import { resolveChatJobFailureUserHint } from "@/features/chat/lib/chat-job-errors";
+import { chatFailureHintForCode, normalizeChatFailureCode, resolveChatJobFailureUserHint } from "@/features/chat/lib/chat-job-errors";
+import {
+  readProjectClassifierModelPreference,
+  readProjectLlmModelPreference,
+  writeProjectClassifierModelPreference,
+  writeProjectLlmModelPreference,
+} from "@/features/chat/lib/chat-model-persistence";
 import { followLabJob } from "@/lib/lab-job-follow";
+import { beginTraceSession, endTraceSession } from "@/lib/trace-session";
+import { cn } from "@/lib/utils";
 import { Link, useRouter } from "@/navigation";
 import { useAppStore } from "@/store/app.store";
 import { useChatExplainStore } from "@/store/chat-explain.store";
@@ -47,14 +57,21 @@ import { useTraceStore } from "@/features/trace/trace.store";
 import type {
   ConversationDraftDto,
   LabJobAcceptedDto,
+  MessageDto,
   PatchUserMessageBody,
   PostMessageBody,
+  ProjectDocumentDto,
+  StreamDonePayload,
 } from "@/types/api";
 import { ChevronDown, PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
+import { ChatAssistantMessageExtras } from "@/features/chat/components/ChatAssistantMessageExtras";
+import { ChatConfigurationSidePanel } from "@/features/chat/components/ChatConfigurationSidePanel";
+import { useChatConfigurationPanelStore } from "@/features/chat/store/chat-configuration-panel.store";
 
 const CHAT_CONV_LIST_COLLAPSED_KEY = "chat-conv-list-collapsed";
 
@@ -71,6 +88,128 @@ async function cancelChatJob(jobId: string, signal?: AbortSignal): Promise<void>
     method: "POST",
     signal,
   });
+}
+
+function coerceBool(v: unknown): boolean {
+  return v === true || v === "true";
+}
+
+function firstRuntimeBlockingMessage(runtimeState: {
+  isValid?: boolean;
+  blockingIssues?: Array<{ code?: string | null; message?: string | null }>;
+  validation?: { valid: boolean; supported: boolean; errors: Array<{ code?: string | null; message?: string | null }> };
+} | null): string | null {
+  if (!runtimeState) return null;
+  const issues = runtimeState.blockingIssues ?? runtimeState.validation?.errors ?? [];
+  const first = issues.find((i) => typeof i.message === "string" && i.message.trim() !== "");
+  if (first?.message) return first.message;
+  const valid =
+    runtimeState.isValid ??
+    (runtimeState.validation ? runtimeState.validation.valid && runtimeState.validation.supported : true);
+  return valid ? null : "Configuration is invalid. Open Chat configuration to resolve it.";
+}
+
+function firstRuntimeBlockingUserMessage(
+  runtimeState: {
+    isValid?: boolean;
+    blockingIssues?: Array<{ code?: string | null; message?: string | null }>;
+    validation?: { valid: boolean; supported: boolean; errors: Array<{ code?: string | null; message?: string | null }> };
+  } | null,
+  t: (key: string) => string,
+): string | null {
+  if (!runtimeState) return null;
+  const issues = runtimeState.blockingIssues ?? runtimeState.validation?.errors ?? [];
+  const first = issues.find(
+    (i) => normalizeChatFailureCode(i.code) || (typeof i.message === "string" && i.message.trim() !== ""),
+  );
+  const mapped = first ? chatFailureHintForCode(first.code, t) : null;
+  return mapped ?? firstRuntimeBlockingMessage(runtimeState);
+}
+
+function firstRuntimeBlockingCode(
+  runtimeState: {
+    blockingIssues?: Array<{ code?: string | null; message?: string | null }>;
+    validation?: { errors: Array<{ code?: string | null; message?: string | null }> };
+  } | null,
+): string | null {
+  if (!runtimeState) return null;
+  const issues = runtimeState.blockingIssues ?? runtimeState.validation?.errors ?? [];
+  const first = issues.find((i) => {
+    const code = i.code != null ? String(i.code).trim() : "";
+    return code !== "" || normalizeChatFailureCode(i.code);
+  });
+  if (!first) return null;
+  return normalizeChatFailureCode(first.code) ?? (first.code ? String(first.code).trim() : null);
+}
+
+function streamDonePayloadFromAssistantMessage(m: MessageDto): StreamDonePayload {
+  const meta = m.executionMetadata ?? {};
+  const telemetry: Record<string, unknown> = {};
+  const keys = [
+    "reasoningAttempted",
+    "reasoningStrategy",
+    "reasoningPlanSummaryTruncated",
+    "retrievalRerankApplied",
+    "retrievalDenseCandidateCount",
+    "retrievalAfterFusionCount",
+    "retrievalBeforePostRetrievalCount",
+    "retrievalAfterRerankCount",
+    "retrievalAfterFilterCount",
+    "retrievalAfterCompressionCount",
+    "retrievalProtectedCandidateCount",
+    "retrievalDroppedCandidateCount",
+    "retrievalRerankScoreSummaryTruncated",
+    "memoryAttempted",
+    "memoryOutcome",
+    "memoryCondensationUsed",
+    "routingAttempted",
+    "routingRouteKind",
+    "routingOutcome",
+    "routingFallbackApplied",
+    "routingFallbackRouteKind",
+    "judgeAttempted",
+    "judgeFinalOutcome",
+    "judgeFinalAnswerFromRetry",
+    "judgeCandidateSource",
+    "clarificationRequired",
+    "clarificationOutcome",
+    "workflowName",
+    "selectedSnapshotIds",
+    "answerPolicy",
+    "groundingPolicy",
+    "requestedDate",
+    "requestedDatePrecision",
+    "matchedDocumentDates",
+    "exactDateMatch",
+    "dateMismatchDetected",
+    "sourceDates",
+    "abstentionReason",
+    "groundingPolicyApplied",
+    "exactDocumentMatch",
+    "topSourceDate",
+    "closestAvailableDate",
+    "candidateSourceCountBeforeDateFilter",
+    "candidateSourceCountAfterDateFilter",
+    "dateBoostApplied",
+  ];
+  for (const k of keys) {
+    if (meta[k] !== undefined && meta[k] !== null) {
+      telemetry[k] = meta[k];
+    }
+  }
+  return {
+    answer: m.content,
+    queryType: m.queryType,
+    usedTool: false,
+    toolUsed: null,
+    sources: Array.isArray(m.sources) ? m.sources : [],
+    pipelineSteps: Array.isArray(m.pipelineSteps) ? m.pipelineSteps : [],
+    runtimeTelemetry: Object.keys(telemetry).length > 0 ? telemetry : undefined,
+  };
+}
+
+function isAssistantClarificationTurn(m: MessageDto): boolean {
+  return m.role === "ASSISTANT" && coerceBool(m.executionMetadata?.clarificationRequired);
 }
 
 function isAssistantRetryable(status: string | null | undefined): boolean {
@@ -93,6 +232,7 @@ function ChatPageInner() {
   const t = useTranslations("Chat");
   const tHelp = useTranslations("Help");
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const active = useAppStore((s) => s.activeProject);
   const projectId = active?.id;
@@ -109,12 +249,20 @@ function ChatPageInner() {
   });
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sendFailureCode, setSendFailureCode] = useState<string | null>(null);
+  const llmPreferenceAppliedRef = useRef<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [editingUserMessageId, setEditingUserMessageId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
-  /** Empty string = backend default model. */
-  const [llmModelChoice, setLlmModelChoice] = useState("");
-  const [presetSelectValue, setPresetSelectValue] = useState(CHAT_DETERMINISTIC_DEFAULT_PRESET_ID);
+  /** Empty string = backend default model. Scoped to the conversation edited locally. */
+  const [llmModelChoiceDraft, setLlmModelChoiceDraft] = useState<{ conversationId: string | null; value: string }>(
+    { conversationId: null, value: "" },
+  );
+  /** Empty string = no per-conversation classifier override (project RAG JSON applies). */
+  const [classifierModelChoiceDraft, setClassifierModelChoiceDraft] = useState<{
+    conversationId: string | null;
+    value: string;
+  }>({ conversationId: null, value: "" });
   /** Scoped to `conversationId` so switching chats does not require clearing in an effect. */
   const [limitDocsNoticeRecord, setLimitDocsNoticeRecord] = useState<{
     conversationId: string | null;
@@ -129,10 +277,26 @@ function ChatPageInner() {
   const [docsSheetOpen, setDocsSheetOpen] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+  const [uploadItems, setUploadItems] = useState<
+    Array<{
+      id: string;
+      fileName: string;
+      phase: "uploading" | "ingesting" | "ready" | "error" | "stalled";
+      chunkCount?: number | null;
+      errorMessage?: string | null;
+      docId?: string | null;
+      file?: File;
+    }>
+  >([]);
   const [deleteDialogTarget, setDeleteDialogTarget] = useState<{ id: string; title: string } | null>(
     null,
   );
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [newConvWizardOpen, setNewConvWizardOpen] = useState(false);
+  const configPanelOpen = useChatConfigurationPanelStore((s) => s.open);
+  const setConfigPanelOpen = useChatConfigurationPanelStore((s) => s.setOpen);
+  /** Desktop split: readable column + fixed-width config aside (not used on mobile drawer). */
+  const desktopConfigSplit = Boolean(conversationId && configPanelOpen);
   const abortRef = useRef<AbortController | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -147,6 +311,7 @@ function ChatPageInner() {
   const [optimisticUserContent, setOptimisticUserContent] = useState<string | null>(null);
   /** Visible pipeline stages between send and a terminal assistant outcome. */
   const [assistantPhase, setAssistantPhase] = useState<AssistantPipelinePhase>(null);
+  const [chatDropActive, setChatDropActive] = useState(false);
 
   useEffect(() => {
     if (urlConversationId && urlConversationId !== conversationId) {
@@ -176,7 +341,12 @@ function ChatPageInner() {
   const { data: convs } = useConversations(projectId);
   const createConv = useCreateConversation(projectId);
   const patchConv = usePatchConversation(projectId);
-  const { data: messages, refetch: refetchMessages } = useConversationMessages(conversationId ?? undefined);
+  // R1: runtime-state is the authoritative steady-state validation source.
+  const { data: rawMessages, refetch: refetchMessages } = useConversationMessages(conversationId ?? undefined);
+  const messages = useMemo(() => {
+    if (!rawMessages) return rawMessages;
+    return sortMessagesBySeq(rawMessages);
+  }, [rawMessages]);
   /** Only the latest user turn can be edited (matches backend truncate-from semantics). */
   const lastUserMessageId = useMemo(() => {
     if (!messages?.length) return null;
@@ -185,19 +355,21 @@ function ChatPageInner() {
     }
     return null;
   }, [messages]);
-  const { data: docs, refetch: refetchProjectDocuments } = useProjectDocuments(projectId);
-  const uploadDoc = useUploadProjectDocument(projectId);
+  const { data: docs, refetch: refetchProjectDocuments } = useProjectDocumentsForConversation(projectId, conversationId);
+  const uploadDoc = useUploadConversationOverlayDocument(projectId, conversationId);
   const { data: projectListData } = useProjectList(0, 64);
   const currentProject = useMemo(
     () => projectListData?.items?.find((p) => p.id === projectId),
     [projectListData?.items, projectId],
   );
   const { data: modelsCatalog, isError: modelsError, error: modelsQueryError } = useModelsCatalog();
-  const {
-    data: presets,
-    isError: presetsError,
-    isLoading: presetsLoading,
-  } = useRagPresets();
+  const chatPresetsCatalog = useChatPresetsCatalog();
+  const presets = chatPresetsCatalog.data?.productPresets;
+  const presetsError = chatPresetsCatalog.isError;
+  const presetsLoading = chatPresetsCatalog.isLoading;
+  const experimentalPresets = chatPresetsCatalog.data?.experimentalPresets;
+  const experimentalPresetsLoading = chatPresetsCatalog.isLoading;
+  const experimentalPresetsError = chatPresetsCatalog.isError;
 
   const activeConv = useMemo(
     () => (conversationId && convs ? convs.find((c) => c.id === conversationId) : undefined),
@@ -205,47 +377,72 @@ function ChatPageInner() {
   );
   const conversationNotFound = Boolean(conversationId && convs && !activeConv);
 
-  /** Single source of truth: server-backed conversation row (optimistic updates inside {@link usePatchConversation}). */
-  const selectedDocIds = activeConv?.documentFilter ?? [];
-  const limitDocs = selectedDocIds.length > 0;
+  const llmModelChoice =
+    llmModelChoiceDraft.conversationId === activeConv?.id ? llmModelChoiceDraft.value : (activeConv?.llmModel ?? "");
+  const classifierModelChoice =
+    classifierModelChoiceDraft.conversationId === activeConv?.id
+      ? classifierModelChoiceDraft.value
+      : (activeConv?.classifierModelId ?? "");
 
-  const presetSyncKey = useMemo(() => {
-    if (!activeConv) return "";
-    return `${activeConv.id}:${activeConv.presetId ?? ""}:${activeConv.effectivePresetId ?? ""}`;
-  }, [activeConv]);
+  /** Single source of truth: server-backed conversation row (optimistic updates inside {@link usePatchConversation}). */
+  const selectedDocIds = useMemo(() => activeConv?.documentFilter ?? [], [activeConv?.documentFilter]);
+  const limitDocs = selectedDocIds.length > 0;
+  const readyDocIds = useMemo(() => docs?.filter((d) => d.status === "READY").map((d) => d.id) ?? [], [docs]);
+  const limitDocsDisabled = !limitDocs && readyDocIds.length === 0;
+  const limitDocsToggleNoticeEffective =
+    limitDocsDisabled && !limitDocs ? t("limitDocumentsNoReadyHint") : limitDocsToggleNotice;
 
   const presetsCatalogEmpty = !presetsError && presets?.length === 0;
 
-  const syntheticPresetOptionNeeded = useMemo(() => {
-    if (!presetSelectValue) return false;
-    if (presetsLoading) return true;
-    if (!presets?.length) return true;
-    return !findPresetById(presets, presetSelectValue);
-  }, [presetSelectValue, presets, presetsLoading]);
+  const syntheticPresetOptionNeeded = false;
 
   const presetSelectDisabled =
     !!presetsError || patchConv.isPending || presetsLoading || presetsCatalogEmpty;
 
   useEffect(() => {
     patchConv.reset();
+    llmPreferenceAppliedRef.current = null;
   }, [conversationId]); /* eslint-disable-line react-hooks/exhaustive-deps -- reset patch mutation only when switching chats */
+
+  useEffect(() => {
+    if (!activeConv?.id) return;
+    const fromConv = activeConv.llmModel?.trim() ?? "";
+    const fromProject = projectId ? readProjectLlmModelPreference(projectId) : "";
+    const clfConv = activeConv.classifierModelId?.trim() ?? "";
+    const clfProject = projectId ? readProjectClassifierModelPreference(projectId) : "";
+    const syncTimer = setTimeout(() => {
+      setLlmModelChoiceDraft({
+        conversationId: activeConv.id,
+        value: fromConv || fromProject,
+      });
+      setClassifierModelChoiceDraft({
+        conversationId: activeConv.id,
+        value: clfConv || clfProject,
+      });
+    }, 0);
+    return () => clearTimeout(syncTimer);
+  }, [activeConv?.id, activeConv?.llmModel, activeConv?.classifierModelId, projectId]);
+
+  useEffect(() => {
+    if (!conversationId || !projectId || !activeConv) return;
+    const pref = readProjectLlmModelPreference(projectId);
+    if (!pref || activeConv.llmModel?.trim()) return;
+    if (llmPreferenceAppliedRef.current === conversationId) return;
+    llmPreferenceAppliedRef.current = conversationId;
+    patchConv.mutate({ conversationId, body: { llmModel: pref } });
+  }, [conversationId, projectId, activeConv, patchConv]);
 
   useEffect(() => {
     const syncTimer = setTimeout(() => setTitleDraft(activeConv?.title ?? ""), 0);
     return () => clearTimeout(syncTimer);
   }, [activeConv?.id, activeConv?.title]);
 
-  useEffect(() => {
-    if (!presetSyncKey || patchConv.isPending || !conversationId || !convs) return;
-    const conv = convs.find((c) => c.id === conversationId);
-    if (!conv) return;
-    const next = resolveChatPresetSelectValue(conv, presets);
-    const syncTimer = setTimeout(
-      () => setPresetSelectValue((prev) => (prev === next ? prev : next)),
-      0,
-    );
-    return () => clearTimeout(syncTimer);
-  }, [presetSyncKey, patchConv.isPending, conversationId, convs, presets]);
+  const runtimeStateQuery = useChatRuntimeState(conversationId);
+  const runtimeState = runtimeStateQuery.data ?? null;
+  const presetSelectValue = runtimeState?.selectedPresetId ?? "";
+  const runtimeBlockingMessage = firstRuntimeBlockingUserMessage(runtimeState, t);
+  const runtimeBlockingCode = firstRuntimeBlockingCode(runtimeState);
+  const runtimeStateInvalid = Boolean(runtimeBlockingMessage);
 
   const setLastDone = useChatExplainStore((s) => s.setLastDone);
   const setStreamingText = useChatExplainStore((s) => s.setStreamingText);
@@ -310,6 +507,8 @@ function ChatPageInner() {
     }),
     [t],
   );
+
+  // R1: /runtime-config/validate remains draft-only; do not use it for steady-state rendering.
 
   /** Cancel in-flight chat job when switching project, conversation, or unmounting. */
   useEffect(() => {
@@ -420,12 +619,12 @@ function ChatPageInner() {
           { signal, throwOnFailed: false },
         );
         activeJobIdRef.current = null;
-        setLastDone(null);
         resetStreaming();
         setStreaming(false);
-        await refetchMessages();
+        const refreshed = await refetchMessages();
 
         if (terminal.status === "FAILED") {
+          setLastDone(null);
           setAssistantPhase("failed");
           const sanitized = sanitizePlainErrorTextForUi(terminal.errorMessage, 280);
           const hint = resolveChatJobFailureUserHint({
@@ -434,6 +633,10 @@ function ChatPageInner() {
             t,
           });
           setSendError(hint);
+          setSendFailureCode(
+            normalizeChatFailureCode(terminal.failureCode) ??
+              (terminal.failureCode ? String(terminal.failureCode).trim() : null),
+          );
           useTraceStore.getState().addTraceEvent({
             section: "chat",
             action: "assistant_failed",
@@ -447,6 +650,16 @@ function ChatPageInner() {
         } else {
           setAssistantPhase(null);
           setSendError(null);
+          setSendFailureCode(null);
+          const list = refreshed.data ?? [];
+          const lastAssistant = [...list]
+            .reverse()
+            .find((x) => x.role === "ASSISTANT" && x.status === "DONE");
+          if (lastAssistant) {
+            setLastDone(streamDonePayloadFromAssistantMessage(lastAssistant));
+          } else {
+            setLastDone(null);
+          }
           useTraceStore.getState().addTraceEvent({
             section: "chat",
             action: "assistant_response_received",
@@ -464,6 +677,7 @@ function ChatPageInner() {
           return;
         }
         setAssistantPhase("failed");
+        setSendFailureCode(null);
         setSendError(getSafeApiErrorMessage(e));
         useTraceStore.getState().addTraceEvent({
           section: "chat",
@@ -473,6 +687,7 @@ function ChatPageInner() {
           metadata: { jobId: accepted.jobId },
         });
       } finally {
+        endTraceSession();
         setStreaming(false);
       }
     },
@@ -481,6 +696,11 @@ function ChatPageInner() {
 
   const send = useCallback(async () => {
     if (!input.trim() || isSending || isStreaming) return;
+    if (runtimeBlockingMessage) {
+      setSendError(runtimeBlockingMessage);
+      setSendFailureCode(runtimeBlockingCode);
+      return;
+    }
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
@@ -504,11 +724,32 @@ function ChatPageInner() {
     setSendError(null);
     try {
       if (!targetConversationId) {
-        const created = await createConv.mutateAsync();
+        const created = await createConv.mutateAsync(undefined);
         targetConversationId = created.id;
         selectConversation(created.id);
       }
       if (!targetConversationId) return;
+
+      // R1: rely on runtime-state as the authoritative validation source.
+      const rs = await apiFetch<{
+        isValid?: boolean;
+        blockingIssues?: { code?: string | null; message?: string | null }[];
+        validation: { valid: boolean; supported: boolean; errors: { code?: string | null; message: string }[] };
+      }>(
+        apiProductPath(`/conversations/${targetConversationId}/runtime-state`),
+        { signal },
+      );
+      const blocking = firstRuntimeBlockingMessage(rs);
+      if (blocking) {
+        const msg = blocking;
+        setSendError(msg);
+        setInput(text);
+        setOptimisticUserContent(null);
+        setAssistantPhase(null);
+        return;
+      }
+
+      beginTraceSession();
       const accepted = await apiFetch<LabJobAcceptedDto>(
         apiProductPath(`/conversations/${targetConversationId}/messages`),
         {
@@ -560,6 +801,8 @@ function ChatPageInner() {
     llmModelChoice,
     refetchMessages,
     runChatJob,
+    runtimeBlockingCode,
+    runtimeBlockingMessage,
     selectConversation,
     t,
   ]);
@@ -574,6 +817,7 @@ function ChatPageInner() {
       setSendError(null);
       setAssistantPhase("sending");
       try {
+        beginTraceSession();
         const accepted = await apiFetch<LabJobAcceptedDto>(
           apiProductPath(`/conversations/${conversationId}/messages/${assistantMessageId}/retry`),
           { method: "POST", signal },
@@ -629,11 +873,30 @@ function ChatPageInner() {
         body: JSON.stringify(patchBody),
         signal,
       });
+      queryClient.setQueryData<MessageDto[]>(
+        conversationMessagesQueryKey(conversationId),
+        (old) => applyUserMessageEditOptimistic(old ?? [], userMsgId, text),
+      );
       const postBody: PostMessageBody = {
         content: text,
         llmModel: llmModelChoice.trim() ? llmModelChoice.trim() : null,
         continueAfterUserMessageId: userMsgId,
       };
+
+      const rs = await apiFetch<{
+        isValid?: boolean;
+        blockingIssues?: { message?: string | null }[];
+        validation: { valid: boolean; supported: boolean; errors: { message: string }[] };
+      }>(
+        apiProductPath(`/conversations/${conversationId}/runtime-state`),
+        { signal },
+      );
+      const blocking = firstRuntimeBlockingMessage(rs);
+      if (blocking) {
+        setSendError(blocking);
+        return;
+      }
+
       const accepted = await apiFetch<LabJobAcceptedDto>(
         apiProductPath(`/conversations/${conversationId}/messages`),
         {
@@ -660,7 +923,17 @@ function ChatPageInner() {
     } finally {
       setIsSending(false);
     }
-  }, [conversationId, editBody, editingUserMessageId, isSending, llmModelChoice, refetchMessages, runChatJob, t]);
+  }, [
+    conversationId,
+    editBody,
+    editingUserMessageId,
+    isSending,
+    llmModelChoice,
+    queryClient,
+    refetchMessages,
+    runChatJob,
+    t,
+  ]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -706,11 +979,70 @@ function ChatPageInner() {
 
   const onPresetChange = useCallback(
     (value: string) => {
-      if (!conversationId || !value.trim()) return;
-      setPresetSelectValue(value);
-      patchConv.mutate({ conversationId, body: { presetId: value } });
+      if (!conversationId) return;
+      const next = value.trim();
+      if (!next) {
+        patchConv.mutate({ conversationId, body: { clearPreset: true } });
+        return;
+      }
+      const exp = experimentalPresets?.find((p) => p.productPresetId === next);
+      if (exp && !exp.chatSelectable) {
+        // Disabled experimental presets must be visible but never persistable in Chat.
+        return;
+      }
+      patchConv.mutate({ conversationId, body: { presetId: next } });
     },
-    [conversationId, patchConv],
+    [conversationId, patchConv, experimentalPresets],
+  );
+
+  const applyLlmModelChoice = useCallback(
+    (v: string) => {
+      if (!conversationId) return;
+      setLlmModelChoiceDraft({ conversationId, value: v });
+      const persistOnSuccess = () => {
+        if (projectId) writeProjectLlmModelPreference(projectId, v);
+      };
+      const revertOnError = () => {
+        setLlmModelChoiceDraft({ conversationId, value: activeConv?.llmModel ?? "" });
+      };
+      if (!v.trim()) {
+        patchConv.mutate(
+          { conversationId, body: { clearLlmModel: true } },
+          { onSuccess: persistOnSuccess, onError: revertOnError },
+        );
+        return;
+      }
+      patchConv.mutate(
+        { conversationId, body: { llmModel: v.trim() } },
+        { onSuccess: persistOnSuccess, onError: revertOnError },
+      );
+    },
+    [activeConv?.llmModel, conversationId, patchConv, projectId],
+  );
+
+  const applyClassifierModelChoice = useCallback(
+    (v: string) => {
+      if (!conversationId) return;
+      setClassifierModelChoiceDraft({ conversationId, value: v });
+      const persistOnSuccess = () => {
+        if (projectId) writeProjectClassifierModelPreference(projectId, v);
+      };
+      const revertOnError = () => {
+        setClassifierModelChoiceDraft({ conversationId, value: activeConv?.classifierModelId ?? "" });
+      };
+      if (!v.trim()) {
+        patchConv.mutate(
+          { conversationId, body: { clearClassifierModelId: true } },
+          { onSuccess: persistOnSuccess, onError: revertOnError },
+        );
+        return;
+      }
+      patchConv.mutate(
+        { conversationId, body: { classifierModelId: v.trim() } },
+        { onSuccess: persistOnSuccess, onError: revertOnError },
+      );
+    },
+    [activeConv?.classifierModelId, conversationId, patchConv, projectId],
   );
 
   const handleChatDocumentUpload = useCallback(
@@ -718,28 +1050,148 @@ function ChatPageInner() {
       if (!files?.length || !conversationId || !projectId || !activeConv) return;
       setUploadError(null);
       setUploadNotice(null);
+      // Keep previous items; allow multi-batch uploads.
       let merged = [...(activeConv.documentFilter ?? [])];
       for (const file of Array.from(files)) {
+        const id =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random()}-${file.name}`;
+        setUploadItems((prev) => [{ id, fileName: file.name, phase: "uploading" as const, file }, ...prev].slice(0, 20));
         try {
           const doc = await uploadDoc.mutateAsync(file);
           await refetchProjectDocuments();
-          if (doc.status === "READY") {
+          setUploadItems((prev) =>
+            prev.map((x) =>
+              x.id === id
+                ? { ...x, phase: doc.status === "READY" ? "ready" : doc.status === "ERROR" ? "error" : "ingesting", docId: doc.id, chunkCount: doc.chunkCount ?? null, errorMessage: doc.errorMessage ?? null }
+                : x,
+            ),
+          );
+          let terminalStatus: ProjectDocumentDto["status"] = doc.status;
+          if (doc.status !== "READY" && doc.status !== "ERROR") {
+            const started = Date.now();
+            while (true) {
+              const tick = await apiFetch<ProjectDocumentDto>(apiProductPath(`/documents/${doc.id}/status`));
+              setUploadItems((prev) =>
+                prev.map((x) =>
+                  x.docId === doc.id
+                    ? {
+                        ...x,
+                        phase: tick.status === "READY" ? "ready" : tick.status === "ERROR" ? "error" : "ingesting",
+                        chunkCount: tick.chunkCount ?? null,
+                        errorMessage: tick.errorMessage ?? null,
+                      }
+                    : x,
+                ),
+              );
+              terminalStatus = tick.status;
+              if (tick.status === "READY" || tick.status === "ERROR") break;
+              if (Date.now() - started > 5 * 60_000) {
+                setUploadItems((prev) =>
+                  prev.map((x) => (x.docId === doc.id ? { ...x, phase: "stalled" } : x)),
+                );
+                terminalStatus = "INGESTING";
+                break;
+              }
+              await new Promise<void>((r) => setTimeout(r, 1500));
+            }
+          }
+          await refetchProjectDocuments();
+          if (terminalStatus === "READY") {
             if (merged.length > 0) {
               merged = Array.from(new Set([...merged, doc.id]));
               patchConv.mutate({ conversationId, body: { documentFilter: merged } });
             } else {
               setUploadNotice(t("documentsUploadAddedToProjectHint"));
             }
-          } else {
+          } else if (terminalStatus === "INGESTING") {
             setUploadNotice(t("documentsUploadProcessingHint"));
           }
         } catch (e) {
-          setUploadError(getSafeApiErrorMessage(e));
-          break;
+          const msg = getSafeApiErrorMessage(e);
+          setUploadError(msg);
+          setUploadItems((prev) =>
+            prev.map((x) =>
+              x.id === id ? { ...x, phase: "error", errorMessage: msg } : x,
+            ),
+          );
+          continue;
         }
       }
     },
     [conversationId, projectId, activeConv, uploadDoc, refetchProjectDocuments, patchConv, t],
+  );
+
+  const retryUploadItem = useCallback(
+    async (id: string) => {
+      if (!conversationId) return;
+      const item = uploadItems.find((x) => x.id === id);
+      if (!item?.docId) return;
+      setUploadError(null);
+      setUploadNotice(null);
+      setUploadItems((prev) =>
+        prev.map((x) => (x.id === id ? { ...x, phase: "ingesting", errorMessage: null } : x)),
+      );
+      try {
+        await apiFetch<ProjectDocumentDto>(apiProductPath(`/documents/${item.docId}/retry-ingest`), { method: "POST" });
+        const started = Date.now();
+        while (true) {
+          const tick = await apiFetch<ProjectDocumentDto>(apiProductPath(`/documents/${item.docId}/status`));
+          setUploadItems((prev) =>
+            prev.map((x) =>
+              x.id === id
+                ? {
+                    ...x,
+                    phase: tick.status === "READY" ? "ready" : tick.status === "ERROR" ? "error" : "ingesting",
+                    chunkCount: tick.chunkCount ?? null,
+                    errorMessage: tick.errorMessage ?? null,
+                  }
+                : x,
+            ),
+          );
+          if (tick.status === "READY" || tick.status === "ERROR") break;
+          if (Date.now() - started > 5 * 60_000) {
+            setUploadItems((prev) => prev.map((x) => (x.id === id ? { ...x, phase: "stalled" } : x)));
+            break;
+          }
+          await new Promise<void>((r) => setTimeout(r, 1500));
+        }
+        await refetchProjectDocuments();
+      } catch (e) {
+        const msg = getSafeApiErrorMessage(e);
+        setUploadError(msg);
+        setUploadItems((prev) => prev.map((x) => (x.id === id ? { ...x, phase: "error", errorMessage: msg } : x)));
+      }
+    },
+    [conversationId, uploadItems, refetchProjectDocuments],
+  );
+
+  const checkUploadItem = useCallback(
+    async (id: string) => {
+      const item = uploadItems.find((x) => x.id === id);
+      if (!item?.docId) return;
+      try {
+        const tick = await apiFetch<ProjectDocumentDto>(apiProductPath(`/documents/${item.docId}/status`));
+        setUploadItems((prev) =>
+          prev.map((x) =>
+            x.id === id
+              ? {
+                  ...x,
+                  phase: tick.status === "READY" ? "ready" : tick.status === "ERROR" ? "error" : "ingesting",
+                  chunkCount: tick.chunkCount ?? null,
+                  errorMessage: tick.errorMessage ?? null,
+                }
+              : x,
+          ),
+        );
+      } catch (e) {
+        const msg = getSafeApiErrorMessage(e);
+        setUploadItems((prev) => prev.map((x) => (x.id === id ? { ...x, phase: "error", errorMessage: msg } : x)));
+      }
+      await refetchProjectDocuments();
+    },
+    [uploadItems, refetchProjectDocuments],
   );
 
   const onLimitDocsChange = useCallback(
@@ -750,18 +1202,14 @@ function ChatPageInner() {
         patchConv.mutate({ conversationId, body: { documentFilter: [] } });
         return;
       }
-      void (async () => {
-        const { data: freshDocs } = await refetchProjectDocuments();
-        const ready =
-          freshDocs?.filter((d) => d.status === "READY").map((d) => d.id) ?? [];
-        if (ready.length === 0) {
-          setLimitDocsNoticeRecord({ conversationId, message: t("limitDocumentsNoReadyHint") });
-          return;
-        }
-        patchConv.mutate({ conversationId, body: { documentFilter: ready } });
-      })();
+      // Prefer already-fetched docs so the checkbox becomes controlled immediately (no "revert" while awaiting refetch).
+      if (readyDocIds.length === 0) {
+        setLimitDocsNoticeRecord({ conversationId, message: t("limitDocumentsNoReadyHint") });
+        return;
+      }
+      patchConv.mutate({ conversationId, body: { documentFilter: readyDocIds } });
     },
-    [conversationId, patchConv, refetchProjectDocuments, t],
+    [conversationId, patchConv, readyDocIds, t],
   );
 
   const onDocToggle = (documentId: string, checked: boolean) => {
@@ -782,6 +1230,29 @@ function ChatPageInner() {
     patchConv.mutate({ conversationId, body: { documentFilter: next } });
   };
 
+  const staleSelectedIds = useMemo(() => {
+    if (!limitDocs) return [];
+    const eligible = new Set((docs ?? []).map((d) => d.id));
+    return (selectedDocIds ?? []).filter((id) => !eligible.has(id));
+  }, [docs, limitDocs, selectedDocIds]);
+
+  const cleanSelection = useCallback(() => {
+    if (!conversationId) return;
+    const eligibleReady = (docs ?? []).filter((d) => d.status === "READY").map((d) => d.id);
+    patchConv.mutate({ conversationId, body: { documentFilter: eligibleReady } });
+  }, [conversationId, docs, patchConv]);
+
+  useEffect(() => {
+    useChatConfigurationPanelStore.getState().hydrateFromStorage();
+  }, []);
+
+  const runtimeStateLoading = runtimeStateQuery.isLoading || runtimeStateQuery.isFetching;
+  const runtimeStateError = runtimeStateQuery.isError ? getSafeApiErrorMessage(runtimeStateQuery.error) : null;
+
+  const refreshRuntimeState = useCallback(() => {
+    void runtimeStateQuery.refetch();
+  }, [runtimeStateQuery]);
+
   useEffect(() => {
     if (!projectId) {
       useChatToolbarStore.getState().setApi(null);
@@ -796,8 +1267,11 @@ function ChatPageInner() {
       },
       openMoveDialog: () => setMoveDialogOpen(true),
       openDocumentsSheet: () => setDocsSheetOpen(true),
+      onAddDocuments: handleChatDocumentUpload,
       llmModelChoice,
-      setLlmModelChoice,
+      setLlmModelChoice: applyLlmModelChoice,
+      classifierModelChoice,
+      setClassifierModelChoice: applyClassifierModelChoice,
       modelsCatalog,
       modelsError,
       modelsErrorMessage: modelsErrorMessage ?? "",
@@ -806,13 +1280,34 @@ function ChatPageInner() {
       presets,
       presetsError,
       presetsLoading,
+      experimentalPresets: experimentalPresets ?? [],
+      experimentalPresetsLoading,
+      experimentalPresetsError,
       presetSelectDisabled,
       syntheticPresetOptionNeeded,
       presetLabelOpts,
       limitDocs,
       onLimitDocsChange,
-      limitDocsToggleNotice,
+      limitDocsDisabled,
+      limitDocsToggleNotice: limitDocsToggleNoticeEffective,
       patchConvPending: patchConv.isPending,
+      uploadPending: uploadDoc.isPending,
+      uploadError,
+      uploadNotice,
+      documents: docs,
+      runtimeOverride: runtimeState?.runtimeOverride ?? {},
+      saveRuntimeOverride: (next) => {
+        if (!conversationId) return;
+        patchConv.mutate({ conversationId, body: { runtimeOverride: next } });
+      },
+      clearRuntimeOverride: () => {
+        if (!conversationId) return;
+        patchConv.mutate({ conversationId, body: { clearRuntimeOverride: true } });
+      },
+      runtimeState,
+      runtimeStateLoading,
+      runtimeStateError,
+      refreshRuntimeState,
     });
     return () => useChatToolbarStore.getState().setApi(null);
   }, [
@@ -820,6 +1315,9 @@ function ChatPageInner() {
     conversationId,
     activeConv?.title,
     llmModelChoice,
+    applyLlmModelChoice,
+    classifierModelChoice,
+    applyClassifierModelChoice,
     modelsCatalog,
     modelsError,
     modelsErrorMessage,
@@ -828,13 +1326,27 @@ function ChatPageInner() {
     presets,
     presetsError,
     presetsLoading,
+    experimentalPresets,
+    experimentalPresetsLoading,
+    experimentalPresetsError,
     presetSelectDisabled,
     syntheticPresetOptionNeeded,
     presetLabelOpts,
     limitDocs,
     onLimitDocsChange,
-    limitDocsToggleNotice,
+    limitDocsDisabled,
+    limitDocsToggleNoticeEffective,
     patchConv.isPending,
+    handleChatDocumentUpload,
+    uploadDoc.isPending,
+    uploadError,
+    uploadNotice,
+    docs,
+    runtimeState,
+    runtimeStateLoading,
+    runtimeStateError,
+    refreshRuntimeState,
+    patchConv,
   ]);
 
   if (!projectId) {
@@ -851,7 +1363,7 @@ function ChatPageInner() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-7rem)] min-h-[420px] flex-col gap-2 md:flex-row md:gap-3">
+    <div data-testid="chat-page" className="flex h-full min-h-0 flex-1 flex-col gap-2 md:flex-row md:gap-3">
       {convListCollapsed ? (
         <div className="flex w-full shrink-0 flex-col items-stretch gap-2 border-border border-b pb-2 md:w-auto md:border-b-0 md:border-r md:pb-0 md:pr-2">
           <Button
@@ -890,11 +1402,7 @@ function ChatPageInner() {
             className="w-full"
             data-testid="chat-new-conversation"
             disabled={createConv.isPending}
-            onClick={async () => {
-              const c = await createConv.mutateAsync();
-              selectConversation(c.id);
-              void refetchMessages();
-            }}
+            onClick={() => setNewConvWizardOpen(true)}
           >
             {t("newConversation")}
           </Button>
@@ -934,10 +1442,22 @@ function ChatPageInner() {
           </div>
         </aside>
       )}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div
+        data-testid="chat-main-workspace"
+        data-chat-layout-mode={desktopConfigSplit ? "split" : "centered"}
+        className={cn(
+          "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row md:flex-nowrap md:gap-3",
+          !desktopConfigSplit && "md:justify-center",
+        )}
+      >
         <div
           data-testid="chat-readable-column"
-          className="mx-auto flex w-full min-h-0 min-w-0 max-w-chat-readable flex-1 flex-col gap-3 px-2 sm:px-3 md:px-5"
+          className={cn(
+            "flex w-full min-h-0 min-w-0 flex-col gap-3 px-2 sm:px-3 md:px-5",
+            desktopConfigSplit
+              ? "md:min-w-0 md:flex-1"
+              : "md:mx-auto md:w-full md:max-w-[min(50%,48rem)] md:flex-none",
+          )}
         >
         {conversationId && active ? (
           <header className="flex flex-wrap items-end gap-3 gap-y-2 border-border border-b pb-3">
@@ -1002,14 +1522,46 @@ function ChatPageInner() {
             uploadPending={uploadDoc.isPending}
             uploadError={uploadError}
             uploadNotice={uploadNotice}
+            uploadItems={uploadItems}
             onDocToggle={onDocToggle}
             onUploadFiles={handleChatDocumentUpload}
+            onRetryUploadItem={retryUploadItem}
+            onCheckUploadItem={checkUploadItem}
+            staleSelectionWarning={
+              staleSelectedIds.length > 0
+                ? "Some selected documents are no longer available."
+                : null
+            }
+            onCleanSelection={staleSelectedIds.length > 0 ? cleanSelection : undefined}
           />
         ) : null}
         <div
           ref={scrollAreaRef}
+          data-testid="chat-thread-dropzone"
           className="relative min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg border bg-card/30 p-3"
+          onDragOver={(e) => {
+            // Allow dropping files anywhere in the chat thread area.
+            e.preventDefault();
+            if (!conversationId || !projectId) return;
+            setChatDropActive(true);
+          }}
+          onDragLeave={() => setChatDropActive(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setChatDropActive(false);
+            if (!conversationId || !projectId) return;
+            const files = e.dataTransfer.files;
+            if (!files || files.length === 0) return;
+            setDocsSheetOpen(true);
+            void handleChatDocumentUpload(files);
+          }}
         >
+          {chatDropActive ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-2 z-10 rounded-lg border-2 border-dashed border-primary bg-primary/5"
+            />
+          ) : null}
           {showJumpToBottom ? (
             <Button
               type="button"
@@ -1058,10 +1610,19 @@ function ChatPageInner() {
           {messages?.map((m) => (
             <div
               key={m.id}
+              data-testid="chat-message-row"
+              data-message-role={m.role}
+              data-message-id={m.id}
+              data-message-seq={typeof m.seq === "number" ? String(m.seq) : undefined}
               className={
                 m.role === "USER"
                   ? "ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed"
-                  : "mr-auto max-w-[85%] rounded-lg border bg-background px-3 py-2 text-sm leading-relaxed"
+                  : cn(
+                      "mr-auto max-w-[85%] rounded-lg border px-3 py-2 text-sm leading-relaxed",
+                      isAssistantClarificationTurn(m)
+                        ? "border-amber-500/55 bg-amber-500/10"
+                        : "bg-background",
+                    )
               }
             >
               {m.role === "USER" &&
@@ -1081,7 +1642,7 @@ function ChatPageInner() {
                       size="sm"
                       variant="secondary"
                       className="h-8"
-                      disabled={isStreaming || isSending || !editBody.trim()}
+                      disabled={isStreaming || isSending || runtimeStateInvalid || !editBody.trim()}
                       onClick={() => void saveUserEditAndRegenerate()}
                     >
                       {t("saveAndRegenerate")}
@@ -1104,7 +1665,21 @@ function ChatPageInner() {
                 </div>
               ) : (
                 <>
-                  <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                  {isAssistantClarificationTurn(m) ? (
+                    <p
+                      className="text-muted-foreground mb-1 text-[11px] font-semibold tracking-wide uppercase"
+                      data-testid="chat-clarification-label"
+                    >
+                      {t("clarificationQuestionLabel")}
+                    </p>
+                  ) : null}
+                  <p
+                    className="whitespace-pre-wrap break-words"
+                    data-testid={m.role === "ASSISTANT" ? "chat-answer" : undefined}
+                  >
+                    {m.content}
+                  </p>
+                  {m.role === "ASSISTANT" ? <ChatAssistantMessageExtras message={m} /> : null}
                   {m.role === "USER" && m.id === lastUserMessageId && (
                     <Button
                       type="button"
@@ -1164,39 +1739,119 @@ function ChatPageInner() {
           )}
           <div ref={bottomRef} />
         </div>
-        <div className="flex w-full min-w-0 flex-col gap-2">
+        <div className="flex w-full min-w-0 shrink-0 flex-col gap-2" data-testid="chat-composer-dock">
           {editError && (
-            <p className="text-destructive break-words text-xs" role="alert">
+            <p className="text-destructive break-words text-xs" data-testid="chat-error" role="alert">
               {editError}
             </p>
           )}
           {sendError && (
-            <p className="text-destructive break-words text-xs" role="alert">
+            <p
+              className="text-destructive break-words text-xs"
+              data-testid="chat-error"
+              data-error-code={sendFailureCode ?? undefined}
+              role="alert"
+            >
               {sendError}
+              {sendFailureCode ? (
+                <span className="sr-only" data-testid={`chat-error-code-${sendFailureCode}`}>
+                  {sendFailureCode}
+                </span>
+              ) : null}
             </p>
           )}
           {patchConv.isError ? (
-            <p className="text-destructive text-xs" role="alert">
+            <p className="text-destructive text-xs" data-testid="chat-error" role="alert">
               {getSafeApiErrorMessage(patchConv.error)}
             </p>
           ) : null}
-          <Textarea
-            data-testid="chat-message-composer"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={t("placeholder")}
-            rows={3}
-            className="resize-none"
-            aria-busy={isSending || isStreaming}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !isSending && !isStreaming) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-            disabled={isSending || isStreaming}
-          />
-          <div className="flex justify-end gap-2">
+          {conversationId && messages && messages.length === 0 ? (
+            <p
+              className="text-muted-foreground rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs"
+              role="status"
+            >
+              {t("emptyConversationAdjustHint")}
+            </p>
+          ) : null}
+          {runtimeState?.effectiveConfig && coerceBool(runtimeState.effectiveConfig.memoryEnabled) ? (
+            <p className="text-muted-foreground text-xs" data-testid="chat-memory-badge" role="status">
+              {t("memoryActiveBadge")}
+            </p>
+          ) : null}
+          {runtimeBlockingMessage ? (
+            <div data-testid="chat-error">
+              <p
+                className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+                data-testid="chat-runtime-blocking-input-message"
+                role="alert"
+              >
+                {runtimeBlockingMessage}
+              </p>
+              {runtimeBlockingCode ? (
+                <span className="sr-only" data-testid={`chat-error-code-${runtimeBlockingCode}`}>
+                  {runtimeBlockingCode}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+          {conversationId &&
+          activeConv?.pendingClarification &&
+          Object.keys(activeConv.pendingClarification).length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs">
+              <span className="text-muted-foreground flex-1">{t("clarificationPendingBanner")}</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0"
+                disabled={patchConv.isPending}
+                onClick={() => {
+                  if (!conversationId) return;
+                  void patchConv.mutateAsync({
+                    conversationId,
+                    body: { clearPendingClarification: true },
+                  });
+                }}
+              >
+                {t("cancelClarification")}
+              </Button>
+            </div>
+          ) : null}
+          <div data-testid="chat-message-input">
+            <Textarea
+              data-testid="chat-message-composer"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={t("placeholder")}
+              rows={3}
+              className="resize-none"
+              aria-busy={isSending || isStreaming}
+              onKeyDown={(e) => {
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  !isSending &&
+                  !isStreaming &&
+                  !runtimeStateInvalid &&
+                  !editingUserMessageId
+                ) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              disabled={isSending || isStreaming || runtimeStateInvalid || Boolean(editingUserMessageId)}
+            />
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!conversationId || patchConv.isPending || uploadDoc.isPending}
+              onClick={() => setDocsSheetOpen(true)}
+            >
+              {t("chatAddDocuments")}
+            </Button>
             <Button type="button" variant="outline" size="sm" disabled={!isStreaming} onClick={() => stop()}>
               {t("stop")}
             </Button>
@@ -1204,7 +1859,13 @@ function ChatPageInner() {
               type="button"
               size="sm"
               data-testid="chat-send-button"
-              disabled={!input.trim() || isSending || isStreaming}
+              disabled={
+                !input.trim() ||
+                isSending ||
+                isStreaming ||
+                runtimeStateInvalid ||
+                Boolean(editingUserMessageId)
+              }
               onClick={() => void send()}
             >
               {t("send")}
@@ -1212,6 +1873,10 @@ function ChatPageInner() {
           </div>
         </div>
         </div>
+        <ChatConfigurationSidePanel
+          open={Boolean(conversationId && configPanelOpen)}
+          onClose={() => setConfigPanelOpen(false)}
+        />
         <MoveConversationDialog
           sourceProjectId={projectId}
           conversationId={conversationId}
@@ -1235,6 +1900,17 @@ function ChatPageInner() {
             }
           }}
         />
+        {projectId ? (
+          <NewConversationDialog
+            projectId={projectId}
+            open={newConvWizardOpen}
+            onOpenChange={setNewConvWizardOpen}
+            onCreated={(c) => {
+              selectConversation(c.id);
+              void refetchMessages();
+            }}
+          />
+        ) : null}
       </div>
     </div>
   );

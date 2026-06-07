@@ -46,6 +46,7 @@ export function LoginForm() {
   const locale = useLocale();
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
   const oauthGoogleEnabled = process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === "true";
 
   const form = useForm<LoginFormValues>({
@@ -55,6 +56,7 @@ export function LoginForm() {
 
   async function onSubmit(values: LoginFormValues) {
     setFormError(null);
+    setUnverifiedEmail(null);
     try {
       const data = await apiFetch<LoginResponse>(authApiPath("/login"), {
         method: "POST",
@@ -78,6 +80,7 @@ export function LoginForm() {
         return;
       }
       if (e instanceof ApiError && e.status === 403 && isEmailNotVerifiedApiError(e)) {
+        setUnverifiedEmail(values.email.trim());
         setFormError(t("emailNotVerified"));
         return;
       }
@@ -106,6 +109,17 @@ export function LoginForm() {
       {formError && (
         <p className="text-destructive text-sm" role="alert">
           {formError}
+          {unverifiedEmail ? (
+            <>
+              {" "}
+              <Link
+                className="text-primary underline-offset-4 hover:underline"
+                href={`/register/pending?email=${encodeURIComponent(unverifiedEmail)}`}
+              >
+                {t("emailNotVerifiedPendingLink")}
+              </Link>
+            </>
+          ) : null}
         </p>
       )}
       <Button type="submit" disabled={form.formState.isSubmitting}>

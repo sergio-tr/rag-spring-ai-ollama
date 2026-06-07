@@ -11,7 +11,9 @@ import {
   getRagApiProductPrefix,
   getSafeApiErrorMessage,
   onApiUnauthorized,
+  oauthGoogleStartHref,
   resolveBrowserProductApiUrl,
+  resolveLabJobApiUrl,
   sanitizePlainErrorTextForUi,
 } from "./api-client";
 import * as accessToken from "./access-token";
@@ -162,14 +164,132 @@ describe("apiFetch", () => {
 
   it("resolveBrowserProductApiUrl keeps same-origin path when base URL unset", () => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "http:",
+        port: "80",
+        origin: "http://localhost",
+        pathname: "/en/lab",
+      },
+    });
     expect(resolveBrowserProductApiUrl("/api/v5/projects")).toBe("/api/v5/projects");
     expect(resolveBrowserProductApiUrl("relative")).toBe("/relative");
+    vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+  });
+
+  it("resolveLabJobApiUrl targets Spring for lab job events on Next dev port", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "http:",
+        port: "3000",
+        origin: "http://localhost:3000",
+        pathname: "/en/lab",
+      },
+    });
+    expect(resolveLabJobApiUrl("/api/v5/lab/jobs/1/events")).toBe(
+      "http://127.0.0.1:9000/api/v5/lab/jobs/1/events",
+    );
+    expect(resolveLabJobApiUrl("/lab/jobs/1/events")).toBe(
+      "http://127.0.0.1:9000/api/v5/lab/jobs/1/events",
+    );
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("resolveBrowserProductApiUrl targets local Spring on Next dev port when base URL unset", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "http:",
+        port: "3000",
+        origin: "http://localhost:3000",
+        pathname: "/en/lab",
+      },
+    });
+    expect(resolveBrowserProductApiUrl("/api/v5/lab/jobs/x/events")).toBe(
+      "http://127.0.0.1:9000/api/v5/lab/jobs/x/events",
+    );
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("resolveBrowserProductApiUrl normalizes absolute http(s) URLs", () => {
+    expect(resolveBrowserProductApiUrl("http://127.0.0.1:9000/api/v5/lab/jobs/x/events")).toBe(
+      "http://127.0.0.1:9000/api/v5/lab/jobs/x/events",
+    );
+  });
+
+  it("resolveBrowserProductApiUrl throws on invalid absolute URL", () => {
+    expect(() => resolveBrowserProductApiUrl("http://")).toThrow(/LAB live stream API base URL is not configured/);
   });
 
   it("resolveBrowserProductApiUrl prefixes trimmed absolute base", () => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://127.0.0.1:9000/");
     expect(resolveBrowserProductApiUrl("/api/v5/me")).toBe("http://127.0.0.1:9000/api/v5/me");
+    vi.unstubAllEnvs();
+  });
+
+  it("resolveBrowserProductApiUrl uses same-origin path on reverse-proxy TLS port despite baked :9000", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://127.0.0.1:9000");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "https:",
+        port: "8444",
+        origin: "https://localhost:8444",
+        pathname: "/en/login",
+      },
+    });
+    expect(resolveBrowserProductApiUrl("/api/v5/auth/login")).toBe("/api/v5/auth/login");
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("resolveBrowserProductApiUrl keeps absolute backend URL for direct webapp port without proxy", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://127.0.0.1:9000");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "http:",
+        port: "8081",
+        origin: "http://localhost:8081",
+        pathname: "/en/login",
+      },
+    });
+    expect(resolveBrowserProductApiUrl("/api/v5/auth/login")).toBe(
+      "http://127.0.0.1:9000/api/v5/auth/login",
+    );
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("oauthGoogleStartHref uses same-origin path when API base unset", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "http:",
+        port: "80",
+        origin: "http://localhost",
+        pathname: "/en/login",
+      },
+    });
+    expect(oauthGoogleStartHref("en")).toBe("/api/v5/auth/oauth/google/start?locale=en");
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("oauthGoogleStartHref uses same-origin path on reverse-proxy TLS port despite baked :9000 base", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://127.0.0.1:9000");
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "https:",
+        port: "8444",
+        origin: "https://localhost:8444",
+        pathname: "/en/login",
+      },
+    });
+    expect(oauthGoogleStartHref("en")).toBe("/api/v5/auth/oauth/google/start?locale=en");
+    vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
 
@@ -502,6 +622,7 @@ describe("createHttpApiError", () => {
       method: "POST",
     });
     expect(err.meta?.details).toEqual({ errors: ["one", "two"] });
+    expect(err.meta?.parsedJson).toEqual({ errors: ["one", "two"] });
   });
 
   it("uses plain-text fallback when JSON content-type body is invalid JSON", () => {

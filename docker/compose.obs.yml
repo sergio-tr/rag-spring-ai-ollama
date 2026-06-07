@@ -1,5 +1,7 @@
 # Spring apps: OTLP + infra profile when using the observability stack (profile observability in docker-compose.yml).
 # Merge with: docker compose -f docker-compose.yml -f compose.obs.yml --profile observability …
+# otel-collector dependencies use required: false so compose validate/down works without --profile observability
+# (collector is omitted unless that profile is enabled).
 services:
   backend:
     environment:
@@ -19,8 +21,10 @@ services:
         condition: service_healthy
       classifier-service:
         condition: service_healthy
+      # otel-collector is only defined with --profile observability; keep optional for down/config without that profile.
       otel-collector:
         condition: service_started
+        required: false
       ollama:
         condition: service_started
         required: false
@@ -34,3 +38,4 @@ services:
     depends_on:
       otel-collector:
         condition: service_started
+        required: false

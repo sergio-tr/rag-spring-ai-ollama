@@ -1,6 +1,6 @@
 # Release notes template (tag / release)
 
-Use for annotated tags (e.g. `v0.x.y`). Paste into GitHub **Release** description or thesis appendix.
+Use for annotated tags (e.g. `v0.x.y`). Paste into GitHub **Release** description or external appendix.
 
 ---
 
@@ -25,7 +25,7 @@ Use for annotated tags (e.g. `v0.x.y`). Paste into GitHub **Release** descriptio
 - Deploy workflow gate: [deploy-workflow-audit.md](deploy-workflow-audit.md).
 - Optional: repository secret `DEPLOY_HEALTH_URL` triggers a post-deploy HTTP check on manual deploy ([deploy-workflow-audit.md](deploy-workflow-audit.md)).
 
-### Academic / thesis freeze (optional block)
+### Academic freeze (optional block)
 
 Use when handing in a reproducible snapshot:
 

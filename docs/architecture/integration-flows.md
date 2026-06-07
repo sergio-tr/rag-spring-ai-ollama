@@ -6,21 +6,21 @@ How the browser hits Spring vs Next by path: [webapp-edge-routing.mmd](webapp-ed
 
 ## Authentication
 
-The product API expects **JWT**-based auth for protected routes; public routes include health, auth login/register, OpenAPI (non-prod), and selected legacy paths per configuration. Visual overview: [security-api-boundaries.mmd](security-api-boundaries.mmd).
+The product API expects **JWT**-based auth for protected routes; public routes include health, auth login/register, OpenAPI (non-prod), and any explicitly configured permit-all paths. Visual overview: [security-api-boundaries.mmd](security-api-boundaries.mmd).
 
 **Detail:** Spring configuration and endpoints — [../../rag-service/README.md](../../rag-service/README.md); web client behaviour — [../../webapp/README.md](../../webapp/README.md).
 
 ## RAG query path
 
-Orchestration from product or legacy surface through configuration and pipeline to **Ollama** and optional **classifier-service**: [rag-request-flow.mmd](rag-request-flow.mmd).
+Orchestration from the product API through configuration resolution and `RagExecutionOrchestrator` to **Ollama** and optional **classifier-service**: [rag-request-flow.mmd](rag-request-flow.mmd).
 
 **Detail:** Package map — [BACKEND_PACKAGES.md](BACKEND_PACKAGES.md); classifier — [../../classifier-service/README.md](../../classifier-service/README.md).
 
-## Real-time chat (SSE)
+## Chat (async job)
 
-Streaming uses **server-sent events** from the product API; see code and OpenAPI.
+User messages: **`POST {product}/conversations/{id}/messages`** → **HTTP 202** + `CHAT_MESSAGE` async task. Progress and streamed answer text: poll **`GET {product}/lab/jobs/{id}`** or SSE **`GET …/lab/jobs/{id}/events`** (same job infrastructure as Lab). Implementation: `MessageStreamController`, `ChatMessageApplicationService`, `ChatMessageJobHandler`.
 
-**Detail:** [../../webapp/README.md](../../webapp/README.md).
+**Detail:** [../../rag-service/README.md](../../rag-service/README.md), [../../webapp/README.md](../../webapp/README.md).
 
 ## Observability of requests
 

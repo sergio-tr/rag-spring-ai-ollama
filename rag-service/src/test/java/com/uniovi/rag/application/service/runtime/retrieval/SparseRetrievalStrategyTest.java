@@ -62,8 +62,7 @@ class SparseRetrievalStrategyTest {
                         List.of(sid),
                         UUID.randomUUID(),
                         Optional.empty(),
-                        List.of("all"),
-                        true);
+                        List.of("all"), true, Optional.empty());
         when(jdbc.query(anyString(), any(MapSqlParameterSource.class), any(RowMapper.class)))
                 .thenThrow(new DataAccessException("simulated") {});
 
@@ -93,8 +92,7 @@ class SparseRetrievalStrategyTest {
                         List.of(sid),
                         UUID.randomUUID(),
                         Optional.empty(),
-                        List.of("all"),
-                        true);
+                        List.of("all"), true, Optional.empty());
         when(jdbc.query(anyString(), any(MapSqlParameterSource.class), any(RowMapper.class)))
                 .thenReturn(List.of());
 
@@ -131,8 +129,7 @@ class SparseRetrievalStrategyTest {
                         List.of(sid),
                         UUID.randomUUID(),
                         Optional.empty(),
-                        List.of("all", "  ", "ALL"),
-                        false);
+                        List.of("all", "  ", "ALL"), false, Optional.empty());
 
         List<RetrievalCandidate> out = sparseRetrievalStrategy.retrieve(req);
 
@@ -162,7 +159,8 @@ class SparseRetrievalStrategyTest {
                         UUID.randomUUID(),
                         Optional.empty(),
                         List.of(docId.toString()),
-                        false);
+                        false,
+                        Optional.empty());
         when(jdbc.query(anyString(), any(MapSqlParameterSource.class), any(RowMapper.class)))
                 .thenReturn(List.of());
 
@@ -197,8 +195,7 @@ class SparseRetrievalStrategyTest {
                         List.of(sid),
                         UUID.randomUUID(),
                         Optional.empty(),
-                        List.of("all"),
-                        true);
+                        List.of("all"), true, Optional.empty());
         when(jdbc.query(anyString(), any(MapSqlParameterSource.class), any(RowMapper.class)))
                 .thenAnswer(
                         inv -> {
@@ -247,8 +244,7 @@ class SparseRetrievalStrategyTest {
                         List.of(sid),
                         UUID.randomUUID(),
                         Optional.empty(),
-                        List.of("all"),
-                        true);
+                        List.of("all"), true, Optional.empty());
         when(jdbc.query(anyString(), any(MapSqlParameterSource.class), any(RowMapper.class)))
                 .thenAnswer(
                         inv -> {
@@ -285,8 +281,7 @@ class SparseRetrievalStrategyTest {
                         List.of(sid),
                         UUID.randomUUID(),
                         Optional.empty(),
-                        List.of("all"),
-                        true);
+                        List.of("all"), true, Optional.empty());
         when(jdbc.query(anyString(), any(MapSqlParameterSource.class), any(RowMapper.class)))
                 .thenAnswer(
                         inv -> {

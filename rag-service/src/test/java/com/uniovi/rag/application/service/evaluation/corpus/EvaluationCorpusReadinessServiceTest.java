@@ -1,0 +1,87 @@
+package com.uniovi.rag.application.service.evaluation.corpus;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import com.uniovi.rag.application.service.evaluation.preset.CorpusAvailabilityGate;
+import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
+import com.uniovi.rag.domain.ProjectDocumentStatus;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+class EvaluationCorpusReadinessServiceTest {
+
+    @Mock private EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+    @Mock private CorpusAvailabilityGate corpusAvailabilityGate;
+    @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
+
+    @InjectMocks private EvaluationCorpusReadinessService service;
+
+    @Test
+    void getReadiness_emptyCorpus_returnsNoDocuments() {
+        UUID corpusId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(evaluationCorpusApplicationService.syncIndexProjectDocuments(userId, corpusId)).thenReturn(0);
+        when(evaluationCorpusApplicationService.requireContext(eq(userId), eq(corpusId)))
+                .thenReturn(
+                        new EvaluationCorpusApplicationService.EvaluationCorpusContext(
+                                corpusId, UUID.randomUUID(), List.of(), List.of()));
+
+        var readiness = service.getReadiness(userId, corpusId);
+
+        assertThat(readiness.runnable()).isFalse();
+        assertThat(readiness.primaryBlocker()).isEqualTo(LabCorpusReasonCodes.NO_DOCUMENTS);
+    }
+
+    @Test
+    void getReadiness_processingOnly_returnsNoReadyDocuments() {
+        UUID corpusId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(evaluationCorpusApplicationService.syncIndexProjectDocuments(userId, corpusId)).thenReturn(0);
+        KnowledgeDocumentEntity ingesting = mock(KnowledgeDocumentEntity.class);
+        when(ingesting.getStatus()).thenReturn(ProjectDocumentStatus.INGESTING);
+        when(evaluationCorpusApplicationService.requireContext(eq(userId), eq(corpusId)))
+                .thenReturn(
+                        new EvaluationCorpusApplicationService.EvaluationCorpusContext(
+                                corpusId, UUID.randomUUID(), List.of(UUID.randomUUID()), List.of(ingesting)));
+
+        var readiness = service.getReadiness(userId, corpusId);
+
+        assertThat(readiness.runnable()).isFalse();
+        assertThat(readiness.primaryBlocker()).isEqualTo(LabCorpusReasonCodes.NO_READY_DOCUMENTS);
+    }
+
+    @Test
+    void getReadiness_readyDocsNoSnapshot_returnsNoActiveSnapshotBlocker() {
+        UUID corpusId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(evaluationCorpusApplicationService.syncIndexProjectDocuments(userId, corpusId)).thenReturn(0);
+        KnowledgeDocumentEntity ready = mock(KnowledgeDocumentEntity.class);
+        when(ready.getStatus()).thenReturn(ProjectDocumentStatus.READY);
+        when(evaluationCorpusApplicationService.requireContext(eq(userId), eq(corpusId)))
+                .thenReturn(
+                        new EvaluationCorpusApplicationService.EvaluationCorpusContext(
+                                corpusId, UUID.randomUUID(), List.of(UUID.randomUUID()), List.of(ready)));
+        when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.empty());
+
+        var readiness = service.getReadiness(userId, corpusId);
+
+        assertThat(readiness.runnable()).isTrue();
+        assertThat(readiness.primaryBlocker()).isNull();
+        assertThat(readiness.snapshotBlocker()).isEqualTo(LabCorpusReasonCodes.REINDEX_REQUIRED);
+        assertThat(readiness.snapshotBlockerDetailCode()).isEqualTo("NO_ACTIVE_INDEX");
+        assertThat(readiness.reindexRequired()).isTrue();
+    }
+}

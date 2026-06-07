@@ -36,7 +36,7 @@ Fill `evaluation_run.id`, export path, and primary DV after each row.
 
 **Execution order (normative):** `A2 → A1` for H1; then `A3 → A4` monotonically in `k`.
 
-Replace `PLANNED` with `SUCCESS` / `PARTIAL` / `INFRA_FAILED` after runs. Do not leave `TBD` ids in thesis tables.
+Replace `PLANNED` with `SUCCESS` / `PARTIAL` / `INFRA_FAILED` after runs. Do not leave `TBD` ids in published tables.
 
 ---
 

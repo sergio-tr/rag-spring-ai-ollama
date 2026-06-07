@@ -15,7 +15,7 @@
     },
     "transport": {
       "type": "string",
-      "enum": ["legacy", "product_chat"]
+      "enum": ["historical_query", "product_chat"]
     },
     "scenario": {
       "type": "object",

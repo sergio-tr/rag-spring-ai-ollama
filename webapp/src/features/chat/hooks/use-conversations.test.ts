@@ -75,6 +75,25 @@ describe("use-conversations hooks", () => {
     expect(next.effectivePresetId).toBe(CHAT_DETERMINISTIC_DEFAULT_PRESET_ID);
   });
 
+  it("mergeConversationPatchOptimistic applies llm and classifier fields", () => {
+    const row = {
+      id: "c1",
+      title: "t",
+      updatedAt: "",
+      presetId: null as string | null,
+      effectivePresetId: CHAT_DETERMINISTIC_DEFAULT_PRESET_ID,
+      documentFilter: [] as string[],
+      llmModel: null as string | null,
+      classifierModelId: null as string | null,
+    };
+    const next = mergeConversationPatchOptimistic(row, { llmModel: "m1", classifierModelId: "tag-a" });
+    expect(next.llmModel).toBe("m1");
+    expect(next.classifierModelId).toBe("tag-a");
+    const cleared = mergeConversationPatchOptimistic(next, { clearLlmModel: true, clearClassifierModelId: true });
+    expect(cleared.llmModel).toBeNull();
+    expect(cleared.classifierModelId).toBeNull();
+  });
+
   beforeEach(() => {
     apiFetch.mockReset();
     setActiveProject.mockReset();
@@ -103,7 +122,7 @@ describe("use-conversations hooks", () => {
     const { wrapper, qc } = createWrapper();
     const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
     const { result } = renderHook(() => useCreateConversation("p1"), { wrapper });
-    await result.current.mutateAsync();
+    await result.current.mutateAsync(undefined);
     expect(apiFetch).toHaveBeenCalledWith(
       expect.stringMatching(/\/projects\/p1\/conversations$/),
       expect.objectContaining({ method: "POST" }),

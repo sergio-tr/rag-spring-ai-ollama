@@ -1,6 +1,7 @@
 "use client";
 
 import { DeleteConversationDialog } from "@/features/chat/components/DeleteConversationDialog";
+import { NewConversationDialog } from "@/features/chat/components/NewConversationDialog";
 import { useConversations, useCreateConversation } from "@/features/chat/hooks/use-conversations";
 import { useProjectDocuments } from "@/features/documents/hooks/use-project-documents";
 import { useQueryClient } from "@tanstack/react-query";
@@ -74,6 +75,7 @@ function ProjectChatsSection({ project }: Readonly<{ project: ProjectSummary }>)
   const activate = useActivateProject();
   const createConv = useCreateConversation(project.id);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
+  const [convWizardOpen, setConvWizardOpen] = useState(false);
 
   const listEnabled = project.convCount > 0;
   const { data, isLoading, isError } = useConversations(listEnabled ? project.id : undefined);
@@ -92,25 +94,30 @@ function ProjectChatsSection({ project }: Readonly<{ project: ProjectSummary }>)
 
   if (project.convCount <= 0) {
     return (
-      <div className="flex flex-col gap-2 border-border/60 border-t pt-2">
-        <p className="text-muted-foreground text-xs">{t("cardNoChatsYet")}</p>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className="w-fit"
-          disabled={createConv.isPending || activate.isPending}
-          onClick={() =>
-            void (async () => {
-              await activate.mutateAsync(activeProjectFromSummary(project));
-              const created = await createConv.mutateAsync();
-              router.push(buildProjectScopedChatHref(project.id, created.id));
-            })()
-          }
-        >
-          {t("startFirstChat")}
-        </Button>
-      </div>
+      <>
+        <div className="flex flex-col gap-2 border-border/60 border-t pt-2">
+          <p className="text-muted-foreground text-xs">{t("cardNoChatsYet")}</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="w-fit"
+            disabled={createConv.isPending || activate.isPending}
+            onClick={() => setConvWizardOpen(true)}
+          >
+            {t("startFirstChat")}
+          </Button>
+        </div>
+        <NewConversationDialog
+          projectId={project.id}
+          open={convWizardOpen}
+          onOpenChange={setConvWizardOpen}
+          onCreated={async (c) => {
+            await activate.mutateAsync(activeProjectFromSummary(project));
+            router.push(buildProjectScopedChatHref(project.id, c.id));
+          }}
+        />
+      </>
     );
   }
 

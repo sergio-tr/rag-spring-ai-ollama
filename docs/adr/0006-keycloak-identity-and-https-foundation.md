@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The platform requires **serious security** for a multi-user product and defensible thesis operations. JWT-based integration with Spring exists today; stakeholders closed **Keycloak** as the identity provider and **HTTPS** as the transport foundation for target deployments.
+The platform requires **serious security** for a multi-user product and defensible operations. JWT-based integration with Spring exists today; stakeholders closed **Keycloak** as the identity provider and **HTTPS** as the transport foundation for target deployments.
 
 ## Decision
 

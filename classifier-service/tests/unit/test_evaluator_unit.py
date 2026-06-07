@@ -45,6 +45,21 @@ def test_evaluate_happy_path_includes_images(tmp_path, pipeline_mocks):
     model.predict.assert_called_once()
 
 
+def test_evaluate_accepts_spanish_pregunta_column(tmp_path, pipeline_mocks):
+    loader, model = pipeline_mocks
+    model.predict.return_value = np.array([[0.2, 0.8], [0.9, 0.1]])
+    excel = tmp_path / "eval-es.xlsx"
+    df = pd.DataFrame({"Pregunta": ["q1", "q2"], "QueryType": ["B", "A"]})
+    df.to_excel(excel, index=False)
+
+    ep = EvaluationPipeline(config=Config(), loader=loader, registry=MagicMock())
+    result = ep.evaluate("m1", str(excel), include_images=False)
+
+    assert result.model_id == "m1"
+    assert result.class_names == ["A", "B"]
+    model.predict.assert_called_once()
+
+
 def test_evaluate_loads_when_not_cached(pipeline_mocks, tmp_path):
     loader, model = pipeline_mocks
     loader.is_loaded.return_value = False

@@ -14,7 +14,24 @@ public record ClassifierTrainBytesCommand(
         byte[] labelsFileContent,
         String labelsFilename,
         int epochs,
-        int batchSize) {
+        int batchSize,
+        /**
+         * Optional RAG user id persisted into classifier-service {@code metadata.json} as {@code ownerId}
+         * (audit trail on shared {@code MODELS_DIR}); omit for direct browser calls to lab train.
+         */
+        String trainArtifactOwnerId) {
+
+    public ClassifierTrainBytesCommand(
+            byte[] fileContent,
+            String datasetFilename,
+            String modelName,
+            String labelsJson,
+            byte[] labelsFileContent,
+            String labelsFilename,
+            int epochs,
+            int batchSize) {
+        this(fileContent, datasetFilename, modelName, labelsJson, labelsFileContent, labelsFilename, epochs, batchSize, null);
+    }
 
     @Override
     public boolean equals(Object o) {
@@ -27,12 +44,14 @@ public record ClassifierTrainBytesCommand(
                 && Objects.equals(modelName, that.modelName)
                 && Objects.equals(labelsJson, that.labelsJson)
                 && Arrays.equals(labelsFileContent, that.labelsFileContent)
-                && Objects.equals(labelsFilename, that.labelsFilename);
+                && Objects.equals(labelsFilename, that.labelsFilename)
+                && Objects.equals(trainArtifactOwnerId, that.trainArtifactOwnerId);
     }
 
     @Override
     public int hashCode() {
-        int result = Objects.hash(datasetFilename, modelName, labelsJson, labelsFilename, epochs, batchSize);
+        int result =
+                Objects.hash(datasetFilename, modelName, labelsJson, labelsFilename, epochs, batchSize, trainArtifactOwnerId);
         result = 31 * result + Arrays.hashCode(fileContent);
         result = 31 * result + Arrays.hashCode(labelsFileContent);
         return result;
@@ -51,6 +70,7 @@ public record ClassifierTrainBytesCommand(
                 + ", labelsFilename=" + labelsFilename
                 + ", epochs=" + epochs
                 + ", batchSize=" + batchSize
+                + ", trainArtifactOwnerId=" + trainArtifactOwnerId
                 + "]";
     }
 }

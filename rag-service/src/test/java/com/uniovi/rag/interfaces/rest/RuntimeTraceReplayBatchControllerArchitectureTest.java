@@ -13,7 +13,7 @@ import com.uniovi.rag.application.service.runtime.tracereplay.RuntimeTraceReplay
 import com.uniovi.rag.application.service.runtime.tracereplaybatch.RuntimeTraceReplayBatchService;
 import com.uniovi.rag.application.service.runtime.tracereplayexport.RuntimeTraceReplayExportService;
 import com.uniovi.rag.infrastructure.persistence.jpa.RuntimeExecutionTraceRepository;
-import com.uniovi.rag.service.query.ProcessQueryService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -47,7 +47,7 @@ class RuntimeTraceReplayBatchControllerArchitectureTest {
                     .areAssignableTo(RuntimeTraceReplayComparisonService.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnTraceQueryService =
+    static final ArchRule controllerDoesNotDependOnTraceQueryExecutionService =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceReplayBatchController")
@@ -101,13 +101,13 @@ class RuntimeTraceReplayBatchControllerArchitectureTest {
                     .areAssignableTo(RuntimeTraceReplayExportService.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnProcessQueryService =
+    static final ArchRule controllerDoesNotDependOnRuntimeQueryExecutionService =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceReplayBatchController")
                     .should()
                     .dependOnClassesThat()
-                    .areAssignableTo(ProcessQueryService.class);
+                    .areAssignableTo(RuntimeQueryExecutionService.class);
 
     @ArchTest
     static final ArchRule controllerDoesNotDependOnOrchestrator =

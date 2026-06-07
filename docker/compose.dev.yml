@@ -50,17 +50,19 @@ services:
     env_file:
       - ../db/.env
       - ../rag-service/.env
-    ports:
-      - "${BACKEND_PORT:-9000}:${SERVER_PORT:-9000}"
+    # Host ports: compose.dev-direct-ports.yml when not using --proxy.
     environment:
       SERVER_PORT: ${SERVER_PORT:-9000}
       RAG_DEV_POLL_INTERVAL: ${RAG_DEV_POLL_INTERVAL:-2}
       SPRING_PROFILES_ACTIVE: dev
+      RAG_AUTH_EMAIL_CONFIRMATION_ENABLED: "true"
+      RAG_AUTH_MAIL_ENABLED: "true"
+      RAG_AUTH_WEBAPP_BASE_URL: ${RAG_AUTH_WEBAPP_BASE_URL:-http://localhost:3000}
       SPRING_MAIN_ALLOW_CIRCULAR_REFERENCES: "true"
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-vectordb}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${PORT:-8000}
+      RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${CLASSIFIER_SERVICE_PORT:-8000}
       # Ollama URL: same rag-service/.env keys as production backend (host.docker.internal, ollama:11434, etc.).
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       SPRING_AI_OLLAMA_BASE_URL: ${SPRING_AI_OLLAMA_BASE_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}

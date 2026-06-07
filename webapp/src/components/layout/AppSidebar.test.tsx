@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
@@ -106,6 +106,22 @@ vi.mock("@/features/projects/components/NewProjectDialog", () => ({
       New project
     </button>
   ),
+}));
+
+vi.mock("@/features/chat/hooks/use-chat-presets-catalog", () => ({
+  useChatPresetsCatalog: () => ({
+    data: { productPresets: [], experimentalPresets: [] },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
+vi.mock("@/features/documents/hooks/use-project-documents", () => ({
+  useProjectDocuments: () => ({
+    data: [],
+    isLoading: false,
+    isError: false,
+  }),
 }));
 
 vi.mock("@/features/chat/hooks/use-conversations", () => ({
@@ -330,6 +346,8 @@ describe("AppSidebar", () => {
     const user = userEvent.setup();
     render(<AppSidebar />, { wrapper: Wrapper });
     await user.click(screen.getByRole("button", { name: /new conversation/i }));
+    const dlg = await screen.findByRole("dialog");
+    await user.click(within(dlg).getByRole("button", { name: /^create conversation$/i }));
     expect(mockCreateConversation.mutateAsync).toHaveBeenCalled();
     expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p1&conversationId=c42");
   });
@@ -370,6 +388,20 @@ describe("AppSidebar", () => {
     render(<AppSidebar />, { wrapper: Wrapper });
     await user.click(screen.getByRole("button", { name: /^project one$/i }));
     expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p1");
+  });
+
+  it("main nav Chat link includes active projectId when a project is selected", () => {
+    useAppStore.setState({ activeProject: { id: "p1", name: "Project One" } });
+    render(<AppSidebar />, { wrapper: Wrapper });
+    const chatLink = screen.getByRole("link", { name: /^chat$/i });
+    expect(chatLink).toHaveAttribute("href", "/chat?projectId=p1");
+  });
+
+  it("main nav Chat link goes to projects when no active project", () => {
+    useAppStore.setState({ activeProject: null });
+    render(<AppSidebar />, { wrapper: Wrapper });
+    const chatLink = screen.getByRole("link", { name: /^chat$/i });
+    expect(chatLink).toHaveAttribute("href", "/projects");
   });
 
   it("clears stale active project when it is not in the current list", async () => {

@@ -92,7 +92,7 @@ public class RuntimeTraceReplayStrategy {
         }
 
         ExecutionContext ctxAfterQu = buildContextAndRunQu(trace, inputs, pin);
-        RagExecutionContextHolder.set(toLegacy(ctxAfterQu));
+        RagExecutionContextHolder.set(toRagExecutionContextHolder(ctxAfterQu));
         try {
             RagExecutionResult partial = workflow.execute(ctxAfterQu);
             return RuntimeTraceReplayResult.success(
@@ -154,6 +154,7 @@ public class RuntimeTraceReplayStrategy {
                                 Optional.empty(),
                                 Optional.empty(),
                                 Optional.empty(),
+                                Optional.empty(),
                                 Optional.empty());
 
         String configHash = trace.configHash() != null ? trace.configHash() : "";
@@ -172,6 +173,7 @@ public class RuntimeTraceReplayStrategy {
                         Optional.ofNullable(trace.resolvedConfigSnapshotId()),
                         correlationId,
                         inputs.documentFilter(),
+                        Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
@@ -226,6 +228,7 @@ public class RuntimeTraceReplayStrategy {
                         baseBeforeMemory.chatModelOverride(),
                         baseBeforeMemory.queryPlan(),
                         baseBeforeMemory.advisorPackedContextSet(),
+                        baseBeforeMemory.structuredAnswerPlan(),
                         userQuery,
                         mem.finalPlanningInputText(),
                         mem.slice(),
@@ -270,6 +273,7 @@ public class RuntimeTraceReplayStrategy {
                 ctx.chatModelOverride(),
                 Optional.of(plan),
                 ctx.advisorPackedContextSet(),
+                ctx.structuredAnswerPlan(),
                 ctx.preMemoryPlanningInputText(),
                 ctx.effectivePlanningInputText(),
                 ctx.memorySlice(),
@@ -294,7 +298,7 @@ public class RuntimeTraceReplayStrategy {
                 ctx.routingStageTraces());
     }
 
-    private static RagExecutionContext toLegacy(ExecutionContext ctx) {
+    private static RagExecutionContext toRagExecutionContextHolder(ExecutionContext ctx) {
         return new RagExecutionContext(
                 ctx.conversationId() != null ? ctx.conversationId().toString() : null,
                 ctx.userId() != null ? ctx.userId().toString() : null,

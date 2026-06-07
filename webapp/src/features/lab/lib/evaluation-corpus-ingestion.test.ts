@@ -1,0 +1,94 @@
+import { describe, expect, it } from "vitest";
+import {
+  corpusAllDocumentsTerminal,
+  humanizeIngestionErrorMessage,
+  mergeCorpusAfterUpload,
+  uploadItemStatusToDocumentStatus,
+} from "./evaluation-corpus-ingestion";
+import type { EvaluationCorpusDocumentsUploadResponseDto, EvaluationCorpusSummaryDto } from "@/types/api";
+
+const baseCorpus: EvaluationCorpusSummaryDto = {
+  id: "corpus-1",
+  name: "KB",
+  sourceType: "UPLOADED",
+  documentCount: 0,
+  readyCount: 0,
+  failedCount: 0,
+  documents: [],
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
+
+describe("evaluation-corpus-ingestion", () => {
+  it("maps upload statuses to document statuses", () => {
+    expect(uploadItemStatusToDocumentStatus("PROCESSING")).toBe("INGESTING");
+    expect(uploadItemStatusToDocumentStatus("READY")).toBe("READY");
+    expect(uploadItemStatusToDocumentStatus("FAILED")).toBe("ERROR");
+  });
+
+  it("merges new upload rows into corpus cache immediately", () => {
+    const merged = mergeCorpusAfterUpload(baseCorpus, {
+      corpus: baseCorpus,
+      uploads: [{ documentId: "d1", fileName: "a.txt", status: "PROCESSING", error: null }],
+    });
+    expect(merged.documentCount).toBe(1);
+    expect(merged.documents[0]?.status).toBe("INGESTING");
+    expect(merged.readyCount).toBe(0);
+  });
+
+  it("detects terminal vs non-terminal documents", () => {
+    expect(
+      corpusAllDocumentsTerminal({
+        documents: [{ status: "READY" }, { status: "ERROR" }],
+      }),
+    ).toBe(true);
+    expect(
+      corpusAllDocumentsTerminal({
+        documents: [{ status: "READY" }, { status: "INGESTING" }],
+      }),
+    ).toBe(false);
+  });
+
+  it("humanizes ingestion errors to stable codes", () => {
+    expect(humanizeIngestionErrorMessage(null)).toBeNull();
+    expect(humanizeIngestionErrorMessage("unsupported type for file")).toBe("UNSUPPORTED_FILE");
+    expect(humanizeIngestionErrorMessage("Document indexing failed")).toBe("INDEX_ERROR");
+    expect(humanizeIngestionErrorMessage("DUPLICATE_FILE: a.txt")).toBe("DUPLICATE_FILE");
+    expect(humanizeIngestionErrorMessage("parse failed at line 1")).toBe("PARSE_ERROR");
+    expect(humanizeIngestionErrorMessage("embed model context limit")).toBe("EMBEDDING_ERROR");
+    expect(humanizeIngestionErrorMessage("empty upload")).toBe("EMPTY_FILE");
+    expect(humanizeIngestionErrorMessage("ingestion timed out watchdog")).toBe("INGESTION_TIMEOUT");
+    expect(humanizeIngestionErrorMessage("FAILED_PARSING")).toBe("PARSE_ERROR");
+    expect(humanizeIngestionErrorMessage("custom operator message")).toBe("custom operator message");
+  });
+
+  it("maps duplicate and error upload statuses", () => {
+    expect(uploadItemStatusToDocumentStatus("DUPLICATE")).toBe("READY");
+    expect(uploadItemStatusToDocumentStatus("ERROR")).toBe("ERROR");
+  });
+
+  it("mergeCorpusAfterUpload skips duplicates and preserves error details", () => {
+    const merged = mergeCorpusAfterUpload(baseCorpus, {
+      corpus: baseCorpus,
+      uploads: [
+        { documentId: "d1", fileName: "bad.txt", status: "FAILED", error: "FAILED_INDEX" },
+        { documentId: null, fileName: "dup.txt", status: "DUPLICATE", error: null },
+      ],
+    });
+    expect(merged.documents).toHaveLength(1);
+    expect(merged.documents[0]?.status).toBe("ERROR");
+    expect(merged.documents[0]?.errorMessage).toBe("FAILED_INDEX");
+    expect(merged.failedCount).toBe(1);
+  });
+
+  it("mergeCorpusAfterUpload throws when corpus summary is missing", () => {
+    const malformedUpload = { corpus: undefined, uploads: [] } as unknown as EvaluationCorpusDocumentsUploadResponseDto;
+    expect(() => mergeCorpusAfterUpload(undefined, malformedUpload)).toThrow(/missing corpus summary/);
+  });
+
+  it("corpusAllDocumentsTerminal treats empty summaries as terminal", () => {
+    expect(corpusAllDocumentsTerminal(null)).toBe(true);
+    expect(corpusAllDocumentsTerminal({ documents: [] })).toBe(true);
+    expect(corpusAllDocumentsTerminal({ documents: [{ status: "PROCESSING" }] })).toBe(false);
+  });
+});

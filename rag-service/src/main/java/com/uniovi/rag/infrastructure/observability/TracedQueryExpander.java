@@ -1,6 +1,6 @@
 package com.uniovi.rag.infrastructure.observability;
 
-import com.uniovi.rag.service.expand.QueryExpander;
+import com.uniovi.rag.application.service.runtime.query.expand.QueryExpander;
 
 import java.util.Map;
 

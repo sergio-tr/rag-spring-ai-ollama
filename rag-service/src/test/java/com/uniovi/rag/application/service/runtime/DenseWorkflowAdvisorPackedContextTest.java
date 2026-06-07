@@ -47,6 +47,7 @@ class DenseWorkflowAdvisorPackedContextTest {
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
+        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("ANS");
 
         DocumentDenseRagWorkflow wf = new DocumentDenseRagWorkflow(chatClient, pipeline, null);
 
@@ -66,6 +67,7 @@ class DenseWorkflowAdvisorPackedContextTest {
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
+        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("ANS");
 
         ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(chatClient, pipeline, null);
 
@@ -167,6 +169,7 @@ class DenseWorkflowAdvisorPackedContextTest {
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
+                        Optional.empty(),
                         Optional.empty()),
                 Optional.empty(),
                 Optional.empty(),
@@ -175,6 +178,7 @@ class DenseWorkflowAdvisorPackedContextTest {
                 Optional.empty(),
                 Optional.of(plan),
                 Optional.of(packed),
+                Optional.empty(),
                 plan.rawUserQuery(),
                 plan.rawUserQuery(),
                 Optional.empty(),

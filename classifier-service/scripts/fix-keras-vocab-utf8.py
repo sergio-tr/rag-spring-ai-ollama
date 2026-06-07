@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fix legacy Keras v3 (.keras) vocabulary assets encoded in latin-1.
+Fix older Keras v3 (.keras) vocabulary assets encoded in latin-1.
 
 TensorFlow/Keras expects TextVectorization vocab files to be UTF-8. 
 """

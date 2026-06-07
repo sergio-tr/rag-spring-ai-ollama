@@ -30,6 +30,7 @@ vi.mock("@/features/projects/hooks/use-projects", () => ({
       convCount: 0,
       updatedAt: "",
     }),
+    reset: vi.fn(),
     isPending: false,
     isError: false,
   }),
@@ -174,7 +175,7 @@ describe("AppSectionActions", () => {
     mockSearchParams.mockReturnValue(new URLSearchParams({ conversationId: "c1", projectId: "p1" }));
     useAppStore.setState({ activeProject: { id: "p1", name: "P1" } });
     renderActions();
-    expect(screen.getByTestId("chat-actions-menu-trigger")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-config-trigger")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /chat actions/i })).toBeInTheDocument();
   });
 

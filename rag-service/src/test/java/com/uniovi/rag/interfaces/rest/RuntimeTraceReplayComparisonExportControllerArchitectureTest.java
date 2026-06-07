@@ -28,7 +28,7 @@ class RuntimeTraceReplayComparisonExportControllerArchitectureTest {
                     .areAssignableTo(RuntimeTraceReplayComparisonService.class);
 
     @ArchTest
-    static final ArchRule exportControllerDoesNotDependOnTraceQueryService =
+    static final ArchRule exportControllerDoesNotDependOnTraceQueryExecutionService =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceReplayComparisonExportController")

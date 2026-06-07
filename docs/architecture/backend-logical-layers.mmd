@@ -3,7 +3,6 @@
 flowchart TB
   subgraph interfaces [REST and adapters]
     REST[interfaces.rest product controllers]
-    LEG[controller legacy RAG surface]
     ADM[api.admin]
   end
 
@@ -25,7 +24,6 @@ flowchart TB
 
   REST --> SVC
   REST --> KNOW
-  LEG --> SVC
   ADM --> SVC
   SVC --> CFG
   SVC --> RUN

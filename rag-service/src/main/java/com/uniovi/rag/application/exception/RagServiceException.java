@@ -34,6 +34,17 @@ public class RagServiceException extends RuntimeException {
         );
     }
 
+    public static RagServiceException llmContextLimitExceeded(Throwable cause) {
+        return new RagServiceException(
+                ErrorCode.LLM_CONTEXT_LIMIT_EXCEEDED,
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "llm-context-limit-exceeded: the prompt was too large for the configured model context window. "
+                        + "Reduce document scope, lower full-corpus max chars, or use a larger-context model.",
+                cause != null ? cause.getMessage() : null,
+                cause
+        );
+    }
+
     /**
      * Ollama is reachable but a configured chat or embedding model is not installed ({@code /api/embed} or chat 404).
      */

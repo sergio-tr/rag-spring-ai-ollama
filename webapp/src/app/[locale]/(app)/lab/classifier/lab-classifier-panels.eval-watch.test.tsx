@@ -12,11 +12,17 @@ vi.mock("@/lib/lab-job-follow", () => ({
   followLabJob: (...args: unknown[]) => followLabJobMock(...args),
 }));
 
+vi.mock("@/features/lab/hooks/use-classifier-registry", () => ({
+  classifierModelsQueryKey: ["lab", "classifier-models"],
+  useClassifierModelsQuery: () => ({ data: [], isLoading: false, isError: false }),
+  useActivateClassifierModel: () => ({ mutateAsync: vi.fn() }),
+}));
+
 import * as apiClient from "@/lib/api-client";
 import { LabJobPollTimeoutError } from "@/lib/async-task";
 import { LabClassifierEvalPanel } from "./lab-classifier-panels";
 
-describe("LabClassifierEvalPanel poll timeout + resume watching", () => {
+describe("LabClassifierEvalPanel stream failure + resume watching", () => {
   beforeEach(() => {
     followLabJobMock.mockReset();
     vi.spyOn(apiClient, "apiFetch").mockResolvedValue({
@@ -31,7 +37,7 @@ describe("LabClassifierEvalPanel poll timeout + resume watching", () => {
     vi.restoreAllMocks();
   });
 
-  it("after poll watchdog timeout, Resume watching triggers a second followLabJob call", async () => {
+  it("after local watch timeout, Resume watching triggers a second sse followLabJob call", async () => {
     const user = userEvent.setup();
     const queued: AsyncTaskStatusDto = {
       id: "eval-timeout",
@@ -70,5 +76,7 @@ describe("LabClassifierEvalPanel poll timeout + resume watching", () => {
     await user.click(screen.getByRole("button", { name: /Resume watching/i }));
 
     await waitFor(() => expect(followLabJobMock).toHaveBeenCalledTimes(2));
+    expect(followLabJobMock.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ mode: "sse" }));
+    expect(followLabJobMock.mock.calls[1]?.[2]).toEqual(expect.objectContaining({ mode: "sse" }));
   });
 });

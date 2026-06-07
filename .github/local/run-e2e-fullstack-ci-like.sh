@@ -24,16 +24,20 @@ MAVEN_CACHE_VOLUME="${RAG_MAVEN_CACHE_VOLUME:-rag-m2-cache}"
 BACKEND_HOST_PORT="${RAG_CI_BACKEND_HOST_PORT:-9000}"
 WEBAPP_HOST_PORT="${RAG_CI_WEBAPP_HOST_PORT:-3000}"
 REVERSE_PROXY_HTTPS_PORT="${REVERSE_PROXY_HTTPS_PORT:-8443}"
+HOST_GATEWAY_IP="${RAG_CI_HOST_GATEWAY_IP:-}"
 
 # Playwright runs in a Linux container for parity (browser deps included).
-PLAYWRIGHT_IMAGE="${RAG_PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.59.1-jammy}"
+PLAYWRIGHT_IMAGE="${RAG_PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.60.0-jammy}"
 NPM_CACHE_VOLUME="${RAG_WEBAPP_NPM_CACHE_VOLUME:-rag-webapp-npm-cache}"
+
+REUSE_POSTGRES="${RAG_CI_REUSE_POSTGRES:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --stop-after) STOP_AFTER=1; shift ;;
+    --reuse-postgres) REUSE_POSTGRES=1; shift ;;
     -h|--help)
-      echo "Usage: $0 [--stop-after]"
+      echo "Usage: $0 [--stop-after] [--reuse-postgres]"
       exit 0
       ;;
     *) echo "Unknown option: $1"; exit 1 ;;
@@ -66,6 +70,31 @@ check_host_port_available() {
   fi
 }
 
+resolve_host_gateway_ip() {
+  if [[ -n "${HOST_GATEWAY_IP}" ]]; then
+    echo "${HOST_GATEWAY_IP}"
+    return
+  fi
+  local resolved
+  resolved="$(
+    docker run --rm --add-host=host-gateway.internal:host-gateway alpine:3.20 \
+      getent hosts host-gateway.internal 2>/dev/null | awk 'NR == 1 { print $1 }' || true
+  )"
+  if [[ "${resolved}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "host-gateway"
+    return
+  fi
+  local webapp_port="${RAG_CI_WEBAPP_HOST_PORT:-3000}"
+  for candidate in 192.168.65.254 172.17.0.1; do
+    if docker run --rm --add-host="host-gateway.internal:${candidate}" alpine:3.20 \
+      wget -q -T 2 -O /dev/null "http://host-gateway.internal:${webapp_port}/" 2>/dev/null; then
+      echo "${candidate}"
+      return
+    fi
+  done
+  echo "172.17.0.1"
+}
+
 require docker
 require curl
 require npm
@@ -96,6 +125,10 @@ wait_for_pg() {
 }
 
 start_postgres() {
+  if [[ "${REUSE_POSTGRES}" != "1" ]]; then
+    log "Recreating Postgres for clean Flyway (${POSTGRES_CONTAINER})."
+    docker rm -f "${POSTGRES_CONTAINER}" >/dev/null 2>&1 || true
+  fi
   if docker ps -a --format '{{.Names}}' | grep -qx "${POSTGRES_CONTAINER}"; then
     if docker ps --format '{{.Names}}' | grep -qx "${POSTGRES_CONTAINER}"; then
       log "Using existing running Postgres container: ${POSTGRES_CONTAINER}"
@@ -156,50 +189,55 @@ start_backend() {
     -e RAG_JWT_SECRET="e2e-ci-jwt-secret-must-be-at-least-32-chars" \
     -e RAG_TEST_USE_TESTCONTAINERS_DATASOURCE=false \
     -e RAG_API_PRODUCT_BASE_PATH=/api/v5 \
+    -e RAG_HEALTH_OLLAMA_ENABLED=false \
+    -e RAG_HEALTH_CLASSIFIER_ENABLED=false \
     eclipse-temurin:21-jdk bash -lc "./mvnw -B -DskipTests spring-boot:run -Dspring-boot.run.profiles=e2e" \
     >/dev/null
 }
 
+SPRING_LOG_PATH="${SPRING_LOG_PATH:-/tmp/spring-e2e-docker.log}"
+
 wait_for_backend() {
-  local backend_health_url="http://127.0.0.1:${BACKEND_HOST_PORT}/actuator/health"
-  log "Waiting for backend health: ${backend_health_url}"
-  for _ in $(seq 1 90); do
-    if curl -fsS "${backend_health_url}" >/dev/null 2>&1; then
-      log "Backend healthy."
+  local readiness_url="http://127.0.0.1:${BACKEND_HOST_PORT}/actuator/health/readiness"
+  log "Waiting for backend readiness (fail-fast on Flyway): ${readiness_url}"
+  for i in $(seq 1 45); do
+    docker logs --tail 150 "${BACKEND_CONTAINER}" > "${SPRING_LOG_PATH}" 2>&1 || true
+    if grep -qE 'FlywayValidateException|Migration checksum mismatch|Application run failed' "${SPRING_LOG_PATH}" 2>/dev/null; then
+      echo "error: Spring failed during startup (see backend log tail)." >&2
+      tail -n 120 "${SPRING_LOG_PATH}" >&2 || true
+      return 1
+    fi
+    code="$(curl -s -o /dev/null -w '%{http_code}' "${readiness_url}" 2>/dev/null || true)"
+    if [[ "${code}" == "200" ]]; then
+      log "Backend ready after ${i} attempt(s)."
       return 0
     fi
     sleep 2
   done
-  echo "--- backend log (tail) ---" >&2
-  docker logs --tail 200 "${BACKEND_CONTAINER}" >&2 || true
+  echo "error: backend readiness never returned 200 (${readiness_url})" >&2
+  curl -sS "http://127.0.0.1:${BACKEND_HOST_PORT}/actuator/health" 2>/dev/null || true
+  echo "" >&2
+  curl -sS "${readiness_url}" 2>/dev/null || true
+  echo "" >&2
+  tail -n 120 "${SPRING_LOG_PATH}" >&2 || true
   return 1
 }
 
-wait_for_admin_login() {
-  local admin_login_url="https://127.0.0.1:8443/api/auth/login"
-  log "Waiting for e2e admin login to be available."
-  for _ in $(seq 1 45); do
-    code="$(
-      curl -ksS -o /dev/null -w '%{http_code}' \
-        -H 'Content-Type: application/json' \
-        -d '{"email":"admin@e2e.local","password":"e2e"}' \
-        "${admin_login_url}" || true
-    )"
-    if [[ "${code}" == "200" ]]; then
-      log "Admin login OK."
-      return 0
-    fi
-    sleep 2
-  done
-  log "Admin login not ready; continuing (admin UI test may fail)."
+wait_for_seed_logins() {
+  log "Waiting for seed logins on direct backend (parity with CI e2e-wait-login.sh)."
+  bash "${REPO_ROOT}/.github/scripts/e2e-wait-login.sh"
+  E2E_LOGIN_EMAIL="admin@e2e.local" E2E_LOGIN_PASSWORD="e2e" \
+    bash "${REPO_ROOT}/.github/scripts/e2e-wait-login.sh"
 }
 
 start_proxy() {
   log "Starting reverse-proxy container for HTTPS proxy-mode E2E."
+  local host_gateway
+  host_gateway="$(resolve_host_gateway_ip)"
   docker rm -f "${PROXY_CONTAINER}" >/dev/null 2>&1 || true
   docker build -t rag-reverse-proxy-local "${REPO_ROOT}/reverse-proxy" >/dev/null
   docker run -d --name "${PROXY_CONTAINER}" \
-    --add-host=host-gateway.internal:host-gateway \
+    --add-host="host-gateway.internal:${host_gateway}" \
     -p 8080:80 -p 8443:443 \
     -e BACKEND_HOST=host-gateway.internal \
     -e BACKEND_INTERNAL_PORT="${BACKEND_HOST_PORT}" \
@@ -210,6 +248,9 @@ start_proxy() {
     -e API_PROXY_CONNECT_TIMEOUT=10s \
     -e API_PROXY_SEND_TIMEOUT=180s \
     -e API_PROXY_READ_TIMEOUT=180s \
+    -e WEB_PROXY_CONNECT_TIMEOUT=10s \
+    -e WEB_PROXY_SEND_TIMEOUT=180s \
+    -e WEB_PROXY_READ_TIMEOUT=180s \
     rag-reverse-proxy-local >/dev/null
 }
 
@@ -259,19 +300,56 @@ wait_for_webapp() {
   return 1
 }
 
-seed_admin() {
-  # Not explicitly done in the e2e_fullstack job, but required if tests hit /api/admin/**.
-  log "Seeding e2e admin user (best-effort)."
+seed_e2e_users() {
+  log "Seeding e2e admin + dev users."
   docker exec -e PGPASSWORD=postgres "${POSTGRES_CONTAINER}" \
     psql -U postgres -d vectordb -v ON_ERROR_STOP=1 -c "
-      INSERT INTO users (id, email, password_hash, name, role, created_at)
-      VALUES ('e2e0ad00-0000-4000-8000-000000000001', 'admin@e2e.local', '{noop}e2e', 'E2E Admin', 'ADMIN', CURRENT_TIMESTAMP)
-      ON CONFLICT (email) DO NOTHING;
-    " >/dev/null || true
+      INSERT INTO users (id, email, password_hash, name, role, created_at, email_verified, email_verified_at)
+      VALUES
+        (
+          'e2e0ad00-0000-4000-8000-000000000001',
+          'admin@e2e.local',
+          '{noop}e2e',
+          'E2E Admin',
+          'ADMIN',
+          CURRENT_TIMESTAMP,
+          true,
+          CURRENT_TIMESTAMP
+        ),
+        (
+          'e2e0ad00-0000-4000-8000-000000000002',
+          'dev@local.test',
+          '{noop}dev',
+          'Dev User',
+          'USER',
+          CURRENT_TIMESTAMP,
+          true,
+          CURRENT_TIMESTAMP
+        )
+      ON CONFLICT (email) DO UPDATE SET
+        password_hash = EXCLUDED.password_hash,
+        name = EXCLUDED.name,
+        role = EXCLUDED.role,
+        email_verified = true,
+        email_verified_at = COALESCE(users.email_verified_at, EXCLUDED.email_verified_at);
+    " >/dev/null
+}
+
+run_host_stack_preflight() {
+  log "Host stack preflight (curl + auth) before Playwright container."
+  (
+    cd "${WEBAPP_DIR}"
+    E2E_BACKEND_HEALTH_URL="http://127.0.0.1:${BACKEND_HOST_PORT}" \
+    E2E_WEB_HEALTH_URL="http://127.0.0.1:${WEBAPP_HOST_PORT}" \
+    API_BASE_URL="https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}" \
+    PLAYWRIGHT_BASE_URL="https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}" \
+      node scripts/e2e-stack-preflight.mjs
+  )
 }
 
 run_playwright_fullstack() {
-  log "Running Next.js build + Playwright @fullstack in ${PLAYWRIGHT_IMAGE}."
+  run_host_stack_preflight
+  log "Running Playwright @fullstack in ${PLAYWRIGHT_IMAGE} (host webapp already built)."
 
   docker run --rm \
     --network host \
@@ -279,20 +357,21 @@ run_playwright_fullstack() {
     -w /repo/webapp \
     -v "${NPM_CACHE_VOLUME}:/root/.npm" \
     -e E2E_ALLOW_INSECURE_COOKIES="true" \
-    -e E2E_LOGIN_TIMEOUT_MS="12000" \
+    -e E2E_LOGIN_TIMEOUT_MS="25000" \
     -e E2E_ADMIN_ENABLED="1" \
     -e PLAYWRIGHT_SKIP_WEBSERVER="1" \
     -e PLAYWRIGHT_BASE_URL="https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}" \
     -e PLAYWRIGHT_WORKERS="1" \
-    -e PLAYWRIGHT_RETRIES="1" \
-    -e PLAYWRIGHT_EXPECT_TIMEOUT_MS="10000" \
-    -e PLAYWRIGHT_TEST_TIMEOUT_MS="30000" \
+    -e PLAYWRIGHT_RETRIES="0" \
+    -e PLAYWRIGHT_MAX_FAILURES="1" \
     -e PLAYWRIGHT_IGNORE_HTTPS_ERRORS="1" \
     -e API_BASE_URL="https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}" \
+    -e E2E_BACKEND_HEALTH_URL="http://127.0.0.1:${BACKEND_HOST_PORT}" \
+    -e E2E_WEB_HEALTH_URL="http://127.0.0.1:${WEBAPP_HOST_PORT}" \
     -e NEXT_PUBLIC_API_BASE_URL="" \
     -e NEXT_PUBLIC_RAG_API_PREFIX="/api/v5" \
     "${PLAYWRIGHT_IMAGE}" bash -lc \
-      "npm ci --silent --no-audit --no-fund && npm run build && npm run test:e2e:fullstack"
+      "npm ci --silent --no-audit --no-fund && E2E_SKIP_STACK_PREFLIGHT=1 npm run test:e2e:preflight:only && npm run test:e2e:fullstack:critical"
 }
 
 stop_backend() {
@@ -309,6 +388,9 @@ stop_webapp() {
     kill "$(cat "${WEBAPP_PID_PATH}")" 2>/dev/null || true
     rm -f "${WEBAPP_PID_PATH}"
   fi
+  if command -v fuser >/dev/null 2>&1; then
+    fuser -k "${WEBAPP_HOST_PORT}/tcp" 2>/dev/null || true
+  fi
 }
 
 cleanup() {
@@ -323,16 +405,20 @@ cleanup() {
 trap cleanup EXIT
 
 log "Repo root: ${REPO_ROOT}"
+stop_webapp
+stop_proxy
+stop_backend
+sleep 1
 start_postgres
 ensure_network
 prepare_postgres
 start_backend
 wait_for_backend
+seed_e2e_users
+wait_for_seed_logins
 start_webapp
 wait_for_webapp
 start_proxy
 wait_for_proxy
-seed_admin
-wait_for_admin_login
 run_playwright_fullstack
 

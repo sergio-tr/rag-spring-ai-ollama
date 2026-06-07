@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Canonical JSON error response for API surfaces.
@@ -19,7 +20,8 @@ public record ApiErrorResponse(
         String message,
         String path,
         String requestId,
-        List<ApiValidationError> validationErrors) {
+        List<ApiValidationError> validationErrors,
+        Map<String, Object> details) {
 
     /**
      * Backward/forward compatibility for API clients that expect an envelope-style response:
@@ -35,7 +37,7 @@ public record ApiErrorResponse(
 
     @JsonProperty("error")
     public ApiErrorBody error() {
-        return new ApiErrorBody(code, message, null);
+        return new ApiErrorBody(code, message, details);
     }
 }
 

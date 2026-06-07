@@ -8,6 +8,8 @@ import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallin
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
+import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
@@ -66,6 +68,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.ObjectProvider;
 
 class RagExecutionOrchestratorAdvisorTest {
 
@@ -142,7 +146,10 @@ class RagExecutionOrchestratorAdvisorTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        judgeStrategy);
+                        judgeStrategy,
+                        mock(StructuredAnswerPlanService.class),
+                        mock(AnswerVerificationService.class),
+                        mock(ObjectProvider.class));
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("tool-answer", out.answerText());
@@ -246,7 +253,10 @@ class RagExecutionOrchestratorAdvisorTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        judgeStrategy);
+                        judgeStrategy,
+                        mock(StructuredAnswerPlanService.class),
+                        mock(AnswerVerificationService.class),
+                        mock(ObjectProvider.class));
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("fc-answer", out.answerText());
@@ -264,7 +274,7 @@ class RagExecutionOrchestratorAdvisorTest {
         QueryPlan plan = plan(AmbiguityStatus.SUFFICIENT);
         ExecutionContext in =
                 ctxWithoutPlan(ragChunkDenseAdvisor(), new KnowledgeSnapshotSelection(
-                        List.of(snap), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+                        List.of(snap), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
 
         WorkflowSelector workflowSelector = mock(WorkflowSelector.class);
         QueryUnderstandingPipeline qu = mock(QueryUnderstandingPipeline.class);
@@ -360,7 +370,10 @@ class RagExecutionOrchestratorAdvisorTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        judgeStrategy);
+                        judgeStrategy,
+                        mock(StructuredAnswerPlanService.class),
+                        mock(AnswerVerificationService.class),
+                        mock(ObjectProvider.class));
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("wf-answer", out.answerText());
@@ -461,6 +474,7 @@ class RagExecutionOrchestratorAdvisorTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 "user q",
                 "user q",
                 Optional.empty(),
@@ -502,6 +516,7 @@ class RagExecutionOrchestratorAdvisorTest {
                 ctx.chatModelOverride(),
                 Optional.of(plan),
                 Optional.empty(),
+                ctx.structuredAnswerPlan(),
                 ctx.preMemoryPlanningInputText(),
                 ctx.effectivePlanningInputText(),
                 ctx.memorySlice(),
@@ -543,6 +558,7 @@ class RagExecutionOrchestratorAdvisorTest {
                 ctx.chatModelOverride(),
                 ctx.queryPlan(),
                 Optional.of(packed),
+                ctx.structuredAnswerPlan(),
                 ctx.preMemoryPlanningInputText(),
                 ctx.effectivePlanningInputText(),
                 ctx.memorySlice(),

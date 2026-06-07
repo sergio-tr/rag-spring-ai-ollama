@@ -23,18 +23,18 @@ class AuthLoginNegativeSimulation extends Simulation {
   private val scn = scenario("auth_login_negative")
     .during(Env.envInt("GATLING_AUTH_NEG_ITERATION_SEC", 15).seconds) {
       exec(
-        http("POST /api/auth/login (wrong password)")
-          .post("/api/auth/login")
+        http("POST product auth login (wrong password)")
+          .post(s"${RagPaths.productPrefix}/auth/login")
           .body(StringBody(loginWrongPassword))
           .check(status.is(401))
       ).pause(300.millis, 900.millis).exec(
-        http("POST /api/auth/login (invalid email)")
-          .post("/api/auth/login")
+        http("POST product auth login (invalid email)")
+          .post(s"${RagPaths.productPrefix}/auth/login")
           .body(StringBody("""{"email":"not-an-email","password":"x"}"""))
           .check(status.is(400))
       ).pause(300.millis, 900.millis).exec(
-        http("POST /api/auth/refresh (invalid token)")
-          .post("/api/auth/refresh")
+        http("POST product auth refresh (invalid token)")
+          .post(s"${RagPaths.productPrefix}/auth/refresh")
           .body(StringBody("""{"refreshToken":"invalid"}"""))
           .check(status.is(401))
       ).pause(300.millis, 900.millis)

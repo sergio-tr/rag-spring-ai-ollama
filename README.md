@@ -104,7 +104,7 @@ Prefix is **configurable**. Spring: `rag.api.product-base-path` (`RAG_API_PRODUC
 | `GET` \ | `PUT` | `{product}/config/user` | Effective user RAG config (JSON); authenticated |
 | `GET` \ | `PUT` \ | `DELETE` | `{product}/config/project/{projectId}` | Project overrides; authenticated, project ownership |
 | `GET` | `{product}/lab/status` | Lab capability stub (authenticated) |
-| `GET` | `/api/admin/health` | Admin health (`403` unless JWT role `ADMIN`) |
+| `GET` | `{product}/admin/health` | Admin health (`403` unless JWT role `ADMIN`) |
 
 **Ollama URL:** set `SPRING_AI_OLLAMA_BASE_URL` (alias `OLLAMA_BASE_URL`) to the Ollama HTTP API — for example `http://127.0.0.1:11434` on the host. See [docs/operations/environments.md](docs/operations/environments.md) and [rag-service/README.md](rag-service/README.md) for more details.
 

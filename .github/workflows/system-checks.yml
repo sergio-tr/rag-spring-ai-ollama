@@ -1,4 +1,4 @@
-# Playwright API smoke against a running Spring instance (manual). See webapp/e2e/api/README.md and docs/testing/traceability-legacy-tools.md
+# Playwright API smoke against a running Spring instance (manual). See webapp/e2e/api/README.md and docs/testing/traceability-retired-tools.md
 name: System checks
 
 on:

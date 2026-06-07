@@ -81,6 +81,7 @@ class ClarificationStrategyTest {
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
+                        Optional.empty(),
                         "ambiguous question",
                         "ambiguous question",
                         Optional.empty(),

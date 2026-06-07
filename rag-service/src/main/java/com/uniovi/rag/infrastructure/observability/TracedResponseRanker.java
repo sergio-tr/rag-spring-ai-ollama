@@ -1,8 +1,8 @@
 package com.uniovi.rag.infrastructure.observability;
 
-import com.uniovi.rag.application.model.CandidateResponse;
+import com.uniovi.rag.application.result.query.CandidateResponse;
 import com.uniovi.rag.domain.model.RankerResult;
-import com.uniovi.rag.service.ranker.ResponseRanker;
+import com.uniovi.rag.application.service.runtime.ranking.ResponseRanker;
 
 import java.util.List;
 import java.util.Map;

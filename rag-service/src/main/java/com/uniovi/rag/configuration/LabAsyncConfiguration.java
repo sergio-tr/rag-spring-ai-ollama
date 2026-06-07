@@ -1,5 +1,6 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -9,7 +10,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
 /**
- * Thread pool for long-running lab/admin background work ({@code @Async("labExecutor")}) and SSE polling.
+ * Thread pool for long-running lab/admin background work ({@code @Async("labExecutor")}) and SSE keepalives.
  */
 @Configuration
 public class LabAsyncConfiguration {
@@ -21,6 +22,28 @@ public class LabAsyncConfiguration {
         ex.setMaxPoolSize(4);
         ex.setQueueCapacity(50);
         ex.setThreadNamePrefix("lab-async-");
+        ex.setTaskDecorator(
+                runnable -> {
+                    var snapshot = ContextPropagatingFutures.captureContext();
+                    return () -> ContextPropagatingFutures.withSnapshot(snapshot, runnable);
+                });
+        ex.initialize();
+        return ex;
+    }
+
+    /**
+     * Dedicated executor for document ingestion pipelines.
+     *
+     * <p>Rationale: uploads can arrive in bursts (multi-file drag & drop) and should not starve
+     * lab async work or rely on the default {@code @Async} executor configuration.
+     */
+    @Bean(name = "documentIngestionExecutor")
+    public Executor documentIngestionExecutor() {
+        ThreadPoolTaskExecutor ex = new ThreadPoolTaskExecutor();
+        ex.setCorePoolSize(4);
+        ex.setMaxPoolSize(8);
+        ex.setQueueCapacity(200);
+        ex.setThreadNamePrefix("doc-ingest-");
         ex.initialize();
         return ex;
     }

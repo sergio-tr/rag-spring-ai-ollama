@@ -36,7 +36,7 @@ class TestClassificationService:
         assert result.query_type == "SUMMARIZE_MEETING"
 
     def test_classify_uses_default_model_id_when_not_provided(self):
-        engine = _mock_engine(loaded=True, predict_result="X")
+        engine = _mock_engine(loaded=True, predict_result="COUNT_DOCUMENTS")
         svc = ClassificationService(engine)
         svc.classify("q")
         engine.predict.assert_called_once()
@@ -45,7 +45,7 @@ class TestClassificationService:
         assert args[0][1] == "default"
 
     def test_classify_uses_provided_model_id(self):
-        engine = _mock_engine(loaded=True, predict_result="X")
+        engine = _mock_engine(loaded=True, predict_result="COUNT_DOCUMENTS")
         svc = ClassificationService(engine)
         svc.classify("q", model_id="custom-model")
         engine.predict.assert_called_once()
@@ -53,27 +53,27 @@ class TestClassificationService:
 
     def test_classify_model_not_loaded_triggers_load(self):
         loader = _mock_loader(is_loaded=False)
-        engine = _mock_engine(loaded=False, predict_result="X", loader=loader)
+        engine = _mock_engine(loaded=False, predict_result="COUNT_DOCUMENTS", loader=loader)
         svc = ClassificationService(engine)
         svc.classify("q")
         loader.load_by_id.assert_called_once_with("default")
 
     def test_classify_file_not_found_raises_model_not_found(self):
         loader = _mock_loader(is_loaded=False, load_raises=FileNotFoundError())
-        engine = _mock_engine(loaded=False, predict_result="X", loader=loader)
+        engine = _mock_engine(loaded=False, predict_result="COUNT_DOCUMENTS", loader=loader)
         svc = ClassificationService(engine)
         with pytest.raises(ModelNotFoundError):
             svc.classify("q")
 
     def test_classify_predict_runtime_error(self):
-        engine = _mock_engine(loaded=True, predict_result="X")
+        engine = _mock_engine(loaded=True, predict_result="COUNT_DOCUMENTS")
         engine.predict.side_effect = RuntimeError("not ready")
         svc = ClassificationService(engine)
         with pytest.raises(ClassificationError, match="not available"):
             svc.classify("q")
 
     def test_classify_predict_other_exception(self):
-        engine = _mock_engine(loaded=True, predict_result="X")
+        engine = _mock_engine(loaded=True, predict_result="COUNT_DOCUMENTS")
         engine.predict.side_effect = ValueError("unexpected")
         svc = ClassificationService(engine)
         with pytest.raises(ClassificationError, match="failed"):

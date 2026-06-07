@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
 import { createTestQueryClient } from "@/test-utils/query-client";
@@ -7,6 +8,7 @@ import { IntlTestProvider } from "@/test-utils/intl";
 import { ClassifierRegistrySection } from "./classifier-registry-section";
 
 const refetch = vi.fn();
+const activateModel = vi.fn();
 
 vi.mock("@/features/help/HelpPopover", () => ({
   HelpPopover: () => <button type="button">Help</button>,
@@ -35,7 +37,7 @@ vi.mock("@/features/lab/hooks/use-classifier-registry", () => ({
     error: null,
     refetch,
   }),
-  useActivateClassifierModel: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useActivateClassifierModel: () => ({ mutateAsync: activateModel, isPending: false }),
 }));
 
 vi.mock("@/store/app.store", () => ({
@@ -54,6 +56,8 @@ function wrap(ui: React.ReactElement) {
 describe("ClassifierRegistrySection", () => {
   beforeEach(() => {
     refetch.mockClear();
+    activateModel.mockReset();
+    activateModel.mockResolvedValue(undefined);
   });
 
   it("shows registry table when models are returned", async () => {
@@ -68,5 +72,25 @@ describe("ClassifierRegistrySection", () => {
       expect(screen.getByTestId("classifier-registry-table")).toBeInTheDocument();
     });
     expect(screen.getByText("Model A")).toBeInTheDocument();
+  });
+
+  it("confirms activation for the active project", async () => {
+    const user = userEvent.setup();
+    render(
+      wrap(
+        <IntlTestProvider>
+          <ClassifierRegistrySection />
+        </IntlTestProvider>,
+      ),
+    );
+
+    await screen.findByTestId("classifier-registry-table");
+    await user.click(screen.getByTestId("classifier-registry-activate-m1"));
+    await user.click(screen.getByTestId("classifier-registry-confirm-activate"));
+
+    expect(activateModel).toHaveBeenCalledWith({
+      modelId: "m1",
+      body: { projectId: "p1" },
+    });
   });
 });

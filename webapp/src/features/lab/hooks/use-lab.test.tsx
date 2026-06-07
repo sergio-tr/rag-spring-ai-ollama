@@ -26,9 +26,13 @@ describe("lab hooks", () => {
 
   it("useLabStatus fetches", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce({
-      datasets: { enabled: false, questionCount: 0 },
+      datasetKindsReady: false,
+      datasets: { enabled: false, datasetKindsReady: false },
       evaluations: { llm: false, rag: false, classifierProxy: false },
       classifier: { configured: false, train: false, evaluate: false },
+      referenceBundleAvailable: false,
+      referenceBundleValid: false,
+      countsByDatasetKind: {},
       message: "",
     });
     const { result } = renderHook(() => useLabStatus(), { wrapper: wrap(qc) });

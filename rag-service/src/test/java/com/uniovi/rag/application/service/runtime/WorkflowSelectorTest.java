@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
@@ -24,6 +25,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 
+import com.uniovi.rag.configuration.RagRuntimeProperties;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
@@ -42,6 +45,7 @@ class WorkflowSelectorTest {
                 false,
                 false,
                 useRetrieval,
+                false,
                 false,
                 false,
                 false,
@@ -85,6 +89,7 @@ class WorkflowSelectorTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 "q",
                 "q",
                 Optional.empty(),
@@ -115,7 +120,16 @@ class WorkflowSelectorTest {
         selector =
                 new WorkflowSelector(
                         new DirectLlmWorkflow(chatClient, null),
-                        new FullCorpusWorkflow(chatClient, mock(SnapshotCorpusAssembler.class), null),
+                        new CorpusGroundedDirectWorkflow(
+                                chatClient,
+                                mock(SnapshotCorpusAssembler.class),
+                                new RuntimePromptBudgeter(new RagRuntimeProperties()),
+                                null),
+                        new FullCorpusWorkflow(
+                                chatClient,
+                                mock(SnapshotCorpusAssembler.class),
+                                new RuntimePromptBudgeter(new RagRuntimeProperties()),
+                                null),
                         new DocumentDenseRagWorkflow(
                                 chatClient,
                                 mock(AdvancedRetrievalPipeline.class),
@@ -140,6 +154,22 @@ class WorkflowSelectorTest {
     void select_fullCorpus_whenNaiveCorpusWithoutRetrieval() {
         assertTrue(selector.select(ctx(rag(false, true, MaterializationStrategy.CHUNK_LEVEL, false)))
                 instanceof FullCorpusWorkflow);
+    }
+
+    @Test
+    void select_corpusGroundedDirect_whenNaiveCorpusAndDirectWorkflowFlag() throws Exception {
+        RagConfig base = rag(false, true, MaterializationStrategy.CHUNK_LEVEL, false);
+        RagConfig rag =
+                RagConfig.applyJsonOverrides(base, new ObjectMapper().readTree("{\"corpusGroundedDirectWorkflow\": true}"));
+        assertTrue(selector.select(ctx(rag)) instanceof CorpusGroundedDirectWorkflow);
+    }
+
+    @Test
+    void select_fullCorpus_whenNaiveCorpusAndDirectWorkflowFlagExplicitFalse() throws Exception {
+        RagConfig base = rag(false, true, MaterializationStrategy.CHUNK_LEVEL, false);
+        RagConfig rag =
+                RagConfig.applyJsonOverrides(base, new ObjectMapper().readTree("{\"corpusGroundedDirectWorkflow\": false}"));
+        assertTrue(selector.select(ctx(rag)) instanceof FullCorpusWorkflow);
     }
 
     @Test
@@ -204,6 +234,7 @@ class WorkflowSelectorTest {
                 false,
                 false,
                 false,
+                false,
                 5,
                 0.2,
                 "l",
@@ -214,6 +245,171 @@ class WorkflowSelectorTest {
                 RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
                 RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
                 MaterializationStrategy.CHUNK_LEVEL);
+        assertThrows(RagServiceException.class, () -> selector.select(ctx(bad)));
+    }
+
+    @Test
+    void select_allows_reasoningEnabled() {
+        RagConfig base = rag(true, false, MaterializationStrategy.CHUNK_LEVEL, false);
+        RagConfig bad =
+                new RagConfig(
+                        base.expansionEnabled(),
+                        base.nerEnabled(),
+                        base.toolsEnabled(),
+                        base.metadataEnabled(),
+                        true,
+                        base.rankerEnabled(),
+                        base.postRetrievalEnabled(),
+                        base.functionCallingEnabled(),
+                        base.useRetrieval(),
+                        base.useAdvisor(),
+                        base.clarificationEnabled(),
+                        base.memoryEnabled(),
+                        base.adaptiveRoutingEnabled(),
+                        base.judgeEnabled(),
+                        base.topK(),
+                        base.similarityThreshold(),
+                        base.llmModel(),
+                        base.embeddingModel(),
+                        base.classifierModelId(),
+                        base.reasoningStrategy(),
+                        base.naiveFullCorpusInPromptEnabled(),
+                        base.naiveFullCorpusMaxChars(),
+                        base.advancedRetrievalMaxContextChars(),
+                        base.corpusGroundedDirectWorkflow(),
+                        base.materializationStrategy());
+        assertTrue(selector.select(ctx(bad)) instanceof ChunkDenseRagWorkflow);
+    }
+
+    @Test
+    void select_allows_postRetrievalEnabled_with_retrieval() {
+        RagConfig base = rag(true, false, MaterializationStrategy.CHUNK_LEVEL, false);
+        RagConfig ok =
+                new RagConfig(
+                        base.expansionEnabled(),
+                        base.nerEnabled(),
+                        base.toolsEnabled(),
+                        base.metadataEnabled(),
+                        base.reasoningEnabled(),
+                        base.rankerEnabled(),
+                        true,
+                        base.functionCallingEnabled(),
+                        base.useRetrieval(),
+                        base.useAdvisor(),
+                        base.clarificationEnabled(),
+                        base.memoryEnabled(),
+                        base.adaptiveRoutingEnabled(),
+                        base.judgeEnabled(),
+                        base.topK(),
+                        base.similarityThreshold(),
+                        base.llmModel(),
+                        base.embeddingModel(),
+                        base.classifierModelId(),
+                        base.reasoningStrategy(),
+                        base.naiveFullCorpusInPromptEnabled(),
+                        base.naiveFullCorpusMaxChars(),
+                        base.advancedRetrievalMaxContextChars(),
+                        base.corpusGroundedDirectWorkflow(),
+                        base.materializationStrategy());
+        assertTrue(selector.select(ctx(ok)) instanceof ChunkDenseRagWorkflow);
+    }
+
+    @Test
+    void select_allows_rankerEnabled_with_retrieval() {
+        RagConfig base = rag(true, false, MaterializationStrategy.CHUNK_LEVEL, false);
+        RagConfig ok =
+                new RagConfig(
+                        base.expansionEnabled(),
+                        base.nerEnabled(),
+                        base.toolsEnabled(),
+                        base.metadataEnabled(),
+                        base.reasoningEnabled(),
+                        true,
+                        base.postRetrievalEnabled(),
+                        base.functionCallingEnabled(),
+                        base.useRetrieval(),
+                        base.useAdvisor(),
+                        base.clarificationEnabled(),
+                        base.memoryEnabled(),
+                        base.adaptiveRoutingEnabled(),
+                        base.judgeEnabled(),
+                        base.topK(),
+                        base.similarityThreshold(),
+                        base.llmModel(),
+                        base.embeddingModel(),
+                        base.classifierModelId(),
+                        base.reasoningStrategy(),
+                        base.naiveFullCorpusInPromptEnabled(),
+                        base.naiveFullCorpusMaxChars(),
+                        base.advancedRetrievalMaxContextChars(),
+                        base.corpusGroundedDirectWorkflow(),
+                        base.materializationStrategy());
+        assertTrue(selector.select(ctx(ok)) instanceof ChunkDenseRagWorkflow);
+    }
+
+    @Test
+    void select_rejects_rankerEnabled_without_retrieval() {
+        RagConfig base = rag(false, false, MaterializationStrategy.CHUNK_LEVEL, false);
+        RagConfig bad =
+                new RagConfig(
+                        base.expansionEnabled(),
+                        base.nerEnabled(),
+                        base.toolsEnabled(),
+                        base.metadataEnabled(),
+                        base.reasoningEnabled(),
+                        true,
+                        base.postRetrievalEnabled(),
+                        base.functionCallingEnabled(),
+                        false,
+                        base.useAdvisor(),
+                        base.clarificationEnabled(),
+                        base.memoryEnabled(),
+                        base.adaptiveRoutingEnabled(),
+                        base.judgeEnabled(),
+                        base.topK(),
+                        base.similarityThreshold(),
+                        base.llmModel(),
+                        base.embeddingModel(),
+                        base.classifierModelId(),
+                        base.reasoningStrategy(),
+                        base.naiveFullCorpusInPromptEnabled(),
+                        base.naiveFullCorpusMaxChars(),
+                        base.advancedRetrievalMaxContextChars(),
+                        base.corpusGroundedDirectWorkflow(),
+                        base.materializationStrategy());
+        assertThrows(RagServiceException.class, () -> selector.select(ctx(bad)));
+    }
+
+    @Test
+    void select_rejects_postRetrievalEnabled_without_retrieval() {
+        RagConfig base = rag(false, false, MaterializationStrategy.CHUNK_LEVEL, false);
+        RagConfig bad =
+                new RagConfig(
+                        base.expansionEnabled(),
+                        base.nerEnabled(),
+                        base.toolsEnabled(),
+                        base.metadataEnabled(),
+                        base.reasoningEnabled(),
+                        base.rankerEnabled(),
+                        true,
+                        base.functionCallingEnabled(),
+                        false,
+                        base.useAdvisor(),
+                        base.clarificationEnabled(),
+                        base.memoryEnabled(),
+                        base.adaptiveRoutingEnabled(),
+                        base.judgeEnabled(),
+                        base.topK(),
+                        base.similarityThreshold(),
+                        base.llmModel(),
+                        base.embeddingModel(),
+                        base.classifierModelId(),
+                        base.reasoningStrategy(),
+                        base.naiveFullCorpusInPromptEnabled(),
+                        base.naiveFullCorpusMaxChars(),
+                        base.advancedRetrievalMaxContextChars(),
+                        base.corpusGroundedDirectWorkflow(),
+                        base.materializationStrategy());
         assertThrows(RagServiceException.class, () -> selector.select(ctx(bad)));
     }
 
@@ -229,6 +425,7 @@ class WorkflowSelectorTest {
                 false,
                 true,
                 useAdvisor,
+                false,
                 false,
                 false,
                 false,

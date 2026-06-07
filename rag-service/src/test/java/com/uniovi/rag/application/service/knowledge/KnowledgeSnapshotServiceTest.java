@@ -9,6 +9,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -47,18 +49,23 @@ class KnowledgeSnapshotServiceTest {
         when(building.getId()).thenReturn(bid);
         when(building.getScopeType()).thenReturn(KnowledgeSnapshotScopeType.PROJECT);
         when(building.getProject()).thenReturn(project);
-        when(snapshotRepository.countByProject_IdAndScopeTypeAndConversationIsNullAndStatus(
-                        eq(pid), eq(KnowledgeSnapshotScopeType.PROJECT), eq(IndexSnapshotStatus.ACTIVE)))
-                .thenReturn(1L);
 
         KnowledgeIndexSnapshotEntity prior = mock(KnowledgeIndexSnapshotEntity.class);
+        when(prior.getId()).thenReturn(UUID.randomUUID());
+        when(snapshotRepository.findActiveProjectSnapshots(
+                        eq(pid),
+                        eq(KnowledgeSnapshotScopeType.PROJECT),
+                        eq(IndexSnapshotStatus.ACTIVE)))
+                .thenReturn(List.of(prior));
 
+        UUID docId = UUID.randomUUID();
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class);
-        when(doc.getId()).thenReturn(UUID.randomUUID());
+        when(doc.getId()).thenReturn(docId);
+        when(knowledgeDocumentRepository.getReferenceById(docId)).thenReturn(doc);
 
         knowledgeSnapshotService.activateSnapshot(building, List.of(doc), Optional.of(prior));
 
-        verify(prior).setStatus(IndexSnapshotStatus.SUPERSEDED);
+        verify(prior, Mockito.atLeastOnce()).setStatus(IndexSnapshotStatus.SUPERSEDED);
         verify(building).setStatus(IndexSnapshotStatus.ACTIVE);
         verify(snapshotRepository, Mockito.atLeast(2)).save(any());
         verify(snapshotDocumentRepository).save(any());
@@ -72,9 +79,34 @@ class KnowledgeSnapshotServiceTest {
         UUID cfgId = UUID.randomUUID();
         KnowledgeIndexSnapshotEntity out =
                 knowledgeSnapshotService.createBuildingSnapshot(
-                        project, null, KnowledgeSnapshotScopeType.PROJECT, "sighex", cfgId, "a".repeat(64));
+                        project,
+                        null,
+                        KnowledgeSnapshotScopeType.PROJECT,
+                        "sighex",
+                        cfgId,
+                        "a".repeat(64),
+                        Map.of(),
+                        "profile-hash");
 
         assertThat(out.getStatus()).isEqualTo(IndexSnapshotStatus.BUILDING);
         assertThat(out.getSignatureHash()).isEqualTo("sighex");
+    }
+
+    @Test
+    void createBuildingSnapshot_requiresResolvedConfigSnapshotLinkage() {
+        ProjectEntity project = mock(ProjectEntity.class);
+        assertThatThrownBy(
+                        () ->
+                                knowledgeSnapshotService.createBuildingSnapshot(
+                                        project,
+                                        null,
+                                        KnowledgeSnapshotScopeType.PROJECT,
+                                        "sighex",
+                                        null,
+                                        null,
+                                        Map.of(),
+                                        "profile-hash"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("resolved_config_snapshot");
     }
 }

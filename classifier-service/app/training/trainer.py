@@ -14,6 +14,7 @@ from sklearn.model_selection import train_test_split
 from app.base import Loggable
 from app.config import Config
 from app.dataset_columns import normalize_excel_classification_columns
+from app.query_type_contract import JAVA_QUERY_TYPES, LEGACY_TRAINING_LABEL_MAP, validate_query_type_label
 from app.registry.model_registry import ModelRegistry
 
 MODEL_FILENAME = "model.keras"
@@ -39,6 +40,7 @@ class TrainingPipeline(Loggable):
         max_tokens: int = 5000,
         sequence_length: int = 40,
         early_stopping_patience: int = 5,
+        owner_id: str | None = None,
     ) -> dict:
         """
         Trains a classifier from an Excel file with columns Question and QueryType
@@ -50,6 +52,17 @@ class TrainingPipeline(Loggable):
         df = normalize_excel_classification_columns(pd.read_excel(dataset_path))
         if "Question" not in df.columns or "QueryType" not in df.columns:
             raise ValueError("Dataset must have columns 'Question' and 'QueryType'")
+        df["QueryType"] = (
+            df["QueryType"]
+            .astype(str)
+            .str.strip()
+            .replace(LEGACY_TRAINING_LABEL_MAP)
+        )
+        unknown = sorted({v for v in df["QueryType"].unique() if v not in JAVA_QUERY_TYPES})
+        if unknown:
+            raise ValueError(f"Dataset QueryType values not in Java enum: {unknown}")
+        for label in df["QueryType"].unique():
+            validate_query_type_label(str(label))
         if class_names:
             df = df[df["QueryType"].astype(str).isin(class_names)].copy()
             if df.empty:
@@ -146,6 +159,8 @@ class TrainingPipeline(Loggable):
                 "macro_avg_f1": macro_f1,
             },
         }
+        if owner_id:
+            metadata["ownerId"] = owner_id
 
         self._registry.register_model(
             model_id=model_id,

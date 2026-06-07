@@ -12,7 +12,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ConfigProfileEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagConfigurationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetProfileRefEntity;
-import com.uniovi.rag.service.preset.PresetService;
+import com.uniovi.rag.application.service.preset.PresetService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -62,7 +62,7 @@ public class JpaConfigurationSourceAdapter implements ConfigurationSourcePort {
 
     @Override
     public Optional<Map<String, Object>> loadUserDefault(UUID userId) {
-        Optional<Map<String, Object>> legacy =
+        Optional<Map<String, Object>> terminalJson =
                 ragConfigurationRepository
                         .findFirstByUser_IdAndLevelAndProjectIsNullAndActiveIsTrue(userId, RagConfigurationLevel.USER_DEFAULT)
                         .map(RagConfigurationEntity::getValues);
@@ -72,11 +72,11 @@ public class JpaConfigurationSourceAdapter implements ConfigurationSourcePort {
                 userPersonalizationRepository
                         .findById(userId)
                         .map(p -> p.getPersonalization() != null ? p.getPersonalization() : Map.<String, Object>of());
-        if (legacy.isEmpty() && prefs.map(Map::isEmpty).orElse(true) && pers.map(Map::isEmpty).orElse(true)) {
+        if (terminalJson.isEmpty() && prefs.map(Map::isEmpty).orElse(true) && pers.map(Map::isEmpty).orElse(true)) {
             return Optional.empty();
         }
         Map<String, Object> merged = new LinkedHashMap<>();
-        legacy.ifPresent(merged::putAll);
+        terminalJson.ifPresent(merged::putAll);
         prefs.ifPresent(merged::putAll);
         pers.ifPresent(merged::putAll);
         return Optional.of(merged);

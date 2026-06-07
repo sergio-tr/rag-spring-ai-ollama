@@ -27,15 +27,22 @@ describe("RegisterPendingVerification", () => {
     mockSearchParams.delete("email");
     mockSearchParams.set("email", "user@example.com");
     vi.mocked(apiFetch).mockReset();
+    vi.mocked(apiFetch).mockImplementation(async (url) => {
+      if (String(url).includes("/public-config")) {
+        return { mailDeliveryMode: "smtp" };
+      }
+      return {};
+    });
   });
 
-  it("does not call session or any auth API on mount", () => {
+  it("fetches public-config on mount but not session or resend", async () => {
     render(
       <IntlTestProvider>
         <RegisterPendingVerification />
       </IntlTestProvider>,
     );
-    expect(apiFetch).not.toHaveBeenCalled();
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(apiFetch).mock.calls[0]?.[0]).toBe(authApiPath("/public-config"));
   });
 
   it("shows destination email from query string", () => {
@@ -50,15 +57,22 @@ describe("RegisterPendingVerification", () => {
 
   it("calls resend-confirmation with email and locale", async () => {
     const user = userEvent.setup();
-    vi.mocked(apiFetch).mockResolvedValueOnce({});
     render(
       <IntlTestProvider>
         <RegisterPendingVerification />
       </IntlTestProvider>,
     );
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(authApiPath("/public-config"), expect.anything()));
     await user.click(screen.getByRole("button", { name: /resend confirmation email/i }));
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
-    const [url, init] = vi.mocked(apiFetch).mock.calls[0]!;
+    await waitFor(() => {
+      const resendCalls = vi.mocked(apiFetch).mock.calls.filter(([url]) =>
+        String(url).includes("/resend-confirmation"),
+      );
+      expect(resendCalls).toHaveLength(1);
+    });
+    const [url, init] = vi.mocked(apiFetch).mock.calls.find(([callUrl]) =>
+      String(callUrl).includes("/resend-confirmation"),
+    )!;
     expect(url).toBe(authApiPath("/resend-confirmation"));
     expect(init).toMatchObject({
       method: "POST",
@@ -72,12 +86,12 @@ describe("RegisterPendingVerification", () => {
 
   it("shows neutral success copy after resend", async () => {
     const user = userEvent.setup();
-    vi.mocked(apiFetch).mockResolvedValueOnce({});
     render(
       <IntlTestProvider>
         <RegisterPendingVerification />
       </IntlTestProvider>,
     );
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(authApiPath("/public-config"), expect.anything()));
     await user.click(screen.getByRole("button", { name: /resend confirmation email/i }));
     await waitFor(() =>
       expect(screen.getByRole("status")).toHaveTextContent(/eligible/i),
@@ -86,7 +100,15 @@ describe("RegisterPendingVerification", () => {
 
   it("shows failure UX after ApiError", async () => {
     const user = userEvent.setup();
-    vi.mocked(apiFetch).mockRejectedValueOnce(new ApiError(429, "slow down"));
+    vi.mocked(apiFetch).mockImplementation(async (url) => {
+      if (String(url).includes("/public-config")) {
+        return { mailDeliveryMode: "smtp" };
+      }
+      if (String(url).includes("/resend-confirmation")) {
+        throw new ApiError(429, "slow down");
+      }
+      return {};
+    });
     render(
       <IntlTestProvider>
         <RegisterPendingVerification />
@@ -100,7 +122,15 @@ describe("RegisterPendingVerification", () => {
 
   it("shows network error on non-ApiError failure", async () => {
     const user = userEvent.setup();
-    vi.mocked(apiFetch).mockRejectedValueOnce(new Error("offline"));
+    vi.mocked(apiFetch).mockImplementation(async (url) => {
+      if (String(url).includes("/public-config")) {
+        return { mailDeliveryMode: "smtp" };
+      }
+      if (String(url).includes("/resend-confirmation")) {
+        throw new Error("offline");
+      }
+      return {};
+    });
     render(
       <IntlTestProvider>
         <RegisterPendingVerification />

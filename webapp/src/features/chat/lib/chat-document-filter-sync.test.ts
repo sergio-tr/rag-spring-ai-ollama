@@ -13,4 +13,8 @@ describe("documentFiltersEqual", () => {
   it("treats undefined and empty as equal", () => {
     expect(documentFiltersEqual(undefined, [])).toBe(true);
   });
+
+  it("treats both missing filters as equal", () => {
+    expect(documentFiltersEqual(undefined, undefined)).toBe(true);
+  });
 });

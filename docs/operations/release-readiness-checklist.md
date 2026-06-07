@@ -28,7 +28,7 @@
 | Azure / cloud parameterization (no fixed IPs) | [azure-vm-parameterization.md](azure-vm-parameterization.md) |
 | Workflows vs quality gates | [../testing/README.md](../testing/README.md#quality-gates-before-deploy-vm); [../development/e2e-testing-strategy.md](../development/e2e-testing-strategy.md) |
 | Documentation governance | [../development/documentation-guidelines.md](../development/documentation-guidelines.md); hub: [../README.md](../README.md); [documentation-governance-audit.md](documentation-governance-audit.md) |
-| Product / thesis alignment | [../overview/thesis-scope.md](../overview/thesis-scope.md), [../overview/product-context.md](../overview/product-context.md) |
+| Product alignment | [../overview/minimum-scope.md](../overview/minimum-scope.md), [../overview/product-context.md](../overview/product-context.md) |
 | Observability on VM | [observability README](../../observability/README.md#production--vm-where-to-read-what); deploy/ops: this folder |
 | Tag + release notes procedure | [release-notes-template.md](release-notes-template.md) |
 
@@ -59,11 +59,11 @@
 | O2 | **Azure / cloud** notes cover **parameterized** hostnames and networking (no reliance on fixed IPs in documentation). | [azure-vm-parameterization.md](azure-vm-parameterization.md). |
 | O3 | **Workflows vs quality gates** table is aligned with testing strategy and deploy gate. | [../testing/README.md](../testing/README.md), [../development/e2e-testing-strategy.md](../development/e2e-testing-strategy.md). |
 
-## Product / thesis alignment
+## Product alignment
 
 | # | Criterion | Evidence |
 | --- | ----------- | ---------- |
-| A1 | **Thesis scope** and **product context** describe deploy reality (GitHub Actions → SSH → Compose on VM), not only abstract “Compose locally”. | [../overview/thesis-scope.md](../overview/thesis-scope.md), [../overview/product-context.md](../overview/product-context.md). |
+| A1 | **Minimum scope** and **product context** describe deploy reality (GitHub Actions → SSH → Compose on VM), not only abstract “Compose locally”. | [../overview/minimum-scope.md](../overview/minimum-scope.md), [../overview/product-context.md](../overview/product-context.md). |
 
 ---
 

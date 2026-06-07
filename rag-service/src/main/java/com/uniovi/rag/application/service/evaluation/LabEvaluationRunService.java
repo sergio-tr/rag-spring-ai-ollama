@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.evaluation;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
@@ -10,6 +11,13 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.interfaces.rest.dto.CompareRunsResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationResultItemDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationRunDetailDto;
+import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpMetricsCalculator;
+import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpRollupCalculator;
+import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpSchema;
+import com.uniovi.rag.configuration.RagApiPathProperties;
+import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.interfaces.rest.dto.LatestLabRunRecoveryDto;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,17 +36,190 @@ import java.util.UUID;
 @Service
 public class LabEvaluationRunService {
 
+    static final List<String> MVP_ITEMS_CSV_COLUMNS =
+            List.of(
+                    "mvpSchemaVersion",
+                    "itemId",
+                    "benchmarkKind",
+                    "evaluationRunId",
+                    "evaluationDatasetId",
+                    "evaluationDatasetSha256",
+                    "projectId",
+                    "corpusDocumentSet",
+                    "resolvedConfigSnapshotId",
+                    "queryType",
+                    "difficulty",
+                    "datasetQuestionId",
+                    "recallAt1",
+                    "recallAt3",
+                    "recallAt5",
+                    "mrr",
+                    "retrievedCount",
+                    "goldFound",
+                    "normalizedExactMatch",
+                    "containsExpectedAnswer",
+                    "answerLength",
+                    "semanticScore",
+                    "correctness",
+                    "llmJudgeScore",
+                    "hallucinationRate",
+                    "faithfulness",
+                    "sourceSupport",
+                    "dateCorrectness",
+                    "latencyMs",
+                    "modelId",
+                    "embeddingModelId",
+                    "embeddingDimensions",
+                    "embeddingCompatibilityStatus",
+                    "embeddingCompatibilityErrorCode",
+                    "embeddingCompatibilityReason",
+                    "classifierModelId",
+                    "presetCode",
+                    "outcome",
+                    "failureCode",
+                    "unsupportedReason",
+                    "skipReasonCode",
+                    "skipReason",
+                    "runPlanVersion",
+                    "retrievalGoldMode",
+                    "goldChunkIds",
+                    "goldDocumentIds",
+                    "retrievedChunkIds",
+                    "retrievedDocumentIds",
+                    "groupKey",
+                    "indexCompatibilityStatus",
+                    "requiresReindex",
+                    "indexSnapshotId",
+                    "indexProfileHash",
+                    "effectiveGroupSnapshotId",
+                    "groupIndexProfileHash",
+                    "reindexAction",
+                    "reindexStatus",
+                    "forcedSnapshotSelection",
+                    "reindexEventId",
+                    "reindexStartedAt",
+                    "reindexCompletedAt",
+                    "reindexErrorCode",
+                    "reindexErrorReason",
+                    "presetIndexRequirements",
+                    "activeSnapshotCapabilities",
+                    "presetLabel",
+                    "productPresetId",
+                    "protocolStageIndex",
+                    "presetStage",
+                    "presetLadderScope",
+                    "requiresMultiTurn",
+                    "singleTurnBenchmarkSelectable",
+                    "comparableSingleTurnMetric",
+                    "benchmarkSupportStatus",
+                    "workflowName",
+                    "activeFeatures",
+                    "useRetrieval",
+                    "naiveFullCorpusInPromptEnabled",
+                    "materializationStrategy",
+                    "metadataEnabled",
+                    "expansionEnabled",
+                    "nerEnabled",
+                    "reasoningEnabled",
+                    "toolsEnabled",
+                    "functionCallingEnabled",
+                    "rankerEnabled",
+                    "postRetrievalEnabled",
+                    "useAdvisor",
+                    "adaptiveRoutingEnabled",
+                    "judgeEnabled",
+                    "clarificationEnabled",
+                    "memoryEnabled",
+                    "corpusRequired",
+                    "corpusAvailable",
+                    "corpusChars",
+                    "corpusTruncated",
+                    "selectedSnapshotIds",
+                    "groundingPolicy",
+                    "timestamp");
+
+    /** Stable MVP CSV columns (shared by comparison exports and unit tests). */
+    public static List<String> MVP_ITEMS_CSV_COLUMNS_FOR_TESTS() {
+        return MVP_ITEMS_CSV_COLUMNS;
+    }
+
     private final EvaluationRunRepository evaluationRunRepository;
     private final EvaluationResultRepository evaluationResultRepository;
     private final ObjectMapper objectMapper;
+    private final RagApiPathProperties apiPathProperties;
 
     public LabEvaluationRunService(
             EvaluationRunRepository evaluationRunRepository,
             EvaluationResultRepository evaluationResultRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            RagApiPathProperties apiPathProperties) {
         this.evaluationRunRepository = evaluationRunRepository;
         this.evaluationResultRepository = evaluationResultRepository;
         this.objectMapper = objectMapper;
+        this.apiPathProperties = apiPathProperties;
+    }
+
+    /**
+     * Latest run for benchmark kind + optional project scope (Lab recovery when no active job).
+     * Returns the most recently updated run owned by the user; project filter matches active-job semantics.
+     */
+    @Transactional(readOnly = true)
+    public LatestLabRunRecoveryDto findLatestRunForRecovery(
+            UUID userId, BenchmarkKind benchmarkKind, UUID projectIdOrNull) {
+        if (userId == null || benchmarkKind == null) {
+            return null;
+        }
+        List<EvaluationRunEntity> recent =
+                evaluationRunRepository.findRecentByUserAndBenchmarkKind(
+                        userId, benchmarkKind.name(), PageRequest.of(0, 8));
+        EvaluationRunEntity match =
+                recent.stream()
+                        .filter(r -> matchesProjectScope(r, projectIdOrNull))
+                        .findFirst()
+                        .orElse(null);
+        if (match == null) {
+            return null;
+        }
+        return toLatestRecoveryDto(match);
+    }
+
+    private static boolean matchesProjectScope(EvaluationRunEntity run, UUID projectIdOrNull) {
+        UUID runProject = run.getProject() != null ? run.getProject().getId() : null;
+        if (runProject == null) {
+            return true;
+        }
+        if (projectIdOrNull == null) {
+            return true;
+        }
+        return projectIdOrNull.equals(runProject);
+    }
+
+    private LatestLabRunRecoveryDto toLatestRecoveryDto(EvaluationRunEntity run) {
+        AsyncTaskEntity task = run.getAsyncTask();
+        UUID taskId = task != null ? task.getId() : null;
+        String status =
+                task != null && task.getStatus() != null ? task.getStatus().name() : "UNKNOWN";
+        boolean terminal = task != null && task.isTerminal();
+        Map<String, Object> result = task != null ? task.getResultJson() : null;
+        String base = taskId != null ? jobBasePath(taskId) : null;
+        boolean hasResults = result != null && !result.isEmpty();
+        return new LatestLabRunRecoveryDto(
+                run.getId(),
+                taskId,
+                run.getBenchmarkKind(),
+                run.getProject() != null ? run.getProject().getId() : null,
+                status,
+                terminal,
+                base,
+                base != null ? base + "/events" : null,
+                result,
+                task != null ? task.getStartedAt() : null,
+                task != null ? task.getCompletedAt() : null,
+                hasResults);
+    }
+
+    private String jobBasePath(UUID taskId) {
+        return apiPathProperties.getProductBasePath() + "/lab/jobs/" + taskId;
     }
 
     @Transactional(readOnly = true)
@@ -105,7 +286,8 @@ public class LabEvaluationRunService {
         }
         StringBuilder sb = new StringBuilder();
         sb.append("#META:").append(meta).append('\n');
-        sb.append("id,question_text,expected_answer,actual_answer,correctness,query_type,latency_ms,benchmark_kind,metrics_json\n");
+        sb.append(
+                "id,question_text,expected_answer,actual_answer,correctness,query_type,latency_ms,benchmark_kind,preset_code,preset_label,outcome,reason,metrics_json\n");
         for (EvaluationResultEntity it : items) {
             sb.append(csvEscape(uuidStr(it.getId())));
             sb.append(',');
@@ -122,6 +304,14 @@ public class LabEvaluationRunService {
             sb.append(it.getLatencyMs() != null ? it.getLatencyMs().toString() : "");
             sb.append(',');
             sb.append(csvEscape(it.getBenchmarkKind()));
+            sb.append(',');
+            sb.append(csvEscape(metricStr(it, BenchmarkResultRowKeys.PRESET_CODE)));
+            sb.append(',');
+            sb.append(csvEscape(metricStr(it, BenchmarkResultRowKeys.PRESET_LABEL)));
+            sb.append(',');
+            sb.append(csvEscape(metricStr(it, BenchmarkResultRowKeys.ITEM_OUTCOME)));
+            sb.append(',');
+            sb.append(csvEscape(metricStr(it, BenchmarkResultRowKeys.REASON)));
             sb.append(',');
             try {
                 sb.append(csvEscape(
@@ -145,6 +335,64 @@ public class LabEvaluationRunService {
                         .map(LabEvaluationRunService::toItemMap)
                         .toList());
         return out;
+    }
+
+    /**
+     * One JSON object per item including nested {@code mvp} metrics ({@code items.json} bundle).
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> exportMvpItemsJsonBundle(UUID userId, UUID runId) {
+        EvaluationRunEntity run = requireRun(userId, runId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("mvpSchemaVersion", BenchmarkMvpSchema.VERSION);
+        out.put("run", toDetailMap(run));
+        out.put("items", buildMvpItemPayload(runId, run));
+        return out;
+    }
+
+    /** MVP flat CSV ({@code items.csv}) — UTF-8, header row only (no {@code #META} line). */
+    @Transactional(readOnly = true)
+    public String exportMvpItemsCsv(UUID userId, UUID runId) {
+        EvaluationRunEntity run = requireRun(userId, runId);
+        List<EvaluationResultEntity> items =
+                evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId);
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.join(",", MVP_ITEMS_CSV_COLUMNS)).append('\n');
+        for (EvaluationResultEntity it : items) {
+            Map<String, String> row = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(it, run);
+            List<String> cells =
+                    MVP_ITEMS_CSV_COLUMNS.stream().map(h -> csvEscape(row.getOrDefault(h, ""))).toList();
+            sb.append(String.join(",", cells)).append('\n');
+        }
+        return sb.toString();
+    }
+
+    /** MVP rollups ({@code rollups.json}) with explicit outcome partitioning. */
+    @Transactional(readOnly = true)
+    public Map<String, Object> exportMvpRollupsJson(UUID userId, UUID runId) {
+        EvaluationRunEntity run = requireRun(userId, runId);
+        List<EvaluationResultEntity> items =
+                evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId);
+        return BenchmarkMvpRollupCalculator.build(items, run);
+    }
+
+    private List<Map<String, Object>> buildMvpItemPayload(UUID runId, EvaluationRunEntity run) {
+        return evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId).stream()
+                .map(
+                        e -> {
+                            Map<String, Object> row = new LinkedHashMap<>();
+                            row.put("id", e.getId());
+                            row.put("benchmarkKind", e.getBenchmarkKind());
+                            row.put("questionText", e.getQuestionText());
+                            row.put("expectedAnswer", e.getExpectedAnswer());
+                            row.put("actualAnswer", e.getActualAnswer());
+                            row.put("correctness", e.getCorrectness());
+                            row.put("evaluatedAt", e.getEvaluatedAt());
+                            row.put("metricsPayload", e.getMetricsPayload());
+                            row.put("mvp", BenchmarkMvpMetricsCalculator.computeMvpMetrics(e, run));
+                            return row;
+                        })
+                .toList();
     }
 
     private EvaluationRunEntity requireRun(UUID userId, UUID runId) {
@@ -186,7 +434,16 @@ public class LabEvaluationRunService {
         m.put("workflowSchemaVersion", e.getWorkflowSchemaVersion());
         m.put("datasetSha256", e.getDatasetSha256());
         m.put("datasetId", e.getDataset() != null ? e.getDataset().getId() : null);
+        m.put("projectId", e.getProject() != null ? e.getProject().getId() : null);
         m.put("asyncTaskId", e.getAsyncTask() != null ? e.getAsyncTask().getId() : null);
+        m.put("resolvedConfigSnapshotId", e.getResolvedConfigSnapshot() != null ? e.getResolvedConfigSnapshot().getId() : null);
+        m.put("indexSnapshotId", e.getIndexSnapshot() != null ? e.getIndexSnapshot().getId() : null);
+        m.put("indexSignatureHash", e.getIndexSignatureHash());
+        m.put("presetId", e.getPreset() != null ? e.getPreset().getId() : null);
+        m.put("llmModelId", e.getLlmModelId());
+        m.put("embeddingModelId", e.getEmbeddingModelId());
+        m.put("embeddingDimensions", e.getEmbeddingDimensions());
+        m.put("classifierModelId", e.getClassifierModelId());
         m.put("aggregatesJson", e.getAggregatesJson());
         m.put("createdAt", e.getCreatedAt());
         m.put("completedAt", e.getCompletedAt());
@@ -249,5 +506,13 @@ public class LabEvaluationRunService {
             return "\"" + raw.replace("\"", "\"\"") + "\"";
         }
         return raw;
+    }
+
+    private static String metricStr(EvaluationResultEntity item, String key) {
+        if (item.getMetricsPayload() == null || !item.getMetricsPayload().containsKey(key)) {
+            return "";
+        }
+        Object v = item.getMetricsPayload().get(key);
+        return v == null ? "" : String.valueOf(v);
     }
 }

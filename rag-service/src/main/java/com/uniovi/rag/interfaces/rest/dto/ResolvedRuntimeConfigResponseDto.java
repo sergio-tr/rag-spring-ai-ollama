@@ -11,7 +11,7 @@ public record ResolvedRuntimeConfigResponseDto(
         SystemPromptLayersDto systemPromptLayers,
         String effectiveSystemPrompt,
         ReindexImpactDto reindexImpact,
-        Map<String, Object> legacyProjection) {
+        Map<String, Object> configProjection) {
 
     public static ResolvedRuntimeConfigResponseDto fromDomain(ResolvedRuntimeConfig r) {
         return new ResolvedRuntimeConfigResponseDto(
@@ -21,6 +21,6 @@ public record ResolvedRuntimeConfigResponseDto(
                 SystemPromptLayersDto.fromDomain(r.systemPromptLayers()),
                 r.effectiveSystemPrompt() != null ? r.effectiveSystemPrompt() : "",
                 ReindexImpactDto.fromDomain(r.reindexImpact()),
-                r.legacyProjection() != null ? r.legacyProjection().toValueMap() : r.resolvedCoreConfig().toValueMap());
+                r.configProjection() != null ? r.configProjection().toValueMap() : r.resolvedCoreConfig().toValueMap());
     }
 }

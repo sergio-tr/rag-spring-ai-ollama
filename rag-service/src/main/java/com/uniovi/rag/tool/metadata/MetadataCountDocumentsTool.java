@@ -2,8 +2,8 @@ package com.uniovi.rag.tool.metadata;
 
 import com.uniovi.rag.domain.model.CountingAnalysis;
 import com.uniovi.rag.domain.model.Minute;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
 import java.time.LocalDate;
@@ -16,7 +16,7 @@ import org.springframework.ai.document.Document;
 /**
  * Enhanced MetadataCountDocumentsTool for counting meeting minutes with intelligent analysis.
  * P12: Count is by unique document_id (dedupeMinutesByDocumentId); attendees filter is strict
- * (e.g. "menos de diez" uses count &lt; 10); date-existence guard for non-existent dates runs in orchestration (ProcessQueryService).
+ * (e.g. "menos de diez" uses count &lt; 10); date-existence guard for non-existent dates runs in {@link com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator}.
  */
 public class MetadataCountDocumentsTool extends AbstractMetadataTool {
 

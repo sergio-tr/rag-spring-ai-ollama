@@ -1,13 +1,13 @@
 import { getApiBaseUrl, tryRefreshAccessToken } from "@/lib/api-client";
 import { getAccessToken } from "@/lib/access-token";
-import { createTraceparent } from "@/lib/traceparent";
+import { currentTraceparent } from "@/lib/trace-session";
 import type { StreamDonePayload } from "@/types/api";
 
 function ssePostAuthHeaders(): Record<string, string> {
   const h: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "text/event-stream",
-    traceparent: createTraceparent(),
+    traceparent: currentTraceparent(),
   };
   const bearer = getAccessToken();
   if (bearer) {

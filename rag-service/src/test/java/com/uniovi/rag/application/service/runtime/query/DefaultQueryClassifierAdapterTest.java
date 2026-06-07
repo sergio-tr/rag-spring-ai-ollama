@@ -15,11 +15,15 @@ import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.application.service.runtime.query.QueryClassifierAdapter.ClassifierOutcome;
+import com.uniovi.rag.infrastructure.classifier.ClassifierCallException;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
+import io.micrometer.tracing.Tracer;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -31,8 +35,8 @@ class DefaultQueryClassifierAdapterTest {
     @Test
     void nullQueryType_mapsToInvalidOutput_recoverable() {
         QueryClassifier classifier = mock(QueryClassifier.class);
-        when(classifier.classify("hello")).thenReturn(null);
-        DefaultQueryClassifierAdapter adapter = new DefaultQueryClassifierAdapter(classifier);
+        when(classifier.classify("hello", "cls")).thenReturn(null);
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
 
         ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "hello");
 
@@ -44,8 +48,47 @@ class DefaultQueryClassifierAdapterTest {
     @Test
     void classifierException_mapsToUnavailable_recoverable() {
         QueryClassifier classifier = mock(QueryClassifier.class);
-        when(classifier.classify("hello")).thenThrow(new IllegalStateException("simulated classifier outage"));
-        DefaultQueryClassifierAdapter adapter = new DefaultQueryClassifierAdapter(classifier);
+        when(classifier.classify("hello", "cls")).thenThrow(new ClassifierCallException(
+                ClassifierCallException.Kind.UNAVAILABLE, "Classifier HTTP protocol error"));
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
+
+        ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "hello");
+
+        assertEquals(DefaultQueryClassifierAdapter.UNCLASSIFIED, out.classifierLabel());
+        assertEquals(ClassifierStatus.UNAVAILABLE, out.classifierStatus());
+        assertEquals("UNAVAILABLE: classifier call failed", out.note());
+    }
+
+    @Test
+    void classifierTimeout_mapsToTimeout_recoverable() {
+        QueryClassifier classifier = mock(QueryClassifier.class);
+        when(classifier.classify("hello", "cls"))
+                .thenThrow(new ClassifierCallException(ClassifierCallException.Kind.TIMEOUT, "Classifier timeout"));
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
+
+        ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "hello");
+
+        assertEquals(ClassifierStatus.TIMEOUT, out.classifierStatus());
+        assertEquals("TIMEOUT: classifier call failed", out.note());
+    }
+
+    @Test
+    void classifierInvalidRequest_mapsToInvalidRequest_recoverable() {
+        QueryClassifier classifier = mock(QueryClassifier.class);
+        when(classifier.classify("hello", "cls"))
+                .thenThrow(new ClassifierCallException(ClassifierCallException.Kind.INVALID_REQUEST, "bad request"));
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
+
+        ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "hello");
+
+        assertEquals(ClassifierStatus.INVALID_REQUEST, out.classifierStatus());
+    }
+
+    @Test
+    void classifierException_mapsToUnavailable_recoverable_legacy() {
+        QueryClassifier classifier = mock(QueryClassifier.class);
+        when(classifier.classify("hello", "cls")).thenThrow(new IllegalStateException("simulated classifier outage"));
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
 
         ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "hello");
 
@@ -57,13 +100,20 @@ class DefaultQueryClassifierAdapterTest {
     @Test
     void okClassification_returnsOk() {
         QueryClassifier classifier = mock(QueryClassifier.class);
-        when(classifier.classify("How many documents?")).thenReturn(QueryType.COUNT_DOCUMENTS);
-        DefaultQueryClassifierAdapter adapter = new DefaultQueryClassifierAdapter(classifier);
+        when(classifier.classify("How many documents?", "cls")).thenReturn(QueryType.COUNT_DOCUMENTS);
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
 
         ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "How many documents?");
 
         assertEquals(ClassifierStatus.OK, out.classifierStatus());
         assertEquals(Optional.of(QueryType.COUNT_DOCUMENTS), out.classifierQueryType());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static DefaultQueryClassifierAdapter adapter(QueryClassifier classifier) {
+        ObjectProvider<RuntimeObservability> obs = mock(ObjectProvider.class);
+        ObjectProvider<Tracer> tracer = mock(ObjectProvider.class);
+        return new DefaultQueryClassifierAdapter(classifier, obs, tracer);
     }
 
     private static ExecutionContext ctxToolsEnabled() {

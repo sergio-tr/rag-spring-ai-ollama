@@ -3,7 +3,7 @@ package com.uniovi.rag.interfaces.rest;
 import com.uniovi.rag.interfaces.rest.dto.ActivateClassifierModelRequest;
 import com.uniovi.rag.interfaces.rest.dto.ClassifierModelResponseDto;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.classifier.ClassifierModelRegistryService;
+import com.uniovi.rag.application.service.classifier.ClassifierModelRegistryService;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,7 +31,7 @@ public class ClassifierModelRegistryController {
 
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public List<ClassifierModelResponseDto> list(@AuthenticationPrincipal RagPrincipal principal) {
-        return classifierModelRegistryService.listForUser(principal.userId());
+        return classifierModelRegistryService.listForUserWithSync(principal.userId());
     }
 
     @PostMapping(path = "/{modelId}/activate", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)

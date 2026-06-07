@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service;
 
+import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
@@ -7,7 +8,7 @@ import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -19,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -42,6 +44,9 @@ class ProjectDocumentApplicationServiceTest {
 
     @Mock
     private ProjectAccessService projectAccessService;
+
+    @Mock
+    private BinaryStoragePort binaryStoragePort;
 
     @InjectMocks
     private ProjectDocumentApplicationService service;
@@ -161,18 +166,23 @@ class ProjectDocumentApplicationServiceTest {
         when(project.getId()).thenReturn(projectId);
         KnowledgeDocumentEntity row = mock(KnowledgeDocumentEntity.class);
         when(row.getProject()).thenReturn(project);
-        when(row.getId()).thenReturn(docId);
-        when(row.getFileName()).thenReturn("f.txt");
-        when(row.getStatus()).thenReturn(ProjectDocumentStatus.INGESTING);
-        when(row.getChunkCount()).thenReturn(0);
-        when(row.getErrorMessage()).thenReturn(null);
-        when(row.getUploadedAt()).thenReturn(null);
-        when(row.getReindexedAt()).thenReturn(null);
-        when(row.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
-        when(row.getConversation()).thenReturn(null);
-        when(row.getCurrentIndexSnapshot()).thenReturn(null);
-        when(row.getStorageUri()).thenReturn(null);
         when(projectAccessService.requireDocumentForUser(userId, docId)).thenReturn(row);
+
+        ProjectDocumentDto terminal =
+                new ProjectDocumentDto(
+                        docId,
+                        "f.txt",
+                        ProjectDocumentStatus.READY,
+                        0,
+                        null,
+                        null,
+                        null,
+                        CorpusScope.PROJECT_SHARED,
+                        null,
+                        null,
+                        null,
+                        false);
+        when(knowledgeIngestionService.loadTerminalProjectDocumentDto(docId)).thenReturn(terminal);
 
         MockMultipartFile file =
                 new MockMultipartFile("file", "f.txt", "text/plain", "data".getBytes(StandardCharsets.UTF_8));
@@ -180,7 +190,8 @@ class ProjectDocumentApplicationServiceTest {
         ProjectDocumentDto dto = service.reindexDocument(userId, docId, file);
         verify(knowledgeDocumentRepository).save(row);
         verify(knowledgeIngestionService)
-                .ingestFromTempFile(eq(userId), eq(projectId), eq(docId), any(), eq("f.txt"), eq("text/plain"));
+                .ingestFromTempFileJoiningCallerTransaction(
+                        eq(userId), eq(projectId), eq(docId), any(), eq("f.txt"), eq("text/plain"));
         assertEquals(docId, dto.id());
     }
 }

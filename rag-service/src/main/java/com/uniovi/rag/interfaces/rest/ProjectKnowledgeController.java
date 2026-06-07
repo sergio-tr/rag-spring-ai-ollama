@@ -8,6 +8,7 @@ import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildExecuteReque
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildExecuteResponse;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildPreviewRequest;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildPreviewResponse;
+import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeActiveSnapshotResponse;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeSnapshotDetailResponse;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeSnapshotSummaryResponse;
 import com.uniovi.rag.security.RagPrincipal;
@@ -29,7 +30,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Canonical knowledge API (ingest, reindex, snapshots). Retrieval and RAG are not exposed here.
+ * Canonical knowledge API (ingest, config-aware rebuild, snapshots). Retrieval and RAG are not exposed here.
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}/projects/{projectId}/knowledge")
@@ -88,16 +89,6 @@ public class ProjectKnowledgeController {
         return projectKnowledgeApplicationService.executeRebuild(principal.userId(), projectId, request);
     }
 
-    @PostMapping("/reindex")
-    public ResponseEntity<Void> reindex(
-            @AuthenticationPrincipal RagPrincipal principal,
-            @PathVariable UUID projectId,
-            @RequestParam("corpusScope") CorpusScope corpusScope,
-            @RequestParam(value = "conversationId", required = false) UUID conversationId) {
-        projectKnowledgeApplicationService.triggerReindex(principal.userId(), projectId, corpusScope, conversationId);
-        return ResponseEntity.noContent().build();
-    }
-
     @GetMapping("/snapshots")
     public List<KnowledgeSnapshotSummaryResponse> listSnapshots(
             @AuthenticationPrincipal RagPrincipal principal,
@@ -117,5 +108,12 @@ public class ProjectKnowledgeController {
             @RequestParam(value = "conversationId", required = false) UUID conversationId) {
         return projectKnowledgeApplicationService.getSnapshot(
                 principal.userId(), projectId, snapshotId, corpusScope, conversationId);
+    }
+
+    @GetMapping("/snapshots/active")
+    public KnowledgeActiveSnapshotResponse activeSnapshot(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable UUID projectId) {
+        return projectKnowledgeApplicationService.getActiveProjectSnapshot(principal.userId(), projectId);
     }
 }

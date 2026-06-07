@@ -8,6 +8,8 @@ import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallin
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
+import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
@@ -55,6 +57,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.ObjectProvider;
 
 class RagExecutionOrchestratorMemoryTest {
 
@@ -90,7 +94,10 @@ class RagExecutionOrchestratorMemoryTest {
                         clarificationPolicy,
                         clarificationStrategy,
                         routingStrategy,
-                        judgeStrategy);
+                        judgeStrategy,
+                        mock(StructuredAnswerPlanService.class),
+                        mock(AnswerVerificationService.class),
+                        mock(ObjectProvider.class));
 
         ExecutionStageTrace mem1 =
                 new ExecutionStageTrace(
@@ -216,6 +223,7 @@ class RagExecutionOrchestratorMemoryTest {
                 Optional.empty(),
                 "corr",
                 List.of("all"),
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),

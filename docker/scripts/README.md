@@ -97,7 +97,7 @@ Exit code of `compose_guard.py` is **1** when any **enforced** rule fails (defau
 Entry point: [`docker-compose.sh`](docker-compose.sh). Shortcuts: [`up.sh`](up.sh), [`build.sh`](build.sh), [`down.sh`](down.sh) (same directory).
 
 ```text
-./docker/scripts/docker-compose.sh <build|up|down> <dev|prod> [env options] [stack options]
+./docker/scripts/docker-compose.sh <build|config|up|down> <dev|prod> [env options] [stack options]
 ```
 
 - **`down`**: `<dev|prod>` is optional and defaults to **`prod`** (same behaviour as `./docker/scripts/down.sh` with no mode).
@@ -109,6 +109,15 @@ Entry point: [`docker-compose.sh`](docker-compose.sh). Shortcuts: [`up.sh`](up.s
 ./docker/scripts/build.sh dev --all
 ./docker/scripts/build.sh prod --obs --gpu
 ./docker/scripts/docker-compose.sh build dev --env db
+```
+
+**Config validation** uses the same `-f`, profile, and env-file chain as `up`, but never prompts or starts containers:
+
+```bash
+./docker/scripts/docker-compose.sh config prod --obs --no-env-prompt
+./docker/scripts/docker-compose.sh config prod --obs --obs-private --no-env-prompt
+./docker/scripts/docker-compose.sh config prod --obs --ollama --no-env-prompt
+./docker/scripts/docker-compose.sh config dev --rag --obs --no-env-prompt
 ```
 
 **Stop dev stack** (same compose chain as `up dev`): `./docker/scripts/up.sh dev --down` or `./docker/scripts/docker-compose.sh down dev [same flags as up dev]`.
@@ -132,13 +141,13 @@ Env setup runs **before** `compose up`, not before `dev --down`.
 ./docker/scripts/up.sh prod --env all --no-env-prompt
 ```
 
-**Hybrid dev infra**: `./docker/scripts/up.sh dev [options]`. **`--all`** enables `--gpu --obs --classifier --logs --infra --rag` (Loki/Promtail + node-exporter + **backend-dev** en Docker; cAdvisor is opt-in **`--profile cadvisor`**). Use `./docker/scripts/up.sh dev --all --down` to stop and remove volumes (`-v`).
+**Hybrid dev infra**: `./docker/scripts/up.sh dev [options]`. **`--all`** enables `--gpu --obs --classifier --logs --infra --rag` (Loki/Promtail + node-exporter + **backend-dev** in Docker; cAdvisor is opt-in **`--profile cadvisor`**). Use `./docker/scripts/up.sh dev --all --down` to stop and remove volumes (`-v`).
 
-**`--rag` (dev only):** arranca **`backend-dev`** y la **`webapp`** en Docker (además de `classifier-service` si hace falta): volumen `rag-service/`, recompilación en bucle y **Spring Boot DevTools**. **`--proxy`** (solo con `--rag`): publica **nginx** como en prod (`/` → webapp, `/api/*` → backend-dev); HTTP por defecto en el host **`80`** (`REVERSE_PROXY_DEV_HTTP_PORT`). Sin `--proxy`, la web usa **`WEBAPP_HTTP_PORT` por defecto 80** (`80:3000`); Grafana usa **`GRAFANA_PORT` por defecto 3000**. Con **`--proxy`**, deja esa URL vacía para mismo origen vía nginx. **`prod`** siempre incluye `reverse-proxy` (`compose.prod.yml`). Ajusta **`SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`** con Ollama en compose (`--gpu`). Variable opcional: **`RAG_DEV_POLL_INTERVAL`**.
+**`--rag` (dev only):** starts **`backend-dev`** and the **`webapp`** in Docker (plus `classifier-service` when needed): `rag-service/` volume, compile loop, and **Spring Boot DevTools**. **`--proxy`** (only with `--rag`) publishes **nginx** like prod (`/` → webapp, `/api/*` → backend-dev); default host HTTP port is **`80`** (`REVERSE_PROXY_DEV_HTTP_PORT`). Without `--proxy`, the webapp uses **`WEBAPP_HTTP_PORT` default 80** (`80:3000`); Grafana uses **`GRAFANA_PORT` default 3000**. With **`--proxy`**, leave the webapp API base URL empty for same-origin nginx. **`prod`** always includes `reverse-proxy` (`compose.prod.yml`). Set **`SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`** only when using in-stack Ollama (`--gpu` / `--ollama`). Optional variable: **`RAG_DEV_POLL_INTERVAL`**.
 
-**Compose layout:** `docker-compose.yml` (core + optional services behind **profiles**: `observability`, `logs`, `infra`, `ollama`, `cadvisor`, and **`rag`** for `backend-dev`). Overlays: `compose.dev.yml` (includes webapp ordering for `--rag`), `compose.dev-proxy.yml` (`--rag --proxy`, adds **`--profile proxy`**), `compose.obs.yml` (Spring OTLP for `backend` / `classifier-service`), `compose.gpu.yml`, `compose.rag-dev-obs.yml` (`--rag --obs`), `compose.prod.yml` (+ `compose.prod-obs.yml` with `--obs`). Ollama HTTP URL is always from **`rag-service/.env`**; **`--ollama-remote`** only affects whether the **`ollama`** profile is started together with **`--gpu`/`--ollama`**.
+**Compose layout:** `docker-compose.yml` (core + optional services behind **profiles**: `observability`, `logs`, `infra`, `ollama`, `cadvisor`, and **`rag`** for `backend-dev`). Overlays: `compose.dev.yml` (includes webapp ordering for `--rag`), `compose.dev-direct-ports.yml` (`--rag` without `--proxy`), `compose.dev-proxy.yml` (`--rag --proxy`, adds **`--profile proxy`**), `compose.obs.yml` (Spring OTLP for `backend` / `classifier-service`), `compose.gpu.yml`, `compose.rag-dev-obs.yml` (`--rag --obs`), `compose.prod.yml`, and `compose.prod-obs.yml` only with `prod --obs --obs-private`. Ollama HTTP URL is always from **`rag-service/.env`**; **`--ollama-remote`** only affects whether the **`ollama`** profile is started together with **`--gpu`/`--ollama`**.
 
-**Flags**: `dev`: `--all`, `--gpu`, `--ollama`, `--obs`, `--classifier`, `--logs`, `--infra`, `--rag`, **`--proxy`**, `--down`, `--volumes`. `prod`: `--all`, `--obs`, `--gpu`, `--ollama`, `--logs`, `--infra` (nginx siempre). **`down.sh`**: mismos flags que `up` para `dev` o `prod`. For **`down dev`** / **`build dev`**, pass the **same** flags as `up dev` (including `--rag`, **`--proxy`**, `--all`).
+**Flags**: `dev`: `--all`, `--gpu`, `--ollama`, `--obs`, `--classifier`, `--logs`, `--infra`, `--rag`, **`--proxy`**, `--down`, `--volumes`. `prod`: `--all`, `--obs`, `--obs-private`, `--gpu`, `--ollama`, `--logs`, `--infra` (nginx always). **`down.sh`**: same flags as `up` for `dev` or `prod`. For **`down dev`** / **`build dev`**, pass the **same** flags as `up dev` (including `--rag`, **`--proxy`**, `--all`).
 
 ## Running Compose manually
 
@@ -146,18 +155,20 @@ From `docker/` (env files are optional; compose uses defaults if a file is missi
 
 - Main stack: `docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env up -d`
 - With observability: add `-f compose.obs.yml`, **`--profile observability`**, and `--env-file ../observability/.env`
-- With Ollama in Docker (GPU): add `-f compose.gpu.yml`, **`--profile ollama`**, and `--env-file ../ollama/.env` (see `ollama/README.md`), or use `./docker/scripts/up.sh prod --gpu`.
+- With Ollama in Docker (GPU): add `-f compose.gpu.yml`, **`--profile ollama`**, and `--env-file ../ollama/.env` (see `ollama/README.md`), or use `./docker/scripts/up.sh prod --ollama`. Host-Ollama is the default recommended demo mode and does not need the `ollama` profile.
 
 ## Prod local (hardening) — `up` / `down` / `build`
 
 **Prod local** starts the stack with `compose.prod.yml` (reverse proxy + hardened ports for internal services).
 
-- Start: `./docker/scripts/up.sh prod [--all] [--obs] [--gpu| --ollama] [--logs] [--infra]`
+- Start: `./docker/scripts/up.sh prod [--all] [--obs] [--obs-private] [--gpu| --ollama] [--logs] [--infra]`
 - Build images: `./docker/scripts/build.sh prod` with the **same** flags as `up prod`
 - Stop: `./docker/scripts/down.sh` with the **same** flags you used for `up` (e.g. `--all` = obs + GPU + logs + infra + `-v`)
 
 Notes:
-- **`--obs`** adds `compose.obs.yml` and **`--profile observability`** (opt-in). Plain `up.sh prod` is base + `compose.prod.yml` only (reverse proxy, hardened ports).
+
+- **`--obs`** adds `compose.obs.yml` and **`--profile observability`** (opt-in). In local/demo mode, Prometheus, Grafana, and Jaeger publish host ports so screenshots can be captured.
+- **`--obs-private`** adds `compose.prod-obs.yml` on top of `--obs` and keeps Prometheus, Grafana, Jaeger, and OTEL ports internal.
 - `--gpu` and `--ollama` → same: **`--profile ollama`** if the Docker host has the NVIDIA runtime.
 - `--logs` → **`--profile logs`** (Loki + Promtail); `--infra` → **`--profile infra`** (node-exporter). cAdvisor: **`--profile cadvisor`** (see `docker/README.md`).
 
@@ -178,6 +189,24 @@ See [`../../db/scripts/README.md`](../../db/scripts/README.md).
 After `docker compose up -d`, verify that services respond and that an RAG query goes through the classifier.
 
 For a **repeatable pytest suite** (health + classify + backend + optional observability), see [`../../tests/integration/README.md`](../../tests/integration/README.md).
+
+### Local demo smoke (script)
+
+For the official prod-local demo path (host-Ollama by default):
+
+```bash
+./docker/scripts/local-demo-smoke.sh --obs
+```
+
+The script runs `docker-compose.sh config ...`, starts the prod-local stack unless `--skip-up` is passed, prints `docker compose ps`, checks webapp, backend Actuator health, classifier health, `/actuator/prometheus`, host Ollama model tags, and Prometheus/Grafana/Jaeger when `--obs` is enabled. Use `--obs-private` when observability UIs must stay internal; in that mode localhost UI checks are skipped unless `DEMO_SMOKE_PROMETHEUS_URL`, `DEMO_SMOKE_GRAFANA_URL`, and `DEMO_SMOKE_JAEGER_URL` point to forwarded ports. The authenticated model-registry check runs when `DEMO_SMOKE_EMAIL` and `DEMO_SMOKE_PASSWORD` are supplied; otherwise it is skipped without failing so no secrets are required in docs.
+
+Optional in-stack Ollama:
+
+```bash
+./docker/scripts/local-demo-smoke.sh --obs --ollama
+```
+
+This requires NVIDIA Container Toolkit and `rag-service/.env` pointing to `http://ollama:11434`.
 
 ### Technical E2E (script)
 
@@ -211,7 +240,7 @@ By default the script brings the stack up and then tears it down; use `--keep` t
 Override in `rag-service/.env` via `RAG_DEV_SEED_*` (see `rag-service/.env.example`).
 
 - Login to obtain a JWT:
-  `curl -s -X POST http://localhost:9000/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@dev.local\",\"password\":\"dev\"}"`
+  `curl -s -X POST http://localhost:9000/api/v5/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@dev.local\",\"password\":\"dev\"}"`
 - Use the JWT to call stable product endpoints (non-snapshot-dependent):
   - `GET /api/v5/config/schema`
   - `GET /api/v5/presets`
@@ -226,7 +255,7 @@ curl -sf http://localhost:8000/health && echo " classifier-service OK"
 curl -sf -X POST http://localhost:8000/classify -H "Content-Type: application/json" -d '{"query":"How many documents?"}' && echo " Classify OK"
 
 # Authenticated product smoke (non-snapshot-dependent)
-TOKEN="$(curl -sf -X POST http://localhost:9000/api/auth/login \
+TOKEN="$(curl -sf -X POST http://localhost:9000/api/v5/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"dev@local.test","password":"dev"}' | python -c 'import sys,json; print(json.load(sys.stdin)["accessToken"])')"
 curl -sf -H "Authorization: Bearer ${TOKEN}" "http://localhost:9000/api/v5/config/schema" >/dev/null && echo " Backend schema OK"
@@ -237,7 +266,7 @@ Avoid using query paths as the basic connectivity smoke; keep smoke checks non-s
 
 ## Pre-release validation pack (operator)
 
-Before tagging a release or thesis snapshot, capture evidence for:
+Before tagging a release or snapshot, capture evidence for:
 
 1. **Compose syntax:** `docker compose … config -q` for `docker-compose.yml` with **`--profile logs`** (and other profiles as needed), for `docker-compose.yml` + `compose.obs.yml` + **`--profile observability`**, and for `docker-compose.yml` + `compose.prod.yml` (same env-file pattern as CI — see [`.github/workflows/observability-smoke.yml`](../../.github/workflows/observability-smoke.yml)).
 2. **Runtime:** [`rag-service/scripts/smoke-test.sh`](../../rag-service/scripts/smoke-test.sh) against the running backend; Actuator health/readiness.

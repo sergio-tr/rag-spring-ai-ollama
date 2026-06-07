@@ -1,11 +1,12 @@
 """
 Evaluation pipeline: load model, run predictions on eval dataset, compute metrics and generate images.
-Matches the behaviour of the legacy trainer (classification report table + confusion matrix heatmaps).
+Matches the behaviour of the prior trainer (classification report table + confusion matrix heatmaps).
 """
 import io
 
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -67,7 +68,8 @@ class EvaluationPipeline(Loggable):
                 "Ensure QueryType values match the model labels."
             )
 
-        y_pred_probs = model.predict(X, verbose=0)
+        # Keras TextVectorization expects string inputs (list/tf.constant), not object-dtype ndarray (py3.11).
+        y_pred_probs = model.predict(tf.constant([str(x) for x in X]), verbose=0)
         y_pred_idx = np.argmax(y_pred_probs, axis=1)
         y_true = y_true_idx
         y_pred = y_pred_idx
@@ -93,7 +95,7 @@ class EvaluationPipeline(Loggable):
         )
 
     def _build_classification_report_image(self, report: dict, class_names: list[str]) -> bytes:
-        """Build PNG heatmap of classification report (precision, recall, f1) like the legacy trainer."""
+        """Build PNG heatmap of classification report (precision, recall, f1) like the prior trainer."""
         report_df = pd.DataFrame(report).transpose()
         rows = [r for r in class_names if r in report_df.index]
         if not rows:
@@ -101,7 +103,7 @@ class EvaluationPipeline(Loggable):
         cols = [c for c in ("precision", "recall", "f1-score") if c in report_df.columns]
         if not cols:
             cols = report_df.columns.tolist()
-        data = report_df.loc[rows, cols].astype(float)
+        data = report_df.loc[rows, cols].apply(pd.to_numeric, errors="coerce").astype(float)
         _, ax = plt.subplots(figsize=(10, max(4, len(data) * 0.5)))
         sns.heatmap(data, annot=True, fmt=".2f", cmap="Greens", ax=ax)
         ax.set_title("Classification Report")
@@ -113,7 +115,7 @@ class EvaluationPipeline(Loggable):
         return buf.read()
 
     def _build_confusion_matrix_image(self, conf_matrix: np.ndarray, class_names: list[str]) -> bytes:
-        """Build PNG heatmap of confusion matrix (Blues) like the legacy trainer."""
+        """Build PNG heatmap of confusion matrix (Blues) like the prior trainer."""
         _, ax = plt.subplots(figsize=(12, 8))
         sns.heatmap(
             conf_matrix,

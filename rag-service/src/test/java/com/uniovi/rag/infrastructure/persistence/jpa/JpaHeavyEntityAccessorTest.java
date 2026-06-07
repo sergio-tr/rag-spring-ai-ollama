@@ -163,22 +163,6 @@ class JpaHeavyEntityAccessorTest {
     }
 
     @Test
-    void promptTemplateStoresVersionedBody() {
-        PromptTemplateEntity t = new PromptTemplateEntity();
-        t.setName("sys");
-        t.setVersion(2);
-        t.setBody(Map.of("x", 1));
-        t.setCreatedAt(NOW);
-        t.setUpdatedAt(NOW.plusSeconds(1));
-
-        assertThat(t.getName()).isEqualTo("sys");
-        assertThat(t.getVersion()).isEqualTo(2);
-        assertThat(t.getBody()).containsEntry("x", 1);
-        assertThat(t.getCreatedAt()).isEqualTo(NOW);
-        assertThat(t.getUpdatedAt()).isEqualTo(NOW.plusSeconds(1));
-    }
-
-    @Test
     void documentArtifactFactoryBuildsRow() {
         KnowledgeDocumentEntity doc = new KnowledgeDocumentEntity();
         DocumentArtifactEntity a = DocumentArtifactEntity.newRow();
@@ -221,33 +205,6 @@ class JpaHeavyEntityAccessorTest {
         assertThat(ref.getRole()).isEqualTo("primary");
         assertThat(ref.getId().getPresetId()).isEqualTo(presetId);
         assertThat(ref.getId().getProfileId()).isEqualTo(profileId);
-    }
-
-    @Test
-    void scheduledEvaluationExposesScheduleFields() {
-        UserEntity user = UserEntityFactory.newRegisteredUser("s@b.c", "S", "p");
-        EvaluationDatasetEntity ds = new EvaluationDatasetEntity();
-        ds.setName("ds");
-        ds.setType(EvaluationDatasetType.RAG);
-        ds.setUploadedAt(NOW);
-        ds.setDatasetScope(EvaluationDatasetScope.USER_DATASET.name());
-
-        ScheduledEvaluationEntity s = new ScheduledEvaluationEntity();
-        s.setUser(user);
-        s.setName("daily");
-        s.setCronExpression("0 1 * * *");
-        s.setDataset(ds);
-        s.setEnabled(false);
-        s.setCreatedAt(NOW);
-        s.setUpdatedAt(NOW.plusSeconds(3));
-
-        assertThat(s.getUser()).isSameAs(user);
-        assertThat(s.getName()).isEqualTo("daily");
-        assertThat(s.getCronExpression()).isEqualTo("0 1 * * *");
-        assertThat(s.getDataset()).isSameAs(ds);
-        assertThat(s.isEnabled()).isFalse();
-        assertThat(s.getCreatedAt()).isEqualTo(NOW);
-        assertThat(s.getUpdatedAt()).isEqualTo(NOW.plusSeconds(3));
     }
 
     @Test

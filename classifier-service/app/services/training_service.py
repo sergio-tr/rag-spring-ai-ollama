@@ -25,6 +25,7 @@ class TrainingService(TracedService):
         class_names: list[str] | None = None,
         epochs: int = 50,
         batch_size: int = 8,
+        owner_id: str | None = None,
     ) -> TrainingResult:
         """
         Trains a new model from the dataset file. model_name is the label for the model.
@@ -41,6 +42,7 @@ class TrainingService(TracedService):
                 class_names=class_names,
                 epochs=epochs,
                 batch_size=batch_size,
+                owner_id=owner_id,
             ),
             input_attrs={
                 "model_name": model_name.strip()[:128],
@@ -59,6 +61,7 @@ class TrainingService(TracedService):
         class_names: list[str] | None,
         epochs: int,
         batch_size: int,
+        owner_id: str | None,
     ) -> TrainingResult:
         try:
             result = self._pipeline.train(
@@ -67,6 +70,7 @@ class TrainingService(TracedService):
                 class_names=class_names,
                 epochs=epochs,
                 batch_size=batch_size,
+                owner_id=owner_id,
             )
             out = TrainingResult(
                 model_id=result["model_id"],

@@ -1,6 +1,6 @@
 package com.uniovi.rag.interfaces.rest.auth;
 
-import com.uniovi.rag.application.usecase.auth.OauthLoginService;
+import com.uniovi.rag.application.service.auth.OauthLoginService;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.infrastructure.persistence.OauthIdentityRepository;
 import com.uniovi.rag.infrastructure.persistence.OauthLoginExchangeCodeRepository;

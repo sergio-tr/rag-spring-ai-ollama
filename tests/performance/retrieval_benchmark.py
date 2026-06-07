@@ -26,7 +26,7 @@ except ImportError:
     yaml = None  # type: ignore[assignment]
 
 from common import (
-    LegacyRequestRecord,
+    HistoricalQueryRequestRecord,
     aggregate_token_estimates,
     base_report_v1,
     build_summary,
@@ -85,13 +85,13 @@ def _http_json(
         return None, None, duration_ms, f"{type(e).__name__}: {e}"
 
 
-def _legacy_get(
+def _historical_query_get(
     backend_base: str,
     query_path: str,
     question: str,
     extra_params: dict[str, Any],
     timeout_s: float,
-) -> LegacyRequestRecord:
+) -> HistoricalQueryRequestRecord:
     base = backend_base.rstrip("/")
     path = query_path if query_path.startswith("/") else f"/{query_path}"
     params: dict[str, str] = {"question": question}
@@ -121,7 +121,7 @@ def _legacy_get(
     te = None
     if answer is not None:
         te = estimate_tokens_chars_over_4(question, answer)
-    return LegacyRequestRecord(
+    return HistoricalQueryRequestRecord(
         question=question,
         ok=ok,
         status_code=status,
@@ -294,7 +294,7 @@ def main(default_family: str | None = None) -> int:
         help="retrieval: emphasize path latency; llm: same HTTP path, emphasize token estimates in report.",
     )
     p.add_argument("--scenario", default="baseline", help="Name of scenarios/*.yaml (without dir) or path to YAML")
-    p.add_argument("--query-path", default="", help="Unused (legacy transport removed by migration plan).")
+    p.add_argument("--query-path", default="", help="Unused (historical_query transport removed by migration plan).")
     p.add_argument("--product-base-path", default=default_product)
     p.add_argument("--questions-file", default=None)
     p.add_argument("--questions", default=None, help="JSON array of question strings")
@@ -309,13 +309,13 @@ def main(default_family: str | None = None) -> int:
 
     scenario = _load_scenario(args.scenario)
     transport = str(scenario.get("transport") or "product_chat").strip().lower()
-    if transport not in ("legacy", "product_chat"):
+    if transport not in ("historical_query", "product_chat"):
         print("Invalid scenario transport", transport, file=sys.stderr)
         return 2
 
-    legacy_cfg = scenario.get("legacy") if isinstance(scenario.get("legacy"), dict) else {}
-    query_path = str(legacy_cfg.get("query_path") or args.query_path)
-    query_params = legacy_cfg.get("query_params") if isinstance(legacy_cfg.get("query_params"), dict) else {}
+    historical_cfg = scenario.get("historical_query") if isinstance(scenario.get("historical_query"), dict) else {}
+    query_path = str(historical_cfg.get("query_path") or args.query_path)
+    query_params = historical_cfg.get("query_params") if isinstance(historical_cfg.get("query_params"), dict) else {}
 
     product_cfg = scenario.get("product_chat") if isinstance(scenario.get("product_chat"), dict) else {}
     product_base = str(product_cfg.get("product_base_path") or args.product_base_path)
@@ -366,8 +366,8 @@ def main(default_family: str | None = None) -> int:
     record_rows: list[dict[str, Any]] = []
 
     def run_one(q: str) -> tuple[float | None, dict[str, Any]]:
-        if transport == "legacy":
-            rec = _legacy_get(args.backend_base_url, query_path, q, query_params, args.timeout_s)
+        if transport == "historical_query":
+            rec = _historical_query_get(args.backend_base_url, query_path, q, query_params, args.timeout_s)
             row = {
                 "question": rec.question,
                 "ok": rec.ok,
@@ -429,8 +429,8 @@ def main(default_family: str | None = None) -> int:
 
     api_block = {
         "backendBaseUrl": args.backend_base_url,
-        "legacyQueryPath": query_path if transport == "legacy" else None,
-        "queryParams": query_params if transport == "legacy" else None,
+        "historicalQueryPath": query_path if transport == "historical_query" else None,
+        "queryParams": query_params if transport == "historical_query" else None,
         "productBasePath": product_base if transport == "product_chat" else None,
         "projectId": project_id if transport == "product_chat" else None,
         "conversationId": conversation_id if transport == "product_chat" else None,

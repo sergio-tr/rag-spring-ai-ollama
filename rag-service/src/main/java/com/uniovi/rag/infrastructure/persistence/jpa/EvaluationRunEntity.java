@@ -37,6 +37,14 @@ public class EvaluationRunEntity {
     @JoinColumn(name = "project_id")
     private ProjectEntity project;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "evaluation_corpus_id")
+    private EvaluationCorpusEntity evaluationCorpus;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "campaign_id")
+    private EvaluationCampaignEntity campaign;
+
     private String name;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -97,12 +105,30 @@ public class EvaluationRunEntity {
     @Column(name = "embedding_model_id", length = 256)
     private String embeddingModelId;
 
+    @Column(name = "embedding_dimensions")
+    private Integer embeddingDimensions;
+
     @Column(name = "classifier_model_id", length = 256)
     private String classifierModelId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "async_task_id")
     private AsyncTaskEntity asyncTask;
+
+    @Column(name = "embedding_downstream_rag", nullable = false)
+    private boolean embeddingDownstreamRag;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "llm_experimental_snapshot", columnDefinition = "jsonb")
+    private Map<String, Object> llmExperimentalSnapshot;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "embedding_experimental_snapshot", columnDefinition = "jsonb")
+    private Map<String, Object> embeddingExperimentalSnapshot;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "prompt_profile_snapshot", columnDefinition = "jsonb")
+    private Map<String, Object> promptProfileSnapshot;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "aggregates_json", columnDefinition = "jsonb")
@@ -134,6 +160,22 @@ public class EvaluationRunEntity {
 
     public void setProject(ProjectEntity project) {
         this.project = project;
+    }
+
+    public EvaluationCorpusEntity getEvaluationCorpus() {
+        return evaluationCorpus;
+    }
+
+    public void setEvaluationCorpus(EvaluationCorpusEntity evaluationCorpus) {
+        this.evaluationCorpus = evaluationCorpus;
+    }
+
+    public EvaluationCampaignEntity getCampaign() {
+        return campaign;
+    }
+
+    public void setCampaign(EvaluationCampaignEntity campaign) {
+        this.campaign = campaign;
     }
 
     public String getName() {
@@ -280,6 +322,14 @@ public class EvaluationRunEntity {
         this.embeddingModelId = embeddingModelId;
     }
 
+    public Integer getEmbeddingDimensions() {
+        return embeddingDimensions;
+    }
+
+    public void setEmbeddingDimensions(Integer embeddingDimensions) {
+        this.embeddingDimensions = embeddingDimensions;
+    }
+
     public String getClassifierModelId() {
         return classifierModelId;
     }
@@ -294,6 +344,38 @@ public class EvaluationRunEntity {
 
     public void setAsyncTask(AsyncTaskEntity asyncTask) {
         this.asyncTask = asyncTask;
+    }
+
+    public boolean isEmbeddingDownstreamRag() {
+        return embeddingDownstreamRag;
+    }
+
+    public void setEmbeddingDownstreamRag(boolean embeddingDownstreamRag) {
+        this.embeddingDownstreamRag = embeddingDownstreamRag;
+    }
+
+    public Map<String, Object> getLlmExperimentalSnapshot() {
+        return llmExperimentalSnapshot;
+    }
+
+    public void setLlmExperimentalSnapshot(Map<String, Object> llmExperimentalSnapshot) {
+        this.llmExperimentalSnapshot = llmExperimentalSnapshot;
+    }
+
+    public Map<String, Object> getEmbeddingExperimentalSnapshot() {
+        return embeddingExperimentalSnapshot;
+    }
+
+    public void setEmbeddingExperimentalSnapshot(Map<String, Object> embeddingExperimentalSnapshot) {
+        this.embeddingExperimentalSnapshot = embeddingExperimentalSnapshot;
+    }
+
+    public Map<String, Object> getPromptProfileSnapshot() {
+        return promptProfileSnapshot;
+    }
+
+    public void setPromptProfileSnapshot(Map<String, Object> promptProfileSnapshot) {
+        this.promptProfileSnapshot = promptProfileSnapshot;
     }
 
     public Map<String, Object> getAggregatesJson() {

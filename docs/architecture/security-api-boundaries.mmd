@@ -2,17 +2,17 @@
 %% See rag-service README and application properties
 flowchart TB
   subgraph public_paths [PermitAll examples]
-    A1["/api/auth/*"]
+    A1["{product}/auth/*"]
     A2["/actuator/health /actuator/health/*"]
     A3["/actuator/prometheus"]
     A4["/v3/api-docs/* /swagger-ui/*"]
-    A5["Legacy prefix /** when security enables public legacy"]
+    A5["Optional extra permit-all paths from security config"]
   end
   subgraph jwt_paths [Authenticated JWT]
     P1["Product API prefix /** default /api/v5"]
   end
   subgraph admin_paths [JWT plus ROLE_ADMIN]
-    P2["/api/admin/**"]
+    P2["{product}/admin/**"]
   end
   Client[Browser or API client] --> public_paths
   Client -->|Bearer JWT| jwt_paths

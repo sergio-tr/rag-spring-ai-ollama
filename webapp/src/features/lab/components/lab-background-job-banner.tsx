@@ -6,14 +6,57 @@ import {
   labSectionHref,
   pathnameMatchesLabSection,
   pickPrimaryLabBannerRecord,
+  type PersistedLabJobRecord,
 } from "@/features/lab/lib/lab-job-persistence";
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
 import type { TraceStatus } from "@/features/trace/trace-types";
 import { usePathname, useRouter } from "@/navigation";
 import { useTranslations } from "next-intl";
 
+function bannerSummaryMessage(
+  job: PersistedLabJobRecord,
+  t: ReturnType<typeof useTranslations<"Lab">>,
+): string {
+  if (job.staleNotFound) {
+    return t("jobRecoveryStale", { jobId: job.jobId });
+  }
+  const isTerminal = job.lastStatus?.terminal === true;
+  if (job.stoppedWatching && !isTerminal) {
+    return t("jobRecoveryStoppedWaiting", { jobId: job.jobId });
+  }
+  if (!isTerminal) {
+    return t("jobRecoveryInflight", { jobId: job.jobId });
+  }
+  const statusUpper = job.lastStatus?.status?.toUpperCase() ?? "";
+  if (statusUpper === "SUCCEEDED") {
+    return t("jobRecoveryCompleted", { jobId: job.jobId });
+  }
+  return t("jobRecoveryTerminalOther", {
+    jobId: job.jobId,
+    status: job.lastStatus?.status ?? "unknown",
+  });
+}
+
+function bannerTraceStatus(job: PersistedLabJobRecord): TraceStatus {
+  if (job.staleNotFound) {
+    return "warning";
+  }
+  const isTerminal = job.lastStatus?.terminal === true;
+  const statusUpper = job.lastStatus?.status?.toUpperCase() ?? "";
+  if (isTerminal && statusUpper === "FAILED") {
+    return "error";
+  }
+  if (isTerminal) {
+    return "success";
+  }
+  if (job.stoppedWatching) {
+    return "warning";
+  }
+  return "in_progress";
+}
+
 /**
- * Session banner for Lab async jobs: stale server state, stopped waiting, in-flight recovery, and completed/failed summaries.
+ * Session banner for in-flight Lab evaluations: stale server state, reconnecting stream, recovery, and summaries.
  */
 export function LabBackgroundJobBanner() {
   const t = useTranslations("Lab");
@@ -21,7 +64,7 @@ export function LabBackgroundJobBanner() {
   const router = useRouter();
   const records = useLabJobSessionStore((s) => s.records);
   const requestResume = useLabJobSessionStore((s) => s.requestResumeLabJob);
-  const clearRecord = useLabJobSessionStore((s) => s.clearLabJobRecord);
+  const clearRecord = useLabJobSessionStore((s) => s.forgetLabJobWatching);
   const dismissTerminal = useLabJobSessionStore((s) => s.dismissTerminalLabJob);
 
   const picked = pickPrimaryLabBannerRecord(records);
@@ -33,30 +76,8 @@ export function LabBackgroundJobBanner() {
   const onSection = pathnameMatchesLabSection(pathname, job.sectionKey);
   const targetHref = labSectionHref(job.sectionKey);
   const isTerminal = job.lastStatus?.terminal === true;
-  const st = job.lastStatus?.status?.toUpperCase() ?? "";
-
-  const summaryMessage = job.staleNotFound
-    ? t("jobRecoveryStale", { jobId: job.jobId })
-    : job.stoppedWatching && !isTerminal
-      ? t("jobRecoveryStoppedWaiting", { jobId: job.jobId })
-      : isTerminal
-        ? st === "SUCCEEDED"
-          ? t("jobRecoveryCompleted", { jobId: job.jobId })
-          : t("jobRecoveryTerminalOther", {
-              jobId: job.jobId,
-              status: job.lastStatus?.status ?? "unknown",
-            })
-        : t("jobRecoveryInflight", { jobId: job.jobId });
-
-  const traceStatus: TraceStatus = job.staleNotFound
-    ? "warning"
-    : isTerminal && st === "FAILED"
-      ? "error"
-      : isTerminal
-        ? "success"
-        : job.stoppedWatching
-          ? "warning"
-          : "in_progress";
+  const summaryMessage = bannerSummaryMessage(job, t);
+  const traceStatus = bannerTraceStatus(job);
 
   function continueJob() {
     requestResume(job.sectionKey, job.jobId);
@@ -76,7 +97,7 @@ export function LabBackgroundJobBanner() {
           </Button>
         ) : (
           <>
-            <Button type="button" variant="secondary" size="sm" className="shrink-0" onClick={() => void continueJob()}>
+            <Button type="button" variant="secondary" size="sm" className="shrink-0" onClick={continueJob}>
               {onSection ? t("jobRecoveryResumeHere") : t("jobRecoveryOpenSection")}
             </Button>
             {isTerminal ? (
@@ -84,16 +105,11 @@ export function LabBackgroundJobBanner() {
                 {t("jobRecoveryDismiss")}
               </Button>
             ) : null}
-            {job.stoppedWatching ? (
-              <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => clearRecord(job.jobId)}>
-                {t("jobRecoveryDismiss")}
-              </Button>
-            ) : null}
-            {!isTerminal && !job.stoppedWatching ? (
+            {isTerminal ? null : (
               <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => clearRecord(job.jobId)}>
                 {t("jobRecoveryForget")}
               </Button>
-            ) : null}
+            )}
           </>
         )}
       </div>

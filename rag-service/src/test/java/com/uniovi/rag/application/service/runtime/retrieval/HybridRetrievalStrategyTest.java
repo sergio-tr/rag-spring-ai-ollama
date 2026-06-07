@@ -51,8 +51,7 @@ class HybridRetrievalStrategyTest {
                         List.of(s),
                         UUID.randomUUID(),
                         Optional.empty(),
-                        List.of("all"),
-                        true);
+                        List.of("all"), true, Optional.empty());
         RetrievalCandidate d =
                 new RetrievalCandidate(
                         s + ":a:0",

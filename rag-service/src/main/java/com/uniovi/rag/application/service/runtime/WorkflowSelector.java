@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import org.springframework.stereotype.Component;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Component;
 public class WorkflowSelector {
 
     private final DirectLlmWorkflow directLlmWorkflow;
+    private final CorpusGroundedDirectWorkflow corpusGroundedDirectWorkflow;
     private final FullCorpusWorkflow fullCorpusWorkflow;
     private final DocumentDenseRagWorkflow documentDenseRagWorkflow;
     private final ChunkDenseRagWorkflow chunkDenseRagWorkflow;
@@ -20,11 +22,13 @@ public class WorkflowSelector {
 
     public WorkflowSelector(
             DirectLlmWorkflow directLlmWorkflow,
+            CorpusGroundedDirectWorkflow corpusGroundedDirectWorkflow,
             FullCorpusWorkflow fullCorpusWorkflow,
             DocumentDenseRagWorkflow documentDenseRagWorkflow,
             ChunkDenseRagWorkflow chunkDenseRagWorkflow,
             ChunkDenseMetadataWorkflow chunkDenseMetadataWorkflow) {
         this.directLlmWorkflow = directLlmWorkflow;
+        this.corpusGroundedDirectWorkflow = corpusGroundedDirectWorkflow;
         this.fullCorpusWorkflow = fullCorpusWorkflow;
         this.documentDenseRagWorkflow = documentDenseRagWorkflow;
         this.chunkDenseRagWorkflow = chunkDenseRagWorkflow;
@@ -32,12 +36,22 @@ public class WorkflowSelector {
     }
 
     public ExecutionWorkflow select(ExecutionContext ctx) {
-        RagConfig rag = ctx.resolved().toRagConfig();
+        return selectFromResolved(ctx.resolved());
+    }
+
+    public ExecutionWorkflow selectFromResolved(ResolvedRuntimeConfig resolved) {
+        RagConfig rag = resolved != null ? resolved.toRagConfig() : null;
+        if (rag == null) {
+            throw RagServiceException.unsupportedRuntimeConfiguration("missing resolved config");
+        }
         if (rag.useAdvisor() && !rag.useRetrieval()) {
             throw RagServiceException.unsupportedRuntimeConfiguration("useAdvisor requires useRetrieval and a dense retrieval workflow");
         }
-        if (rag.reasoningEnabled() || rag.rankerEnabled() || rag.postRetrievalEnabled()) {
-            throw RagServiceException.unsupportedRuntimeConfiguration("advanced runtime capabilities are not implemented");
+        if (rag.rankerEnabled() && !rag.useRetrieval()) {
+            throw RagServiceException.unsupportedRuntimeConfiguration("rankerEnabled requires useRetrieval");
+        }
+        if (rag.postRetrievalEnabled() && !rag.useRetrieval()) {
+            throw RagServiceException.unsupportedRuntimeConfiguration("postRetrievalEnabled requires useRetrieval");
         }
         MaterializationStrategy strategy = rag.materializationStrategy();
         if (rag.useRetrieval() && strategy == MaterializationStrategy.STRUCTURED_SEARCH) {
@@ -48,7 +62,7 @@ public class WorkflowSelector {
             return directLlmWorkflow;
         }
         if (!rag.useRetrieval() && rag.naiveFullCorpusInPromptEnabled()) {
-            return fullCorpusWorkflow;
+            return rag.corpusGroundedDirectWorkflow() ? corpusGroundedDirectWorkflow : fullCorpusWorkflow;
         }
         if (rag.useRetrieval() && strategy == MaterializationStrategy.DOCUMENT_LEVEL) {
             return documentDenseRagWorkflow;

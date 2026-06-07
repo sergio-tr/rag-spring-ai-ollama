@@ -26,6 +26,7 @@ class RagConfigApplyJsonOverridesTest {
                 false,
                 false,
                 false,
+                false,
                 10,
                 0.35,
                 "llm-main",
@@ -133,5 +134,13 @@ class RagConfigApplyJsonOverridesTest {
         JsonNode node = MAPPER.readTree("{\"clarificationEnabled\": true}");
         RagConfig out = RagConfig.applyJsonOverrides(base, node);
         assertThat(out.clarificationEnabled()).isTrue();
+    }
+
+    @Test
+    void applyJsonOverrides_updatesCorpusGroundedDirectWorkflow() throws Exception {
+        RagConfig base = sampleBase();
+        JsonNode node = MAPPER.readTree("{\"corpusGroundedDirectWorkflow\": true}");
+        RagConfig out = RagConfig.applyJsonOverrides(base, node);
+        assertThat(out.corpusGroundedDirectWorkflow()).isTrue();
     }
 }

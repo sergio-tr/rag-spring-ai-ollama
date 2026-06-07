@@ -5,7 +5,7 @@ import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.interfaces.rest.dto.RagPresetDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.preset.PresetService;
+import com.uniovi.rag.application.service.preset.PresetService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

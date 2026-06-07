@@ -3,8 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { useAppStore } from "@/store/app.store";
-import type { ConversationDto, MessageDto, PatchConversationBody } from "@/types/api";
+import type { ConversationDto, CreateConversationBody, MessageDto, PatchConversationBody } from "@/types/api";
 import { CHAT_DETERMINISTIC_DEFAULT_PRESET_ID } from "@/features/chat/lib/conversation-preset-ui";
+import { chatRuntimeStateKey } from "@/features/chat/hooks/use-chat-runtime-state";
 
 const convKey = (projectId: string) => ["conversations", projectId] as const;
 
@@ -28,13 +29,34 @@ export function mergeConversationPatchOptimistic(
   if (body.documentFilter !== undefined) {
     next.documentFilter = [...(body.documentFilter ?? [])];
   }
+  if (body.clearRuntimeOverride) {
+    next.runtimeOverride = {};
+  } else if (body.runtimeOverride !== undefined) {
+    next.runtimeOverride = body.runtimeOverride ? { ...body.runtimeOverride } : {};
+  }
+  if (body.clearLlmModel) {
+    next.llmModel = null;
+  } else if (body.llmModel !== undefined) {
+    next.llmModel = body.llmModel;
+  }
+  if (body.clearClassifierModelId) {
+    next.classifierModelId = null;
+  } else if (body.classifierModelId !== undefined) {
+    next.classifierModelId = body.classifierModelId;
+  }
+  if (body.clearPendingClarification) {
+    next.pendingClarification = null;
+  }
   return next;
 }
 
 type PatchConversationContext = {
   previous: ConversationDto[] | undefined;
 };
-const msgKey = (conversationId: string) => ["messages", conversationId] as const;
+export const conversationMessagesQueryKey = (conversationId: string) =>
+  ["messages", conversationId] as const;
+
+const msgKey = conversationMessagesQueryKey;
 
 export function useConversations(projectId: string | undefined) {
   return useQuery({
@@ -47,15 +69,22 @@ export function useConversations(projectId: string | undefined) {
 
 export function useCreateConversation(projectId: string | undefined) {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
+  return useMutation<ConversationDto, Error, CreateConversationBody | undefined>({
+    mutationFn: (body) =>
       apiFetch<ConversationDto>(apiProductPath(`/projects/${projectId}/conversations`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(body ?? {}),
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       if (projectId) {
+        qc.setQueryData<ConversationDto[]>(convKey(projectId), (old) => {
+          if (!old) return [data];
+          if (old.some((c) => c.id === data.id)) {
+            return old.map((c) => (c.id === data.id ? data : c));
+          }
+          return [data, ...old];
+        });
         void qc.invalidateQueries({ queryKey: convKey(projectId) });
         void qc.invalidateQueries({ queryKey: ["projects"] });
       }
@@ -81,29 +110,17 @@ export function usePatchConversation(projectId: string | undefined) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
-    onMutate: async ({
-      conversationId,
-      body,
-    }: {
-      conversationId: string;
-      body: PatchConversationBody;
-    }): Promise<PatchConversationContext> => {
+    onMutate: async (): Promise<PatchConversationContext> => {
       if (!projectId) return { previous: undefined };
-      const previous = qc.getQueryData<ConversationDto[]>(convKey(projectId));
-      // Apply optimistic cache update synchronously before any await so isPending does not
-      // leave controlled inputs (e.g. document sheet checkboxes) disabled while still stale.
-      qc.setQueryData<ConversationDto[]>(convKey(projectId), (old) => {
-        if (!old) return old;
-        return old.map((c) =>
-          c.id === conversationId ? mergeConversationPatchOptimistic(c, body) : c,
-        );
-      });
       await qc.cancelQueries({ queryKey: convKey(projectId) });
-      return { previous };
+      return { previous: qc.getQueryData<ConversationDto[]>(convKey(projectId)) };
     },
-    onError: (_err, _vars, ctx) => {
-      if (!projectId || !ctx?.previous) return;
-      qc.setQueryData(convKey(projectId), ctx.previous);
+    onError: (_err, { conversationId }, ctx) => {
+      if (projectId && ctx?.previous) {
+        qc.setQueryData(convKey(projectId), ctx.previous);
+        void qc.invalidateQueries({ queryKey: convKey(projectId) });
+      }
+      void qc.invalidateQueries({ queryKey: chatRuntimeStateKey(conversationId) });
     },
     onSuccess: (data, { conversationId }) => {
       if (!projectId) return;
@@ -111,6 +128,13 @@ export function usePatchConversation(projectId: string | undefined) {
         if (!old) return old;
         return old.map((c) => (c.id === conversationId ? data : c));
       });
+      void qc.invalidateQueries({ queryKey: chatRuntimeStateKey(conversationId) });
+    },
+    onSettled: (_data, _error, vars) => {
+      if (projectId) void qc.invalidateQueries({ queryKey: convKey(projectId) });
+      if (vars?.conversationId) {
+        void qc.invalidateQueries({ queryKey: chatRuntimeStateKey(vars.conversationId) });
+      }
     },
   });
 }

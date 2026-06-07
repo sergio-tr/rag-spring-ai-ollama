@@ -7,7 +7,8 @@
  * GET `{prefix}/presets`, POST/DELETE `{prefix}/presets/{id}`. Auth: `{prefix}/auth/*`. See `webapp/README.md` and backend OpenAPI (`/v3/api-docs`).
  */
 import { getAccessToken, setAccessToken } from "@/lib/access-token";
-import { createTraceparent } from "@/lib/traceparent";
+import { currentTraceparent } from "@/lib/trace-session";
+import { mapUserFacingErrorMessageEnglish } from "@/lib/user-facing-error-messages";
 
 const DEBUG_BODY_PREVIEW_CHARS = 500;
 
@@ -48,18 +49,110 @@ export function authApiPath(path: string): string {
   return `${RAG_API_PRODUCT_PREFIX}/auth${p}`;
 }
 
+/** Host ports where nginx terminates TLS/HTTP and routes ${RAG_API_PRODUCT_PREFIX} to Spring. */
+const REVERSE_PROXY_BROWSER_PORTS = new Set(["80", "8080", "443", "8443", "8444"]);
+
+/** Next.js dev / direct webapp ports when the API is not same-origin (no reverse-proxy). */
+const DEV_DIRECT_WEBAPP_PORTS = new Set(["3000", "3001", "8081"]);
+
+const DEV_BACKEND_FALLBACK_ORIGIN = "http://127.0.0.1:9000";
+
+/** Thrown when the browser cannot target Spring for product API / SSE paths. */
+export const LAB_STREAM_API_BASE_ERROR = "LAB live stream API base URL is not configured";
+
+function browserUsesReverseProxyProductApi(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const port =
+    window.location.port || (window.location.protocol === "https:" ? "443" : "80");
+  return REVERSE_PROXY_BROWSER_PORTS.has(port);
+}
+
+function browserUsesDirectWebappWithoutProxy(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const port =
+    window.location.port || (window.location.protocol === "https:" ? "443" : "80");
+  return DEV_DIRECT_WEBAPP_PORTS.has(port);
+}
+
 /**
- * Full browser URL for product API paths (e.g. OAuth redirects using `<a href>`).
- * When `NEXT_PUBLIC_API_BASE_URL` is empty/whitespace, returns a same-origin path for nginx reverse-proxy.
- * When set (e.g. `http://127.0.0.1:9000`), prefixes so navigation works if the UI is opened on the webapp port only.
+ * Full browser URL for product API paths (`fetch`, OAuth `<a href>`, etc.).
+ * Same-origin path when `NEXT_PUBLIC_API_BASE_URL` is empty or the UI is on a reverse-proxy port,
+ * even if an older Docker image baked `http://127.0.0.1:9000` (avoids mixed content / CORS noise).
  */
-export function resolveBrowserProductApiUrl(path: string): string {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const trimmed = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
-  if (!trimmed) {
+export function resolveBrowserProductApiUrl(pathOrUrl: string): string {
+  const trimmed = pathOrUrl.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      return new URL(trimmed).href;
+    } catch {
+      throw new Error(LAB_STREAM_API_BASE_ERROR);
+    }
+  }
+
+  const normalizedPath = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const baked = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+
+  if (typeof window === "undefined") {
+    if (baked) {
+      return `${baked}${normalizedPath}`;
+    }
     return normalizedPath;
   }
-  return `${trimmed}${normalizedPath}`;
+
+  if (baked) {
+    try {
+      if (new URL(baked).origin === window.location.origin) {
+        return normalizedPath;
+      }
+    } catch {
+      throw new Error(LAB_STREAM_API_BASE_ERROR);
+    }
+    if (browserUsesReverseProxyProductApi()) {
+      return normalizedPath;
+    }
+    return `${baked}${normalizedPath}`;
+  }
+
+  if (browserUsesReverseProxyProductApi()) {
+    return normalizedPath;
+  }
+
+  // Direct Next dev / webapp port: never same-origin `/api/v5` (hits Next 404 HTML).
+  if (browserUsesDirectWebappWithoutProxy() || !REVERSE_PROXY_BROWSER_PORTS.has(
+    window.location.port || (window.location.protocol === "https:" ? "443" : "80"),
+  )) {
+    return `${DEV_BACKEND_FALLBACK_ORIGIN}${normalizedPath}`;
+  }
+
+  throw new Error(LAB_STREAM_API_BASE_ERROR);
+}
+
+/**
+ * Canonical browser URL for Lab job APIs (status, hydrate, active jobs, SSE events).
+ * Never returns same-origin `/api/v5` on direct Next dev ports without a reverse proxy.
+ */
+export function resolveLabJobApiUrl(pathOrUrl: string): string {
+  const trimmed = pathOrUrl.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return resolveBrowserProductApiUrl(trimmed);
+  }
+  const path = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const productPath = path.startsWith(RAG_API_PRODUCT_PREFIX)
+    ? path
+    : path.startsWith("/lab/")
+      ? `${RAG_API_PRODUCT_PREFIX}${path}`
+      : apiProductPath(path);
+  return resolveBrowserProductApiUrl(productPath);
+}
+
+/** Full-page navigation URL for Google OAuth start (`<a href>`, not `fetch`). */
+export function oauthGoogleStartHref(locale: string): string {
+  const path = authApiPath("/oauth/google/start");
+  return `${resolveBrowserProductApiUrl(path)}?locale=${encodeURIComponent(locale)}`;
 }
 
 function resolveApiUrl(path: string): string {
@@ -99,7 +192,7 @@ function buildAuthHeaders(args: {
     headers.delete("Content-Type");
   }
   if (!skipTraceparent && !headers.has("traceparent")) {
-    headers.set("traceparent", createTraceparent());
+    headers.set("traceparent", currentTraceparent());
   }
   if (!skipCredentials) {
     const bearer = getAccessToken();
@@ -173,6 +266,8 @@ export type ApiErrorKind = "http" | "network" | "timeout" | "abort" | "unknown";
 export type ApiErrorMeta = {
   kind: ApiErrorKind;
   safeMessage?: string;
+  /** Parsed JSON body when the response was JSON (including error responses). */
+  parsedJson?: unknown | null;
   details?: Record<string, unknown>;
   contentType?: string | null;
   /** Bounded slice of raw body for logs/debug only — never render unbounded HTML to users. */
@@ -282,8 +377,8 @@ function buildSafeMessage(args: {
 }): string {
   const { status, contentType, bodyText, parsedJson, kind } = args;
 
-  if (status === 401) return "Unauthorized.";
-  if (status === 403) return "Forbidden.";
+  if (status === 401) return "Session expired or not signed in. Please sign in and retry.";
+  if (status === 403) return "Insufficient permissions for this action. Check your account role and retry.";
   if (status === 404) return "Not found.";
 
   const fromJson = parsedJson === null ? null : extractJsonDetail(parsedJson);
@@ -367,6 +462,7 @@ export function createHttpApiError(args: {
   const meta: ApiErrorMeta = {
     kind: "http",
     safeMessage,
+    parsedJson,
     details,
     contentType: ct,
     rawBodyPreview: previewBody(args.bodyText),
@@ -401,16 +497,23 @@ export function sanitizePlainErrorTextForUi(raw: string | undefined | null, maxL
   if (!t) return "";
   if (looksLikeHtml(t)) return "";
   if (looksLikeStackTrace(t)) return "";
-  return trimSafeMessage(t, maxLen);
+  const human = mapUserFacingErrorMessageEnglish(t, "");
+  const source = human || t;
+  return trimSafeMessage(source, maxLen);
 }
 
 /**
- * User-safe message for UI (never raw HTML pages).
+ * User-safe message for UI (never raw HTML pages or bare technical codes).
  */
 export function getSafeApiErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
+  if (error instanceof ApiError) {
+    return mapUserFacingErrorMessageEnglish(
+      error.message,
+      "Something went wrong. Please try again.",
+    );
+  }
   if (error instanceof Error) return "Unexpected error. Please try again.";
-  return String(error);
+  return mapUserFacingErrorMessageEnglish(String(error), "Something went wrong. Please try again.");
 }
 
 function throwIfNetworkFailure(e: unknown, url: string, method: string): never {

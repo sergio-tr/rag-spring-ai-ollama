@@ -1,6 +1,7 @@
 package com.uniovi.rag.interfaces.rest.support.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.util.Map;
 
 /**
  * Envelope for RAG HTTP API: every response uses the same top-level shape.
@@ -15,6 +16,6 @@ public record ApiResponse<T>(boolean success, T data, ApiErrorBody error) {
     }
 
     public static <T> ApiResponse<T> fail(String code, String message, String detail) {
-        return new ApiResponse<>(false, null, new ApiErrorBody(code, message, detail));
+        return new ApiResponse<>(false, null, new ApiErrorBody(code, message, Map.of("details", detail)));
     }
 }

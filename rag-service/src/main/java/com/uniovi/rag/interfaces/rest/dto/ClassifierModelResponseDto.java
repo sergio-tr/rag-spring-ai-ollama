@@ -5,8 +5,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Registered classifier artifact: {@link #inferenceTag()} is the value written to {@code classifierModelId} in RAG
- * config (classifier-service model tag).
+ * Registered classifier artifact: {@link #name()} is the display label; {@link #inferenceTag()} is the classifier-service
+ * model id (directory tag / {@code default}) written to RAG {@code classifierModelId}.
  */
 public record ClassifierModelResponseDto(
         UUID id,

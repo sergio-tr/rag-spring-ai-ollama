@@ -2,7 +2,7 @@ package com.uniovi.rag.tool;
 
 import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.domain.model.QueryType;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
 
 import org.json.JSONObject;
 import org.springframework.ai.tool.annotation.Tool;

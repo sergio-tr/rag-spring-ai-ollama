@@ -1,6 +1,6 @@
 package com.uniovi.rag.infrastructure.observability;
 
-import com.uniovi.rag.service.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
 import org.json.JSONObject;
 
 import java.util.Map;
@@ -30,13 +30,11 @@ public final class TracedQueryAnalyser implements QueryAnalyser {
         return observability.recordTimer("rag.analyser.analyse", () ->
                 observability.runWithSpan(
                         "rag.analyser.analyse",
-                        Map.of("query", truncate(query != null ? query : "")),
+                        Map.of(
+                                "queryLength", TelemetryRedaction.queryLength(query),
+                                "hasEntities", "pending"),
                         "result",
                         () -> delegate.analyse(query)));
     }
 
-    private static String truncate(String s) {
-        if (s == null) return "";
-        return s.length() <= MAX_ATTR ? s : s.substring(0, MAX_ATTR) + "...";
-    }
 }

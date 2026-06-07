@@ -43,6 +43,7 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
                         message,
                         request.getRequestURI(),
                         request.getHeader("X-Request-Id"),
+                        null,
                         null));
     }
 }

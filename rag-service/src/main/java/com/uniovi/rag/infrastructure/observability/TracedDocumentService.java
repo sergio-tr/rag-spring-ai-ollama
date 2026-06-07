@@ -1,6 +1,6 @@
 package com.uniovi.rag.infrastructure.observability;
 
-import com.uniovi.rag.service.document.DocumentService;
+import com.uniovi.rag.application.service.knowledge.document.DocumentService;
 import org.springframework.ai.document.Document;
 import org.springframework.web.multipart.MultipartFile;
 

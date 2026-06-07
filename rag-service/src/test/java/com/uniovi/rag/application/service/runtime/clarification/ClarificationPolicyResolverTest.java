@@ -136,6 +136,7 @@ class ClarificationPolicyResolverTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 userQuery,
                 userQuery,
                 Optional.empty(),

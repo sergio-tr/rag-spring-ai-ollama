@@ -36,20 +36,21 @@
 | Load / stress | RPS, latency reports | Gatling | [`gatling.yml`](../../.github/workflows/gatling.yml) |
 | Micro-benchmark (Python) | Low-concurrency RAG latency + estimated tokens (schema v1); not load | `tests/performance/retrieval_benchmark.py`, `llm_benchmark.py`, `infra_probe.py` | Local; optional [`micro-benchmark.yml`](../../.github/workflows/micro-benchmark.yml) (dispatch / weekly, **no gates**) |
 
-**Playwright API vs pytest:** canonical operator/API smoke is [`webapp/e2e/api`](../../webapp/e2e/api) (`npm run test:api`). **pytest** in `tests/integration/` keeps **deep** HTTP contracts (lab jobs, obs, classifier matrices) — do not duplicate those assertions in Playwright API. Tooling reference: [traceability-legacy-tools.md](traceability-legacy-tools.md). See also [webapp/e2e/api/README.md](../../webapp/e2e/api/README.md), [tests/integration/README.md](../../tests/integration/README.md).
+**Playwright API vs pytest:** canonical operator/API smoke is [`webapp/e2e/api`](../../webapp/e2e/api) (`npm run test:api`). **pytest** in `tests/integration/` keeps **deep** HTTP contracts (lab jobs, obs, classifier matrices) — do not duplicate those assertions in Playwright API. Tooling reference: [traceability-retired-tools.md](traceability-retired-tools.md). See also [webapp/e2e/api/README.md](../../webapp/e2e/api/README.md), [tests/integration/README.md](../../tests/integration/README.md).
 
 ## Entry points
 
 | Layer | Canonical doc |
 | --- | --- |
 | **Baseline runbook** (exact local + CI commands for rag-service, classifier, webapp, Sonar inputs) | [baseline-runbook.md](baseline-runbook.md) |
+| **Closure-grade validation** (strict stack integration + Playwright `@fullstack` + evidence artifacts) | [baseline-runbook.md](baseline-runbook.md#4-stack-integration-strict-no-false-green) |
 | Backend verify (Surefire + JaCoCo) | [../../rag-service/README.md](../../rag-service/README.md) |
 | External dependency mocks (rag-service testsupport) | [external-test-harness.md](external-test-harness.md) |
 | Classifier pytest + coverage | [../../classifier-service/README.md](../../classifier-service/README.md) |
 | Webapp unit / Playwright UI + API | [../../webapp/README.md](../../webapp/README.md), [../../webapp/e2e/api/README.md](../../webapp/e2e/api/README.md) |
 | Integration (stack running) | [../../tests/integration/README.md](../../tests/integration/README.md) |
 | Technical Compose smoke | [../../tests/e2e/README.md](../../tests/e2e/README.md) |
-| Legacy tool traceability (k6 / Selenium / shell) | [traceability-legacy-tools.md](traceability-legacy-tools.md) |
+| Retired tool traceability (k6 / Selenium / shell) | [traceability-retired-tools.md](traceability-retired-tools.md) |
 | Python micro-benchmarks | [../../tests/performance/README.md](../../tests/performance/README.md) |
 | Full pipeline script | [../../tests/full-stack-verify.sh](../../tests/full-stack-verify.sh) |
 

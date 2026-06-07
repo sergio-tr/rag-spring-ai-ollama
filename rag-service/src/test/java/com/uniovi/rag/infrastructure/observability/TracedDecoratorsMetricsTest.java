@@ -1,15 +1,15 @@
 package com.uniovi.rag.infrastructure.observability;
 
-import com.uniovi.rag.application.model.CandidateResponse;
-import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.application.result.query.CandidateResponse;
+import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.model.RankerResult;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.expand.QueryExpander;
-import com.uniovi.rag.service.query.QueryService;
-import com.uniovi.rag.service.ranker.ResponseRanker;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.query.expand.QueryExpander;
+import com.uniovi.rag.application.service.runtime.execution.QueryExecutionService;
+import com.uniovi.rag.application.service.runtime.ranking.ResponseRanker;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.test.simple.SimpleTracer;
 import org.json.JSONException;
@@ -94,8 +94,8 @@ class TracedDecoratorsMetricsTest {
     }
 
     @Test
-    void tracedQueryService_recordsCounterAndTimer() {
-        QueryService delegate = mock(QueryService.class);
+    void tracedQueryExecutionService_recordsCounterAndTimer() {
+        QueryExecutionService delegate = mock(QueryExecutionService.class);
         QueryResponse expected = QueryResponse.fromLLM("answer", QueryType.COUNT_DOCUMENTS);
         when(delegate.generateResponse(eq("question"), isNull())).thenReturn(expected);
 
