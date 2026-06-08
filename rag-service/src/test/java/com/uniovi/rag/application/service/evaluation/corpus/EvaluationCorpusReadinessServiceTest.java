@@ -80,7 +80,7 @@ class EvaluationCorpusReadinessServiceTest {
 
         assertThat(readiness.runnable()).isTrue();
         assertThat(readiness.primaryBlocker()).isNull();
-        assertThat(readiness.snapshotBlocker()).isEqualTo(LabCorpusReasonCodes.REINDEX_REQUIRED);
+        assertThat(readiness.snapshotBlocker()).isEqualTo(LabCorpusReasonCodes.INDEX_PREPARATION_REQUIRED);
         assertThat(readiness.snapshotBlockerDetailCode()).isEqualTo("NO_ACTIVE_INDEX");
         assertThat(readiness.reindexRequired()).isTrue();
     }

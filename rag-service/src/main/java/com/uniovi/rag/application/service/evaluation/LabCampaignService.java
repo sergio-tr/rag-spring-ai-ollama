@@ -11,6 +11,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCorpusEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpMetricsCalculator;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpRollupCalculator;
 import com.uniovi.rag.application.service.evaluation.metrics.LabBenchmarkExportLabels;
@@ -38,14 +39,17 @@ public class LabCampaignService {
     private final EvaluationCampaignRepository evaluationCampaignRepository;
     private final EvaluationRunRepository evaluationRunRepository;
     private final EvaluationResultRepository evaluationResultRepository;
+    private final LabPresetAxisSupport labPresetAxisSupport;
 
     public LabCampaignService(
             EvaluationCampaignRepository evaluationCampaignRepository,
             EvaluationRunRepository evaluationRunRepository,
-            EvaluationResultRepository evaluationResultRepository) {
+            EvaluationResultRepository evaluationResultRepository,
+            LabPresetAxisSupport labPresetAxisSupport) {
         this.evaluationCampaignRepository = evaluationCampaignRepository;
         this.evaluationRunRepository = evaluationRunRepository;
         this.evaluationResultRepository = evaluationResultRepository;
+        this.labPresetAxisSupport = labPresetAxisSupport;
     }
 
     /**
@@ -140,8 +144,10 @@ public class LabCampaignService {
             row.put("llmModelId", r.getLlmModelId());
             row.put("embeddingModelId", r.getEmbeddingModelId());
             row.put("presetCode", resolvePresetCode(r));
+            row.put("presetKey", resolvePresetCode(r));
             row.put("modelLabel", humanModelLabel(r));
             row.put("presetLabel", humanPresetLabel(r));
+            row.put("comparisonLabel", comparisonLabel(r));
             row.put("corpusName", humanCorpusName(r));
             row.put("datasetName", humanDatasetName(r));
             row.put("comparisonAxis", ctx.comparisonAxis());
@@ -355,6 +361,8 @@ public class LabCampaignService {
             row.put("runName", run.getName());
             row.put("modelLabel", humanModelLabel(run));
             row.put("presetLabel", humanPresetLabel(run));
+            row.put("presetKey", resolvePresetCode(run));
+            row.put("comparisonLabel", comparisonLabel(run));
             row.put("corpusName", humanCorpusName(run));
             row.put("datasetName", humanDatasetName(run));
             row.put("status", run.getStatus() != null ? run.getStatus().name() : "");
@@ -379,7 +387,7 @@ public class LabCampaignService {
         return m;
     }
 
-    private static CampaignContext resolveCampaignContext(EvaluationCampaignEntity c, List<EvaluationRunEntity> runs) {
+    private CampaignContext resolveCampaignContext(EvaluationCampaignEntity c, List<EvaluationRunEntity> runs) {
         String studyType = c.getStudyType() != null ? c.getStudyType().trim() : "";
         String campaignType;
         String comparisonAxis;
@@ -395,7 +403,7 @@ public class LabCampaignService {
             campaignType = "RAG_PRESET";
             comparisonAxis = COMPARISON_AXIS_PRESET;
         }
-        int axisCount = countDistinctAxisValues(comparisonAxis, runs);
+        int axisCount = countDistinctPresetOrAxisValues(comparisonAxis, runs);
         boolean comparativeMode = readComparativeMode(c) || axisCount >= 2;
         return new CampaignContext(campaignType, comparisonAxis, comparativeMode, axisCount);
     }
@@ -408,15 +416,15 @@ public class LabCampaignService {
         return Boolean.TRUE.equals(v);
     }
 
-    private static int countDistinctAxisValues(String comparisonAxis, List<EvaluationRunEntity> runs) {
-        return (int) runs.stream().map(r -> resolveAxisValueStatic(comparisonAxis, r)).distinct().count();
+    private int countDistinctPresetOrAxisValues(String comparisonAxis, List<EvaluationRunEntity> runs) {
+        return (int) runs.stream().map(r -> resolveAxisValue(comparisonAxis, r)).distinct().count();
     }
 
-    private static String resolveAxisValue(CampaignContext ctx, EvaluationRunEntity run) {
-        return resolveAxisValueStatic(ctx.comparisonAxis(), run);
+    private String resolveAxisValue(CampaignContext ctx, EvaluationRunEntity run) {
+        return resolveAxisValue(ctx.comparisonAxis(), run);
     }
 
-    private static String resolveAxisValueStatic(String comparisonAxis, EvaluationRunEntity run) {
+    private String resolveAxisValue(String comparisonAxis, EvaluationRunEntity run) {
         return switch (comparisonAxis) {
             case COMPARISON_AXIS_EMBEDDING -> nullToEmpty(run.getEmbeddingModelId());
             case COMPARISON_AXIS_PRESET -> resolvePresetCode(run);
@@ -424,18 +432,16 @@ public class LabCampaignService {
         };
     }
 
-    @SuppressWarnings("unchecked")
-    private static String resolvePresetCode(EvaluationRunEntity run) {
-        if (run.getAggregatesJson() != null) {
-            Object codes = run.getAggregatesJson().get(BenchmarkRunOrchestrator.AGG_KEY_REQUESTED_PRESET_CODES);
-            if (codes instanceof List<?> list && !list.isEmpty()) {
-                Object first = list.getFirst();
-                if (first != null) {
-                    return String.valueOf(first).trim();
-                }
-            }
-        }
-        return "";
+    private String resolvePresetCode(EvaluationRunEntity run) {
+        return labPresetAxisSupport.resolvePresetCode(run);
+    }
+
+    private String humanPresetLabel(EvaluationRunEntity run) {
+        return labPresetAxisSupport.resolvePresetLabel(run);
+    }
+
+    private String comparisonLabel(EvaluationRunEntity run) {
+        return labPresetAxisSupport.comparisonLabel(run);
     }
 
     private static String humanModelLabel(EvaluationRunEntity run) {
@@ -446,11 +452,6 @@ public class LabCampaignService {
             return run.getEmbeddingModelId().trim();
         }
         return "";
-    }
-
-    private static String humanPresetLabel(EvaluationRunEntity run) {
-        String code = resolvePresetCode(run);
-        return code.isBlank() ? "" : code;
     }
 
     private static UUID knowledgeBaseId(EvaluationRunEntity run) {

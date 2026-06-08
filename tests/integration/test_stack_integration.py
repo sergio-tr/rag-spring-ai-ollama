@@ -1273,6 +1273,15 @@ class TestBackendLabJobs:
         body = _assert_json_response_not_html(readiness)
         assert body.get("runnable") is True
         assert body.get("primaryBlocker") in (None, "")
+        # Document-centric flow: missing index is informational, not a run blocker.
+        snapshot_blocker = body.get("snapshotBlocker")
+        if body.get("activeSnapshotId") in (None, ""):
+            assert snapshot_blocker in (
+                "INDEX_PREPARATION_REQUIRED",
+                "REINDEX_REQUIRED",
+                "NO_ACTIVE_SNAPSHOT",
+                None,
+            ), body
 
     def test_lab_evaluation_corpus_missing_returns_kb_not_found_code(
         self,

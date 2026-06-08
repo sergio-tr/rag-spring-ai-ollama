@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.quality.Strictness;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -100,6 +101,24 @@ class CorpusAvailabilityGateTest {
         CorpusAvailabilityGate.Result result = gate.evaluate(userId, corpusId, List.of(snapshotId));
         assertThat(result.satisfied()).isFalse();
         assertThat(result.reasonCode()).isEqualTo(CorpusAvailabilityGate.SNAPSHOT_VECTOR_ROWS_MISSING);
+    }
+
+    @Test
+    void evaluateBindsSnapshotIdsAsUuidsForVectorCountQuery() {
+        UUID snapshotId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        KnowledgeDocumentEntity doc = document(documentId, ProjectDocumentStatus.READY, "s3://doc");
+        when(evaluationCorpusApplicationService.requireContext(userId, corpusId))
+                .thenReturn(new EvaluationCorpusApplicationService.EvaluationCorpusContext(
+                        corpusId, indexProjectId, List.of(documentId), List.of(doc)));
+        ArgumentCaptor<SqlParameterSource> params = ArgumentCaptor.forClass(SqlParameterSource.class);
+        when(jdbc.queryForObject(any(String.class), params.capture(), eq(Long.class))).thenReturn(2L);
+
+        gate.evaluate(userId, corpusId, List.of(snapshotId));
+
+        @SuppressWarnings("unchecked")
+        List<UUID> bound = (List<UUID>) params.getValue().getValue("snapshotIds");
+        assertThat(bound).containsExactly(snapshotId);
     }
 
     @Test

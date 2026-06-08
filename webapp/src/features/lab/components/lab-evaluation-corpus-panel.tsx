@@ -14,12 +14,13 @@ import {
   summarizeCorpusUploadDuplicates,
   summarizeCorpusUploadFailuresForDisplay,
 } from "@/features/lab/lib/evaluation-corpus-upload";
+import { resolveDocumentCentricReadinessDisplay } from "@/features/lab/lib/evaluation-corpus-readiness-display";
 import { mapUserFacingErrorMessage } from "@/lib/user-facing-error-messages";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import type { ProjectDocumentDto } from "@/types/api";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 function isAttachableProjectDocument(
   doc: Pick<ProjectDocumentDto, "status"> & { corpusScope?: ProjectDocumentDto["corpusScope"] | null },
@@ -35,6 +36,10 @@ export type LabEvaluationCorpusPanelProps = {
   onCorpusIdChange: (corpusId: string | null) => void;
   /** Optional project to reuse documents from (not required). */
   optionalProjectId?: string | null;
+  /** Document-centric Lab RAG flow — hides project attach and manual index preparation. */
+  documentCentric?: boolean;
+  /** Called after refresh completes (e.g. to refetch latest run state). */
+  onRefreshed?: () => void;
   disabled?: boolean;
   /** Shared hook instance from {@link LabEvaluationRunCard} so upload state and Evaluate gating stay in sync. */
   evaluationCorpus?: EvaluationCorpusApi;
@@ -94,6 +99,8 @@ export function LabEvaluationCorpusPanel({
   corpusId,
   onCorpusIdChange,
   optionalProjectId,
+  documentCentric = false,
+  onRefreshed,
   disabled = false,
   evaluationCorpus: evaluationCorpusProp,
 }: LabEvaluationCorpusPanelProps) {
@@ -146,7 +153,7 @@ export function LabEvaluationCorpusPanel({
       summary?.updatedAt,
       summary?.documentCount,
     ],
-    enabled: Boolean(optionalProjectId) && !isIndexProject,
+    enabled: Boolean(optionalProjectId) && !documentCentric && !isIndexProject,
     queryFn: async () => {
       const docs = await apiFetch<ProjectDocumentDto[]>(
         apiProductPath(`/projects/${optionalProjectId}/documents`),
@@ -196,6 +203,32 @@ export function LabEvaluationCorpusPanel({
     }
   }
 
+  const onUploadSelectedRef = useRef(onUploadSelected);
+  useEffect(() => {
+    onUploadSelectedRef.current = onUploadSelected;
+  });
+  const uploadListenerCleanupRef = useRef<(() => void) | null>(null);
+
+  const bindUploadInput = useCallback((node: HTMLInputElement | null) => {
+    uploadListenerCleanupRef.current?.();
+    uploadListenerCleanupRef.current = null;
+    fileRef.current = node;
+    if (!node) {
+      return;
+    }
+    const handler = () => {
+      void onUploadSelectedRef.current(node.files);
+    };
+    node.addEventListener("change", handler);
+    node.dataset.uploadHandlerReady = "true";
+    uploadListenerCleanupRef.current = () => {
+      node.removeEventListener("change", handler);
+      delete node.dataset.uploadHandlerReady;
+    };
+  }, []);
+
+  useEffect(() => () => uploadListenerCleanupRef.current?.(), []);
+
   async function onDeleteDocument(documentId: string) {
     if (disabled) return;
     setBusy(true);
@@ -236,6 +269,7 @@ export function LabEvaluationCorpusPanel({
     setLocalSuccess(null);
     try {
       await refreshAll(id, { invalidateAttachableProjectId: optionalProjectId ?? null });
+      onRefreshed?.();
     } catch (e) {
       const raw = corpusUploadErrorMessage(e, t("labCorpusRefreshFailed"));
       setLocalErr(mapUploadError(raw));
@@ -313,20 +347,27 @@ export function LabEvaluationCorpusPanel({
   const docCount = summary?.documentCount ?? 0;
   const readyCount = summary?.readyCount ?? 0;
   const showPrepareIndex =
+    !documentCentric &&
     Boolean(readiness?.reindexRequired) &&
     !readiness?.activeSnapshotId &&
     !readiness?.primaryBlocker &&
     readyCount > 0;
   const showAttachFromProject =
+    !documentCentric &&
     Boolean(optionalProjectId) &&
     optionalProjectId !== readiness?.indexProjectId &&
     attachableProjectDocCount !== 0;
   const showAttachUnavailableHint =
+    !documentCentric &&
     Boolean(optionalProjectId) &&
     optionalProjectId !== readiness?.indexProjectId &&
     attachableProjectDocCount === 0;
   const showIndexProjectAttachHint =
-    Boolean(optionalProjectId) && optionalProjectId === readiness?.indexProjectId;
+    !documentCentric && Boolean(optionalProjectId) && optionalProjectId === readiness?.indexProjectId;
+  const documentCentricReadiness = useMemo(
+    () => (documentCentric ? resolveDocumentCentricReadinessDisplay(readiness, summary) : null),
+    [documentCentric, readiness, summary],
+  );
 
   return (
     <div
@@ -339,7 +380,9 @@ export function LabEvaluationCorpusPanel({
           <p className="font-medium text-foreground">{t("labCorpusTitle")}</p>
           <details className="text-muted-foreground text-xs">
             <summary className="cursor-pointer">{t("labCorpusHelpSummary")}</summary>
-            <p className="mt-1 leading-relaxed">{t("labCorpusHelp")}</p>
+            <p className="mt-1 leading-relaxed">
+              {documentCentric ? t("labCorpusHelpDocumentCentric") : t("labCorpusHelp")}
+            </p>
           </details>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -370,7 +413,47 @@ export function LabEvaluationCorpusPanel({
         {t("labCorpusSelectedSummary", { total: docCount, ready: readyCount })}
       </p>
 
-      {readiness?.primaryBlocker ? (
+      {documentCentricReadiness ? (
+        documentCentricReadiness.kind === "error" ? (
+          <div className="space-y-1">
+            <output
+              role="alert"
+              className="block text-destructive text-xs"
+              data-testid={documentCentricReadiness.testId}
+            >
+              {t(documentCentricReadiness.messageKey)}
+            </output>
+            {documentCentricReadiness.technicalCode ? (
+              <details className="text-muted-foreground text-xs">
+                <summary className="cursor-pointer">{t("labEvalIndexPrepareFailedDetails")}</summary>
+                <p className="mt-1 font-mono text-[11px]">{documentCentricReadiness.technicalCode}</p>
+              </details>
+            ) : null}
+          </div>
+        ) : (
+          <output
+            role="status"
+            className={
+              documentCentricReadiness.kind === "blocker"
+                ? "block text-destructive text-xs"
+                : "block text-muted-foreground text-xs"
+            }
+            data-testid={documentCentricReadiness.testId}
+          >
+            {documentCentricReadiness.messageKey === "labCorpusReadinessBlocked"
+              ? t("labCorpusReadinessBlocked", {
+                  reason: mapKnowledgeBaseApiError(
+                    readiness?.primaryBlocker ?? "",
+                    t,
+                    readiness?.primaryBlockerMessage ?? "",
+                  ),
+                })
+              : t(documentCentricReadiness.messageKey)}
+          </output>
+        )
+      ) : null}
+
+      {!documentCentric && readiness?.primaryBlocker ? (
         <output
           role="status"
           className="block text-destructive text-xs"
@@ -386,7 +469,7 @@ export function LabEvaluationCorpusPanel({
         </output>
       ) : null}
 
-      {readiness?.snapshotBlocker && !readiness.primaryBlocker ? (
+      {!documentCentric && readiness?.snapshotBlocker && !readiness.primaryBlocker ? (
         <div className="flex flex-wrap items-center gap-2">
           <output
             role="status"
@@ -414,7 +497,7 @@ export function LabEvaluationCorpusPanel({
         </div>
       ) : null}
 
-      {!optionalProjectId ? (
+      {!documentCentric && !optionalProjectId ? (
         <p className="text-muted-foreground text-xs" data-testid="lab-corpus-import-hint">
           {t("labCorpusImportHintNoProject")}
         </p>
@@ -474,14 +557,13 @@ export function LabEvaluationCorpusPanel({
             {t("labCorpusUploadLabel")}
           </Label>
           <input
-            ref={fileRef}
+            ref={bindUploadInput}
             id="lab-corpus-upload"
             data-testid="lab-corpus-upload-input"
             type="file"
             multiple
             className="text-xs"
             disabled={disabled || busy || loading}
-            onChange={(e) => void onUploadSelected(e.target.files)}
           />
         </div>
         {showAttachFromProject ? (

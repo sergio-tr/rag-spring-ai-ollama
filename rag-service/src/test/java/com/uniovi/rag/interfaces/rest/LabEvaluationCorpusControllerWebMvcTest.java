@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexPrepareResult;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
@@ -122,7 +123,10 @@ class LabEvaluationCorpusControllerWebMvcTest {
     @Test
     void prepareIndex_returnsReadiness() throws Exception {
         UUID corpusId = UUID.randomUUID();
-        doNothing().when(evaluationCorpusIndexService).prepareIndex(userId, corpusId);
+        when(evaluationCorpusIndexService.prepareIndex(userId, corpusId))
+                .thenReturn(
+                        EvaluationCorpusIndexPrepareResult.built(
+                                UUID.randomUUID(), UUID.randomUUID(), "hash", "profile"));
         when(evaluationCorpusReadinessService.getReadiness(userId, corpusId))
                 .thenReturn(
                         new EvaluationCorpusReadinessDto(

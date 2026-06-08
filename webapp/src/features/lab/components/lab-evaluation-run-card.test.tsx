@@ -703,7 +703,7 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.queryByTestId("lab-corpus-not-ready-hint")).not.toBeInTheDocument();
   });
 
-  it("disables Run when index is not ready even if documents are runnable", () => {
+  it("enables Run when index is missing but documents are runnable", () => {
     useEvaluationCorpusMock.mockReturnValue({
       ...defaultEvaluationCorpusApi,
       corpusRunnable: true,
@@ -713,7 +713,7 @@ describe("LabEvaluationRunCard", () => {
         runnable: true,
         reindexRequired: true,
         activeSnapshotId: null,
-        snapshotBlocker: "REINDEX_REQUIRED",
+        snapshotBlocker: "INDEX_PREPARATION_REQUIRED",
         primaryBlocker: null,
         primaryBlockerMessage: null,
       },
@@ -738,8 +738,9 @@ describe("LabEvaluationRunCard", () => {
         />
       </LabEvalHarness>,
     );
-    expect(screen.getByTestId("lab-rag-run")).toBeDisabled();
-    expect(screen.getByTestId("lab-corpus-index-hint")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-rag-run")).toBeEnabled();
+    expect(screen.queryByTestId("lab-corpus-index-hint")).not.toBeInTheDocument();
+    expect(screen.getByTestId("lab-corpus-index-will-prepare")).toBeInTheDocument();
   });
 
   it("shows evaluation corpus panel for RAG without active project", () => {
@@ -763,9 +764,36 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
     expect(screen.getByTestId("lab-evaluation-corpus-panel")).toBeInTheDocument();
+    expect(screen.queryByText(/No active project selected/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-corpus-import-hint")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Select an active project before running a RAG preset benchmark/i),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows evaluation corpus panel for embedding without active project", () => {
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+      data: [embeddingDataset],
+      isLoading: false,
+      isFetched: true,
+      isSuccess: true,
+    } as never);
+    render(
+      <LabEvalHarness>
+        <LabEvaluationRunCard
+          benchmarkKind="EMBEDDING_RETRIEVAL"
+          sectionKey="evaluation-embedding"
+          taskTypeHint="EMBEDDING_EVALUATION"
+          cardTitle="Embedding evaluation"
+          cardDescription="Compare embedding models."
+          runButtonTestId="lab-embedding-run"
+          radioGroupName="follow-corpus-embedding"
+        />
+      </LabEvalHarness>,
+    );
+    expect(screen.getByTestId("lab-evaluation-corpus-panel")).toBeInTheDocument();
+    expect(screen.queryByText(/No active project selected/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-corpus-import-hint")).not.toBeInTheDocument();
   });
 
   it("shows draft warning when stored dataset id no longer exists", () => {

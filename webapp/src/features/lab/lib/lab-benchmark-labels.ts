@@ -148,8 +148,12 @@ export function formatMetricCell(
 export type ComparisonRow = {
   groupKey?: string;
   groupValue?: string;
+  axisValue?: string;
   comparisonLabel?: string;
   comparisonAxis?: string;
+  presetKey?: string;
+  presetLabel?: string;
+  modelLabel?: string;
   runId?: string;
   llmModelId?: string;
   embeddingModelId?: string;
@@ -164,11 +168,87 @@ export type ComparisonRow = {
   meanLatencyMs?: number | null;
 };
 
+export function isPresetComparisonAxis(axis: string | null | undefined): boolean {
+  const a = (axis ?? "").trim().toUpperCase();
+  return a === "PRESET_CODE" || a === "PRESET" || a === "RAG_PRESET";
+}
+
+export function resolvePresetKeyFromComparisonRow(row: ComparisonRow): string {
+  const r = row as ComparisonRow & Record<string, unknown>;
+  const fromKey = typeof r.presetKey === "string" ? r.presetKey.trim() : "";
+  if (fromKey && !isMissingMetadata(fromKey)) {
+    return fromKey;
+  }
+  const axisValue =
+    typeof r.axisValue === "string"
+      ? r.axisValue.trim()
+      : typeof r.groupValue === "string"
+        ? r.groupValue.trim()
+        : "";
+  if (axisValue && !isMissingMetadata(axisValue)) {
+    return axisValue;
+  }
+  const presetLabel = typeof r.presetLabel === "string" ? r.presetLabel.trim() : "";
+  const presetMatch = presetLabel.match(/^(P\d+)\b/i);
+  return presetMatch?.[1]?.toUpperCase() ?? "";
+}
+
+export function resolveComparisonRowLabel(
+  row: ComparisonRow,
+  comparisonAxis: string | null | undefined,
+): string {
+  const r = row as ComparisonRow & Record<string, unknown>;
+  const stored =
+    typeof r.comparisonLabel === "string" && r.comparisonLabel.trim() ? r.comparisonLabel.trim() : "";
+  if (stored) {
+    return stored;
+  }
+  const presetLabel = typeof r.presetLabel === "string" ? r.presetLabel.trim() : "";
+  const presetKey = resolvePresetKeyFromComparisonRow(row);
+  if (isPresetComparisonAxis(comparisonAxis)) {
+    if (presetLabel) {
+      return presetLabel.includes("—") ? presetLabel : formatPresetDisplay(presetKey, presetLabel);
+    }
+    if (presetKey) {
+      return presetKey;
+    }
+  }
+  const modelLabel = typeof r.modelLabel === "string" ? r.modelLabel.trim() : "";
+  if (modelLabel) {
+    return modelLabel;
+  }
+  const axisValue =
+    typeof r.axisValue === "string"
+      ? r.axisValue.trim()
+      : typeof r.groupValue === "string"
+        ? r.groupValue.trim()
+        : "";
+  return axisValue;
+}
+
+export function aggregateComparisonOutcomeCounts(rows: ComparisonRow[]): Record<string, number> {
+  const totals: Record<string, number> = {};
+  for (const row of rows) {
+    const add = (key: string, value: unknown) => {
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+        totals[key] = (totals[key] ?? 0) + value;
+      }
+    };
+    add("EXECUTED", row.executed);
+    add("FAILED", row.failed);
+    add("SKIPPED", row.skipped);
+    add("NOT_SUPPORTED", row.notSupported);
+  }
+  return totals;
+}
+
 export function parseComparisonRows(payload: unknown): ComparisonRow[] {
   if (!payload || typeof payload !== "object") {
     return [];
   }
-  const rows = (payload as Record<string, unknown>).rows;
+  const root = payload as Record<string, unknown>;
+  const comparisonAxis = typeof root.comparisonAxis === "string" ? root.comparisonAxis : "";
+  const rows = root.rows;
   if (!Array.isArray(rows)) {
     return [];
   }
@@ -176,14 +256,9 @@ export function parseComparisonRows(payload: unknown): ComparisonRow[] {
     .filter((row): row is ComparisonRow => row != null && typeof row === "object")
     .map((row) => {
       const r = row as ComparisonRow & Record<string, unknown>;
-      const axisValue = typeof r.axisValue === "string" ? r.axisValue : r.groupValue;
-      const modelLabel = typeof r.modelLabel === "string" ? r.modelLabel : "";
-      const presetLabel = typeof r.presetLabel === "string" ? r.presetLabel : "";
-      const comparisonLabel =
-        typeof r.comparisonLabel === "string" && r.comparisonLabel.trim()
-          ? r.comparisonLabel
-          : presetLabel || modelLabel || (typeof axisValue === "string" ? axisValue : "");
-      return { ...r, comparisonLabel };
+      const comparisonLabel = resolveComparisonRowLabel(r, comparisonAxis);
+      const presetKey = resolvePresetKeyFromComparisonRow(r);
+      return { ...r, comparisonLabel, presetKey: presetKey || undefined };
     });
 }
 

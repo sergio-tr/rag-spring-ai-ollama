@@ -26,6 +26,9 @@ public final class LabCorpusReasonCodes {
     /** No active index snapshot bound for the evaluation corpus. */
     public static final String NO_ACTIVE_SNAPSHOT = "NO_ACTIVE_SNAPSHOT";
 
+    /** Documents are ready; index will be prepared automatically when evaluation runs. */
+    public static final String INDEX_PREPARATION_REQUIRED = "INDEX_PREPARATION_REQUIRED";
+
     public static final String NO_COMPATIBLE_SNAPSHOT = "NO_COMPATIBLE_SNAPSHOT";
 
     public static final String REINDEX_REQUIRED = "REINDEX_REQUIRED";

@@ -90,6 +90,33 @@ test.describe("Closure LAB RAG evaluation @closure @fullstack @wave2", () => {
     await expect(page.getByTestId("lab-benchmark-results-panel")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("lab-export-campaign-items-json")).toBeVisible({ timeout: 15_000 });
 
+    const comparisonPanel = page.getByTestId("lab-campaign-comparison-panel");
+    if (await comparisonPanel.isVisible().catch(() => false)) {
+      await expect(comparisonPanel.getByText(/gemma3:4b/i)).toHaveCount(0);
+      await expect(comparisonPanel.getByText(/RAG_PRESET_END_TO_END|PRESET_CODE/i)).toHaveCount(0);
+      const comparisonRows = page.locator("[data-testid^='lab-comparison-row-']");
+      const rowCount = await comparisonRows.count();
+      if (rowCount > 0) {
+        const firstRowText = (await comparisonRows.first().textContent()) ?? "";
+        expect(firstRowText.trim().length).toBeGreaterThan(0);
+        expect(firstRowText).not.toMatch(/gemma3:4b/i);
+      }
+    }
+
+    await expect(page.getByTestId("lab-benchmark-no-executed-warning")).toHaveCount(0);
+
+    const executedBadge = page.getByTestId("lab-outcome-EXECUTED");
+    const executedText = (await executedBadge.textContent().catch(() => "")) ?? "";
+    if (/\b[1-9]\d*\b/.test(executedText)) {
+      const itemRows = page.locator("[data-testid^='lab-item-row-']");
+      await expect(itemRows.first()).toBeVisible({ timeout: 15_000 });
+    }
+
+    const technicalDetails = page.locator("details[data-testid^='lab-item-technical-']");
+    if ((await technicalDetails.count()) > 0) {
+      await expect(technicalDetails.first()).not.toHaveAttribute("open", "");
+    }
+
     if (campaignId) {
       fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
       const exportJson = await downloadCampaignExportJson(page, campaignId);

@@ -57,6 +57,7 @@ import {
   filterCampaignCompatibleEmbeddingIds,
 } from "@/features/lab/lib/embedding-campaign-preferred-models";
 import { mapKnowledgeBaseApiError } from "@/features/lab/lib/evaluation-corpus-upload";
+import { resolveDocumentCentricReadinessDisplay } from "@/features/lab/lib/evaluation-corpus-readiness-display";
 import { extractTechnicalErrorCode } from "@/lib/user-facing-error-messages";
 import { formatBenchmarkKindLabel, formatPresetSupportMessage } from "@/lib/product-copy";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
@@ -581,7 +582,9 @@ export function LabEvaluationRunCard({
 
   const hasEvaluationCorpus = Boolean(resolvedCorpusId);
   const corpusPrimaryBlocker = evaluationCorpus.readiness?.primaryBlocker ?? null;
+  const ragDocumentCentric = benchmarkKind === "RAG_PRESET_END_TO_END";
   const corpusSnapshotBlocker =
+    !ragDocumentCentric &&
     evaluationCorpus.readiness?.snapshotBlocker &&
     !evaluationCorpus.readiness?.primaryBlocker &&
     evaluationCorpus.readiness?.reindexRequired &&
@@ -593,11 +596,38 @@ export function LabEvaluationRunCard({
     (!hasEvaluationCorpus ||
       !evaluationCorpus.corpusRunnable ||
       evaluationCorpus.corpusProcessing ||
-      evaluationCorpus.preparingIndex ||
       Boolean(corpusPrimaryBlocker) ||
-      (benchmarkKind === "RAG_PRESET_END_TO_END" &&
-        evaluationCorpus.corpusReady &&
-        !evaluationCorpus.corpusIndexReady));
+      (!ragDocumentCentric &&
+        (evaluationCorpus.preparingIndex ||
+          (evaluationCorpus.corpusReady && !evaluationCorpus.corpusIndexReady))));
+  const ragCorpusNotReadyMessage = useMemo(() => {
+    if (!ragDocumentCentric) {
+      return null;
+    }
+    const display = resolveDocumentCentricReadinessDisplay(
+      evaluationCorpus.readiness,
+      evaluationCorpus.summary,
+    );
+    if (!display || display.kind !== "blocker") {
+      return null;
+    }
+    if (display.messageKey === "labCorpusReadinessBlocked") {
+      return t("labCorpusReadinessBlocked", {
+        reason: mapKnowledgeBaseApiError(
+          corpusPrimaryBlocker ?? "",
+          t,
+          evaluationCorpus.readiness?.primaryBlockerMessage ?? t("benchmarkCorpusNotReady"),
+        ),
+      });
+    }
+    return t(display.messageKey);
+  }, [
+    ragDocumentCentric,
+    evaluationCorpus.readiness,
+    evaluationCorpus.summary,
+    corpusPrimaryBlocker,
+    t,
+  ]);
 
   const selectedDataset = useMemo(() => {
     const id = draft.datasetId?.trim();
@@ -716,7 +746,12 @@ export function LabEvaluationRunCard({
   }, [benchmarkKind, draft.embeddingModelIds, draft.llmModelIds, draft.selectedExperimentalPresetCodes]);
 
   const runButtonLabel = useMemo(() => {
-    if (running) return t("evalRunning");
+    if (running) {
+      if (ragDocumentCentric) {
+        return t("labEvalPreparingDocumentsAndIndexes");
+      }
+      return t("evalRunning");
+    }
     if (benchmarkKind === "LLM_JUDGE_QA" && comparisonSelectionCount >= 2) {
       return t("runEvalComparisonLlm");
     }
@@ -727,7 +762,7 @@ export function LabEvaluationRunCard({
       return t("runEvalComparisonEmbedding");
     }
     return t("runEval");
-  }, [benchmarkKind, comparisonSelectionCount, running, t]);
+  }, [benchmarkKind, comparisonSelectionCount, ragDocumentCentric, running, t]);
 
   const comparisonHint = useMemo(() => {
     if (comparisonSelectionCount >= 2) {
@@ -1014,19 +1049,25 @@ export function LabEvaluationRunCard({
             <LabEvaluationCorpusPanel
               corpusId={resolvedCorpusId}
               evaluationCorpus={evaluationCorpus}
-              optionalProjectId={activeProject?.id ?? null}
+              documentCentric
+              optionalProjectId={null}
               disabled={running}
               onCorpusIdChange={(id) => patchDraft({ corpusId: id })}
+              onRefreshed={() => {
+                void latestRun.refetch();
+              }}
             />
           ) : null}
 
-          {activeProject ? (
-            <p className="text-muted-foreground text-xs">
-              {t("projectScopeActive", { name: activeProject.name })}
-            </p>
-          ) : (
-            <p className="text-muted-foreground text-xs">{t("projectScopeNone")}</p>
-          )}
+          {benchmarkKind !== "RAG_PRESET_END_TO_END" && benchmarkKind !== "EMBEDDING_RETRIEVAL" ? (
+            activeProject ? (
+              <p className="text-muted-foreground text-xs">
+                {t("projectScopeActive", { name: activeProject.name })}
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-xs">{t("projectScopeNone")}</p>
+            )
+          ) : null}
 
           {referenceKindsReady ? null : (
             <output
@@ -1053,15 +1094,26 @@ export function LabEvaluationRunCard({
               data-testid="lab-corpus-not-ready-hint"
               className="block text-muted-foreground text-xs"
             >
-              {corpusPrimaryBlocker
-                ? t("labCorpusReadinessBlocked", {
-                    reason: mapKnowledgeBaseApiError(
-                      corpusPrimaryBlocker,
-                      t,
-                      evaluationCorpus.readiness?.primaryBlockerMessage ?? t("benchmarkCorpusNotReady"),
-                    ),
-                  })
-                : t("benchmarkCorpusNotReady")}
+              {ragCorpusNotReadyMessage ??
+                (corpusPrimaryBlocker
+                  ? t("labCorpusReadinessBlocked", {
+                      reason: mapKnowledgeBaseApiError(
+                        corpusPrimaryBlocker,
+                        t,
+                        evaluationCorpus.readiness?.primaryBlockerMessage ?? t("benchmarkCorpusNotReady"),
+                      ),
+                    })
+                  : t("benchmarkCorpusNotReady"))}
+            </output>
+          ) : null}
+
+          {running && ragDocumentCentric ? (
+            <output
+              role="status"
+              data-testid="lab-eval-preparation-progress"
+              className="block text-muted-foreground text-xs"
+            >
+              {t("labEvalPreparingDocumentsAndIndexes")}
             </output>
           ) : null}
 

@@ -78,7 +78,7 @@ public class SnapshotCorpusAssembler {
         assertSnapshotFilter(snapshotIds);
         MapSqlParameterSource p = new MapSqlParameterSource();
         p.addValue("projectId", projectId);
-        p.addValue("snapshotIds", toStringList(snapshotIds));
+        p.addValue("snapshotIds", snapshotIds);
         if (ctx.documentFilterIsAll()) {
             return namedJdbc.query(
                     """
@@ -118,7 +118,4 @@ public class SnapshotCorpusAssembler {
         }
     }
 
-    private static List<String> toStringList(List<UUID> uuids) {
-        return uuids.stream().map(UUID::toString).toList();
-    }
 }

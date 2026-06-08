@@ -189,6 +189,12 @@ class LabPresetRunPlanServiceTest {
         when(labSnap.resolveCorpusId(any())).thenReturn(null);
         when(labSnap.resolveCompatibleSnapshot(any(), any())).thenReturn(resolved);
         when(labSnap.resolveCompatibleSnapshot(any(), any(), nullable(String.class))).thenReturn(resolved);
+        when(labSnap.hasRequiredVectorRows(any(), any(), any()))
+                .thenAnswer(
+                        inv ->
+                                resolved.hasUsableSnapshot()
+                                        && resolved.snapshotId() != null
+                                        && resolved.snapshotId().equals(inv.getArgument(1)));
         return new LabPresetRunPlanService(labSnap);
     }
 

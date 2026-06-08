@@ -7,6 +7,29 @@ public final class RagBenchmarkHumanReasons {
 
     private RagBenchmarkHumanReasons() {}
 
+    /** Human text for terminal SKIPPED/FAILED rows — never implies in-flight index preparation. */
+    public static String terminalSkipHumanize(String codeOrMessage) {
+        if (codeOrMessage == null || codeOrMessage.isBlank()) {
+            return "This benchmark item could not be run.";
+        }
+        String raw = codeOrMessage.trim();
+        String code = raw.contains(":") ? raw.substring(0, raw.indexOf(':')).trim() : raw;
+        String upper = code.toUpperCase();
+
+        return switch (upper) {
+            case "REINDEX_REQUIRED", "NO_ACTIVE_INDEX", "FEATURE_REQUIRES_REINDEX", "INDEX_REQUIRES_REINDEX" ->
+                    "No usable index snapshot exists for this preset. Enable auto-reindex or prepare the index manually.";
+            case "INDEX_PREPARATION_REQUIRED" ->
+                    "Index preparation did not complete before this item was skipped.";
+            case "SNAPSHOT_INCOMPATIBLE", "SNAPSHOT_VECTOR_ROWS_MISSING", "NO_COMPATIBLE_SNAPSHOT",
+                    "SNAPSHOT_CONFIG_MISMATCH" ->
+                    "No compatible index snapshot with searchable content exists for this preset.";
+            case "REINDEX_FAILED", "AUTO_REINDEX_FAILED", "INDEX_BUILD_EMPTY" ->
+                    "The index could not be prepared for this preset.";
+            default -> humanize(codeOrMessage);
+        };
+    }
+
     public static String humanize(String codeOrMessage) {
         if (codeOrMessage == null || codeOrMessage.isBlank()) {
             return "This benchmark item could not be run.";
@@ -27,6 +50,8 @@ public final class RagBenchmarkHumanReasons {
             case "REINDEX_IN_PROGRESS" -> "Another index operation is already in progress.";
             case "REINDEX_REQUIRED", "NO_ACTIVE_INDEX", "FEATURE_REQUIRES_REINDEX", "INDEX_REQUIRES_REINDEX" ->
                     "The project index must be rebuilt before this preset can run.";
+            case "INDEX_PREPARATION_REQUIRED" ->
+                    "Documents are ready; the search index will be prepared when the evaluation runs.";
             case "SNAPSHOT_INCOMPATIBLE", "NO_COMPATIBLE_SNAPSHOT", "SNAPSHOT_CONFIG_MISMATCH" ->
                     "No compatible index snapshot exists for this preset.";
             case "PRESET_NOT_SUPPORTED", "NOT_SUPPORTED" ->

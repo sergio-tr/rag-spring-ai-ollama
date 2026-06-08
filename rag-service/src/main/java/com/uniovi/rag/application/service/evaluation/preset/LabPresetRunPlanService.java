@@ -325,7 +325,11 @@ public class LabPresetRunPlanService {
             String embeddingModelId) {
         LabEvaluationSnapshotService.ResolvedSnapshot resolved =
                 labEvaluationSnapshotService.resolveCompatibleSnapshot(run, requirements, embeddingModelId);
-        boolean hasUsableSnapshot = resolved.hasUsableSnapshot();
+        boolean hasUsableSnapshot =
+                resolved.hasUsableSnapshot()
+                        && (resolved.snapshotId() == null
+                                || labEvaluationSnapshotService.hasRequiredVectorRows(
+                                        run, resolved.snapshotId(), requirements));
         IndexSnapshotCapabilities caps =
                 resolved.capabilities() != null
                         ? resolved.capabilities()

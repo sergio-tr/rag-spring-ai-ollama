@@ -124,7 +124,11 @@ public class EvaluationCorpusApplicationService {
     @Transactional
     public int syncIndexProjectDocuments(UUID userId, UUID corpusId) {
         EvaluationCorpusEntity corpus = requireOwnedCorpus(userId, corpusId);
-        UUID indexProjectId = corpus.getIndexProject().getId();
+        UUID indexProjectId = resolveIndexProjectId(corpus);
+        if (indexProjectId == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY, "Evaluation corpus has no index scope.");
+        }
         List<KnowledgeDocumentEntity> projectDocs =
                 knowledgeDocumentRepository.findByProject_IdAndCorpusScopeOrderByIdAsc(
                         indexProjectId, CorpusScope.PROJECT_SHARED);

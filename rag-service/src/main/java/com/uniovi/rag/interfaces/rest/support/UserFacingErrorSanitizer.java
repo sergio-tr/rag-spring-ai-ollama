@@ -22,6 +22,9 @@ public final class UserFacingErrorSanitizer {
         if (looksLikeStackTrace(t)) {
             return "";
         }
+        if (looksLikeJdbcException(lower)) {
+            return "";
+        }
         return truncate(t, maxLen);
     }
 
@@ -35,6 +38,14 @@ public final class UserFacingErrorSanitizer {
                 || lowerTrimmed.startsWith("<html")
                 || (lowerTrimmed.contains("<html") && lowerTrimmed.contains("</html"))
                 || (lowerTrimmed.contains("<body") && lowerTrimmed.contains("</body"));
+    }
+
+    private static boolean looksLikeJdbcException(String lowerTrimmed) {
+        return lowerTrimmed.contains("preparedstatementcallback")
+                || lowerTrimmed.contains("badsqlgrammarexception")
+                || lowerTrimmed.contains("bad sql grammar")
+                || lowerTrimmed.contains("psqlexception")
+                || lowerTrimmed.contains("operator does not exist");
     }
 
     private static boolean looksLikeStackTrace(String t) {
