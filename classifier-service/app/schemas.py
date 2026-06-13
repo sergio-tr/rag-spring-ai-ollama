@@ -12,10 +12,20 @@ class ClassifyRequest(BaseModel):
     modelId: str | None = Field(None, description="Model id to use; if omitted, default model is used.")
 
 
+class TopPredictionItem(BaseModel):
+    """Ranked prediction entry for POST /classify."""
+
+    queryType: str
+    confidence: float
+
+
 class ClassifyResponse(BaseModel):
     """Response body for POST /classify."""
 
     queryType: str
+    confidence: float | None = None
+    topPredictions: list[TopPredictionItem] | None = None
+    labelSetHash: str | None = None
 
 
 class ModelInfo(BaseModel):

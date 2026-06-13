@@ -46,14 +46,14 @@ class ClassificationService(TracedService):
 
     def _classify_impl(self, query: str, resolved_id: str) -> ClassificationResult:
         try:
-            query_type = self._engine.predict(query, resolved_id)
+            result = self._engine.predict_detailed(query, resolved_id)
             try:
-                validate_query_type_label(query_type)
+                validate_query_type_label(result.query_type)
             except ValueError as e:
                 record_classifier_call("error", resolved_id)
                 raise ClassificationError(f"Invalid classifier output: {e}") from e
             record_classifier_call("success", resolved_id)
-            return ClassificationResult(query_type=query_type)
+            return result
         except ClassificationError:
             raise
         except RuntimeError as e:

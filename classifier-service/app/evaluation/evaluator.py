@@ -17,6 +17,7 @@ from app.base import Loggable
 from app.dataset_columns import normalize_excel_classification_columns
 from app.evaluation.result import EvaluationResult
 from app.inference.model_loader import ModelLoader
+from app.query_type_contract import canonical_class_order
 from app.registry.model_registry import ModelRegistry
 
 
@@ -47,37 +48,35 @@ class EvaluationPipeline(Loggable):
         if not self._loader.is_loaded(model_id):
             self._loader.load_by_id(model_id)
         model = self._loader.get_model(model_id)
-        class_names = self._loader.get_class_names(model_id)
+        model_class_names = self._loader.get_class_names(model_id)
+        class_names = canonical_class_order(model_class_names)
+        canon_idx = {name: i for i, name in enumerate(class_names)}
 
         df = normalize_excel_classification_columns(pd.read_excel(eval_dataset_path))
         if "Question" not in df.columns or "QueryType" not in df.columns:
             raise ValueError("Evaluation dataset must have columns 'Question' and 'QueryType'")
         X = df["Question"].astype(str).values
         y_raw = df["QueryType"].astype(str)
-        label_to_idx = {c: i for i, c in enumerate(class_names)}
-        valid = y_raw.isin(label_to_idx)
+        valid = y_raw.isin(canon_idx)
         if not valid.all():
             self._logger.warning("Dropping %d rows with QueryType not in model labels", (~valid).sum())
         X = X[valid.values]
         y_raw = y_raw[valid]
-        y_true_idx = np.array([label_to_idx[c] for c in y_raw])
         if len(X) == 0:
-            # Include keywords so API callers/tests can reliably detect this as a dataset/evaluation issue.
             raise ValueError(
                 "No valid rows in evaluation dataset after filtering by model labels. "
                 "Ensure QueryType values match the model labels."
             )
 
-        # Keras TextVectorization expects string inputs (list/tf.constant), not object-dtype ndarray (py3.11).
         y_pred_probs = model.predict(tf.constant([str(x) for x in X]), verbose=0)
-        y_pred_idx = np.argmax(y_pred_probs, axis=1)
-        y_true = y_true_idx
-        y_pred = y_pred_idx
+        y_pred_model_idx = np.argmax(y_pred_probs, axis=1)
+        y_true = np.array([canon_idx[c] for c in y_raw])
+        y_pred = np.array([canon_idx[model_class_names[int(i)]] for i in y_pred_model_idx])
 
         report = classification_report(
             y_true, y_pred, target_names=class_names, output_dict=True, zero_division=0
         )
-        conf_matrix = confusion_matrix(y_true, y_pred)
+        conf_matrix = confusion_matrix(y_true, y_pred, labels=list(range(len(class_names))))
 
         report_image_bytes: bytes | None = None
         confusion_image_bytes: bytes | None = None

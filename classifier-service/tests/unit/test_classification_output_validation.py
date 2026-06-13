@@ -18,8 +18,12 @@ def test_classify_raises_classification_error_on_invalid_model_output():
     loader.get_model.return_value = MagicMock()
     loader.get_class_names.return_value = ["COUNT_DOCUMENTS"]
 
+    from app.models.classification_result import ClassificationResult
+
     engine = InferenceEngine(loader, config=Config())
-    engine.predict = MagicMock(return_value="LEGACY_UNKNOWN_LABEL")  # type: ignore[method-assign]
+    engine.predict_detailed = MagicMock(  # type: ignore[method-assign]
+        return_value=ClassificationResult(query_type="LEGACY_UNKNOWN_LABEL")
+    )
 
     svc = ClassificationService(engine, config=Config())
     with pytest.raises(ClassificationError, match="Invalid classifier output"):
