@@ -62,8 +62,48 @@ class RetrievalFusionServiceTest {
         assertThat(out.fusionModeUsed()).contains(RetrievalFusionMode.RRF_ONLY);
         assertThat(out.denseInputCount()).isEqualTo(2);
         assertThat(out.sparseInputCount()).isEqualTo(1);
-        assertThat(out.candidates()).isNotEmpty();
+        assertThat(out.bothCount()).isEqualTo(1);
+        assertThat(out.denseOnlyCount()).isEqualTo(1);
+        assertThat(out.sparseOnlyCount()).isZero();
+        assertThat(out.candidates()).hasSize(2);
         assertThat(out.candidates().getFirst().candidateId()).isEqualTo(d1.candidateId());
+        assertThat(out.candidateOriginsSummary()).contains("both=1");
+        assertThat(out.candidates().getFirst().metadata().get("retrievalOrigin")).isEqualTo("BOTH");
+    }
+
+    @Test
+    void fuse_deduplicatesSharedChunkId() {
+        UUID s = UUID.randomUUID();
+        RetrievalRequest req = baseRequest(RetrievalMode.HYBRID_DENSE_SPARSE);
+        String sharedId = s + ":doc1:0";
+        RetrievalCandidate dense =
+                new RetrievalCandidate(
+                        sharedId,
+                        "dense body",
+                        Map.of("document_id", "doc1", "indexSnapshotId", s.toString(), "chunk_index", 0),
+                        0.1,
+                        Double.NaN,
+                        1,
+                        0,
+                        s,
+                        0.01);
+        RetrievalCandidate sparse =
+                new RetrievalCandidate(
+                        sharedId,
+                        "sparse body longer",
+                        Map.of("document_id", "doc1", "indexSnapshotId", s.toString(), "chunk_index", 0),
+                        Double.NaN,
+                        0.5,
+                        0,
+                        1,
+                        s,
+                        0.03);
+
+        RetrievedContextSet out = fusion.fuse(req, List.of(dense), List.of(sparse));
+
+        assertThat(out.candidates()).hasSize(1);
+        assertThat(out.fusedCount()).isEqualTo(1);
+        assertThat(out.bothCount()).isEqualTo(1);
     }
 
     private static RetrievalRequest baseRequest(RetrievalMode mode) {

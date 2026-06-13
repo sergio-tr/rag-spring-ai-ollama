@@ -185,17 +185,31 @@ public class KnowledgeIndexingService {
             addVectorsWithEmbedSafety(vectorStore, vectorDocs, effectiveChunkMaxChars);
             // Spring AI PgVectorStore does not automatically populate our optional `vector_store.project_id` column.
             // We keep `metadata.projectId` as-is and also set the column for correct project-scoped retrieval.
+            UUID projectId = doc.getProject() != null ? doc.getProject().getId() : null;
+            UUID snapshotId = snapshot != null ? snapshot.getId() : null;
             int updated =
-                    backfillVectorStoreProjectIdForDocument(
-                            doc.getProject() != null ? doc.getProject().getId() : null,
-                            doc.getId(),
-                            snapshot != null ? snapshot.getId() : null,
-                            indexSigHex);
+                    backfillVectorStoreProjectIdForDocument(projectId, doc.getId(), snapshotId, indexSigHex);
+            if (updated == 0) {
+                // Retry without indexSignatureHash — Spring AI metadata shape can omit or alter the hash key.
+                updated = backfillVectorStoreProjectIdForDocument(projectId, doc.getId(), snapshotId, null);
+            }
+            if (updated == 0) {
+                throw new IllegalStateException(
+                        "vector_store_project_id_backfill_failed projectId="
+                                + projectId
+                                + " projectDocumentId="
+                                + doc.getId()
+                                + " indexSnapshotId="
+                                + snapshotId
+                                + " vectorDocs="
+                                + vectorDocs.size());
+            }
+            backfillVectorStoreChunkIndexForDocument(projectId, doc.getId(), snapshotId);
             log.info(
                     "vector_store_project_id_backfill projectId={} projectDocumentId={} indexSnapshotId={} vectorDocs={} updatedRows={}",
-                    doc.getProject() != null ? doc.getProject().getId() : null,
+                    projectId,
                     doc.getId(),
-                    snapshot != null ? snapshot.getId() : null,
+                    snapshotId,
                     vectorDocs.size(),
                     updated);
         }
@@ -235,6 +249,35 @@ public class KnowledgeIndexingService {
         String sid = indexSnapshotId != null ? indexSnapshotId.toString() : null;
         String sig = (indexSignatureHashHex != null && !indexSignatureHashHex.isBlank()) ? indexSignatureHashHex : null;
         return jdbcTemplate.update(sql, projectId, pid, did, sid, sid, sig, sig);
+    }
+
+    /**
+     * Aligns {@code vector_store.chunk_index} (column) with {@code metadata.chunkIndex} for snapshot-bound ordering.
+     */
+    private void backfillVectorStoreChunkIndexForDocument(
+            UUID projectId, UUID projectDocumentId, UUID indexSnapshotId) {
+        if (projectId == null || projectDocumentId == null) {
+            return;
+        }
+        String pid = projectId.toString();
+        String did = projectDocumentId.toString();
+        String sid = indexSnapshotId != null ? indexSnapshotId.toString() : null;
+        jdbcTemplate.update(
+                """
+                UPDATE vector_store
+                SET chunk_index = COALESCE((metadata->>'chunkIndex')::int, chunk_index, 0),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE project_id = ?
+                  AND metadata->>'projectId' = ?
+                  AND metadata->>'projectDocumentId' = ?
+                  AND (? IS NULL OR metadata->>'indexSnapshotId' = ?)
+                  AND metadata->>'chunkIndex' IS NOT NULL
+                """,
+                projectId,
+                pid,
+                did,
+                sid,
+                sid);
     }
 
     private void addVectorsWithEmbedSafety(

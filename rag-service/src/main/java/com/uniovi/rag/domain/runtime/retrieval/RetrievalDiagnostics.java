@@ -23,7 +23,11 @@ public record RetrievalDiagnostics(
         boolean rerankApplied,
         List<String> beforeRerankTopCandidateIds,
         List<String> afterRerankTopCandidateIds,
-        Optional<String> rerankScoreSummary) {
+        Optional<String> rerankScoreSummary,
+        int compressionCharsBefore,
+        int compressionCharsAfter,
+        boolean rerankOrderChanged,
+        int dedupedCandidateCount) {
 
     public RetrievalDiagnostics {
         fusionMode = Objects.requireNonNullElseGet(fusionMode, Optional::empty);

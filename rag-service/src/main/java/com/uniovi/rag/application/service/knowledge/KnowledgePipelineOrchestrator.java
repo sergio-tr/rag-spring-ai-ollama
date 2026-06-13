@@ -487,6 +487,16 @@ public class KnowledgePipelineOrchestrator {
         return computeSignaturePair(scopeDocs, projection, profile).snapshotSigHex();
     }
 
+    /**
+     * Deterministic snapshot signature for the current READY corpus using an explicit index profile (Lab reuse/staleness).
+     */
+    public String computeSnapshotSignatureHex(
+            UUID projectId, CorpusScope corpusScope, UUID conversationId, ProjectIndexProfile profile) {
+        List<KnowledgeDocumentEntity> scopeDocs = loadReadyScopeDocuments(projectId, corpusScope, conversationId);
+        ProjectIndexProfile effective = profile != null ? profile : loadProfile(projectId);
+        return computeSignaturePair(scopeDocs, null, effective).snapshotSigHex();
+    }
+
     private record IndexAndSnapshotSig(String indexSigHex, String snapshotSigHex) {}
 
     private IndexAndSnapshotSig computeSignaturePair(
@@ -720,8 +730,12 @@ public class KnowledgePipelineOrchestrator {
             probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
-            for (KnowledgeDocumentEntity d : scopeDocs) {
-                deleteVectorChunksForDocument(d.getId());
+            // Evaluation corpora may keep multiple ACTIVE snapshots (one per index profile hash). A document-global
+            // vector delete would wipe rows owned by other compatible snapshots during multi-preset auto-reindex.
+            if (ownerType != KnowledgeSnapshotOwnerType.EVALUATION_CORPUS) {
+                for (KnowledgeDocumentEntity d : scopeDocs) {
+                    deleteVectorChunksForDocument(d.getId());
+                }
             }
 
             MaterializationStrategy strategy = profile.materializationStrategy();

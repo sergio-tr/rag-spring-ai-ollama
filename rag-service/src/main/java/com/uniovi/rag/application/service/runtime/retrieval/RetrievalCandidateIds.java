@@ -46,6 +46,9 @@ public final class RetrievalCandidateIds {
             return "DOC";
         }
         Object chunkIndex = meta.get("chunk_index");
+        if (chunkIndex == null) {
+            chunkIndex = meta.get("chunkIndex");
+        }
         if (chunkIndex instanceof Number n) {
             return String.valueOf(n.intValue());
         }

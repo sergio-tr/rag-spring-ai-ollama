@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
+import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.service.runtime.DateGroundingSupport;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
@@ -76,8 +77,21 @@ public class AdvancedRetrievalPipeline {
         RetrievedContextSet retrieved;
         if (req.mode() == RetrievalMode.DENSE_ONLY) {
             long tDense = System.nanoTime();
-            List<RetrievalCandidate> dense = denseRetrievalStrategy.retrieve(req);
-            traces.add(stage("retrieval_dense", tDense, ExecutionStageOutcome.SUCCESS, "count=" + dense.size()));
+            DenseRetrievalOutcome denseOutcome = denseRetrievalStrategy.retrieveWithOutcome(req);
+            List<RetrievalCandidate> dense = denseOutcome.candidates();
+            traces.add(
+                    stage(
+                            "retrieval_dense",
+                            tDense,
+                            ExecutionStageOutcome.SUCCESS,
+                            "count="
+                                    + dense.size()
+                                    + " raw="
+                                    + denseOutcome.rawCandidateCount()
+                                    + " postSnapshot="
+                                    + denseOutcome.postSnapshotCandidateCount()
+                                    + " postProject="
+                                    + denseOutcome.postProjectCandidateCount()));
             traces.add(skipped("retrieval_sparse", "mode=DENSE_ONLY"));
             traces.add(skipped("retrieval_fuse", "mode=DENSE_ONLY"));
             retrieved =
@@ -92,11 +106,41 @@ public class AdvancedRetrievalPipeline {
             List<RetrievalCandidate> dense = hybridRetrievalStrategy.dense(req);
             traces.add(stage("retrieval_dense", tDense, ExecutionStageOutcome.SUCCESS, "count=" + dense.size()));
             long tSparse = System.nanoTime();
-            List<RetrievalCandidate> sparse = hybridRetrievalStrategy.sparse(req);
-            traces.add(stage("retrieval_sparse", tSparse, ExecutionStageOutcome.SUCCESS, "count=" + sparse.size()));
+            List<RetrievalCandidate> sparse;
+            try {
+                sparse = hybridRetrievalStrategy.sparse(req);
+                traces.add(
+                        stage(
+                                "retrieval_sparse",
+                                tSparse,
+                                ExecutionStageOutcome.SUCCESS,
+                                "count=" + sparse.size()));
+                if (sparse.isEmpty()) {
+                    traceNotes.add("sparse_zero_matches");
+                }
+            } catch (RagServiceException ex) {
+                sparse = List.of();
+                traceNotes.add("sparse_unavailable");
+                traces.add(
+                        skipped(
+                                "retrieval_sparse",
+                                "sparse_unavailable detail="
+                                        + (ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName())));
+            }
             long tFuse = System.nanoTime();
             retrieved = retrievalFusionService.fuse(req, dense, sparse);
-            traces.add(stage("retrieval_fuse", tFuse, ExecutionStageOutcome.SUCCESS, "count=" + retrieved.fusedCount()));
+            traces.add(
+                    stage(
+                            "retrieval_fuse",
+                            tFuse,
+                            ExecutionStageOutcome.SUCCESS,
+                            "count="
+                                    + retrieved.fusedCount()
+                                    + " origins="
+                                    + retrieved.candidateOriginsSummary()));
+            if (sparse.isEmpty()) {
+                traceNotes.add("hybrid_not_applied");
+            }
         }
 
         if (retrieved.candidates().isEmpty()) {
@@ -208,6 +252,11 @@ public class AdvancedRetrievalPipeline {
                         .collect(Collectors.joining(","));
 
         CompressionOutcome comp = compressed.outcome();
+        boolean rerankOrderChanged = rerankEnabled && !beforeTop.equals(afterTop);
+        if (rerankEnabled && !rerankOrderChanged) {
+            traceNotes.add("rerank_no_order_change");
+        }
+        int hybridCandidateCount = retrieved.denseInputCount() + retrieved.sparseInputCount();
         RetrievalDiagnostics diagnostics =
                 new RetrievalDiagnostics(
                         req.mode(),
@@ -225,7 +274,11 @@ public class AdvancedRetrievalPipeline {
                         rerankEnabled,
                         beforeTop,
                         afterTop,
-                        rerankScoreSummary);
+                        rerankScoreSummary,
+                        comp.charsBefore(),
+                        comp.charsAfter(),
+                        rerankOrderChanged,
+                        retrieved.fusedCount());
 
         return new CuratedContextSet(
                 compressed.candidates(),

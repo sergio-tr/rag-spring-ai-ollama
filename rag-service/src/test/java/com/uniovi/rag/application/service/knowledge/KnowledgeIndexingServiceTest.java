@@ -24,7 +24,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -48,6 +50,12 @@ class KnowledgeIndexingServiceTest {
         return new IndexingEmbeddingGuard(new RagIndexingEmbeddingProperties(2048, 400, true, 0.85));
     }
 
+    private static JdbcTemplate jdbcTemplateReturningUpdateRows(int rows) {
+        Answer<Object> answer =
+                (InvocationOnMock inv) -> "update".equals(inv.getMethod().getName()) ? rows : 0;
+        return mock(JdbcTemplate.class, answer);
+    }
+
     private static KnowledgeIndexingService sutWithRegistry(
             PgVectorStore vectorStore,
             JdbcTemplate jdbcTemplate,
@@ -63,7 +71,7 @@ class KnowledgeIndexingServiceTest {
     @Test
     void processDocument_structuredSearch_savesParsedMetadataIndex_andSkipsVectorsAndChunks() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
         var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
@@ -112,7 +120,7 @@ class KnowledgeIndexingServiceTest {
     @Test
     void processDocument_documentLevel_indexesSingleVector_andDoesNotPersistChunkArtifact() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
         var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
@@ -161,7 +169,7 @@ class KnowledgeIndexingServiceTest {
     @Test
     void processDocument_hybrid_savesChunkArtifact_andIndexesChunksPlusDocSlice() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
         var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
@@ -209,9 +217,101 @@ class KnowledgeIndexingServiceTest {
     }
 
     @Test
+    void processDocument_throwsWhenProjectIdBackfillUpdatesZeroRows() throws Exception {
+        PgVectorStore vectorStore = mock(PgVectorStore.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(0);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
+        BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
+        DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
+
+        KnowledgeIndexingService sut =
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+
+        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
+        KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
+        when(snapshot.getId()).thenReturn(UUID.randomUUID());
+        when(snapshot.getIndexProfileJsonb()).thenReturn(Map.of("embeddingModelId", "mxbai-embed-large"));
+        when(doc.getId()).thenReturn(UUID.randomUUID());
+        when(doc.getProject().getId()).thenReturn(UUID.randomUUID());
+        when(doc.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
+        when(doc.getConversation()).thenReturn(null);
+        when(doc.getFileName()).thenReturn("doc.txt");
+        when(doc.getMimeType()).thenReturn("text/plain");
+
+        Path tempFile = tempDir.resolve("doc.txt");
+        Files.writeString(tempFile, "hello world", StandardCharsets.UTF_8);
+        when(ingestionService.extractContent(any())).thenReturn("hello world");
+
+        assertThatThrownBy(
+                        () ->
+                                sut.processDocument(
+                                        new KnowledgeDocumentIndexingRequest(
+                                                doc,
+                                                tempFile,
+                                                "ignored.txt",
+                                                "text/plain",
+                                                snapshot,
+                                                "abc123",
+                                                MaterializationStrategy.DOCUMENT_LEVEL,
+                                                100)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("vector_store_project_id_backfill_failed");
+    }
+
+    @Test
+    void processDocument_vectorMetadataIncludesIndexSnapshotId() throws Exception {
+        PgVectorStore vectorStore = mock(PgVectorStore.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
+        BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
+        DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
+
+        KnowledgeIndexingService sut =
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+
+        UUID snapshotId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
+        KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
+        when(snapshot.getId()).thenReturn(snapshotId);
+        when(snapshot.getIndexProfileJsonb()).thenReturn(Map.of("embeddingModelId", "mxbai-embed-large"));
+        when(doc.getId()).thenReturn(documentId);
+        when(doc.getProject().getId()).thenReturn(projectId);
+        when(doc.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
+        when(doc.getConversation()).thenReturn(null);
+        when(doc.getFileName()).thenReturn("doc.txt");
+        when(doc.getMimeType()).thenReturn("text/plain");
+
+        Path tempFile = tempDir.resolve("doc.txt");
+        Files.writeString(tempFile, "hello world", StandardCharsets.UTF_8);
+        when(ingestionService.extractContent(any())).thenReturn("hello world");
+
+        sut.processDocument(
+                new KnowledgeDocumentIndexingRequest(
+                        doc,
+                        tempFile,
+                        "ignored.txt",
+                        "text/plain",
+                        snapshot,
+                        "abc123",
+                        MaterializationStrategy.DOCUMENT_LEVEL,
+                        100));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Document>> docs = ArgumentCaptor.forClass(List.class);
+        verify(vectorStore).add(docs.capture());
+        assertThat(docs.getValue()).isNotEmpty();
+        assertThat(docs.getValue().getFirst().getMetadata())
+                .containsEntry("indexSnapshotId", snapshotId.toString())
+                .containsEntry("projectId", projectId.toString())
+                .containsEntry("projectDocumentId", documentId.toString());
+    }
+
+    @Test
     void processDocument_throwsOnEmptyContent() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
         var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
@@ -245,7 +345,7 @@ class KnowledgeIndexingServiceTest {
     @Test
     void processDocument_readsFromStorage_whenNoTempFileOverride() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
         var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
@@ -285,7 +385,7 @@ class KnowledgeIndexingServiceTest {
     @Test
     void computeChunkCountForDoc_returnsFirstChunkCountFromArtifacts() {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
         var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
@@ -309,7 +409,7 @@ class KnowledgeIndexingServiceTest {
     @Test
     void processDocument_throwsWhenStorageUriMissing() {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
         var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
@@ -338,7 +438,7 @@ class KnowledgeIndexingServiceTest {
     @Test
     void processDocument_documentLevel_truncatesBeforeEmbed() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
         var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
@@ -388,7 +488,7 @@ class KnowledgeIndexingServiceTest {
     @Test
     void processDocument_retriesWithSmallerChunksOnContextLengthError() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
         var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);

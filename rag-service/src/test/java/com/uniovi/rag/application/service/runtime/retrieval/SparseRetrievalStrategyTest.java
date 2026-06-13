@@ -166,10 +166,51 @@ class SparseRetrievalStrategyTest {
 
         sparseRetrievalStrategy.retrieve(req);
 
-        verify(jdbc)
+        verify(jdbc, Mockito.times(2))
                 .query(
                         ArgumentMatchers.argThat(
                                 (String sql) -> sql.contains("(metadata->>'document_id')::uuid IN (:docIds)")),
+                        any(MapSqlParameterSource.class),
+                        any(RowMapper.class));
+    }
+
+    @Test
+    void retrieve_fallsBackToPlaintoTsqueryWhenWebsearchReturnsEmpty() {
+        UUID sid = UUID.randomUUID();
+        RetrievalRequest req =
+                new RetrievalRequest(
+                        "probe token",
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        RetrievalMode.HYBRID_DENSE_SPARSE,
+                        5,
+                        5,
+                        10,
+                        5,
+                        24_000,
+                        50,
+                        List.of(sid),
+                        UUID.randomUUID(),
+                        Optional.empty(),
+                        List.of("all"),
+                        true,
+                        Optional.empty());
+        when(jdbc.query(anyString(), any(MapSqlParameterSource.class), any(RowMapper.class)))
+                .thenReturn(List.of())
+                .thenReturn(List.of());
+
+        sparseRetrievalStrategy.retrieve(req);
+
+        verify(jdbc)
+                .query(
+                        ArgumentMatchers.argThat((String sql) -> sql.contains("websearch_to_tsquery")),
+                        any(MapSqlParameterSource.class),
+                        any(RowMapper.class));
+        verify(jdbc)
+                .query(
+                        ArgumentMatchers.argThat((String sql) -> sql.contains("plainto_tsquery")),
                         any(MapSqlParameterSource.class),
                         any(RowMapper.class));
     }
