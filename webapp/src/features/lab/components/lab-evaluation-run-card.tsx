@@ -516,6 +516,9 @@ export function LabEvaluationRunCard({
     queueMicrotask(() => {
       setEvaluationRunId(dto.evaluationRunId);
       setLastEvaluationRunId(dto.evaluationRunId);
+      if (dto.campaignId?.trim()) {
+        setCampaignId(dto.campaignId.trim());
+      }
       const status = taskStatusFromLatestRun(dto, taskTypeHint);
       setTaskStatus(status);
       if (dto.terminal) {

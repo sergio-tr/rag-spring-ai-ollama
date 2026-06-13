@@ -76,6 +76,63 @@ describe("LabBenchmarkResultsPanel", () => {
     vi.mocked(fetchCampaignItemsBundle).mockResolvedValue({ items: [] });
   });
 
+  it("resolves campaignId from run detail when prop is missing", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      benchmarkKind: "RAG_PRESET_END_TO_END",
+      campaignId: "recovered-campaign-id",
+      campaignMode: true,
+      campaignPersistedItemCount: 240,
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 240 }, onExecuted: { n: 240, meanNormalizedExactMatch: 0.5 } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "item-1",
+          question: "Q1",
+          presetCode: "P0",
+          presetLabel: "Corpus text only",
+          status: "EXECUTED",
+          mvp: { operational: { outcome: "EXECUTED", presetCode: "P0" } },
+        },
+      ],
+    });
+    vi.mocked(fetchLabCampaignRuns).mockResolvedValue([]);
+    vi.mocked(fetchCampaignComparison).mockResolvedValue({
+      comparisonAxis: "PRESET_CODE",
+      rows: [
+        {
+          presetKey: "P0",
+          presetLabel: "Corpus text only",
+          executed: 60,
+          skipped: 0,
+          totalItems: 60,
+          scoreAnswerable: 0.91,
+          benchmarkSupportStatus: "SINGLE_TURN_SUPPORTED",
+        },
+        {
+          presetKey: "P1",
+          presetLabel: "Dense retrieval",
+          executed: 60,
+          skipped: 0,
+          totalItems: 60,
+          scoreAnswerable: 0.82,
+        },
+      ],
+    } as never);
+
+    renderPanel({ evaluationRunId: baseRun.id });
+
+    await waitFor(() => expect(screen.getByTestId("lab-export-campaign-items-json")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("lab-campaign-comparison-panel")).toBeInTheDocument());
+    expect(fetchCampaignComparison).toHaveBeenCalledWith("recovered-campaign-id");
+    expect(screen.getByText("Answerable score")).toBeInTheDocument();
+    expect(screen.getByText("0.910")).toBeInTheDocument();
+    expect(screen.queryByTestId("lab-benchmark-no-executed-warning")).not.toBeInTheDocument();
+  });
+
   it("loads rollups and shows outcome badges when enabled", async () => {
     vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
       ...baseRun,
@@ -150,7 +207,7 @@ describe("LabBenchmarkResultsPanel", () => {
 
     renderPanel({ evaluationRunId: baseRun.id });
 
-    await waitFor(() => expect(screen.getByText(/CUSTOM_LABEL: 2/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Unknown outcome: 2/i)).toBeInTheDocument());
   });
 
   it("hides trend graph for LLM benchmarks and shows no empty trend copy", async () => {

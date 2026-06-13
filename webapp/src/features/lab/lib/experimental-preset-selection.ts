@@ -1,7 +1,7 @@
 import type { ExperimentalPresetCatalogItemDto } from "@/types/api";
 import { isExtensionPreset } from "@/features/lab/lib/lab-benchmark-labels";
 
-/** Preset selectable for single-turn Lab RAG benchmark (P0–P12). */
+/** Preset selectable for single-turn Lab RAG benchmark (P0–P10). */
 export function isLabBenchmarkPresetSelectable(p: ExperimentalPresetCatalogItemDto): boolean {
   return p.supported && (p.singleTurnBenchmarkSelectable ?? false) && p.labSelectable;
 }
@@ -12,9 +12,9 @@ export function filterLabBenchmarkSelectablePresets(
   return (presets ?? []).filter(isLabBenchmarkPresetSelectable);
 }
 
-/** Core single-turn preset codes P0–P12 for Lab RAG benchmark selection. */
+/** Core single-turn preset codes P0–P10 for Lab RAG benchmark selection. */
 export function isCoreExperimentalPresetCode(code: string): boolean {
-  return /^P(?:[0-9]|1[0-2])$/.test(code);
+  return /^P(?:[0-9]|10)$/.test(code);
 }
 
 export function listCoreExperimentalPresetCodes(presets: ExperimentalPresetCatalogItemDto[]): string[] {
@@ -36,8 +36,8 @@ export function findInvalidLabPresetSelections(
 }
 
 /**
- * Removes presets that cannot run in single-turn Lab benchmarks (P13/P14 and other non-selectable codes).
- * Static P13/P14 removal works before the catalog loads; full catalog pass runs when {@code catalogReady}.
+ * Removes presets that cannot run in single-turn Lab benchmarks (P11–P14 and other non-selectable codes).
+ * Static extension-preset removal works before the catalog loads; full catalog pass runs when {@code catalogReady}.
  */
 export function sanitizeLabBenchmarkDraftPresetCodes(
   selected: readonly string[],

@@ -134,6 +134,7 @@ export type EvaluationCorpusReadinessDto = {
   indexProjectId: string | null;
   documentCount: number;
   readyCount: number;
+  storageReadyCount: number;
   processingCount: number;
   failedCount: number;
   primaryBlocker: string | null;
@@ -397,6 +398,9 @@ export type LatestLabRunRecoveryDto = {
   startedAt?: string | null;
   completedAt?: string | null;
   hasResults?: boolean;
+  campaignId?: string | null;
+  persistedItemCount?: number | null;
+  campaignChildRunIds?: string[] | null;
 };
 
 /** POST `{product}/me/account/export|deletion` → HTTP 202 (poll via `/me/account/jobs/{id}`, not Lab). */
@@ -606,6 +610,16 @@ export type RuntimeIndexCompatibilityDto = {
   compatibilityStatus?: string | null;
 };
 
+export type CampaignChildRunSummaryDto = {
+  runId: string;
+  presetKey: string | null;
+  presetLabel: string | null;
+  comparisonLabel: string | null;
+  modelId: string | null;
+  status: string | null;
+  persistedItemCount: number;
+};
+
 export type EvaluationRunDetailDto = {
   id: string;
   name: string | null;
@@ -626,6 +640,13 @@ export type EvaluationRunDetailDto = {
   aggregatesJson: Record<string, unknown> | null;
   createdAt: string;
   completedAt: string | null;
+  campaignId?: string | null;
+  campaignMode?: boolean;
+  presetKey?: string | null;
+  comparisonAxis?: string | null;
+  persistedItemCount?: number;
+  campaignPersistedItemCount?: number;
+  campaignChildRuns?: CampaignChildRunSummaryDto[] | null;
 };
 
 export type CompareRunsResponseDto = {

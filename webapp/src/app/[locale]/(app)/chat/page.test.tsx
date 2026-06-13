@@ -1520,7 +1520,7 @@ describe("ChatPage", () => {
     // Ignore unrelated initial effects (draft load, etc.).
     vi.mocked(apiFetch).mockClear();
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
-    // R1: selected preset is backend-authoritative; when user did not select a preset, the select value is empty.
+    // Selected preset is backend-authoritative; when user did not select a preset, the select value is empty.
     expect(presetSelect).toHaveValue("");
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
     expect(patchConversationApiCalls()).toHaveLength(0);

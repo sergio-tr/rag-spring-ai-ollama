@@ -24,6 +24,9 @@ import {
   isPresetComparisonAxis,
   normalizeMetadataKey,
   parseComparisonRows,
+  formatComparisonScore,
+  formatSupportStatusLabel,
+  isKnownOutcomeKey,
   resolveComparisonRowLabel,
   resolvePresetKeyFromComparisonRow,
   shouldShowPresetTrend,
@@ -38,6 +41,7 @@ import {
   countOutcomesFromItems,
   readGlobalOutcomeCounts,
   readMvpItems,
+  readAnswerableScoreFromComparisonRow,
   readOnExecutedSummary,
 } from "@/features/lab/lib/lab-benchmark-mvp-utils";
 import { getSafeApiErrorMessage } from "@/lib/api-client";
@@ -217,9 +221,28 @@ function toResultTableRow(row: unknown, idx: number, t: (key: string) => string)
   };
 }
 
-function trendRows(rows: ResultTableRow[]): Array<{ presetCode: string; score: number | null; extension: boolean }> {
+function trendRows(
+  comparisonRows: ComparisonRow[],
+  fallbackRows: ResultTableRow[],
+): Array<{ presetCode: string; score: number | null; extension: boolean }> {
+  const fromComparison = comparisonRows
+    .map((row) => {
+      const presetCode = resolvePresetKeyFromComparisonRow(row);
+      if (!presetCode) {
+        return null;
+      }
+      return {
+        presetCode,
+        score: readAnswerableScoreFromComparisonRow(row),
+        extension: isExtensionPreset(presetCode),
+      };
+    })
+    .filter((entry): entry is { presetCode: string; score: number | null; extension: boolean } => entry != null);
+  if (fromComparison.some((entry) => entry.score != null)) {
+    return fromComparison.sort((a, b) => a.presetCode.localeCompare(b.presetCode, undefined, { numeric: true }));
+  }
   const grouped = new Map<string, number[]>();
-  for (const row of rows) {
+  for (const row of fallbackRows) {
     if (!row.presetCode || row.presetCode === "—") continue;
     if (row.correctness == null) {
       grouped.set(row.presetCode, grouped.get(row.presetCode) ?? []);
@@ -308,22 +331,33 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
     queryKey: ["lab", "benchmark-mvp-results", runId, campId],
     enabled,
     queryFn: async () => {
-      const [run, rollups, itemsBundle] = await Promise.all([
-        fetchLabEvaluationRun(runId),
+      const run = await fetchLabEvaluationRun(runId);
+      const effectiveCampaignId =
+        campId || (typeof run.campaignId === "string" ? run.campaignId.trim() : "");
+      const [rollups, itemsBundle, campaignRuns, campaignComparison, campaignItemsBundle] = await Promise.all([
         fetchMvpRollupsJson(runId),
         fetchMvpItemsBundle(runId),
+        effectiveCampaignId ? fetchLabCampaignRuns(effectiveCampaignId) : Promise.resolve(null),
+        effectiveCampaignId ? fetchCampaignComparison(effectiveCampaignId).catch(() => null) : Promise.resolve(null),
+        effectiveCampaignId
+          ? fetchCampaignItemsBundle(effectiveCampaignId).catch(() => null)
+          : Promise.resolve(null),
       ]);
-      const campaignRuns = campId ? await fetchLabCampaignRuns(campId) : null;
-      const campaignComparison = campId ? await fetchCampaignComparison(campId).catch(() => null) : null;
-      const campaignItemsBundle = campId
-        ? await fetchCampaignItemsBundle(campId).catch(() => null)
-        : null;
-      return { run, rollups, itemsBundle, campaignRuns, campaignComparison, campaignItemsBundle };
+      return {
+        run,
+        rollups,
+        itemsBundle,
+        campaignRuns,
+        campaignComparison,
+        campaignItemsBundle,
+        effectiveCampaignId,
+      };
     },
   });
 
   const benchmarkKind = query.data?.run.benchmarkKind ?? null;
   const campaignComparison = query.data?.campaignComparison;
+  const effectiveCampaignId = query.data?.effectiveCampaignId?.trim() ?? campId;
 
   const comparisonRows = useMemo(() => {
     if (!campaignComparison) {
@@ -365,7 +399,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
     typeof campaignComparisonRecord?.comparisonAxis === "string"
       ? campaignComparisonRecord.comparisonAxis
       : "";
-  const isCampaignMode = campId.length > 0;
+  const isCampaignMode = effectiveCampaignId.length > 0;
   const campaignItemRows =
     payload.campaignItemsBundle && typeof payload.campaignItemsBundle === "object"
       ? readMvpItems(payload.campaignItemsBundle)
@@ -418,7 +452,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
   );
   const executedRows = filteredRows.filter((row) => row.outcome === "EXECUTED");
   const failedSkippedRows = filteredRows.filter((row) => FAILED_SKIPPED_OUTCOMES.has(row.outcome));
-  const trend = trendRows(filteredRows);
+  const trend = trendRows(comparisonRows, filteredRows);
   const plottableTrend = trend.filter((point) => point.score != null);
   const showTrendChart = shouldShowPresetTrend(benchmarkKind, plottableTrend.length);
   const showTrendEmpty = shouldShowTrendEmptyState(benchmarkKind, mvpRows.length > 0, plottableTrend.length);
@@ -496,14 +530,14 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          {campId ? (
+          {effectiveCampaignId ? (
             <>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 data-testid="lab-export-campaign-items-json"
-                onClick={() => void downloadCampaignItemsJson(campId)}
+                onClick={() => void downloadCampaignItemsJson(effectiveCampaignId)}
               >
                 {t("benchmarkExportCampaignItemsJson")}
               </Button>
@@ -512,7 +546,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                 variant="outline"
                 size="sm"
                 data-testid="lab-export-campaign-summary-json"
-                onClick={() => void downloadCampaignSummaryJson(campId)}
+                onClick={() => void downloadCampaignSummaryJson(effectiveCampaignId)}
               >
                 {t("benchmarkExportCampaignSummaryJson")}
               </Button>
@@ -521,7 +555,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                 variant="outline"
                 size="sm"
                 data-testid="lab-export-campaign-items-csv"
-                onClick={() => void downloadCampaignExport(campId, "items.csv")}
+                onClick={() => void downloadCampaignExport(effectiveCampaignId, "items.csv")}
               >
                 {t("benchmarkExportCampaignItemsCsv")}
               </Button>
@@ -530,7 +564,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                 variant="outline"
                 size="sm"
                 data-testid="lab-export-campaign-summary-csv"
-                onClick={() => void downloadCampaignExport(campId, "summary.csv")}
+                onClick={() => void downloadCampaignExport(effectiveCampaignId, "summary.csv")}
               >
                 {t("benchmarkExportCampaignSummaryCsv")}
               </Button>
@@ -539,7 +573,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                 variant="outline"
                 size="sm"
                 data-testid="lab-export-campaign-bundle-json"
-                onClick={() => void downloadCampaignExport(campId, "bundle.json")}
+                onClick={() => void downloadCampaignExport(effectiveCampaignId, "bundle.json")}
               >
                 {t("benchmarkExportCampaignBundleJson")}
               </Button>
@@ -575,7 +609,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
         </div>
       </div>
 
-      {campId && payload.campaignRuns && payload.campaignRuns.length > 0 ? (
+      {effectiveCampaignId && payload.campaignRuns && payload.campaignRuns.length > 0 ? (
         <div className="space-y-2" data-testid="lab-campaign-runs-panel">
           <span className="text-muted-foreground text-xs font-medium">{t("benchmarkCampaignRunsTitle")}</span>
           <div className="max-h-40 overflow-auto rounded-md border bg-background/40 p-2 text-xs">
@@ -621,7 +655,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
         </div>
       ) : null}
 
-      {campId && campaignComparisonRecord ? (
+      {effectiveCampaignId && campaignComparisonRecord ? (
         comparisonRows.length >= 2 ? (
         <div className="space-y-2" data-testid="lab-campaign-comparison-panel">
           <span className="text-muted-foreground text-xs font-medium">{t("benchmarkCampaignComparisonTitle")}</span>
@@ -642,6 +676,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                   <th className="p-2 font-medium">{t("benchmarkColNotSupported")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColFailed")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColSkipped")}</th>
+                  <th className="p-2 font-medium">{t("benchmarkColAnswerableScore")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColExact")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColSemantic")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColRecall")}</th>
@@ -670,12 +705,26 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                         setPresetFilter(next ?? "ALL");
                       }}
                     >
-                      <td className="p-2">{label}</td>
+                      <td className="p-2">
+                        <div>{label}</div>
+                        {formatSupportStatusLabel(
+                          typeof r.benchmarkSupportStatus === "string" ? r.benchmarkSupportStatus : undefined,
+                          t,
+                        ) ? (
+                          <div className="text-muted-foreground text-[10px]">
+                            {formatSupportStatusLabel(
+                              typeof r.benchmarkSupportStatus === "string" ? r.benchmarkSupportStatus : undefined,
+                              t,
+                            )}
+                          </div>
+                        ) : null}
+                      </td>
                       <td className="p-2">{String(r.totalItems ?? "—")}</td>
                       <td className="p-2">{String(r.executed ?? "—")}</td>
                       <td className="p-2">{String(r.notSupported ?? "—")}</td>
                       <td className="p-2">{String(r.failed ?? "—")}</td>
                       <td className="p-2">{String(r.skipped ?? "—")}</td>
+                      <td className="p-2 font-mono">{formatComparisonScore(r.scoreAnswerable)}</td>
                       <td className="p-2 font-mono">{formatComparisonMetric(r.meanExactMatch)}</td>
                       <td className="p-2 font-mono">{formatComparisonMetric(r.meanSemanticScore)}</td>
                       <td className="p-2 font-mono">{formatComparisonMetric(r.meanRecallAt1)}</td>
@@ -687,6 +736,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             </table>
           </div>
           <p className="text-muted-foreground text-[11px]">{t("benchmarkCampaignComparisonHint")}</p>
+          <p className="text-muted-foreground text-[11px]">{t("benchmarkScoreInterpretationHint")}</p>
         </div>
         ) : (
           <output className="text-muted-foreground block text-xs" data-testid="lab-campaign-comparison-empty">
@@ -756,7 +806,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             .filter(([k]) => !PRIMARY_OUTCOME_KEYS.has(k))
             .map(([k, n]) => (
               <span key={k} className="bg-background rounded-md border px-2 py-1 font-mono text-xs">
-                {k}: {n}
+                {isKnownOutcomeKey(k) ? formatOutcomeLabel(k, t) : t("benchmarkOutcomeLabel.unknown")}: {n}
               </span>
             ))}
         </div>

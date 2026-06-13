@@ -60,6 +60,13 @@ export function resolveDocumentCentricReadinessDisplay(
       testId: "lab-corpus-readiness-blocker",
     };
   }
+  if (primary === "DOCUMENT_BINARY_MISSING") {
+    return {
+      kind: "blocker",
+      messageKey: "labImportBinaryMissing",
+      testId: "lab-corpus-readiness-blocker",
+    };
+  }
   if (primary) {
     return {
       kind: "blocker",

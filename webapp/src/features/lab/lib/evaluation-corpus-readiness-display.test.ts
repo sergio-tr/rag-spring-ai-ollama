@@ -33,6 +33,7 @@ function readiness(
     indexProjectId: "p1",
     documentCount: 1,
     readyCount: 1,
+    storageReadyCount: 1,
     processingCount: 0,
     failedCount: 0,
     primaryBlocker: null,
@@ -102,6 +103,18 @@ describe("evaluation-corpus-readiness-display", () => {
       kind: "info",
       messageKey: "labEvalIndexWillPrepare",
       testId: "lab-corpus-index-will-prepare",
+    });
+  });
+
+  it("maps missing document binary to import blocker", () => {
+    const display = resolveDocumentCentricReadinessDisplay(
+      readiness({ primaryBlocker: "DOCUMENT_BINARY_MISSING", runnable: false }),
+      summary(),
+    );
+    expect(display).toEqual({
+      kind: "blocker",
+      messageKey: "labImportBinaryMissing",
+      testId: "lab-corpus-readiness-blocker",
     });
   });
 

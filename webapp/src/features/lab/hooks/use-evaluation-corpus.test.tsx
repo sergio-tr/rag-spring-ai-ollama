@@ -36,6 +36,7 @@ const readinessRunnable: EvaluationCorpusReadinessDto = {
   indexProjectId: "proj-1",
   documentCount: 2,
   readyCount: 1,
+  storageReadyCount: 1,
   processingCount: 0,
   failedCount: 0,
   primaryBlocker: null,

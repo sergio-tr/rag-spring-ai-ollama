@@ -49,9 +49,11 @@ describe("experimental-preset-selection", () => {
     expect(isLabBenchmarkPresetSelectable(preset("P8", { supported: false }))).toBe(false);
   });
 
-  it("isCoreExperimentalPresetCode matches P0-P12 only", () => {
+  it("isCoreExperimentalPresetCode matches P0-P10 only", () => {
     expect(isCoreExperimentalPresetCode("P0")).toBe(true);
-    expect(isCoreExperimentalPresetCode("P12")).toBe(true);
+    expect(isCoreExperimentalPresetCode("P10")).toBe(true);
+    expect(isCoreExperimentalPresetCode("P11")).toBe(false);
+    expect(isCoreExperimentalPresetCode("P12")).toBe(false);
     expect(isCoreExperimentalPresetCode("P13")).toBe(false);
     expect(isCoreExperimentalPresetCode("P8")).toBe(true);
   });
@@ -59,10 +61,11 @@ describe("experimental-preset-selection", () => {
   it("listCoreExperimentalPresetCodes filters catalog", () => {
     const codes = listCoreExperimentalPresetCodes([
       preset("P0"),
-      preset("P13", { singleTurnBenchmarkSelectable: false }),
-      preset("P12"),
+      preset("P13", { singleTurnBenchmarkSelectable: false, labSelectable: false }),
+      preset("P10"),
+      preset("P11", { singleTurnBenchmarkSelectable: false, labSelectable: false }),
     ]);
-    expect(codes).toEqual(["P0", "P12"]);
+    expect(codes).toEqual(["P0", "P10"]);
   });
 
   it("findInvalidLabPresetSelections flags unknown and non-lab presets", () => {
@@ -71,10 +74,14 @@ describe("experimental-preset-selection", () => {
     expect(filterLabBenchmarkSelectablePresets(catalog).map((p) => p.code)).toEqual(["P0"]);
   });
 
-  it("sanitizeLabBenchmarkDraftPresetCodes removes P13/P14 before catalog loads", () => {
-    const { selected, removed } = sanitizeLabBenchmarkDraftPresetCodes(["P0", "P13", "P14"], undefined, false);
+  it("sanitizeLabBenchmarkDraftPresetCodes removes P11-P14 before catalog loads", () => {
+    const { selected, removed } = sanitizeLabBenchmarkDraftPresetCodes(
+      ["P0", "P11", "P12", "P13", "P14"],
+      undefined,
+      false,
+    );
     expect(selected).toEqual(["P0"]);
-    expect(removed).toEqual(["P13", "P14"]);
+    expect(removed).toEqual(["P11", "P12", "P13", "P14"]);
   });
 
   it("sanitizeLabBenchmarkDraftPresetCodes removes non-lab-selectable codes when catalog is ready", () => {

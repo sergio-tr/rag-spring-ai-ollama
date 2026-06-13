@@ -45,7 +45,7 @@ export function comparisonAxisForKind(kind: BenchmarkKindHint): ComparisonAxis {
 
 export function isExtensionPreset(presetCode: string | null | undefined): boolean {
   const code = normalizeMetadataKey(presetCode);
-  return code === "P13" || code === "P14";
+  return code === "P11" || code === "P12" || code === "P13" || code === "P14";
 }
 
 export function formatPresetDisplay(
@@ -166,7 +166,49 @@ export type ComparisonRow = {
   meanSemanticScore?: number | null;
   meanRecallAt1?: number | null;
   meanLatencyMs?: number | null;
+  scoreGlobal?: number | null;
+  scoreAnswerable?: number | null;
+  benchmarkSupportStatus?: string;
+  singleTurnSupported?: boolean | string;
+  comparableInSingleTurn?: boolean | string;
 };
+
+const INTERNAL_STATUS_LABELS: Record<string, string> = {
+  SINGLE_TURN_UNSUPPORTED: "benchmarkSupportSingleTurnUnsupported",
+  MULTI_TURN_EXTENSION_NOT_COMPARABLE: "benchmarkSupportExtensionNotComparable",
+  SINGLE_TURN_SUPPORTED: "benchmarkSupportSingleTurnSupported",
+};
+
+export function formatComparisonScore(value: unknown): string {
+  if (value == null || value === NOT_AVAILABLE || value === "NOT_AVAILABLE") {
+    return "—";
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value.toFixed(3);
+  }
+  const text = String(value).trim();
+  if (!text || text === NOT_AVAILABLE) {
+    return "—";
+  }
+  return text;
+}
+
+export function formatSupportStatusLabel(status: string | null | undefined, t: (key: string) => string): string | null {
+  const raw = (status ?? "").trim();
+  if (!raw) {
+    return null;
+  }
+  const key = INTERNAL_STATUS_LABELS[raw];
+  if (key) {
+    const out = t(key);
+    return out === key ? null : out;
+  }
+  return null;
+}
+
+export function isKnownOutcomeKey(key: string): boolean {
+  return new Set(["EXECUTED", "FAILED", "SKIPPED", "NOT_SUPPORTED"]).has(key);
+}
 
 export function isPresetComparisonAxis(axis: string | null | undefined): boolean {
   const a = (axis ?? "").trim().toUpperCase();

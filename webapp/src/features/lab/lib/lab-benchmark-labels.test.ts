@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateComparisonOutcomeCounts,
   comparisonAxisForKind,
+  formatComparisonScore,
   formatGroupLabel,
   formatMetricCell,
   formatOutcomeLabel,
   formatPresetDisplay,
+  formatSupportStatusLabel,
   isExtensionPreset,
   isMissingMetadata,
   isNotAvailable,
@@ -38,6 +40,8 @@ describe("lab-benchmark-labels", () => {
 
   it("formats preset labels and extension presets", () => {
     expect(formatPresetDisplay("P2", "Baseline RAG")).toBe("P2 — Baseline RAG");
+    expect(isExtensionPreset("P11")).toBe(true);
+    expect(isExtensionPreset("P12")).toBe(true);
     expect(isExtensionPreset("P13")).toBe(true);
     expect(isExtensionPreset("P2")).toBe(false);
   });
@@ -156,5 +160,20 @@ describe("lab-benchmark-labels", () => {
     ]);
     expect(totals.EXECUTED).toBe(60);
     expect(totals.SKIPPED).toBe(60);
+  });
+
+  it("formats unavailable comparison scores as dash", () => {
+    expect(formatComparisonScore(null)).toBe("—");
+    expect(formatComparisonScore("NOT_AVAILABLE")).toBe("—");
+    expect(formatComparisonScore(0.812)).toBe("0.812");
+  });
+
+  it("maps support status to product-safe labels", () => {
+    const translate = (key: string) =>
+      key === "benchmarkSupportSingleTurnUnsupported" ? "Not in single-turn comparison" : key;
+    expect(formatSupportStatusLabel("SINGLE_TURN_UNSUPPORTED", translate)).toBe(
+      "Not in single-turn comparison",
+    );
+    expect(formatSupportStatusLabel("PRESET_ADAPTIVE_ROUTING_BENCHMARK_NOT_SUPPORTED", translate)).toBeNull();
   });
 });

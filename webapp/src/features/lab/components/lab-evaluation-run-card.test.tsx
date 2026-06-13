@@ -207,18 +207,19 @@ function presetCodesFixture() {
     description: "",
     requiredCapabilities: [] as string[],
     supported: true,
-    supportStatus: i >= 13 ? "REQUIRES_MULTI_TURN" : "EXECUTABLE",
-    reasonIfUnsupported: i >= 13 ? "FUTURE_MULTI_TURN_NOT_SELECTABLE" : null,
+    supportStatus:
+      i >= 13 ? "FUTURE_MULTI_TURN_NOT_SELECTABLE" : i >= 11 ? "NOT_COMPARABLE_IN_SINGLE_TURN_LAB" : "EXECUTABLE",
+    reasonIfUnsupported: null,
     requiresMultiTurn: i >= 13,
     mapsToRuntimeCapabilities: {},
     allowedOutcomes: ["EXECUTED", "FAILED", "SKIPPED", "NOT_SUPPORTED"] as const,
     chatSelectable: true,
-    labSelectable: true,
+    labSelectable: i <= 10,
     labOnly: false,
     corpusRequired: true,
     requiresSnapshot: true,
     requiresProjectDocuments: true,
-    singleTurnBenchmarkSelectable: i <= 12,
+    singleTurnBenchmarkSelectable: i <= 10,
     protocolStageIndex: i,
     parentPresetCode: i > 0 ? `P${i - 1}` : null,
     effectiveTerminalRuntimeJson: "{}",
@@ -601,7 +602,7 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.getByTestId("lab-benchmark-llm-models-llama:judge")).toBeChecked();
   });
 
-  it("restores RAG preset picks P0–P12 from localStorage and sanitizes P13/P14", () => {
+  it("restores RAG preset picks P0–P10 from localStorage and sanitizes P11–P14", () => {
     localStorage.setItem("lab:evaluation-draft:v1:RAG_PRESET_END_TO_END", storedRagDraft({}));
     vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
       data: [ragDataset],
@@ -623,11 +624,12 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
     expect(screen.getByTestId("lab-draft-presets-sanitized")).toBeInTheDocument();
-    for (let i = 0; i <= 12; i += 1) {
+    for (let i = 0; i <= 10; i += 1) {
       expect(screen.getByTestId(`lab-experimental-preset-P${i}`)).toBeChecked();
     }
-    expect(screen.getByTestId("lab-experimental-preset-P13")).not.toBeChecked();
-    expect(screen.getByTestId("lab-experimental-preset-P14")).not.toBeChecked();
+    for (let i = 11; i <= 14; i += 1) {
+      expect(screen.getByTestId(`lab-experimental-preset-P${i}`)).not.toBeChecked();
+    }
   });
 
   it("disables Run when corpus readiness reports NO_DOCUMENTS blocker", () => {

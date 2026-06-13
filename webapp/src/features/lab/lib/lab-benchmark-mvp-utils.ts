@@ -84,6 +84,18 @@ export function readMvpItems(bundle: Record<string, unknown>): unknown[] {
   return Array.isArray(items) ? items : [];
 }
 
+export function readComparisonScore(row: unknown, key: string): number | null {
+  if (!row || typeof row !== "object") {
+    return null;
+  }
+  const value = (row as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function readAnswerableScoreFromComparisonRow(row: unknown): number | null {
+  return readComparisonScore(row, "scoreAnswerable");
+}
+
 export function countOutcomesFromItems(items: unknown[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const item of items) {
