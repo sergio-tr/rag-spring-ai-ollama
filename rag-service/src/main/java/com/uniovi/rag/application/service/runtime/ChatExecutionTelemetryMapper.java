@@ -5,10 +5,13 @@ import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -17,6 +20,57 @@ import java.util.UUID;
 public final class ChatExecutionTelemetryMapper {
 
     private ChatExecutionTelemetryMapper() {
+    }
+
+    /**
+     * Adds Lab-export retrieval id lists ({@code retrieved_chunk_ids}, {@code retrieved_document_ids}) from
+     * persisted response sources when retrieval succeeded.
+     */
+    public static void enrichRetrievedIdentifiersFromSources(
+            Map<String, Object> telemetry, List<Map<String, Object>> responseSources) {
+        if (telemetry == null || responseSources == null || responseSources.isEmpty()) {
+            return;
+        }
+        Set<String> chunkIds = new LinkedHashSet<>();
+        Set<String> documentIds = new LinkedHashSet<>();
+        for (Map<String, Object> source : responseSources) {
+            if (source == null || source.isEmpty()) {
+                continue;
+            }
+            String chunkId = firstNonBlank(source, "chunkId");
+            if (chunkId == null && source.get("metadata") instanceof Map<?, ?> meta) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> mm = (Map<String, Object>) meta;
+                chunkId = firstNonBlank(mm, "chunkId");
+            }
+            if (chunkId != null) {
+                chunkIds.add(chunkId);
+            }
+            String documentId = firstNonBlank(source, "documentId", "document_id", "projectDocumentId");
+            if (documentId != null) {
+                documentIds.add(documentId);
+            }
+        }
+        if (!chunkIds.isEmpty()) {
+            telemetry.put("retrieved_chunk_ids", new ArrayList<>(chunkIds));
+        }
+        if (!documentIds.isEmpty()) {
+            telemetry.put("retrieved_document_ids", new ArrayList<>(documentIds));
+        }
+    }
+
+    private static String firstNonBlank(Map<String, Object> row, String... keys) {
+        for (String key : keys) {
+            Object v = row.get(key);
+            if (v == null) {
+                continue;
+            }
+            String s = String.valueOf(v).trim();
+            if (!s.isEmpty()) {
+                return s;
+            }
+        }
+        return null;
     }
 
     /**
@@ -30,6 +84,7 @@ public final class ChatExecutionTelemetryMapper {
         if (trace.workflowName() != null && !trace.workflowName().isBlank()) {
             m.put("workflowName", trace.workflowName());
         }
+        putRetrievalRouteTelemetry(trace, m);
         List<UUID> snapshotIds = trace.usedKnowledgeSnapshotIds();
         if (snapshotIds != null && !snapshotIds.isEmpty()) {
             m.put("selectedSnapshotIds", snapshotIds.stream().map(UUID::toString).toList());
@@ -72,15 +127,17 @@ public final class ChatExecutionTelemetryMapper {
 
         putClassifierTelemetry(trace, m);
         putReasoningTelemetry(trace, m);
-        trace.retrievalDiagnostics().ifPresent(d -> putRetrievalDiagnosticsTelemetry(d, m));
+        trace.retrievalDiagnostics().ifPresent(d -> putRetrievalDiagnosticsTelemetry(trace, d, m));
         putDateGroundingTelemetry(trace, m);
         putRuntimeAnswerMetaTelemetry(trace, m);
+
+        m.putAll(ToolExecutionTelemetryMapper.fromTrace(trace));
 
         parseCorpusBudgetTelemetry(trace, m);
 
         if (!trace.answerGroundingPolicy().isBlank()) {
             m.put("answerGroundingPolicy", trace.answerGroundingPolicy());
-            // R4 stable key (avoid recomputing policy elsewhere).
+            // Stable key (avoid recomputing policy elsewhere).
             m.put("answerPolicy", trace.answerGroundingPolicy());
             m.put("groundingPolicy", trace.answerGroundingPolicy());
         }
@@ -93,9 +150,14 @@ public final class ChatExecutionTelemetryMapper {
             m.put("abstentionReasonCode", trace.abstentionReason());
         }
 
-        // R4 summary fields (no chain-of-thought).
-        m.put("contextChunkCount", trace.packedContextBlockCount());
-        m.put("effectiveContextPresent", trace.promptContextCharCount() > 0 || trace.packedContextBlockCount() > 0);
+        // Summary fields (no chain-of-thought).
+        int contextChunkCount = resolveContextChunkCount(trace);
+        if (contextChunkCount >= 0) {
+            m.put("contextChunkCount", contextChunkCount);
+        }
+        m.put(
+                "effectiveContextPresent",
+                trace.promptContextCharCount() > 0 || contextChunkCount > 0 || trace.sourceCount() > 0);
         m.put("closestEvidenceAvailable", trace.sourceCount() > 0);
         m.put("judgeApplied", trace.judgeAttempted());
         m.put("memoryApplied", trace.memoryCondensationUsed());
@@ -131,7 +193,10 @@ public final class ChatExecutionTelemetryMapper {
         if (classifierStatus != null && !classifierStatus.isBlank()) {
             m.put("classifierStatus", classifierStatus);
             if ("INVALID_OUTPUT".equalsIgnoreCase(classifierStatus)
-                    || "UNAVAILABLE".equalsIgnoreCase(classifierStatus)) {
+                    || "UNAVAILABLE".equalsIgnoreCase(classifierStatus)
+                    || "LOW_CONFIDENCE".equalsIgnoreCase(classifierStatus)
+                    || "TIMEOUT".equalsIgnoreCase(classifierStatus)
+                    || "INVALID_REQUEST".equalsIgnoreCase(classifierStatus)) {
                 m.put("classifierFallback", true);
             } else if ("OK".equalsIgnoreCase(classifierStatus)) {
                 m.put("classifierFallback", false);
@@ -145,6 +210,7 @@ public final class ChatExecutionTelemetryMapper {
                 try {
                     QueryType.valueOf(classifierLabel.trim());
                     m.put("predictedQueryType", classifierLabel.trim());
+                    m.put("queryTypePredicted", classifierLabel.trim());
                 } catch (IllegalArgumentException ignored) {
                     // Leave predictedQueryType unset when label is not a Java enum constant.
                 }
@@ -170,6 +236,18 @@ public final class ChatExecutionTelemetryMapper {
             if (!note.isBlank() && Boolean.TRUE.equals(m.get("classifierFallback"))) {
                 m.put("classifierFallbackReason", note);
             }
+            String confidence = quClassifyTokenAfter(msg, "classifierConfidence=");
+            if (!confidence.isBlank()) {
+                try {
+                    m.put("classifierConfidence", Double.parseDouble(confidence));
+                } catch (NumberFormatException ignored) {
+                    m.put("classifierConfidence", confidence);
+                }
+            }
+            String labelSetHash = quClassifyTokenAfter(msg, "classifierLabelSetHash=");
+            if (!labelSetHash.isBlank()) {
+                m.put("classifierLabelSetHash", labelSetHash);
+            }
             return;
         }
     }
@@ -180,6 +258,29 @@ public final class ChatExecutionTelemetryMapper {
             return "";
         }
         return msg.substring(start + "note=".length()).trim();
+    }
+
+    private static String quClassifyTokenAfter(String msg, String key) {
+        int start = msg.indexOf(key);
+        if (start < 0) {
+            return "";
+        }
+        start += key.length();
+        int end = msg.length();
+        for (String next :
+                List.of(
+                        " classifierModelId=",
+                        " classifierLabel=",
+                        " classifierStatus=",
+                        " classifierConfidence=",
+                        " classifierLabelSetHash=",
+                        " note=")) {
+            int idx = msg.indexOf(next, start);
+            if (idx > start && idx < end) {
+                end = idx;
+            }
+        }
+        return msg.substring(start, end).trim();
     }
 
     private static String classifierModelIdFromQuClassifyMessage(String msg) {
@@ -227,17 +328,176 @@ public final class ChatExecutionTelemetryMapper {
         }
     }
 
-    private static void putRetrievalDiagnosticsTelemetry(RetrievalDiagnostics d, Map<String, Object> m) {
+    /**
+     * Final packed chunk count when retrieval ran; -1 when retrieval was not used (omit from export).
+     */
+    private static int resolveContextChunkCount(ExecutionTrace trace) {
+        if (trace == null || !trace.retrievalUsed()) {
+            return -1;
+        }
+        if (trace.retrievalDiagnostics().isPresent()) {
+            RetrievalDiagnostics d = trace.retrievalDiagnostics().get();
+            if (d.afterCompressionCount() > 0) {
+                return d.afterCompressionCount();
+            }
+            if (d.afterFilterCount() > 0) {
+                return d.afterFilterCount();
+            }
+            if (d.denseCandidateCount() > 0) {
+                return d.denseCandidateCount();
+            }
+        }
+        if (trace.sourceCount() > 0) {
+            return trace.sourceCount();
+        }
+        return 0;
+    }
+
+    private static void putRetrievalDiagnosticsTelemetry(
+            ExecutionTrace trace, RetrievalDiagnostics d, Map<String, Object> m) {
+        m.put("retrievalMode", d.retrievalMode().name());
         m.put("retrievalRerankApplied", d.rerankApplied());
+        m.put("rerankApplied", d.rerankApplied());
         m.put("retrievalDenseCandidateCount", d.denseCandidateCount());
+        m.put("denseCandidateCount", d.denseCandidateCount());
+        m.put("retrievalSparseCandidateCount", d.sparseCandidateCount());
+        m.put("sparseCandidateCount", d.sparseCandidateCount());
         m.put("retrievalAfterFusionCount", d.afterFusionCount());
+        m.put("mergedCandidateCount", d.afterFusionCount());
+        m.put("retrievalDedupedCandidateCount", d.dedupedCandidateCount());
+        m.put("dedupedCandidateCount", d.dedupedCandidateCount());
         m.put("retrievalBeforePostRetrievalCount", d.beforePostRetrievalCount());
         m.put("retrievalAfterRerankCount", d.afterRerankCount());
+        m.put("rerankedCandidateCount", d.afterRerankCount());
         m.put("retrievalAfterFilterCount", d.afterFilterCount());
         m.put("retrievalAfterCompressionCount", d.afterCompressionCount());
+        m.put("finalContextChunkCount", d.afterCompressionCount());
         m.put("retrievalProtectedCandidateCount", d.protectedCandidateCount());
         m.put("retrievalDroppedCandidateCount", d.droppedCandidateCount());
+        m.put("retrievalRerankOrderChanged", d.rerankOrderChanged());
+        m.put("rerankChangedOrder", d.rerankOrderChanged());
+        m.put("retrievalCompressionCharsBefore", d.compressionCharsBefore());
+        m.put("retrievalCompressionCharsAfter", d.compressionCharsAfter());
+        m.put("compressedContextCharCount", d.compressionCharsAfter());
+        m.put("originalContextCharCount", d.compressionCharsBefore());
+        boolean compressionApplied =
+                d.compressionCharsAfter() > 0
+                        && d.compressionCharsBefore() > 0
+                        && d.compressionCharsAfter() < d.compressionCharsBefore();
+        m.put("retrievalCompressionApplied", compressionApplied);
+        m.put("compressionApplied", compressionApplied);
+        d.fusionMode().ifPresent(mode -> m.put("retrievalFusionMode", mode.name()));
         d.rerankScoreSummary().ifPresent(s -> m.put("retrievalRerankScoreSummaryTruncated", s));
+        if (d.rerankApplied() && !d.rerankOrderChanged()) {
+            m.put("rerankNoopReason", "order_unchanged");
+        }
+        int hybridCandidateCount = d.denseCandidateCount() + d.sparseCandidateCount();
+        if (hybridCandidateCount >= 0) {
+            m.put("hybridCandidateCount", hybridCandidateCount);
+        }
+        boolean hybridApplied =
+                d.retrievalMode() == com.uniovi.rag.domain.runtime.retrieval.RetrievalMode.HYBRID_DENSE_SPARSE
+                        && d.denseCandidateCount() > 0
+                        && d.sparseCandidateCount() > 0
+                        && d.afterFusionCount() > 0;
+        m.put("hybridApplied", hybridApplied);
+        String origins = candidateOriginsFromFusionStage(trace);
+        if (!origins.isBlank()) {
+            m.put("candidateOrigins", origins);
+        }
+        putRetrievalSparseStatusFromStages(trace, d, m);
+    }
+
+    private static void putRetrievalRouteTelemetry(ExecutionTrace trace, Map<String, Object> m) {
+        String route = inferRetrievalRouteFromTrace(trace);
+        if (!route.isBlank()) {
+            m.put("retrievalRoute", route);
+        }
+    }
+
+    private static String inferRetrievalRouteFromTrace(ExecutionTrace trace) {
+        if (trace == null) {
+            return "";
+        }
+        Optional<RetrievalDiagnostics> diag = trace.retrievalDiagnostics();
+        if (diag.isPresent()) {
+            RetrievalDiagnostics d = diag.get();
+            if (d.retrievalMode() == com.uniovi.rag.domain.runtime.retrieval.RetrievalMode.HYBRID_DENSE_SPARSE) {
+                return trace.metadataUsed() ? "HYBRID_DENSE_SPARSE_METADATA" : "HYBRID_DENSE_SPARSE";
+            }
+            if (d.retrievalMode() == com.uniovi.rag.domain.runtime.retrieval.RetrievalMode.DENSE_ONLY) {
+                if (trace.metadataUsed()) {
+                    return "CHUNK_DENSE_METADATA";
+                }
+                String workflow = trace.workflowName() != null ? trace.workflowName() : "";
+                if ("DocumentDenseRagWorkflow".equals(workflow)) {
+                    return "DOCUMENT_DENSE";
+                }
+                return "CHUNK_DENSE";
+            }
+        }
+        String workflow = trace.workflowName() != null ? trace.workflowName() : "";
+        return switch (workflow) {
+            case "DirectLlmWorkflow" -> "DIRECT_LLM";
+            case "FullCorpusWorkflow", "CorpusGroundedDirectWorkflow" -> "FULL_CORPUS";
+            case "DocumentDenseRagWorkflow" -> "DOCUMENT_DENSE";
+            case "ChunkDenseMetadataWorkflow" -> "CHUNK_DENSE_METADATA";
+            case "ChunkDenseRagWorkflow" -> "CHUNK_DENSE";
+            default -> "";
+        };
+    }
+
+    private static String candidateOriginsFromFusionStage(ExecutionTrace trace) {
+        if (trace.stages() == null) {
+            return "";
+        }
+        for (ExecutionStageTrace stage : trace.stages()) {
+            if (stage == null || !"retrieval_fuse".equals(stage.stageName())) {
+                continue;
+            }
+            String msg = stage.message() != null ? stage.message() : "";
+            int idx = msg.indexOf("origins=");
+            if (idx < 0) {
+                return "";
+            }
+            return msg.substring(idx + "origins=".length()).trim();
+        }
+        return "";
+    }
+
+    private static void putRetrievalSparseStatusFromStages(
+            ExecutionTrace trace, RetrievalDiagnostics d, Map<String, Object> m) {
+        if (d.retrievalMode() != com.uniovi.rag.domain.runtime.retrieval.RetrievalMode.HYBRID_DENSE_SPARSE) {
+            m.put("sparseRetrievalStatus", "NOT_APPLICABLE");
+            return;
+        }
+        if (trace.stages() != null) {
+            for (ExecutionStageTrace stage : trace.stages()) {
+                if (stage == null || !"retrieval_sparse".equals(stage.stageName())) {
+                    continue;
+                }
+                String msg = stage.message() != null ? stage.message() : "";
+                if (stage.outcome() == com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome.SKIPPED
+                        && msg.contains("sparse_unavailable")) {
+                    m.put("retrievalSparseStatus", "sparse_unavailable");
+                    m.put("sparseRetrievalStatus", "UNAVAILABLE");
+                    return;
+                }
+                if (stage.outcome() == com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome.SUCCESS) {
+                    if (d.sparseCandidateCount() > 0) {
+                        m.put("sparseRetrievalStatus", "OK");
+                    } else {
+                        m.put("sparseRetrievalStatus", "ZERO_MATCHES");
+                    }
+                    return;
+                }
+            }
+        }
+        if (d.sparseCandidateCount() > 0) {
+            m.put("sparseRetrievalStatus", "OK");
+        } else {
+            m.put("sparseRetrievalStatus", "ZERO_MATCHES");
+        }
     }
 
     private static void putRuntimeAnswerMetaTelemetry(ExecutionTrace trace, Map<String, Object> m) {
