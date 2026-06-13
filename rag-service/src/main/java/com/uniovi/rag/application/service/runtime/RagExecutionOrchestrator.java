@@ -17,6 +17,9 @@ import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeli
 import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
 import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.DeterministicToolRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
@@ -73,6 +76,9 @@ public class RagExecutionOrchestrator {
     private final ClarificationPolicyResolver clarificationPolicyResolver;
     private final ClarificationStrategy clarificationStrategy;
     private final AdaptiveRoutingStrategy adaptiveRoutingStrategy;
+    private final DeterministicToolRoutingStrategy deterministicToolRoutingStrategy;
+    private final FunctionCallingRoutingStrategy functionCallingRoutingStrategy;
+    private final AdvisorRoutingStrategy advisorRoutingStrategy;
     private final JudgeStrategy judgeStrategy;
     private final StructuredAnswerPlanService structuredAnswerPlanService;
     private final AnswerVerificationService answerVerificationService;
@@ -91,6 +97,9 @@ public class RagExecutionOrchestrator {
             ClarificationPolicyResolver clarificationPolicyResolver,
             ClarificationStrategy clarificationStrategy,
             AdaptiveRoutingStrategy adaptiveRoutingStrategy,
+            DeterministicToolRoutingStrategy deterministicToolRoutingStrategy,
+            FunctionCallingRoutingStrategy functionCallingRoutingStrategy,
+            AdvisorRoutingStrategy advisorRoutingStrategy,
             JudgeStrategy judgeStrategy,
             StructuredAnswerPlanService structuredAnswerPlanService,
             AnswerVerificationService answerVerificationService,
@@ -107,6 +116,9 @@ public class RagExecutionOrchestrator {
         this.clarificationPolicyResolver = clarificationPolicyResolver;
         this.clarificationStrategy = clarificationStrategy;
         this.adaptiveRoutingStrategy = adaptiveRoutingStrategy;
+        this.deterministicToolRoutingStrategy = deterministicToolRoutingStrategy;
+        this.functionCallingRoutingStrategy = functionCallingRoutingStrategy;
+        this.advisorRoutingStrategy = advisorRoutingStrategy;
         this.judgeStrategy = judgeStrategy;
         this.structuredAnswerPlanService = structuredAnswerPlanService;
         this.answerVerificationService = answerVerificationService;
@@ -168,13 +180,28 @@ public class RagExecutionOrchestrator {
 
     private RoutingSnapshot resolveRoutingSnapshot(ExecutionContext ctx, QueryPlan plan) {
         var rag = ctx.resolved().toRagConfig();
-        if (!rag.adaptiveRoutingEnabled()) {
-            AdaptiveRouteKind compat =
-                    rag.useRetrieval() ? AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE : AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE;
-            return RoutingSnapshot.disabledByConfig(compat);
+        if (rag.adaptiveRoutingEnabled()) {
+            var r = adaptiveRoutingStrategy.execute(ctx, plan);
+            return RoutingSnapshot.enabled(r.routingRouteKind(), r.gate(), r.stageTraces());
         }
-        var r = adaptiveRoutingStrategy.execute(ctx, plan);
-        return RoutingSnapshot.enabled(r.routingRouteKind(), r.gate(), r.stageTraces());
+        if (rag.deterministicToolRoutingEnabled() && !rag.functionCallingEnabled()) {
+            var r = deterministicToolRoutingStrategy.execute(rag, plan);
+            return RoutingSnapshot.enabled(r.routingRouteKind(), r.gate(), r.stageTraces());
+        }
+        if (rag.functionCallingEnabled() && !rag.deterministicToolRoutingEnabled() && !rag.adaptiveRoutingEnabled()) {
+            var r = functionCallingRoutingStrategy.execute(rag, plan);
+            return RoutingSnapshot.enabled(r.routingRouteKind(), r.gate(), r.stageTraces());
+        }
+        if (rag.useAdvisor()
+                && !rag.functionCallingEnabled()
+                && !rag.deterministicToolRoutingEnabled()
+                && !rag.adaptiveRoutingEnabled()) {
+            var r = advisorRoutingStrategy.execute(rag, plan);
+            return RoutingSnapshot.enabled(r.routingRouteKind(), r.gate(), r.stageTraces());
+        }
+        AdaptiveRouteKind compat =
+                rag.useRetrieval() ? AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE : AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE;
+        return RoutingSnapshot.disabledByConfig(compat);
     }
 
     private ExecutionOutcome executeSelectedRoute(

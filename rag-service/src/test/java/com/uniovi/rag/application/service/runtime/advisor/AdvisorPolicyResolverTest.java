@@ -69,6 +69,14 @@ class AdvisorPolicyResolverTest {
         assertTrue(d.suppressionReason().isEmpty());
     }
 
+    @Test
+    void executableKinds_excludeMemoryAndClarificationAdvisors() {
+        QueryPlan p = plan(AmbiguityStatus.SUFFICIENT);
+        AdvisorDecision d = resolver.resolve(ctx(rag(true, true), p), p);
+        assertFalse(d.executableKinds().contains(com.uniovi.rag.domain.runtime.advisor.AdvisorKind.MEMORY_ADVISOR));
+        assertFalse(d.executableKinds().contains(com.uniovi.rag.domain.runtime.advisor.AdvisorKind.ROUTING_ADVISOR));
+    }
+
     private static RagConfig rag(boolean useAdvisor, boolean useRetrieval) {
         return new RagConfig(
                 false,

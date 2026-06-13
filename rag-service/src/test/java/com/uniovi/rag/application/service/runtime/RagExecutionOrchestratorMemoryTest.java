@@ -11,6 +11,7 @@ import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeli
 import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
 import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.DeterministicToolRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -94,6 +95,9 @@ class RagExecutionOrchestratorMemoryTest {
                         clarificationPolicy,
                         clarificationStrategy,
                         routingStrategy,
+                        mock(DeterministicToolRoutingStrategy.class),
+                        mock(com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy.class),
+                        mock(com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy.class),
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),

@@ -30,6 +30,8 @@ public record RagConfig(
         boolean adaptiveRoutingEnabled,
         /** P14: post-answer judge stage (runtime-owned, default off). */
         boolean judgeEnabled,
+        /** When true, orchestrator may route to deterministic tools before the retrieval workflow (Lab preset lane). */
+        boolean deterministicToolRoutingEnabled,
         int topK,
         double similarityThreshold,
         String llmModel,
@@ -100,6 +102,7 @@ public record RagConfig(
                 memoryEnabled,
                 adaptiveRoutingEnabled,
                 judgeEnabled,
+                false,
                 topK,
                 similarityThreshold,
                 llmModel,
@@ -154,6 +157,7 @@ public record RagConfig(
                 useAdvisor,
                 clarificationEnabled,
                 memoryEnabled,
+                false,
                 false,
                 false,
                 topK,
@@ -213,6 +217,7 @@ public record RagConfig(
                 memoryEnabled,
                 adaptiveRoutingEnabled,
                 false,
+                false,
                 topK,
                 similarityThreshold,
                 llmModel,
@@ -249,6 +254,7 @@ public record RagConfig(
                 features.isMemoryEnabled(),
                 features.isAdaptiveRoutingEnabled(),
                 features.isJudgeEnabled(),
+                features.isDeterministicToolRoutingEnabled(),
                 topK,
                 similarityThreshold,
                 llmModel,
@@ -290,6 +296,7 @@ public record RagConfig(
                 readBool(json, "memoryEnabled", base.memoryEnabled),
                 readBool(json, "adaptiveRoutingEnabled", base.adaptiveRoutingEnabled),
                 readBool(json, "judgeEnabled", base.judgeEnabled),
+                readBool(json, "deterministicToolRoutingEnabled", base.deterministicToolRoutingEnabled),
                 readInt(json, "topK", base.topK),
                 readDouble(json, "similarityThreshold", base.similarityThreshold),
                 readText(json, "llmModel", base.llmModel),
@@ -352,6 +359,7 @@ public record RagConfig(
         m.put("memoryEnabled", memoryEnabled);
         m.put("adaptiveRoutingEnabled", adaptiveRoutingEnabled);
         m.put("judgeEnabled", judgeEnabled);
+        m.put("deterministicToolRoutingEnabled", deterministicToolRoutingEnabled);
         m.put("topK", topK);
         m.put("similarityThreshold", similarityThreshold);
         m.put("llmModel", llmModel);

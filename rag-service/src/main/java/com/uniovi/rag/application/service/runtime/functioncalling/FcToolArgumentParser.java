@@ -8,9 +8,7 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import java.util.Iterator;
 import java.util.Set;
 
-/**
- * Strict JSON argument validation for FC (§10.9).
- */
+/** Strict JSON argument validation for function-calling tool invocations. */
 public final class FcToolArgumentParser {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

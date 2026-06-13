@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,12 +34,30 @@ public class DefaultDeterministicToolStrategy implements DeterministicToolStrate
 
     private static DeterministicToolExecutionResult skippedFromDecision(DeterministicToolDecision d) {
         DeterministicToolOutcome outcome = d.outcome();
+        List<String> notes = new ArrayList<>(d.reasons());
+        appendRoutingTelemetry(notes, d.normalizedInputs());
         return new DeterministicToolExecutionResult(
                 Optional.empty(),
                 outcome,
                 false,
                 "",
                 Map.of(),
-                List.copyOf(d.reasons()));
+                List.copyOf(notes));
+    }
+
+    private static void appendRoutingTelemetry(List<String> notes, Map<String, String> inputs) {
+        if (inputs == null || inputs.isEmpty()) {
+            return;
+        }
+        putRoutingNote(notes, inputs, "routeSuppressedByClassifier");
+        putRoutingNote(notes, inputs, "routeSuppressedReason");
+        putRoutingNote(notes, inputs, "heuristicRouteUsed");
+    }
+
+    private static void putRoutingNote(List<String> notes, Map<String, String> inputs, String key) {
+        String value = inputs.get(key);
+        if (value != null && !value.isBlank()) {
+            notes.add(key + "=" + value);
+        }
     }
 }

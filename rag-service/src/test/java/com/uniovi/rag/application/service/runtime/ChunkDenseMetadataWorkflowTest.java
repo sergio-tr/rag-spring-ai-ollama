@@ -99,7 +99,7 @@ class ChunkDenseMetadataWorkflowTest {
                                         false,
                                         List.of(),
                                         List.of(),
-                                        Optional.empty()),
+                                        Optional.empty(), 0, 0, false, 0),
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 
@@ -142,7 +142,7 @@ class ChunkDenseMetadataWorkflowTest {
                                         false,
                                         List.of(),
                                         List.of(),
-                                        Optional.empty()),
+                                        Optional.empty(), 0, 0, false, 0),
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 
@@ -185,7 +185,7 @@ class ChunkDenseMetadataWorkflowTest {
                                         false,
                                         List.of(),
                                         List.of(),
-                                        Optional.empty()),
+                                        Optional.empty(), 0, 0, false, 0),
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 
@@ -237,7 +237,7 @@ class ChunkDenseMetadataWorkflowTest {
                                         false,
                                         List.of(),
                                         List.of(),
-                                        Optional.empty()),
+                                        Optional.empty(), 0, 0, false, 0),
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 
@@ -289,7 +289,7 @@ class ChunkDenseMetadataWorkflowTest {
                                         false,
                                         List.of(),
                                         List.of(),
-                                        Optional.empty()),
+                                        Optional.empty(), 0, 0, false, 0),
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 
@@ -337,7 +337,7 @@ class ChunkDenseMetadataWorkflowTest {
                                         false,
                                         List.of(),
                                         List.of(),
-                                        Optional.empty()),
+                                        Optional.empty(), 0, 0, false, 0),
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 
@@ -398,7 +398,7 @@ class ChunkDenseMetadataWorkflowTest {
                                         false,
                                         List.of(),
                                         List.of(),
-                                        Optional.empty()),
+                                        Optional.empty(), 0, 0, false, 0),
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 

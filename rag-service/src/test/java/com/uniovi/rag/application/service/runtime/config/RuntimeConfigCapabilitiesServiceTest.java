@@ -54,7 +54,7 @@ class RuntimeConfigCapabilitiesServiceTest {
         assertThat(post.implemented()).isTrue();
         assertThat(post.requires()).containsExactly("useRetrieval");
 
-        // R2 additions: ensure missing keys are present and engine-wired.
+        // Ensure missing keys are present and engine-wired.
         for (String k : List.of("expansionEnabled", "toolsEnabled", "functionCallingEnabled", "nerEnabled")) {
             RuntimeConfigCapability c = byKey.get(k);
             assertThat(c).as("capability present: " + k).isNotNull();

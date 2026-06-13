@@ -19,9 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * §10.4 applicability matrix for FC (independent of P7 deterministic resolver matching rules).
- */
+/** Resolves function-calling applicability and tool exposure (independent of deterministic tool resolver rules). */
 @Component
 public class DefaultFunctionCallingPolicyResolver implements FunctionCallingPolicyResolver {
 

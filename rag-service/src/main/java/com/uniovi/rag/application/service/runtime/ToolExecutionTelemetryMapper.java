@@ -1,0 +1,254 @@
+package com.uniovi.rag.application.service.runtime;
+
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
+import com.uniovi.rag.configuration.ToolDescriptor;
+import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/** Maps execution trace tool fields to Lab-safe telemetry. */
+public final class ToolExecutionTelemetryMapper {
+
+    private static final int MAX_RESULT_SUMMARY_CHARS = 512;
+
+    private ToolExecutionTelemetryMapper() {}
+
+    public static Map<String, Object> fromTrace(ExecutionTrace trace) {
+        if (trace == null) {
+            return Map.of();
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+
+        String routeKind = safe(trace.routingRouteKind());
+        boolean primaryWasDeterministicRoute =
+                AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE.name().equals(routeKind);
+        String toolOutcome = safe(trace.deterministicToolOutcome());
+        boolean terminalDeterministicTool =
+                DeterministicToolOutcome.EXECUTED_SUCCESS.name().equals(toolOutcome)
+                        && !trace.routingFallbackApplied();
+        m.put("deterministicToolRoute", terminalDeterministicTool);
+        m.put("routingRouteKind", routeKind);
+
+        String toolKind = safe(trace.deterministicToolKind());
+        String toolDetail = safe(trace.deterministicToolDetail());
+
+        ToolTelemetryState state = deriveState(toolOutcome, toolKind, primaryWasDeterministicRoute, toolDetail);
+
+        m.put("toolApplicable", state.toolApplicable());
+        m.put("toolSelected", state.toolSelected());
+        m.put("toolExecuted", state.toolExecuted());
+        m.put("toolSucceeded", state.toolSucceeded());
+        m.put("toolResultUsedAsFinal", state.toolResultUsedAsFinal());
+        if (!state.toolFallbackReason().isBlank()) {
+            m.put("toolFallbackReason", state.toolFallbackReason());
+        }
+        if (!state.toolName().isBlank()) {
+            m.put("toolName", state.toolName());
+            m.put("tool_used", state.toolName());
+        }
+        m.put("used_tool", state.toolExecuted());
+        if (!state.toolResultSummary().isBlank()) {
+            m.put("toolResultSummary", state.toolResultSummary());
+        }
+        if (!toolOutcome.isBlank()) {
+            m.put("deterministicToolOutcome", toolOutcome);
+        }
+        if (!toolKind.isBlank()) {
+            m.put("deterministicToolKind", toolKind);
+        }
+
+        parseRoutingTelemetry(toolDetail, m);
+        m.putAll(FunctionCallingTelemetryMapper.fromTrace(trace));
+        m.putAll(AdvisorTelemetryMapper.fromTrace(trace));
+
+        return Map.copyOf(m);
+    }
+
+    private static void parseRoutingTelemetry(String toolDetail, Map<String, Object> m) {
+        if (toolDetail == null || toolDetail.isBlank()) {
+            return;
+        }
+        String suppressed = tokenValue(toolDetail, "routeSuppressedByClassifier=");
+        if (!suppressed.isBlank()) {
+            m.put("routeSuppressedByClassifier", Boolean.parseBoolean(suppressed));
+        }
+        String reason = tokenValue(toolDetail, "routeSuppressedReason=");
+        if (!reason.isBlank()) {
+            m.put("routeSuppressedReason", reason);
+        }
+        String heuristic = tokenValue(toolDetail, "heuristicRouteUsed=");
+        if (!heuristic.isBlank()) {
+            m.put("heuristicRouteUsed", Boolean.parseBoolean(heuristic));
+        }
+    }
+
+    private static String tokenValue(String detail, String key) {
+        int start = detail.indexOf(key);
+        if (start < 0) {
+            return "";
+        }
+        start += key.length();
+        int end = detail.length();
+        for (String next : List.of(
+                "routeSuppressedByClassifier=",
+                "routeSuppressedReason=",
+                "heuristicRouteUsed=",
+                ";",
+                " | ")) {
+            int idx = detail.indexOf(next, start);
+            if (idx > start && idx < end) {
+                end = idx;
+            }
+        }
+        return detail.substring(start, end).trim();
+    }
+
+    private static ToolTelemetryState deriveState(
+            String toolOutcome, String toolKind, boolean primaryWasDeterministicRoute, String toolDetail) {
+        if (toolOutcome.isBlank() && !primaryWasDeterministicRoute) {
+            return ToolTelemetryState.inactive();
+        }
+
+        DeterministicToolOutcome outcome = parseOutcome(toolOutcome);
+        Optional<DeterministicToolKind> kind = parseKind(toolKind);
+        String toolName = kind.map(k -> ToolDescriptor.getName(DeterministicToolKindMappings.toQueryType(k))).orElse("");
+
+        return switch (outcome) {
+            case EXECUTED_SUCCESS -> new ToolTelemetryState(
+                    true,
+                    true,
+                    true,
+                    true,
+                    true,
+                    "",
+                    toolName,
+                    summarizeFromDetail(toolDetail));
+            case EXECUTED_FAILED_INFRA -> new ToolTelemetryState(
+                    true,
+                    true,
+                    true,
+                    false,
+                    false,
+                    fallbackReason(toolDetail, "tool_execution_failed"),
+                    toolName,
+                    "");
+            case SELECTED -> new ToolTelemetryState(
+                    true,
+                    true,
+                    false,
+                    false,
+                    false,
+                    "",
+                    toolName,
+                    "");
+            case NOT_APPLICABLE -> new ToolTelemetryState(
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    fallbackReason(toolDetail, "tool_not_applicable"),
+                    "",
+                    "");
+            case SUPPRESSED_BY_AMBIGUITY -> new ToolTelemetryState(
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    "tool_suppressed_by_ambiguity",
+                    "",
+                    "");
+            case DISABLED_BY_CONFIG -> new ToolTelemetryState(
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    "tool_disabled_by_config",
+                    "",
+                    "");
+            case NOT_ATTEMPTED, FALLBACK_TO_WORKFLOW -> primaryWasDeterministicRoute
+                    ? new ToolTelemetryState(
+                            false,
+                            false,
+                            false,
+                            false,
+                            false,
+                            fallbackReason(toolDetail, "tool_not_attempted"),
+                            "",
+                            "")
+                    : ToolTelemetryState.inactive();
+        };
+    }
+
+    private static String fallbackReason(String detail, String defaultReason) {
+        if (detail != null && detail.contains("tool_fallback_to_workflow")) {
+            return "tool_execution_failed";
+        }
+        if (detail != null && detail.contains("tool_not_applicable")) {
+            return "tool_not_applicable";
+        }
+        if (detail != null && detail.contains("tool_ambiguous_match")) {
+            return "tool_ambiguous_match";
+        }
+        return defaultReason;
+    }
+
+    private static String summarizeFromDetail(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "";
+        }
+        String trimmed = detail.strip();
+        if (trimmed.length() <= MAX_RESULT_SUMMARY_CHARS) {
+            return trimmed;
+        }
+        return trimmed.substring(0, MAX_RESULT_SUMMARY_CHARS) + "...";
+    }
+
+    private static DeterministicToolOutcome parseOutcome(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return DeterministicToolOutcome.NOT_ATTEMPTED;
+        }
+        try {
+            return DeterministicToolOutcome.valueOf(raw.trim());
+        } catch (IllegalArgumentException ex) {
+            return DeterministicToolOutcome.NOT_ATTEMPTED;
+        }
+    }
+
+    private static Optional<DeterministicToolKind> parseKind(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(DeterministicToolKind.valueOf(raw.trim()));
+        } catch (IllegalArgumentException ex) {
+            return Optional.empty();
+        }
+    }
+
+    private static String safe(String s) {
+        return s == null ? "" : s;
+    }
+
+    private record ToolTelemetryState(
+            boolean toolApplicable,
+            boolean toolSelected,
+            boolean toolExecuted,
+            boolean toolSucceeded,
+            boolean toolResultUsedAsFinal,
+            String toolFallbackReason,
+            String toolName,
+            String toolResultSummary) {
+
+        static ToolTelemetryState inactive() {
+            return new ToolTelemetryState(false, false, false, false, false, "", "", "");
+        }
+    }
+}
