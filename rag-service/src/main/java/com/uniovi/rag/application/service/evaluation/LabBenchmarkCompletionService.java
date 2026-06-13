@@ -44,6 +44,16 @@ public class LabBenchmarkCompletionService {
             return;
         }
         Map<String, Object> closure = evidenceValidator.closureForCampaignRuns(runIds);
+        int closureRows = intValue(closure.get("totalRows"));
+        int payloadPersisted = intValue(
+                payload != null ? payload.get(LabCampaignTerminalPayloadBuilder.KEY_PERSISTED_ITEM_COUNT) : null);
+        if (closureRows > 0 && payloadPersisted > 0 && payloadPersisted != closureRows) {
+            mutation.markFailed(
+                    taskId,
+                    "Campaign terminal payload persistedItemCount does not match benchmark closure totalRows",
+                    "PERSISTENCE_MISMATCH");
+            return;
+        }
         Map<String, Object> enriched = new LinkedHashMap<>(payload != null ? payload : Map.of());
         enriched.put("benchmarkClosure", closure);
         mutation.markSucceeded(taskId, Map.copyOf(enriched));

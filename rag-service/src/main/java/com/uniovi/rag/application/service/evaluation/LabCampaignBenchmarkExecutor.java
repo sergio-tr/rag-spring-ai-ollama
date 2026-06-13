@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.evaluation;
 
 import com.uniovi.rag.domain.LabJobEventType;
 import com.uniovi.rag.infrastructure.persistence.EvaluationCampaignRepository;
+import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
@@ -29,6 +30,7 @@ public class LabCampaignBenchmarkExecutor {
 
     private final EvaluationRunRepository evaluationRunRepository;
     private final EvaluationCampaignRepository evaluationCampaignRepository;
+    private final EvaluationResultRepository evaluationResultRepository;
     private final LabJobEventService labJobEventService;
     private final LabBenchmarkCompletionService labBenchmarkCompletionService;
     private final LabPresetAxisSupport labPresetAxisSupport;
@@ -36,11 +38,13 @@ public class LabCampaignBenchmarkExecutor {
     public LabCampaignBenchmarkExecutor(
             EvaluationRunRepository evaluationRunRepository,
             EvaluationCampaignRepository evaluationCampaignRepository,
+            EvaluationResultRepository evaluationResultRepository,
             LabJobEventService labJobEventService,
             LabBenchmarkCompletionService labBenchmarkCompletionService,
             LabPresetAxisSupport labPresetAxisSupport) {
         this.evaluationRunRepository = evaluationRunRepository;
         this.evaluationCampaignRepository = evaluationCampaignRepository;
+        this.evaluationResultRepository = evaluationResultRepository;
         this.labJobEventService = labJobEventService;
         this.labBenchmarkCompletionService = labBenchmarkCompletionService;
         this.labPresetAxisSupport = labPresetAxisSupport;
@@ -98,12 +102,14 @@ public class LabCampaignBenchmarkExecutor {
                 null,
                 null));
 
-        Map<String, Object> lastPayload = Map.of("campaignId", campaignId.toString());
         for (EvaluationRunEntity run : runs) {
-            lastPayload = slice.run(task, mutation, run.getId());
+            slice.run(task, mutation, run.getId());
         }
         List<UUID> runIds = runs.stream().map(EvaluationRunEntity::getId).toList();
-        labBenchmarkCompletionService.completeCampaign(mutation, task.getId(), runIds, lastPayload);
+        Map<String, Object> terminalPayload =
+                LabCampaignTerminalPayloadBuilder.build(
+                        campaignId, runs, evaluationResultRepository, labPresetAxisSupport);
+        labBenchmarkCompletionService.completeCampaign(mutation, task.getId(), runIds, terminalPayload);
     }
 
     private CampaignExecutionPlan buildPlan(UUID campaignId, List<EvaluationRunEntity> runs) {

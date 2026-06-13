@@ -59,6 +59,42 @@ class EvaluationCanonicalPersistenceServiceTest {
     }
 
     @Test
+    void persistLlmJudgeFromEvaluationMap_mergesSummaryIntoExistingAggregates() {
+        EvaluationRunRepository runs = mock(EvaluationRunRepository.class);
+        EvaluationResultRepository results = mock(EvaluationResultRepository.class);
+
+        EvaluationCanonicalPersistenceService sut = new EvaluationCanonicalPersistenceService(runs, results, true);
+
+        UUID runId = UUID.randomUUID();
+        EvaluationRunEntity run = mock(EvaluationRunEntity.class);
+        when(runs.findById(runId)).thenReturn(Optional.of(run));
+        when(run.getAggregatesJson())
+                .thenReturn(
+                        Map.of(
+                                "presetKey",
+                                "P3",
+                                "presetLabel",
+                                "P3 — Chunk dense",
+                                "comparisonAxis",
+                                "PRESET"));
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("results", List.of());
+        payload.put("evaluation_summary", Map.of("executed", 2, "cancelled", false));
+
+        sut.persistLlmJudgeFromEvaluationMap(runId, payload, BenchmarkKind.RAG_PRESET_END_TO_END);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> agg = ArgumentCaptor.forClass(Map.class);
+        verify(run).setAggregatesJson(agg.capture());
+        assertThat(agg.getValue())
+                .containsEntry("presetKey", "P3")
+                .containsEntry("presetLabel", "P3 — Chunk dense")
+                .containsEntry("comparisonAxis", "PRESET")
+                .containsEntry("executed", 2);
+    }
+
+    @Test
     void persistLlmJudgeFromEvaluationMap_savesResultsAndMarksRunDone() {
         EvaluationRunRepository runs = mock(EvaluationRunRepository.class);
         EvaluationResultRepository results = mock(EvaluationResultRepository.class);

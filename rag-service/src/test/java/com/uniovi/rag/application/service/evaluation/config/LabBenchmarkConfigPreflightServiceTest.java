@@ -9,8 +9,17 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.preset.CorpusAvailabilityGate;
+import com.uniovi.rag.application.service.evaluation.preset.LabIndexSnapshotCompatibilityService;
+import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
+import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
+import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileService;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.EvaluationRunKind;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
@@ -33,13 +42,27 @@ class LabBenchmarkConfigPreflightServiceTest {
 
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
     @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
+    @Mock private CorpusAvailabilityGate corpusAvailabilityGate;
+    @Mock private KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
+    @Mock private EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+    @Mock private ProjectIndexProfileService projectIndexProfileService;
+    @Mock private LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
 
     private LabBenchmarkConfigPreflightService service;
 
     @BeforeEach
     void setUp() {
-        service = new LabBenchmarkConfigPreflightService(
-                new RagFeatureConfiguration(), knowledgeSnapshotService, embeddingSpaceGuard);
+        LabIndexSnapshotCompatibilityService indexSnapshotCompatibilityService =
+                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator);
+        service =
+                new LabBenchmarkConfigPreflightService(
+                        new RagFeatureConfiguration(),
+                        knowledgeSnapshotService,
+                        embeddingSpaceGuard,
+                        indexSnapshotCompatibilityService,
+                        evaluationCorpusApplicationService,
+                        projectIndexProfileService,
+                        labIndexProfileOverrideFactory);
     }
 
     @Test
@@ -51,6 +74,30 @@ class LabBenchmarkConfigPreflightServiceTest {
                         ex ->
                                 assertThat(((ResponseStatusException) ex).getReason())
                                         .isEqualTo(LabRuntimeConfigReasonCodes.EXPERIMENTAL_PRESET_CODES_EMPTY));
+    }
+
+    @Test
+    void ragRejectsP11() {
+        StartBenchmarkRunRequest req = ragRequest(List.of("P11"), null);
+        assertThatThrownBy(() -> service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((ResponseStatusException) ex).getReason())
+                                        .isEqualTo(
+                                                LabRuntimeConfigReasonCodes.PRESET_ADAPTIVE_ROUTING_BENCHMARK_NOT_SUPPORTED));
+    }
+
+    @Test
+    void ragRejectsP12() {
+        StartBenchmarkRunRequest req = ragRequest(List.of("P12"), null);
+        assertThatThrownBy(() -> service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((ResponseStatusException) ex).getReason())
+                                        .isEqualTo(
+                                                LabRuntimeConfigReasonCodes.PRESET_JUDGE_ENHANCED_BENCHMARK_NOT_SUPPORTED));
     }
 
     @Test
@@ -76,13 +123,23 @@ class LabBenchmarkConfigPreflightServiceTest {
     }
 
     @Test
-    void ragAcceptsP0WithAutoReindex() {
+    void ragAcceptsP0ThroughP10() {
+        List<String> presets = List.of("P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10");
+        StartBenchmarkRunRequest req = ragRequest(presets, "nomic-embed-text");
+        LabBenchmarkConfigPreflightResult result =
+                service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req);
+        assertThat(result.passed()).isTrue();
+        assertThat(result.requestedPresetCodes()).containsExactlyElementsOf(presets);
+    }
+
+    @Test
+    void ragAcceptsP0WithoutStrictIndexCheck() {
         StartBenchmarkRunRequest req = ragRequest(List.of("P0"), "nomic-embed-text");
         LabBenchmarkConfigPreflightResult result =
                 service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req);
         assertThat(result.passed()).isTrue();
         assertThat(result.requestedPresetCodes()).containsExactly("P0");
-        assertThat(result.strictIndexCheck()).isTrue();
+        assertThat(result.strictIndexCheck()).isFalse();
     }
 
     @Test
@@ -198,6 +255,77 @@ class LabBenchmarkConfigPreflightServiceTest {
                 service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req);
         assertThat(result.passed()).isTrue();
         assertThat(result.details()).containsEntry("indexPreflight", "DEFERRED_AUTO_REINDEX");
+    }
+
+    @Test
+    void ragRejectsP1WhenActiveSnapshotHasZeroVectorRowsAndAutoReindexDisabled() {
+        UUID userId = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
+        UUID indexProjectId = UUID.randomUUID();
+        UUID snapshotId = UUID.randomUUID();
+        KnowledgeIndexSnapshotEntity snap = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
+        when(snap.getId()).thenReturn(snapshotId);
+        when(snap.getIndexProfileJsonb()).thenReturn(Map.of());
+        when(snap.getSignatureHash()).thenReturn("sig-current");
+        when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.of(snap));
+        KnowledgeDocumentEntity doc = Mockito.mock(KnowledgeDocumentEntity.class);
+        when(evaluationCorpusApplicationService.requireContext(userId, corpusId))
+                .thenReturn(
+                        new EvaluationCorpusApplicationService.EvaluationCorpusContext(
+                                corpusId, indexProjectId, List.of(UUID.randomUUID()), List.of(doc)));
+        ProjectIndexProfile profile =
+                new ProjectIndexProfile(
+                        indexProjectId,
+                        MaterializationStrategy.HYBRID,
+                        true,
+                        "meta-v1",
+                        "mxbai-embed-large",
+                        400,
+                        10,
+                        ProjectIndexProfile.computeProfileHash(
+                                MaterializationStrategy.HYBRID, true, "meta-v1", "mxbai-embed-large", 400, 10),
+                        java.time.Instant.now(),
+                        java.time.Instant.now());
+        when(projectIndexProfileService.ensureDefault(indexProjectId)).thenReturn(profile);
+        when(labIndexProfileOverrideFactory.buildEffectiveProfile(any(), any(), any())).thenReturn(profile);
+        when(corpusAvailabilityGate.snapshotHasVectorRows(userId, corpusId, snapshotId)).thenReturn(false);
+        when(knowledgePipelineOrchestrator.computeSnapshotSignatureHex(any(), any(), any(), any()))
+                .thenReturn("sig-current");
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        UUID.randomUUID(),
+                        corpusId,
+                        null,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "n",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of("P1"),
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        false,
+                        null,
+                        false,
+                        true,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of());
+        assertThatThrownBy(() -> service.validateOrThrow(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((ResponseStatusException) ex).getReason())
+                                        .isEqualTo(LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_REINDEX));
     }
 
     @Test

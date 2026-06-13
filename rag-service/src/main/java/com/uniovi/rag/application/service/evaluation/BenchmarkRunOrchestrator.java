@@ -20,6 +20,7 @@ import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPr
 import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
@@ -112,6 +113,7 @@ public class BenchmarkRunOrchestrator {
     private final EvaluationCorpusRepository evaluationCorpusRepository;
     private final LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService;
     private final LabPresetAxisSupport labPresetAxisSupport;
+    private final LabBenchmarkDefaultModelResolver labBenchmarkDefaultModelResolver;
     private final ObjectProvider<RuntimeObservability> runtimeObservability;
 
     @Autowired(required = false)
@@ -138,6 +140,7 @@ public class BenchmarkRunOrchestrator {
             EvaluationCorpusRepository evaluationCorpusRepository,
             LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService,
             LabPresetAxisSupport labPresetAxisSupport,
+            LabBenchmarkDefaultModelResolver labBenchmarkDefaultModelResolver,
             ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.userRepository = userRepository;
         this.evaluationDatasetRepository = evaluationDatasetRepository;
@@ -159,6 +162,7 @@ public class BenchmarkRunOrchestrator {
         this.evaluationCorpusRepository = evaluationCorpusRepository;
         this.labBenchmarkConfigPreflightService = labBenchmarkConfigPreflightService;
         this.labPresetAxisSupport = labPresetAxisSupport;
+        this.labBenchmarkDefaultModelResolver = labBenchmarkDefaultModelResolver;
         this.runtimeObservability = runtimeObservability;
     }
 
@@ -1057,11 +1061,14 @@ public class BenchmarkRunOrchestrator {
             }
             run.setAggregatesJson(Map.copyOf(agg));
         }
-        if (request.llmModelId() != null && !request.llmModelId().isBlank()) {
-            run.setLlmModelId(request.llmModelId().trim());
+        String llmModelId = labBenchmarkDefaultModelResolver.resolveLlmModelId(request.llmModelId());
+        if (llmModelId != null) {
+            run.setLlmModelId(llmModelId);
         }
-        if (request.embeddingModelId() != null && !request.embeddingModelId().isBlank()) {
-            run.setEmbeddingModelId(request.embeddingModelId().trim());
+        String embeddingModelId =
+                labBenchmarkDefaultModelResolver.resolveEmbeddingModelId(request.embeddingModelId());
+        if (embeddingModelId != null) {
+            run.setEmbeddingModelId(embeddingModelId);
         }
     }
 
@@ -1088,7 +1095,7 @@ public class BenchmarkRunOrchestrator {
                     HttpStatus.BAD_REQUEST,
                     "AUTO_REINDEX_UNSUPPORTED_FOR_BENCHMARK_KIND: autoReindex is only supported for RAG_PRESET_END_TO_END");
         }
-        if (request.corpusId() == null) {
+        if (request.corpusId() == null && !ExperimentalPresetCanonicalCatalog.allCanRunWithoutCorpus(request.experimentalPresetCodes())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     EvaluationCorpusApplicationService.NO_CORPUS_SELECTED + ": autoReindex requires corpusId");
@@ -1105,6 +1112,9 @@ public class BenchmarkRunOrchestrator {
             return;
         }
         if (request == null || request.corpusId() == null) {
+            if (ExperimentalPresetCanonicalCatalog.allCanRunWithoutCorpus(request != null ? request.experimentalPresetCodes() : null)) {
+                return;
+            }
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, EvaluationCorpusApplicationService.NO_CORPUS_SELECTED);
         }

@@ -2,14 +2,22 @@ package com.uniovi.rag.application.service.evaluation.config;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetBenchmarkGate;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
+import com.uniovi.rag.application.service.evaluation.preset.LabIndexSnapshotCompatibilityService;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunGroupKey;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunPlanService;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
+import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
+import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileService;
 import com.uniovi.rag.application.service.runtime.config.IndexCompatibilityResult;
 import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
+import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
@@ -33,14 +41,26 @@ public class LabBenchmarkConfigPreflightService {
     private final RagFeatureConfiguration ragFeatureConfiguration;
     private final KnowledgeSnapshotService knowledgeSnapshotService;
     private final EmbeddingSpaceGuard embeddingSpaceGuard;
+    private final LabIndexSnapshotCompatibilityService indexSnapshotCompatibilityService;
+    private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+    private final ProjectIndexProfileService projectIndexProfileService;
+    private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
 
     public LabBenchmarkConfigPreflightService(
             RagFeatureConfiguration ragFeatureConfiguration,
             KnowledgeSnapshotService knowledgeSnapshotService,
-            EmbeddingSpaceGuard embeddingSpaceGuard) {
+            EmbeddingSpaceGuard embeddingSpaceGuard,
+            LabIndexSnapshotCompatibilityService indexSnapshotCompatibilityService,
+            EvaluationCorpusApplicationService evaluationCorpusApplicationService,
+            ProjectIndexProfileService projectIndexProfileService,
+            LabIndexProfileOverrideFactory labIndexProfileOverrideFactory) {
         this.ragFeatureConfiguration = ragFeatureConfiguration;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.embeddingSpaceGuard = embeddingSpaceGuard;
+        this.indexSnapshotCompatibilityService = indexSnapshotCompatibilityService;
+        this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
+        this.projectIndexProfileService = projectIndexProfileService;
+        this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
     }
 
     /**
@@ -157,12 +177,66 @@ public class LabBenchmarkConfigPreflightService {
                 ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(strictest);
         IndexCompatibilityResult idx = IndexCompatibilityResult.check(req, hasActive, caps);
 
-        if (idx.compatible()) {
-            return;
+        if (!idx.compatible()) {
+            String mapped = mapIndexCompatibilityToConfigCode(idx);
+            fail(HttpStatus.BAD_REQUEST, mapped);
         }
 
-        String mapped = mapIndexCompatibilityToConfigCode(idx);
-        fail(HttpStatus.BAD_REQUEST, mapped);
+        validateActiveSnapshotReuseEligibility(userId, corpusId, strictest, active.orElse(null), details);
+    }
+
+    private void validateActiveSnapshotReuseEligibility(
+            UUID userId,
+            UUID corpusId,
+            RagExperimentalPresetCode strictest,
+            KnowledgeIndexSnapshotEntity active,
+            Map<String, Object> details) {
+        if (active == null || active.getId() == null) {
+            fail(HttpStatus.BAD_REQUEST, LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_INDEX);
+        }
+        EvaluationCorpusApplicationService.EvaluationCorpusContext context;
+        try {
+            context = evaluationCorpusApplicationService.requireContext(userId, corpusId);
+        } catch (Exception ex) {
+            fail(HttpStatus.BAD_REQUEST, LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_INDEX);
+            return;
+        }
+        UUID indexProjectId = context.indexProjectId();
+        LabPresetRunGroupKey groupKey = LabPresetRunPlanService.groupKeyFor(strictest);
+        ExperimentalPresetCanonicalCatalog.IndexRequirements requirements =
+                ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(strictest);
+        ProjectIndexProfile base = projectIndexProfileService.ensureDefault(indexProjectId);
+        ProjectIndexProfile effective =
+                labIndexProfileOverrideFactory.buildEffectiveProfile(base, requirements, groupKey);
+        LabIndexSnapshotCompatibilityService.ReuseEligibility eligibility =
+                indexSnapshotCompatibilityService.evaluateReuse(
+                        userId,
+                        corpusId,
+                        indexProjectId,
+                        active,
+                        requirements,
+                        null,
+                        effective,
+                        groupKey,
+                        indexSnapshotCompatibilityService.requiresSnapshotBoundVectorRows(strictest));
+        details.put("activeSnapshotReuseEligible", eligibility.eligible());
+        if (!eligibility.eligible()) {
+            fail(HttpStatus.BAD_REQUEST, mapReuseBlockerToConfigCode(eligibility.reasonCode()));
+        }
+    }
+
+    private static String mapReuseBlockerToConfigCode(String reasonCode) {
+        if (LabCorpusReasonCodes.SNAPSHOT_STALE.equals(reasonCode)) {
+            return LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_REINDEX;
+        }
+        if (LabCorpusReasonCodes.SNAPSHOT_EMPTY.equals(reasonCode)
+                || LabCorpusReasonCodes.SNAPSHOT_VECTOR_ROWS_MISSING.equals(reasonCode)) {
+            return LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_REINDEX;
+        }
+        if (LabCorpusReasonCodes.NO_COMPATIBLE_SNAPSHOT.equals(reasonCode)) {
+            return LabRuntimeConfigReasonCodes.SNAPSHOT_CONFIG_MISMATCH;
+        }
+        return LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_REINDEX;
     }
 
     private static String mapIndexCompatibilityToConfigCode(IndexCompatibilityResult idx) {

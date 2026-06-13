@@ -21,6 +21,7 @@ import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
+import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusSummaryDto;
@@ -65,6 +66,7 @@ class LabRagCorpusRunFlowTest {
     @Mock private LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor;
     @Mock private EvaluationRunRagJobContextLoader evaluationRunRagJobContextLoader;
     @Mock private LabBenchmarkCompletionService labBenchmarkCompletionService;
+    @Mock private EvaluationResultRepository evaluationResultRepository;
     @Mock private AsyncTaskMutationService mutation;
 
     @Test
@@ -78,6 +80,7 @@ class LabRagCorpusRunFlowTest {
                 new EvaluationCorpusReadinessDto(
                         corpusId,
                         hiddenIndexProjectId,
+                        5,
                         5,
                         5,
                         0,
@@ -137,12 +140,15 @@ class LabRagCorpusRunFlowTest {
                         List.of(),
                         List.of(),
                         "",
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        "");
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                "");
         when(experimentalDatasetResolver.resolve(runId))
                 .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
         RagPresetBenchmarkRunPayload eval = EvaluationTestFixtures.emptyRagRunPayload();
@@ -175,7 +181,8 @@ class LabRagCorpusRunFlowTest {
                         evaluationCorpusApplicationService,
                         labCampaignBenchmarkExecutor,
                         evaluationRunRagJobContextLoader,
-                        labBenchmarkCompletionService);
+                        labBenchmarkCompletionService,
+                        evaluationResultRepository);
 
         assertThatCode(() -> handler.run(task, mutation)).doesNotThrowAnyException();
         assertThat(handler.taskType()).isEqualTo(AsyncTaskType.EVAL_RAG);
@@ -239,7 +246,8 @@ class LabRagCorpusRunFlowTest {
                         evaluationCorpusApplicationService,
                         labCampaignBenchmarkExecutor,
                         evaluationRunRagJobContextLoader,
-                        labBenchmarkCompletionService);
+                        labBenchmarkCompletionService,
+                        evaluationResultRepository);
 
         assertThatThrownBy(() -> handler.run(task, mutation))
                 .isInstanceOf(IllegalStateException.class)

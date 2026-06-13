@@ -12,6 +12,7 @@ import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
+import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
@@ -56,6 +57,7 @@ class EvalRagJobHandler implements LabJobHandler {
     private final LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor;
     private final EvaluationRunRagJobContextLoader evaluationRunRagJobContextLoader;
     private final LabBenchmarkCompletionService labBenchmarkCompletionService;
+    private final EvaluationResultRepository evaluationResultRepository;
 
     EvalRagJobHandler(
             RagFeatureConfiguration featureConfiguration,
@@ -71,7 +73,8 @@ class EvalRagJobHandler implements LabJobHandler {
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
             LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor,
             EvaluationRunRagJobContextLoader evaluationRunRagJobContextLoader,
-            LabBenchmarkCompletionService labBenchmarkCompletionService) {
+            LabBenchmarkCompletionService labBenchmarkCompletionService,
+            EvaluationResultRepository evaluationResultRepository) {
         this.featureConfiguration = featureConfiguration;
         this.implementationProperties = implementationProperties;
         this.canonicalPersistence = canonicalPersistence;
@@ -86,6 +89,7 @@ class EvalRagJobHandler implements LabJobHandler {
         this.labCampaignBenchmarkExecutor = labCampaignBenchmarkExecutor;
         this.evaluationRunRagJobContextLoader = evaluationRunRagJobContextLoader;
         this.labBenchmarkCompletionService = labBenchmarkCompletionService;
+        this.evaluationResultRepository = evaluationResultRepository;
     }
 
     @Override
@@ -327,6 +331,19 @@ class EvalRagJobHandler implements LabJobHandler {
                     new LlmJudgeEvaluationBatchResult(
                             res.configuration(), res.results(), res.evaluationSummary()),
                     BenchmarkKind.RAG_PRESET_END_TO_END);
+            int expectedItems = res.results() != null ? res.results().size() : 0;
+            int persistedItems =
+                    evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(evaluationRunId).size();
+            if (expectedItems > 0 && persistedItems < expectedItems) {
+                log.warn(
+                        "rag_preset_persistence_mismatch runId={} presetCode={} itemCount={} persistedCount={} errorCode=PERSISTENCE_MISMATCH",
+                        evaluationRunId,
+                        presetCode,
+                        expectedItems,
+                        persistedItems);
+                canonicalPersistence.markRunFailed(evaluationRunId, "RAG preset persistence mismatch");
+                throw new IllegalStateException("RAG preset persistence mismatch for run " + evaluationRunId);
+            }
             if (res.evaluationSummary() != null && Boolean.TRUE.equals(res.evaluationSummary().cancelled())) {
                 mutation.appendProgressLine(taskId, "Cancellation requested by user");
                 throw new LabJobCancelledException("Cancellation requested by user");

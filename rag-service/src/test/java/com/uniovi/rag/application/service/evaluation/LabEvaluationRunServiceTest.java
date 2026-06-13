@@ -5,6 +5,7 @@ import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
@@ -12,7 +13,10 @@ import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.domain.AsyncTaskStatus;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
 import com.uniovi.rag.interfaces.rest.dto.CompareRunsResponseDto;
+import com.uniovi.rag.interfaces.rest.dto.EvaluationResultItemDto;
 import com.uniovi.rag.interfaces.rest.dto.LatestLabRunRecoveryDto;
 import org.springframework.data.domain.Pageable;
 import org.junit.jupiter.api.Test;
@@ -49,6 +53,9 @@ class LabEvaluationRunServiceTest {
 
     @Mock
     private RagApiPathProperties apiPathProperties;
+
+    @Mock
+    private LabPresetAxisSupport labPresetAxisSupport;
 
     @InjectMocks
     private LabEvaluationRunService service;
@@ -209,5 +216,89 @@ class LabEvaluationRunServiceTest {
         assertThat(dto.hasResults()).isTrue();
         assertThat(dto.pollPath()).isEqualTo("/api/v5/lab/jobs/" + taskId);
         assertThat(dto.streamPath()).isEqualTo("/api/v5/lab/jobs/" + taskId + "/events");
+    }
+
+    @Test
+    void listItems_campaignRun_returnsAllChildPresetRows() {
+        UUID userId = UUID.randomUUID();
+        UUID campaignId = UUID.randomUUID();
+        UUID coordinatorRunId = UUID.randomUUID();
+        UUID p0RunId = UUID.randomUUID();
+        UUID p1RunId = UUID.randomUUID();
+
+        EvaluationCampaignEntity campaign = mock(EvaluationCampaignEntity.class);
+        when(campaign.getId()).thenReturn(campaignId);
+
+        EvaluationRunEntity coordinator = mock(EvaluationRunEntity.class);
+        when(coordinator.getId()).thenReturn(coordinatorRunId);
+        when(coordinator.getCampaign()).thenReturn(campaign);
+
+        EvaluationRunEntity p0 = mock(EvaluationRunEntity.class);
+        when(p0.getId()).thenReturn(p0RunId);
+        EvaluationRunEntity p1 = mock(EvaluationRunEntity.class);
+        when(p1.getId()).thenReturn(p1RunId);
+
+        EvaluationResultEntity item0 = mock(EvaluationResultEntity.class);
+        EvaluationResultEntity item1 = mock(EvaluationResultEntity.class);
+        when(item0.getId()).thenReturn(UUID.randomUUID());
+        when(item1.getId()).thenReturn(UUID.randomUUID());
+        when(item0.getBenchmarkKind()).thenReturn(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        when(item1.getBenchmarkKind()).thenReturn(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+
+        when(evaluationRunRepository.findByIdAndUser_Id(coordinatorRunId, userId)).thenReturn(Optional.of(coordinator));
+        when(evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId)).thenReturn(List.of(p0, p1));
+        when(evaluationResultRepository.findByRun_IdInOrderByEvaluatedAtAsc(List.of(p0RunId, p1RunId)))
+                .thenReturn(List.of(item0, item1));
+
+        List<EvaluationResultItemDto> items = service.listItems(userId, coordinatorRunId);
+        assertThat(items).hasSize(2);
+    }
+
+    @Test
+    void findLatestRunForRecovery_campaignRun_includesCampaignMetadata() {
+        UUID userId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID campaignId = UUID.randomUUID();
+        UUID childRunId = UUID.randomUUID();
+
+        UserEntity user = mock(UserEntity.class);
+        when(user.getId()).thenReturn(userId);
+
+        AsyncTaskEntity task = spy(
+                AsyncTaskEntity.queued(user, AsyncTaskType.EVAL_RAG, Map.of(), Instant.now()));
+        lenient().when(task.getId()).thenReturn(taskId);
+        task.setStatus(AsyncTaskStatus.SUCCEEDED);
+
+        EvaluationCampaignEntity campaign = mock(EvaluationCampaignEntity.class);
+        when(campaign.getId()).thenReturn(campaignId);
+
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setId(runId);
+        run.setUser(user);
+        run.setAsyncTask(task);
+        run.setCampaign(campaign);
+        run.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+
+        EvaluationRunEntity child = mock(EvaluationRunEntity.class);
+        when(child.getId()).thenReturn(childRunId);
+
+        when(apiPathProperties.getProductBasePath()).thenReturn("/api/v5");
+        when(evaluationRunRepository.findRecentByUserAndBenchmarkKind(
+                        eq(userId),
+                        eq(BenchmarkKind.RAG_PRESET_END_TO_END.name()),
+                        any(Pageable.class)))
+                .thenReturn(List.of(run));
+        when(evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId)).thenReturn(List.of(run, child));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId)).thenReturn(List.of());
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(childRunId)).thenReturn(List.of());
+
+        LatestLabRunRecoveryDto dto =
+                service.findLatestRunForRecovery(userId, BenchmarkKind.RAG_PRESET_END_TO_END, null);
+
+        assertThat(dto).isNotNull();
+        assertThat(dto.campaignId()).isEqualTo(campaignId);
+        assertThat(dto.campaignChildRunIds()).containsExactly(runId, childRunId);
+        assertThat(dto.persistedItemCount()).isZero();
     }
 }

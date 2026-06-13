@@ -398,8 +398,16 @@ public final class EvaluationWorkbookParser {
             List<String> gDocs = splitIds(ExcelCellSupport.cellString(row, hi, "gold_document_ids", r + 1, false));
             List<String> gChunks = splitIds(ExcelCellSupport.cellString(row, hi, "gold_chunk_ids", r + 1, false));
             String evc = ExcelCellSupport.cellString(row, hi, "expected_evidence_count", r + 1, false);
-            boolean un =
-                    ExcelCellSupport.parseBooleanCell(ExcelCellSupport.cellString(row, hi, "unanswerable", r + 1, false));
+            boolean unanswerableDeclared = hi.containsKey("unanswerable");
+            boolean un = unanswerableDeclared
+                    ? ExcelCellSupport.parseBooleanCell(
+                            ExcelCellSupport.cellString(row, hi, "unanswerable", r + 1, false))
+                    : false;
+            boolean ambiguousDeclared = hi.containsKey("ambiguous");
+            boolean amb = ambiguousDeclared
+                    ? ExcelCellSupport.parseBooleanCell(
+                            ExcelCellSupport.cellString(row, hi, "ambiguous", r + 1, false))
+                    : false;
             boolean rmd = ExcelCellSupport.parseBooleanCell(
                     ExcelCellSupport.cellString(row, hi, "requires_multi_document", r + 1, false));
             boolean rtr = ExcelCellSupport.parseBooleanCell(
@@ -420,6 +428,9 @@ public final class EvaluationWorkbookParser {
                     gChunks,
                     nvl(evc),
                     un,
+                    unanswerableDeclared,
+                    amb,
+                    ambiguousDeclared,
                     rmd,
                     rtr,
                     rag,

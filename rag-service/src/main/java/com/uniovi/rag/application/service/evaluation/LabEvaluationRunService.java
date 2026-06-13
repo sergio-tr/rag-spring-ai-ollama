@@ -8,6 +8,9 @@ import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
+import com.uniovi.rag.interfaces.rest.dto.CampaignChildRunSummaryDto;
 import com.uniovi.rag.interfaces.rest.dto.CompareRunsResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationResultItemDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationRunDetailDto;
@@ -86,7 +89,112 @@ public class LabEvaluationRunService {
                     "goldDocumentIds",
                     "retrievedChunkIds",
                     "retrievedDocumentIds",
+                    "retrievalDenseCandidateCount",
+                    "retrievalAfterFilterCount",
+                    "contextChunkCount",
+                    "promptContextCharCount",
+                    "sourceCount",
+                    "advancedRetrievalApplied",
+                    "advancedRetrievalStrategy",
+                    "denseCandidateCount",
+                    "sparseCandidateCount",
+                    "hybridCandidateCount",
+                    "mergedCandidateCount",
+                    "dedupedCandidateCount",
+                    "rerankedCandidateCount",
+                    "finalContextChunkCount",
+                    "rerankApplied",
+                    "rerankChangedOrder",
+                    "compressionApplied",
+                    "compressedContextCharCount",
+                    "advancedRetrievalFallbackReason",
+                    "candidateOrigins",
+                    "sparseRetrievalStatus",
+                    "hybridApplied",
+                    "retrievalRoute",
+                    "retrievalMode",
+                    "rerankNoopReason",
+                    "originalContextCharCount",
+                    "effectiveContextPresent",
+                    "answerability",
+                    "answerabilitySource",
+                    "expectedAnswerPresent",
+                    "queryTypeExpected",
+                    "queryTypePredicted",
+                    "queryTypeMatch",
+                    "abstained",
+                    "abstentionReason",
+                    "abstentionCorrectness",
+                    "finalScore",
+                    "structuredScore",
+                    "structuredScoreStatus",
+                    "analysisSemanticScore",
+                    "abstentionScore",
+                    "exactMatchNormalized",
+                    "expectedAnswerContained",
+                    "countMatch",
+                    "booleanMatch",
+                    "dateMatch",
+                    "durationMatch",
+                    "fieldMatchScore",
+                    "entityPrecision",
+                    "entityRecall",
+                    "entityF1",
+                    "listPrecision",
+                    "listRecall",
+                    "listF1",
+                    "scoreUnavailableReason",
+                    "finalScoreAvailable",
+                    "finalScoreStatus",
+                    "retrievalCoverageStatus",
+                    "retrievalQualityStatus",
+                    "recallAtK",
+                    "ndcg",
+                    "classifierStatus",
+                    "classifierConfidence",
+                    "classifierModelId",
+                    "classifierLabelSetHash",
+                    "classifierFallback",
+                    "classifierFallbackReason",
+                    "routeSuppressedByClassifier",
+                    "routeSuppressedReason",
+                    "heuristicRouteUsed",
                     "groupKey",
+                    "deterministicToolRoutingEnabled",
+                    "deterministicToolRoute",
+                    "functionCallingUsed",
+                    "functionCallAttempted",
+                    "functionCallName",
+                    "functionCallArgumentsValid",
+                    "functionCallSucceeded",
+                    "functionCallFallbackReason",
+                    "functionResultUsedAsFinal",
+                    "functionResultUsedAsContext",
+                    "functionCallRoute",
+                    "executionRoute",
+                    "advisorEnabled",
+                    "advisorRoute",
+                    "advisorAttempted",
+                    "advisorApplied",
+                    "advisorName",
+                    "advisorType",
+                    "advisorContributionType",
+                    "advisorChangedQuery",
+                    "advisorChangedContext",
+                    "advisorChangedPrompt",
+                    "advisorValidatedAnswer",
+                    "advisorFallbackReason",
+                    "advisorResultUsed",
+                    "toolApplicable",
+                    "toolSelected",
+                    "toolName",
+                    "toolExecuted",
+                    "toolSucceeded",
+                    "toolFallbackReason",
+                    "toolResultUsedAsFinal",
+                    "queryTypeSource",
+                    "toolCoverageStatus",
+                    "routingRouteKind",
                     "indexCompatibilityStatus",
                     "requiresReindex",
                     "indexSnapshotId",
@@ -136,6 +244,20 @@ public class LabEvaluationRunService {
                     "corpusTruncated",
                     "selectedSnapshotIds",
                     "groundingPolicy",
+                    "campaignId",
+                    "childRunId",
+                    "comparisonAxis",
+                    "axisValue",
+                    "comparisonLabel",
+                    "presetKey",
+                    "presetOrder",
+                    "modelLabel",
+                    "corpusId",
+                    "corpusName",
+                    "datasetId",
+                    "datasetName",
+                    "singleTurnSupported",
+                    "comparableInSingleTurn",
                     "timestamp");
 
     /** Stable MVP CSV columns (shared by comparison exports and unit tests). */
@@ -145,16 +267,19 @@ public class LabEvaluationRunService {
 
     private final EvaluationRunRepository evaluationRunRepository;
     private final EvaluationResultRepository evaluationResultRepository;
+    private final LabPresetAxisSupport labPresetAxisSupport;
     private final ObjectMapper objectMapper;
     private final RagApiPathProperties apiPathProperties;
 
     public LabEvaluationRunService(
             EvaluationRunRepository evaluationRunRepository,
             EvaluationResultRepository evaluationResultRepository,
+            LabPresetAxisSupport labPresetAxisSupport,
             ObjectMapper objectMapper,
             RagApiPathProperties apiPathProperties) {
         this.evaluationRunRepository = evaluationRunRepository;
         this.evaluationResultRepository = evaluationResultRepository;
+        this.labPresetAxisSupport = labPresetAxisSupport;
         this.objectMapper = objectMapper;
         this.apiPathProperties = apiPathProperties;
     }
@@ -203,6 +328,17 @@ public class LabEvaluationRunService {
         Map<String, Object> result = task != null ? task.getResultJson() : null;
         String base = taskId != null ? jobBasePath(taskId) : null;
         boolean hasResults = result != null && !result.isEmpty();
+        UUID campaignId = run.getCampaign() != null ? run.getCampaign().getId() : null;
+        Integer persistedItemCount = null;
+        List<UUID> childRunIds = List.of();
+        if (campaignId != null && run.getUser() != null) {
+            List<EvaluationRunEntity> children =
+                    evaluationRunRepository.findByCampaignIdAndUserId(campaignId, run.getUser().getId());
+            childRunIds = children.stream().map(EvaluationRunEntity::getId).toList();
+            persistedItemCount = countCampaignPersistedItems(campaignId, run.getUser().getId());
+        } else {
+            persistedItemCount = evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId()).size();
+        }
         return new LatestLabRunRecoveryDto(
                 run.getId(),
                 taskId,
@@ -215,7 +351,10 @@ public class LabEvaluationRunService {
                 result,
                 task != null ? task.getStartedAt() : null,
                 task != null ? task.getCompletedAt() : null,
-                hasResults);
+                hasResults,
+                campaignId,
+                persistedItemCount,
+                childRunIds);
     }
 
     private String jobBasePath(UUID taskId) {
@@ -224,15 +363,14 @@ public class LabEvaluationRunService {
 
     @Transactional(readOnly = true)
     public EvaluationRunDetailDto getRun(UUID userId, UUID runId) {
-        return toDetail(requireRun(userId, runId));
+        EvaluationRunEntity run = requireRun(userId, runId);
+        return toDetail(run, userId);
     }
 
     @Transactional(readOnly = true)
     public List<EvaluationResultItemDto> listItems(UUID userId, UUID runId) {
-        requireRun(userId, runId);
-        return evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId).stream()
-                .map(LabEvaluationRunService::toItem)
-                .toList();
+        EvaluationRunEntity run = requireRun(userId, runId);
+        return listPersistedItems(run, userId).stream().map(LabEvaluationRunService::toItem).toList();
     }
 
     @Transactional(readOnly = true)
@@ -276,11 +414,10 @@ public class LabEvaluationRunService {
     @Transactional(readOnly = true)
     public String exportCsv(UUID userId, UUID runId) {
         EvaluationRunEntity run = requireRun(userId, runId);
-        List<EvaluationResultEntity> items =
-                evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId);
+        List<EvaluationResultEntity> items = listPersistedItems(run, userId);
         String meta;
         try {
-            meta = objectMapper.writeValueAsString(toDetail(run));
+            meta = objectMapper.writeValueAsString(toDetail(run, userId));
         } catch (JsonProcessingException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Could not serialize run meta");
         }
@@ -328,12 +465,8 @@ public class LabEvaluationRunService {
     public Map<String, Object> exportJsonBundle(UUID userId, UUID runId) {
         EvaluationRunEntity run = requireRun(userId, runId);
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("run", toDetailMap(run));
-        out.put(
-                "items",
-                evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId).stream()
-                        .map(LabEvaluationRunService::toItemMap)
-                        .toList());
+        out.put("run", toDetailMap(run, userId));
+        out.put("items", listPersistedItems(run, userId).stream().map(LabEvaluationRunService::toItemMap).toList());
         return out;
     }
 
@@ -345,8 +478,17 @@ public class LabEvaluationRunService {
         EvaluationRunEntity run = requireRun(userId, runId);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("mvpSchemaVersion", BenchmarkMvpSchema.VERSION);
-        out.put("run", toDetailMap(run));
-        out.put("items", buildMvpItemPayload(runId, run));
+        out.put(
+                "scoringNote",
+                "Prefer scoreAnswerable for answer-quality; scoreGlobal blends answerability groups. "
+                        + "In JSON analysis, check finalScoreAvailable before interpreting finalScore.");
+        out.put("run", toDetailMap(run, userId));
+        if (run.getCampaign() != null) {
+            out.put("campaignId", run.getCampaign().getId());
+            out.put("campaignMode", true);
+            out.put("campaignPersistedItemCount", countCampaignPersistedItems(run.getCampaign().getId(), userId));
+        }
+        out.put("items", buildMvpItemPayload(run, userId));
         return out;
     }
 
@@ -354,12 +496,13 @@ public class LabEvaluationRunService {
     @Transactional(readOnly = true)
     public String exportMvpItemsCsv(UUID userId, UUID runId) {
         EvaluationRunEntity run = requireRun(userId, runId);
-        List<EvaluationResultEntity> items =
-                evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId);
+        List<EvaluationResultEntity> items = listPersistedItems(run, userId);
         StringBuilder sb = new StringBuilder();
         sb.append(String.join(",", MVP_ITEMS_CSV_COLUMNS)).append('\n');
         for (EvaluationResultEntity it : items) {
-            Map<String, String> row = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(it, run);
+            EvaluationRunEntity itemRun = it.getRun() != null ? it.getRun() : run;
+            Map<String, String> row = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(it, itemRun);
+            labPresetAxisSupport.enrichItemExportRow(row, itemRun, it);
             List<String> cells =
                     MVP_ITEMS_CSV_COLUMNS.stream().map(h -> csvEscape(row.getOrDefault(h, ""))).toList();
             sb.append(String.join(",", cells)).append('\n');
@@ -371,15 +514,24 @@ public class LabEvaluationRunService {
     @Transactional(readOnly = true)
     public Map<String, Object> exportMvpRollupsJson(UUID userId, UUID runId) {
         EvaluationRunEntity run = requireRun(userId, runId);
-        List<EvaluationResultEntity> items =
-                evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId);
-        return BenchmarkMvpRollupCalculator.build(items, run);
+        List<EvaluationResultEntity> items = listPersistedItems(run, userId);
+        Map<String, Object> rollups = BenchmarkMvpRollupCalculator.build(items, run);
+        if (run.getCampaign() != null) {
+            LinkedHashMap<String, Object> enriched = new LinkedHashMap<>(rollups);
+            enriched.put("campaignId", run.getCampaign().getId());
+            enriched.put("campaignMode", true);
+            enriched.put("campaignPersistedItemCount", countCampaignPersistedItems(run.getCampaign().getId(), userId));
+            return Map.copyOf(enriched);
+        }
+        return rollups;
     }
 
-    private List<Map<String, Object>> buildMvpItemPayload(UUID runId, EvaluationRunEntity run) {
-        return evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId).stream()
+    private List<Map<String, Object>> buildMvpItemPayload(EvaluationRunEntity run, UUID userId) {
+        return listPersistedItems(run, userId).stream()
                 .map(
                         e -> {
+                            EvaluationRunEntity itemRun =
+                                    e.getRun() != null ? e.getRun() : run;
                             Map<String, Object> row = new LinkedHashMap<>();
                             row.put("id", e.getId());
                             row.put("benchmarkKind", e.getBenchmarkKind());
@@ -389,7 +541,7 @@ public class LabEvaluationRunService {
                             row.put("correctness", e.getCorrectness());
                             row.put("evaluatedAt", e.getEvaluatedAt());
                             row.put("metricsPayload", e.getMetricsPayload());
-                            row.put("mvp", BenchmarkMvpMetricsCalculator.computeMvpMetrics(e, run));
+                            row.put("mvp", BenchmarkMvpMetricsCalculator.computeMvpMetrics(e, itemRun));
                             return row;
                         })
                 .toList();
@@ -401,7 +553,14 @@ public class LabEvaluationRunService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Run not found"));
     }
 
-    private static EvaluationRunDetailDto toDetail(EvaluationRunEntity e) {
+    private EvaluationRunDetailDto toDetail(EvaluationRunEntity e, UUID userId) {
+        UUID campaignId = e.getCampaign() != null ? e.getCampaign().getId() : null;
+        boolean campaignMode = campaignId != null;
+        List<EvaluationRunEntity> campaignChildren =
+                campaignMode ? evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId) : List.of();
+        int runItemCount = evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(e.getId()).size();
+        int campaignItemCount = campaignMode ? countCampaignPersistedItems(campaignId, userId) : runItemCount;
+        List<CampaignChildRunSummaryDto> childSummaries = buildCampaignChildSummaries(campaignChildren);
         return new EvaluationRunDetailDto(
                 e.getId(),
                 e.getName(),
@@ -421,10 +580,17 @@ public class LabEvaluationRunService {
                 e.getClassifierModelId(),
                 e.getAggregatesJson(),
                 e.getCreatedAt(),
-                e.getCompletedAt());
+                e.getCompletedAt(),
+                campaignId,
+                campaignMode,
+                labPresetAxisSupport.resolvePresetCode(e),
+                resolveComparisonAxis(e),
+                runItemCount,
+                campaignItemCount,
+                childSummaries);
     }
 
-    private Map<String, Object> toDetailMap(EvaluationRunEntity e) {
+    private Map<String, Object> toDetailMap(EvaluationRunEntity e, UUID userId) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", e.getId());
         m.put("name", e.getName());
@@ -447,7 +613,101 @@ public class LabEvaluationRunService {
         m.put("aggregatesJson", e.getAggregatesJson());
         m.put("createdAt", e.getCreatedAt());
         m.put("completedAt", e.getCompletedAt());
+        if (e.getCampaign() != null) {
+            UUID campaignId = e.getCampaign().getId();
+            m.put("campaignId", campaignId);
+            m.put("campaignMode", true);
+            m.put("presetKey", labPresetAxisSupport.resolvePresetCode(e));
+            m.put("comparisonAxis", resolveComparisonAxis(e));
+            m.put("persistedItemCount", evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(e.getId()).size());
+            m.put("campaignPersistedItemCount", countCampaignPersistedItems(campaignId, userId));
+            m.put(
+                    "campaignChildRuns",
+                    buildCampaignChildSummaries(
+                                    evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId))
+                            .stream()
+                            .map(LabEvaluationRunService::childSummaryToMap)
+                            .toList());
+        }
         return m;
+    }
+
+    private List<EvaluationResultEntity> listPersistedItems(EvaluationRunEntity run, UUID userId) {
+        if (run == null || run.getId() == null) {
+            return List.of();
+        }
+        EvaluationCampaignEntity campaign = run.getCampaign();
+        if (campaign == null || campaign.getId() == null) {
+            return evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId());
+        }
+        List<UUID> childRunIds =
+                evaluationRunRepository.findByCampaignIdAndUserId(campaign.getId(), userId).stream()
+                        .map(EvaluationRunEntity::getId)
+                        .filter(Objects::nonNull)
+                        .toList();
+        if (childRunIds.isEmpty()) {
+            return evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId());
+        }
+        return evaluationResultRepository.findByRun_IdInOrderByEvaluatedAtAsc(childRunIds);
+    }
+
+    private int countCampaignPersistedItems(UUID campaignId, UUID userId) {
+        if (campaignId == null || userId == null) {
+            return 0;
+        }
+        return evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId).stream()
+                .mapToInt(
+                        r ->
+                                evaluationResultRepository
+                                        .findByRun_IdOrderByEvaluatedAtAsc(r.getId())
+                                        .size())
+                .sum();
+    }
+
+    private List<CampaignChildRunSummaryDto> buildCampaignChildSummaries(List<EvaluationRunEntity> children) {
+        if (children == null || children.isEmpty()) {
+            return List.of();
+        }
+        List<CampaignChildRunSummaryDto> out = new ArrayList<>();
+        for (EvaluationRunEntity child : children) {
+            if (child == null || child.getId() == null) {
+                continue;
+            }
+            out.add(
+                    new CampaignChildRunSummaryDto(
+                            child.getId(),
+                            labPresetAxisSupport.resolvePresetCode(child),
+                            labPresetAxisSupport.resolvePresetLabel(child),
+                            labPresetAxisSupport.comparisonLabel(child),
+                            child.getLlmModelId(),
+                            child.getStatus() != null ? child.getStatus().name() : null,
+                            evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(child.getId()).size()));
+        }
+        return List.copyOf(out);
+    }
+
+    private static Map<String, Object> childSummaryToMap(CampaignChildRunSummaryDto dto) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("runId", dto.runId());
+        m.put("presetKey", dto.presetKey());
+        m.put("presetLabel", dto.presetLabel());
+        m.put("comparisonLabel", dto.comparisonLabel());
+        m.put("modelId", dto.modelId());
+        m.put("status", dto.status());
+        m.put("persistedItemCount", dto.persistedItemCount());
+        return m;
+    }
+
+    private static String resolveComparisonAxis(EvaluationRunEntity run) {
+        if (run.getAggregatesJson() != null) {
+            Object axis = run.getAggregatesJson().get(LabPresetAxisSupport.AGG_KEY_COMPARISON_AXIS);
+            if (axis != null && !String.valueOf(axis).isBlank()) {
+                return String.valueOf(axis).trim();
+            }
+        }
+        return LabPresetAxisSupport.isRagPresetCampaignRun(run)
+                ? LabPresetAxisSupport.COMPARISON_AXIS_PRESET
+                : null;
     }
 
     private static Map<String, Object> toItemMap(EvaluationResultEntity e) {

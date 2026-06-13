@@ -106,6 +106,7 @@ class RagPresetCampaignOrchestratorTest {
                                 UUID.randomUUID(),
                                 1,
                                 1,
+                                1,
                                 0,
                                 0,
                                 null,
@@ -255,6 +256,7 @@ class RagPresetCampaignOrchestratorTest {
                 evaluationCorpusRepository,
                 labBenchmarkConfigPreflightService,
                 labPresetAxisSupport,
+                new LabBenchmarkDefaultModelResolver("gemma3:4b", "mxbai-embed-large:latest"),
                 runtimeObservability);
     }
 }

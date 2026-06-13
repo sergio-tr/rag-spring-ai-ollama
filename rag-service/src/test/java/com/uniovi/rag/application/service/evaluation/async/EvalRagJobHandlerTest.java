@@ -10,6 +10,7 @@ import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
+import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
@@ -95,8 +96,14 @@ class EvalRagJobHandlerTest {
     @Mock
     private LabBenchmarkCompletionService labBenchmarkCompletionService;
 
+    @Mock
+    private EvaluationResultRepository evaluationResultRepository;
+
     @BeforeEach
     void stubCorpusSummary() {
+        Mockito.lenient()
+                .when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(ArgumentMatchers.any()))
+                .thenReturn(List.of());
         Mockito.lenient()
                 .when(evaluationCorpusApplicationService.getSummary(ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn(
@@ -127,7 +134,8 @@ class EvalRagJobHandlerTest {
                 evaluationCorpusApplicationService,
                 labCampaignBenchmarkExecutor,
                 evaluationRunRagJobContextLoader,
-                labBenchmarkCompletionService);
+                labBenchmarkCompletionService,
+                evaluationResultRepository);
     }
 
     @Test
@@ -507,6 +515,9 @@ class EvalRagJobHandlerTest {
                 List.of(),
                 List.of(),
                 "",
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,

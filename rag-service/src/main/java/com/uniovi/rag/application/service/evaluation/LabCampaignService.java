@@ -12,8 +12,10 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
+import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkExportSupport;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpMetricsCalculator;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpRollupCalculator;
+import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpSchema;
 import com.uniovi.rag.application.service.evaluation.metrics.LabBenchmarkExportLabels;
 import com.uniovi.rag.infrastructure.persistence.evaluation.LabCampaignHumanExportBuilder;
 import com.uniovi.rag.interfaces.rest.dto.StartCampaignRequestDto;
@@ -66,6 +68,9 @@ public class LabCampaignService {
         if (req == null || orchestrator == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
         }
+        boolean autoReindex = baseConfigBoolean(req.baseConfig(), "autoReindex", true);
+        boolean allowActiveSnapshotMutation =
+                baseConfigBoolean(req.baseConfig(), "allowActiveSnapshotMutation", true);
         StartBenchmarkRunRequest body =
                 new StartBenchmarkRunRequest(
                         req.datasetId(),
@@ -84,8 +89,8 @@ public class LabCampaignService {
                         req.embeddingModelIds(),
                         false,
                         req.name(),
-                        null,
-                        null,
+                        autoReindex,
+                        allowActiveSnapshotMutation,
                         null,
                         null,
                         null,
@@ -185,6 +190,10 @@ public class LabCampaignService {
             }
         }
         out.put("items", items);
+        out.put("totalPersistedItems", items.size());
+        out.put(
+                "presetCodes",
+                runs.stream().map(this::resolvePresetCode).filter(s -> s != null && !s.isBlank()).distinct().toList());
         return out;
     }
 
@@ -226,6 +235,7 @@ public class LabCampaignService {
         long skippedRuns = runs.stream().filter(r -> r.getStatus() != null && "SKIPPED".equals(r.getStatus().name())).count();
 
         Map<String, Object> out = new LinkedHashMap<>();
+        out.put("schemaVersion", BenchmarkMvpSchema.VERSION);
         out.put("campaignId", campaignId);
         out.put("campaignType", ctx.campaignType());
         out.put("comparisonAxis", ctx.comparisonAxis());
@@ -266,6 +276,7 @@ public class LabCampaignService {
             List<EvaluationResultEntity> items = evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId());
             for (EvaluationResultEntity it : items) {
                 Map<String, String> row = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(it, run);
+                labPresetAxisSupport.enrichItemExportRow(row, run, it);
                 List<String> cells = new ArrayList<>();
                 cells.add(csvEscape(campaignId.toString()));
                 cells.add(csvEscape(ctx.campaignType()));
@@ -320,7 +331,19 @@ public class LabCampaignService {
                 "meanExactMatch",
                 "meanSemanticScore",
                 "meanRecallAt1",
-                "meanLatencyMs"
+                "meanLatencyMs",
+                "comparisonLabel",
+                "presetKey",
+                "presetOrder",
+                "benchmarkSupportStatus",
+                "singleTurnSupported",
+                "comparableInSingleTurn",
+                "scoreGlobal",
+                "scoreAnswerable",
+                "scoreUnanswerable",
+                "scoreAmbiguous",
+                "scoreUnknownAnswerability",
+                "finalScoreSampleCount"
         );
         StringBuilder sb = new StringBuilder();
         sb.append(String.join(",", cols)).append('\n');
@@ -363,10 +386,16 @@ public class LabCampaignService {
             row.put("presetLabel", humanPresetLabel(run));
             row.put("presetKey", resolvePresetCode(run));
             row.put("comparisonLabel", comparisonLabel(run));
+            Map<String, Object> firstMetrics = readFirstItemMetrics(run);
+            String presetCode = resolvePresetCode(run);
+            row.put("presetOrder", BenchmarkExportSupport.resolvePresetOrder(presetCode, firstMetrics));
             row.put("corpusName", humanCorpusName(run));
             row.put("datasetName", humanDatasetName(run));
             row.put("status", run.getStatus() != null ? run.getStatus().name() : "");
             row.put("failureReason", resolveFailureReason(run, bucket));
+            row.put("benchmarkSupportStatus", BenchmarkExportSupport.resolveBenchmarkSupportStatus(presetCode, firstMetrics));
+            row.put("singleTurnSupported", BenchmarkExportSupport.resolveSingleTurnSupported(firstMetrics));
+            row.put("comparableInSingleTurn", BenchmarkExportSupport.resolveComparableInSingleTurn(firstMetrics));
             rows.add(row);
         }
         return rows;
@@ -556,7 +585,25 @@ public class LabCampaignService {
         Map<String, Object> ret = (Map<String, Object>) bucket.getOrDefault("retrievalOnExecutedWhereApplicable", Map.of());
         out.put("meanRecallAt1", ret.get("meanRecallAt1"));
         out.put("meanLatencyMs", onExecuted.get("meanLatencyMsWherePresent"));
+        out.put("scoreGlobal", onExecuted.get("scoreGlobal"));
+        out.put("scoreAnswerable", onExecuted.get("scoreAnswerable"));
+        out.put("scoreUnanswerable", onExecuted.get("scoreUnanswerable"));
+        out.put("scoreAmbiguous", onExecuted.get("scoreAmbiguous"));
+        out.put("scoreUnknownAnswerability", onExecuted.get("scoreUnknownAnswerability"));
+        out.put("finalScoreSampleCount", onExecuted.get("finalScoreSampleCount"));
+        out.put("abstentionRate", onExecuted.get("abstentionRate"));
+        out.put("correctAbstentionRate", onExecuted.get("correctAbstentionRate"));
+        out.put("wrongAbstentionRate", onExecuted.get("wrongAbstentionRate"));
         return out;
+    }
+
+    private Map<String, Object> readFirstItemMetrics(EvaluationRunEntity run) {
+        List<EvaluationResultEntity> items =
+                evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId());
+        if (items.isEmpty() || items.getFirst().getMetricsPayload() == null) {
+            return Map.of();
+        }
+        return items.getFirst().getMetricsPayload();
     }
 
     private static long longNum(Object o) {
@@ -584,6 +631,20 @@ public class LabCampaignService {
         String t = s.replace("\"", "\"\"");
         boolean needsQuotes = t.contains(",") || t.contains("\n") || t.contains("\r") || t.contains("\"");
         return needsQuotes ? "\"" + t + "\"" : t;
+    }
+
+    private static boolean baseConfigBoolean(Map<String, Object> baseConfig, String key, boolean defaultValue) {
+        if (baseConfig == null || key == null || !baseConfig.containsKey(key)) {
+            return defaultValue;
+        }
+        Object raw = baseConfig.get(key);
+        if (raw instanceof Boolean b) {
+            return b;
+        }
+        if (raw instanceof String s) {
+            return Boolean.parseBoolean(s);
+        }
+        return defaultValue;
     }
 
     private record CampaignContext(String campaignType, String comparisonAxis, boolean comparativeMode, int axisCount) {}
