@@ -47,16 +47,33 @@ class LabPresetRunPlanServiceTest {
                 plan.groups().stream().map(g -> g.groupKey().name()).toList();
         assertThat(keys)
                 .containsExactly(
+                        LabPresetRunGroupKey.DIRECT_LLM.name(),
                         LabPresetRunGroupKey.NO_INDEX.name(),
                         LabPresetRunGroupKey.DOCUMENT_LEVEL.name(),
                         LabPresetRunGroupKey.CHUNK_LEVEL.name(),
                         LabPresetRunGroupKey.CHUNK_LEVEL_METADATA.name(),
-                        LabPresetRunGroupKey.HYBRID_METADATA.name());
+                        LabPresetRunGroupKey.HYBRID_METADATA.name(),
+                        LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN.name());
+        LabPresetRunPlanModels.LabPresetRunGroup hybridGroup = plan.groups().stream()
+                .filter(g -> g.groupKey() == LabPresetRunGroupKey.HYBRID_METADATA)
+                .findFirst()
+                .orElseThrow();
+        assertThat(hybridGroup.presetCodes()).containsExactly("P8", "P9", "P10");
+        LabPresetRunPlanModels.LabPresetRunGroup unsupportedGroup = plan.groups().stream()
+                .filter(g -> g.groupKey() == LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN)
+                .findFirst()
+                .orElseThrow();
+        assertThat(unsupportedGroup.presetCodes()).containsExactly("P11", "P12");
+        LabPresetRunPlanModels.LabPresetRunGroup directGroup = plan.groups().stream()
+                .filter(g -> g.groupKey() == LabPresetRunGroupKey.DIRECT_LLM)
+                .findFirst()
+                .orElseThrow();
+        assertThat(directGroup.presetCodes()).containsExactly("P0");
         LabPresetRunPlanModels.LabPresetRunGroup corpusGroup = plan.groups().stream()
                 .filter(g -> g.groupKey() == LabPresetRunGroupKey.NO_INDEX)
                 .findFirst()
                 .orElseThrow();
-        assertThat(corpusGroup.presetCodes()).containsExactly("P0", "P1");
+        assertThat(corpusGroup.presetCodes()).containsExactly("P1");
         LabPresetRunPlanModels.LabPresetRunGroup chunkGroup = plan.groups().stream()
                 .filter(g -> g.groupKey() == LabPresetRunGroupKey.CHUNK_LEVEL)
                 .findFirst()
@@ -81,9 +98,7 @@ class LabPresetRunPlanServiceTest {
                         RagExperimentalPresetCode.P7,
                         RagExperimentalPresetCode.P8,
                         RagExperimentalPresetCode.P9,
-                        RagExperimentalPresetCode.P10,
-                        RagExperimentalPresetCode.P11,
-                        RagExperimentalPresetCode.P12);
+                        RagExperimentalPresetCode.P10);
         LabPresetRunPlanModels.LabPresetRunPlan plan = sut.build(run, requested);
         assertThat(plan.skippedPresetCodes()).isEmpty();
         assertThat(plan.executablePresetCodes()).containsAll(requested.stream().map(Enum::name).toList());
@@ -91,16 +106,16 @@ class LabPresetRunPlanServiceTest {
     }
 
     @Test
-    void snapshot_chunk_with_metadata_marks_p8_p12_requires_reindex() {
+    void snapshot_chunk_with_metadata_marks_p8_p10_requires_reindex() {
         LabPresetRunPlanService sut =
                 sutWithResolved(resolvedFromMockEntity(mockSnapshot("CHUNK_LEVEL", true, "h", UUID.randomUUID())));
 
         EvaluationRunEntity run = runWithProject();
 
         LabPresetRunPlanModels.LabPresetRunPlan plan =
-                sut.build(run, List.of(RagExperimentalPresetCode.P8, RagExperimentalPresetCode.P9, RagExperimentalPresetCode.P12));
+                sut.build(run, List.of(RagExperimentalPresetCode.P8, RagExperimentalPresetCode.P9, RagExperimentalPresetCode.P10));
         assertThat(plan.executablePresetCodes()).isEmpty();
-        assertThat(plan.skippedPresetCodes()).containsKeys("P8", "P9", "P12");
+        assertThat(plan.skippedPresetCodes()).containsKeys("P8", "P9", "P10");
         LabPresetRunPlanModels.LabPresetRunGroup g = plan.groups().get(0);
         assertThat(g.groupKey()).isEqualTo(LabPresetRunGroupKey.HYBRID_METADATA);
         assertThat(g.compatible()).isFalse();
@@ -108,17 +123,30 @@ class LabPresetRunPlanServiceTest {
     }
 
     @Test
-    void snapshot_chunk_without_metadata_marks_p4_p12_requires_reindex() {
+    void snapshot_chunk_without_metadata_marks_p4_p8_requires_reindex() {
         LabPresetRunPlanService sut =
                 sutWithResolved(resolvedFromMockEntity(mockSnapshot("CHUNK_LEVEL", false, "h", UUID.randomUUID())));
 
         EvaluationRunEntity run = runWithProject();
 
         LabPresetRunPlanModels.LabPresetRunPlan plan =
-                sut.build(run, List.of(RagExperimentalPresetCode.P4, RagExperimentalPresetCode.P8, RagExperimentalPresetCode.P12));
+                sut.build(run, List.of(RagExperimentalPresetCode.P4, RagExperimentalPresetCode.P8));
         assertThat(plan.executablePresetCodes()).isEmpty();
-        assertThat(plan.skippedPresetCodes()).containsKeys("P4", "P8", "P12");
+        assertThat(plan.skippedPresetCodes()).containsKeys("P4", "P8");
         assertThat(plan.groups().stream().anyMatch(g -> g.requiresReindex())).isTrue();
+    }
+
+    @Test
+    void p11_p12_are_unsupported_in_single_turn_plan() {
+        LabPresetRunPlanService sut = sutWithResolved(LabEvaluationSnapshotService.ResolvedSnapshot.missing());
+
+        EvaluationRunEntity run = runWithProject();
+
+        LabPresetRunPlanModels.LabPresetRunPlan plan =
+                sut.build(run, List.of(RagExperimentalPresetCode.P11, RagExperimentalPresetCode.P12));
+        assertThat(plan.groups()).hasSize(1);
+        assertThat(plan.groups().get(0).groupKey()).isEqualTo(LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN);
+        assertThat(plan.skippedPresetCodes()).containsKeys("P11", "P12");
     }
 
     @Test
@@ -138,21 +166,25 @@ class LabPresetRunPlanServiceTest {
     }
 
     @Test
-    void no_snapshot_keeps_p0_p1_index_compatible_and_marks_p2_requires_reindex() {
+    void no_snapshot_marks_p0_executable_p1_and_p2_requires_reindex() {
         LabPresetRunPlanService sut = sutWithResolved(LabEvaluationSnapshotService.ResolvedSnapshot.missing());
 
         EvaluationRunEntity run = runWithProject();
 
         LabPresetRunPlanModels.LabPresetRunPlan plan =
                 sut.build(run, List.of(RagExperimentalPresetCode.P0, RagExperimentalPresetCode.P1, RagExperimentalPresetCode.P2));
-        assertThat(plan.executablePresetCodes()).containsExactly("P0", "P1");
-        assertThat(plan.skippedPresetCodes()).containsKey("P2");
+        assertThat(plan.executablePresetCodes()).containsExactly("P0");
+        assertThat(plan.skippedPresetCodes()).containsKeys("P1", "P2");
+        assertThat(plan.groups().stream().filter(g -> g.groupKey() == LabPresetRunGroupKey.DIRECT_LLM))
+                .allMatch(LabPresetRunPlanModels.LabPresetRunGroup::compatible);
+        assertThat(plan.groups().stream().filter(g -> g.groupKey() == LabPresetRunGroupKey.NO_INDEX))
+                .allMatch(g -> g.requiresReindex());
         assertThat(plan.groups().stream().filter(g -> g.groupKey() == LabPresetRunGroupKey.DOCUMENT_LEVEL))
                 .allMatch(g -> g.requiresReindex());
     }
 
     @Test
-    void p13_p14_are_multiturn_unsupported_in_single_turn_plan() {
+    void p13_p14_are_multiturn_unsupported_in_single_turn_plan_group() {
         LabPresetRunPlanService sut = sutWithResolved(LabEvaluationSnapshotService.ResolvedSnapshot.missing());
 
         EvaluationRunEntity run = runWithProject();
@@ -189,7 +221,8 @@ class LabPresetRunPlanServiceTest {
         when(labSnap.resolveCorpusId(any())).thenReturn(null);
         when(labSnap.resolveCompatibleSnapshot(any(), any())).thenReturn(resolved);
         when(labSnap.resolveCompatibleSnapshot(any(), any(), nullable(String.class))).thenReturn(resolved);
-        when(labSnap.hasRequiredVectorRows(any(), any(), any()))
+        when(labSnap.resolveCompatibleSnapshot(any(), any(), nullable(String.class), any())).thenReturn(resolved);
+        when(labSnap.hasRequiredVectorRows(any(), any(), any(), any()))
                 .thenAnswer(
                         inv ->
                                 resolved.hasUsableSnapshot()

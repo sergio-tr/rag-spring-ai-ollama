@@ -1,6 +1,9 @@
 package com.uniovi.rag.application.service.evaluation.preset;
 
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusStorageIntegrityService;
+import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.evaluation.RagBenchmarkHumanReasons;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
@@ -38,25 +41,34 @@ public class CorpusAvailabilityGate {
             "This preset requires corpus evidence, but usable evidence could not be assembled.";
 
     private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+    private final EvaluationCorpusStorageIntegrityService storageIntegrityService;
     private final NamedParameterJdbcTemplate namedParameterJdbcTemplate;
 
     public CorpusAvailabilityGate(
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
+            EvaluationCorpusStorageIntegrityService storageIntegrityService,
             NamedParameterJdbcTemplate namedParameterJdbcTemplate) {
         this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
+        this.storageIntegrityService = storageIntegrityService;
         this.namedParameterJdbcTemplate = namedParameterJdbcTemplate;
     }
 
     /**
-     * Preset-aware gate: P0/P1 and other non-retrieval presets require READY documents only; retrieval presets
-     * additionally require non-empty {@code vector_store} rows for the bound snapshot.
+     * Preset-aware gate: P1 assembles corpus from snapshot-bound rows; P2+ materialized indexes require READY documents
+     * and non-empty vector rows; P0 does not require corpus evidence.
      */
     public Result evaluateForPreset(
-            UUID userId, UUID corpusId, List<UUID> snapshotIds, RagExperimentalPresetCode preset) {
-        if (preset != null && !ExperimentalPresetCanonicalCatalog.needsVectorIndex(preset)) {
-            return evaluateDocumentsOnly(userId, corpusId);
+            UUID userId, UUID corpusId, List<UUID> snapshotIds, RagExperimentalPresetCode code) {
+        if (code != null && ExperimentalPresetCanonicalCatalog.canRunWithoutCorpus(code)) {
+            return new Result(true, 0, List.of(), 0, 0L, null, null);
         }
-        return evaluate(userId, corpusId, snapshotIds);
+        if (code != null && ExperimentalPresetCanonicalCatalog.requiresSnapshotAssembledCorpusEvidence(code)) {
+            return evaluate(userId, corpusId, snapshotIds);
+        }
+        if (code != null && ExperimentalPresetCanonicalCatalog.needsVectorIndex(code)) {
+            return evaluate(userId, corpusId, snapshotIds);
+        }
+        return evaluateDocumentsOnly(userId, corpusId);
     }
 
     /** Structured diagnostics merged into Lab metrics payloads (never blocks callers beyond gate semantics). */
@@ -90,8 +102,13 @@ public class CorpusAvailabilityGate {
     public Map<String, Object> probeForPreset(
             UUID userId, UUID corpusId, List<UUID> snapshotIds, RagExperimentalPresetCode preset) {
         LinkedHashMap<String, Object> m = new LinkedHashMap<>();
+        boolean corpusReq = preset != null && ExperimentalPresetCanonicalCatalog.corpusRequired(preset);
+        if (preset != null && ExperimentalPresetCanonicalCatalog.canRunWithoutCorpus(preset)) {
+            m.put("corpusRequired", false);
+            return Map.copyOf(m);
+        }
         Result r = evaluateForPreset(userId, corpusId, snapshotIds, preset);
-        m.put("corpusRequired", preset == null || ExperimentalPresetCanonicalCatalog.corpusRequired(preset));
+        m.put("corpusRequired", corpusReq);
         m.put("corpusAvailable", r.satisfied());
         m.put("evaluationCorpusId", corpusId != null ? corpusId.toString() : null);
         m.put("evaluationCorpusDocumentIds", r.readyDocumentIds().stream().map(UUID::toString).toList());
@@ -110,7 +127,7 @@ public class CorpusAvailabilityGate {
         return Map.copyOf(m);
     }
 
-    /** READY evaluation-corpus documents without vector index requirements (P0/P1 direct paths). */
+    /** READY evaluation-corpus documents without vector index requirements. */
     public Result evaluateDocumentsOnly(UUID userId, UUID corpusId) {
         if (corpusId == null) {
             return failed(0, List.of(), 0, NO_CORPUS_SELECTED, "No evaluation corpus was selected.");
@@ -125,7 +142,11 @@ public class CorpusAvailabilityGate {
         if (docs == null || docs.isEmpty()) {
             return failed(0, List.of(), 0, NO_DOCUMENTS, "The selected evaluation corpus has no documents.");
         }
-        List<UUID> readyDocIds = context.readyDocumentIds();
+        Result storageBlocker = evaluateStorageIntegrity(docs);
+        if (storageBlocker != null) {
+            return storageBlocker;
+        }
+        List<UUID> readyDocIds = storageIntegrityService.storageReadyDocumentIds(docs);
         int docsReady = readyDocIds.size();
         if (docsReady <= 0) {
             return failed(
@@ -189,7 +210,11 @@ public class CorpusAvailabilityGate {
         if (docs == null || docs.isEmpty()) {
             return failed(0, List.of(), 0, NO_DOCUMENTS, "The selected evaluation corpus has no documents.");
         }
-        List<UUID> readyDocIds = context.readyDocumentIds();
+        Result storageBlocker = evaluateStorageIntegrity(docs);
+        if (storageBlocker != null) {
+            return storageBlocker;
+        }
+        List<UUID> readyDocIds = storageIntegrityService.storageReadyDocumentIds(docs);
         int docsReady = readyDocIds.size();
         if (docsReady <= 0) {
             return failed(
@@ -226,6 +251,19 @@ public class CorpusAvailabilityGate {
                     "A snapshot was selected, but it has no vector rows for the evaluation corpus.");
         }
         return new Result(true, docs.size(), readyDocIds, docsReady, rows, null, null);
+    }
+
+    private Result evaluateStorageIntegrity(List<KnowledgeDocumentEntity> docs) {
+        if (!storageIntegrityService.hasReadyDocumentWithMissingBinary(docs)) {
+            return null;
+        }
+        List<UUID> storageReady = storageIntegrityService.storageReadyDocumentIds(docs);
+        return failed(
+                docs.size(),
+                storageReady,
+                0L,
+                LabCorpusReasonCodes.DOCUMENT_BINARY_MISSING,
+                RagBenchmarkHumanReasons.humanize(LabCorpusReasonCodes.DOCUMENT_BINARY_MISSING));
     }
 
     private static Result failed(

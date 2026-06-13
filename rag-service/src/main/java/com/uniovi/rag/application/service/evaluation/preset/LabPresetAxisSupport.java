@@ -1,10 +1,15 @@
 package com.uniovi.rag.application.service.evaluation.preset;
 
 import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleLoader;
+import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.application.service.evaluation.BenchmarkRunOrchestrator;
+import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkExportSupport;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetDefinition;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCorpusEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -199,5 +204,134 @@ public class LabPresetAxisSupport {
         return run != null
                 && BenchmarkKind.RAG_PRESET_END_TO_END.name().equals(run.getBenchmarkKind())
                 && run.getCampaign() != null;
+    }
+
+    /** Adds comparison and corpus metadata to flat MVP export rows without changing persisted metrics. */
+    public void enrichItemExportRow(
+            Map<String, String> row, EvaluationRunEntity run, EvaluationResultEntity item) {
+        if (row == null || run == null) {
+            return;
+        }
+        Map<String, Object> mp =
+                item != null && item.getMetricsPayload() != null ? item.getMetricsPayload() : Map.of();
+        String presetCode = resolvePresetCode(run);
+        if (presetCode.isBlank()) {
+            presetCode = readSingleString(mp.get(BenchmarkResultRowKeys.PRESET_CODE));
+        }
+        String catalogLabel = catalogLabel(presetCode);
+        String storedLabel = readSingleString(mp.get(BenchmarkResultRowKeys.PRESET_LABEL));
+        String exportLabel =
+                BenchmarkExportSupport.sanitizePresetLabel(presetCode, storedLabel, catalogLabel);
+        if (exportLabel.isBlank()) {
+            exportLabel = resolvePresetLabel(run);
+        }
+
+        if (run.getCampaign() != null && run.getCampaign().getId() != null) {
+            row.put("campaignId", run.getCampaign().getId().toString());
+        }
+        if (run.getId() != null) {
+            row.put("childRunId", run.getId().toString());
+        }
+        row.put("comparisonAxis", resolveExportComparisonAxis(run));
+        row.put("axisValue", resolveExportAxisValue(run, presetCode));
+        row.put("comparisonLabel", comparisonLabel(run));
+        row.put("presetKey", presetCode);
+        if (!exportLabel.isBlank()) {
+            row.put("presetLabel", exportLabel);
+        }
+        row.put("presetOrder", BenchmarkExportSupport.resolvePresetOrder(presetCode, mp));
+        row.put("modelLabel", resolveModelLabel(run));
+        EvaluationCorpusEntity corpus = run.getEvaluationCorpus();
+        if (corpus != null && corpus.getId() != null) {
+            row.put("corpusId", corpus.getId().toString());
+        }
+        row.put("corpusName", resolveCorpusName(corpus));
+        EvaluationDatasetEntity dataset = run.getDataset();
+        if (dataset != null && dataset.getId() != null) {
+            row.put("datasetId", dataset.getId().toString());
+        }
+        row.put("datasetName", resolveDatasetName(dataset));
+        row.put(
+                "benchmarkSupportStatus",
+                firstNonBlank(
+                        row.get("benchmarkSupportStatus"),
+                        BenchmarkExportSupport.resolveBenchmarkSupportStatus(presetCode, mp)));
+        row.put(
+                "singleTurnSupported",
+                firstNonBlank(
+                        BenchmarkExportSupport.resolveSingleTurnSupported(mp),
+                        readSingleString(mp.get("singleTurnBenchmarkSelectable"))));
+        row.put(
+                "comparableInSingleTurn",
+                firstNonBlank(
+                        BenchmarkExportSupport.resolveComparableInSingleTurn(mp),
+                        readSingleString(mp.get("comparableSingleTurnMetric"))));
+    }
+
+    private String resolveExportComparisonAxis(EvaluationRunEntity run) {
+        if (run.getAggregatesJson() != null) {
+            String axis = readSingleString(run.getAggregatesJson().get(AGG_KEY_COMPARISON_AXIS));
+            if (!axis.isBlank()) {
+                return axis;
+            }
+        }
+        if (BenchmarkKind.RAG_PRESET_END_TO_END.name().equals(run.getBenchmarkKind())) {
+            return COMPARISON_AXIS_PRESET;
+        }
+        if (BenchmarkKind.EMBEDDING_RETRIEVAL.name().equals(run.getBenchmarkKind())) {
+            return "EMBEDDING_MODEL";
+        }
+        if (BenchmarkKind.LLM_JUDGE_QA.name().equals(run.getBenchmarkKind())) {
+            return "LLM_MODEL";
+        }
+        return "";
+    }
+
+    private static String resolveExportAxisValue(EvaluationRunEntity run, String presetCode) {
+        if (BenchmarkKind.RAG_PRESET_END_TO_END.name().equals(run.getBenchmarkKind()) && !presetCode.isBlank()) {
+            return presetCode;
+        }
+        if (run.getLlmModelId() != null && !run.getLlmModelId().isBlank()) {
+            return run.getLlmModelId().trim();
+        }
+        if (run.getEmbeddingModelId() != null && !run.getEmbeddingModelId().isBlank()) {
+            return run.getEmbeddingModelId().trim();
+        }
+        return "";
+    }
+
+    private static String resolveModelLabel(EvaluationRunEntity run) {
+        if (run.getLlmModelId() != null && !run.getLlmModelId().isBlank()) {
+            return run.getLlmModelId().trim();
+        }
+        if (run.getEmbeddingModelId() != null && !run.getEmbeddingModelId().isBlank()) {
+            return run.getEmbeddingModelId().trim();
+        }
+        return "";
+    }
+
+    private static String resolveCorpusName(EvaluationCorpusEntity corpus) {
+        if (corpus == null || corpus.getName() == null || corpus.getName().isBlank()) {
+            return "";
+        }
+        String name = corpus.getName().trim();
+        if (name.toLowerCase().contains("corpus")) {
+            return "Lab knowledge base";
+        }
+        return name;
+    }
+
+    private static String resolveDatasetName(EvaluationDatasetEntity dataset) {
+        if (dataset == null || dataset.getName() == null || dataset.getName().isBlank()) {
+            return "";
+        }
+        return dataset.getName().trim();
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) {
+            return a;
+        }
+        return b != null ? b : "";
     }
 }

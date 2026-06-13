@@ -9,12 +9,12 @@ import org.junit.jupiter.api.Test;
 class ExperimentalPresetCanonicalCatalogMetadataTest {
 
     @Test
-    void p0_and_p1_areCorpusGroundedAndSnapshotBacked_forSingleTurnBenchmark() {
-        assertThat(ExperimentalPresetCanonicalCatalog.corpusRequired(RagExperimentalPresetCode.P0)).isTrue();
+    void p0_isDirectLlmWithoutCorpus_p1_isFullCorpusSnapshotBacked() {
+        assertThat(ExperimentalPresetCanonicalCatalog.corpusRequired(RagExperimentalPresetCode.P0)).isFalse();
         assertThat(ExperimentalPresetCanonicalCatalog.corpusRequired(RagExperimentalPresetCode.P1)).isTrue();
-        assertThat(ExperimentalPresetCanonicalCatalog.requiresSnapshotForExecution(RagExperimentalPresetCode.P0)).isTrue();
+        assertThat(ExperimentalPresetCanonicalCatalog.requiresSnapshotForExecution(RagExperimentalPresetCode.P0)).isFalse();
         assertThat(ExperimentalPresetCanonicalCatalog.requiresSnapshotForExecution(RagExperimentalPresetCode.P1)).isTrue();
-        assertThat(ExperimentalPresetCanonicalCatalog.requiresProjectDocuments(RagExperimentalPresetCode.P0)).isTrue();
+        assertThat(ExperimentalPresetCanonicalCatalog.requiresProjectDocuments(RagExperimentalPresetCode.P0)).isFalse();
         assertThat(ExperimentalPresetCanonicalCatalog.singleTurnBenchmarkSelectable(RagExperimentalPresetCode.P0)).isTrue();
         assertThat(ExperimentalPresetCanonicalCatalog.singleTurnBenchmarkSelectable(RagExperimentalPresetCode.P1)).isTrue();
     }

@@ -1,5 +1,7 @@
 package com.uniovi.rag.application.service.evaluation.preset;
 
+import com.uniovi.rag.application.service.evaluation.RagBenchmarkHumanReasons;
+import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
 import com.uniovi.rag.application.service.runtime.config.IndexCompatibilityResult;
 import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
@@ -64,7 +66,7 @@ public class LabPresetRunPlanService {
         }
 
         SnapshotContext snapCtx =
-                resolveSnapshotContext(run, ExperimentalPresetCanonicalCatalog.IndexRequirements.none(), null);
+                resolveSnapshotContext(run, ExperimentalPresetCanonicalCatalog.IndexRequirements.none(), null, null);
 
         List<String> requestedStr = ordered.stream().map(RagExperimentalPresetCode::name).toList();
         UUID corpusId = labEvaluationSnapshotService.resolveCorpusId(run);
@@ -106,11 +108,15 @@ public class LabPresetRunPlanService {
         ExperimentalPresetCanonicalCatalog.IndexRequirements mergedAgg = codes.stream()
                 .map(ExperimentalPresetCanonicalCatalog::effectiveIndexRequirements)
                 .reduce(ExperimentalPresetCanonicalCatalog.IndexRequirements.none(), this::mergeRequirements);
-        SnapshotContext snapCtx = resolveSnapshotContext(run, mergedAgg, run != null ? run.getEmbeddingModelId() : null);
+        SnapshotContext snapCtx =
+                resolveSnapshotContext(run, mergedAgg, run != null ? run.getEmbeddingModelId() : null, gk);
         UUID corpusId = labEvaluationSnapshotService.resolveCorpusId(run);
         if (gk == LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN) {
             for (RagExperimentalPresetCode c : codes) {
-                skipped.put(c.name(), "MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED");
+                String blockReason =
+                        ExperimentalPresetBenchmarkGate.blockReason(c).orElse("MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED");
+                String humanReason = RagBenchmarkHumanReasons.humanize(blockReason);
+                skipped.put(c.name(), blockReason);
                 items.add(
                         new LabPresetRunPlanModels.LabPresetRunPlanItem(
                                 c.name(),
@@ -121,8 +127,8 @@ public class LabPresetRunPlanService {
                                 false,
                                 false,
                                 "NOT_SUPPORTED",
-                                "MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED",
-                                "Preset requires multi-turn harness; not executed in single-turn Lab benchmark.",
+                                blockReason,
+                                humanReason,
                                 snapCtx.snapshotId,
                                 snapCtx.profileHash,
                                 snapshotCapsMap(snapCtx.caps),
@@ -130,6 +136,10 @@ public class LabPresetRunPlanService {
                                 false,
                                 LabPresetRunPlanModels.STRATEGY_VERSION));
             }
+            String groupBlockReason =
+                    ExperimentalPresetBenchmarkGate.blockReason(codes.getFirst())
+                            .orElse("MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED");
+            String groupHumanReason = RagBenchmarkHumanReasons.humanize(groupBlockReason);
             return new LabPresetRunPlanModels.LabPresetRunGroup(
                     gk,
                     codes.stream().map(RagExperimentalPresetCode::name).toList(),
@@ -139,8 +149,8 @@ public class LabPresetRunPlanService {
                     false,
                     false,
                     "NOT_SUPPORTED",
-                    "MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED",
-                    "Preset requires multi-turn harness; not executed in single-turn Lab benchmark.",
+                    groupBlockReason,
+                    groupHumanReason,
                     null,
                     null,
                     null,
@@ -290,8 +300,14 @@ public class LabPresetRunPlanService {
     }
 
     public static LabPresetRunGroupKey groupKeyFor(RagExperimentalPresetCode code) {
-        if (ExperimentalPresetCanonicalCatalog.requiresMultiTurn(code)) {
+        if (!ExperimentalPresetCanonicalCatalog.singleTurnBenchmarkSelectable(code)) {
             return LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN;
+        }
+        if (code == RagExperimentalPresetCode.P0) {
+            return LabPresetRunGroupKey.DIRECT_LLM;
+        }
+        if (code == RagExperimentalPresetCode.P1) {
+            return LabPresetRunGroupKey.NO_INDEX;
         }
         ExperimentalPresetCanonicalCatalog.IndexRequirements eff =
                 ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(code);
@@ -322,14 +338,15 @@ public class LabPresetRunPlanService {
     private SnapshotContext resolveSnapshotContext(
             EvaluationRunEntity run,
             ExperimentalPresetCanonicalCatalog.IndexRequirements requirements,
-            String embeddingModelId) {
+            String embeddingModelId,
+            LabPresetRunGroupKey groupKey) {
         LabEvaluationSnapshotService.ResolvedSnapshot resolved =
-                labEvaluationSnapshotService.resolveCompatibleSnapshot(run, requirements, embeddingModelId);
+                labEvaluationSnapshotService.resolveCompatibleSnapshot(run, requirements, embeddingModelId, groupKey);
         boolean hasUsableSnapshot =
                 resolved.hasUsableSnapshot()
                         && (resolved.snapshotId() == null
                                 || labEvaluationSnapshotService.hasRequiredVectorRows(
-                                        run, resolved.snapshotId(), requirements));
+                                        run, resolved.snapshotId(), requirements, groupKey));
         IndexSnapshotCapabilities caps =
                 resolved.capabilities() != null
                         ? resolved.capabilities()
@@ -341,6 +358,17 @@ public class LabPresetRunPlanService {
             ExperimentalPresetCanonicalCatalog.IndexRequirements req,
             SnapshotContext snapCtx,
             RagExperimentalPresetCode preset) {
+        if (preset != null && ExperimentalPresetCanonicalCatalog.canRunWithoutCorpus(preset)) {
+            return IndexCompatibilityResult.ok();
+        }
+        if (preset != null && ExperimentalPresetCanonicalCatalog.requiresSnapshotAssembledCorpusEvidence(preset)) {
+            if (snapCtx == null || !snapCtx.hasUsableSnapshot()) {
+                return IndexCompatibilityResult.requiresReindex(
+                        LabCorpusReasonCodes.SNAPSHOT_EMPTY,
+                        "A snapshot was selected, but it has no vector rows for the evaluation corpus.");
+            }
+            return IndexCompatibilityResult.ok();
+        }
         if (req == null
                 || req.requiredMaterialization() == null
                 || req.requiredMaterialization() == ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE) {

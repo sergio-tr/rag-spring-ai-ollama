@@ -62,8 +62,8 @@ public final class ExperimentalPresetCanonicalCatalog {
                 Map.ofEntries(
                         Map.entry("useRetrieval", false),
                         Map.entry("useAdvisor", false),
-                        Map.entry("naiveFullCorpusInPromptEnabled", true),
-                        Map.entry("corpusGroundedDirectWorkflow", true),
+                        Map.entry("naiveFullCorpusInPromptEnabled", false),
+                        Map.entry("corpusGroundedDirectWorkflow", false),
                         Map.entry("naiveFullCorpusMaxChars", 32_000),
                         Map.entry("materializationStrategy", "CHUNK_LEVEL"),
                         // Explicitly off for determinism in Chat UI toggles.
@@ -83,7 +83,6 @@ public final class ExperimentalPresetCanonicalCatalog {
                         Map.entry("topK", 5),
                         Map.entry("similarityThreshold", 0.7)
                 ),
-                // Lab index plan: P0 is direct LLM + snapshot-assembled corpus text, not vector retrieval.
                 new IndexRequirements(RequiredMaterialization.NONE, false),
                 false);
 
@@ -134,7 +133,9 @@ public final class ExperimentalPresetCanonicalCatalog {
                 uuid("cafe0001-0001-4001-8001-000000000014"),
                 RagExperimentalPresetCode.P3,
                 Map.of(
-                        "metadataEnabled", true
+                        "metadataEnabled", true,
+                        // metadata_requires_tools: chunk metadata retrieval uses the tools capability lane (V44 seed parity).
+                        "toolsEnabled", true
                 ),
                 new IndexRequirements(null, true),
                 false);
@@ -166,7 +167,7 @@ public final class ExperimentalPresetCanonicalCatalog {
                 uuid("cafe0001-0001-4001-8001-000000000017"),
                 RagExperimentalPresetCode.P6,
                 Map.of(
-                        "toolsEnabled", true
+                        "deterministicToolRoutingEnabled", true
                 ),
                 null,
                 false);
@@ -179,6 +180,7 @@ public final class ExperimentalPresetCanonicalCatalog {
                         "materializationStrategy", "HYBRID",
                         "rankerEnabled", true,
                         "postRetrievalEnabled", true,
+                        "deterministicToolRoutingEnabled", false,
                         "topK", 12,
                         "similarityThreshold", 0.6
                 ),
@@ -190,8 +192,8 @@ public final class ExperimentalPresetCanonicalCatalog {
                 uuid("cafe0001-0001-4001-8001-000000000019"),
                 RagExperimentalPresetCode.P8,
                 Map.of(
-                        "functionCallingEnabled", true
-                        // Keep toolsEnabled=true from P7 for deterministic fallback; FC takes precedence.
+                        "functionCallingEnabled", true,
+                        "toolsEnabled", true
                 ),
                 null,
                 false);
@@ -201,7 +203,8 @@ public final class ExperimentalPresetCanonicalCatalog {
                 uuid("cafe0001-0001-4001-8001-000000000020"),
                 RagExperimentalPresetCode.P9,
                 Map.of(
-                        "useAdvisor", true
+                        "useAdvisor", true,
+                        "functionCallingEnabled", false
                 ),
                 null,
                 false);
@@ -337,29 +340,55 @@ public final class ExperimentalPresetCanonicalCatalog {
         return require(code).requiresMultiTurn();
     }
 
-    /** P0/P1 assemble documentary evidence from {@code vector_store} chunks bound to an index snapshot (Lab gate). */
+    /** P1 assembles full corpus text from snapshot-bound {@code vector_store} rows (not dense retrieval). */
     public static boolean requiresSnapshotAssembledCorpusEvidence(RagExperimentalPresetCode code) {
-        return code == RagExperimentalPresetCode.P0 || code == RagExperimentalPresetCode.P1;
+        return code == RagExperimentalPresetCode.P1;
+    }
+
+    /** P0 runs without evaluation corpus or index binding. */
+    public static boolean canRunWithoutCorpus(RagExperimentalPresetCode code) {
+        return code == RagExperimentalPresetCode.P0;
+    }
+
+    /** True when every requested preset code can execute without an evaluation corpus (currently P0-only selections). */
+    public static boolean allCanRunWithoutCorpus(java.util.Collection<String> presetCodes) {
+        if (presetCodes == null || presetCodes.isEmpty()) {
+            return false;
+        }
+        for (String raw : presetCodes) {
+            java.util.Optional<RagExperimentalPresetCode> parsed = RagExperimentalPresetCode.tryParse(raw);
+            if (parsed.isEmpty() || !canRunWithoutCorpus(parsed.get())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
      * All experimental presets (P0–P14) are defined for project-scoped document-backed evaluation; the runtime
-     * still enforces evidence availability per workflow (single-turn Lab uses P0–P12 only).
+     * still enforces evidence availability per workflow (single-turn Lab uses P0–P10 only).
      */
     public static boolean corpusRequired(RagExperimentalPresetCode code) {
-        return code != null && code.ordinal() <= RagExperimentalPresetCode.P14.ordinal();
+        if (code == null) {
+            return false;
+        }
+        if (code == RagExperimentalPresetCode.P0) {
+            return false;
+        }
+        return code.ordinal() <= RagExperimentalPresetCode.P14.ordinal();
     }
 
     /**
      * READY {@code PROJECT_SHARED} documents with storage are required before corpus assembly / retrieval can succeed.
      */
     public static boolean requiresProjectDocuments(RagExperimentalPresetCode code) {
+        if (code == RagExperimentalPresetCode.P0) {
+            return false;
+        }
         return corpusRequired(code);
     }
 
-    /**
-     * True when execution reads snapshot-bound {@code vector_store} rows (assembled corpus for P0/P1 or materialized index for P2+).
-     */
+    /** True when execution reads snapshot-bound {@code vector_store} rows (P1 assembly or materialized index for P2+). */
     public static boolean requiresSnapshotForExecution(RagExperimentalPresetCode code) {
         if (code == null) {
             return false;
@@ -371,9 +400,14 @@ public final class ExperimentalPresetCanonicalCatalog {
         return mat != null && mat != RequiredMaterialization.NONE;
     }
 
-    /** Single-turn Lab benchmark harness ({@code RAG_PRESET_END_TO_END}) supports P0–P12 only. */
+    /** Single-turn Lab benchmark harness ({@code RAG_PRESET_END_TO_END}) supports P0–P10 only. */
     public static boolean singleTurnBenchmarkSelectable(RagExperimentalPresetCode code) {
-        return code != null && code.ordinal() <= RagExperimentalPresetCode.P12.ordinal();
+        return singleTurnComparableMetric(code);
+    }
+
+    /** Whether preset metrics may be compared on the single-turn Lab ladder (P0–P10). */
+    public static boolean singleTurnComparableMetric(RagExperimentalPresetCode code) {
+        return code != null && code.ordinal() <= RagExperimentalPresetCode.P10.ordinal();
     }
 
     /** Whether the preset requires a document-backed evaluation corpus. */
@@ -395,7 +429,7 @@ public final class ExperimentalPresetCanonicalCatalog {
         return needsVectorIndex(code);
     }
 
-    /** Presets that can execute without retrieval (P0/P1 direct / full-corpus prompt paths). */
+    /** Presets that can execute without dense retrieval (P0 direct LLM, P1 full-corpus prompt). */
     public static boolean canRunWithoutRetrieval(RagExperimentalPresetCode code) {
         if (code == null) {
             return false;

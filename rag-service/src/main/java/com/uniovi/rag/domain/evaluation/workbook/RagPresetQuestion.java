@@ -17,6 +17,11 @@ public record RagPresetQuestion(
         List<String> goldChunkIds,
         String expectedEvidenceCount,
         boolean unanswerable,
+        /** True when the workbook row included an {@code unanswerable} column value. */
+        boolean unanswerableDeclared,
+        boolean ambiguous,
+        /** True when the workbook row included an {@code ambiguous} column value. */
+        boolean ambiguousDeclared,
         boolean requiresMultiDocument,
         boolean requiresTemporalReasoning,
         boolean requiresAggregation,
