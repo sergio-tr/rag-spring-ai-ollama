@@ -6,6 +6,7 @@ import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -227,5 +228,130 @@ class BenchmarkMvpMetricsCalculatorTest {
         Map<String, Object> ret = (Map<String, Object>) mvp.get("retrieval");
         assertThat(ret.get("recallAt3")).isEqualTo(1.0);
         assertThat(ret.get("recallAt5")).isEqualTo(1.0);
+    }
+
+    @Test
+    void ragPresetRow_exportsRetrievalTelemetryFlatColumns() {
+        EvaluationResultEntity e = new EvaluationResultEntity();
+        e.setId(UUID.randomUUID());
+        e.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        e.setMetricsPayload(
+                Map.of(
+                        BenchmarkResultRowKeys.ITEM_OUTCOME,
+                        BenchmarkItemOutcome.EXECUTED.name(),
+                        BenchmarkResultRowKeys.PRESET_CODE,
+                        "P3",
+                        "retrievalDenseCandidateCount",
+                        1,
+                        "retrievalAfterFilterCount",
+                        1,
+                        "contextChunkCount",
+                        1,
+                        "promptContextCharCount",
+                        241,
+                        "sourceCount",
+                        1,
+                        "retrieved_chunk_ids",
+                        List.of("snap:doc:0")));
+
+        Map<String, String> csv = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(e, new EvaluationRunEntity());
+
+        assertThat(csv.get("retrievalDenseCandidateCount")).isEqualTo("1");
+        assertThat(csv.get("contextChunkCount")).isEqualTo("1");
+        assertThat(csv.get("promptContextCharCount")).isEqualTo("241");
+        assertThat(csv.get("sourceCount")).isEqualTo("1");
+        assertThat(csv.get("retrievedChunkIds")).isEqualTo("snap:doc:0");
+        assertThat(csv.get("effectiveContextPresent")).isEqualTo("true");
+    }
+
+    @Test
+    void ragRow_analysisSectionIncludesAnswerabilityAndFinalScore() {
+        EvaluationResultEntity e = new EvaluationResultEntity();
+        e.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        e.setExpectedAnswer("Paris");
+        e.setActualAnswer("Paris");
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+        mp.put(BenchmarkResultRowKeys.PRESET_CODE, "P3");
+        mp.put(DatasetMetricContract.KEY_ANSWERABILITY, Answerability.ANSWERABLE.name());
+        mp.put(DatasetMetricContract.KEY_QUERY_TYPE_EXPECTED, "GET_FIELD");
+        mp.put("sourceCount", 1);
+        e.setMetricsPayload(mp);
+
+        Map<String, Object> mvp = BenchmarkMvpMetricsCalculator.computeMvpMetrics(e, null);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> analysis = (Map<String, Object>) mvp.get("analysis");
+        assertThat(analysis.get("answerability")).isEqualTo("ANSWERABLE");
+        assertThat(analysis.get("finalScore")).isEqualTo(1.0);
+        assertThat(analysis.get("retrievalQualityStatus")).isEqualTo(RetrievalQualityStatus.NOT_AVAILABLE.name());
+
+        Map<String, String> csv = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(e, null);
+        assertThat(csv.get("answerability")).isEqualTo("ANSWERABLE");
+        assertThat(csv.get("finalScore")).isEqualTo("1.0");
+        assertThat(csv.get("retrievalQualityStatus")).isEqualTo(RetrievalQualityStatus.NOT_AVAILABLE.name());
+    }
+
+    @Test
+    void ragRow_withGoldLabels_exportsComputedRecallInRetrievalSection() {
+        EvaluationResultEntity e = new EvaluationResultEntity();
+        e.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        e.setExpectedAnswer("x");
+        e.setActualAnswer("y");
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+        mp.put(BenchmarkResultRowKeys.PRESET_CODE, "P4");
+        mp.put(DatasetMetricContract.KEY_GOLD_DOCUMENT_IDS, List.of("ACTA_1"));
+        mp.put("retrieved_chunk_ids", List.of("snap:ACTA_1:0"));
+        mp.put("sourceCount", 1);
+        e.setMetricsPayload(mp);
+
+        Map<String, Object> mvp = BenchmarkMvpMetricsCalculator.computeMvpMetrics(e, null);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> ret = (Map<String, Object>) mvp.get("retrieval");
+        assertThat(ret.get("retrievalQualityStatus")).isEqualTo(RetrievalQualityStatus.COMPUTED.name());
+        assertThat(ret.get("recallAt1")).isEqualTo(1.0);
+    }
+
+    @Test
+    void ragRow_backfillsQueryTypeExpectedFromEntityAtExportTime() {
+        EvaluationResultEntity e = new EvaluationResultEntity();
+        e.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        e.setQueryType("BOOLEAN_QUERY");
+        e.setExpectedAnswer("yes");
+        e.setActualAnswer("Yes.");
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+        mp.put(BenchmarkResultRowKeys.PRESET_CODE, "P3");
+        mp.put("analysisVersion", RagPresetAnalysisMetrics.ANALYSIS_VERSION);
+        mp.put("queryTypeMatch", RagPresetAnalysisMetrics.QueryTypeMatch.UNKNOWN.name());
+        e.setMetricsPayload(mp);
+
+        Map<String, Object> mvp = BenchmarkMvpMetricsCalculator.computeMvpMetrics(e, null);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> analysis = (Map<String, Object>) mvp.get("analysis");
+        assertThat(analysis.get("queryTypeExpected")).isEqualTo("BOOLEAN_QUERY");
+
+        Map<String, String> csv = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(e, null);
+        assertThat(csv.get("queryTypeExpected")).isEqualTo("BOOLEAN_QUERY");
+    }
+
+    @Test
+    void ragRow_exportsRoutingRouteKindFromExecutionRouteWhenMissing() {
+        EvaluationResultEntity e = new EvaluationResultEntity();
+        e.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        e.setQueryType("COUNT_DOCUMENTS");
+        e.setExpectedAnswer("1");
+        e.setActualAnswer("1");
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+        mp.put(BenchmarkResultRowKeys.PRESET_CODE, "P9");
+        mp.put(RagPresetToolMetrics.KEY_EXECUTION_ROUTE, "FUNCTION_CALLING_ROUTE");
+        mp.put(RagPresetToolMetrics.KEY_FUNCTION_CALL_ATTEMPTED, true);
+        e.setMetricsPayload(mp);
+
+        Map<String, String> csv = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(e, null);
+
+        assertThat(csv.get("executionRoute")).isEqualTo("FUNCTION_CALLING_ROUTE");
+        assertThat(csv.get("routingRouteKind")).isEqualTo("FUNCTION_CALLING_ROUTE");
     }
 }
