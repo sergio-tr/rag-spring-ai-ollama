@@ -59,10 +59,14 @@ public final class RagBenchmarkHumanReasons {
             case "EMBEDDING_DIMENSION_MISMATCH" ->
                     "The embedding model is not compatible with the vector index.";
             case "EXPERIMENTAL_PRESET_CODES_EMPTY" ->
-                    "Select at least one experimental preset (P0–P12) before starting the benchmark.";
+                    "Select at least one experimental preset (P0–P10) before starting the benchmark.";
             case "UNSUPPORTED_PRESET" -> "The selected experimental preset is not supported.";
             case "PRESET_NOT_LAB_SELECTABLE", "PRESET_NOT_SINGLE_TURN_BENCHMARK" ->
                     "This preset is not available for single-turn Lab benchmarks (use Chat for multi-turn presets).";
+            case "PRESET_ADAPTIVE_ROUTING_BENCHMARK_NOT_SUPPORTED" ->
+                    "Adaptive routing preset (P11) is not available for single-turn Lab benchmarks.";
+            case "PRESET_JUDGE_ENHANCED_BENCHMARK_NOT_SUPPORTED" ->
+                    "Judge-enhanced preset (P12) is not available for single-turn Lab benchmarks.";
             case "PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED" ->
                     "Clarification preset (P13) is not supported in the Lab single-turn harness.";
             case "PRESET_CONVERSATIONAL_MEMORY_BENCHMARK_NOT_SUPPORTED" ->

@@ -2,6 +2,7 @@ package com.uniovi.rag.infrastructure.persistence.evaluation;
 
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpMetricsCalculator;
 import com.uniovi.rag.application.service.evaluation.metrics.LabBenchmarkExportLabels;
+import com.uniovi.rag.application.service.evaluation.metrics.RagPresetRetrievalExportSupport;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCorpusEntity;
@@ -97,12 +98,13 @@ public final class LabCampaignHumanExportBuilder {
         row.put("question", nullToEmpty(item.getQuestionText()));
         row.put("expectedAnswer", nullToEmpty(item.getExpectedAnswer()));
         row.put("answer", nullToEmpty(item.getActualAnswer()));
-        row.put("sources", sourcesFromMetrics(mp, flat));
+        row.put("sources", RagPresetRetrievalExportSupport.enrichSourceEntries(sourcesFromMetrics(mp, flat), mp));
         row.put("status", outcome);
         row.put("failureReason", failureReason);
         row.put("metrics", humanMetricsSummary(mvp));
         row.put("evaluatedAt", item.getEvaluatedAt());
         row.put("mvp", mvp);
+        RagPresetRetrievalExportSupport.putJsonExportFields(row, mp);
         return row;
     }
 
@@ -122,13 +124,16 @@ public final class LabCampaignHumanExportBuilder {
         out.put("knowledgeBaseName", knowledgeBaseName(run));
         out.put("datasetId", datasetId(run));
         out.put("datasetName", datasetName(run));
-        String axis = str(comparisonRow.get("axisValue"));
-        if (!axis.isBlank()) {
-            out.put(
-                    "comparisonLabel",
-                    LabBenchmarkExportLabels.displayGroupValue(
-                            comparisonAxis.equals(COMPARISON_AXIS_PRESET) ? "presetCode" : "modelId",
-                            axis));
+        String existingLabel = str(comparisonRow.get("comparisonLabel"));
+        if (existingLabel.isBlank()) {
+            String axis = str(comparisonRow.get("axisValue"));
+            if (!axis.isBlank()) {
+                out.put(
+                        "comparisonLabel",
+                        LabBenchmarkExportLabels.displayGroupValue(
+                                comparisonAxis.equals(COMPARISON_AXIS_PRESET) ? "presetCode" : "modelId",
+                                axis));
+            }
         }
         return out;
     }

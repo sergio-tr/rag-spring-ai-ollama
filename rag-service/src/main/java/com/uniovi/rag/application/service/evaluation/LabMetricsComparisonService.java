@@ -49,7 +49,10 @@ public class LabMetricsComparisonService {
                     "meanRecallAt1",
                     "meanRecallAt3",
                     "meanRecallAt5",
-                    "meanMrr");
+                    "meanMrr",
+                    "scoreGlobal",
+                    "scoreAnswerable",
+                    "finalScoreSampleCount");
 
     private final EvaluationRunRepository evaluationRunRepository;
     private final EvaluationResultRepository evaluationResultRepository;
@@ -302,6 +305,11 @@ public class LabMetricsComparisonService {
         return v instanceof Number n ? n.doubleValue() : null;
     }
 
+    private static Long readLong(Map<String, Object> m, String key) {
+        Object v = m.get(key);
+        return v instanceof Number n ? n.longValue() : null;
+    }
+
     private static String metricStr(EvaluationResultEntity item, String key) {
         if (item.getMetricsPayload() == null || !item.getMetricsPayload().containsKey(key)) {
             return "";
@@ -352,7 +360,10 @@ public class LabMetricsComparisonService {
             Double meanRecallAt1,
             Double meanRecallAt3,
             Double meanRecallAt5,
-            Double meanMrr) {
+            Double meanMrr,
+            Double scoreGlobal,
+            Double scoreAnswerable,
+            Long finalScoreSampleCount) {
 
         static ComparisonRow fromBucket(
                 String dimensionType,
@@ -384,7 +395,10 @@ public class LabMetricsComparisonService {
                     readDouble(retrieval, "meanRecallAt1"),
                     readDouble(retrieval, "meanRecallAt3"),
                     readDouble(retrieval, "meanRecallAt5"),
-                    readDouble(retrieval, "meanMrr"));
+                    readDouble(retrieval, "meanMrr"),
+                    readDouble(onExecuted, "scoreGlobal"),
+                    readDouble(onExecuted, "scoreAnswerable"),
+                    readLong(onExecuted, "finalScoreSampleCount"));
         }
 
         Map<String, Object> toMap() {
@@ -407,6 +421,9 @@ public class LabMetricsComparisonService {
             m.put("meanRecallAt3", meanRecallAt3);
             m.put("meanRecallAt5", meanRecallAt5);
             m.put("meanMrr", meanMrr);
+            m.put("scoreGlobal", scoreGlobal);
+            m.put("scoreAnswerable", scoreAnswerable);
+            m.put("finalScoreSampleCount", finalScoreSampleCount);
             return m;
         }
     }

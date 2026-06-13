@@ -83,10 +83,13 @@ public class LabCampaignController {
     @GetMapping(value = "/campaigns/{campaignId}/export/items.csv", produces = "text/csv")
     public ResponseEntity<String> exportItemsCsv(
             @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID campaignId) {
-        String csv = labCampaignService.exportCampaignItemsCsv(requireUserId(principal), campaignId);
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"campaign-" + campaignId + "-items.csv\"")
-                .body(csv);
+        return exportCampaignItemsCsvResponse(requireUserId(principal), campaignId);
+    }
+
+    @GetMapping(value = "/campaigns/{campaignId}/export/mvp/items.csv", produces = "text/csv;charset=UTF-8")
+    public ResponseEntity<String> exportMvpItemsCsv(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID campaignId) {
+        return exportCampaignItemsCsvResponse(requireUserId(principal), campaignId);
     }
 
     @GetMapping(value = "/campaigns/{campaignId}/export/summary.csv", produces = "text/csv")
@@ -116,6 +119,13 @@ public class LabCampaignController {
             return BenchmarkKind.RAG_PRESET_END_TO_END;
         }
         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown campaignKind: " + k);
+    }
+
+    private ResponseEntity<String> exportCampaignItemsCsvResponse(UUID userId, UUID campaignId) {
+        String csv = labCampaignService.exportCampaignItemsCsv(userId, campaignId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"campaign-" + campaignId + "-items.csv\"")
+                .body(csv);
     }
 
     private static UUID requireUserId(RagPrincipal principal) {
