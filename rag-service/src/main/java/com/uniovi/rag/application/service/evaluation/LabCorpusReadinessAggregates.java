@@ -27,6 +27,7 @@ public final class LabCorpusReadinessAggregates {
         snapshot.put("corpusId", corpusId.toString());
         snapshot.put("documentCount", readiness.documentCount());
         snapshot.put("readyCount", readiness.readyCount());
+        snapshot.put("storageReadyCount", readiness.storageReadyCount());
         snapshot.put("processingCount", readiness.processingCount());
         snapshot.put("failedCount", readiness.failedCount());
         putIfNotNull(snapshot, "primaryBlocker", readiness.primaryBlocker());

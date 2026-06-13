@@ -10,6 +10,8 @@ public record EvaluationCorpusReadinessDto(
         UUID indexProjectId,
         int documentCount,
         int readyCount,
+        /** Documents with READY status and on-disk source binary present. */
+        int storageReadyCount,
         int processingCount,
         int failedCount,
         /** When set, benchmark preflight should block until resolved. */

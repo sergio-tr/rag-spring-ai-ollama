@@ -71,6 +71,7 @@ public class EvaluationCorpusApplicationService {
     private final ProjectAccessService projectAccessService;
     private final KnowledgeIngestionService knowledgeIngestionService;
     private final BinaryStoragePort binaryStoragePort;
+    private final EvaluationCorpusStorageIntegrityService storageIntegrityService;
 
     public EvaluationCorpusApplicationService(
             EvaluationCorpusRepository evaluationCorpusRepository,
@@ -80,7 +81,8 @@ public class EvaluationCorpusApplicationService {
             UserRepository userRepository,
             ProjectAccessService projectAccessService,
             KnowledgeIngestionService knowledgeIngestionService,
-            BinaryStoragePort binaryStoragePort) {
+            BinaryStoragePort binaryStoragePort,
+            EvaluationCorpusStorageIntegrityService storageIntegrityService) {
         this.evaluationCorpusRepository = evaluationCorpusRepository;
         this.evaluationCorpusDocumentRepository = evaluationCorpusDocumentRepository;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
@@ -89,6 +91,7 @@ public class EvaluationCorpusApplicationService {
         this.projectAccessService = projectAccessService;
         this.knowledgeIngestionService = knowledgeIngestionService;
         this.binaryStoragePort = binaryStoragePort;
+        this.storageIntegrityService = storageIntegrityService;
     }
 
     @Transactional
@@ -169,6 +172,10 @@ public class EvaluationCorpusApplicationService {
         List<KnowledgeDocumentEntity> docs = context.documents();
         if (docs == null || docs.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, KB_EMPTY);
+        }
+        if (storageIntegrityService.hasReadyDocumentWithMissingBinary(docs)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, LabCorpusReasonCodes.DOCUMENT_BINARY_MISSING);
         }
         if (!context.readyDocumentIds().isEmpty()) {
             return context;
@@ -531,7 +538,7 @@ public class EvaluationCorpusApplicationService {
                 failed++;
             }
         }
-        List<ProjectDocumentDto> documentDtos = docs.stream().map(EvaluationCorpusApplicationService::toDocumentDto).toList();
+        List<ProjectDocumentDto> documentDtos = docs.stream().map(this::toDocumentDto).toList();
         return new EvaluationCorpusSummaryDto(
                 corpus.getId(),
                 corpus.getName(),
@@ -544,7 +551,7 @@ public class EvaluationCorpusApplicationService {
                 corpus.getUpdatedAt());
     }
 
-    private static ProjectDocumentDto toDocumentDto(KnowledgeDocumentEntity e) {
+    private ProjectDocumentDto toDocumentDto(KnowledgeDocumentEntity e) {
         String humanError =
                 e.getStatus() == ProjectDocumentStatus.ERROR
                         ? DocumentIngestionHumanErrors.humanize(e.getErrorMessage())
@@ -561,7 +568,7 @@ public class EvaluationCorpusApplicationService {
                 e.getConversation() != null ? e.getConversation().getId() : null,
                 e.getCurrentIndexSnapshot() != null ? e.getCurrentIndexSnapshot().getId() : null,
                 e.getCurrentIndexSnapshot() != null ? e.getCurrentIndexSnapshot().getSignatureHash() : null,
-                e.getStorageUri() != null && !e.getStorageUri().isBlank());
+                storageIntegrityService.isBinaryPresent(e));
     }
 
     private static String truncate(String value, int max) {

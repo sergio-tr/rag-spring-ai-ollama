@@ -22,6 +22,7 @@ class LabCorpusReadinessAggregatesTest {
                         UUID.randomUUID(),
                         5,
                         5,
+                        5,
                         0,
                         0,
                         null,
@@ -41,7 +42,8 @@ class LabCorpusReadinessAggregatesTest {
         assertThat(snapshot)
                 .containsEntry("corpusId", CORPUS_ID.toString())
                 .containsEntry("documentCount", 5)
-                .containsEntry("readyCount", 5);
+                .containsEntry("readyCount", 5)
+                .containsEntry("storageReadyCount", 5);
         assertThatCode(() -> LabCorpusReadinessAggregates.assertCopyOfSafe(snapshot)).doesNotThrowAnyException();
     }
 
@@ -68,6 +70,7 @@ class LabCorpusReadinessAggregatesTest {
                 new EvaluationCorpusReadinessDto(
                         CORPUS_ID,
                         UUID.randomUUID(),
+                        3,
                         3,
                         3,
                         0,

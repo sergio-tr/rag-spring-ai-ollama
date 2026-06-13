@@ -105,6 +105,7 @@ class LabEvaluationCorpusControllerWebMvcTest {
                                 0,
                                 0,
                                 0,
+                                0,
                                 "NO_DOCUMENTS",
                                 "The knowledge base has no documents to retrieve from.",
                                 null,
@@ -132,6 +133,7 @@ class LabEvaluationCorpusControllerWebMvcTest {
                         new EvaluationCorpusReadinessDto(
                                 corpusId,
                                 UUID.randomUUID(),
+                                1,
                                 1,
                                 1,
                                 0,
