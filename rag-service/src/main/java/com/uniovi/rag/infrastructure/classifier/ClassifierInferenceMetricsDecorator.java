@@ -48,6 +48,13 @@ public final class ClassifierInferenceMetricsDecorator implements QueryClassifie
         return raw;
     }
 
+    @Override
+    public ClassifierInferenceResponse classifyInference(String query, String modelId) {
+        ClassifierInferenceResponse response = delegate.classifyInference(query, modelId);
+        recordCall(response != null && response.queryType() != null && !response.queryType().isBlank());
+        return response;
+    }
+
     private void recordCall(boolean success) {
         String status = success ? "success" : "null_result";
         meterRegistry.counter(METRIC_CALLS, "status", status).increment();

@@ -6,6 +6,7 @@ public enum ClassifierStatus {
     TIMEOUT,
     INVALID_REQUEST,
     INVALID_OUTPUT,
+    LOW_CONFIDENCE,
     OK
 }
 

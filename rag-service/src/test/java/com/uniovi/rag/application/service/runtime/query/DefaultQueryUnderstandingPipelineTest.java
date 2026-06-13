@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.query;
 
+import com.uniovi.rag.configuration.RagClassifierProperties;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
@@ -21,6 +22,7 @@ import com.uniovi.rag.domain.runtime.query.NormalizedQuery;
 import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
+import com.uniovi.rag.infrastructure.classifier.ClassifierInferenceResponse;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
@@ -162,7 +164,8 @@ class DefaultQueryUnderstandingPipelineTest {
         RagConfig rag = rag(true, true);
 
         QueryClassifier classifier = mock(QueryClassifier.class);
-        when(classifier.classify(anyString(), eq("cls"))).thenReturn(QueryType.FILTER_AND_LIST);
+        when(classifier.classifyInference(anyString(), eq("cls")))
+                .thenReturn(new ClassifierInferenceResponse("FILTER_AND_LIST", 0.9, null, List.of()));
 
         QueryAnalyser analyser = mock(QueryAnalyser.class);
         when(analyser.analyse(anyString())).thenReturn(new JSONObject("{\"date\":[],\"place\":[],\"attendees\":[],\"topics\":[],\"mentionedEntities\":[],\"answerType\":\"unknown\",\"comparisonType\":\"none\",\"temporalContext\":\"none\"}"));
@@ -205,7 +208,7 @@ class DefaultQueryUnderstandingPipelineTest {
         assertTrue(plan.pipelineNotes().get(0).startsWith("qu_normalize "));
         assertTrue(plan.pipelineNotes().get(1).startsWith("qu_classify "));
         assertTrue(plan.pipelineNotes().get(1).contains("classifierModelId=cls"));
-        verify(classifier).classify("list all items", "cls");
+        verify(classifier).classifyInference("list all items", "cls");
         assertTrue(plan.pipelineNotes().get(2).startsWith("qu_extract_entities "));
         assertTrue(plan.pipelineNotes().get(3).startsWith("qu_rewrite "));
         assertTrue(plan.pipelineNotes().get(4).startsWith("qu_resolve_intent "));
@@ -478,7 +481,8 @@ class DefaultQueryUnderstandingPipelineTest {
     private static DefaultQueryClassifierAdapter classifierAdapter(QueryClassifier classifier) {
         ObjectProvider<RuntimeObservability> obs = mock(ObjectProvider.class);
         ObjectProvider<Tracer> tracer = mock(ObjectProvider.class);
-        return new DefaultQueryClassifierAdapter(classifier, obs, tracer);
+        RagClassifierProperties props = new RagClassifierProperties();
+        return new DefaultQueryClassifierAdapter(classifier, props, obs, tracer);
     }
 }
 

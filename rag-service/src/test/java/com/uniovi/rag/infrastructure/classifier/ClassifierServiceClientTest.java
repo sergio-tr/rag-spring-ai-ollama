@@ -112,6 +112,24 @@ class ClassifierServiceClientTest {
     }
 
     @Test
+    void classifyInference_returnsConfidenceAndLabelSetHash_whenPresent() {
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        server.expect(requestTo(base + "/classify"))
+                .andRespond(
+                        withSuccess(
+                                "{\"queryType\":\"COUNT_DOCUMENTS\",\"confidence\":0.91,\"labelSetHash\":\"hash1\",\"topPredictions\":[{\"queryType\":\"COUNT_DOCUMENTS\",\"confidence\":0.91}]}",
+                                MediaType.APPLICATION_JSON));
+
+        ClassifierInferenceResponse response = classifier.classifyInference("How many?", "default");
+
+        server.verify();
+        assertEquals("COUNT_DOCUMENTS", response.queryType());
+        assertEquals(0.91, response.confidence());
+        assertEquals("hash1", response.labelSetHash());
+        assertEquals(1, response.topPredictions().size());
+    }
+
+    @Test
     void classifyWithText_returnsString_whenServiceReturns200() {
         String base = ClassifierClientTestSupport.defaultBaseUrl();
         server.expect(requestTo(base + "/classify"))

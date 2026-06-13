@@ -1,6 +1,7 @@
 package com.uniovi.rag.infrastructure.observability;
 
 import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.infrastructure.classifier.ClassifierInferenceResponse;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 
 import java.util.Map;
@@ -95,6 +96,23 @@ public final class TracedQueryClassifier implements QueryClassifier {
                         ),
                         OUTPUT_QUERY_TYPE,
                         () -> delegate.classifyWithText(query, modelId)));
+    }
+
+    @Override
+    public ClassifierInferenceResponse classifyInference(String query, String modelId) {
+        if (observability == null) {
+            return delegate.classifyInference(query, modelId);
+        }
+        observability.recordCounter(METRIC_CALLS, ATTR_OPERATION, OP_CLASSIFY);
+        return observability.recordTimer("rag.classifier.classifyInference", () ->
+                observability.runWithSpan(
+                        SPAN_QUERY_CLASSIFY,
+                        Map.of(
+                                ATTR_QUERY_LENGTH, TelemetryRedaction.queryLength(query),
+                                "classifierModelId", truncate(modelId != null ? modelId : "")
+                        ),
+                        OUTPUT_QUERY_TYPE,
+                        () -> delegate.classifyInference(query, modelId)));
     }
 
     private static String truncate(String s) {

@@ -1,10 +1,12 @@
 package com.uniovi.rag.application.service.runtime.query;
 
+import com.uniovi.rag.configuration.RagClassifierProperties;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.infrastructure.classifier.ClassifierCallException;
+import com.uniovi.rag.infrastructure.classifier.ClassifierInferenceResponse;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import com.uniovi.rag.infrastructure.observability.TelemetryRedaction;
@@ -28,14 +30,17 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
     public static final String DEFAULT_MODEL_ID = "default";
 
     private final QueryClassifier classifier;
+    private final RagClassifierProperties classifierProperties;
     private final ObjectProvider<RuntimeObservability> runtimeObservability;
     private final Tracer tracer;
 
     public DefaultQueryClassifierAdapter(
             QueryClassifier classifier,
+            RagClassifierProperties classifierProperties,
             ObjectProvider<RuntimeObservability> runtimeObservability,
             ObjectProvider<Tracer> tracer) {
         this.classifier = classifier;
+        this.classifierProperties = classifierProperties;
         this.runtimeObservability = runtimeObservability;
         this.tracer = tracer.getIfAvailable();
     }
@@ -51,23 +56,37 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
             return disabled;
         }
         try {
-            QueryType out = classifier.classify(normalizedText, modelIdUsed);
-            out = ClassifierOverrides.apply(normalizedText, out);
-            if (out == null) {
-                log.debug(
-                        "query_classifier_recoverable correlationId={} status=INVALID_OUTPUT modelId={}",
-                        ctx.correlationId(),
-                        modelIdUsed);
-                RuntimeObservability obs = runtimeObservability.getIfAvailable();
-                if (obs != null) {
-                    obs.classifierInvalidOutput();
-                }
-                ClassifierOutcome invalid =
-                        new ClassifierOutcome(UNCLASSIFIED, Optional.empty(), ClassifierStatus.INVALID_OUTPUT, modelIdUsed, "INVALID_OUTPUT");
-                tagClassifierSpan(invalid);
-                return invalid;
+            ClassifierInferenceResponse inference = classifier.classifyInference(normalizedText, modelIdUsed);
+            if (inference == null || inference.queryType() == null || inference.queryType().isBlank()) {
+                return invalidOutput(ctx, modelIdUsed, "INVALID_OUTPUT");
             }
-            ClassifierOutcome ok = new ClassifierOutcome(out.name(), Optional.of(out), ClassifierStatus.OK, modelIdUsed, "OK");
+            QueryType parsed = parseQueryType(inference.queryType());
+            if (parsed == null) {
+                return invalidOutput(ctx, modelIdUsed, "INVALID_OUTPUT:unknown_label");
+            }
+            if (isLowConfidence(inference.confidence())) {
+                ClassifierOutcome low =
+                        new ClassifierOutcome(
+                                UNCLASSIFIED,
+                                Optional.empty(),
+                                ClassifierStatus.LOW_CONFIDENCE,
+                                modelIdUsed,
+                                "LOW_CONFIDENCE",
+                                Optional.ofNullable(inference.confidence()),
+                                optionalHash(inference));
+                tagClassifierSpan(low);
+                return low;
+            }
+            QueryType out = ClassifierOverrides.apply(normalizedText, parsed);
+            ClassifierOutcome ok =
+                    new ClassifierOutcome(
+                            out.name(),
+                            Optional.of(out),
+                            ClassifierStatus.OK,
+                            modelIdUsed,
+                            "OK",
+                            Optional.ofNullable(inference.confidence()),
+                            optionalHash(inference));
             tagClassifierSpan(ok);
             return ok;
         } catch (ClassifierCallException e) {
@@ -88,6 +107,41 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
         }
     }
 
+    private ClassifierOutcome invalidOutput(ExecutionContext ctx, String modelIdUsed, String reason) {
+        log.debug(
+                "query_classifier_recoverable correlationId={} status=INVALID_OUTPUT modelId={}",
+                ctx.correlationId(),
+                modelIdUsed);
+        RuntimeObservability obs = runtimeObservability.getIfAvailable();
+        if (obs != null) {
+            obs.classifierInvalidOutput();
+        }
+        ClassifierOutcome invalid =
+                new ClassifierOutcome(UNCLASSIFIED, Optional.empty(), ClassifierStatus.INVALID_OUTPUT, modelIdUsed, reason);
+        tagClassifierSpan(invalid);
+        return invalid;
+    }
+
+    private boolean isLowConfidence(Double confidence) {
+        return confidence != null && confidence < classifierProperties.getConfidenceThreshold();
+    }
+
+    private static QueryType parseQueryType(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return QueryType.valueOf(raw.trim());
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    private static Optional<String> optionalHash(ClassifierInferenceResponse inference) {
+        String hash = inference.labelSetHash();
+        return hash == null || hash.isBlank() ? Optional.empty() : Optional.of(hash.trim());
+    }
+
     private void tagClassifierSpan(ClassifierOutcome outcome) {
         if (tracer == null || outcome == null) {
             return;
@@ -105,6 +159,7 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
         if (outcome.classifierQueryType().isPresent()) {
             tags.put("predictedQueryType", outcome.classifierQueryType().get().name());
         }
+        outcome.classifierConfidence().ifPresent(c -> tags.put("classifierConfidence", String.valueOf(c)));
         TelemetryRedaction.safeAttributes(tags).forEach(span::tag);
     }
 
@@ -143,4 +198,3 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
         return m == null ? e.getClass().getSimpleName() : m;
     }
 }
-

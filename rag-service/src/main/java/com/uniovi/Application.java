@@ -1,6 +1,7 @@
 package com.uniovi;
 
 import com.uniovi.rag.configuration.RagAccountProperties;
+import com.uniovi.rag.configuration.RagClassifierProperties;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
@@ -36,6 +37,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableJpaRepositories(basePackages = "com.uniovi.rag.infrastructure.persistence")
 @EnableConfigurationProperties({
     RagAccountProperties.class,
+    RagClassifierProperties.class,
     RagApiPathProperties.class,
     RagReasoningProperties.class,
     RagRankerProperties.class,

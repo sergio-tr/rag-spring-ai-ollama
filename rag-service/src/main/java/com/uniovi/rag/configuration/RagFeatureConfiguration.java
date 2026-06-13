@@ -36,6 +36,8 @@ public class RagFeatureConfiguration {
     private boolean adaptiveRoutingEnabled;
     /** P14 judge core (default off). */
     private boolean judgeEnabled;
+    /** Orchestrator deterministic tool routing before retrieval workflow (default off). */
+    private boolean deterministicToolRoutingEnabled;
 
     public boolean isExpansionEnabled() { return expansionEnabled; }
     public void setExpansionEnabled(boolean expansionEnabled) { this.expansionEnabled = expansionEnabled; }
@@ -99,6 +101,14 @@ public class RagFeatureConfiguration {
         this.judgeEnabled = judgeEnabled;
     }
 
+    public boolean isDeterministicToolRoutingEnabled() {
+        return deterministicToolRoutingEnabled;
+    }
+
+    public void setDeterministicToolRoutingEnabled(boolean deterministicToolRoutingEnabled) {
+        this.deterministicToolRoutingEnabled = deterministicToolRoutingEnabled;
+    }
+
     public Map<String, Boolean> getConfiguration() {
         Map<String, Boolean> config = new HashMap<>();
         config.put("expansion", expansionEnabled);
@@ -115,6 +125,7 @@ public class RagFeatureConfiguration {
         config.put("memory", memoryEnabled);
         config.put("adaptive-routing", adaptiveRoutingEnabled);
         config.put("judge", judgeEnabled);
+        config.put("deterministic-tool-routing", deterministicToolRoutingEnabled);
         return config;
     }
 }
