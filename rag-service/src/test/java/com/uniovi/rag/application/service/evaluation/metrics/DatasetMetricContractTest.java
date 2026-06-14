@@ -39,7 +39,7 @@ class DatasetMetricContractTest {
 
         assertThat(metrics.get(DatasetMetricContract.KEY_ANSWERABILITY)).isEqualTo(Answerability.UNKNOWN.name());
         assertThat(metrics.get(DatasetMetricContract.KEY_ANSWERABILITY_SOURCE))
-                .isEqualTo(AnswerabilitySource.UNKNOWN.name());
+                .isEqualTo(AnswerabilitySource.DEFAULT_UNKNOWN.name());
         assertThat(metrics.get(DatasetMetricContract.KEY_QUERY_TYPE_EXPECTED)).isEqualTo("BOOLEAN_QUERY");
         assertThat(metrics.get(DatasetMetricContract.KEY_GOLD_DOCUMENT_IDS)).isEqualTo(List.of("ACTA_1"));
         assertThat(metrics.get(DatasetMetricContract.KEY_GOLD_CHUNK_IDS)).isEqualTo(List.of("CHUNK_1"));
@@ -125,6 +125,65 @@ class DatasetMetricContractTest {
         Map<String, Object> metrics = new LinkedHashMap<>(Map.of("query_type", "BOOLEAN_QUERY"));
         DatasetMetricContract.ensureQueryTypeExpected(metrics);
         assertThat(metrics.get(DatasetMetricContract.KEY_QUERY_TYPE_EXPECTED)).isEqualTo("BOOLEAN_QUERY");
+    }
+
+    @Test
+    void enrichFromQuestion_infersAnswerableFromExpectedAnswer() {
+        RagPresetQuestion q =
+                new RagPresetQuestion(
+                        "q4",
+                        "question",
+                        "Asistieron 12 personas.",
+                        Optional.of(QueryType.COUNT_DOCUMENTS),
+                        Optional.empty(),
+                        "",
+                        List.of(),
+                        List.of(),
+                        "",
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        "");
+        Map<String, Object> metrics = new LinkedHashMap<>();
+        DatasetMetricContract.enrichFromQuestion(metrics, q, "abc123");
+        assertThat(metrics.get(DatasetMetricContract.KEY_ANSWERABILITY)).isEqualTo(Answerability.ANSWERABLE.name());
+        assertThat(metrics.get(DatasetMetricContract.KEY_ANSWERABILITY_SOURCE))
+                .isEqualTo(AnswerabilitySource.INFERRED_FROM_EXPECTED_ANSWER.name());
+        assertThat(metrics.get(DatasetMetricContract.KEY_ANSWERABILITY_RULE_ID)).isEqualTo(AnswerabilityLabelRules.POS_FACTUAL);
+        assertThat(metrics.get(DatasetMetricContract.KEY_LABELLED_DATASET_SHA256)).isEqualTo("abc123");
+    }
+
+    @Test
+    void enrichFromQuestion_setsVersionMetadata() {
+        RagPresetQuestion q =
+                new RagPresetQuestion(
+                        "q5",
+                        "question",
+                        "No hay actas.",
+                        Optional.empty(),
+                        Optional.empty(),
+                        "",
+                        List.of(),
+                        List.of(),
+                        "",
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        "");
+        Map<String, Object> metrics = new LinkedHashMap<>();
+        DatasetMetricContract.enrichFromQuestion(metrics, q);
+        assertThat(metrics.get(DatasetMetricContract.KEY_ANSWERABILITY_RULES_VERSION))
+                .isEqualTo(AnswerabilityLabelingService.rulesVersion());
     }
 
     @Test

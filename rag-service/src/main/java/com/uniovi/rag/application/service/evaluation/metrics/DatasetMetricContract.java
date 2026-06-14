@@ -12,6 +12,11 @@ public final class DatasetMetricContract {
 
     public static final String KEY_ANSWERABILITY = "answerability";
     public static final String KEY_ANSWERABILITY_SOURCE = "answerabilitySource";
+    public static final String KEY_ANSWERABILITY_RULE_ID = "answerabilityRuleId";
+    public static final String KEY_ANSWERABILITY_CONFIDENCE = "answerabilityConfidence";
+    public static final String KEY_ANSWERABILITY_RULES_VERSION = "answerabilityRulesVersion";
+    public static final String KEY_LABELLED_DATASET_SHA256 = "labelledDatasetSha256";
+    public static final String KEY_REVIEW_REQUIRED = "reviewRequired";
     public static final String KEY_QUERY_TYPE_EXPECTED = "queryTypeExpected";
     public static final String KEY_GOLD_DOCUMENT_IDS = "goldDocumentIds";
     public static final String KEY_GOLD_CHUNK_IDS = "goldChunkIds";
@@ -24,21 +29,16 @@ public final class DatasetMetricContract {
     private DatasetMetricContract() {}
 
     public static void enrichFromQuestion(Map<String, Object> metrics, RagPresetQuestion question) {
+        enrichFromQuestion(metrics, question, null);
+    }
+
+    public static void enrichFromQuestion(
+            Map<String, Object> metrics, RagPresetQuestion question, String labelledDatasetSha256) {
         if (metrics == null || question == null) {
             return;
         }
-        Answerability answerability =
-                Answerability.fromDataset(
-                        question.unanswerable(),
-                        question.unanswerableDeclared(),
-                        question.ambiguous(),
-                        question.ambiguousDeclared());
-        AnswerabilitySource source =
-                question.unanswerableDeclared() || question.ambiguousDeclared()
-                        ? AnswerabilitySource.DATASET_COLUMN
-                        : AnswerabilitySource.UNKNOWN;
-        metrics.put(KEY_ANSWERABILITY, answerability.name());
-        metrics.put(KEY_ANSWERABILITY_SOURCE, source.name());
+        AnswerabilityLabelResult label = AnswerabilityLabelingService.label(question);
+        applyLabelResult(metrics, label, labelledDatasetSha256);
         metrics.put(KEY_UNANSWERABLE_DECLARED, question.unanswerableDeclared());
         metrics.put(KEY_AMBIGUOUS_DECLARED, question.ambiguousDeclared());
         metrics.put(
@@ -62,6 +62,23 @@ public final class DatasetMetricContract {
         if (!goldChunks.isEmpty()) {
             metrics.put(KEY_GOLD_CHUNK_IDS, goldChunks);
             metrics.put("gold_chunk_ids", goldChunks);
+        }
+    }
+
+    static void applyLabelResult(
+            Map<String, Object> metrics, AnswerabilityLabelResult label, String labelledDatasetSha256) {
+        metrics.put(KEY_ANSWERABILITY, label.label().name());
+        metrics.put(KEY_ANSWERABILITY_SOURCE, label.source().name());
+        if (label.ruleId() != null && !label.ruleId().isBlank()) {
+            metrics.put(KEY_ANSWERABILITY_RULE_ID, label.ruleId());
+        }
+        if (label.confidence() != null) {
+            metrics.put(KEY_ANSWERABILITY_CONFIDENCE, label.confidence().name());
+        }
+        metrics.put(KEY_ANSWERABILITY_RULES_VERSION, AnswerabilityLabelingService.rulesVersion());
+        metrics.put(KEY_REVIEW_REQUIRED, label.reviewRequired());
+        if (labelledDatasetSha256 != null && !labelledDatasetSha256.isBlank()) {
+            metrics.put(KEY_LABELLED_DATASET_SHA256, labelledDatasetSha256);
         }
     }
 
@@ -105,6 +122,11 @@ public final class DatasetMetricContract {
                 List.of(
                         KEY_ANSWERABILITY,
                         KEY_ANSWERABILITY_SOURCE,
+                        KEY_ANSWERABILITY_RULE_ID,
+                        KEY_ANSWERABILITY_CONFIDENCE,
+                        KEY_ANSWERABILITY_RULES_VERSION,
+                        KEY_LABELLED_DATASET_SHA256,
+                        KEY_REVIEW_REQUIRED,
                         KEY_QUERY_TYPE_EXPECTED,
                         KEY_GOLD_DOCUMENT_IDS,
                         KEY_GOLD_CHUNK_IDS,

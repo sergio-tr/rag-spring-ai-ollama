@@ -4,5 +4,6 @@ package com.uniovi.rag.application.service.evaluation.metrics;
 public enum QueryTypeSource {
     CLASSIFIER,
     DATASET_EXPECTED,
+    ORACLE,
     UNKNOWN
 }

@@ -5,7 +5,8 @@ public enum Answerability {
     ANSWERABLE,
     UNANSWERABLE,
     AMBIGUOUS,
-    UNKNOWN;
+    UNKNOWN,
+    NEEDS_REVIEW;
 
     public static Answerability fromDataset(
             Boolean unanswerable,

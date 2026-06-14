@@ -58,8 +58,16 @@ public final class RagPresetAnalysisMetrics {
         out.put(DatasetMetricContract.KEY_ANSWERABILITY, answerability.name());
         copyIfPresent(out, mp, DatasetMetricContract.KEY_ANSWERABILITY_SOURCE);
         if (!mp.containsKey(DatasetMetricContract.KEY_ANSWERABILITY_SOURCE)) {
-            out.put(DatasetMetricContract.KEY_ANSWERABILITY_SOURCE, AnswerabilitySource.UNKNOWN.name());
+            out.put(DatasetMetricContract.KEY_ANSWERABILITY_SOURCE, AnswerabilitySource.DEFAULT_UNKNOWN.name());
         }
+        copyIfPresent(out, mp, DatasetMetricContract.KEY_ANSWERABILITY_RULE_ID);
+        copyIfPresent(out, mp, DatasetMetricContract.KEY_ANSWERABILITY_CONFIDENCE);
+        copyIfPresent(out, mp, DatasetMetricContract.KEY_ANSWERABILITY_RULES_VERSION);
+        copyIfPresent(out, mp, DatasetMetricContract.KEY_LABELLED_DATASET_SHA256);
+        copyIfPresent(out, mp, DatasetMetricContract.KEY_REVIEW_REQUIRED);
+        copyIfPresent(out, mp, "subsetId");
+        copyIfPresent(out, mp, "subsetName");
+        copyIfPresent(out, mp, "subsetVersion");
         out.put(
                 DatasetMetricContract.KEY_EXPECTED_ANSWER_PRESENT,
                 mp.containsKey(DatasetMetricContract.KEY_EXPECTED_ANSWER_PRESENT)
@@ -149,6 +157,10 @@ public final class RagPresetAnalysisMetrics {
         if (answerability == Answerability.UNANSWERABLE) {
             out.put("correctAbstention", abstention.abstained());
             out.put("wrongAbstention", false);
+            boolean negativeEvidenceFalsePositive =
+                    !abstention.abstained()
+                            && !AnswerabilityLabelRules.hasHighPrecisionNegativePhrasing(actualAnswer);
+            out.put("negativeEvidenceFalsePositive", negativeEvidenceFalsePositive);
         } else if (answerability == Answerability.ANSWERABLE) {
             out.put("correctAbstention", false);
             out.put("wrongAbstention", abstention.abstained());
@@ -183,7 +195,7 @@ public final class RagPresetAnalysisMetrics {
         return switch (answerability) {
             case UNANSWERABLE -> abstained ? AbstentionCorrectness.CORRECT : AbstentionCorrectness.WRONG;
             case ANSWERABLE -> abstained ? AbstentionCorrectness.WRONG : AbstentionCorrectness.NOT_APPLICABLE;
-            case AMBIGUOUS, UNKNOWN -> AbstentionCorrectness.UNKNOWN;
+            case AMBIGUOUS, UNKNOWN, NEEDS_REVIEW -> AbstentionCorrectness.UNKNOWN;
         };
     }
 
