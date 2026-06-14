@@ -249,7 +249,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -326,7 +326,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -391,7 +391,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -462,7 +462,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         try {
             orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.LLM_JUDGE_QA, req);
@@ -546,7 +546,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(LabJobConcurrencyException.class);
@@ -608,7 +608,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "ADMIN", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -681,7 +681,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -762,7 +762,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(UUID.randomUUID()));
+                        List.of(UUID.randomUUID()), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -857,7 +857,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(snapId));
+                        List.of(snapId), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -992,7 +992,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(snapA, snapB));
+                        List.of(snapA, snapB), List.of(), null, null);
 
         orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req);
 
@@ -1134,7 +1134,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(snapA, snapB, snapC));
+                        List.of(snapA, snapB, snapC), List.of(), null, null);
 
         BenchmarkJobAccepted accepted =
                 orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req);
@@ -1228,7 +1228,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -1352,7 +1352,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req);
 
@@ -1446,7 +1446,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(LabDatasetGateException.class)
@@ -1510,7 +1510,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -1574,7 +1574,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -1638,7 +1638,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -1702,7 +1702,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -1801,7 +1801,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         BenchmarkJobAccepted accepted =
                 orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req);
@@ -1914,7 +1914,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         BenchmarkJobAccepted accepted =
                 orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req);

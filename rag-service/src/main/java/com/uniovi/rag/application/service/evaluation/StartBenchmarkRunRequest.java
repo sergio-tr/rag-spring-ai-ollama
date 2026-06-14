@@ -57,7 +57,13 @@ public record StartBenchmarkRunRequest(
          * Parallel {@code knowledge_index_snapshot} ids for multi-embedding Lab campaigns (same length as resolved
          * embedding models when more than one model is requested).
          */
-        List<UUID> indexSnapshotIds) {
+        List<UUID> indexSnapshotIds,
+        /** Optional explicit dataset question ids for subset benchmark runs. */
+        List<String> datasetQuestionIds,
+        /** Optional classpath gold subset manifest id (e.g. gold-subset-v1). */
+        String goldSubsetManifestId,
+        /** When true, Lab may use workbook expected query type as a routing oracle (benchmark only). */
+        Boolean routingQueryTypeOracleEnabled) {
 
     public StartBenchmarkRunRequest {
         runKind = runKind == null ? EvaluationRunKind.PRODUCT_EXPLORATION : runKind;
@@ -90,6 +96,19 @@ public record StartBenchmarkRunRequest(
                 indexSnapshotIds == null
                         ? List.of()
                         : indexSnapshotIds.stream().filter(Objects::nonNull).toList();
+        datasetQuestionIds =
+                datasetQuestionIds == null
+                        ? List.of()
+                        : datasetQuestionIds.stream()
+                                .filter(s -> s != null && !s.isBlank())
+                                .map(String::trim)
+                                .distinct()
+                                .toList();
+        goldSubsetManifestId =
+                goldSubsetManifestId != null && !goldSubsetManifestId.isBlank()
+                        ? goldSubsetManifestId.trim()
+                        : null;
+        routingQueryTypeOracleEnabled = Boolean.TRUE.equals(routingQueryTypeOracleEnabled);
     }
 
     public boolean embeddingDownstreamRagEffective() {
@@ -138,5 +157,13 @@ public record StartBenchmarkRunRequest(
 
     public boolean bootstrapFailOnDocumentErrorEffective() {
         return Boolean.TRUE.equals(bootstrapFailOnDocumentError);
+    }
+
+    public boolean hasDatasetQuestionSubset() {
+        return goldSubsetManifestId != null || !datasetQuestionIds.isEmpty();
+    }
+
+    public boolean routingQueryTypeOracleEnabledEffective() {
+        return Boolean.TRUE.equals(routingQueryTypeOracleEnabled);
     }
 }

@@ -98,7 +98,9 @@ public class LabCampaignService {
                         null,
                         null,
                         null,
-                        req.indexSnapshotIds());
+                        req.indexSnapshotIds(),
+                        req.datasetQuestionIds(),
+                        req.goldSubsetManifestId(), req.routingQueryTypeOracleEnabled());
 
         BenchmarkJobAccepted accepted = orchestrator.startJsonBenchmark(userId, "USER", kind, body);
         UUID campaignId = accepted.campaignId().orElse(null);

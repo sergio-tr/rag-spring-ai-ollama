@@ -7,6 +7,7 @@ import com.uniovi.rag.application.service.runtime.config.IndexCompatibilityResul
 import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolBenchmarkContext;
 import com.uniovi.rag.application.service.runtime.WorkflowNameInference;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
@@ -28,6 +29,7 @@ import com.uniovi.rag.application.result.evaluation.RagPresetEvaluationBatchResu
 import com.uniovi.rag.application.service.evaluation.AbstractEvaluationService;
 import com.uniovi.rag.application.service.evaluation.RagBenchmarkHumanReasons;
 import com.uniovi.rag.application.service.evaluation.metrics.DatasetMetricContract;
+import com.uniovi.rag.application.service.evaluation.metrics.DatasetQuestionSubsetSupport;
 import com.uniovi.rag.application.service.evaluation.metrics.RagPresetAnalysisMetrics;
 import com.uniovi.rag.application.service.evaluation.metrics.RagPresetClassifierMetrics;
 import com.uniovi.rag.application.service.evaluation.metrics.RagPresetAdvancedRetrievalMetrics;
@@ -86,6 +88,11 @@ public class TypedRagPresetBenchmarkOrchestrator {
     private static final String REINDEX_REQUIRED = "REINDEX_REQUIRED";
     private static final String REINDEX_IN_PROGRESS = "REINDEX_IN_PROGRESS";
     private static final String NO_COMPATIBLE_SNAPSHOT = "NO_COMPATIBLE_SNAPSHOT";
+
+    private static final ThreadLocal<LabelingContext> LABELING_CONTEXT = new ThreadLocal<>();
+
+    private record LabelingContext(
+            String labelledDatasetSha256, DatasetQuestionSubsetSupport.ResolvedSubset subset) {}
 
     private final EvaluationService evaluationService;
     private final EvaluationRunRepository evaluationRunRepository;
@@ -152,7 +159,17 @@ public class TypedRagPresetBenchmarkOrchestrator {
         LlmExperimentalSnapshot llmSnap = experimentalSnapshotFactory.buildLlmSnapshot(run);
         EmbeddingExperimentalSnapshot embSnap = experimentalSnapshotFactory.buildEmbeddingSnapshot(run);
 
-        List<RagPresetQuestion> questions = rag.questions();
+        List<RagPresetQuestion> questions =
+                DatasetQuestionSubsetSupport.filterQuestions(
+                        rag.questions(),
+                        DatasetQuestionSubsetSupport.readFromRun(run)
+                                .orElse(DatasetQuestionSubsetSupport.ResolvedSubset.all()));
+        String labelledDatasetSha256 = run != null ? run.getDatasetSha256() : null;
+        DatasetQuestionSubsetSupport.ResolvedSubset subset =
+                DatasetQuestionSubsetSupport.readFromRun(run)
+                        .orElse(DatasetQuestionSubsetSupport.ResolvedSubset.all());
+        LABELING_CONTEXT.set(new LabelingContext(labelledDatasetSha256, subset));
+        try {
         List<RagPresetDefinition> catalog = rag.presetCatalog();
 
         if (catalog == null || catalog.isEmpty()) {
@@ -497,7 +514,10 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 lastConfigurationMap = new LinkedHashMap<>();
                 overlay.features().getConfiguration().forEach(lastConfigurationMap::put);
 
-                try (AutoCloseable ignored =
+                try (AutoCloseable runScope =
+                                DeterministicToolBenchmarkContext.openRun(
+                                        DatasetQuestionSubsetSupport.routingOracleEnabled(run));
+                        AutoCloseable ignored =
                         LabBenchmarkExecutionContext.openLab(
                                 overlay.terminalRuntimeJson(),
                                 evaluationRunId,
@@ -581,6 +601,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 Map.of("preset_benchmark", true, "last_preset_feature_flags", lastConfigurationMap),
                 fromRowMaps(allRows),
                 summary);
+        } finally {
+            LABELING_CONTEXT.remove();
+        }
     }
 
     private static List<Map<String, Object>> toMutableRowMaps(List<LlmJudgeItemResult> results) {
@@ -1256,7 +1279,14 @@ public class TypedRagPresetBenchmarkOrchestrator {
 
     private static void attachDatasetContract(Map<String, Object> row, RagPresetQuestion question) {
         Map<String, Object> contract = new LinkedHashMap<>();
-        DatasetMetricContract.enrichFromQuestion(contract, question);
+        LabelingContext ctx = LABELING_CONTEXT.get();
+        DatasetMetricContract.enrichFromQuestion(
+                contract,
+                question,
+                ctx != null ? ctx.labelledDatasetSha256() : null);
+        if (ctx != null) {
+            DatasetQuestionSubsetSupport.copySubsetMetadataToMetrics(contract, ctx.subset());
+        }
         if (!contract.isEmpty()) {
             row.put(JSON_KEY_DATASET_CONTRACT, contract);
         }

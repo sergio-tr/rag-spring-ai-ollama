@@ -172,7 +172,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
         LabBenchmarkConfigPreflightResult result =
                 service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req);
         assertThat(result.passed()).isTrue();
@@ -209,7 +209,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
         assertThatThrownBy(() -> service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(
@@ -250,7 +250,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
         LabBenchmarkConfigPreflightResult result =
                 service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req);
         assertThat(result.passed()).isTrue();
@@ -319,7 +319,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
         assertThatThrownBy(() -> service.validateOrThrow(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(
@@ -362,7 +362,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
         assertThatThrownBy(() -> service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(
@@ -407,7 +407,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
         assertThatThrownBy(() -> service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .satisfies(
                         ex ->
@@ -450,7 +450,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
         assertThatThrownBy(() -> service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .satisfies(
                         ex ->
@@ -485,6 +485,6 @@ class LabBenchmarkConfigPreflightServiceTest {
                 null,
                 null,
                 null,
-                List.of());
+                List.of(), List.of(), null, null);
     }
 }

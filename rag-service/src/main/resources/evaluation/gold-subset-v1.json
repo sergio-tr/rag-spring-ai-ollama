@@ -1,0 +1,152 @@
+{
+  "manifestVersion" : "1",
+  "manifestId" : "gold-subset-v1",
+  "datasetId" : "00000000-0000-7000-8000-000000000001",
+  "labelledDatasetSha256" : "bdd17d4043c3bc33bb8d3339b65d180777c86af25250e377096c7144a2a03c87",
+  "answerabilityRulesVersion" : "1",
+  "entries" : [ {
+    "datasetQuestionId" : "RAG-003",
+    "question" : "¿Se habló de la radiación solar en alguna reunión?",
+    "queryTypeExpected" : "COUNT_DOCUMENTS",
+    "answerability" : "UNANSWERABLE",
+    "expectedAnswer" : "No hay ninguna acta que mencione la radiación solar.",
+    "errorCategory" : "negative-evidence",
+    "inclusionReason" : "negative_evidence_absence"
+  }, {
+    "datasetQuestionId" : "RAG-004",
+    "question" : "Número de actas registradas en el año 2028.",
+    "queryTypeExpected" : "COUNT_DOCUMENTS",
+    "answerability" : "UNANSWERABLE",
+    "expectedAnswer" : "No existen actas correspondientes al año 2028.",
+    "errorCategory" : "negative-evidence",
+    "inclusionReason" : "negative_evidence_absence"
+  }, {
+    "datasetQuestionId" : "RAG-005",
+    "question" : "En cuántas actas participaron menos de diez personas.",
+    "queryTypeExpected" : "COUNT_DOCUMENTS",
+    "answerability" : "UNANSWERABLE",
+    "expectedAnswer" : "Ninguna acta refleja una asistencia menor a diez personas.",
+    "errorCategory" : "negative-evidence",
+    "inclusionReason" : "negative_evidence_absence"
+  }, {
+    "datasetQuestionId" : "RAG-010",
+    "question" : "¿En qué reuniones hubo exactamente 21 asistentes y qué se decidió en esa reunión?",
+    "queryTypeExpected" : "COUNT_AND_EXPLAIN",
+    "answerability" : "UNANSWERABLE",
+    "expectedAnswer" : "No existen registros de reuniones con exactamente 21 asistentes.",
+    "errorCategory" : "negative-evidence",
+    "inclusionReason" : "negative_evidence_absence"
+  }, {
+    "datasetQuestionId" : "RAG-019",
+    "question" : "¿Qué se comentó respecto a la fuga de gas?",
+    "queryTypeExpected" : "FIND_PARAGRAPH",
+    "answerability" : "UNANSWERABLE",
+    "expectedAnswer" : "No se encuentra ninguna mención a una fuga de gas en las actas disponibles.",
+    "errorCategory" : "negative-evidence",
+    "inclusionReason" : "negative_evidence_absence"
+  }, {
+    "datasetQuestionId" : "RAG-030",
+    "question" : "¿Cuánto duró la reunión del 25 de agosto de 2028?",
+    "queryTypeExpected" : "GET_DURATION",
+    "answerability" : "UNANSWERABLE",
+    "expectedAnswer" : "No existe la reunión del 25 de agosto de 2028 en los documentos disponibles.",
+    "errorCategory" : "negative-evidence",
+    "inclusionReason" : "negative_evidence_absence"
+  }, {
+    "datasetQuestionId" : "RAG-001",
+    "question" : "¿Cuántas actas mencionan el ascensor?",
+    "queryTypeExpected" : "COUNT_DOCUMENTS",
+    "answerability" : "ANSWERABLE",
+    "expectedAnswer" : "El tema del ascensor se menciona en dos actas diferentes: 24 de febrero de 2025 y 25 de agosto de 2026",
+    "errorCategory" : "count-comparison",
+    "inclusionReason" : "count_comparison_accuracy"
+  }, {
+    "datasetQuestionId" : "RAG-002",
+    "question" : "Dime en cuántas reuniones se trató el asunto de videovigilancia (cámaras de seguridad).",
+    "queryTypeExpected" : "COUNT_DOCUMENTS",
+    "answerability" : "ANSWERABLE",
+    "expectedAnswer" : "La videovigilancia fue discutida en tres ocasiones distintas: 24 de febrero de 2025, 25 de febrero de 2025 y 25 de agosto de 2026.",
+    "errorCategory" : "count-comparison",
+    "inclusionReason" : "count_comparison_accuracy"
+  }, {
+    "datasetQuestionId" : "RAG-008",
+    "question" : "Cuántas veces aparece la calefacción y en qué contexto fue tratada.",
+    "queryTypeExpected" : "COUNT_AND_EXPLAIN",
+    "answerability" : "ANSWERABLE",
+    "expectedAnswer" : "La calefacción se trató una vez el 25/02/2026 para plantear mejoras y solicitud de presupuestos.",
+    "errorCategory" : "count-comparison",
+    "inclusionReason" : "count_comparison_accuracy"
+  }, {
+    "datasetQuestionId" : "RAG-029",
+    "question" : "Duración de la reunión del 25 de febrero de 2026.",
+    "queryTypeExpected" : "GET_DURATION",
+    "answerability" : "ANSWERABLE",
+    "expectedAnswer" : "La reunión del 25 de febrero de 2026 comenzó a las 19:00 y terminó a las 20:30, por lo que duró una hora y media.",
+    "errorCategory" : "date-duration",
+    "inclusionReason" : "date_duration_accuracy"
+  }, {
+    "datasetQuestionId" : "RAG-059",
+    "question" : "¿Qué reuniones celebradas en agosto hablaron sobre videovigilancia y tuvieron más de 18 asistentes?",
+    "queryTypeExpected" : "FILTER_AND_LIST",
+    "answerability" : "ANSWERABLE",
+    "expectedAnswer" : "La reunión del 25 de agosto de 2026 trató sobre videovigilancia y tuvo más de 18 asistentes.",
+    "errorCategory" : "date-duration",
+    "inclusionReason" : "date_duration_accuracy"
+  }, {
+    "datasetQuestionId" : "RAG-032",
+    "question" : "Confirma si Jorge Moreno Navarro aparece en el acta del 25 de agosto de 2026.",
+    "queryTypeExpected" : "BOOLEAN_QUERY",
+    "answerability" : "ANSWERABLE",
+    "expectedAnswer" : "Sí, Jorge Moreno Navarro figura como uno de los asistentes a esa reunión.",
+    "errorCategory" : "boolean",
+    "inclusionReason" : "boolean_accuracy"
+  }, {
+    "datasetQuestionId" : "RAG-034",
+    "question" : "Verifica si se mencionó la limpieza en alguna reunión celebrada en 2026.",
+    "queryTypeExpected" : "BOOLEAN_QUERY",
+    "answerability" : "UNANSWERABLE",
+    "expectedAnswer" : "No, la limpieza no se menciona en ninguna de las actas del año 2026.",
+    "errorCategory" : "boolean",
+    "inclusionReason" : "boolean_accuracy"
+  }, {
+    "datasetQuestionId" : "RAG-012",
+    "question" : "Indícame las secciones que contiene el acta del 24/02/2025.",
+    "queryTypeExpected" : "EXTRACT_ENTITIES",
+    "answerability" : "ANSWERABLE",
+    "expectedAnswer" : "El acta incluye: Fecha, Lugar, Hora de inicio, Hora de finalización, Asistentes y Orden del día (Lectura y Aprobación del acta Anterior, Estado de cuentas y presupuesto anual, Reparaciones y mantenimiento del edificio, Normas de convivencia y uso de zonas comunes y Ruegos y preguntas).",
+    "errorCategory" : "entity-topic-lookup",
+    "inclusionReason" : "entity_topic_lookup"
+  }, {
+    "datasetQuestionId" : "RAG-016",
+    "question" : "¿Qué se dijo en relación a la limpieza de las zonas comunes?",
+    "queryTypeExpected" : "FIND_PARAGRAPH",
+    "answerability" : "ANSWERABLE",
+    "expectedAnswer" : "Se plantea la necesidad de mejorar la limpieza en las zonas comunes. Se aprueba la contratación de un nuevo servicio de limpieza con mayor frecuencia.",
+    "errorCategory" : "entity-topic-lookup",
+    "inclusionReason" : "entity_topic_lookup"
+  }, {
+    "datasetQuestionId" : "RAG-058",
+    "question" : "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez.",
+    "queryTypeExpected" : "FILTER_AND_LIST",
+    "answerability" : "ANSWERABLE",
+    "expectedAnswer" : "El acta del 24 de febrero de 2025 menciona el ascensor y fue presidida por Juan Pérez Gutiérrez.",
+    "errorCategory" : "entity-topic-lookup",
+    "inclusionReason" : "entity_topic_lookup"
+  }, {
+    "datasetQuestionId" : "RAG-009",
+    "question" : "¿Cuándo se trató el tema de limpieza y qué se habló sobre ello?",
+    "queryTypeExpected" : "COUNT_AND_EXPLAIN",
+    "answerability" : "ANSWERABLE",
+    "expectedAnswer" : "El tema de limpieza se trató en la reunión del 25/02/2025. Se planteó la necesidad de mejorar la limpieza en las zonas comunes y se aprobó contratar un nuevo servicio de limpieza con mayor frecuencia.",
+    "errorCategory" : "summarization-explanation",
+    "inclusionReason" : "summarization_quality"
+  }, {
+    "datasetQuestionId" : "RAG-046",
+    "question" : "Resume la reunión del 24 de febrero de 2025.",
+    "queryTypeExpected" : "SUMMARIZE_MEETING",
+    "answerability" : "ANSWERABLE",
+    "expectedAnswer" : "En la reunión del 24 de febrero de 2025 se aprobó el acta anterior, se presentó y aprobó el estado de cuentas y el presupuesto anual, se acordó solicitar presupuestos para reparar el ascensor y renovar la pintura del portal, se recordaron normas sobre basuras y uso de zonas comunes, y se planteó estudiar la instalación de cámaras de seguridad. La reunión duró una hora y media.",
+    "errorCategory" : "summarization-explanation",
+    "inclusionReason" : "summarization_quality"
+  } ]
+}

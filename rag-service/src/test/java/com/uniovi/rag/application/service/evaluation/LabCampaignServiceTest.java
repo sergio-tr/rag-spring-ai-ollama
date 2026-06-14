@@ -70,7 +70,10 @@ class LabCampaignServiceTest {
                         List.of(),
                         List.of(),
                         List.of("P0", "P1"),
-                        Map.of("autoReindex", true, "allowActiveSnapshotMutation", true));
+                        List.of(),
+                        null,
+                        Map.of("autoReindex", true, "allowActiveSnapshotMutation", true),
+                        null);
 
         svc.startCampaign(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req, orchestrator);
 

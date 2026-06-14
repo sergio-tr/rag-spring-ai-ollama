@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.evaluation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.service.evaluation.metrics.DatasetQuestionSubsetSupport;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
@@ -216,6 +217,35 @@ class LabEvaluationRunServiceTest {
         assertThat(dto.hasResults()).isTrue();
         assertThat(dto.pollPath()).isEqualTo("/api/v5/lab/jobs/" + taskId);
         assertThat(dto.streamPath()).isEqualTo("/api/v5/lab/jobs/" + taskId + "/events");
+    }
+
+    @Test
+    void exportMvpItemsCsv_returnsSubsetRowsWithoutCampaign() {
+        UUID userId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setId(runId);
+        run.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        run.setAggregatesJson(
+                Map.of(
+                        DatasetQuestionSubsetSupport.AGG_KEY_FILTERED_QUESTION_COUNT,
+                        18,
+                        DatasetQuestionSubsetSupport.AGG_KEY_DATASET_QUESTION_FILTER,
+                        DatasetQuestionSubsetSupport.FILTER_GOLD_SUBSET));
+
+        EvaluationResultEntity item = new EvaluationResultEntity();
+        item.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        item.setRun(run);
+        item.setMetricsPayload(Map.of("datasetQuestionId", "RAG-001"));
+
+        when(evaluationRunRepository.findByIdAndUser_Id(runId, userId)).thenReturn(Optional.of(run));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId)).thenReturn(List.of(item));
+
+        String csv = service.exportMvpItemsCsv(userId, runId);
+
+        assertThat(csv).contains("datasetQuestionId");
+        assertThat(csv.lines().count()).isGreaterThan(1);
     }
 
     @Test

@@ -23,6 +23,7 @@ import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
+import com.uniovi.rag.application.service.evaluation.metrics.DatasetQuestionSubsetSupport;
 import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
 import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
@@ -378,10 +379,20 @@ public class BenchmarkRunOrchestrator {
         meta.put("benchmarkKind", kind.name());
         meta.put("experimentalPresetCodes", presetCodes);
         meta.put("comparativeMode", presetCodes.size() >= 2);
-        int perRunItems = resolveDatasetItemCount(dataset, kind);
+        int perRunItems = resolveDatasetItemCount(dataset, kind, request);
         int plannedTotalItems = perRunItems * presetCodes.size();
         meta.put("perAxisItemCount", perRunItems);
         meta.put("plannedTotalItems", plannedTotalItems);
+        if (request.hasDatasetQuestionSubset()) {
+            DatasetQuestionSubsetSupport.ResolvedSubset subset = DatasetQuestionSubsetSupport.resolve(request);
+            meta.put(DatasetQuestionSubsetSupport.AGG_KEY_DATASET_QUESTION_FILTER, subset.filterMode());
+            meta.put(DatasetQuestionSubsetSupport.AGG_KEY_FILTERED_QUESTION_IDS, subset.questionIds());
+            if (subset.subsetId() != null && !subset.subsetId().isBlank()) {
+                meta.put(DatasetQuestionSubsetSupport.AGG_KEY_SUBSET_ID, subset.subsetId());
+                meta.put(DatasetQuestionSubsetSupport.AGG_KEY_SUBSET_NAME, subset.subsetName());
+                meta.put(DatasetQuestionSubsetSupport.AGG_KEY_SUBSET_VERSION, subset.subsetVersion());
+            }
+        }
         camp.setMetaJson(meta);
         camp = evaluationCampaignRepository.save(camp);
 
@@ -414,7 +425,9 @@ public class BenchmarkRunOrchestrator {
                             request.bootstrapCorpusScope(),
                             request.bootstrapSkipExisting(),
                             request.bootstrapFailOnDocumentError(),
-                            List.of());
+                            List.of(),
+                            request.datasetQuestionIds(),
+                            request.goldSubsetManifestId(), request.routingQueryTypeOracleEnabled());
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, presetCode));
@@ -507,7 +520,9 @@ public class BenchmarkRunOrchestrator {
                             request.bootstrapCorpusScope(),
                             request.bootstrapSkipExisting(),
                             request.bootstrapFailOnDocumentError(),
-                            List.of());
+                            List.of(),
+                            request.datasetQuestionIds(),
+                            request.goldSubsetManifestId(), request.routingQueryTypeOracleEnabled());
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, modelId));
@@ -639,7 +654,9 @@ public class BenchmarkRunOrchestrator {
                             request.bootstrapCorpusScope(),
                             request.bootstrapSkipExisting(),
                             request.bootstrapFailOnDocumentError(),
-                            List.of());
+                            List.of(),
+                            request.datasetQuestionIds(),
+                            request.goldSubsetManifestId(), request.routingQueryTypeOracleEnabled());
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, modelId));
@@ -1036,7 +1053,8 @@ public class BenchmarkRunOrchestrator {
         run.setEmbeddingDownstreamRag(request.embeddingDownstreamRagEffective());
         if (!request.experimentalPresetCodes().isEmpty()
                 || request.autoReindexEffective()
-                || request.bootstrapCorpusFromClasspathDocsEffective()) {
+                || request.bootstrapCorpusFromClasspathDocsEffective()
+                || request.hasDatasetQuestionSubset()) {
             Map<String, Object> agg = new LinkedHashMap<>();
             if (run.getAggregatesJson() != null && !run.getAggregatesJson().isEmpty()) {
                 agg.putAll(run.getAggregatesJson());
@@ -1044,6 +1062,7 @@ public class BenchmarkRunOrchestrator {
             if (!request.experimentalPresetCodes().isEmpty()) {
                 agg.put(AGG_KEY_REQUESTED_PRESET_CODES, request.experimentalPresetCodes());
             }
+            DatasetQuestionSubsetSupport.applyToAggregates(agg, request);
             if (request.autoReindexEffective()) {
                 agg.put(AGG_KEY_AUTO_REINDEX_POLICY, LabAutoReindexPolicy.fromRequest(request).toMap());
                 agg.put(AGG_KEY_AUTO_REINDEX_LOCK_ACQUIRED, Boolean.FALSE);
@@ -1248,6 +1267,17 @@ public class BenchmarkRunOrchestrator {
             case EMBEDDING_RETRIEVAL -> EvaluationRunType.RAG_FULL;
             case CLASSIFIER_METRICS -> EvaluationRunType.CLASSIFIER;
         };
+    }
+
+    private static int resolveDatasetItemCount(
+            EvaluationDatasetEntity dataset, BenchmarkKind kind, StartBenchmarkRunRequest request) {
+        if (request != null) {
+            Integer subsetCount = DatasetQuestionSubsetSupport.resolvedItemCount(request);
+            if (subsetCount != null && subsetCount > 0) {
+                return subsetCount;
+            }
+        }
+        return resolveDatasetItemCount(dataset, kind);
     }
 
     private static int resolveDatasetItemCount(EvaluationDatasetEntity dataset, BenchmarkKind kind) {

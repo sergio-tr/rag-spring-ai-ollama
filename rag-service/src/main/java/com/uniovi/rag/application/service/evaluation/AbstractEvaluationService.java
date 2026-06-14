@@ -15,6 +15,7 @@ import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolBenchmarkContext;
 import com.uniovi.rag.application.service.knowledge.document.DocumentService;
 import com.uniovi.rag.application.service.runtime.ChatExecutionTelemetryMapper;
 import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
@@ -290,6 +291,10 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             String questionText = q.question();
             String correctAnswer = q.expectedAnswer() != null ? q.expectedAnswer() : "";
             long t0 = System.nanoTime();
+            if (DeterministicToolBenchmarkContext.routingOracleEnabled()) {
+                DeterministicToolBenchmarkContext.setExpectedQueryType(
+                        q.queryType().map(QueryType::name).orElse(null));
+            }
             try {
                 QueryResponse queryResponse = queryServiceToUse.generateResponse(questionText);
                 String llmResponse =
@@ -330,6 +335,8 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 }
                 resultsForPrompt.add(builder.build());
                 log().warn("RAG preset evaluation item failed for questionId={}", q.id(), ex);
+            } finally {
+                DeterministicToolBenchmarkContext.clearItemScope();
             }
         }
         return new RagPresetEvaluationBatchResult(
