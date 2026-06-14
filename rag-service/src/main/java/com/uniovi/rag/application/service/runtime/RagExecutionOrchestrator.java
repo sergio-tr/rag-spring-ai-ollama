@@ -870,9 +870,12 @@ public class RagExecutionOrchestrator {
         boolean shortCircuited =
                 fr.outcome() == FunctionCallingOutcome.EXECUTED_SUCCESS && fr.shortCircuited();
         String toolKindStr =
-                shortCircuited ? fr.selectedToolKind().map(Enum::name).orElse("") : "";
+                fr.selectedToolKind()
+                        .or(() -> fr.proposal().flatMap(com.uniovi.rag.domain.runtime.functioncalling.FunctionCallProposal::toolKind))
+                        .map(Enum::name)
+                        .orElse("");
         return new FcGate(
-                true,
+                fr.backendFunctionCallAttempted() || fr.nativeProviderFunctionCallAttempted(),
                 fr.outcome(),
                 toolKindStr,
                 shortCircuited,
