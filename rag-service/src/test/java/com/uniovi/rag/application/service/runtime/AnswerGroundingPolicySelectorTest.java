@@ -30,11 +30,20 @@ class AnswerGroundingPolicySelectorTest {
     }
 
     @Test
-    void attemptWithContext_whenRetrievalOn_andLowStrictness() {
+    void defaultRetrieval_whenRetrievalOn_andLowStrictness() {
         RagFeatureConfiguration fc = new RagFeatureConfiguration();
         fc.setUseRetrieval(true);
         RagConfig rag = RagConfig.fromFeatureConfiguration(fc, 10, 0.7, "l", "e", "c", "SIMPLE");
-        assertThat(AnswerGroundingPolicySelector.from(rag)).isEqualTo(AnswerGroundingPolicy.ATTEMPT_WITH_CONTEXT);
+        assertThat(AnswerGroundingPolicySelector.from(rag)).isEqualTo(AnswerGroundingPolicy.DEFAULT_RETRIEVAL_GROUNDED);
+    }
+
+    @Test
+    void attemptWithContext_legacyAlias_mapsViaDeprecatedEnum() {
+        RagFeatureConfiguration fc = new RagFeatureConfiguration();
+        fc.setUseRetrieval(true);
+        RagConfig rag = RagConfig.fromFeatureConfiguration(fc, 10, 0.7, "l", "e", "c", "SIMPLE");
+        assertThat(AnswerGroundingPolicy.ATTEMPT_WITH_CONTEXT).isNotNull();
+        assertThat(AnswerGroundingPolicySelector.from(rag)).isEqualTo(AnswerGroundingPolicy.DEFAULT_RETRIEVAL_GROUNDED);
     }
 
     @Test
@@ -48,11 +57,11 @@ class AnswerGroundingPolicySelectorTest {
     }
 
     @Test
-    void negative_whenPostRetrievalWithoutStrictStack() {
+    void defaultRetrieval_whenPostRetrievalWithoutStrictStack() {
         RagFeatureConfiguration fc = new RagFeatureConfiguration();
         fc.setUseRetrieval(true);
         fc.setPostRetrievalEnabled(true);
         RagConfig rag = RagConfig.fromFeatureConfiguration(fc, 10, 0.7, "l", "e", "c", "SIMPLE");
-        assertThat(AnswerGroundingPolicySelector.from(rag)).isEqualTo(AnswerGroundingPolicy.NEGATIVE_GROUNDED);
+        assertThat(AnswerGroundingPolicySelector.from(rag)).isEqualTo(AnswerGroundingPolicy.DEFAULT_RETRIEVAL_GROUNDED);
     }
 }

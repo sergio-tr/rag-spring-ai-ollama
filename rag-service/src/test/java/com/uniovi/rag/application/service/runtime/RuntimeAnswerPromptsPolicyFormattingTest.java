@@ -30,4 +30,31 @@ class RuntimeAnswerPromptsPolicyFormattingTest {
         assertThat(RuntimeAnswerPrompts.requiresStrictDocumentGrounding("¿Quién fue la secretaria?"))
                 .isTrue();
     }
+
+    @Test
+    void ragUserTurn_negativeEvidencePolicy_forbidsSimilarTopicSubstitution() {
+        String prompt =
+                RuntimeAnswerPrompts.ragUserTurn(
+                        "¿Se habló de radiación solar?",
+                        "CTX",
+                        AnswerGroundingPolicy.NEGATIVE_EVIDENCE,
+                        true,
+                        Optional.empty(),
+                        null);
+        assertThat(prompt).contains("Do NOT answer \"yes\"");
+        assertThat(prompt).contains("videovigilancia");
+    }
+
+    @Test
+    void ragUserTurn_numericOrDatePolicy_forbidsUnsupportedArithmetic() {
+        String prompt =
+                RuntimeAnswerPrompts.ragUserTurn(
+                        "¿Cuántas actas mencionan el ascensor?",
+                        "CTX",
+                        AnswerGroundingPolicy.NUMERIC_OR_DATE,
+                        true,
+                        Optional.empty(),
+                        null);
+        assertThat(prompt).contains("Do not calculate from unrelated numbers");
+    }
 }

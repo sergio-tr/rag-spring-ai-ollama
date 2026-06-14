@@ -30,8 +30,8 @@ public final class AnswerGroundingPolicySelector {
             return AnswerGroundingPolicy.STRICT_GROUNDED;
         }
         if (rag.postRetrievalEnabled()) {
-            return AnswerGroundingPolicy.NEGATIVE_GROUNDED;
+            return AnswerGroundingPolicy.DEFAULT_RETRIEVAL_GROUNDED;
         }
-        return AnswerGroundingPolicy.ATTEMPT_WITH_CONTEXT;
+        return AnswerGroundingPolicy.DEFAULT_RETRIEVAL_GROUNDED;
     }
 }
