@@ -14,11 +14,13 @@ import org.junit.jupiter.api.Test;
 class ExperimentalPresetCanonicalCatalogFunctionCallingTest {
 
     @Test
-    void p9_enablesFunctionCallingWithDeterministicRoutingDisabled() {
+    void p9_enablesBackendProposalAndDisablesNativeProvider() {
         Map<String, Object> p9 = ExperimentalPresetCanonicalCatalog.effectiveRuntimeValues(RagExperimentalPresetCode.P9);
 
         assertThat(p9)
                 .containsEntry("functionCallingEnabled", true)
+                .containsEntry("functionCallingBackendProposalEnabled", true)
+                .containsEntry("functionCallingNativeProviderEnabled", false)
                 .containsEntry("deterministicToolRoutingEnabled", false)
                 .containsEntry("useAdvisor", false)
                 .containsEntry("clarificationEnabled", false)

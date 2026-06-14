@@ -46,6 +46,22 @@ class ToolExecutionTelemetryMapperTest {
     }
 
     @Test
+    void mapsDeterministicEvidenceAndOracleFields() {
+        ExecutionTrace trace =
+                withToolFields(
+                        AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE.name(),
+                        DeterministicToolOutcome.NOT_APPLICABLE.name(),
+                        "",
+                        "routeSuppressedByClassifier=false;deterministicEvidenceLevel=STRONG;routingOracleUsed=false;toolApplicabilityEligible=true;toolFallbackReason=unsupported_query_type",
+                        true);
+        Map<String, Object> tel = ToolExecutionTelemetryMapper.fromTrace(trace);
+        assertThat(tel.get("deterministicEvidenceLevel")).isEqualTo("STRONG");
+        assertThat(tel.get("routingOracleUsed")).isEqualTo(false);
+        assertThat(tel.get("toolApplicable")).isEqualTo(true);
+        assertThat(tel.get("toolFallbackReason")).isEqualTo("unsupported_query_type");
+    }
+
+    @Test
     void mapsRouteSuppressionTelemetryFromToolDetail() {
         ExecutionTrace trace =
                 withToolFields(

@@ -94,6 +94,8 @@ public final class BenchmarkMvpRollupCalculator {
         int abstainedCount = 0;
         int correctAbstentionCount = 0;
         int wrongAbstentionCount = 0;
+        int unanswerableCount = 0;
+        int negativeEvidenceFalsePositiveCount = 0;
         int retrievalCoverageApplicable = 0;
         int retrievalCoverageHits = 0;
         int sourceCoverageApplicable = 0;
@@ -208,9 +210,15 @@ public final class BenchmarkMvpRollupCalculator {
                         case "ANSWERABLE" -> answerableFinalScore.accept(n.doubleValue());
                         case "UNANSWERABLE" -> unanswerableFinalScore.accept(n.doubleValue());
                         case "AMBIGUOUS" -> ambiguousFinalScore.accept(n.doubleValue());
-                        case "UNKNOWN" -> unknownAnswerabilityFinalScore.accept(n.doubleValue());
+                        case "UNKNOWN", "NEEDS_REVIEW" -> unknownAnswerabilityFinalScore.accept(n.doubleValue());
                         default -> { }
                     }
+                }
+                if (Answerability.UNANSWERABLE.name().equals(answerability)) {
+                    unanswerableCount++;
+                }
+                if (Boolean.TRUE.equals(analysis.get("negativeEvidenceFalsePositive"))) {
+                    negativeEvidenceFalsePositiveCount++;
                 }
                 Object structuredScoreValue = analysis.get("structuredScore");
                 if (structuredScoreValue instanceof Number structuredN
@@ -433,6 +441,9 @@ public final class BenchmarkMvpRollupCalculator {
         onExecuted.put("perQueryTypeMacroScore", averageOrNull(finalScore));
         onExecuted.put("correctAbstentionRate", rate(correctAbstentionCount, executedGenerationN));
         onExecuted.put("wrongAbstentionRate", rate(wrongAbstentionCount, executedGenerationN));
+        onExecuted.put(
+                "negativeEvidenceFalsePositiveRate",
+                rate(negativeEvidenceFalsePositiveCount, unanswerableCount));
         onExecuted.put("retrievalCoverageRate", rate(retrievalCoverageHits, retrievalCoverageApplicable));
         onExecuted.put("sourceCoverageRate", rate(sourceCoverageHits, sourceCoverageApplicable));
         onExecuted.put("queryTypeMatchRate", rate(queryTypeMatchHits, queryTypeMatchKnown));

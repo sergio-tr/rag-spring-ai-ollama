@@ -20,7 +20,12 @@ public final class FunctionCallingTelemetryMapper {
             return Map.of();
         }
         Map<String, Object> m = new LinkedHashMap<>();
-        boolean attempted = trace.functionCallingAttempted();
+        Map<String, Object> proposal = FunctionCallingTelemetrySupport.proposalFieldsFromTrace(trace);
+
+        boolean backendAttempted = bool(proposal.get("backendFunctionCallAttempted"));
+        boolean nativeAttempted = bool(proposal.get("nativeProviderFunctionCallAttempted"));
+        boolean attempted = trace.functionCallingAttempted() || backendAttempted || nativeAttempted;
+
         String outcomeRaw = safe(trace.functionCallingOutcome());
         Optional<FunctionCallingOutcome> outcome = parseOutcome(outcomeRaw);
         boolean succeeded = outcome.filter(o -> o == FunctionCallingOutcome.EXECUTED_SUCCESS).isPresent();
@@ -30,8 +35,8 @@ public final class FunctionCallingTelemetryMapper {
         m.put("functionCallAttempted", attempted);
         m.put("functionCallingUsed", succeeded);
         m.put("functionCallSucceeded", succeeded);
-        m.put("functionCallArgumentsValid", argumentsValid(outcome));
-        m.put("functionCallName", resolveCallName(trace));
+        m.put("functionCallArgumentsValid", argumentsValid(outcome, proposal));
+        m.put("functionCallName", resolveCallName(trace, proposal));
         String fallbackReason = fallbackReason(outcome, attempted, succeeded, trace.routingFallbackApplied());
         if (!fallbackReason.isBlank()) {
             m.put("functionCallFallbackReason", fallbackReason);
@@ -40,10 +45,26 @@ public final class FunctionCallingTelemetryMapper {
         m.put("functionResultUsedAsContext", succeeded);
         m.put("functionCallRoute", fcPrimary ? routeKind : "");
         m.put("executionRoute", routeKind);
+
+        copyStringIfPresent(m, proposal, "functionProposalMode");
+        copyStringIfPresent(m, proposal, "functionProposalSource");
+        copyBoolIfPresent(m, proposal, "functionProposalValid");
+        copyBoolIfPresent(m, proposal, "functionProposalRepairAttempted");
+        copyBoolIfPresent(m, proposal, "functionProposalRepairSucceeded");
+        m.put("backendFunctionCallAttempted", backendAttempted);
+        m.put("nativeProviderFunctionCallAttempted", nativeAttempted);
+        copyStringIfPresent(m, proposal, "functionToolKind");
+        if (!m.containsKey("functionToolKind") && !safe(trace.functionCallingToolKind()).isBlank()) {
+            m.put("functionToolKind", safe(trace.functionCallingToolKind()));
+        }
+
         return Map.copyOf(m);
     }
 
-    private static boolean argumentsValid(Optional<FunctionCallingOutcome> outcome) {
+    private static boolean argumentsValid(Optional<FunctionCallingOutcome> outcome, Map<String, Object> proposal) {
+        if (proposal.containsKey("functionProposalValid")) {
+            return bool(proposal.get("functionProposalValid"));
+        }
         if (outcome.isEmpty()) {
             return false;
         }
@@ -82,7 +103,11 @@ public final class FunctionCallingTelemetryMapper {
         return routingFallbackApplied ? "fallback_to_workflow" : "";
     }
 
-    private static String resolveCallName(ExecutionTrace trace) {
+    private static String resolveCallName(ExecutionTrace trace, Map<String, Object> proposal) {
+        Object fromProposal = proposal.get("functionCallName");
+        if (fromProposal != null && !String.valueOf(fromProposal).isBlank()) {
+            return String.valueOf(fromProposal);
+        }
         String kindRaw = safe(trace.functionCallingToolKind());
         if (kindRaw.isBlank()) {
             return "";
@@ -104,6 +129,29 @@ public final class FunctionCallingTelemetryMapper {
         } catch (IllegalArgumentException ex) {
             return Optional.empty();
         }
+    }
+
+    private static void copyStringIfPresent(Map<String, Object> target, Map<String, Object> source, String key) {
+        Object raw = source.get(key);
+        if (raw != null && !String.valueOf(raw).isBlank()) {
+            target.put(key, String.valueOf(raw));
+        }
+    }
+
+    private static void copyBoolIfPresent(Map<String, Object> target, Map<String, Object> source, String key) {
+        if (source.containsKey(key)) {
+            target.put(key, bool(source.get(key)));
+        }
+    }
+
+    private static boolean bool(Object raw) {
+        if (raw instanceof Boolean b) {
+            return b;
+        }
+        if (raw instanceof String s) {
+            return Boolean.parseBoolean(s);
+        }
+        return false;
     }
 
     private static String safe(String s) {

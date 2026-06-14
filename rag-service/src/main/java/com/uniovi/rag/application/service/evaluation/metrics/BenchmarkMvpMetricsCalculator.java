@@ -254,6 +254,15 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("corpusTruncated", csvVal(mp.get("corpusTruncated")));
         row.put("selectedSnapshotIds", joinIds(mp.get("selectedSnapshotIds")));
         row.put("groundingPolicy", csvVal(mp.get("groundingPolicy")));
+        row.put("verifierAttempted", csvVal(mp.get("verifierAttempted")));
+        row.put("verifierPassed", csvVal(mp.get("verifierPassed")));
+        row.put("verifierFailureReason", csvVal(mp.get("verifierFailureReason")));
+        row.put("verifierRevisionAttempted", csvVal(mp.get("verifierRevisionAttempted")));
+        row.put("verifierForcedAbstention", csvVal(mp.get("verifierForcedAbstention")));
+        row.put("constraintType", csvVal(mp.get("constraintType")));
+        row.put("constraintCheckPassed", csvVal(mp.get("constraintCheckPassed")));
+        row.put("negativeEvidenceGuardTriggered", csvVal(mp.get("negativeEvidenceGuardTriggered")));
+        row.put("finalAnswerSource", csvVal(mp.get("finalAnswerSource")));
         row.put("timestamp", item.getEvaluatedAt() != null ? item.getEvaluatedAt().toString() : "");
         return row;
     }
@@ -671,6 +680,15 @@ public final class BenchmarkMvpMetricsCalculator {
                         "queryTypeMatch",
                         DatasetMetricContract.KEY_ANSWERABILITY,
                         DatasetMetricContract.KEY_ANSWERABILITY_SOURCE,
+                        DatasetMetricContract.KEY_ANSWERABILITY_RULE_ID,
+                        DatasetMetricContract.KEY_ANSWERABILITY_CONFIDENCE,
+                        DatasetMetricContract.KEY_ANSWERABILITY_RULES_VERSION,
+                        DatasetMetricContract.KEY_LABELLED_DATASET_SHA256,
+                        DatasetMetricContract.KEY_REVIEW_REQUIRED,
+                        "subsetId",
+                        "subsetName",
+                        "subsetVersion",
+                        "negativeEvidenceFalsePositive",
                         DatasetMetricContract.KEY_EXPECTED_ANSWER_PRESENT,
                         AbstentionDetector.KEY_ABSTAINED,
                         AbstentionDetector.KEY_ABSTENTION_REASON,
@@ -745,6 +763,8 @@ public final class BenchmarkMvpMetricsCalculator {
                         RagPresetToolMetrics.KEY_EXECUTION_ROUTE,
                         RagPresetToolMetrics.KEY_QUERY_TYPE_SOURCE,
                         RagPresetToolMetrics.KEY_TOOL_COVERAGE_STATUS,
+                        RagPresetToolMetrics.KEY_DETERMINISTIC_EVIDENCE_LEVEL,
+                        RagPresetToolMetrics.KEY_ROUTING_ORACLE_USED,
                         RagPresetToolMetrics.KEY_ROUTING_ROUTE_KIND,
                         RagPresetAdvisorMetrics.KEY_ADVISOR_ENABLED,
                         RagPresetAdvisorMetrics.KEY_ADVISOR_ROUTE,
@@ -775,7 +795,17 @@ public final class BenchmarkMvpMetricsCalculator {
                         RagPresetAdvancedRetrievalMetrics.KEY_ADVANCED_RETRIEVAL_FALLBACK_REASON,
                         RagPresetAdvancedRetrievalMetrics.KEY_CANDIDATE_ORIGINS,
                         RagPresetAdvancedRetrievalMetrics.KEY_SPARSE_RETRIEVAL_STATUS,
-                        RagPresetAdvancedRetrievalMetrics.KEY_HYBRID_APPLIED)) {
+                        RagPresetAdvancedRetrievalMetrics.KEY_HYBRID_APPLIED,
+                        "groundingPolicy",
+                        "verifierAttempted",
+                        "verifierPassed",
+                        "verifierFailureReason",
+                        "verifierRevisionAttempted",
+                        "verifierForcedAbstention",
+                        "constraintType",
+                        "constraintCheckPassed",
+                        "negativeEvidenceGuardTriggered",
+                        "finalAnswerSource")) {
             if (mp.containsKey(key)) {
                 out.put(key, mp.get(key));
             }
@@ -786,6 +816,15 @@ public final class BenchmarkMvpMetricsCalculator {
     private static void putAnalysisCsvFields(Map<String, String> row, Map<String, Object> mp) {
         row.put("answerability", csvVal(mp.get(DatasetMetricContract.KEY_ANSWERABILITY)));
         row.put("answerabilitySource", csvVal(mp.get(DatasetMetricContract.KEY_ANSWERABILITY_SOURCE)));
+        row.put("answerabilityRuleId", csvVal(mp.get(DatasetMetricContract.KEY_ANSWERABILITY_RULE_ID)));
+        row.put("answerabilityConfidence", csvVal(mp.get(DatasetMetricContract.KEY_ANSWERABILITY_CONFIDENCE)));
+        row.put("answerabilityRulesVersion", csvVal(mp.get(DatasetMetricContract.KEY_ANSWERABILITY_RULES_VERSION)));
+        row.put("labelledDatasetSha256", csvVal(mp.get(DatasetMetricContract.KEY_LABELLED_DATASET_SHA256)));
+        row.put("reviewRequired", csvVal(mp.get(DatasetMetricContract.KEY_REVIEW_REQUIRED)));
+        row.put("subsetId", csvVal(mp.get("subsetId")));
+        row.put("subsetName", csvVal(mp.get("subsetName")));
+        row.put("subsetVersion", csvVal(mp.get("subsetVersion")));
+        row.put("negativeEvidenceFalsePositive", csvVal(mp.get("negativeEvidenceFalsePositive")));
         row.put("expectedAnswerPresent", csvVal(mp.get(DatasetMetricContract.KEY_EXPECTED_ANSWER_PRESENT)));
         row.put("queryTypeExpected", csvVal(mp.get("queryTypeExpected")));
         row.put("queryTypePredicted", csvVal(mp.get("queryTypePredicted")));
@@ -840,6 +879,28 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put(RagPresetToolMetrics.KEY_FUNCTION_CALL_ATTEMPTED, csvVal(mp.get(RagPresetToolMetrics.KEY_FUNCTION_CALL_ATTEMPTED)));
         row.put(RagPresetToolMetrics.KEY_FUNCTION_CALL_NAME, csvVal(mp.get(RagPresetToolMetrics.KEY_FUNCTION_CALL_NAME)));
         row.put(
+                RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_MODE,
+                csvVal(mp.get(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_MODE)));
+        row.put(
+                RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_SOURCE,
+                csvVal(mp.get(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_SOURCE)));
+        row.put(
+                RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_VALID,
+                csvVal(mp.get(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_VALID)));
+        row.put(
+                RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_REPAIR_ATTEMPTED,
+                csvVal(mp.get(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_REPAIR_ATTEMPTED)));
+        row.put(
+                RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_REPAIR_SUCCEEDED,
+                csvVal(mp.get(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_REPAIR_SUCCEEDED)));
+        row.put(
+                RagPresetToolMetrics.KEY_BACKEND_FUNCTION_CALL_ATTEMPTED,
+                csvVal(mp.get(RagPresetToolMetrics.KEY_BACKEND_FUNCTION_CALL_ATTEMPTED)));
+        row.put(
+                RagPresetToolMetrics.KEY_NATIVE_PROVIDER_FUNCTION_CALL_ATTEMPTED,
+                csvVal(mp.get(RagPresetToolMetrics.KEY_NATIVE_PROVIDER_FUNCTION_CALL_ATTEMPTED)));
+        row.put(RagPresetToolMetrics.KEY_FUNCTION_TOOL_KIND, csvVal(mp.get(RagPresetToolMetrics.KEY_FUNCTION_TOOL_KIND)));
+        row.put(
                 RagPresetToolMetrics.KEY_FUNCTION_CALL_ARGUMENTS_VALID,
                 csvVal(mp.get(RagPresetToolMetrics.KEY_FUNCTION_CALL_ARGUMENTS_VALID)));
         row.put(RagPresetToolMetrics.KEY_FUNCTION_CALL_SUCCEEDED, csvVal(mp.get(RagPresetToolMetrics.KEY_FUNCTION_CALL_SUCCEEDED)));
@@ -869,6 +930,12 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put(RagPresetToolMetrics.KEY_TOOL_RESULT_USED_AS_FINAL, csvVal(mp.get(RagPresetToolMetrics.KEY_TOOL_RESULT_USED_AS_FINAL)));
         row.put(RagPresetToolMetrics.KEY_QUERY_TYPE_SOURCE, csvVal(mp.get(RagPresetToolMetrics.KEY_QUERY_TYPE_SOURCE)));
         row.put(RagPresetToolMetrics.KEY_TOOL_COVERAGE_STATUS, csvVal(mp.get(RagPresetToolMetrics.KEY_TOOL_COVERAGE_STATUS)));
+        row.put(
+                RagPresetToolMetrics.KEY_DETERMINISTIC_EVIDENCE_LEVEL,
+                csvVal(mp.get(RagPresetToolMetrics.KEY_DETERMINISTIC_EVIDENCE_LEVEL)));
+        row.put(
+                RagPresetToolMetrics.KEY_ROUTING_ORACLE_USED,
+                csvVal(mp.get(RagPresetToolMetrics.KEY_ROUTING_ORACLE_USED)));
         row.put(RagPresetAdvisorMetrics.KEY_ADVISOR_ENABLED, csvVal(mp.get(RagPresetAdvisorMetrics.KEY_ADVISOR_ENABLED)));
         row.put(RagPresetAdvisorMetrics.KEY_ADVISOR_ROUTE, csvVal(mp.get(RagPresetAdvisorMetrics.KEY_ADVISOR_ROUTE)));
         row.put(RagPresetAdvisorMetrics.KEY_ADVISOR_ATTEMPTED, csvVal(mp.get(RagPresetAdvisorMetrics.KEY_ADVISOR_ATTEMPTED)));
@@ -888,6 +955,15 @@ public final class BenchmarkMvpMetricsCalculator {
                 RagPresetAdvisorMetrics.KEY_ADVISOR_FALLBACK_REASON,
                 csvVal(mp.get(RagPresetAdvisorMetrics.KEY_ADVISOR_FALLBACK_REASON)));
         row.put(RagPresetAdvisorMetrics.KEY_ADVISOR_RESULT_USED, csvVal(mp.get(RagPresetAdvisorMetrics.KEY_ADVISOR_RESULT_USED)));
+        row.put("verifierAttempted", csvVal(mp.get("verifierAttempted")));
+        row.put("verifierPassed", csvVal(mp.get("verifierPassed")));
+        row.put("verifierFailureReason", csvVal(mp.get("verifierFailureReason")));
+        row.put("verifierRevisionAttempted", csvVal(mp.get("verifierRevisionAttempted")));
+        row.put("verifierForcedAbstention", csvVal(mp.get("verifierForcedAbstention")));
+        row.put("constraintType", csvVal(mp.get("constraintType")));
+        row.put("constraintCheckPassed", csvVal(mp.get("constraintCheckPassed")));
+        row.put("negativeEvidenceGuardTriggered", csvVal(mp.get("negativeEvidenceGuardTriggered")));
+        row.put("finalAnswerSource", csvVal(mp.get("finalAnswerSource")));
     }
 
     private static Object firstNonNull(Object a, Object b) {

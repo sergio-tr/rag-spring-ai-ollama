@@ -91,6 +91,34 @@ class BenchmarkMvpRollupCalculatorTest {
     }
 
     @Test
+    void mixedAnswerability_includesNeedsReviewAndNegativeEvidenceFalsePositiveRate() {
+        EvaluationResultEntity answerable =
+                ragAnalysisRow(Answerability.ANSWERABLE.name(), false, 0.8, "HAS_CONTEXT", "MATCH");
+        EvaluationResultEntity needsReview =
+                ragAnalysisRow(Answerability.NEEDS_REVIEW.name(), false, 0.5, "HAS_CONTEXT", "UNKNOWN");
+        EvaluationResultEntity unanswerableAbstained =
+                ragAnalysisRow(Answerability.UNANSWERABLE.name(), true, 1.0, "NO_CONTEXT", "UNKNOWN");
+        EvaluationResultEntity unanswerableFalsePositive =
+                ragAnalysisRow(Answerability.UNANSWERABLE.name(), false, 0.0, "HAS_CONTEXT", "UNKNOWN");
+        unanswerableFalsePositive.getMetricsPayload().put("negativeEvidenceFalsePositive", true);
+
+        Map<String, Object> roll =
+                BenchmarkMvpRollupCalculator.build(
+                        List.of(answerable, needsReview, unanswerableAbstained, unanswerableFalsePositive), null);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> byAnswerability = (Map<String, Object>) roll.get("byAnswerability");
+        assertThat(byAnswerability).containsKeys("ANSWERABLE", "NEEDS_REVIEW", "UNANSWERABLE");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> macro = (Map<String, Object>) roll.get("globalMacro");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> onExecuted = (Map<String, Object>) macro.get("onExecuted");
+        assertThat(onExecuted.get("scoreAnswerable")).isEqualTo(0.8);
+        assertThat(onExecuted.get("scoreUnanswerable")).isEqualTo(0.5);
+        assertThat(onExecuted.get("negativeEvidenceFalsePositiveRate")).isEqualTo(0.5);
+    }
+
+    @Test
     void globalMacro_functionCallingRollupRates_onExecutedRows() {
         EvaluationResultEntity attempted =
                 ragFunctionCallingRow(true, false, false, "COUNT_DOCUMENTS", "model_declined");

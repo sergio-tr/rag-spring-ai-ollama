@@ -28,6 +28,15 @@ public final class RagPresetAdvancedRetrievalMetrics {
     public static final String KEY_RETRIEVAL_MODE = "retrievalMode";
     public static final String KEY_RERANK_NOOP_REASON = "rerankNoopReason";
     public static final String KEY_ORIGINAL_CONTEXT_CHAR_COUNT = "originalContextCharCount";
+    public static final String KEY_SPARSE_QUERY_REWRITTEN = "sparseQueryRewritten";
+    public static final String KEY_SPARSE_FALLBACK_STAGE = "sparseFallbackStage";
+    public static final String KEY_SPARSE_HIT = "sparseHit";
+    public static final String KEY_FUSION_STRATEGY = "fusionStrategy";
+    public static final String KEY_PRE_FUSION_COUNT = "preFusionCount";
+    public static final String KEY_POST_FUSION_COUNT = "postFusionCount";
+    public static final String KEY_METADATA_CANDIDATE_COUNT = "metadataCandidateCount";
+    public static final String KEY_METADATA_FILTER_APPLIED = "metadataFilterApplied";
+    public static final String KEY_METADATA_FILTER_FALLBACK = "metadataFilterFallback";
 
     private RagPresetAdvancedRetrievalMetrics() {}
 
@@ -71,7 +80,12 @@ public final class RagPresetAdvancedRetrievalMetrics {
         }
 
         String sparseStatus = deriveSparseStatus(source, retrievalMode, sparse, hybridPreset);
-        boolean hybridApplied = hybridPreset && dense > 0 && sparse > 0 && merged > 0;
+        boolean hybridApplied;
+        if (source.containsKey(KEY_HYBRID_APPLIED)) {
+            hybridApplied = bool(source.get(KEY_HYBRID_APPLIED));
+        } else {
+            hybridApplied = hybridPreset && sparse > 0 && merged > 0;
+        }
         String strategy =
                 deriveStrategy(
                         hybridPreset, executed, retrievalMode, hybridApplied, rerankApplied, compressionApplied);
@@ -139,6 +153,16 @@ public final class RagPresetAdvancedRetrievalMetrics {
         if (!origins.isBlank()) {
             out.put(KEY_CANDIDATE_ORIGINS, origins);
         }
+
+        copyString(out, source, KEY_SPARSE_QUERY_REWRITTEN);
+        copyString(out, source, KEY_SPARSE_FALLBACK_STAGE);
+        copyString(out, source, KEY_FUSION_STRATEGY);
+        copyIfPresent(out, source, KEY_SPARSE_HIT);
+        copyIfPresent(out, source, KEY_PRE_FUSION_COUNT);
+        copyIfPresent(out, source, KEY_POST_FUSION_COUNT);
+        copyIfPresent(out, source, KEY_METADATA_CANDIDATE_COUNT);
+        copyIfPresent(out, source, KEY_METADATA_FILTER_APPLIED);
+        copyIfPresent(out, source, KEY_METADATA_FILTER_FALLBACK);
 
         copyString(out, source, "workflowName");
         copyString(out, source, KEY_RETRIEVAL_ROUTE);

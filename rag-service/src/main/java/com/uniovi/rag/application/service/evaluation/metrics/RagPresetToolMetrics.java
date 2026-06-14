@@ -26,9 +26,19 @@ public final class RagPresetToolMetrics {
     public static final String KEY_FUNCTION_RESULT_USED_AS_CONTEXT = "functionResultUsedAsContext";
     public static final String KEY_FUNCTION_CALL_ROUTE = "functionCallRoute";
     public static final String KEY_EXECUTION_ROUTE = "executionRoute";
+    public static final String KEY_FUNCTION_PROPOSAL_MODE = "functionProposalMode";
+    public static final String KEY_FUNCTION_PROPOSAL_SOURCE = "functionProposalSource";
+    public static final String KEY_FUNCTION_PROPOSAL_VALID = "functionProposalValid";
+    public static final String KEY_FUNCTION_PROPOSAL_REPAIR_ATTEMPTED = "functionProposalRepairAttempted";
+    public static final String KEY_FUNCTION_PROPOSAL_REPAIR_SUCCEEDED = "functionProposalRepairSucceeded";
+    public static final String KEY_BACKEND_FUNCTION_CALL_ATTEMPTED = "backendFunctionCallAttempted";
+    public static final String KEY_NATIVE_PROVIDER_FUNCTION_CALL_ATTEMPTED = "nativeProviderFunctionCallAttempted";
+    public static final String KEY_FUNCTION_TOOL_KIND = "functionToolKind";
     public static final String KEY_QUERY_TYPE_SOURCE = "queryTypeSource";
     public static final String KEY_TOOL_COVERAGE_STATUS = "toolCoverageStatus";
     public static final String KEY_ROUTING_ROUTE_KIND = "routingRouteKind";
+    public static final String KEY_DETERMINISTIC_EVIDENCE_LEVEL = "deterministicEvidenceLevel";
+    public static final String KEY_ROUTING_ORACLE_USED = "routingOracleUsed";
 
     private RagPresetToolMetrics() {}
 
@@ -69,11 +79,19 @@ public final class RagPresetToolMetrics {
         copyBool(out, mp, KEY_FUNCTION_CALL_SUCCEEDED);
         copyBool(out, mp, KEY_FUNCTION_RESULT_USED_AS_FINAL);
         copyBool(out, mp, KEY_FUNCTION_RESULT_USED_AS_CONTEXT);
+        copyBool(out, mp, KEY_FUNCTION_PROPOSAL_VALID);
+        copyBool(out, mp, KEY_FUNCTION_PROPOSAL_REPAIR_ATTEMPTED);
+        copyBool(out, mp, KEY_FUNCTION_PROPOSAL_REPAIR_SUCCEEDED);
+        copyBool(out, mp, KEY_BACKEND_FUNCTION_CALL_ATTEMPTED);
+        copyBool(out, mp, KEY_NATIVE_PROVIDER_FUNCTION_CALL_ATTEMPTED);
 
         copyString(out, mp, KEY_FUNCTION_CALL_NAME);
         copyString(out, mp, KEY_FUNCTION_CALL_FALLBACK_REASON);
         copyString(out, mp, KEY_FUNCTION_CALL_ROUTE);
         copyString(out, mp, KEY_EXECUTION_ROUTE);
+        copyString(out, mp, KEY_FUNCTION_PROPOSAL_MODE);
+        copyString(out, mp, KEY_FUNCTION_PROPOSAL_SOURCE);
+        copyString(out, mp, KEY_FUNCTION_TOOL_KIND);
         copyString(out, mp, KEY_ROUTING_ROUTE_KIND);
         if (!out.containsKey(KEY_ROUTING_ROUTE_KIND) && out.containsKey(KEY_EXECUTION_ROUTE)) {
             out.put(KEY_ROUTING_ROUTE_KIND, out.get(KEY_EXECUTION_ROUTE));
@@ -85,6 +103,8 @@ public final class RagPresetToolMetrics {
         copyBool(out, mp, RagPresetClassifierMetrics.KEY_ROUTE_SUPPRESSED_BY_CLASSIFIER);
         copyString(out, mp, RagPresetClassifierMetrics.KEY_ROUTE_SUPPRESSED_REASON);
         copyBool(out, mp, RagPresetClassifierMetrics.KEY_HEURISTIC_ROUTE_USED);
+        copyString(out, mp, RagPresetToolMetrics.KEY_DETERMINISTIC_EVIDENCE_LEVEL);
+        copyBool(out, mp, RagPresetToolMetrics.KEY_ROUTING_ORACLE_USED);
         copyString(out, mp, "toolResultSummary");
         copyString(out, mp, "deterministicToolOutcome");
         copyString(out, mp, "deterministicToolKind");
@@ -100,6 +120,9 @@ public final class RagPresetToolMetrics {
     }
 
     private static QueryTypeSource deriveQueryTypeSource(Map<String, Object> mp) {
+        if (Boolean.TRUE.equals(mp.get(RagPresetToolMetrics.KEY_ROUTING_ORACLE_USED))) {
+            return QueryTypeSource.ORACLE;
+        }
         String classifierStatus = str(mp.get("classifierStatus"));
         String predicted = firstNonBlank(str(mp.get("queryTypePredicted")), str(mp.get("classifierLabel")));
         if ("OK".equalsIgnoreCase(classifierStatus)

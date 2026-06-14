@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.runtime;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
 import com.uniovi.rag.configuration.ToolDescriptor;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
+import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
@@ -63,10 +64,32 @@ public final class ToolExecutionTelemetryMapper {
         }
 
         parseRoutingTelemetry(toolDetail, m);
+        copyDetailToken(toolDetail, m, "deterministicEvidenceLevel");
+        copyDetailToken(toolDetail, m, "routingOracleUsed");
+        copyDetailToken(toolDetail, m, "toolApplicabilityEligible");
+        copyDetailToken(toolDetail, m, "toolFallbackReason");
+        copyDetailToken(toolDetail, m, "toolInputSummary");
+        copyDetailToken(toolDetail, m, "toolOutputHash");
         m.putAll(FunctionCallingTelemetryMapper.fromTrace(trace));
         m.putAll(AdvisorTelemetryMapper.fromTrace(trace));
+        putFinalAnswerSourceFromTrace(trace, m);
 
         return Map.copyOf(m);
+    }
+
+    private static void putFinalAnswerSourceFromTrace(ExecutionTrace trace, Map<String, Object> m) {
+        if (m.containsKey("finalAnswerSource")) {
+            return;
+        }
+        String toolOutcome = safe(trace.deterministicToolOutcome());
+        if (DeterministicToolOutcome.EXECUTED_SUCCESS.name().equals(toolOutcome) && !trace.routingFallbackApplied()) {
+            m.put("finalAnswerSource", "TOOL_FINAL");
+            return;
+        }
+        if (trace.functionCallingShortCircuited()
+                && FunctionCallingOutcome.EXECUTED_SUCCESS.name().equals(safe(trace.functionCallingOutcome()))) {
+            m.put("finalAnswerSource", "FUNCTION_FINAL");
+        }
     }
 
     private static void parseRoutingTelemetry(String toolDetail, Map<String, Object> m) {
@@ -87,6 +110,18 @@ public final class ToolExecutionTelemetryMapper {
         }
     }
 
+    private static void copyDetailToken(String toolDetail, Map<String, Object> m, String key) {
+        String value = tokenValue(toolDetail, key + "=");
+        if (value.isBlank()) {
+            return;
+        }
+        if ("routingOracleUsed".equals(key) || "toolApplicabilityEligible".equals(key)) {
+            m.put(key, Boolean.parseBoolean(value));
+        } else {
+            m.put(key, value);
+        }
+    }
+
     private static String tokenValue(String detail, String key) {
         int start = detail.indexOf(key);
         if (start < 0) {
@@ -98,6 +133,12 @@ public final class ToolExecutionTelemetryMapper {
                 "routeSuppressedByClassifier=",
                 "routeSuppressedReason=",
                 "heuristicRouteUsed=",
+                "deterministicEvidenceLevel=",
+                "routingOracleUsed=",
+                "toolApplicabilityEligible=",
+                "toolFallbackReason=",
+                "toolInputSummary=",
+                "toolOutputHash=",
                 ";",
                 " | ")) {
             int idx = detail.indexOf(next, start);
@@ -146,15 +187,18 @@ public final class ToolExecutionTelemetryMapper {
                     "",
                     toolName,
                     "");
-            case NOT_APPLICABLE -> new ToolTelemetryState(
-                    false,
-                    false,
-                    false,
-                    false,
-                    false,
-                    fallbackReason(toolDetail, "tool_not_applicable"),
-                    "",
-                    "");
+            case NOT_APPLICABLE -> {
+                boolean applicable = parseBooleanDetail(toolDetail, "toolApplicabilityEligible");
+                yield new ToolTelemetryState(
+                        applicable,
+                        false,
+                        false,
+                        false,
+                        false,
+                        explicitFallbackReason(toolDetail, "tool_not_applicable"),
+                        "",
+                        "");
+            }
             case SUPPRESSED_BY_AMBIGUITY -> new ToolTelemetryState(
                     false,
                     false,
@@ -188,6 +232,14 @@ public final class ToolExecutionTelemetryMapper {
     }
 
     private static String fallbackReason(String detail, String defaultReason) {
+        return explicitFallbackReason(detail, defaultReason);
+    }
+
+    private static String explicitFallbackReason(String detail, String defaultReason) {
+        String fromDetail = tokenValue(detail, "toolFallbackReason=");
+        if (!fromDetail.isBlank()) {
+            return fromDetail;
+        }
         if (detail != null && detail.contains("tool_fallback_to_workflow")) {
             return "tool_execution_failed";
         }
@@ -197,7 +249,14 @@ public final class ToolExecutionTelemetryMapper {
         if (detail != null && detail.contains("tool_ambiguous_match")) {
             return "tool_ambiguous_match";
         }
+        if (detail != null && detail.contains("route_suppressed_by_classifier")) {
+            return tokenValue(detail, "routeSuppressedReason=");
+        }
         return defaultReason;
+    }
+
+    private static boolean parseBooleanDetail(String detail, String key) {
+        return Boolean.parseBoolean(tokenValue(detail, key + "="));
     }
 
     private static String summarizeFromDetail(String detail) {

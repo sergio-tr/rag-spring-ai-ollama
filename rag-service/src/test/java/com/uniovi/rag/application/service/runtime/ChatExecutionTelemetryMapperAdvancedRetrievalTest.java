@@ -7,7 +7,11 @@ import static org.mockito.Mockito.when;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
+import com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry;
+import com.uniovi.rag.domain.runtime.retrieval.MetadataFilterTelemetry;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
+import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalFallbackStage;
+import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalTelemetry;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalFusionMode;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
 import java.util.List;
@@ -161,6 +165,58 @@ class ChatExecutionTelemetryMapperAdvancedRetrievalTest {
 
         assertThat(telemetry.get("sparseRetrievalStatus")).isEqualTo("UNAVAILABLE");
         assertThat(telemetry.get("retrievalSparseStatus")).isEqualTo("sparse_unavailable");
+    }
+
+    @Test
+    void fromTrace_exportsSparseAndFusionTelemetryFields() {
+        RetrievalDiagnostics diagnostics =
+                new RetrievalDiagnostics(
+                        RetrievalMode.HYBRID_DENSE_SPARSE,
+                        Optional.of(RetrievalFusionMode.RRF_ONLY),
+                        "snap",
+                        5,
+                        3,
+                        6,
+                        6,
+                        6,
+                        5,
+                        4,
+                        0,
+                        1,
+                        true,
+                        List.of("a", "b"),
+                        List.of("b", "a"),
+                        Optional.empty(),
+                        200,
+                        120,
+                        true,
+                        6,
+                        Optional.of(
+                                new SparseRetrievalTelemetry(
+                                        "original q",
+                                        "ascensor",
+                                        SparseRetrievalFallbackStage.OR_KEYWORDS,
+                                        true,
+                                        "")),
+                        Optional.of(new FusionTelemetry("RRF", 8, 6, 0, true)),
+                        Optional.of(new MetadataFilterTelemetry(true, false)));
+        ExecutionTrace trace = mock(ExecutionTrace.class);
+        stubTraceDefaults(trace);
+        when(trace.retrievalUsed()).thenReturn(true);
+        when(trace.retrievalDiagnostics()).thenReturn(Optional.of(diagnostics));
+
+        var telemetry = ChatExecutionTelemetryMapper.fromTrace(trace);
+
+        assertThat(telemetry.get("sparseQueryRewritten")).isEqualTo("ascensor");
+        assertThat(telemetry.get("sparseFallbackStage")).isEqualTo("OR_KEYWORDS");
+        assertThat(telemetry.get("sparseHit")).isEqualTo(true);
+        assertThat(telemetry.get("fusionStrategy")).isEqualTo("RRF");
+        assertThat(telemetry.get("preFusionCount")).isEqualTo(8);
+        assertThat(telemetry.get("postFusionCount")).isEqualTo(6);
+        assertThat(telemetry.get("metadataCandidateCount")).isEqualTo(0);
+        assertThat(telemetry.get("metadataFilterApplied")).isEqualTo(true);
+        assertThat(telemetry.get("metadataFilterFallback")).isEqualTo(false);
+        assertThat(telemetry.get("hybridApplied")).isEqualTo(true);
     }
 
     private static void stubTraceDefaults(ExecutionTrace trace) {

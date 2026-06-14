@@ -193,6 +193,8 @@ public final class ExperimentalPresetCanonicalCatalog {
                 RagExperimentalPresetCode.P8,
                 Map.of(
                         "functionCallingEnabled", true,
+                        "functionCallingBackendProposalEnabled", true,
+                        "functionCallingNativeProviderEnabled", false,
                         "toolsEnabled", true
                 ),
                 null,

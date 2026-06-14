@@ -29,6 +29,19 @@ class RagPresetToolMetricsTest {
     }
 
     @Test
+    void copiesFunctionProposalTelemetryFields() {
+        Map<String, Object> metrics = new LinkedHashMap<>();
+        metrics.put(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_MODE, "BACKEND_DETERMINISTIC");
+        metrics.put(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_SOURCE, "QUERY_SHAPE");
+        metrics.put(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_VALID, true);
+        metrics.put(RagPresetToolMetrics.KEY_BACKEND_FUNCTION_CALL_ATTEMPTED, true);
+        metrics.put(RagPresetToolMetrics.KEY_FUNCTION_TOOL_KIND, "COUNT_DOCUMENTS_TOOL");
+        RagPresetToolMetrics.computeAndMerge(metrics);
+        assertThat(metrics.get(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_MODE)).isEqualTo("BACKEND_DETERMINISTIC");
+        assertThat(metrics.get(RagPresetToolMetrics.KEY_FUNCTION_TOOL_KIND)).isEqualTo("COUNT_DOCUMENTS_TOOL");
+    }
+
+    @Test
     void copiesFunctionCallingTelemetryFields() {
         Map<String, Object> metrics = new LinkedHashMap<>();
         metrics.put(RagPresetToolMetrics.KEY_FUNCTION_CALL_ATTEMPTED, true);

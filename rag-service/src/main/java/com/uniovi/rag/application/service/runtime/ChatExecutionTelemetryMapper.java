@@ -1,9 +1,11 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.application.service.runtime.factual.FactualVerifierTelemetry;
 import com.uniovi.rag.application.service.runtime.query.DefaultQueryClassifierAdapter;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
+import com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -130,6 +132,7 @@ public final class ChatExecutionTelemetryMapper {
         trace.retrievalDiagnostics().ifPresent(d -> putRetrievalDiagnosticsTelemetry(trace, d, m));
         putDateGroundingTelemetry(trace, m);
         putRuntimeAnswerMetaTelemetry(trace, m);
+        putFactualVerifierTelemetry(trace, m);
 
         m.putAll(ToolExecutionTelemetryMapper.fromTrace(trace));
 
@@ -396,11 +399,29 @@ public final class ChatExecutionTelemetryMapper {
             m.put("hybridCandidateCount", hybridCandidateCount);
         }
         boolean hybridApplied =
-                d.retrievalMode() == com.uniovi.rag.domain.runtime.retrieval.RetrievalMode.HYBRID_DENSE_SPARSE
-                        && d.denseCandidateCount() > 0
-                        && d.sparseCandidateCount() > 0
-                        && d.afterFusionCount() > 0;
+                d.fusionTelemetry()
+                        .map(FusionTelemetry::hybridApplied)
+                        .orElseGet(
+                                () ->
+                                        d.retrievalMode()
+                                                        == com.uniovi.rag.domain.runtime.retrieval.RetrievalMode
+                                                                .HYBRID_DENSE_SPARSE
+                                                && d.denseCandidateCount() > 0
+                                                && d.sparseCandidateCount() > 0
+                                                && d.afterFusionCount() > 0);
         m.put("hybridApplied", hybridApplied);
+        d.fusionTelemetry().ifPresent(ft -> m.put("fusionStrategy", ft.fusionStrategy()));
+        d.fusionTelemetry().ifPresent(ft -> m.put("preFusionCount", ft.preFusionCount()));
+        d.fusionTelemetry().ifPresent(ft -> m.put("postFusionCount", ft.postFusionCount()));
+        d.fusionTelemetry().ifPresent(ft -> m.put("metadataCandidateCount", ft.metadataCandidateCount()));
+        d.sparseTelemetry().ifPresent(st -> m.put("sparseQueryOriginal", st.originalQuery()));
+        d.sparseTelemetry().ifPresent(st -> m.put("sparseQueryRewritten", st.rewrittenQuery()));
+        d.sparseTelemetry().ifPresent(st -> m.put("sparseFallbackStage", st.fallbackStage().name()));
+        d.sparseTelemetry().ifPresent(st -> m.put("sparseHit", st.hit()));
+        d.metadataFilterTelemetry()
+                .ifPresent(mt -> m.put("metadataFilterApplied", mt.applied()));
+        d.metadataFilterTelemetry()
+                .ifPresent(mt -> m.put("metadataFilterFallback", mt.fallback()));
         String origins = candidateOriginsFromFusionStage(trace);
         if (!origins.isBlank()) {
             m.put("candidateOrigins", origins);
@@ -498,6 +519,43 @@ public final class ChatExecutionTelemetryMapper {
         } else {
             m.put("sparseRetrievalStatus", "ZERO_MATCHES");
         }
+    }
+
+    private static void putFactualVerifierTelemetry(ExecutionTrace trace, Map<String, Object> m) {
+        if (trace.stages() == null) {
+            return;
+        }
+        FactualVerifierTelemetry.enrichFromStages(trace.stages(), m);
+        String policy = trace.answerGroundingPolicy();
+        if (policy != null && !policy.isBlank()) {
+            m.put("groundingPolicy", policy);
+            m.put("negativeEvidenceGuardTriggered", "NEGATIVE_EVIDENCE".equals(policy)
+                    || "NEGATIVE_FALSE_POSITIVE".equals(String.valueOf(m.getOrDefault("verifierFailureReason", "")))
+                    || "UNRELATED_TOPIC".equals(String.valueOf(m.getOrDefault("verifierFailureReason", ""))));
+            if (!m.containsKey("constraintType")) {
+                m.put("constraintType", constraintTypeForPolicy(policy));
+            }
+        }
+        for (ExecutionStageTrace stage : trace.stages()) {
+            if (stage == null || !"final_answer_source".equals(stage.stageName())) {
+                continue;
+            }
+            String source = tokenAfter(stage.message(), "finalAnswerSource=");
+            if (source != null && !source.isBlank()) {
+                m.put("finalAnswerSource", source);
+            }
+            return;
+        }
+    }
+
+    private static String constraintTypeForPolicy(String policy) {
+        return switch (policy) {
+            case "NUMERIC_OR_DATE" -> "NUMERIC";
+            case "ENTITY_OR_TOPIC" -> "TOPIC";
+            case "NEGATIVE_EVIDENCE" -> "TOPIC";
+            case "STRICT_GROUNDED" -> "MIXED";
+            default -> "NONE";
+        };
     }
 
     private static void putRuntimeAnswerMetaTelemetry(ExecutionTrace trace, Map<String, Object> m) {
