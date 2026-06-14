@@ -94,7 +94,7 @@ class RagExecutionOrchestratorFunctionCallingRoutingTest {
         when(harness.functionCallingPolicy().resolve(any(), eq(plan))).thenReturn(Optional.of(decision));
         when(harness.functionCallingStrategy().tryExecute(any(), eq(plan), eq(decision)))
                 .thenReturn(
-                        new FunctionCallingExecutionResult(
+                        fcAttemptedResult(
                                 FunctionCallingOutcome.EXECUTED_SUCCESS,
                                 true,
                                 Optional.of(DeterministicToolKind.COUNT_DOCUMENTS_TOOL),
@@ -139,7 +139,7 @@ class RagExecutionOrchestratorFunctionCallingRoutingTest {
         when(harness.functionCallingPolicy().resolve(any(), eq(plan))).thenReturn(Optional.of(decision));
         when(harness.functionCallingStrategy().tryExecute(any(), eq(plan), eq(decision)))
                 .thenReturn(
-                        new FunctionCallingExecutionResult(
+                        fcAttemptedResult(
                                 FunctionCallingOutcome.MODEL_DECLINED,
                                 false,
                                 Optional.empty(),
@@ -358,5 +358,28 @@ class RagExecutionOrchestratorFunctionCallingRoutingTest {
                 "corr",
                 "",
                 List.of());
+    }
+
+    private static FunctionCallingExecutionResult fcAttemptedResult(
+            FunctionCallingOutcome outcome,
+            boolean success,
+            Optional<DeterministicToolKind> selectedToolKind,
+            String answerText,
+            Map<String, Object> normalizedPayload,
+            List<String> traceNotes,
+            boolean shortCircuited,
+            List<com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace> stageTraces) {
+        return new FunctionCallingExecutionResult(
+                outcome,
+                success,
+                selectedToolKind,
+                answerText,
+                normalizedPayload,
+                traceNotes,
+                shortCircuited,
+                stageTraces,
+                Optional.empty(),
+                true,
+                false);
     }
 }

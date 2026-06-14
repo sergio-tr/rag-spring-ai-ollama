@@ -35,8 +35,12 @@ public final class FcToolArgumentParser {
         ObjectNode obj = (ObjectNode) root;
         String rewritten = plan.rewrittenQueryText().trim();
         return switch (kind) {
-            case COUNT_DOCUMENTS_TOOL, FIND_PARAGRAPH_TOOL, BOOLEAN_QUERY_TOOL, COUNT_AND_EXPLAIN_TOOL -> parseSingleQuery(
-                    obj, rewritten);
+            case COUNT_DOCUMENTS_TOOL,
+                    FIND_PARAGRAPH_TOOL,
+                    BOOLEAN_QUERY_TOOL,
+                    COUNT_AND_EXPLAIN_TOOL,
+                    GET_DURATION_TOOL,
+                    FILTER_AND_LIST_TOOL -> parseSingleQuery(obj, rewritten);
             case GET_FIELD_TOOL -> parseGetField(obj, rewritten, plan);
         };
     }
