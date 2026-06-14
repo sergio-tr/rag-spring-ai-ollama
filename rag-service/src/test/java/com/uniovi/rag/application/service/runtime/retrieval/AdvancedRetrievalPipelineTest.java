@@ -26,6 +26,10 @@ import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievedContextSet;
+import com.uniovi.rag.domain.runtime.retrieval.MetadataFilterTelemetry;
+import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalFallbackStage;
+import com.uniovi.rag.domain.runtime.retrieval.SparseQueryPreparation;
+import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalTelemetry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -75,6 +79,9 @@ class AdvancedRetrievalPipelineTest {
 
     @Mock
     private MetadataAppendixLoader metadataAppendixLoader;
+
+    @Mock
+    private MetadataConstraintFilter metadataConstraintFilter;
 
     @InjectMocks
     private AdvancedRetrievalPipeline pipeline;
@@ -161,6 +168,8 @@ class AdvancedRetrievalPipelineTest {
                 .thenReturn(new RetrievalReranker.RerankResult(dense, List.of()));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
         when(retrievalFilter.filterAdvanced(eq(req), eq(plan), any())).thenReturn(dense);
+        when(metadataConstraintFilter.apply(eq(req), eq(plan), eq(dense)))
+                .thenReturn(new MetadataConstraintFilter.FilterResult(dense, new MetadataFilterTelemetry(false, false)));
         when(contextCompressionStrategy.compressPreservingEvidence(eq(dense), anyInt(), any()))
                 .thenReturn(new ContextCompressionStrategy.CompressionResult(List.of(protectedDate), new CompressionOutcome(50, 10, 1, List.of("drop_lowest_rerank_tail_unprotected_first"))));
         when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
@@ -243,15 +252,18 @@ class AdvancedRetrievalPipelineTest {
 
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
         when(hybridRetrievalStrategy.dense(req)).thenReturn(dense);
-        when(hybridRetrievalStrategy.sparse(req)).thenReturn(List.of());
-        when(retrievalFusionService.fuse(eq(req), eq(dense), eq(List.of())))
+        when(hybridRetrievalStrategy.sparseWithOutcome(req, plan)).thenReturn(emptySparseOutcome());
+        when(retrievalFusionService.fuseWithTelemetry(eq(req), eq(dense), eq(List.of())))
                 .thenReturn(
-                        new com.uniovi.rag.domain.runtime.retrieval.RetrievedContextSet(
-                                dense,
-                                Optional.empty(),
-                                dense.size(),
-                                0,
-                                dense.size()));
+                        new RetrievalFusionService.FusionResult(
+                                new RetrievedContextSet(
+                                        dense,
+                                        Optional.empty(),
+                                        dense.size(),
+                                        0,
+                                        dense.size()),
+                                new com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry(
+                                        "DENSE_ONLY_FALLBACK", 1, dense.size(), 0, false)));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
         when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
 
@@ -286,8 +298,12 @@ class AdvancedRetrievalPipelineTest {
 
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
         when(hybridRetrievalStrategy.dense(req)).thenReturn(List.of(dense));
-        when(hybridRetrievalStrategy.sparse(req)).thenReturn(List.of(sparse));
-        when(retrievalFusionService.fuse(eq(req), any(), any())).thenReturn(fused);
+        when(hybridRetrievalStrategy.sparseWithOutcome(req, plan)).thenReturn(sparseOutcome(List.of(sparse)));
+        when(retrievalFusionService.fuseWithTelemetry(eq(req), any(), any()))
+                .thenReturn(
+                        new RetrievalFusionService.FusionResult(
+                                fused,
+                                new com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry("RRF", 2, 1, 0, true)));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(List.of(dense));
         when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
 
@@ -322,23 +338,28 @@ class AdvancedRetrievalPipelineTest {
 
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
         when(hybridRetrievalStrategy.dense(req)).thenReturn(List.of(longChunk));
-        when(hybridRetrievalStrategy.sparse(req)).thenReturn(List.of());
-        when(retrievalFusionService.fuse(eq(req), any(), eq(List.of())))
+        when(hybridRetrievalStrategy.sparseWithOutcome(req, plan)).thenReturn(emptySparseOutcome());
+        when(retrievalFusionService.fuseWithTelemetry(eq(req), any(), eq(List.of())))
                 .thenReturn(
-                        new RetrievedContextSet(
-                                List.of(longChunk),
-                                Optional.empty(),
-                                1,
-                                0,
-                                1,
-                                1,
-                                0,
-                                0,
-                                "dense=1;sparse=0;fused=1"));
+                        new RetrievalFusionService.FusionResult(
+                                new RetrievedContextSet(
+                                        List.of(longChunk),
+                                        Optional.empty(),
+                                        1,
+                                        0,
+                                        1,
+                                        1,
+                                        0,
+                                        0,
+                                        "dense=1;sparse=0;fused=1"),
+                                new com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry(
+                                        "DENSE_ONLY_FALLBACK", 1, 1, 0, false)));
         when(retrievalReranker.rerank(any(), any(), any()))
                 .thenReturn(new RetrievalReranker.RerankResult(List.of(longChunk), List.of()));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(List.of(longChunk));
         when(retrievalFilter.filterAdvanced(eq(req), any(), any())).thenReturn(List.of(longChunk));
+        when(metadataConstraintFilter.apply(eq(req), eq(plan), any()))
+                .thenAnswer(inv -> new MetadataConstraintFilter.FilterResult(inv.getArgument(2), new MetadataFilterTelemetry(false, false)));
         when(contextCompressionStrategy.compressPreservingEvidence(any(), eq(80), any()))
                 .thenAnswer(
                         inv ->
@@ -364,16 +385,19 @@ class AdvancedRetrievalPipelineTest {
 
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
         when(hybridRetrievalStrategy.dense(req)).thenReturn(dense);
-        when(hybridRetrievalStrategy.sparse(req))
+        when(hybridRetrievalStrategy.sparseWithOutcome(req, plan))
                 .thenThrow(RagServiceException.hybridSparseRetrievalFailed(new RuntimeException("db")));
-        when(retrievalFusionService.fuse(eq(req), eq(dense), eq(List.of())))
+        when(retrievalFusionService.fuseWithTelemetry(eq(req), eq(dense), eq(List.of())))
                 .thenReturn(
-                        new com.uniovi.rag.domain.runtime.retrieval.RetrievedContextSet(
-                                dense,
-                                Optional.empty(),
-                                dense.size(),
-                                0,
-                                dense.size()));
+                        new RetrievalFusionService.FusionResult(
+                                new com.uniovi.rag.domain.runtime.retrieval.RetrievedContextSet(
+                                        dense,
+                                        Optional.empty(),
+                                        dense.size(),
+                                        0,
+                                        dense.size()),
+                                new com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry(
+                                        "DENSE_ONLY_FALLBACK", 1, dense.size(), 0, false)));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
         when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
 
@@ -598,5 +622,25 @@ class AdvancedRetrievalPipelineTest {
     private static DenseRetrievalOutcome denseOutcome(List<RetrievalCandidate> dense) {
         int n = dense != null ? dense.size() : 0;
         return new DenseRetrievalOutcome(dense, n, n, n);
+    }
+
+    private static SparseRetrievalOutcome emptySparseOutcome() {
+        SparseQueryPreparation prep = new SparseQueryPreparation("q", "q", List.of(), List.of(), List.of(), List.of(), List.of());
+        return new SparseRetrievalOutcome(
+                List.of(),
+                prep,
+                SparseRetrievalFallbackStage.NO_HIT,
+                "",
+                new SparseRetrievalTelemetry("q", "", SparseRetrievalFallbackStage.NO_HIT, false, "no_lexical_match"));
+    }
+
+    private static SparseRetrievalOutcome sparseOutcome(List<RetrievalCandidate> candidates) {
+        SparseQueryPreparation prep = new SparseQueryPreparation("q", "q", List.of("term"), List.of(), List.of(), List.of(), List.of());
+        return new SparseRetrievalOutcome(
+                candidates,
+                prep,
+                SparseRetrievalFallbackStage.OR_KEYWORDS,
+                "term",
+                new SparseRetrievalTelemetry("q", "term", SparseRetrievalFallbackStage.OR_KEYWORDS, true, ""));
     }
 }

@@ -12,7 +12,13 @@ public final class FusionOriginSupport {
 
     private FusionOriginSupport() {}
 
-    public record OriginCounts(int denseOnly, int sparseOnly, int both) {}
+    public record OriginCounts(int denseOnly, int sparseOnly, int both) {
+
+        /** True when RRF merged candidates from both dense and sparse input lists. */
+        public boolean hasBothLegs() {
+            return both > 0 || (denseOnly > 0 && sparseOnly > 0);
+        }
+    }
 
     public static OriginCounts countOrigins(List<RetrievalCandidate> dense, List<RetrievalCandidate> sparse) {
         Set<String> denseIds = ids(dense);

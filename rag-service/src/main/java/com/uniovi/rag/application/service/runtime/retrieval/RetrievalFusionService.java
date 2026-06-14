@@ -1,11 +1,11 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
+import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalFusionMode;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievedContextSet;
-import org.springframework.stereotype.Service;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.springframework.stereotype.Service;
 
 /**
  * Reciprocal Rank Fusion (RRF) with fixed {@link RetrievalPolicy#RRF_K}.
@@ -21,28 +22,52 @@ import java.util.Set;
 @Service
 public class RetrievalFusionService {
 
+    public record FusionResult(RetrievedContextSet retrieved, FusionTelemetry telemetry) {}
+
     public RetrievedContextSet fuse(RetrievalRequest req, List<RetrievalCandidate> dense, List<RetrievalCandidate> sparse) {
-        Set<String> denseIds = candidateIds(dense);
-        Set<String> sparseIds = candidateIds(sparse);
-        FusionOriginSupport.OriginCounts origins = FusionOriginSupport.countOrigins(dense, sparse);
+        return fuseWithTelemetry(req, dense, sparse).retrieved();
+    }
+
+    public FusionResult fuseWithTelemetry(
+            RetrievalRequest req, List<RetrievalCandidate> dense, List<RetrievalCandidate> sparse) {
+        List<RetrievalCandidate> safeDense = dense != null ? dense : List.of();
+        List<RetrievalCandidate> safeSparse = sparse != null ? sparse : List.of();
+        int preFusion = safeDense.size() + safeSparse.size();
+
+        if (safeSparse.isEmpty()) {
+            RetrievedContextSet denseOnly = denseOnlyPassthrough(req, safeDense);
+            FusionTelemetry telemetry =
+                    new FusionTelemetry("DENSE_ONLY_FALLBACK", preFusion, denseOnly.fusedCount(), 0, false);
+            return new FusionResult(denseOnly, telemetry);
+        }
+        if (safeDense.isEmpty()) {
+            RetrievedContextSet sparseOnly = sparseOnlyPassthrough(req, safeSparse);
+            FusionTelemetry telemetry =
+                    new FusionTelemetry("SPARSE_ONLY", preFusion, sparseOnly.fusedCount(), 0, false);
+            return new FusionResult(sparseOnly, telemetry);
+        }
+
+        Set<String> denseIds = candidateIds(safeDense);
+        Set<String> sparseIds = candidateIds(safeSparse);
+        FusionOriginSupport.OriginCounts origins = FusionOriginSupport.countOrigins(safeDense, safeSparse);
 
         Map<String, Double> scores = new HashMap<>();
-        for (int i = 0; i < dense.size(); i++) {
-            String id = dense.get(i).candidateId();
+        for (int i = 0; i < safeDense.size(); i++) {
+            String id = safeDense.get(i).candidateId();
             scores.merge(id, 1.0 / (RetrievalPolicy.RRF_K + i + 1), Double::sum);
         }
-        for (int i = 0; i < sparse.size(); i++) {
-            String id = sparse.get(i).candidateId();
+        for (int i = 0; i < safeSparse.size(); i++) {
+            String id = safeSparse.get(i).candidateId();
             scores.merge(id, 1.0 / (RetrievalPolicy.RRF_K + i + 1), Double::sum);
         }
 
         Map<String, RetrievalCandidate> byId = new HashMap<>();
-        for (RetrievalCandidate c : dense) {
+        for (RetrievalCandidate c : safeDense) {
             byId.putIfAbsent(
                     c.candidateId(),
                     FusionOriginSupport.tagOrigin(c, originLabel(c.candidateId(), denseIds, sparseIds)));
         }
-        for (RetrievalCandidate c : sparse) {
+        for (RetrievalCandidate c : safeSparse) {
             byId.merge(
                     c.candidateId(),
                     FusionOriginSupport.tagOrigin(c, originLabel(c.candidateId(), denseIds, sparseIds)),
@@ -83,18 +108,71 @@ public class RetrievalFusionService {
 
         String originsSummary =
                 FusionOriginSupport.formatCandidateOrigins(
-                        dense.size(), sparse.size(), fused.size(), origins);
+                        safeDense.size(), safeSparse.size(), fused.size(), origins);
 
+        RetrievedContextSet retrieved =
+                new RetrievedContextSet(
+                        fused,
+                        Optional.of(RetrievalFusionMode.RRF_ONLY),
+                        safeDense.size(),
+                        safeSparse.size(),
+                        fused.size(),
+                        origins.denseOnly(),
+                        origins.sparseOnly(),
+                        origins.both(),
+                        originsSummary);
+
+        boolean hybridApplied =
+                !safeSparse.isEmpty() && !safeDense.isEmpty() && fused.size() > 0 && origins.hasBothLegs();
+        FusionTelemetry telemetry =
+                new FusionTelemetry("RRF", preFusion, fused.size(), 0, hybridApplied);
+        return new FusionResult(retrieved, telemetry);
+    }
+
+    private static RetrievedContextSet denseOnlyPassthrough(RetrievalRequest req, List<RetrievalCandidate> dense) {
+        List<RetrievalCandidate> capped = new ArrayList<>();
+        for (RetrievalCandidate c : dense) {
+            if (capped.size() >= req.fusionOutputCap()) {
+                break;
+            }
+            capped.add(FusionOriginSupport.tagOrigin(c, "DENSE"));
+        }
+        String origins =
+                FusionOriginSupport.formatCandidateOrigins(
+                        dense.size(), 0, capped.size(), new FusionOriginSupport.OriginCounts(dense.size(), 0, 0));
         return new RetrievedContextSet(
-                fused,
-                Optional.of(RetrievalFusionMode.RRF_ONLY),
+                capped,
+                Optional.empty(),
                 dense.size(),
+                0,
+                capped.size(),
+                dense.size(),
+                0,
+                0,
+                origins);
+    }
+
+    private static RetrievedContextSet sparseOnlyPassthrough(RetrievalRequest req, List<RetrievalCandidate> sparse) {
+        List<RetrievalCandidate> capped = new ArrayList<>();
+        for (RetrievalCandidate c : sparse) {
+            if (capped.size() >= req.fusionOutputCap()) {
+                break;
+            }
+            capped.add(FusionOriginSupport.tagOrigin(c, "SPARSE"));
+        }
+        String origins =
+                FusionOriginSupport.formatCandidateOrigins(
+                        0, sparse.size(), capped.size(), new FusionOriginSupport.OriginCounts(0, sparse.size(), 0));
+        return new RetrievedContextSet(
+                capped,
+                Optional.of(RetrievalFusionMode.RRF_ONLY),
+                0,
                 sparse.size(),
-                fused.size(),
-                origins.denseOnly(),
-                origins.sparseOnly(),
-                origins.both(),
-                originsSummary);
+                capped.size(),
+                0,
+                sparse.size(),
+                0,
+                origins);
     }
 
     private static String originLabel(String id, Set<String> denseIds, Set<String> sparseIds) {

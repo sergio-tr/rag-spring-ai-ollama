@@ -106,6 +106,86 @@ class RetrievalFusionServiceTest {
         assertThat(out.bothCount()).isEqualTo(1);
     }
 
+    @Test
+    void fuse_denseOnlyFallback_whenSparseEmpty() {
+        UUID s = UUID.randomUUID();
+        RetrievalRequest req = baseRequest(RetrievalMode.HYBRID_DENSE_SPARSE);
+        RetrievalCandidate d1 =
+                new RetrievalCandidate(
+                        s + ":doc1:0",
+                        "a",
+                        Map.of("document_id", "doc1", "indexSnapshotId", s.toString(), "chunk_index", 0),
+                        0.1,
+                        Double.NaN,
+                        1,
+                        0,
+                        s,
+                        0.01);
+
+        RetrievalFusionService.FusionResult result = fusion.fuseWithTelemetry(req, List.of(d1), List.of());
+
+        assertThat(result.retrieved().sparseInputCount()).isZero();
+        assertThat(result.telemetry().fusionStrategy()).isEqualTo("DENSE_ONLY_FALLBACK");
+        assertThat(result.telemetry().hybridApplied()).isFalse();
+    }
+
+    @Test
+    void fuse_hybridApplied_requiresBothDenseAndSparseLegs() {
+        UUID s = UUID.randomUUID();
+        RetrievalRequest req = baseRequest(RetrievalMode.HYBRID_DENSE_SPARSE);
+        RetrievalCandidate denseOnly =
+                new RetrievalCandidate(
+                        s + ":doc1:0",
+                        "a",
+                        Map.of("document_id", "doc1", "indexSnapshotId", s.toString(), "chunk_index", 0),
+                        0.1,
+                        Double.NaN,
+                        1,
+                        0,
+                        s,
+                        0.01);
+        RetrievalCandidate sparseOnly =
+                new RetrievalCandidate(
+                        s + ":doc2:0",
+                        "b",
+                        Map.of("document_id", "doc2", "indexSnapshotId", s.toString(), "chunk_index", 0),
+                        Double.NaN,
+                        0.5,
+                        0,
+                        1,
+                        s,
+                        0.03);
+
+        RetrievalFusionService.FusionResult result =
+                fusion.fuseWithTelemetry(req, List.of(denseOnly), List.of(sparseOnly));
+
+        assertThat(result.telemetry().fusionStrategy()).isEqualTo("RRF");
+        assertThat(result.telemetry().hybridApplied()).isTrue();
+        assertThat(result.retrieved().candidateOriginsSummary()).contains("both=0");
+    }
+
+    @Test
+    void fuse_sparseOnlyFallback_doesNotMarkHybridApplied() {
+        UUID s = UUID.randomUUID();
+        RetrievalRequest req = baseRequest(RetrievalMode.HYBRID_DENSE_SPARSE);
+        RetrievalCandidate sp =
+                new RetrievalCandidate(
+                        s + ":doc1:0",
+                        "a",
+                        Map.of("document_id", "doc1", "indexSnapshotId", s.toString(), "chunk_index", 0),
+                        Double.NaN,
+                        0.5,
+                        0,
+                        1,
+                        s,
+                        0.03);
+
+        RetrievalFusionService.FusionResult result = fusion.fuseWithTelemetry(req, List.of(), List.of(sp));
+
+        assertThat(result.telemetry().fusionStrategy()).isEqualTo("SPARSE_ONLY");
+        assertThat(result.telemetry().hybridApplied()).isFalse();
+    }
+
     private static RetrievalRequest baseRequest(RetrievalMode mode) {
         UUID sid = UUID.randomUUID();
         UUID pid = UUID.randomUUID();

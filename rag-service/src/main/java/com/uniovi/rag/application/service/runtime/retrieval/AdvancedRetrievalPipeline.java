@@ -14,6 +14,9 @@ import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievedContextSet;
+import com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry;
+import com.uniovi.rag.domain.runtime.retrieval.MetadataFilterTelemetry;
+import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalTelemetry;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -44,6 +47,7 @@ public class AdvancedRetrievalPipeline {
     private final ContextCompressionStrategy contextCompressionStrategy;
     private final RetrievalPromptTextBuilder retrievalPromptTextBuilder;
     private final MetadataAppendixLoader metadataAppendixLoader;
+    private final MetadataConstraintFilter metadataConstraintFilter;
 
     public AdvancedRetrievalPipeline(
             RetrievalRequestBuilder retrievalRequestBuilder,
@@ -54,7 +58,8 @@ public class AdvancedRetrievalPipeline {
             RetrievalFilter retrievalFilter,
             ContextCompressionStrategy contextCompressionStrategy,
             RetrievalPromptTextBuilder retrievalPromptTextBuilder,
-            MetadataAppendixLoader metadataAppendixLoader) {
+            MetadataAppendixLoader metadataAppendixLoader,
+            MetadataConstraintFilter metadataConstraintFilter) {
         this.retrievalRequestBuilder = retrievalRequestBuilder;
         this.denseRetrievalStrategy = denseRetrievalStrategy;
         this.hybridRetrievalStrategy = hybridRetrievalStrategy;
@@ -64,6 +69,7 @@ public class AdvancedRetrievalPipeline {
         this.contextCompressionStrategy = contextCompressionStrategy;
         this.retrievalPromptTextBuilder = retrievalPromptTextBuilder;
         this.metadataAppendixLoader = metadataAppendixLoader;
+        this.metadataConstraintFilter = metadataConstraintFilter;
     }
 
     public CuratedContextSet retrieve(ExecutionContext ctx, QueryPlan plan, String workflowName) {
@@ -75,6 +81,9 @@ public class AdvancedRetrievalPipeline {
         traces.add(stage("retrieval_build_request", tBuild, ExecutionStageOutcome.SUCCESS, ""));
 
         RetrievedContextSet retrieved;
+        Optional<SparseRetrievalTelemetry> sparseTelemetry = Optional.empty();
+        Optional<FusionTelemetry> fusionTelemetry = Optional.empty();
+        Optional<MetadataFilterTelemetry> metadataFilterTelemetry = Optional.empty();
         if (req.mode() == RetrievalMode.DENSE_ONLY) {
             long tDense = System.nanoTime();
             DenseRetrievalOutcome denseOutcome = denseRetrievalStrategy.retrieveWithOutcome(req);
@@ -108,13 +117,22 @@ public class AdvancedRetrievalPipeline {
             long tSparse = System.nanoTime();
             List<RetrievalCandidate> sparse;
             try {
-                sparse = hybridRetrievalStrategy.sparse(req);
+                SparseRetrievalOutcome sparseOutcome = hybridRetrievalStrategy.sparseWithOutcome(req, plan);
+                sparse = sparseOutcome.candidates();
+                sparseTelemetry = Optional.of(sparseOutcome.telemetry());
+                String stageMsg =
+                        "count="
+                                + sparse.size()
+                                + " stage="
+                                + sparseOutcome.fallbackStage().name()
+                                + " rewritten="
+                                + truncate(sparseOutcome.rewrittenQuery(), 120);
                 traces.add(
                         stage(
                                 "retrieval_sparse",
                                 tSparse,
                                 ExecutionStageOutcome.SUCCESS,
-                                "count=" + sparse.size()));
+                                stageMsg));
                 if (sparse.isEmpty()) {
                     traceNotes.add("sparse_zero_matches");
                 }
@@ -128,7 +146,9 @@ public class AdvancedRetrievalPipeline {
                                         + (ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName())));
             }
             long tFuse = System.nanoTime();
-            retrieved = retrievalFusionService.fuse(req, dense, sparse);
+            RetrievalFusionService.FusionResult fusionResult = retrievalFusionService.fuseWithTelemetry(req, dense, sparse);
+            retrieved = fusionResult.retrieved();
+            fusionTelemetry = Optional.of(fusionResult.telemetry());
             traces.add(
                     stage(
                             "retrieval_fuse",
@@ -136,10 +156,14 @@ public class AdvancedRetrievalPipeline {
                             ExecutionStageOutcome.SUCCESS,
                             "count="
                                     + retrieved.fusedCount()
+                                    + " strategy="
+                                    + fusionResult.telemetry().fusionStrategy()
                                     + " origins="
                                     + retrieved.candidateOriginsSummary()));
             if (sparse.isEmpty()) {
                 traceNotes.add("hybrid_not_applied");
+            } else if (fusionResult.telemetry().hybridApplied()) {
+                traceNotes.add("hybrid_applied");
             }
         }
 
@@ -187,8 +211,25 @@ public class AdvancedRetrievalPipeline {
                             filteredFinal, new CompressionOutcome(totalChars(filteredFinal), totalChars(filteredFinal), 0, List.of("postretrieval_disabled")));
         } else {
             long tFilterAdv = System.nanoTime();
-            filteredFinal = applyDateGrounding(req, retrievalFilter.filterAdvanced(req, plan, rerankResult.candidates()), traces);
-            traces.add(stage("retrieval_filter_advanced", tFilterAdv, ExecutionStageOutcome.SUCCESS, "count=" + filteredFinal.size()));
+            List<RetrievalCandidate> advancedInput = retrievalFilter.filterAdvanced(req, plan, rerankResult.candidates());
+            MetadataConstraintFilter.FilterResult constraintResult =
+                    metadataConstraintFilter.apply(req, plan, advancedInput);
+            metadataFilterTelemetry = Optional.of(constraintResult.telemetry());
+            if (constraintResult.telemetry().fallback()) {
+                traceNotes.add("metadata_filter_fallback");
+            }
+            filteredFinal = applyDateGrounding(req, constraintResult.candidates(), traces);
+            traces.add(
+                    stage(
+                            "retrieval_filter_advanced",
+                            tFilterAdv,
+                            ExecutionStageOutcome.SUCCESS,
+                            "count="
+                                    + filteredFinal.size()
+                                    + " metadataFilterApplied="
+                                    + constraintResult.telemetry().applied()
+                                    + " metadataFilterFallback="
+                                    + constraintResult.telemetry().fallback()));
 
             Set<String> protectedIds = protectedCandidateIds(req, plan, filteredFinal);
             protectedCount = protectedIds.size();
@@ -278,7 +319,10 @@ public class AdvancedRetrievalPipeline {
                         comp.charsBefore(),
                         comp.charsAfter(),
                         rerankOrderChanged,
-                        retrieved.fusedCount());
+                        retrieved.fusedCount(),
+                        sparseTelemetry,
+                        fusionTelemetry,
+                        metadataFilterTelemetry);
 
         return new CuratedContextSet(
                 compressed.candidates(),
@@ -461,5 +505,15 @@ public class AdvancedRetrievalPipeline {
             }
         }
         return n;
+    }
+
+    private static String truncate(String value, int max) {
+        if (value == null) {
+            return "";
+        }
+        if (value.length() <= max) {
+            return value;
+        }
+        return value.substring(0, max) + "...";
     }
 }
