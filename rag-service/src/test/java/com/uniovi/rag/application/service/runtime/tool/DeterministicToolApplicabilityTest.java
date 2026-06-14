@@ -18,7 +18,11 @@ class DeterministicToolApplicabilityTest {
     }
 
     @Test
-    void applicableTypes_coversFiveStructuredKinds() {
-        assertThat(DeterministicToolApplicability.applicableTypes()).hasSize(5);
+    void applicableTypes_coversStructuredKinds() {
+        assertThat(DeterministicToolApplicability.applicableTypes()).hasSize(7);
+        assertThat(DeterministicToolApplicability.toolKindForQueryType(QueryType.GET_DURATION))
+                .contains(DeterministicToolKind.GET_DURATION_TOOL);
+        assertThat(DeterministicToolApplicability.toolKindForQueryType(QueryType.FILTER_AND_LIST))
+                .contains(DeterministicToolKind.FILTER_AND_LIST_TOOL);
     }
 }

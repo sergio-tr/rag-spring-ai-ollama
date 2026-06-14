@@ -29,7 +29,22 @@ public class DefaultDeterministicToolStrategy implements DeterministicToolStrate
         if (!decision.selected()) {
             return skippedFromDecision(decision);
         }
-        return executor.execute(decision, ctx, plan);
+        DeterministicToolExecutionResult executed = executor.execute(decision, ctx, plan);
+        return withDecisionTelemetry(decision, executed);
+    }
+
+    private static DeterministicToolExecutionResult withDecisionTelemetry(
+            DeterministicToolDecision decision, DeterministicToolExecutionResult executed) {
+        List<String> notes = new ArrayList<>(decision.reasons());
+        appendRoutingTelemetry(notes, decision.normalizedInputs());
+        notes.addAll(executed.traceNotes());
+        return new DeterministicToolExecutionResult(
+                executed.toolKind(),
+                executed.outcome(),
+                executed.success(),
+                executed.answerText(),
+                executed.normalizedPayload(),
+                List.copyOf(notes));
     }
 
     private static DeterministicToolExecutionResult skippedFromDecision(DeterministicToolDecision d) {
@@ -52,6 +67,10 @@ public class DefaultDeterministicToolStrategy implements DeterministicToolStrate
         putRoutingNote(notes, inputs, "routeSuppressedByClassifier");
         putRoutingNote(notes, inputs, "routeSuppressedReason");
         putRoutingNote(notes, inputs, "heuristicRouteUsed");
+        putRoutingNote(notes, inputs, "deterministicEvidenceLevel");
+        putRoutingNote(notes, inputs, "routingOracleUsed");
+        putRoutingNote(notes, inputs, "toolApplicabilityEligible");
+        putRoutingNote(notes, inputs, "toolFallbackReason");
     }
 
     private static void putRoutingNote(List<String> notes, Map<String, String> inputs, String key) {

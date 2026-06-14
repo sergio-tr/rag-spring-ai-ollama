@@ -15,7 +15,9 @@ public final class DeterministicToolApplicability {
                     QueryType.BOOLEAN_QUERY,
                     QueryType.GET_FIELD,
                     QueryType.FIND_PARAGRAPH,
-                    QueryType.COUNT_AND_EXPLAIN);
+                    QueryType.COUNT_AND_EXPLAIN,
+                    QueryType.GET_DURATION,
+                    QueryType.FILTER_AND_LIST);
 
     private DeterministicToolApplicability() {}
 
@@ -33,6 +35,8 @@ public final class DeterministicToolApplicability {
             case GET_FIELD -> Optional.of(DeterministicToolKind.GET_FIELD_TOOL);
             case FIND_PARAGRAPH -> Optional.of(DeterministicToolKind.FIND_PARAGRAPH_TOOL);
             case COUNT_AND_EXPLAIN -> Optional.of(DeterministicToolKind.COUNT_AND_EXPLAIN_TOOL);
+            case GET_DURATION -> Optional.of(DeterministicToolKind.GET_DURATION_TOOL);
+            case FILTER_AND_LIST -> Optional.of(DeterministicToolKind.FILTER_AND_LIST_TOOL);
             default -> Optional.empty();
         };
     }

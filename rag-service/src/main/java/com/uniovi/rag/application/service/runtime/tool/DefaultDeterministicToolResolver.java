@@ -1,19 +1,17 @@
 package com.uniovi.rag.application.service.runtime.tool;
 
-import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
-import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
-import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
-import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.domain.runtime.tool.DeterministicEvidenceLevel;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolDecision;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import com.uniovi.rag.domain.runtime.tool.ToolExecutionMode;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,21 +28,16 @@ public class DefaultDeterministicToolResolver implements DeterministicToolResolv
     public static final String REASON_CLASSIFIER_UNAVAILABLE = "classifier_unavailable";
     public static final String REASON_NON_APPLICABLE_TYPE = "non_applicable_query_type";
     public static final String REASON_HEURISTIC_AMBIGUOUS = "heuristic_ambiguous_match";
+    public static final String REASON_CLASSIFIER_HEURISTIC_CONFLICT = "classifier_heuristic_conflict";
+    public static final String REASON_UNSUPPORTED_QUERY_TYPE = "unsupported_query_type";
+    public static final String REASON_MISSING_REQUIRED_ARGUMENTS = "missing_required_tool_arguments";
 
     @Override
     public DeterministicToolDecision resolve(ExecutionContext ctx, QueryPlan plan) {
         RagConfig rag = ctx.resolved().toRagConfig();
         ToolExecutionMode mode = rag.toolsEnabled() ? ToolExecutionMode.ENABLED : ToolExecutionMode.DISABLED;
         if (mode == ToolExecutionMode.DISABLED) {
-            return new DeterministicToolDecision(
-                    mode,
-                    DeterministicToolOutcome.DISABLED_BY_CONFIG,
-                    false,
-                    Optional.empty(),
-                    List.of("toolsEnabled=false"),
-                    normalizedInputs(ctx, plan),
-                    Optional.of("tool_disabled_by_config"),
-                    Optional.empty());
+            return disabledDecision(mode, ctx, plan, List.of("toolsEnabled=false"), "tool_disabled_by_config");
         }
         if (plan.ambiguityAssessment().status() != AmbiguityStatus.SUFFICIENT) {
             return new DeterministicToolDecision(
@@ -53,60 +46,70 @@ public class DefaultDeterministicToolResolver implements DeterministicToolResolv
                     false,
                     Optional.empty(),
                     List.of("ambiguityStatus=" + plan.ambiguityAssessment().status()),
-                    normalizedInputs(ctx, plan),
+                    normalizedInputs(ctx, plan, DeterministicEvidenceLevel.NONE, false, false, false),
                     Optional.of("tool_suppressed_by_ambiguity"),
                     Optional.empty());
         }
 
-        Optional<String> hardSuppression = hardClassifierSuppressionReason(plan);
-        if (hardSuppression.isPresent()) {
-            return suppressedByClassifier(mode, plan, ctx, hardSuppression.get());
+        DeterministicToolEvidenceEvaluator.Evaluation evaluation = DeterministicToolEvidenceEvaluator.evaluate(plan);
+        Optional<String> classifierVeto = DeterministicToolEvidenceEvaluator.classifierVetoReason(plan, evaluation);
+        if (classifierVeto.isPresent()) {
+            return suppressedByClassifier(mode, plan, ctx, classifierVeto.get(), evaluation);
         }
 
-        EnumSet<DeterministicToolKind> matches = EnumSet.noneOf(DeterministicToolKind.class);
-        boolean heuristicRouteUsed = false;
-        addClassifierQueryTypeMatch(plan, matches);
-        if (heuristicsAllowed(plan)) {
-            heuristicRouteUsed = addHeuristicMatches(plan, matches);
-        }
-
+        EnumSet<DeterministicToolKind> matches = evaluation.matchedKinds();
         if (matches.isEmpty()) {
-            return new DeterministicToolDecision(
+            return notApplicable(
                     mode,
-                    DeterministicToolOutcome.NOT_APPLICABLE,
-                    false,
-                    Optional.empty(),
+                    ctx,
+                    plan,
+                    evaluation,
                     List.of("tool_not_applicable"),
-                    withRoutingTelemetry(normalizedInputs(ctx, plan), false, "", heuristicRouteUsed),
-                    Optional.empty(),
-                    Optional.empty());
+                    REASON_UNSUPPORTED_QUERY_TYPE);
         }
         if (matches.size() > 1) {
             String suppressionReason =
-                    classifierUnavailable(plan) ? REASON_CLASSIFIER_UNAVAILABLE : REASON_HEURISTIC_AMBIGUOUS;
-            return new DeterministicToolDecision(
+                    evaluation.heuristicRouteUsed() && !evaluation.routingOracleUsed()
+                            ? REASON_HEURISTIC_AMBIGUOUS
+                            : REASON_HEURISTIC_AMBIGUOUS;
+            return notApplicable(
                     mode,
-                    DeterministicToolOutcome.NOT_APPLICABLE,
-                    false,
-                    Optional.empty(),
+                    ctx,
+                    plan,
+                    evaluation,
                     List.of("tool_ambiguous_match", matches.toString()),
-                    withRoutingTelemetry(
-                            normalizedInputs(ctx, plan),
-                            classifierUnavailable(plan),
-                            suppressionReason,
-                            heuristicRouteUsed),
-                    Optional.of("tool_ambiguous_match"),
-                    Optional.empty());
+                    suppressionReason);
         }
 
         DeterministicToolKind kind = matches.iterator().next();
+        if (!DeterministicToolEvidenceEvaluator.requiredArgumentsPresent(kind, plan)) {
+            return notApplicable(
+                    mode,
+                    ctx,
+                    plan,
+                    evaluation,
+                    List.of("missing_required_tool_arguments", "kind=" + kind),
+                    REASON_MISSING_REQUIRED_ARGUMENTS);
+        }
+
+        if (evaluation.evidenceLevel() != DeterministicEvidenceLevel.STRONG
+                && evaluation.evidenceLevel() != DeterministicEvidenceLevel.ORACLE) {
+            return notApplicable(
+                    mode,
+                    ctx,
+                    plan,
+                    evaluation,
+                    List.of("insufficient_deterministic_evidence", "level=" + evaluation.evidenceLevel()),
+                    REASON_UNSUPPORTED_QUERY_TYPE);
+        }
+
         return new DeterministicToolDecision(
                 mode,
                 DeterministicToolOutcome.SELECTED,
                 true,
                 Optional.of(kind),
                 List.of("selected=" + kind),
-                withRoutingTelemetry(normalizedInputs(ctx, plan), false, "", heuristicRouteUsed),
+                routingTelemetry(ctx, plan, evaluation, false, ""),
                 Optional.empty(),
                 Optional.empty());
     }
@@ -116,142 +119,113 @@ public class DefaultDeterministicToolResolver implements DeterministicToolResolv
         return resolve(ctx, plan);
     }
 
+    private static DeterministicToolDecision disabledDecision(
+            ToolExecutionMode mode,
+            ExecutionContext ctx,
+            QueryPlan plan,
+            List<String> reasons,
+            String suppression) {
+        return new DeterministicToolDecision(
+                mode,
+                DeterministicToolOutcome.DISABLED_BY_CONFIG,
+                false,
+                Optional.empty(),
+                reasons,
+                normalizedInputs(ctx, plan, DeterministicEvidenceLevel.NONE, false, false, false),
+                Optional.of(suppression),
+                Optional.empty());
+    }
+
     private static DeterministicToolDecision suppressedByClassifier(
-            ToolExecutionMode mode, QueryPlan plan, ExecutionContext ctx, String reason) {
+            ToolExecutionMode mode,
+            QueryPlan plan,
+            ExecutionContext ctx,
+            String reason,
+            DeterministicToolEvidenceEvaluator.Evaluation evaluation) {
         return new DeterministicToolDecision(
                 mode,
                 DeterministicToolOutcome.NOT_APPLICABLE,
                 false,
                 Optional.empty(),
                 List.of("route_suppressed_by_classifier", reason),
-                withRoutingTelemetry(normalizedInputs(ctx, plan), true, reason, false),
+                routingTelemetry(ctx, plan, evaluation, true, reason),
                 Optional.of(reason),
                 Optional.empty());
     }
 
-    private static Optional<String> hardClassifierSuppressionReason(QueryPlan plan) {
-        return switch (plan.classifierStatus()) {
-            case INVALID_OUTPUT -> Optional.of(REASON_CLASSIFIER_INVALID);
-            case LOW_CONFIDENCE -> Optional.of(REASON_CLASSIFIER_LOW_CONFIDENCE);
-            case OK -> {
-                Optional<QueryType> cqt = plan.classifierQueryType();
-                if (cqt.isPresent() && !DeterministicToolApplicability.isApplicableQueryType(cqt.get())) {
-                    yield Optional.of(REASON_NON_APPLICABLE_TYPE);
-                }
-                yield Optional.empty();
-            }
-            default -> Optional.empty();
-        };
+    private static DeterministicToolDecision notApplicable(
+            ToolExecutionMode mode,
+            ExecutionContext ctx,
+            QueryPlan plan,
+            DeterministicToolEvidenceEvaluator.Evaluation evaluation,
+            List<String> reasons,
+            String fallbackReason) {
+        return new DeterministicToolDecision(
+                mode,
+                DeterministicToolOutcome.NOT_APPLICABLE,
+                false,
+                Optional.empty(),
+                reasons,
+                routingTelemetry(ctx, plan, evaluation, false, fallbackReason),
+                Optional.of(fallbackReason),
+                Optional.empty());
     }
 
-    private static boolean classifierUnavailable(QueryPlan plan) {
-        return switch (plan.classifierStatus()) {
-            case UNAVAILABLE, TIMEOUT, INVALID_REQUEST -> true;
-            default -> false;
-        };
+    private static Map<String, String> routingTelemetry(
+            ExecutionContext ctx,
+            QueryPlan plan,
+            DeterministicToolEvidenceEvaluator.Evaluation evaluation,
+            boolean suppressedByClassifier,
+            String fallbackReason) {
+        return normalizedInputs(
+                ctx,
+                plan,
+                evaluation.evidenceLevel(),
+                evaluation.routingOracleUsed(),
+                evaluation.heuristicRouteUsed(),
+                evaluation.toolApplicabilityEligible(),
+                suppressedByClassifier,
+                fallbackReason);
     }
 
-    private static boolean heuristicsAllowed(QueryPlan plan) {
-        ClassifierStatus status = plan.classifierStatus();
-        if (status == ClassifierStatus.OK) {
-            return plan.classifierQueryType()
-                    .map(DeterministicToolApplicability::isApplicableQueryType)
-                    .orElse(true);
-        }
-        if (status == ClassifierStatus.UNAVAILABLE
-                || status == ClassifierStatus.TIMEOUT
-                || status == ClassifierStatus.INVALID_REQUEST) {
-            return true;
-        }
-        return false;
+    private static Map<String, String> normalizedInputs(
+            ExecutionContext ctx,
+            QueryPlan plan,
+            DeterministicEvidenceLevel evidenceLevel,
+            boolean routingOracleUsed,
+            boolean heuristicRouteUsed,
+            boolean toolApplicabilityEligible) {
+        return normalizedInputs(
+                ctx, plan, evidenceLevel, routingOracleUsed, heuristicRouteUsed, toolApplicabilityEligible, false, "");
     }
 
-    private static boolean addHeuristicMatches(QueryPlan plan, EnumSet<DeterministicToolKind> matches) {
-        int before = matches.size();
-        if (matchesCountDocuments(plan)) {
-            matches.add(DeterministicToolKind.COUNT_DOCUMENTS_TOOL);
-        }
-        if (matchesFindParagraph(plan)) {
-            matches.add(DeterministicToolKind.FIND_PARAGRAPH_TOOL);
-        }
-        if (matchesGetField(plan)) {
-            matches.add(DeterministicToolKind.GET_FIELD_TOOL);
-        }
-        if (matchesBoolean(plan)) {
-            matches.add(DeterministicToolKind.BOOLEAN_QUERY_TOOL);
-        }
-        if (matchesCountAndExplain(plan)) {
-            matches.add(DeterministicToolKind.COUNT_AND_EXPLAIN_TOOL);
-        }
-        return matches.size() > before;
-    }
-
-    private static void addClassifierQueryTypeMatch(QueryPlan p, EnumSet<DeterministicToolKind> matches) {
-        if (p.classifierStatus() != ClassifierStatus.OK) {
-            return;
-        }
-        Optional<QueryType> cqt = p.classifierQueryType();
-        if (cqt.isEmpty()) {
-            return;
-        }
-        Optional<DeterministicToolKind> kind = DeterministicToolApplicability.toolKindForQueryType(cqt.get());
-        if (kind.isEmpty()) {
-            return;
-        }
-        if (kind.get() == DeterministicToolKind.GET_FIELD_TOOL && !matchesGetField(p)) {
-            return;
-        }
-        matches.add(kind.get());
-    }
-
-    private static boolean matchesCountDocuments(QueryPlan p) {
-        return p.queryIntent() == QueryIntent.COUNT || p.expectedAnswerShape() == ExpectedAnswerShape.SCALAR_COUNT;
-    }
-
-    private static boolean matchesFindParagraph(QueryPlan p) {
-        return p.queryIntent() == QueryIntent.FIND && p.expectedAnswerShape() == ExpectedAnswerShape.PARAGRAPH;
-    }
-
-    private static boolean matchesGetField(QueryPlan p) {
-        boolean shapeOk =
-                p.queryIntent() == QueryIntent.EXTRACT_FIELD || p.expectedAnswerShape() == ExpectedAnswerShape.FIELD_VALUE;
-        if (!shapeOk) {
-            return false;
-        }
-        String field = p.slots().get("field");
-        return field != null && !field.isBlank();
-    }
-
-    private static boolean matchesBoolean(QueryPlan p) {
-        return p.queryIntent() == QueryIntent.BOOLEAN_CHECK || p.expectedAnswerShape() == ExpectedAnswerShape.SCALAR_BOOLEAN;
-    }
-
-    private static boolean matchesCountAndExplain(QueryPlan p) {
-        if (p.classifierQueryType().filter(qt -> qt == QueryType.COUNT_AND_EXPLAIN).isPresent()) {
-            return true;
-        }
-        return p.queryIntent() == QueryIntent.COUNT && "true".equalsIgnoreCase(p.slots().getOrDefault("explain", ""));
-    }
-
-    private static Map<String, String> withRoutingTelemetry(
-            Map<String, String> base, boolean suppressed, String reason, boolean heuristicRouteUsed) {
-        Map<String, String> m = new LinkedHashMap<>(base);
-        m.put("routeSuppressedByClassifier", Boolean.toString(suppressed));
-        if (!reason.isBlank()) {
-            m.put("routeSuppressedReason", reason);
-        }
-        m.put("heuristicRouteUsed", Boolean.toString(heuristicRouteUsed));
-        return m;
-    }
-
-    private static Map<String, String> normalizedInputs(ExecutionContext ctx, QueryPlan plan) {
+    private static Map<String, String> normalizedInputs(
+            ExecutionContext ctx,
+            QueryPlan plan,
+            DeterministicEvidenceLevel evidenceLevel,
+            boolean routingOracleUsed,
+            boolean heuristicRouteUsed,
+            boolean toolApplicabilityEligible,
+            boolean suppressedByClassifier,
+            String fallbackReason) {
         Map<String, String> m = new LinkedHashMap<>();
         m.put("queryText", plan.rewrittenQueryText());
         m.put("correlationId", plan.correlationId());
         m.put("intent", plan.queryIntent().name());
         m.put("classifierStatus", plan.classifierStatus().name());
-        for (var e : plan.slots().entrySet()) {
-            m.put("slots." + e.getKey(), e.getValue());
+        m.put("deterministicEvidenceLevel", evidenceLevel.name());
+        m.put("routingOracleUsed", Boolean.toString(routingOracleUsed));
+        m.put("toolApplicabilityEligible", Boolean.toString(toolApplicabilityEligible));
+        m.put("routeSuppressedByClassifier", Boolean.toString(suppressedByClassifier));
+        if (suppressedByClassifier && !fallbackReason.isBlank()) {
+            m.put("routeSuppressedReason", fallbackReason);
+        }
+        if (!fallbackReason.isBlank()) {
+            m.put("toolFallbackReason", fallbackReason);
+        }
+        m.put("heuristicRouteUsed", Boolean.toString(heuristicRouteUsed));
+        for (var entry : plan.slots().entrySet()) {
+            m.put("slots." + entry.getKey(), entry.getValue());
         }
         var ner = plan.entityExtractionResult();
         if (!ner.dates().isEmpty()) {
