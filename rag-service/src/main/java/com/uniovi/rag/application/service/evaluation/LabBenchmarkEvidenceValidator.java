@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.evaluation;
 
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
+import com.uniovi.rag.application.service.evaluation.metrics.DatasetQuestionSubsetSupport;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
@@ -215,6 +216,13 @@ public class LabBenchmarkEvidenceValidator {
         Object direct = agg.get(AGG_EXPECTED_ITEM_COUNT);
         if (direct instanceof Number n) {
             return Math.max(0, n.longValue());
+        }
+        Object filtered = agg.get(DatasetQuestionSubsetSupport.AGG_KEY_FILTERED_QUESTION_COUNT);
+        Object presetCount = agg.get("plannedPresetCount");
+        if (filtered instanceof Number fq && fq.intValue() > 0) {
+            int presets =
+                    presetCount instanceof Number pn && pn.intValue() > 0 ? pn.intValue() : 1;
+            return (long) fq.intValue() * presets;
         }
         Object planned = agg.get("plannedTotalItems");
         if (planned instanceof Number n) {

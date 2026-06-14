@@ -120,6 +120,32 @@ class LabBenchmarkEvidenceValidatorTest {
     }
 
     @Test
+    void validateRun_subset18_executed18_passesWhenExpectedMatchesSubset() {
+        UUID runId = UUID.randomUUID();
+        when(evaluationRunRepository.findAggregatesJsonByRunId(runId))
+                .thenReturn(Optional.of(Map.of("expectedItemCount", 18, "filteredQuestionCount", 18)));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId))
+                .thenReturn(items(18, BenchmarkItemOutcome.EXECUTED));
+        assertThat(validator.validateRun(runId)).isEmpty();
+    }
+
+    @Test
+    void validateRun_subsetFallbackFromFilteredCountWhenExpectedMissing() {
+        UUID runId = UUID.randomUUID();
+        when(evaluationRunRepository.findAggregatesJsonByRunId(runId))
+                .thenReturn(
+                        Optional.of(
+                                Map.of(
+                                        "filteredQuestionCount",
+                                        18,
+                                        "plannedPresetCount",
+                                        1)));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId))
+                .thenReturn(items(18, BenchmarkItemOutcome.EXECUTED));
+        assertThat(validator.validateRun(runId)).isEmpty();
+    }
+
+    @Test
     void validateRun_countMismatch_failsValidation() {
         UUID runId = UUID.randomUUID();
         when(evaluationRunRepository.findAggregatesJsonByRunId(runId))

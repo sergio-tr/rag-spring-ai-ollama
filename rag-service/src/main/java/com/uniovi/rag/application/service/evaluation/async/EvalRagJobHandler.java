@@ -27,6 +27,7 @@ import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResul
 import com.uniovi.rag.application.result.evaluation.RagPresetBenchmarkRunPayload;
 import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
 import com.uniovi.rag.application.service.evaluation.LabRagRunDiagnostics;
+import com.uniovi.rag.application.service.evaluation.metrics.DatasetQuestionSubsetSupport;
 import com.uniovi.rag.application.service.evaluation.preset.TypedRagPresetBenchmarkOrchestrator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -239,7 +240,9 @@ class EvalRagJobHandler implements LabJobHandler {
                     requestedPresets.size(), presetCount, ctx.requestedPresetCodes());
             int selectedPresetCount =
                     requestedPresets.isEmpty() ? presetCount : requestedPresets.size();
-            int runTotalItems = (int) ((long) questionCount * (long) Math.max(1, selectedPresetCount));
+            int runTotalItems =
+                    DatasetQuestionSubsetSupport.resolvedExpectedItemCount(
+                            ctx.aggregatesJson(), questionCount, selectedPresetCount);
             String presetCode =
                     requestedPresets.isEmpty() ? null : requestedPresets.iterator().next().name();
 
