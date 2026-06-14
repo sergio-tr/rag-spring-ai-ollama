@@ -1,5 +1,7 @@
 package com.uniovi.rag.infrastructure.persistence;
 
+import com.uniovi.rag.application.service.runtime.retrieval.SparseDomainSynonyms;
+import com.uniovi.rag.application.service.runtime.retrieval.SparseQueryPreparer;
 import com.uniovi.rag.application.service.runtime.retrieval.SparseRetrievalStrategy;
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
@@ -74,10 +76,33 @@ class SparseRetrievalStrategyIntegrationIT {
 
     @BeforeEach
     void setUp() {
-        jdbcTemplate = new JdbcTemplate(sharedDataSource);
-        sparseRetrievalStrategy = new SparseRetrievalStrategy(new NamedParameterJdbcTemplate(sharedDataSource));
+        SparseQueryPreparer preparer = new SparseQueryPreparer(new SparseDomainSynonyms());
+        sparseRetrievalStrategy =
+                new SparseRetrievalStrategy(
+                        new NamedParameterJdbcTemplate(sharedDataSource), preparer, new SparseDomainSynonyms());
         vectorStoreProjectFkEnforced = null;
         jdbcTemplate.update("DELETE FROM vector_store");
+    }
+
+    @Test
+    void retrieve_spanishDomainTerm_returnsSparseCandidate() {
+        UUID snapshotId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        insertChunk(snapshotId, projectId, documentId, "Se acordó reparar el ascensor del edificio.", 0);
+
+        RetrievalRequest req =
+                request(
+                        snapshotId,
+                        projectId,
+                        "¿Cuántas actas mencionan el ascensor?",
+                        List.of("all"),
+                        true);
+
+        List<RetrievalCandidate> hits = sparseRetrievalStrategy.retrieve(req);
+
+        assertThat(hits).isNotEmpty();
+        assertThat(hits.getFirst().content()).containsIgnoringCase("ascensor");
     }
 
     @Test
@@ -135,7 +160,9 @@ class SparseRetrievalStrategyIntegrationIT {
         String metadata =
                 "{\"indexSnapshotId\":\""
                         + snapshotId
-                        + "\",\"document_id\":\""
+                        + "\",\"document_id\":\"906390506\",\"documentId\":\""
+                        + documentId
+                        + "\",\"projectDocumentId\":\""
                         + documentId
                         + "\",\"chunk_index\":"
                         + chunkIndex

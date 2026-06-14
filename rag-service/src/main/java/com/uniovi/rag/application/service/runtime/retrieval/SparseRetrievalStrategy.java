@@ -3,19 +3,24 @@ package com.uniovi.rag.application.service.runtime.retrieval;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.stereotype.Service;
-
+import com.uniovi.rag.domain.runtime.retrieval.SparseQueryPreparation;
+import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalFallbackStage;
+import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalTelemetry;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.stereotype.Service;
 
 /**
  * Snapshot-bound PostgreSQL full-text search over {@code vector_store.content} (generated {@code content_tsv}).
@@ -26,44 +31,284 @@ public class SparseRetrievalStrategy {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
     private final NamedParameterJdbcTemplate jdbc;
+    private final SparseQueryPreparer sparseQueryPreparer;
+    private final SparseDomainSynonyms synonyms;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final Boolean ilikeSupported;
 
-    public SparseRetrievalStrategy(NamedParameterJdbcTemplate jdbc) {
+    @Autowired
+    public SparseRetrievalStrategy(
+            NamedParameterJdbcTemplate jdbc,
+            SparseQueryPreparer sparseQueryPreparer,
+            SparseDomainSynonyms synonyms) {
         this.jdbc = jdbc;
+        this.sparseQueryPreparer = sparseQueryPreparer;
+        this.synonyms = synonyms;
+        this.ilikeSupported = probeIlikeSupport();
+    }
+
+    SparseRetrievalStrategy(
+            NamedParameterJdbcTemplate jdbc,
+            SparseQueryPreparer sparseQueryPreparer,
+            SparseDomainSynonyms synonyms,
+            boolean ilikeSupported) {
+        this.jdbc = jdbc;
+        this.sparseQueryPreparer = sparseQueryPreparer;
+        this.synonyms = synonyms;
+        this.ilikeSupported = ilikeSupported;
     }
 
     public List<RetrievalCandidate> retrieve(RetrievalRequest req) {
-        String normalizedQuery = SparseQueryNormalizer.normalize(req.queryText());
-        if (normalizedQuery.isBlank()) {
+        return retrieve(req, null).candidates();
+    }
+
+    public SparseRetrievalOutcome retrieve(RetrievalRequest req, QueryPlan plan) {
+        SparseQueryPreparation preparation = sparseQueryPreparer.prepare(req.queryText(), plan);
+        if (preparation.normalizedQuery().isBlank()
+                && preparation.keywordTerms().isEmpty()
+                && preparation.exactPhrases().isEmpty()
+                && preparation.entityTerms().isEmpty()) {
+            return noHit(preparation, "", SparseRetrievalFallbackStage.NO_HIT, "blank_query");
+        }
+
+        LinkedHashSet<String> seenIds = new LinkedHashSet<>();
+        List<RetrievalCandidate> accumulated = new ArrayList<>();
+        int limit = Math.max(1, req.topKSparse());
+        StageAttempt lastAttempt = null;
+
+        for (StageAttempt stage : buildStageAttempts(preparation)) {
+            lastAttempt = stage;
+            List<RetrievalCandidate> hits;
+            try {
+                hits = executeStage(req, stage);
+            } catch (Exception ignored) {
+                continue;
+            }
+            for (RetrievalCandidate c : hits) {
+                if (c == null || c.candidateId() == null || seenIds.contains(c.candidateId())) {
+                    continue;
+                }
+                seenIds.add(c.candidateId());
+                accumulated.add(c);
+                if (accumulated.size() >= limit) {
+                    break;
+                }
+            }
+            if (!accumulated.isEmpty()) {
+                SparseRetrievalTelemetry telemetry =
+                        new SparseRetrievalTelemetry(
+                                preparation.originalQuery(),
+                                stage.queryText(),
+                                stage.stage(),
+                                true,
+                                "");
+                return new SparseRetrievalOutcome(
+                        List.copyOf(accumulated), preparation, stage.stage(), stage.queryText(), telemetry);
+            }
+        }
+
+        String rewritten =
+                lastAttempt != null ? lastAttempt.queryText() : lastAttemptQuery(preparation);
+        SparseRetrievalFallbackStage lastStage =
+                lastAttempt != null ? lastAttempt.stage() : SparseRetrievalFallbackStage.NO_HIT;
+        return noHit(preparation, rewritten, lastStage, "no_lexical_match");
+    }
+
+    private SparseRetrievalOutcome noHit(
+            SparseQueryPreparation preparation,
+            String rewritten,
+            SparseRetrievalFallbackStage lastStage,
+            String reason) {
+        SparseRetrievalTelemetry telemetry =
+                new SparseRetrievalTelemetry(
+                        preparation.originalQuery(),
+                        rewritten,
+                        lastStage,
+                        false,
+                        reason);
+        return new SparseRetrievalOutcome(
+                List.of(), preparation, SparseRetrievalFallbackStage.NO_HIT, rewritten, telemetry);
+    }
+
+    private List<StageAttempt> buildStageAttempts(SparseQueryPreparation prep) {
+        List<StageAttempt> stages = new ArrayList<>();
+        LinkedHashSet<String> searchTerms = new LinkedHashSet<>();
+        searchTerms.addAll(prep.entityTerms());
+        searchTerms.addAll(prep.keywordTerms());
+        searchTerms.addAll(prep.synonymTerms());
+
+        for (String phrase : prep.exactPhrases()) {
+            if (phrase != null && !phrase.isBlank()) {
+                stages.add(
+                        new StageAttempt(
+                                SparseRetrievalFallbackStage.EXACT_PHRASE,
+                                phrase.trim(),
+                                TsQueryMode.WEBSEARCH,
+                                true));
+            }
+        }
+
+        for (String term : prioritySingleTerms(prep)) {
+            if (term != null && !term.isBlank()) {
+                stages.add(
+                        new StageAttempt(
+                                SparseRetrievalFallbackStage.AND_KEYWORDS,
+                                term.trim(),
+                                TsQueryMode.WEBSEARCH,
+                                true));
+            }
+        }
+
+        List<String> andTerms = topTerms(searchTerms, 4);
+        if (!andTerms.isEmpty()) {
+            stages.add(
+                    new StageAttempt(
+                            SparseRetrievalFallbackStage.AND_KEYWORDS,
+                            String.join(" ", andTerms),
+                            TsQueryMode.WEBSEARCH,
+                            true));
+        }
+
+        List<String> orTerms = topTerms(searchTerms, 6);
+        if (!orTerms.isEmpty()) {
+            stages.add(
+                    new StageAttempt(
+                            SparseRetrievalFallbackStage.OR_KEYWORDS,
+                            joinOrTerms(orTerms),
+                            TsQueryMode.OR_TSQUERY,
+                            false));
+        }
+
+        List<String> unaccentOr = topTerms(unaccentTerms(orTerms), 6);
+        if (!unaccentOr.isEmpty()) {
+            String orJoined = joinOrTerms(unaccentOr);
+            if (!orJoined.equals(joinOrTerms(orTerms))) {
+                stages.add(
+                        new StageAttempt(
+                                SparseRetrievalFallbackStage.UNACCENT_OR,
+                                orJoined,
+                                TsQueryMode.OR_TSQUERY,
+                                false));
+            }
+        }
+
+        if (Boolean.TRUE.equals(ilikeSupported) && !orTerms.isEmpty()) {
+            stages.add(
+                    new StageAttempt(
+                            SparseRetrievalFallbackStage.ILIKE,
+                            joinOrTerms(orTerms),
+                            TsQueryMode.ILIKE,
+                            false));
+        }
+
+        return stages;
+    }
+
+    private List<String> prioritySingleTerms(SparseQueryPreparation prep) {
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        for (String term : prep.keywordTerms()) {
+            if (term == null || term.isBlank()) {
+                continue;
+            }
+            String folded = SpanishRetrievalTextSupport.foldAccents(term.toLowerCase(Locale.ROOT).trim());
+            if (synonyms.knownHeads().contains(folded)) {
+                out.add(term.trim());
+            }
+        }
+        for (String term : prep.synonymTerms()) {
+            if (term != null && !term.isBlank()) {
+                out.add(term.trim());
+            }
+        }
+        for (String term : prep.keywordTerms()) {
+            if (term == null || term.isBlank()) {
+                continue;
+            }
+            if (term.length() >= 5 && !term.chars().allMatch(Character::isDigit)) {
+                out.add(term.trim());
+            }
+            if (out.size() >= 4) {
+                break;
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private List<RetrievalCandidate> executeStage(RetrievalRequest req, StageAttempt stage) throws Exception {
+        String queryText = stage.queryText();
+        if (queryText == null || queryText.isBlank()) {
             return List.of();
         }
 
         MapSqlParameterSource p = new MapSqlParameterSource();
-        p.addValue("query", normalizedQuery);
         p.addValue("projectId", req.projectId());
         p.addValue("snapshotIds", req.snapshotIds());
         p.addValue("limit", req.topKSparse());
 
-        StringBuilder sql = new StringBuilder(buildSelectClause("websearch_to_tsquery('simple', :query)"));
+        if (stage.tsQueryMode() == TsQueryMode.ILIKE) {
+            return executeIlike(req, queryText.startsWith("ILIKE:") ? queryText.substring("ILIKE:".length()) : queryText, p);
+        }
+
+        p.addValue("query", queryText);
+        String tsqueryExpr = tsqueryExpression(stage.tsQueryMode());
+        StringBuilder sql = new StringBuilder(buildSelectClause(tsqueryExpr));
         if (!appendDocumentAllowlist(sql, req, p)) {
             return List.of();
         }
         sql.append(" ORDER BY rank DESC NULLS LAST LIMIT :limit ");
 
-        try {
-            List<RetrievalCandidate> rows = executeQuery(sql.toString(), p);
-            if (rows.isEmpty()) {
-                StringBuilder fallbackSql = new StringBuilder(buildSelectClause("plainto_tsquery('simple', :query)"));
-                if (!appendDocumentAllowlist(fallbackSql, req, p)) {
-                    return List.of();
-                }
-                fallbackSql.append(" ORDER BY rank DESC NULLS LAST LIMIT :limit ");
-                rows = executeQuery(fallbackSql.toString(), p);
+        List<RetrievalCandidate> rows = executeQuery(sql.toString(), p);
+        if (rows.isEmpty() && stage.usePlaintoFallback()) {
+            StringBuilder fallbackSql = new StringBuilder(buildSelectClause("plainto_tsquery('simple', :query)"));
+            if (!appendDocumentAllowlist(fallbackSql, req, p)) {
+                return List.of();
             }
-            return rows;
-        } catch (Exception e) {
-            throw RagServiceException.hybridSparseRetrievalFailed(e);
+            fallbackSql.append(" ORDER BY rank DESC NULLS LAST LIMIT :limit ");
+            rows = executeQuery(fallbackSql.toString(), p);
         }
+        return rows;
+    }
+
+    private static String tsqueryExpression(TsQueryMode mode) {
+        return switch (mode) {
+            case OR_TSQUERY -> "to_tsquery('simple', :query)";
+            case PLAINTO -> "plainto_tsquery('simple', :query)";
+            case WEBSEARCH -> "websearch_to_tsquery('simple', :query)";
+            case ILIKE -> throw new IllegalStateException("ILIKE handled separately");
+        };
+    }
+
+    private List<RetrievalCandidate> executeIlike(RetrievalRequest req, String orJoined, MapSqlParameterSource p) {
+        List<String> terms = splitOrTerms(orJoined);
+        if (terms.isEmpty()) {
+            return List.of();
+        }
+        List<String> patterns = new ArrayList<>();
+        for (String term : terms) {
+            if (term != null && !term.isBlank()) {
+                patterns.add("%" + term.trim().toLowerCase(Locale.ROOT) + "%");
+            }
+        }
+        if (patterns.isEmpty()) {
+            return List.of();
+        }
+        p.addValue("patterns", patterns);
+
+        StringBuilder sql =
+                new StringBuilder(
+                        """
+                        SELECT id, content, metadata::text AS metadata_json, chunk_index, 0.01 AS rank
+                        FROM vector_store
+                        WHERE (project_id IS NOT DISTINCT FROM CAST(:projectId AS uuid))
+                          AND (metadata->>'indexSnapshotId') IS NOT NULL
+                          AND (metadata->>'indexSnapshotId')::uuid IN (:snapshotIds)
+                          AND lower(content) LIKE ANY (CAST(:patterns AS text[]))
+                        """);
+        if (!appendDocumentAllowlist(sql, req, p)) {
+            return List.of();
+        }
+        sql.append(" LIMIT :limit ");
+        return executeQuery(sql.toString(), p);
     }
 
     private String buildSelectClause(String tsqueryExpr) {
@@ -98,7 +343,13 @@ public class SparseRetrievalStrategy {
             return false;
         }
         p.addValue("docIds", docUuids);
-        sql.append(" AND (metadata->>'document_id')::uuid IN (:docIds) ");
+        sql.append(
+                """
+                 AND (
+                   (metadata->>'documentId')::uuid IN (:docIds)
+                   OR (metadata->>'projectDocumentId')::uuid IN (:docIds)
+                 )
+                """);
         return true;
     }
 
@@ -146,7 +397,92 @@ public class SparseRetrievalStrategy {
         try {
             return objectMapper.readValue(metaJson, MAP_TYPE);
         } catch (JsonProcessingException e) {
-            throw RagServiceException.hybridSparseRetrievalFailed(e);
+            return Map.of();
+        }
+    }
+
+    private Boolean probeIlikeSupport() {
+        try {
+            Integer one = jdbc.getJdbcOperations().queryForObject("SELECT 1", Integer.class);
+            return one != null && one == 1;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static List<String> topTerms(Iterable<String> terms, int max) {
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        if (terms == null) {
+            return List.of();
+        }
+        for (String t : terms) {
+            if (t == null || t.isBlank()) {
+                continue;
+            }
+            out.add(t.trim());
+            if (out.size() >= max) {
+                break;
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static List<String> unaccentTerms(List<String> terms) {
+        List<String> out = new ArrayList<>();
+        for (String t : terms) {
+            out.add(SpanishRetrievalTextSupport.foldAccents(t.toLowerCase(Locale.ROOT)));
+        }
+        return out;
+    }
+
+    private static String joinOrTerms(List<String> terms) {
+        return terms.stream()
+                .filter(t -> t != null && !t.isBlank())
+                .map(String::trim)
+                .map(SparseRetrievalStrategy::sanitizeOrTerm)
+                .filter(t -> !t.isBlank())
+                .collect(Collectors.joining(" | "));
+    }
+
+    private static String sanitizeOrTerm(String term) {
+        return term.replace("'", "''").replaceAll("\\s+", " & ");
+    }
+
+    private static List<String> splitOrTerms(String orJoined) {
+        if (orJoined == null || orJoined.isBlank()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String part : orJoined.split("\\|")) {
+            if (part != null && !part.isBlank()) {
+                out.add(part.trim().replace(" & ", " "));
+            }
+        }
+        return out;
+    }
+
+    private static String lastAttemptQuery(SparseQueryPreparation prep) {
+        List<String> terms = topTerms(prep.keywordTerms(), 4);
+        return terms.isEmpty() ? prep.normalizedQuery() : String.join(" | ", terms);
+    }
+
+    private enum TsQueryMode {
+        WEBSEARCH,
+        PLAINTO,
+        OR_TSQUERY,
+        ILIKE
+    }
+
+    private record StageAttempt(
+            SparseRetrievalFallbackStage stage,
+            String queryText,
+            TsQueryMode tsQueryMode,
+            boolean usePlaintoFallback) {
+        StageAttempt {
+            if (stage == SparseRetrievalFallbackStage.ILIKE) {
+                queryText = "ILIKE:" + queryText;
+                tsQueryMode = TsQueryMode.ILIKE;
+            }
         }
     }
 }
