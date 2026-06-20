@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.evaluation.result import EvaluationResult
+from app.models.training_result import TrainingResult
 from app.exceptions import (
     ClassificationError,
     EvaluationError,
@@ -15,38 +16,39 @@ from app.exceptions import (
     TrainingError,
     ValidationError,
 )
-from app.models.training_result import TrainingResult
+from app.models.classification_result import ClassificationResult
 from app.services.classification_service import ClassificationService
 from app.services.evaluation_service import EvaluationService
 from app.services.training_service import TrainingService
 
 
-def test_classification_runtime_error_maps_to_classification_error():
+def _loaded_engine(**predict_side_effect):
     engine = MagicMock()
     engine._loader = MagicMock()
     engine._loader.is_loaded.return_value = True
-    engine.predict.side_effect = RuntimeError("tf failed")
-    svc = ClassificationService(engine)
+    if predict_side_effect:
+        engine.predict_detailed.side_effect = predict_side_effect["side_effect"]
+    else:
+        engine.predict_detailed.return_value = ClassificationResult(
+            query_type="COUNT_DOCUMENTS", confidence=0.9
+        )
+    return engine
+
+
+def test_classification_runtime_error_maps_to_classification_error():
+    svc = ClassificationService(_loaded_engine(side_effect=RuntimeError("tf failed")))
     with pytest.raises(ClassificationError, match="not available"):
         svc.classify("hello")
 
 
 def test_classification_generic_exception_maps_to_classification_error():
-    engine = MagicMock()
-    engine._loader = MagicMock()
-    engine._loader.is_loaded.return_value = True
-    engine.predict.side_effect = OSError("boom")
-    svc = ClassificationService(engine)
+    svc = ClassificationService(_loaded_engine(side_effect=OSError("boom")))
     with pytest.raises(ClassificationError, match="failed"):
         svc.classify("hello")
 
 
 def test_classification_file_not_found_in_impl():
-    engine = MagicMock()
-    engine._loader = MagicMock()
-    engine._loader.is_loaded.return_value = True
-    engine.predict.side_effect = FileNotFoundError()
-    svc = ClassificationService(engine)
+    svc = ClassificationService(_loaded_engine(side_effect=FileNotFoundError()))
     with pytest.raises(ModelNotFoundError):
         svc.classify("hello")
 

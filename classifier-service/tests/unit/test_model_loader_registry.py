@@ -22,7 +22,7 @@ def test_load_by_id_from_registry(monkeypatch, tmp_path):
     d = tmp_path / mid
     d.mkdir()
     (d / MODEL_FILENAME).write_bytes(b"k")
-    (d / LABELS_FILENAME).write_text("FOO\nBAR\n")
+    (d / LABELS_FILENAME).write_text("COUNT_DOCUMENTS\nSUMMARIZE_MEETING\n")
     (d / METADATA_FILENAME).write_text("{}", encoding="utf-8")
 
     loaded = []
@@ -35,7 +35,7 @@ def test_load_by_id_from_registry(monkeypatch, tmp_path):
 
     loader = ModelLoader(config=Config())
     m, names = loader.load_by_id(mid)
-    assert names == ["FOO", "BAR"]
+    assert names == ["COUNT_DOCUMENTS", "SUMMARIZE_MEETING"]
     assert loader.is_loaded(mid)
     assert loader.get_model(mid) is m
     assert loader.get_class_names(mid) == names
@@ -49,7 +49,7 @@ def test_load_by_id_cache_hit_skips_disk(monkeypatch, tmp_path):
     d = tmp_path / mid
     d.mkdir()
     (d / MODEL_FILENAME).write_bytes(b"k")
-    (d / LABELS_FILENAME).write_text("A\n")
+    (d / LABELS_FILENAME).write_text("COUNT_DOCUMENTS\n")
 
     monkeypatch.setattr(ml_mod.tf.keras.models, "load_model", lambda p: MagicMock(name="model"))
 
