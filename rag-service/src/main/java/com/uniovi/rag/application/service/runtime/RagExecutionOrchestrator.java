@@ -20,8 +20,31 @@ import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrateg
 import com.uniovi.rag.application.service.runtime.routing.DeterministicToolRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy;
+import com.uniovi.rag.application.service.evaluation.preset.CampaignParentOutcome;
+import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
+import com.uniovi.rag.application.service.runtime.routing.safety.IntegratedParentCampaignOutcomeResolver;
+import com.uniovi.rag.application.service.runtime.routing.safety.IntegratedParentCandidateMaterializer;
+import com.uniovi.rag.application.service.runtime.routing.safety.IntegratedParentPresetExecutionScope;
+import com.uniovi.rag.application.service.runtime.routing.safety.IntegratedParentPresetSnapshotResolver;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyService;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicSafetyTelemetry;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicSafetyTelemetrySupport;
+import com.uniovi.rag.application.service.runtime.routing.safety.ParentAnswerFingerprint;
+import com.uniovi.rag.application.service.runtime.routing.safety.ParentFinalAnswerSources;
+import com.uniovi.rag.application.service.runtime.routing.safety.P15BaselineFloorSelector;
+import com.uniovi.rag.application.service.runtime.routing.safety.P15BaselineFloorSelector.Decision;
+import com.uniovi.rag.application.service.runtime.routing.safety.P15BaselineFloorSelector.ParentBaseline;
+import com.uniovi.rag.application.service.runtime.routing.safety.P15BaselineFloorSelector.WinnerKind;
+import com.uniovi.rag.application.service.runtime.routing.safety.P7BaselineFloorSelector;
+import com.uniovi.rag.application.service.runtime.routing.safety.P7BaselineFloorSelector.P7Decision;
+import com.uniovi.rag.application.service.runtime.routing.safety.P15ParentCandidateSafetyPolicy;
+import com.uniovi.rag.application.service.runtime.routing.safety.ParentCampaignOutcomeTelemetryPreservation;
+import com.uniovi.rag.application.service.runtime.routing.safety.ParentCandidateSnapshot;
+import java.util.Objects;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
+import com.uniovi.rag.application.service.runtime.routing.safety.RouteCandidateValidationResult;
+import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
@@ -36,6 +59,7 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
+import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingDecision;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingExecutionResult;
@@ -52,6 +76,7 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
@@ -83,6 +108,9 @@ public class RagExecutionOrchestrator {
     private final StructuredAnswerPlanService structuredAnswerPlanService;
     private final AnswerVerificationService answerVerificationService;
     private final ObjectProvider<RuntimeObservability> runtimeObservability;
+    private final MonotonicRouteSafetyService monotonicRouteSafetyService;
+    private final ObjectProvider<IntegratedParentPresetSnapshotResolver> parentSnapshotResolverProvider;
+    private final ObjectProvider<IntegratedParentCampaignOutcomeResolver> parentCampaignOutcomeResolverProvider;
 
     public RagExecutionOrchestrator(
             WorkflowSelector workflowSelector,
@@ -103,7 +131,10 @@ public class RagExecutionOrchestrator {
             JudgeStrategy judgeStrategy,
             StructuredAnswerPlanService structuredAnswerPlanService,
             AnswerVerificationService answerVerificationService,
-            ObjectProvider<RuntimeObservability> runtimeObservability) {
+            ObjectProvider<RuntimeObservability> runtimeObservability,
+            MonotonicRouteSafetyService monotonicRouteSafetyService,
+            ObjectProvider<IntegratedParentPresetSnapshotResolver> parentSnapshotResolverProvider,
+            ObjectProvider<IntegratedParentCampaignOutcomeResolver> parentCampaignOutcomeResolverProvider) {
         this.workflowSelector = workflowSelector;
         this.snapshotFallbackDirectLlmWorkflow = snapshotFallbackDirectLlmWorkflow;
         this.queryUnderstandingPipeline = queryUnderstandingPipeline;
@@ -123,7 +154,15 @@ public class RagExecutionOrchestrator {
         this.structuredAnswerPlanService = structuredAnswerPlanService;
         this.answerVerificationService = answerVerificationService;
         this.runtimeObservability = runtimeObservability;
+        this.monotonicRouteSafetyService = monotonicRouteSafetyService;
+        this.parentSnapshotResolverProvider = parentSnapshotResolverProvider;
+        this.parentCampaignOutcomeResolverProvider = parentCampaignOutcomeResolverProvider;
     }
+
+    private record ParentExecutionAttempt(
+            Optional<ExecutionOutcome> outcome,
+            boolean campaignOutcomeReused,
+            Optional<CampaignParentOutcome> campaignRecord) {}
 
     public RagExecutionResult execute(ExecutionContext ctx) {
         List<ExecutionStageTrace> clarifyBeforeQu = RagExecutionTraceSupport.buildClarificationPreQuStages(ctx);
@@ -164,6 +203,21 @@ public class RagExecutionOrchestrator {
         }
 
         RoutingSnapshot routing = resolveRoutingSnapshot(withPlan, plan);
+
+        if (withPlan.resolved().toRagConfig().adaptiveRoutingEnabled()
+                && !withPlan.resolved().toRagConfig().useAdvisor()) {
+            ExecutionOutcome integratedOutcome =
+                    executeIntegratedAdaptiveRoute(
+                            withPlan,
+                            plan,
+                            clarificationDecision,
+                            routing,
+                            clarifyBeforeQu,
+                            memoryBeforeQu,
+                            quStages,
+                            clarifyAfterQu);
+            return integratedOutcome.result().withFinalTrace(integratedOutcome.trace());
+        }
 
         ExecutionOutcome outcome =
                 executeSelectedRoute(
@@ -274,8 +328,160 @@ public class RagExecutionOrchestrator {
             List<ExecutionStageTrace> memoryBeforeQu,
             List<ExecutionStageTrace> quStages,
             List<ExecutionStageTrace> clarifyAfterQu) {
+        var rag = base.resolved().toRagConfig();
+        MonotonicSafetyTelemetry telemetry =
+                MonotonicSafetyTelemetry.create()
+                        .candidateToolConsidered(true)
+                        .candidateRetrievalConsidered(rag.useRetrieval());
+
         DeterministicToolExecutionResult toolResult = deterministicToolStrategy.tryExecute(base, plan);
+        Optional<MonotonicRouteSafetyService.CandidateScore> toolScore = Optional.empty();
         if (toolResult.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS && toolResult.success()) {
+            RouteCandidateValidationResult validation =
+                    monotonicRouteSafetyService.validateToolResult(plan, toolResult);
+            if (validation.safe()) {
+                toolScore =
+                        Optional.of(
+                                new MonotonicRouteSafetyService.CandidateScore(
+                                        "TOOL", validation, toolResult.answerText()));
+            } else {
+                telemetry.toolCandidateRejected(true)
+                        .rejectCandidate("TOOL", String.join(",", validation.rejectionReasons()));
+            }
+        }
+
+        AdaptiveRouteKind fallbackRoute =
+                routing.fallbackWorkflowRouteKind().orElse(AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE);
+        ExecutionOutcome retrievalOutcome =
+                executeWorkflowRoute(
+                        base,
+                        plan,
+                        clarificationDecision,
+                        routing.withOutcome(
+                                AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK,
+                                true,
+                                Optional.of(fallbackRoute),
+                                true),
+                        clarifyBeforeQu,
+                        memoryBeforeQu,
+                        quStages,
+                        clarifyAfterQu,
+                        RagExecutionTraceSupport.projectDeterministicToolStages(toolResult),
+                        List.of(),
+                        toolResult,
+                        FcGate.notAttempted(FunctionCallingOutcome.SUPPRESSED_BY_DETERMINISTIC_TOOL),
+                        AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_DETERMINISTIC_TOOL));
+
+        boolean retrievalAbstained = retrievalOutcome.trace().abstentionTriggered();
+        RouteCandidateValidationResult retrievalValidation =
+                monotonicRouteSafetyService.validateRetrievalAnswer(
+                        plan, retrievalOutcome.result().answerText(), retrievalAbstained);
+        if (!retrievalValidation.safe()) {
+            telemetry.retrievalCandidateRejected(true)
+                    .rejectCandidate("RETRIEVAL", String.join(",", retrievalValidation.rejectionReasons()));
+        }
+
+        Optional<MonotonicRouteSafetyService.CandidateScore> retrievalScore = Optional.empty();
+        if (retrievalValidation.safe()) {
+            retrievalScore =
+                    Optional.of(
+                            new MonotonicRouteSafetyService.CandidateScore(
+                                    "RETRIEVAL",
+                                    retrievalValidation,
+                                    retrievalOutcome.result().answerText()));
+        }
+
+        Optional<ParentSelectionResult> p6Parent = Optional.empty();
+        Optional<ParentBaseline> p6Floor = Optional.empty();
+        if (LabBenchmarkExecutionContext.currentDatasetQuestionId().isPresent()) {
+            p6Parent =
+                    probeParentPreset(
+                            base, plan, clarificationDecision, telemetry, RagExperimentalPresetCode.P6);
+            p6Floor = toCampaignBaseline(p6Parent);
+        }
+
+        if (p6Floor.isEmpty()) {
+            return executeDeterministicToolRouteWithoutBaselineFloor(
+                    base,
+                    plan,
+                    clarificationDecision,
+                    routing,
+                    clarifyBeforeQu,
+                    memoryBeforeQu,
+                    quStages,
+                    clarifyAfterQu,
+                    toolResult,
+                    toolScore,
+                    retrievalOutcome,
+                    retrievalValidation,
+                    telemetry);
+        }
+
+        boolean abstentionRequired = retrievalScore.isEmpty() && !retrievalValidation.safe();
+
+        P7Decision p7FloorDecision =
+                P7BaselineFloorSelector.resolve(p6Floor, toolScore, retrievalScore, abstentionRequired);
+        Decision floorDecision = P7BaselineFloorSelector.toP15Decision(p7FloorDecision);
+        if (floorDecision.winner() == WinnerKind.ABSTENTION) {
+            Optional<ParentSelectionResult> safeParent =
+                    p6Parent.or(
+                            () ->
+                                    recoverCampaignParentForAbstention(
+                                            base,
+                                            plan,
+                                            clarificationDecision,
+                                            telemetry,
+                                            RagExperimentalPresetCode.P6));
+            if (safeParent.isPresent()) {
+                floorDecision =
+                        new Decision(
+                                WinnerKind.PARENT_P6,
+                                toCampaignBaseline(safeParent).or(() -> toParentBaseline(safeParent)),
+                                Optional.empty(),
+                                true,
+                                false,
+                                false,
+                                "",
+                                true,
+                                true);
+            }
+        }
+        applyBaselineFloorTelemetry(telemetry, floorDecision);
+
+        return executeBaselineFloorDecision(
+                floorDecision,
+                Optional.empty(),
+                p6Parent,
+                base,
+                plan,
+                clarificationDecision,
+                routing,
+                clarifyBeforeQu,
+                memoryBeforeQu,
+                quStages,
+                clarifyAfterQu,
+                telemetry,
+                Optional.empty(),
+                retrievalOutcome,
+                toolResult,
+                FcGate.notAttempted(FunctionCallingOutcome.SUPPRESSED_BY_DETERMINISTIC_TOOL));
+    }
+
+    private ExecutionOutcome executeDeterministicToolRouteWithoutBaselineFloor(
+            ExecutionContext base,
+            QueryPlan plan,
+            ClarificationDecision clarificationDecision,
+            RoutingSnapshot routing,
+            List<ExecutionStageTrace> clarifyBeforeQu,
+            List<ExecutionStageTrace> memoryBeforeQu,
+            List<ExecutionStageTrace> quStages,
+            List<ExecutionStageTrace> clarifyAfterQu,
+            DeterministicToolExecutionResult toolResult,
+            Optional<MonotonicRouteSafetyService.CandidateScore> toolScore,
+            ExecutionOutcome retrievalOutcome,
+            RouteCandidateValidationResult retrievalValidation,
+            MonotonicSafetyTelemetry telemetry) {
+        if (toolScore.isPresent()) {
             return finishDeterministicToolTerminal(
                     base,
                     plan,
@@ -288,25 +494,13 @@ public class RagExecutionOrchestrator {
                     toolResult);
         }
 
-        AdaptiveRouteKind fb = routing.fallbackWorkflowRouteKind().orElseThrow();
-        return executeWorkflowRoute(
-                base,
-                plan,
-                clarificationDecision,
-                routing.withOutcome(
-                        AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK,
-                        true,
-                        Optional.of(fb),
-                        true),
-                clarifyBeforeQu,
-                memoryBeforeQu,
-                quStages,
-                clarifyAfterQu,
-                RagExecutionTraceSupport.projectDeterministicToolStages(toolResult),
-                List.of(),
-                toolResult,
-                FcGate.notAttempted(FunctionCallingOutcome.SUPPRESSED_BY_DETERMINISTIC_TOOL),
-                AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_DETERMINISTIC_TOOL));
+        if (telemetry.toolCandidateRejected()) {
+            telemetry.selectedCandidateSource("RETRIEVAL")
+                    .monotonicRegressionPrevented(true)
+                    .parentFallbackUsed(true)
+                    .constraintCoverageStatus(retrievalValidation.constraintCoverageStatus());
+        }
+        return finalizeIntegratedRetrievalOutcome(retrievalOutcome, telemetry, true);
     }
 
     private ExecutionOutcome finishDeterministicToolTerminal(
@@ -391,6 +585,47 @@ public class RagExecutionOrchestrator {
         FcGate fcGate = evaluateFunctionCallingGate(base, plan);
         if (fcGate.functionCallingOutcome() == FunctionCallingOutcome.EXECUTED_SUCCESS
                 && fcGate.functionCallingShortCircuited()) {
+            RouteCandidateValidationResult validation =
+                    monotonicRouteSafetyService.validateFunctionResult(
+                            plan, fcGate.fcResult().orElseThrow());
+            if (!validation.safe()) {
+                appendMonotonicSafetyStage(
+                        clarifyAfterQu,
+                        MonotonicSafetyTelemetry.create()
+                                .candidateFunctionConsidered(true)
+                                .functionCandidateRejected(true)
+                                .monotonicRegressionPrevented(true)
+                                .parentFallbackUsed(true)
+                                .selectedCandidateSource("RETRIEVAL")
+                                .rejectCandidate("FUNCTION", String.join(",", validation.rejectionReasons()))
+                                .constraintCoverageStatus(validation.constraintCoverageStatus()));
+                AdaptiveRouteKind fb =
+                        routing.fallbackWorkflowRouteKind()
+                                .orElse(AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE);
+                DeterministicToolExecutionResult toolResult =
+                        DeterministicToolExecutionResult.skipped(
+                                DeterministicToolOutcome.NOT_ATTEMPTED,
+                                List.of("suppressed_by_routing_fc"),
+                                Optional.empty());
+                return executeWorkflowRoute(
+                        base,
+                        plan,
+                        clarificationDecision,
+                        routing.withOutcome(
+                                AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK,
+                                true,
+                                Optional.of(fb),
+                                true),
+                        clarifyBeforeQu,
+                        memoryBeforeQu,
+                        quStages,
+                        clarifyAfterQu,
+                        RagExecutionTraceSupport.projectDeterministicToolStages(toolResult),
+                        fcGate.stageTraces(),
+                        toolResult,
+                        fcGate,
+                        AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_FUNCTION_CALLING));
+            }
             return finishFunctionCallingTerminal(
                     base,
                     plan,
@@ -915,5 +1150,791 @@ public class RagExecutionOrchestrator {
                 ctx.resolved().toRagConfig(),
                 ctx.documentFilter(),
                 ctx.correlationId());
+    }
+
+    private ExecutionOutcome executeIntegratedAdaptiveRoute(
+            ExecutionContext base,
+            QueryPlan plan,
+            ClarificationDecision clarificationDecision,
+            RoutingSnapshot routing,
+            List<ExecutionStageTrace> clarifyBeforeQu,
+            List<ExecutionStageTrace> memoryBeforeQu,
+            List<ExecutionStageTrace> quStages,
+            List<ExecutionStageTrace> clarifyAfterQu) {
+        var rag = base.resolved().toRagConfig();
+        MonotonicSafetyTelemetry telemetry =
+                MonotonicSafetyTelemetry.create()
+                        .candidateToolConsidered(rag.toolsEnabled())
+                        .candidateFunctionConsidered(rag.functionCallingEnabled())
+                        .candidateRetrievalConsidered(rag.useRetrieval());
+
+        Optional<MonotonicRouteSafetyService.CandidateScore> toolScore = Optional.empty();
+        DeterministicToolExecutionResult toolResult =
+                DeterministicToolExecutionResult.skipped(
+                        DeterministicToolOutcome.NOT_ATTEMPTED,
+                        List.of("integrated_route_probe"),
+                        Optional.empty());
+        if (rag.toolsEnabled()) {
+            toolResult = deterministicToolStrategy.tryExecute(base, plan);
+            if (toolResult.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS && toolResult.success()) {
+                RouteCandidateValidationResult validation =
+                        monotonicRouteSafetyService.validateToolResult(plan, toolResult);
+                if (validation.safe()) {
+                    toolScore =
+                            Optional.of(
+                                    new MonotonicRouteSafetyService.CandidateScore(
+                                            "TOOL", validation, toolResult.answerText()));
+                } else {
+                    telemetry.toolCandidateRejected(true)
+                            .rejectCandidate("TOOL", String.join(",", validation.rejectionReasons()));
+                }
+            }
+        }
+
+        Optional<MonotonicRouteSafetyService.CandidateScore> functionScore = Optional.empty();
+        Optional<RouteCandidateValidationResult> rejectedFunctionValidation = Optional.empty();
+        FcGate fcGate = FcGate.notAttempted(FunctionCallingOutcome.NOT_APPLICABLE);
+        if (rag.functionCallingEnabled()) {
+            fcGate = evaluateFunctionCallingGate(base, plan);
+            if (fcGate.functionCallingOutcome() == FunctionCallingOutcome.EXECUTED_SUCCESS
+                    && fcGate.functionCallingShortCircuited()) {
+                String functionAnswer = fcGate.fcResult().orElseThrow().answerText();
+                RouteCandidateValidationResult validation =
+                        monotonicRouteSafetyService.validateFunctionResult(
+                                plan, fcGate.fcResult().orElseThrow());
+                if (validation.safe()) {
+                    functionScore =
+                            Optional.of(
+                                    new MonotonicRouteSafetyService.CandidateScore(
+                                            "FUNCTION", validation, functionAnswer));
+                } else {
+                    rejectedFunctionValidation = Optional.of(validation);
+                    telemetry.functionCandidateRejected(true)
+                            .rejectCandidate("FUNCTION", String.join(",", validation.rejectionReasons()));
+                }
+            }
+        }
+
+        ExecutionOutcome retrievalOutcome =
+                executeWorkflowRoute(
+                        base,
+                        plan,
+                        clarificationDecision,
+                        routing.withOutcome(
+                                AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK,
+                                true,
+                                Optional.of(AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE),
+                                true),
+                        clarifyBeforeQu,
+                        memoryBeforeQu,
+                        quStages,
+                        clarifyAfterQu,
+                        RagExecutionTraceSupport.projectDeterministicToolStages(toolResult),
+                        fcGate.stageTraces(),
+                        toolResult,
+                        fcGate,
+                        AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_ROUTING));
+
+        boolean retrievalAbstained = retrievalOutcome.trace().abstentionTriggered();
+        RouteCandidateValidationResult retrievalValidation =
+                monotonicRouteSafetyService.validateRetrievalAnswer(
+                        plan, retrievalOutcome.result().answerText(), retrievalAbstained);
+        if (!retrievalValidation.safe()) {
+            telemetry.retrievalCandidateRejected(true)
+                    .rejectCandidate("RETRIEVAL", String.join(",", retrievalValidation.rejectionReasons()));
+        }
+
+        Optional<MonotonicRouteSafetyService.CandidateScore> retrievalScore = Optional.empty();
+        if (retrievalValidation.safe()) {
+            retrievalScore =
+                    Optional.of(
+                            new MonotonicRouteSafetyService.CandidateScore(
+                                    "RETRIEVAL",
+                                    retrievalValidation,
+                                    retrievalOutcome.result().answerText()));
+        }
+
+        Optional<ParentSelectionResult> p7Parent =
+                probeParentPreset(
+                        base, plan, clarificationDecision, telemetry, RagExperimentalPresetCode.P7);
+        Optional<ParentSelectionResult> p6Parent =
+                probeParentPreset(
+                        base, plan, clarificationDecision, telemetry, RagExperimentalPresetCode.P6);
+
+        boolean abstentionRequired = retrievalScore.isEmpty() && !retrievalValidation.safe();
+
+        Optional<ParentBaseline> p7Floor = toCampaignBaseline(p7Parent);
+        if (p7Floor.isEmpty()
+                && useExtendedParentFloor(telemetry, functionScore, toolScore, abstentionRequired)) {
+            p7Floor = toParentBaseline(p7Parent);
+        }
+        Optional<ParentBaseline> p6Floor =
+                p7Floor.isPresent()
+                        ? Optional.empty()
+                        : toCampaignBaseline(p6Parent);
+        if (p6Floor.isEmpty()
+                && p7Floor.isEmpty()
+                && useExtendedParentFloor(telemetry, functionScore, toolScore, abstentionRequired)) {
+            p6Floor = toParentBaseline(p6Parent);
+        }
+
+        Decision floorDecision =
+                P15BaselineFloorSelector.resolve(
+                        p7Floor,
+                        p6Floor,
+                        functionScore,
+                        toolScore,
+                        retrievalScore,
+                        abstentionRequired);
+        if (floorDecision.winner() == WinnerKind.ABSTENTION) {
+            Optional<ParentSelectionResult> safeParent =
+                    p7Parent.or(() -> p6Parent).or(() -> recoverCampaignParentForAbstention(
+                            base, plan, clarificationDecision, telemetry, RagExperimentalPresetCode.P7))
+                            .or(() -> recoverCampaignParentForAbstention(
+                                    base, plan, clarificationDecision, telemetry, RagExperimentalPresetCode.P6));
+            if (safeParent.isPresent()) {
+                floorDecision =
+                        new Decision(
+                                safeParent.get().parentPreset() == RagExperimentalPresetCode.P6
+                                        ? WinnerKind.PARENT_P6
+                                        : WinnerKind.PARENT_P7,
+                                toCampaignBaseline(safeParent).or(() -> toParentBaseline(safeParent)),
+                                Optional.empty(),
+                                true,
+                                false,
+                                false,
+                                "",
+                                true,
+                                true);
+            }
+        }
+        applyBaselineFloorTelemetry(telemetry, floorDecision);
+
+        return executeBaselineFloorDecision(
+                floorDecision,
+                p7Parent,
+                p6Parent,
+                base,
+                plan,
+                clarificationDecision,
+                routing,
+                clarifyBeforeQu,
+                memoryBeforeQu,
+                quStages,
+                clarifyAfterQu,
+                telemetry,
+                rejectedFunctionValidation,
+                retrievalOutcome,
+                toolResult,
+                fcGate);
+    }
+
+    private static boolean useExtendedParentFloor(
+            MonotonicSafetyTelemetry telemetry,
+            Optional<MonotonicRouteSafetyService.CandidateScore> functionScore,
+            Optional<MonotonicRouteSafetyService.CandidateScore> toolScore,
+            boolean abstentionRequired) {
+        if (telemetry.functionCandidateRejected() || functionScore.isPresent()) {
+            return true;
+        }
+        if (hasSafeConstraintCompleteTool(toolScore)) {
+            return false;
+        }
+        return abstentionRequired;
+    }
+
+    private static boolean hasSafeConstraintCompleteTool(
+            Optional<MonotonicRouteSafetyService.CandidateScore> toolScore) {
+        return toolScore.filter(P15BaselineFloorSelector::isDemonstrablyStrongNative).isPresent();
+    }
+
+    private static Optional<ParentBaseline> toParentBaseline(Optional<ParentSelectionResult> parent) {
+        return parent.map(
+                selection ->
+                        new ParentBaseline(
+                                selection.parentPreset(),
+                                selection.source(),
+                                selection.validation()));
+    }
+
+    private static Optional<ParentBaseline> toCampaignBaseline(Optional<ParentSelectionResult> parent) {
+        return parent.filter(ParentSelectionResult::campaignOutcomeReused)
+                .flatMap(
+                        selection ->
+                                P15BaselineFloorSelector.toBaselineFromValidation(
+                                        selection.parentPreset(),
+                                        selection.source(),
+                                        selection.validation()));
+    }
+
+    private static void applyBaselineFloorTelemetry(
+            MonotonicSafetyTelemetry telemetry, Decision decision) {
+        decision.baseline()
+                .ifPresent(
+                        baseline -> {
+                            telemetry.baselineCandidateSource(baseline.source())
+                                    .baselineCandidatePresetCode(baseline.preset().name());
+                        });
+        telemetry.baselineCandidateSelected(decision.baselineCandidateSelected())
+                .baselineOverrideAttempted(decision.baselineOverrideAttempted())
+                .baselineOverrideAccepted(decision.baselineOverrideAccepted())
+                .baselineOverrideRejectedReason(decision.baselineOverrideRejectedReason())
+                .monotonicFloorApplied(decision.monotonicFloorApplied())
+                .monotonicFloorPreventedRegression(decision.monotonicFloorPreventedRegression());
+        if (decision.baselineCandidateSelected() && decision.baseline().isPresent()) {
+            telemetry.baselineFloorReason(
+                    floorReasonFor(decision.winner(), decision.baselineOverrideRejectedReason()));
+        }
+        if (decision.monotonicFloorPreventedRegression()) {
+            telemetry.monotonicRegressionPrevented(true);
+        }
+    }
+
+    private static String floorReasonFor(WinnerKind winner, String overrideRejectedReason) {
+        if (overrideRejectedReason != null && !overrideRejectedReason.isBlank()) {
+            return "baseline_floor_kept_parent:" + overrideRejectedReason;
+        }
+        return switch (winner) {
+            case PARENT_P7 -> "parent_p7_over_abstention";
+            case PARENT_P6 -> "parent_p6_over_abstention";
+            default -> "baseline_floor_parent_selected";
+        };
+    }
+
+    private ExecutionOutcome executeBaselineFloorDecision(
+            Decision decision,
+            Optional<ParentSelectionResult> p7Parent,
+            Optional<ParentSelectionResult> p6Parent,
+            ExecutionContext base,
+            QueryPlan plan,
+            ClarificationDecision clarificationDecision,
+            RoutingSnapshot routing,
+            List<ExecutionStageTrace> clarifyBeforeQu,
+            List<ExecutionStageTrace> memoryBeforeQu,
+            List<ExecutionStageTrace> quStages,
+            List<ExecutionStageTrace> clarifyAfterQu,
+            MonotonicSafetyTelemetry telemetry,
+            Optional<RouteCandidateValidationResult> rejectedFunctionValidation,
+            ExecutionOutcome retrievalOutcome,
+            DeterministicToolExecutionResult toolResult,
+            FcGate fcGate) {
+        return switch (decision.winner()) {
+            case PARENT_P7, PARENT_P6 ->
+                    commitParentSelection(
+                            (decision.winner() == WinnerKind.PARENT_P6 ? p6Parent : p7Parent).orElseThrow(),
+                            clarifyAfterQu,
+                            telemetry,
+                            rejectedFunctionValidation,
+                            decision.nativeWinner()
+                                    .filter(nativeWinner -> "FUNCTION".equals(nativeWinner.source()))
+                                    .isPresent());
+            case FUNCTION -> {
+                MonotonicRouteSafetyService.CandidateScore winner = decision.nativeWinner().orElseThrow();
+                telemetry.selectedCandidateSource(winner.source())
+                        .routeConfidence(winner.validation().confidence())
+                        .constraintCoverageStatus(winner.validation().constraintCoverageStatus());
+                appendMonotonicSafetyStage(clarifyAfterQu, telemetry);
+                yield finishFunctionCallingTerminal(
+                        base,
+                        plan,
+                        clarificationDecision,
+                        routing,
+                        clarifyBeforeQu,
+                        memoryBeforeQu,
+                        quStages,
+                        clarifyAfterQu,
+                        fcGate);
+            }
+            case TOOL -> {
+                MonotonicRouteSafetyService.CandidateScore winner = decision.nativeWinner().orElseThrow();
+                telemetry.selectedCandidateSource(winner.source())
+                        .routeConfidence(winner.validation().confidence())
+                        .constraintCoverageStatus(winner.validation().constraintCoverageStatus());
+                appendMonotonicSafetyStage(clarifyAfterQu, telemetry);
+                yield finishDeterministicToolTerminal(
+                        base,
+                        plan,
+                        clarificationDecision,
+                        routing,
+                        clarifyBeforeQu,
+                        memoryBeforeQu,
+                        quStages,
+                        clarifyAfterQu,
+                        toolResult);
+            }
+            case RETRIEVAL -> {
+                MonotonicRouteSafetyService.CandidateScore winner =
+                        decision.nativeWinner()
+                                .orElse(
+                                        new MonotonicRouteSafetyService.CandidateScore(
+                                                "RETRIEVAL",
+                                                monotonicRouteSafetyService.validateRetrievalAnswer(
+                                                        plan,
+                                                        retrievalOutcome.result().answerText(),
+                                                        retrievalOutcome.trace().abstentionTriggered()),
+                                                retrievalOutcome.result().answerText()));
+                telemetry.selectedCandidateSource(winner.source())
+                        .routeConfidence(winner.validation().confidence())
+                        .constraintCoverageStatus(winner.validation().constraintCoverageStatus());
+                if (telemetry.functionCandidateRejected() || telemetry.toolCandidateRejected()) {
+                    telemetry.parentFallbackUsed(true);
+                }
+                appendMonotonicSafetyStage(clarifyAfterQu, telemetry);
+                yield finalizeIntegratedRetrievalOutcome(retrievalOutcome, telemetry, true);
+            }
+            case ABSTENTION -> {
+                telemetry.selectedCandidateSource("ABSTENTION");
+                appendMonotonicSafetyStage(clarifyAfterQu, telemetry);
+                yield finalizeIntegratedAbstentionOutcome(retrievalOutcome, telemetry, plan);
+            }
+        };
+    }
+
+    private Optional<ParentSelectionResult> probeParentPreset(
+            ExecutionContext base,
+            QueryPlan plan,
+            ClarificationDecision clarificationDecision,
+            MonotonicSafetyTelemetry telemetry,
+            RagExperimentalPresetCode parentPreset) {
+        telemetry.parentCandidateConsidered(true);
+        String source = parentSourceFor(parentPreset);
+        ParentExecutionAttempt parentAttempt =
+                executeIsolatedParentPreset(base, plan, clarificationDecision, parentPreset);
+        if (parentAttempt.outcome().isEmpty()) {
+            if (LabBenchmarkExecutionContext.currentDatasetQuestionId().isPresent()) {
+                telemetry.parentCampaignOutcomeMissing(true);
+            }
+            telemetry.rejectCandidate(source, CampaignParentOutcome.MISSING_PARENT_REJECTION);
+            return Optional.empty();
+        }
+        ParentCandidateSnapshot parentSnapshot =
+                ParentCandidateSnapshot.capture(
+                        parentPreset,
+                        parentAttempt.outcome().orElseThrow(),
+                        parentAttempt.campaignRecord(),
+                        parentAttempt.campaignOutcomeReused());
+        RouteCandidateValidationResult parentValidation =
+                validateParentCandidateOutcome(
+                        plan,
+                        parentSnapshot.toPreservedOutcome(),
+                        parentAttempt.campaignRecord(),
+                        parentAttempt.campaignOutcomeReused());
+        if (!parentValidation.safe()) {
+            telemetry.rejectCandidate(source, String.join(",", parentValidation.rejectionReasons()));
+            return Optional.empty();
+        }
+        if (!P15ParentCandidateSafetyPolicy.isBaselineEligible(
+                parentAttempt.campaignRecord(), parentValidation)) {
+            telemetry.rejectCandidate(source, "parent_baseline_policy_rejected");
+            return Optional.empty();
+        }
+        ExecutionOutcome preservedOutcome = parentSnapshot.toPreservedOutcome();
+        ParentPreservationVerification preservation =
+                verifyParentPreservation(
+                        parentSnapshot, preservedOutcome, parentAttempt.campaignOutcomeReused());
+        if (!preservation.preserved()) {
+            telemetry.parentFinalAnswerHash(preservation.parentFinalAnswerHash())
+                    .parentMatcherVisibleAnswerHash(preservation.parentMatcherVisibleAnswerHash())
+                    .selectedFinalAnswerHash(preservation.selectedFinalAnswerHash())
+                    .selectedMatcherVisibleAnswerHash(preservation.selectedMatcherVisibleAnswerHash())
+                    .parentFinalAnswerPreserved(false)
+                    .parentAnswerMismatchReason(preservation.mismatchReason());
+            telemetry.rejectCandidate(source, preservation.mismatchReason());
+            return Optional.empty();
+        }
+        return Optional.of(
+                new ParentSelectionResult(
+                        parentPreset,
+                        source,
+                        parentSnapshot,
+                        parentValidation,
+                        preservation,
+                        parentAttempt.campaignOutcomeReused(),
+                        parentAttempt.campaignRecord()));
+    }
+
+    private Optional<ParentSelectionResult> recoverCampaignParentForAbstention(
+            ExecutionContext base,
+            QueryPlan plan,
+            ClarificationDecision clarificationDecision,
+            MonotonicSafetyTelemetry telemetry,
+            RagExperimentalPresetCode parentPreset) {
+        IntegratedParentCampaignOutcomeResolver campaignResolver =
+                parentCampaignOutcomeResolverProvider.getIfAvailable();
+        if (campaignResolver == null) {
+            return Optional.empty();
+        }
+        Optional<String> datasetQuestionId = campaignResolver.currentDatasetQuestionId();
+        if (datasetQuestionId.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<CampaignParentOutcome> campaignRecord =
+                LabBenchmarkExecutionContext.campaignParentOutcome(
+                        parentPreset.name(), datasetQuestionId.get());
+        if (campaignRecord.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<RouteCandidateValidationResult> trusted =
+                P15ParentCandidateSafetyPolicy.trustedCampaignValidation(campaignRecord.get());
+        if (trusted.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<ExecutionOutcome> campaignOutcome =
+                campaignResolver.tryResolve(parentPreset, datasetQuestionId.get());
+        if (campaignOutcome.isEmpty()) {
+            return Optional.empty();
+        }
+        String source = parentSourceFor(parentPreset);
+        ParentCandidateSnapshot parentSnapshot =
+                ParentCandidateSnapshot.capture(
+                        parentPreset,
+                        campaignOutcome.get(),
+                        campaignRecord,
+                        true);
+        ExecutionOutcome preservedOutcome = parentSnapshot.toPreservedOutcome();
+        ParentPreservationVerification preservation =
+                verifyParentPreservation(parentSnapshot, preservedOutcome, true);
+        if (!preservation.preserved()) {
+            return Optional.empty();
+        }
+        return Optional.of(
+                new ParentSelectionResult(
+                        parentPreset,
+                        source,
+                        parentSnapshot,
+                        trusted.get(),
+                        preservation,
+                        true,
+                        campaignRecord));
+    }
+
+    private record ParentSelectionResult(
+            RagExperimentalPresetCode parentPreset,
+            String source,
+            ParentCandidateSnapshot snapshot,
+            RouteCandidateValidationResult validation,
+            ParentPreservationVerification preservation,
+            boolean campaignOutcomeReused,
+            Optional<CampaignParentOutcome> campaignRecord) {}
+
+    private Optional<ParentSelectionResult> probeSafeParentSelection(
+            ExecutionContext base,
+            QueryPlan plan,
+            ClarificationDecision clarificationDecision,
+            MonotonicSafetyTelemetry telemetry) {
+        Optional<ParentSelectionResult> p7 =
+                probeParentPreset(base, plan, clarificationDecision, telemetry, RagExperimentalPresetCode.P7);
+        if (p7.isPresent()) {
+            return p7;
+        }
+        return probeParentPreset(base, plan, clarificationDecision, telemetry, RagExperimentalPresetCode.P6);
+    }
+
+    private ExecutionOutcome commitParentSelection(
+            ParentSelectionResult selection,
+            List<ExecutionStageTrace> clarifyAfterQu,
+            MonotonicSafetyTelemetry telemetry,
+            Optional<RouteCandidateValidationResult> rejectedFunctionValidation,
+            boolean preferOverSafeFunction) {
+        if (preferOverSafeFunction) {
+            telemetry.functionCandidateRejected(true)
+                    .rejectCandidate("FUNCTION", "function_superseded_by_supported_parent");
+        } else {
+            rejectedFunctionValidation.ifPresent(telemetry::augmentFunctionRejectionWhenParentSupported);
+        }
+        telemetry.selectedCandidateSource(selection.source())
+                .selectedParentPreset(selection.parentPreset().name())
+                .parentFallbackUsed(true)
+                .parentCampaignOutcomeReused(selection.campaignOutcomeReused())
+                .parentFinalAnswerHash(selection.preservation().parentFinalAnswerHash())
+                .parentMatcherVisibleAnswerHash(selection.preservation().parentMatcherVisibleAnswerHash())
+                .selectedFinalAnswerHash(selection.preservation().selectedFinalAnswerHash())
+                .selectedMatcherVisibleAnswerHash(selection.preservation().selectedMatcherVisibleAnswerHash())
+                .parentFinalAnswerPreserved(true)
+                .parentAnswerMismatchReason("")
+                .parentSelectedFinalAnswerLength(selection.snapshot().answerLength())
+                .monotonicRegressionPrevented(true)
+                .routeConfidence(selection.validation().confidence())
+                .constraintCoverageStatus(selection.validation().constraintCoverageStatus());
+        appendMonotonicSafetyStage(clarifyAfterQu, telemetry);
+        return finalizeIntegratedParentOutcome(
+                selection.snapshot(), telemetry, selection.campaignRecord());
+    }
+
+    private Optional<ExecutionOutcome> trySelectParentCandidate(
+            ExecutionContext base,
+            QueryPlan plan,
+            ClarificationDecision clarificationDecision,
+            List<ExecutionStageTrace> clarifyAfterQu,
+            MonotonicSafetyTelemetry telemetry,
+            Optional<RouteCandidateValidationResult> rejectedFunctionValidation,
+            boolean preferOverSafeFunction) {
+        Optional<ParentSelectionResult> selection =
+                probeSafeParentSelection(base, plan, clarificationDecision, telemetry);
+        if (selection.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(
+                commitParentSelection(
+                        selection.get(),
+                        clarifyAfterQu,
+                        telemetry,
+                        rejectedFunctionValidation,
+                        preferOverSafeFunction));
+    }
+
+    private record ParentPreservationVerification(
+            boolean preserved,
+            String parentFinalAnswerHash,
+            String parentMatcherVisibleAnswerHash,
+            String selectedFinalAnswerHash,
+            String selectedMatcherVisibleAnswerHash,
+            String mismatchReason) {}
+
+    private static ParentPreservationVerification verifyParentPreservation(
+            ParentCandidateSnapshot snapshot,
+            ExecutionOutcome finalizedOutcome,
+            boolean campaignOutcomeReused) {
+        String parentText = snapshot.parentFinalAnswerText();
+        String parentMatcherText = snapshot.parentMatcherVisibleAnswer();
+        String selectedText = finalizedOutcome.result().answerText();
+        String parentHash = snapshot.parentFinalAnswerHash();
+        String parentMatcherHash = snapshot.parentMatcherVisibleAnswerHash();
+        String selectedHash = ParentAnswerFingerprint.sha256Hex(selectedText);
+        String selectedMatcherHash = ParentAnswerFingerprint.sha256Hex(selectedText);
+        boolean textMatch = Objects.equals(parentText, selectedText);
+        boolean matcherMatch = Objects.equals(parentMatcherText, selectedText);
+        boolean hashMatch = Objects.equals(parentHash, selectedHash);
+        boolean inLabBenchmark = LabBenchmarkExecutionContext.currentDatasetQuestionId().isPresent();
+        boolean preserved;
+        String mismatchReason = "";
+        if (inLabBenchmark) {
+            if (!campaignOutcomeReused) {
+                preserved = false;
+                mismatchReason = "parent_campaign_outcome_not_reused";
+            } else if (!textMatch) {
+                preserved = false;
+                mismatchReason = "parent_answer_text_mismatch";
+            } else if (!matcherMatch) {
+                preserved = false;
+                mismatchReason = "parent_matcher_visible_answer_mismatch";
+            } else if (!hashMatch) {
+                preserved = false;
+                mismatchReason = "parent_answer_hash_mismatch";
+            } else {
+                preserved = true;
+            }
+        } else if (!textMatch) {
+            preserved = false;
+            mismatchReason = "parent_answer_text_mismatch";
+        } else if (!matcherMatch) {
+            preserved = false;
+            mismatchReason = "parent_matcher_visible_answer_mismatch";
+        } else if (!hashMatch) {
+            preserved = false;
+            mismatchReason = "parent_answer_hash_mismatch";
+        } else {
+            preserved = true;
+        }
+        return new ParentPreservationVerification(
+                preserved,
+                parentHash,
+                parentMatcherHash,
+                selectedHash,
+                selectedMatcherHash,
+                mismatchReason);
+    }
+
+    private RouteCandidateValidationResult validateParentCandidateOutcome(
+            QueryPlan plan,
+            ExecutionOutcome parentOutcome,
+            Optional<CampaignParentOutcome> campaignRecord,
+            boolean campaignOutcomeReused) {
+        if (campaignOutcomeReused && campaignRecord.isPresent()) {
+            Optional<RouteCandidateValidationResult> trusted =
+                    P15ParentCandidateSafetyPolicy.trustedCampaignValidation(campaignRecord.get());
+            if (trusted.isPresent()) {
+                return trusted.get();
+            }
+        }
+        RagExecutionResult result = parentOutcome.result();
+        if (result.usedTool() && "deterministic-tool".equals(result.workflowName())) {
+            return monotonicRouteSafetyService.validateToolResult(
+                    plan,
+                    new DeterministicToolExecutionResult(
+                            Optional.empty(),
+                            DeterministicToolOutcome.EXECUTED_SUCCESS,
+                            true,
+                            result.answerText(),
+                            Map.of(),
+                            List.of()));
+        }
+        return monotonicRouteSafetyService.validateRetrievalAnswer(
+                plan, result.answerText(), parentOutcome.trace().abstentionTriggered());
+    }
+
+    private static String parentSourceFor(RagExperimentalPresetCode parentPreset) {
+        return parentPreset == IntegratedParentCandidateMaterializer.DEFAULT_PARENT_PRESET
+                ? "PARENT_P7"
+                : "PARENT_P6";
+    }
+
+    private ParentExecutionAttempt executeIsolatedParentPreset(
+            ExecutionContext base,
+            QueryPlan plan,
+            ClarificationDecision clarificationDecision,
+            RagExperimentalPresetCode parentPreset) {
+        IntegratedParentCampaignOutcomeResolver campaignResolver =
+                parentCampaignOutcomeResolverProvider.getIfAvailable();
+        if (campaignResolver != null) {
+            Optional<String> datasetQuestionId = campaignResolver.currentDatasetQuestionId();
+            if (datasetQuestionId.isPresent()) {
+                Optional<CampaignParentOutcome> campaignRecord =
+                        LabBenchmarkExecutionContext.campaignParentOutcome(
+                                parentPreset.name(), datasetQuestionId.get());
+                Optional<ExecutionOutcome> campaignOutcome =
+                        campaignResolver.tryResolve(parentPreset, datasetQuestionId.get());
+                if (campaignOutcome.isPresent() && campaignRecord.isPresent()) {
+                    return new ParentExecutionAttempt(
+                            campaignOutcome, true, campaignRecord);
+                }
+                return new ParentExecutionAttempt(
+                        Optional.empty(), false, Optional.empty());
+            }
+        }
+        ExecutionOutcome isolatedOutcome =
+                IntegratedParentPresetExecutionScope.runWithParentPresetBinding(
+                        parentPreset,
+                        () -> {
+                            KnowledgeSnapshotSelection snapshots = resolveParentSnapshots(base, parentPreset);
+                            ExecutionContext parentCtx =
+                                    IntegratedParentCandidateMaterializer.materialize(base, parentPreset, snapshots);
+                            List<ExecutionStageTrace> clarifyBeforeQu =
+                                    RagExecutionTraceSupport.buildClarificationPreQuStages(parentCtx);
+                            List<ExecutionStageTrace> memoryBeforeQu = List.copyOf(parentCtx.memoryStageTraces());
+                            List<ExecutionStageTrace> quStages = RagExecutionTraceSupport.projectQuStages(plan);
+                            List<ExecutionStageTrace> clarifyAfterQu = new ArrayList<>();
+                            clarifyAfterQu.add(
+                                    RagExecutionTraceSupport.clarificationPolicyStage(clarificationDecision));
+                            RoutingSnapshot routing = resolveRoutingSnapshot(parentCtx, plan);
+                            return executeSelectedRoute(
+                                    parentCtx,
+                                    plan,
+                                    clarificationDecision,
+                                    routing,
+                                    clarifyBeforeQu,
+                                    memoryBeforeQu,
+                                    quStages,
+                                    clarifyAfterQu);
+                        });
+        return new ParentExecutionAttempt(
+                Optional.of(isolatedOutcome), false, Optional.empty());
+    }
+
+    private KnowledgeSnapshotSelection resolveParentSnapshots(
+            ExecutionContext base, RagExperimentalPresetCode parentPreset) {
+        IntegratedParentPresetSnapshotResolver resolver = parentSnapshotResolverProvider.getIfAvailable();
+        if (resolver != null) {
+            return resolver.resolve(base, parentPreset);
+        }
+        return IntegratedParentCandidateMaterializer.fallbackSnapshots(base);
+    }
+
+    private static ExecutionOutcome finalizeIntegratedParentOutcome(
+            ParentCandidateSnapshot parentSnapshot,
+            MonotonicSafetyTelemetry telemetry,
+            Optional<CampaignParentOutcome> campaignRecord) {
+        ExecutionOutcome parentOutcome = parentSnapshot.toPreservedOutcome();
+        String parentRouteKind = parentSnapshot.parentRouteDecision();
+        if (parentRouteKind == null || parentRouteKind.isBlank()) {
+            parentRouteKind = parentOutcome.trace().routingRouteKind();
+        }
+        if (parentRouteKind == null || parentRouteKind.isBlank()) {
+            parentRouteKind = AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE.name();
+        }
+        String finalSource = parentSnapshot.parentFinalAnswerSource();
+        if (finalSource.isBlank()) {
+            finalSource = ParentFinalAnswerSources.forPreset(parentSnapshot.parentPresetCode());
+        }
+        ExecutionStageTrace finalSourceStage =
+                new ExecutionStageTrace(
+                        "final_answer_source",
+                        0L,
+                        ExecutionStageOutcome.SUCCESS,
+                        "finalAnswerSource=" + finalSource);
+        ExecutionTrace preservedTrace = parentOutcome.trace();
+        ExecutionTrace trace =
+                preservedTrace
+                        .withIntegratedMonotonicFallback(true, parentRouteKind)
+                        .withAppendedStages(finalSourceStage);
+        if (campaignRecord.isPresent()) {
+            trace =
+                    ParentCampaignOutcomeTelemetryPreservation.preserveParentToolSignals(
+                            trace, campaignRecord.get());
+        }
+        trace = MonotonicSafetyTelemetrySupport.withLeadingMonotonicSafetyStage(trace, telemetry);
+        return new ExecutionOutcome(parentOutcome.result(), trace);
+    }
+
+    private static ExecutionOutcome finalizeIntegratedRetrievalOutcome(
+            ExecutionOutcome retrievalOutcome, MonotonicSafetyTelemetry telemetry, boolean applyFallbackTrace) {
+        ExecutionTrace trace = retrievalOutcome.trace();
+        if (applyFallbackTrace
+                && (telemetry.parentFallbackUsed()
+                        || telemetry.functionCandidateRejected()
+                        || telemetry.toolCandidateRejected())) {
+            trace =
+                    trace.withIntegratedMonotonicFallback(
+                            true, AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE.name());
+        }
+        ExecutionStageTrace monotonicStage =
+                new ExecutionStageTrace(
+                        MonotonicSafetyTelemetrySupport.STAGE_NAME,
+                        0L,
+                        ExecutionStageOutcome.SUCCESS,
+                        MonotonicSafetyTelemetrySupport.stageMessage(telemetry));
+        return new ExecutionOutcome(
+                retrievalOutcome.result(), trace.withAppendedStages(monotonicStage));
+    }
+
+    private static ExecutionOutcome finalizeIntegratedAbstentionOutcome(
+            ExecutionOutcome basis,
+            MonotonicSafetyTelemetry telemetry,
+            QueryPlan plan) {
+        String abstain =
+                RuntimeAnswerPrompts.insufficientDocumentContextMessageFor(plan.rewrittenQueryText());
+        RagExecutionResult abstainedResult =
+                new RagExecutionResult(
+                        abstain,
+                        basis.result().workflowName(),
+                        basis.result().retrievalUsed(),
+                        basis.result().metadataUsed(),
+                        basis.result().usedResolvedConfigSnapshotId(),
+                        basis.result().usedConfigHash(),
+                        basis.result().usedKnowledgeSnapshotIds(),
+                        basis.result().executionTrace(),
+                        basis.result().toolUsedLabel(),
+                        basis.result().resolvedQueryType(),
+                        basis.result().usedTool(),
+                        basis.result().workflowStageTraces(),
+                        basis.result().retrievalDiagnostics(),
+                        basis.result().responseSources());
+        ExecutionTrace trace =
+                MonotonicSafetyTelemetrySupport.withLeadingMonotonicSafetyStage(
+                        basis.trace()
+                                .withIntegratedMonotonicFallback(
+                                        true, AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE.name()),
+                        telemetry);
+        return new ExecutionOutcome(abstainedResult, trace);
+    }
+
+    private static void appendMonotonicSafetyStage(
+            List<ExecutionStageTrace> clarifyAfterQu, MonotonicSafetyTelemetry telemetry) {
+        clarifyAfterQu.add(
+                new ExecutionStageTrace(
+                        MonotonicSafetyTelemetrySupport.STAGE_NAME,
+                        0L,
+                        ExecutionStageOutcome.SUCCESS,
+                        MonotonicSafetyTelemetrySupport.stageMessage(telemetry)));
     }
 }

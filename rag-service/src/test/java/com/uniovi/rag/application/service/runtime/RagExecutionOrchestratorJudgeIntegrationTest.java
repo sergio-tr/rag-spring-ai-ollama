@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
@@ -11,7 +12,11 @@ import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeli
 import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
 import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.DeterministicToolRoutingPolicy;
 import com.uniovi.rag.application.service.runtime.routing.DeterministicToolRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingPolicy;
+import com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.RouteExecutionGateBuilder;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -27,6 +32,7 @@ import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationQuestion;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationQuestionKind;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
+import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
@@ -57,12 +63,20 @@ import org.springframework.beans.factory.ObjectProvider;
 
 class RagExecutionOrchestratorJudgeIntegrationTest {
 
+    private final DeterministicToolRoutingStrategy deterministicToolRoutingStrategy =
+            MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy();
+    private final FunctionCallingRoutingStrategy functionCallingRoutingStrategy =
+            MonotonicRouteSafetyTestSupport.functionCallingRoutingStrategy();
+    private final com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy advisorRoutingStrategy =
+            MonotonicRouteSafetyTestSupport.advisorRoutingStrategy();
+
     @Test
     void judgeDisabled_doesNotInvokeJudgeStrategy_andTraceShowsNotAttempted() {
         QueryPlan plan = plan();
         ExecutionContext in = ctx(rag(false));
 
         WorkflowSelector workflowSelector = mock(WorkflowSelector.class);
+        stubIntegratedProbeWorkflow(workflowSelector, in);
         QueryUnderstandingPipeline qu = mock(QueryUnderstandingPipeline.class);
         ExecutionContextFactory factory = mock(ExecutionContextFactory.class);
         DeterministicToolStrategy tools = mock(DeterministicToolStrategy.class);
@@ -123,13 +137,13 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        mock(DeterministicToolRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy.class),
+                        deterministicToolRoutingStrategy,
+                        functionCallingRoutingStrategy,
+                        advisorRoutingStrategy,
                         judgeStrategy,
-                        mock(StructuredAnswerPlanService.class),
+                        MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
 
         var out = orchestrator.execute(in);
         assertThat(out.answerText()).isEqualTo("tool-answer");
@@ -144,6 +158,7 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
         ExecutionContext in = ctx(rag(true));
 
         WorkflowSelector workflowSelector = mock(WorkflowSelector.class);
+        stubIntegratedProbeWorkflow(workflowSelector, in);
         QueryUnderstandingPipeline qu = mock(QueryUnderstandingPipeline.class);
         ExecutionContextFactory factory = mock(ExecutionContextFactory.class);
         DeterministicToolStrategy tools = mock(DeterministicToolStrategy.class);
@@ -189,6 +204,18 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                                 Map.of(),
                                 List.of()));
 
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+                .thenAnswer(
+                        inv ->
+                                new JudgeExecutionResult(
+                                        false,
+                                        JudgeOutcome.NOT_ATTEMPTED,
+                                        false,
+                                        false,
+                                        false,
+                                        inv.getArgument(5),
+                                        false,
+                                        List.of()));
         when(judgeStrategy.execute(any(), eq(plan), any(), anyString(), eq(JudgeCandidateSource.DETERMINISTIC_TOOL), eq("tool-answer")))
                 .thenReturn(
                         new JudgeExecutionResult(
@@ -215,13 +242,13 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        mock(DeterministicToolRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy.class),
+                        deterministicToolRoutingStrategy,
+                        functionCallingRoutingStrategy,
+                        advisorRoutingStrategy,
                         judgeStrategy,
-                        mock(StructuredAnswerPlanService.class),
+                        MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
 
         var out = orchestrator.execute(in);
         assertThat(out.answerText()).isEqualTo("judged-answer");
@@ -230,7 +257,8 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
         assertThat(t.judgeFinalOutcome()).isEqualTo(JudgeOutcome.RETRY_SUCCEEDED.name());
         assertThat(t.judgeFinalAnswerFromRetry()).isTrue();
         assertThat(t.stages().stream().anyMatch(s -> "judge_evaluate".equals(s.stageName()))).isTrue();
-        verify(judgeStrategy, times(1)).execute(any(), any(), any(), anyString(), any(), anyString());
+        verify(judgeStrategy)
+                .execute(any(), eq(plan), any(), anyString(), eq(JudgeCandidateSource.DETERMINISTIC_TOOL), eq("tool-answer"));
     }
 
     @Test
@@ -239,6 +267,7 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
         ExecutionContext in = ctx(rag(true));
 
         WorkflowSelector workflowSelector = mock(WorkflowSelector.class);
+        stubIntegratedProbeWorkflow(workflowSelector, in);
         QueryUnderstandingPipeline qu = mock(QueryUnderstandingPipeline.class);
         ExecutionContextFactory factory = mock(ExecutionContextFactory.class);
         DeterministicToolStrategy tools = mock(DeterministicToolStrategy.class);
@@ -283,18 +312,34 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        mock(DeterministicToolRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy.class),
+                        deterministicToolRoutingStrategy,
+                        functionCallingRoutingStrategy,
+                        advisorRoutingStrategy,
                         judgeStrategy,
-                        mock(StructuredAnswerPlanService.class),
+                        MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
 
         var out = orchestrator.execute(in);
         assertThat(out.workflowName()).isEqualTo("clarification");
         verifyNoInteractions(judgeStrategy);
         verifyNoInteractions(routingStrategy);
+    }
+
+    private static void stubIntegratedProbeWorkflow(WorkflowSelector workflowSelector, ExecutionContext ctx) {
+        ExecutionWorkflow workflow = mock(ExecutionWorkflow.class);
+        when(workflow.workflowName()).thenReturn("ChunkDenseRagWorkflow");
+        when(workflow.execute(any()))
+                .thenReturn(
+                        RagExecutionResult.withPlaceholderTrace(
+                                "probe",
+                                "ChunkDenseRagWorkflow",
+                                true,
+                                false,
+                                ctx.knowledgeSnapshotSelection().orderedSnapshotIds(),
+                                "none",
+                                List.of()));
+        when(workflowSelector.select(any())).thenReturn(workflow);
     }
 
     private static RagConfig rag(boolean judgeEnabled) {
@@ -339,6 +384,15 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         "",
                         new ConfigProvenance(null, null, null, List.of(), null, null),
                         rag);
+        UUID snapshotId = UUID.randomUUID();
+        KnowledgeSnapshotSelection snapshots =
+                new KnowledgeSnapshotSelection(
+                        List.of(snapshotId),
+                        Optional.of(snapshotId),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty());
         return new ExecutionContext(
                 uid,
                 pid,
@@ -347,7 +401,7 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                 RuntimeOperationKind.CHAT_MESSAGE,
                 resolved,
                 "",
-                KnowledgeSnapshotSelection.empty(),
+                snapshots,
                 Optional.empty(),
                 Optional.empty(),
                 "corr",

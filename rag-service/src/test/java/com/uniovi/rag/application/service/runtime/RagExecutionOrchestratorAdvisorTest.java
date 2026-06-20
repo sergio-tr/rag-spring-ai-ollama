@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
@@ -77,9 +78,10 @@ class RagExecutionOrchestratorAdvisorTest {
     @Test
     void deterministic_tool_short_circuit_skips_advisor() {
         QueryPlan plan = plan(AmbiguityStatus.SUFFICIENT);
-        ExecutionContext in = ctxWithoutPlan(ragDirectLlm(false), KnowledgeSnapshotSelection.empty());
+        ExecutionContext in = ctxWithoutPlan(ragDeterministicToolLane(), KnowledgeSnapshotSelection.empty());
 
         WorkflowSelector workflowSelector = mock(WorkflowSelector.class);
+        stubMonotonicProbeWorkflow(workflowSelector, in);
         QueryUnderstandingPipeline qu = mock(QueryUnderstandingPipeline.class);
         ExecutionContextFactory factory = mock(ExecutionContextFactory.class);
         DeterministicToolStrategy tools = mock(DeterministicToolStrategy.class);
@@ -97,31 +99,6 @@ class RagExecutionOrchestratorAdvisorTest {
 
         when(qu.buildPlan(in)).thenReturn(plan);
         when(factory.attachQueryPlan(in, plan)).thenAnswer(inv -> withPlan(inv.getArgument(0), plan));
-
-        ExecutionWorkflow wf = mock(ExecutionWorkflow.class);
-        when(wf.workflowName()).thenReturn("DirectLlmWorkflow");
-        when(wf.execute(any())).thenThrow(new AssertionError("workflow should not run"));
-        when(workflowSelector.select(any())).thenReturn(wf);
-
-        when(routingStrategy.execute(any(), eq(plan)))
-                .thenReturn(
-                        new AdaptiveRoutingExecutionResult(
-                                AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK,
-                                true,
-                                AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE,
-                                false,
-                                Optional.empty(),
-                                false,
-                                new RouteExecutionGate(
-                                        AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE,
-                                        false,
-                                        true,
-                                        false,
-                                        false,
-                                        true,
-                                        Optional.of(AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE),
-                                        false),
-                                List.of()));
 
         when(tools.tryExecute(any(), eq(plan)))
                 .thenReturn(
@@ -147,13 +124,13 @@ class RagExecutionOrchestratorAdvisorTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        mock(DeterministicToolRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy.class),
+                        MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy(),
+                        MonotonicRouteSafetyTestSupport.functionCallingRoutingStrategy(),
+                        MonotonicRouteSafetyTestSupport.advisorRoutingStrategy(),
                         judgeStrategy,
-                        mock(StructuredAnswerPlanService.class),
+                        MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("tool-answer", out.answerText());
@@ -168,9 +145,10 @@ class RagExecutionOrchestratorAdvisorTest {
     @Test
     void function_calling_short_circuit_skips_advisor() {
         QueryPlan plan = plan(AmbiguityStatus.SUFFICIENT);
-        ExecutionContext in = ctxWithoutPlan(ragDirectLlm(true), KnowledgeSnapshotSelection.empty());
+        ExecutionContext in = ctxWithoutPlan(ragFunctionCallingLane(), KnowledgeSnapshotSelection.empty());
 
         WorkflowSelector workflowSelector = mock(WorkflowSelector.class);
+        stubMonotonicProbeWorkflow(workflowSelector, in);
         QueryUnderstandingPipeline qu = mock(QueryUnderstandingPipeline.class);
         ExecutionContextFactory factory = mock(ExecutionContextFactory.class);
         DeterministicToolStrategy tools = mock(DeterministicToolStrategy.class);
@@ -188,31 +166,6 @@ class RagExecutionOrchestratorAdvisorTest {
 
         when(qu.buildPlan(in)).thenReturn(plan);
         when(factory.attachQueryPlan(in, plan)).thenAnswer(inv -> withPlan(inv.getArgument(0), plan));
-
-        ExecutionWorkflow wf = mock(ExecutionWorkflow.class);
-        when(wf.workflowName()).thenReturn("DirectLlmWorkflow");
-        when(wf.execute(any())).thenThrow(new AssertionError("workflow should not run"));
-        when(workflowSelector.select(any())).thenReturn(wf);
-
-        when(routingStrategy.execute(any(), eq(plan)))
-                .thenReturn(
-                        new AdaptiveRoutingExecutionResult(
-                                AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK,
-                                true,
-                                AdaptiveRouteKind.FUNCTION_CALLING_ROUTE,
-                                false,
-                                Optional.empty(),
-                                false,
-                                new RouteExecutionGate(
-                                        AdaptiveRouteKind.FUNCTION_CALLING_ROUTE,
-                                        false,
-                                        false,
-                                        true,
-                                        false,
-                                        true,
-                                        Optional.of(AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE),
-                                        false),
-                                List.of()));
 
         when(tools.tryExecute(any(), eq(plan)))
                 .thenReturn(
@@ -257,13 +210,13 @@ class RagExecutionOrchestratorAdvisorTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        mock(DeterministicToolRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy.class),
+                        MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy(),
+                        MonotonicRouteSafetyTestSupport.functionCallingRoutingStrategy(),
+                        MonotonicRouteSafetyTestSupport.advisorRoutingStrategy(),
                         judgeStrategy,
-                        mock(StructuredAnswerPlanService.class),
+                        MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("fc-answer", out.answerText());
@@ -377,13 +330,13 @@ class RagExecutionOrchestratorAdvisorTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        mock(DeterministicToolRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy.class),
+                        MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy(),
+                        MonotonicRouteSafetyTestSupport.functionCallingRoutingStrategy(),
+                        MonotonicRouteSafetyTestSupport.advisorRoutingStrategy(),
                         judgeStrategy,
-                        mock(StructuredAnswerPlanService.class),
+                        MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("wf-answer", out.answerText());
@@ -396,11 +349,85 @@ class RagExecutionOrchestratorAdvisorTest {
         verify(factory).attachAdvisorPackedContextSet(any(), eq(packed));
     }
 
+    private static void stubMonotonicProbeWorkflow(WorkflowSelector workflowSelector, ExecutionContext ctx) {
+        ExecutionWorkflow workflow = mock(ExecutionWorkflow.class);
+        when(workflow.workflowName()).thenReturn("DirectLlmWorkflow");
+        when(workflow.execute(any()))
+                .thenReturn(
+                        RagExecutionResult.withPlaceholderTrace(
+                                "probe",
+                                "DirectLlmWorkflow",
+                                false,
+                                false,
+                                ctx.knowledgeSnapshotSelection().orderedSnapshotIds(),
+                                "none",
+                                List.of()));
+        when(workflowSelector.select(any())).thenReturn(workflow);
+    }
+
     private static ClarificationPolicyResolver clarificationPolicyNoAsk() {
         ClarificationPolicyResolver m = mock(ClarificationPolicyResolver.class);
         when(m.resolve(any(), any()))
                 .thenReturn(new ClarificationDecision(false, ClarificationOutcome.NOT_NEEDED, null, ""));
         return m;
+    }
+
+    private static RagConfig ragDeterministicToolLane() {
+        return new RagConfig(
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                5,
+                0.2,
+                "l",
+                "e",
+                "c",
+                "r",
+                false,
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                false,
+                MaterializationStrategy.CHUNK_LEVEL);
+    }
+
+    private static RagConfig ragFunctionCallingLane() {
+        return new RagConfig(
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                5,
+                0.2,
+                "l",
+                "e",
+                "c",
+                "r",
+                false,
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                MaterializationStrategy.CHUNK_LEVEL);
     }
 
     private static RagConfig ragDirectLlm(boolean functionCallingEnabled) {

@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Canonical experimental presets P0–P14.
+ * Canonical experimental presets P0–P15.
  *
  * <p>This is the single source of truth for:
  * <ul>
@@ -250,6 +250,16 @@ public final class ExperimentalPresetCanonicalCatalog {
                 ),
                 null,
                 true);
+
+        define(
+                RagExperimentalPresetCode.P15,
+                uuid("cafe0001-0001-4001-8001-000000000025"),
+                RagExperimentalPresetCode.P9,
+                Map.of(
+                        "adaptiveRoutingEnabled", true
+                ),
+                null,
+                false);
     }
 
     private static void define(
@@ -300,6 +310,7 @@ public final class ExperimentalPresetCanonicalCatalog {
         return Map.copyOf(out);
     }
 
+    /** Effective index requirements for the given preset code. */
     public static IndexRequirements effectiveIndexRequirements(RagExperimentalPresetCode code) {
         CanonicalPreset p = require(code);
         IndexRequirements base = p.parent() != null ? effectiveIndexRequirements(p.parent()) : IndexRequirements.none();
@@ -367,8 +378,8 @@ public final class ExperimentalPresetCanonicalCatalog {
     }
 
     /**
-     * All experimental presets (P0–P14) are defined for project-scoped document-backed evaluation; the runtime
-     * still enforces evidence availability per workflow (single-turn Lab uses P0–P10 only).
+     * All experimental presets (P0–P15) are defined for project-scoped document-backed evaluation; the runtime
+     * still enforces evidence availability per workflow (single-turn Lab uses P0–P10 and P15).
      */
     public static boolean corpusRequired(RagExperimentalPresetCode code) {
         if (code == null) {
@@ -377,7 +388,7 @@ public final class ExperimentalPresetCanonicalCatalog {
         if (code == RagExperimentalPresetCode.P0) {
             return false;
         }
-        return code.ordinal() <= RagExperimentalPresetCode.P14.ordinal();
+        return code.ordinal() <= RagExperimentalPresetCode.P15.ordinal();
     }
 
     /**
@@ -402,14 +413,20 @@ public final class ExperimentalPresetCanonicalCatalog {
         return mat != null && mat != RequiredMaterialization.NONE;
     }
 
-    /** Single-turn Lab benchmark harness ({@code RAG_PRESET_END_TO_END}) supports P0–P10 only. */
+    /** Single-turn Lab benchmark harness ({@code RAG_PRESET_END_TO_END}) supports P0–P10 and P15. */
     public static boolean singleTurnBenchmarkSelectable(RagExperimentalPresetCode code) {
         return singleTurnComparableMetric(code);
     }
 
-    /** Whether preset metrics may be compared on the single-turn Lab ladder (P0–P10). */
+    /** Whether preset metrics may be compared on the single-turn Lab ladder (P0–P10 and P15). */
     public static boolean singleTurnComparableMetric(RagExperimentalPresetCode code) {
-        return code != null && code.ordinal() <= RagExperimentalPresetCode.P10.ordinal();
+        if (code == null) {
+            return false;
+        }
+        if (code == RagExperimentalPresetCode.P15) {
+            return true;
+        }
+        return code.ordinal() <= RagExperimentalPresetCode.P10.ordinal();
     }
 
     /** Whether the preset requires a document-backed evaluation corpus. */
@@ -462,7 +479,7 @@ public final class ExperimentalPresetCanonicalCatalog {
     }
 
     /**
-     * Markdown table of the P0–P14 protocol ladder for generating annexes (generated only from this catalog).
+     * Markdown table of the P0–P15 protocol ladder for generating annexes (generated only from this catalog).
      */
     public static String protocolLadderMarkdownTable() {
         StringBuilder sb = new StringBuilder();

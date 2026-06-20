@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationPolicyResolver;
@@ -220,7 +221,7 @@ class RagExecutionOrchestratorReasoningTest {
                         mock(JudgeStrategy.class),
                         new StructuredAnswerPlanService(chatClient, new ObjectMapper()),
                         new AnswerVerificationService(chatClient),
-                        mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
 
         var out = orch.execute(base);
 

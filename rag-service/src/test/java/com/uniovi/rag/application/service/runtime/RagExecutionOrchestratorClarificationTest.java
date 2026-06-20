@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.port.PendingClarificationStore;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
@@ -112,7 +113,7 @@ class RagExecutionOrchestratorClarificationTest {
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
 
         var out = orchestrator.execute(in);
 
@@ -221,6 +222,8 @@ class RagExecutionOrchestratorClarificationTest {
         ClarificationPolicyResolver clarificationPolicyResolver = mock(ClarificationPolicyResolver.class);
         ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
+        com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy advisorRoutingStrategy =
+                mock(com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy.class);
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
 
         when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
@@ -251,6 +254,25 @@ class RagExecutionOrchestratorClarificationTest {
                 .thenReturn(
                         new AdvisorDecision(
                                 AdvisorMode.ENABLED, false, List.of(), "", List.of(), Optional.empty()));
+        when(advisorRoutingStrategy.execute(any(), any()))
+                .thenReturn(
+                        new com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingExecutionResult(
+                                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED,
+                                true,
+                                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.ADVISOR_ROUTE,
+                                false,
+                                Optional.empty(),
+                                false,
+                                new com.uniovi.rag.domain.runtime.routing.RouteExecutionGate(
+                                        com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.ADVISOR_ROUTE,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        Optional.empty(),
+                                        false),
+                                List.of()));
 
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
@@ -268,11 +290,11 @@ class RagExecutionOrchestratorClarificationTest {
                         routingStrategy,
                         mock(DeterministicToolRoutingStrategy.class),
                         mock(com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy.class),
+                        advisorRoutingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
 
         orchestrator.execute(merged);
 

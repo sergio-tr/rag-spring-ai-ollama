@@ -24,9 +24,10 @@ class ExperimentalPresetBenchmarkGateTest {
     }
 
     @Test
-    void p0_and_p10_not_blocked_by_gate() {
+    void p0_p10_and_p15_not_blocked_by_gate() {
         assertThat(ExperimentalPresetBenchmarkGate.blockReason(RagExperimentalPresetCode.P0)).isEmpty();
         assertThat(ExperimentalPresetBenchmarkGate.blockReason(RagExperimentalPresetCode.P9)).isEmpty();
         assertThat(ExperimentalPresetBenchmarkGate.blockReason(RagExperimentalPresetCode.P10)).isEmpty();
+        assertThat(ExperimentalPresetBenchmarkGate.blockReason(RagExperimentalPresetCode.P15)).isEmpty();
     }
 }

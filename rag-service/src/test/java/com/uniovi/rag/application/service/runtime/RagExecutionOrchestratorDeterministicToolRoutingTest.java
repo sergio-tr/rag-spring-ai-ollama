@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
@@ -60,6 +61,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -93,7 +95,7 @@ class RagExecutionOrchestratorDeterministicToolRoutingTest {
         assertThat(out.answerText()).isEqualTo("tool-answer");
         verify(harness.adaptiveRoutingStrategy(), never()).execute(any(), any());
         verify(harness.functionCallingPolicy(), never()).resolve(any(), any());
-        verify(harness.workflowSelector(), never()).select(any());
+        verify(harness.workflowSelector(), atLeastOnce()).select(any());
 
         ExecutionTrace trace = out.executionTrace();
         Map<String, Object> telemetry = ToolExecutionTelemetryMapper.fromTrace(trace);
@@ -182,6 +184,20 @@ class RagExecutionOrchestratorDeterministicToolRoutingTest {
                                         false,
                                         List.of()));
 
+        ExecutionWorkflow probeWorkflow = mock(ExecutionWorkflow.class);
+        when(probeWorkflow.workflowName()).thenReturn("ChunkDenseRagWorkflow");
+        when(probeWorkflow.execute(any()))
+                .thenReturn(
+                        RagExecutionResult.withPlaceholderTrace(
+                                "probe",
+                                "ChunkDenseRagWorkflow",
+                                true,
+                                false,
+                                in.knowledgeSnapshotSelection().orderedSnapshotIds(),
+                                "none",
+                                List.of()));
+        when(workflowSelector.select(any())).thenReturn(probeWorkflow);
+
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
                         workflowSelector,
@@ -202,9 +218,9 @@ class RagExecutionOrchestratorDeterministicToolRoutingTest {
                                 new com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingPolicy(),
                                 new com.uniovi.rag.application.service.runtime.routing.RouteExecutionGateBuilder()),
                         judgeStrategy,
-                        mock(StructuredAnswerPlanService.class),
+                        MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
 
         return new RagExecutionOrchestratorHarness(
                 orchestrator,

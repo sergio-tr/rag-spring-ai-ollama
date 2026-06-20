@@ -54,8 +54,8 @@ class LabExperimentalPresetCatalogServiceTest {
 
         var rows = cut.list();
 
-        assertThat(rows).hasSize(15);
-        assertThat(rows).extracting("code").contains("P0", "P14");
+        assertThat(rows).hasSize(16);
+        assertThat(rows).extracting("code").contains("P0", "P14", "P15");
         assertThat(rows).extracting("code").doesNotHaveDuplicates();
         assertThat(rows).allMatch(r -> r.productPresetId() != null && !r.productPresetId().isBlank());
         assertThat(rows).allMatch(r -> r.labOnly() == (r.labSelectable() && !r.chatSelectable()));

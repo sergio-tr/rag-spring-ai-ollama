@@ -17,7 +17,7 @@ class ExperimentalPresetCanonicalCatalogTest {
     @Test
     void ids_areStable_and_allCodesAreCovered() {
         Set<RagExperimentalPresetCode> codes = Set.of(RagExperimentalPresetCode.values());
-        assertThat(codes).hasSize(15);
+        assertThat(codes).hasSize(16);
         for (RagExperimentalPresetCode c : codes) {
             assertThat(ExperimentalPresetCanonicalCatalog.productPresetId(c)).isNotNull();
         }
@@ -54,9 +54,9 @@ class ExperimentalPresetCanonicalCatalogTest {
     }
 
     @Test
-    void singleTurnLadder_p0ThroughP10_comparable_p11P14_notSelectableInLab() {
+    void singleTurnLadder_p0ThroughP10AndP15_comparable_p11P14_notSelectableInLab() {
         for (RagExperimentalPresetCode c : RagExperimentalPresetCode.values()) {
-            if (c.ordinal() <= RagExperimentalPresetCode.P10.ordinal()) {
+            if (c.ordinal() <= RagExperimentalPresetCode.P10.ordinal() || c == RagExperimentalPresetCode.P15) {
                 assertThat(ExperimentalPresetCanonicalCatalog.singleTurnBenchmarkSelectable(c))
                         .as("%s should be a single-turn Lab preset", c)
                         .isTrue();
@@ -172,12 +172,12 @@ class ExperimentalPresetCanonicalCatalogTest {
     }
 
     @Test
-    void protocolLadderMarkdown_containsP0ThroughP14OnceEach() {
+    void protocolLadderMarkdown_containsP0ThroughP15OnceEach() {
         String md = ExperimentalPresetCanonicalCatalog.protocolLadderMarkdownTable();
         for (RagExperimentalPresetCode c : RagExperimentalPresetCode.values()) {
             assertThat(md).contains("| " + c.name() + " |");
         }
-        assertThat(md.lines().filter(l -> l.startsWith("| P")).count()).isEqualTo(15);
+        assertThat(md.lines().filter(l -> l.startsWith("| P")).count()).isEqualTo(16);
     }
 
     private static void assertMonotonicTrue(
