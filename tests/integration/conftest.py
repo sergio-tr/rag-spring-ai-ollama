@@ -205,7 +205,12 @@ def integration_admin_credentials() -> tuple[str, str] | None:
 
 @pytest.fixture(scope="session")
 def http_client() -> httpx.Client:
-    return httpx.Client(timeout=httpx.Timeout(120.0, connect=5.0))
+    verify = os.environ.get("INTEGRATION_HTTPX_VERIFY", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+    return httpx.Client(timeout=httpx.Timeout(120.0, connect=5.0), verify=verify)
 
 
 @pytest.fixture(scope="session")
