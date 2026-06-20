@@ -41,7 +41,7 @@ public final class FunctionCallingTelemetryMapper {
         if (!fallbackReason.isBlank()) {
             m.put("functionCallFallbackReason", fallbackReason);
         }
-        m.put("functionResultUsedAsFinal", succeeded && trace.functionCallingShortCircuited());
+        m.put("functionResultUsedAsFinal", succeeded && trace.functionCallingShortCircuited() && !trace.routingFallbackApplied());
         m.put("functionResultUsedAsContext", succeeded);
         m.put("functionCallRoute", fcPrimary ? routeKind : "");
         m.put("executionRoute", routeKind);

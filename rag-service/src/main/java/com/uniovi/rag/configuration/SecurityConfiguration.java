@@ -53,18 +53,17 @@ public class SecurityConfiguration {
         String productBasePath = ragApiPathProperties.getProductBasePath();
         String productAuthBase = productBasePath + "/auth";
         http
-                // Stateless Bearer JWT — see class Javadoc (CSRF targets automatic cookie submission).
+                // Stateless Bearer JWT
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(c -> c.configurationSource(corsConfigurationSource))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                // Persist JWT auth on the request so ASYNC SSE/error dispatches keep the same principal.
+                // Persist JWT auth on the request
                 .securityContext(
                         s -> s.securityContextRepository(new RequestAttributeSecurityContextRepository()))
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint(new RestAuthenticationEntryPoint(requestMappingHandlerMapping))
                         .accessDeniedHandler(new RestAccessDeniedHandler()))
                 .authorizeHttpRequests(a -> a
-                        // New primary auth contract under product API base path.
                         .requestMatchers(HttpMethod.GET, productAuthBase + "/me").authenticated()
                         .requestMatchers(
                                 productAuthBase + "/login",

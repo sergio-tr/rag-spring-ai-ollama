@@ -87,7 +87,8 @@ public final class ToolExecutionTelemetryMapper {
             return;
         }
         if (trace.functionCallingShortCircuited()
-                && FunctionCallingOutcome.EXECUTED_SUCCESS.name().equals(safe(trace.functionCallingOutcome()))) {
+                && FunctionCallingOutcome.EXECUTED_SUCCESS.name().equals(safe(trace.functionCallingOutcome()))
+                && !trace.routingFallbackApplied()) {
             m.put("finalAnswerSource", "FUNCTION_FINAL");
         }
     }

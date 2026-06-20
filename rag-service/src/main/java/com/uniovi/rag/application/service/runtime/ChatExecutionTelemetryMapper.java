@@ -1,6 +1,8 @@
 package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.service.runtime.factual.FactualVerifierTelemetry;
+import com.uniovi.rag.application.service.runtime.routing.CompositionRouteTelemetryMapper;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicSafetyTelemetrySupport;
 import com.uniovi.rag.application.service.runtime.query.DefaultQueryClassifierAdapter;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
@@ -167,7 +169,22 @@ public final class ChatExecutionTelemetryMapper {
         m.put("adaptiveRoutingApplied", trace.routingAttempted());
         m.put("clarificationRequired", clarificationRequired);
 
+        CompositionRouteTelemetryMapper.enrich(m);
+        putMonotonicSafetyTelemetry(trace, m);
+
         return Map.copyOf(m);
+    }
+
+    private static void putMonotonicSafetyTelemetry(ExecutionTrace trace, Map<String, Object> m) {
+        if (trace.stages() == null) {
+            return;
+        }
+        for (ExecutionStageTrace stage : trace.stages()) {
+            if (stage != null && MonotonicSafetyTelemetrySupport.STAGE_NAME.equals(stage.stageName())) {
+                MonotonicSafetyTelemetrySupport.enrichFromStageMessage(m, stage.message());
+                return;
+            }
+        }
     }
 
     private static void parseCorpusBudgetTelemetry(ExecutionTrace trace, Map<String, Object> m) {
