@@ -7,7 +7,53 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-BACKEND_URL="${INTEGRATION_BACKEND_URL:-http://127.0.0.1:9000}"
+if [[ -z "${INTEGRATION_BACKEND_URL:-}" ]]; then
+  BACKEND_URL="$(
+    python3 - <<'PY'
+import ssl
+import time
+import urllib.error
+import urllib.request
+
+candidates = [
+    "https://127.0.0.1:8444",
+    "http://127.0.0.1:9000",
+]
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
+
+def probe(base: str) -> int | None:
+    url = base.rstrip("/") + "/actuator/health/liveness"
+    try:
+        req = urllib.request.Request(url, method="GET")
+        open_kwargs = {"timeout": 4}
+        if base.startswith("https://"):
+            open_kwargs["context"] = ctx
+        with urllib.request.urlopen(req, **open_kwargs) as resp:
+            return resp.getcode()
+    except urllib.error.HTTPError as exc:
+        return exc.code
+    except (OSError, urllib.error.URLError, TimeoutError):
+        return None
+
+for attempt in range(8):
+    for base in candidates:
+        status = probe(base)
+        if status is not None and 200 <= status < 300:
+            print(base)
+            raise SystemExit(0)
+        if base.startswith("https://127.0.0.1:8444") and status in (502, 503, 504):
+            print(base)
+            raise SystemExit(0)
+    time.sleep(2)
+
+print("https://127.0.0.1:8444")
+PY
+  )"
+else
+  BACKEND_URL="${INTEGRATION_BACKEND_URL}"
+fi
 CLASSIFIER_URL="${INTEGRATION_CLASSIFIER_URL:-http://127.0.0.1:8000}"
 PYTEST_LOG_PATH="${PYTEST_LOG_PATH:-/tmp/pytest-integration-closure.log}"
 
@@ -19,6 +65,9 @@ export INTEGRATION_CHECK_OBS="${INTEGRATION_CHECK_OBS:-0}"
 export INTEGRATION_USE_TESTCONTAINERS="${INTEGRATION_USE_TESTCONTAINERS:-0}"
 export INTEGRATION_BACKEND_URL="${BACKEND_URL}"
 export INTEGRATION_CLASSIFIER_URL="${CLASSIFIER_URL}"
+if [[ "${BACKEND_URL}" == https://* ]]; then
+  export INTEGRATION_HTTPX_VERIFY="${INTEGRATION_HTTPX_VERIFY:-0}"
+fi
 
 echo "[integration-closure] backend: ${INTEGRATION_BACKEND_URL}"
 echo "[integration-closure] classifier: ${INTEGRATION_CLASSIFIER_URL}"
@@ -27,18 +76,27 @@ echo "[integration-closure] pytest log: ${PYTEST_LOG_PATH}"
 
 python - <<'PY'
 import os
+import ssl
 import sys
 import urllib.error
 import urllib.request
 
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
+
 checks = [
-    ("backend", os.environ["INTEGRATION_BACKEND_URL"].rstrip("/") + "/actuator/health"),
+    ("backend", os.environ["INTEGRATION_BACKEND_URL"].rstrip("/") + "/actuator/health/liveness"),
     ("classifier", os.environ["INTEGRATION_CLASSIFIER_URL"].rstrip("/") + "/health"),
 ]
 
 for name, url in checks:
     try:
-        with urllib.request.urlopen(url, timeout=5) as response:
+        req = urllib.request.Request(url, method="GET")
+        open_kwargs = {"timeout": 5}
+        if url.startswith("https://"):
+            open_kwargs["context"] = ctx
+        with urllib.request.urlopen(req, **open_kwargs) as response:
             status = response.getcode()
     except (OSError, urllib.error.URLError) as exc:
         print(f"error: required {name} service is unreachable at {url}: {exc}", file=sys.stderr)

@@ -9,13 +9,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 RAG_SERVICE="${REPO_ROOT}/rag-service"
 WEBAPP_DIR="${REPO_ROOT}/webapp"
 
 POSTGRES_CONTAINER="${RAG_CI_POSTGRES_CONTAINER:-rag-ci-pg}"
-POSTGRES_IMAGE="${RAG_PLATFORM_POSTGRES_IMAGE:-pgvector/pgvector:0.8.2-pg16-bookworm}"
-POSTGRES_PORT="${RAG_LOCAL_POSTGRES_PORT:-5432}"
+POSTGRES_IMAGE="${RAG_PLATFORM_POSTGRES_IMAGE}"
+POSTGRES_PORT="${RAG_LOCAL_POSTGRES_PORT}"
 STOP_AFTER="${RAG_CI_STOP_CONTAINER:-0}"
 CI_NETWORK="${RAG_CI_NETWORK:-rag-ci}"
 BACKEND_CONTAINER="${RAG_CI_BACKEND_CONTAINER:-rag-ci-backend}"
