@@ -440,7 +440,11 @@ export async function ensureLlmCampaignModelsReady(page: Page, minCount = 2): Pr
   ).toBeGreaterThanOrEqual(minCount);
 
   const picked = preferred.filter((id) => selectable.includes(id));
-  return (picked.length >= minCount ? picked : selectable).slice(0, minCount);
+  if (picked.length >= minCount) {
+    return minCount >= preferred.length ? [...picked] : picked.slice(0, minCount);
+  }
+  const fallback = selectable.filter((id) => !picked.includes(id as (typeof preferred)[number]));
+  return [...picked, ...fallback].slice(0, minCount);
 }
 
 /** Selects LLM models by checkbox test id (lab-benchmark-llm-models-{modelId}). */
@@ -1194,11 +1198,30 @@ function campaignFieldsFromJobStatus(raw: LabJobStatusBody): {
   return { campaignId, totalItems };
 }
 
+const LAB_JOB_STATUS_TRANSIENT_HTTP = new Set([502, 503, 504]);
+
 export async function fetchLabJobStatus(page: Page, jobId: string): Promise<LabJobStatusBody> {
   const headers = await authHeadersFromPage(page);
-  const res = await page.request.get(productApiUrl(`/lab/jobs/${jobId}`), { headers });
-  expect(res.status(), await res.text()).toBe(200);
-  const raw = (await res.json()) as LabJobStatusBody;
+  const maxAttempts = 5;
+  let lastStatus = 0;
+  let lastBody = "";
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const res = await page.request.get(productApiUrl(`/lab/jobs/${jobId}`), { headers });
+    lastStatus = res.status();
+    lastBody = await res.text();
+    if (lastStatus === 200) {
+      const raw = JSON.parse(lastBody) as LabJobStatusBody;
+      const { campaignId, totalItems } = campaignFieldsFromJobStatus(raw);
+      return { ...raw, campaignId, totalItems };
+    }
+    if (LAB_JOB_STATUS_TRANSIENT_HTTP.has(lastStatus) && attempt + 1 < maxAttempts) {
+      await page.waitForTimeout(1500 + attempt * 2000);
+      continue;
+    }
+    break;
+  }
+  expect(lastStatus, lastBody).toBe(200);
+  const raw = JSON.parse(lastBody) as LabJobStatusBody;
   const { campaignId, totalItems } = campaignFieldsFromJobStatus(raw);
   return { ...raw, campaignId, totalItems };
 }
