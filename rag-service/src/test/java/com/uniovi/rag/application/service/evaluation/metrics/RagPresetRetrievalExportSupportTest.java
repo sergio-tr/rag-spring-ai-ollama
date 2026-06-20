@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.evaluation.metrics;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.uniovi.rag.application.service.evaluation.metrics.matching.ExpectedAnswerMatchResult;
 import com.uniovi.rag.infrastructure.persistence.evaluation.LabCampaignHumanExportBuilder;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
@@ -109,6 +110,35 @@ class RagPresetRetrievalExportSupportTest {
     }
 
     @Test
+    void analysisJsonKeys_includeCalibratedMatchFields() {
+        assertThat(RagPresetRetrievalExportSupport.ANALYSIS_JSON_KEYS)
+                .contains(
+                        ExpectedAnswerMatchResult.KEY_CONTAINED_RAW,
+                        ExpectedAnswerMatchResult.KEY_MATCHED,
+                        ExpectedAnswerMatchResult.KEY_MATCH_TYPE,
+                        ExpectedAnswerMatchResult.KEY_MATCH_CONFIDENCE,
+                        ExpectedAnswerMatchResult.KEY_MATCH_REASON,
+                        ExpectedAnswerMatchResult.KEY_MATCH_VERSION);
+    }
+
+    @Test
+    void putJsonExportFields_promotesCalibratedMatchFields() {
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(ExpectedAnswerMatchResult.KEY_CONTAINED_RAW, false);
+        mp.put(ExpectedAnswerMatchResult.KEY_MATCHED, true);
+        mp.put(ExpectedAnswerMatchResult.KEY_MATCH_TYPE, "NUMERIC_VALUE_MATCH");
+        mp.put(ExpectedAnswerMatchResult.KEY_MATCH_CONFIDENCE, "HIGH");
+        mp.put(ExpectedAnswerMatchResult.KEY_MATCH_REASON, "numeric_value_equal");
+        mp.put(ExpectedAnswerMatchResult.KEY_MATCH_VERSION, "1");
+
+        Map<String, Object> row = new LinkedHashMap<>();
+        RagPresetRetrievalExportSupport.putJsonExportFields(row, mp);
+
+        assertThat(row.get(ExpectedAnswerMatchResult.KEY_MATCHED)).isEqualTo(true);
+        assertThat(row.get(ExpectedAnswerMatchResult.KEY_MATCH_TYPE)).isEqualTo("NUMERIC_VALUE_MATCH");
+    }
+
+    @Test
     void putCsvExportFields_promotesRetrievalScalars() {
         Map<String, Object> mp =
                 Map.of(
@@ -135,21 +165,22 @@ class RagPresetRetrievalExportSupportTest {
     @Test
     void putJsonExportFields_promotesBaselineScalars() {
         Map<String, Object> mp =
-                Map.of(
-                        "workflowName",
-                        "DirectLlmWorkflow",
-                        "useRetrieval",
-                        false,
-                        "corpusRequired",
-                        false,
-                        "requiresVectorIndex",
-                        false,
-                        "groupKey",
-                        "DIRECT_LLM",
-                        "corpusChars",
-                        0,
-                        "naiveFullCorpusInPromptEnabled",
-                        false);
+                new LinkedHashMap<>(
+                        Map.of(
+                                "workflowName",
+                                "DirectLlmWorkflow",
+                                "useRetrieval",
+                                false,
+                                "corpusRequired",
+                                false,
+                                "requiresVectorIndex",
+                                false,
+                                "groupKey",
+                                "DIRECT_LLM",
+                                "corpusChars",
+                                0,
+                                "naiveFullCorpusInPromptEnabled",
+                                false));
 
         Map<String, Object> row = new LinkedHashMap<>();
         RagPresetRetrievalExportSupport.putJsonExportFields(row, mp);
@@ -161,6 +192,33 @@ class RagPresetRetrievalExportSupportTest {
         assertThat(row.get("groupKey")).isEqualTo("DIRECT_LLM");
         assertThat(row.get("corpusChars")).isEqualTo(0);
         assertThat(row.get("naiveFullCorpusInPromptEnabled")).isEqualTo(false);
+        assertThat(mp.get("finalAnswerSource")).isEqualTo("DIRECT_LLM");
+    }
+
+    @Test
+    void putCsvExportFields_infersDirectLlmFinalAnswerSource() {
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put("groupKey", "DIRECT_LLM");
+
+        Map<String, String> row = new LinkedHashMap<>();
+        RagPresetRetrievalExportSupport.putCsvExportFields(row, mp);
+
+        assertThat(mp.get("finalAnswerSource")).isEqualTo("DIRECT_LLM");
+    }
+
+    @Test
+    void putJsonExportFields_promotesFunctionProposalFields() {
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_MODE, "BACKEND_DETERMINISTIC");
+        mp.put(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_SOURCE, "QUERY_SHAPE");
+        mp.put(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_VALID, true);
+
+        Map<String, Object> row = new LinkedHashMap<>();
+        RagPresetRetrievalExportSupport.putJsonExportFields(row, mp);
+
+        assertThat(row.get(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_MODE)).isEqualTo("BACKEND_DETERMINISTIC");
+        assertThat(row.get(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_SOURCE)).isEqualTo("QUERY_SHAPE");
+        assertThat(row.get(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_VALID)).isEqualTo(true);
     }
 
     @Test

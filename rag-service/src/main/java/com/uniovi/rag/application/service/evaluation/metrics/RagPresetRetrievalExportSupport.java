@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation.metrics;
 
+import com.uniovi.rag.application.service.evaluation.metrics.matching.ExpectedAnswerMatchResult;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -93,6 +94,12 @@ public final class RagPresetRetrievalExportSupport {
                     "semanticScore",
                     "exactMatchNormalized",
                     "expectedAnswerContained",
+                    ExpectedAnswerMatchResult.KEY_CONTAINED_RAW,
+                    ExpectedAnswerMatchResult.KEY_MATCHED,
+                    ExpectedAnswerMatchResult.KEY_MATCH_TYPE,
+                    ExpectedAnswerMatchResult.KEY_MATCH_CONFIDENCE,
+                    ExpectedAnswerMatchResult.KEY_MATCH_REASON,
+                    ExpectedAnswerMatchResult.KEY_MATCH_VERSION,
                     "countMatch",
                     "booleanMatch",
                     "dateMatch",
@@ -142,6 +149,14 @@ public final class RagPresetRetrievalExportSupport {
                     RagPresetToolMetrics.KEY_FUNCTION_CALLING_USED,
                     RagPresetToolMetrics.KEY_FUNCTION_CALL_ATTEMPTED,
                     RagPresetToolMetrics.KEY_FUNCTION_CALL_NAME,
+                    RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_MODE,
+                    RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_SOURCE,
+                    RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_VALID,
+                    RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_REPAIR_ATTEMPTED,
+                    RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_REPAIR_SUCCEEDED,
+                    RagPresetToolMetrics.KEY_BACKEND_FUNCTION_CALL_ATTEMPTED,
+                    RagPresetToolMetrics.KEY_NATIVE_PROVIDER_FUNCTION_CALL_ATTEMPTED,
+                    RagPresetToolMetrics.KEY_FUNCTION_TOOL_KIND,
                     RagPresetToolMetrics.KEY_FUNCTION_CALL_ARGUMENTS_VALID,
                     RagPresetToolMetrics.KEY_FUNCTION_CALL_SUCCEEDED,
                     RagPresetToolMetrics.KEY_FUNCTION_CALL_FALLBACK_REASON,
@@ -164,7 +179,35 @@ public final class RagPresetRetrievalExportSupport {
                     RagPresetAdvisorMetrics.KEY_ADVISOR_CHANGED_PROMPT,
                     RagPresetAdvisorMetrics.KEY_ADVISOR_VALIDATED_ANSWER,
                     RagPresetAdvisorMetrics.KEY_ADVISOR_FALLBACK_REASON,
-                    RagPresetAdvisorMetrics.KEY_ADVISOR_RESULT_USED);
+                    RagPresetAdvisorMetrics.KEY_ADVISOR_RESULT_USED,
+                    "parentFallbackUsed",
+                    "parentFinalAnswerPreserved",
+                    "parentCampaignOutcomeReused",
+                    "parentCampaignOutcomeMissing",
+                    "parentSelectedFinalAnswerLength",
+                    "parentFinalAnswerHash",
+                    "selectedFinalAnswerHash",
+                    "parentMatcherVisibleAnswerHash",
+                    "selectedMatcherVisibleAnswerHash",
+                    "parentAnswerMismatchReason",
+                    "parentPresetCode",
+                    "selectedCandidateSource",
+                    "selectedParentPreset",
+                    "candidateRejectionReasons",
+                    "toolCandidateRejected",
+                    "functionCandidateRejected",
+                    "retrievalCandidateRejected",
+                    "monotonicRegressionPrevented",
+                    "baselineCandidateSource",
+                    "baselineCandidatePresetCode",
+                    "baselineCandidateSelected",
+                    "baselineOverrideAttempted",
+                    "baselineOverrideAccepted",
+                    "baselineOverrideRejectedReason",
+                    "baselineFloorApplied",
+                    "baselineFloorReason",
+                    "monotonicFloorApplied",
+                    "monotonicFloorPreventedRegression");
 
     private RagPresetRetrievalExportSupport() {}
 
@@ -172,43 +215,49 @@ public final class RagPresetRetrievalExportSupport {
         if (target == null || metricsPayload == null || metricsPayload.isEmpty()) {
             return;
         }
+        Map<String, Object> mp = new LinkedHashMap<>(metricsPayload);
+        inferFinalAnswerSourceIfMissing(mp);
         for (String key : FLAT_CSV_KEYS) {
-            putIfPresent(target, key, metricsPayload.get(key));
+            putIfPresent(target, key, mp.get(key));
         }
         for (String key : BASELINE_FLAT_KEYS) {
-            putIfPresent(target, key, metricsPayload.get(key));
+            putIfPresent(target, key, mp.get(key));
         }
-        putEffectiveContextPresent(target, metricsPayload);
-        putIdList(target, "retrievedChunkIds", metricsPayload.get("retrieved_chunk_ids"));
-        putIdList(target, "retrievedDocumentIds", metricsPayload.get("retrieved_document_ids"));
-        promoteSnapshotCapabilityFields(target, metricsPayload);
+        putEffectiveContextPresent(target, mp);
+        putIdList(target, "retrievedChunkIds", mp.get("retrieved_chunk_ids"));
+        putIdList(target, "retrievedDocumentIds", mp.get("retrieved_document_ids"));
+        promoteSnapshotCapabilityFields(target, mp);
         for (String key : ANALYSIS_JSON_KEYS) {
-            putIfPresent(target, key, metricsPayload.get(key));
+            putIfPresent(target, key, mp.get(key));
         }
-        putFinalScoreAvailability(target, metricsPayload);
+        putFinalScoreAvailability(target, mp);
+        mergeInferredExportFields(metricsPayload, mp);
     }
 
     public static void putCsvExportFields(Map<String, String> target, Map<String, Object> metricsPayload) {
         if (target == null || metricsPayload == null || metricsPayload.isEmpty()) {
             return;
         }
+        Map<String, Object> mp = new LinkedHashMap<>(metricsPayload);
+        inferFinalAnswerSourceIfMissing(mp);
         for (String key : FLAT_CSV_KEYS) {
-            target.put(key, csvVal(metricsPayload.get(key)));
+            target.put(key, csvVal(mp.get(key)));
         }
         for (String key : BASELINE_FLAT_KEYS) {
-            target.put(key, csvVal(metricsPayload.get(key)));
+            target.put(key, csvVal(mp.get(key)));
         }
-        target.put("effectiveContextPresent", csvVal(effectiveContextPresent(metricsPayload)));
-        target.put("retrievedChunkIds", joinIds(metricsPayload.get("retrieved_chunk_ids")));
+        target.put("effectiveContextPresent", csvVal(effectiveContextPresent(mp)));
+        target.put("retrievedChunkIds", joinIds(mp.get("retrieved_chunk_ids")));
         if (target.get("retrievedChunkIds") == null || target.get("retrievedChunkIds").isBlank()) {
-            target.put("retrievedChunkIds", joinIds(metricsPayload.get("retrievedChunkIds")));
+            target.put("retrievedChunkIds", joinIds(mp.get("retrievedChunkIds")));
         }
-        target.put("retrievedDocumentIds", joinIds(metricsPayload.get("retrieved_document_ids")));
+        target.put("retrievedDocumentIds", joinIds(mp.get("retrieved_document_ids")));
         if (target.get("retrievedDocumentIds") == null || target.get("retrievedDocumentIds").isBlank()) {
-            target.put("retrievedDocumentIds", joinIds(metricsPayload.get("retrievedDocumentIds")));
+            target.put("retrievedDocumentIds", joinIds(mp.get("retrievedDocumentIds")));
         }
-        promoteSnapshotCapabilityFieldsCsv(target, metricsPayload);
-        putFinalScoreAvailabilityCsv(target, metricsPayload);
+        promoteSnapshotCapabilityFieldsCsv(target, mp);
+        putFinalScoreAvailabilityCsv(target, mp);
+        mergeInferredExportFields(metricsPayload, mp);
     }
 
     public static List<Map<String, String>> enrichSourceEntries(List<Map<String, String>> sources, Map<String, Object> mp) {
@@ -386,6 +435,41 @@ public final class RagPresetRetrievalExportSupport {
             sb.append(s);
         }
         return sb.toString();
+    }
+
+    private static void mergeInferredExportFields(Map<String, Object> metricsPayload, Map<String, Object> enriched) {
+        if (metricsPayload == null || enriched == null || metricsPayload == enriched) {
+            return;
+        }
+        try {
+            metricsPayload.putAll(enriched);
+        } catch (UnsupportedOperationException ignored) {
+            // Immutable caller maps (e.g. Map.of in tests) — inference applies to export copy only.
+        }
+    }
+
+    /** Direct-LLM presets omit chat telemetry; infer a stable export label for comparability. */
+    static void inferFinalAnswerSourceIfMissing(Map<String, Object> mp) {
+        if (mp == null) {
+            return;
+        }
+        String existing = str(mp.get("finalAnswerSource"));
+        if (!existing.isBlank()) {
+            return;
+        }
+        String groupKey = str(mp.get("groupKey"));
+        if ("DIRECT_LLM".equals(groupKey)) {
+            mp.put("finalAnswerSource", "DIRECT_LLM");
+            return;
+        }
+        String workflow = str(mp.get("workflowName"));
+        if ("DirectLlmWorkflow".equals(workflow)) {
+            mp.put("finalAnswerSource", "DIRECT_LLM");
+            return;
+        }
+        if ("NO_INDEX".equals(groupKey) && !Boolean.TRUE.equals(mp.get("useRetrieval"))) {
+            mp.put("finalAnswerSource", "DIRECT_LLM");
+        }
     }
 
     private static String str(Object o) {

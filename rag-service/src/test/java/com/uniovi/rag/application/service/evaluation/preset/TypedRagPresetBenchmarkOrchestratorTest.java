@@ -1034,6 +1034,82 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     }
 
     @Test
+    void p15_withoutWorkbookRow_executesViaCanonicalCatalogBridge() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any()))
+                .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "h15", UUID.randomUUID())));
+
+        List<RagPresetQuestion> questions = List.of(sampleQuestion());
+        RagPresetDefinition p9 = preset(RagExperimentalPresetCode.P9);
+        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.eq(questions),
+                        ArgumentMatchers.any()))
+                .thenReturn(EvaluationTestFixtures.ragBatchFromRowMaps(baseRowsFor(questions.size())));
+        var run = new EvaluationRunEntity();
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(UUID.randomUUID());
+        run.setProject(project);
+        when(evaluationRunRepository.findByIdFetchDatasetAndCorpus(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+
+        RagPresetBenchmarkRunPayload out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                UUID.randomUUID(),
+                                new TypedBenchmarkDataset.RagPresetQuestions(questions, List.of(p9)),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                Set.of(RagExperimentalPresetCode.P15),
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isNotEqualTo(BenchmarkItemOutcome.NOT_SUPPORTED.name());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
+        assertThat(mp.get("presetCode")).isEqualTo("P15");
+        assertThat(mp.get("adaptiveRoutingEnabled")).isEqualTo(true);
+        assertThat(mp.get("skippedReasonCode")).isNotEqualTo("PRESET_WORKBOOK_CATALOG_ROW_MISSING");
+
+        verify(evaluationService)
+                .evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.eq(questions),
+                        ArgumentMatchers.any());
+    }
+
+    @Test
+    void p11_withoutWorkbookRow_staysNotSupportedViaLabGate() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(null)).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(null)).thenReturn(embSnap());
+
+        RagPresetQuestion q = sampleQuestion();
+        RagPresetDefinition p9 = preset(RagExperimentalPresetCode.P9);
+
+        RagPresetBenchmarkRunPayload out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                null,
+                                new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of(p9)),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                Set.of(RagExperimentalPresetCode.P11),
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = EvaluationTestFixtures.toRowMaps(out);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME))
+                .isEqualTo(BenchmarkItemOutcome.NOT_SUPPORTED.name());
+        assertThat(mp.get("skippedReasonCode")).isEqualTo("PRESET_ADAPTIVE_ROUTING_BENCHMARK_NOT_SUPPORTED");
+    }
+
+    @Test
     void p11_notSupported_exports_singleTurnUnsupported_notComparableMetric() {
         when(experimentalSnapshotFactory.buildLlmSnapshot(null)).thenReturn(llmSnap());
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(null)).thenReturn(embSnap());

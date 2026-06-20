@@ -1,7 +1,10 @@
 package com.uniovi.rag.application.service.evaluation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.service.evaluation.metrics.Answerability;
+import com.uniovi.rag.application.service.evaluation.metrics.DatasetMetricContract;
 import com.uniovi.rag.application.service.evaluation.metrics.DatasetQuestionSubsetSupport;
+import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
@@ -140,6 +143,62 @@ class LabEvaluationRunServiceTest {
         CompareRunsResponseDto dto = service.compare(userId, runA, runB);
         assertThat(dto.comparable()).isFalse();
         assertThat(dto.incompatibilityReasons()).contains("index_snapshot_id mismatch");
+    }
+
+    @Test
+    void mvpCsvColumns_includeNegativeEvidenceFalsePositive() {
+        assertThat(LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS())
+                .contains("negativeEvidenceFalsePositive");
+    }
+
+    @Test
+    void mvpCsvColumns_includeBaselineFloorTelemetryFields() {
+        assertThat(LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS())
+                .containsSubsequence(
+                        "baselineCandidateSource",
+                        "baselineCandidatePresetCode",
+                        "baselineCandidateSelected",
+                        "baselineOverrideAttempted",
+                        "baselineOverrideAccepted",
+                        "baselineOverrideRejectedReason",
+                        "baselineFloorApplied",
+                        "baselineFloorReason",
+                        "monotonicFloorApplied",
+                        "monotonicFloorPreventedRegression");
+    }
+
+    @Test
+    void exportMvpItemsCsv_includesNegativeEvidenceFalsePositiveColumn() {
+        UUID userId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setId(runId);
+        run.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+
+        EvaluationResultEntity item = new EvaluationResultEntity();
+        item.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        item.setRun(run);
+        item.setExpectedAnswer("none");
+        item.setActualAnswer("found something");
+        item.setMetricsPayload(
+                Map.of(
+                        BenchmarkResultRowKeys.ITEM_OUTCOME,
+                        "EXECUTED",
+                        BenchmarkResultRowKeys.PRESET_CODE,
+                        "P3",
+                        DatasetMetricContract.KEY_ANSWERABILITY,
+                        Answerability.UNANSWERABLE.name(),
+                        "negativeEvidenceFalsePositive",
+                        true));
+
+        when(evaluationRunRepository.findByIdAndUser_Id(runId, userId)).thenReturn(Optional.of(run));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId)).thenReturn(List.of(item));
+
+        String csv = service.exportMvpItemsCsv(userId, runId);
+
+        assertThat(csv.split("\n", 2)[0]).contains("negativeEvidenceFalsePositive");
+        assertThat(csv).contains("true");
     }
 
     @Test
@@ -282,6 +341,38 @@ class LabEvaluationRunServiceTest {
 
         List<EvaluationResultItemDto> items = service.listItems(userId, coordinatorRunId);
         assertThat(items).hasSize(2);
+    }
+
+    @Test
+    void exportMvpRollupsJson_campaignChildRun_usesRunScopedItemsOnly() {
+        UUID userId = UUID.randomUUID();
+        UUID campaignId = UUID.randomUUID();
+        UUID p0RunId = UUID.randomUUID();
+
+        EvaluationCampaignEntity campaign = mock(EvaluationCampaignEntity.class);
+        when(campaign.getId()).thenReturn(campaignId);
+
+        EvaluationRunEntity p0 = mock(EvaluationRunEntity.class);
+        when(p0.getId()).thenReturn(p0RunId);
+        when(p0.getCampaign()).thenReturn(campaign);
+
+        EvaluationResultEntity item0 = new EvaluationResultEntity();
+        item0.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        item0.setMetricsPayload(Map.of("itemOutcome", "EXECUTED", "presetCode", "P0"));
+
+        when(evaluationRunRepository.findByIdAndUser_Id(p0RunId, userId)).thenReturn(Optional.of(p0));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(p0RunId)).thenReturn(List.of(item0));
+        lenient()
+                .when(evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId))
+                .thenReturn(List.of(p0));
+
+        Map<String, Object> rollups = service.exportMvpRollupsJson(userId, p0RunId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> global = (Map<String, Object>) rollups.get("globalMacro");
+        @SuppressWarnings("unchecked")
+        Map<String, Long> outcomeCounts = (Map<String, Long>) global.get("outcomeCounts");
+        assertThat(outcomeCounts.get("EXECUTED")).isEqualTo(1L);
     }
 
     @Test

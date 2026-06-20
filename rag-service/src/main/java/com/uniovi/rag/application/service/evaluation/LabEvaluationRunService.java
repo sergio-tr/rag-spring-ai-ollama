@@ -17,6 +17,9 @@ import com.uniovi.rag.interfaces.rest.dto.EvaluationRunDetailDto;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpMetricsCalculator;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpRollupCalculator;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpSchema;
+import com.uniovi.rag.application.service.evaluation.metrics.RagPresetAdvancedRetrievalMetrics;
+import com.uniovi.rag.application.service.evaluation.metrics.matching.ExpectedAnswerMatchResult;
+import com.uniovi.rag.application.service.runtime.routing.CompositionRouteTelemetryMapper;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.interfaces.rest.dto.LatestLabRunRecoveryDto;
@@ -115,9 +118,19 @@ public class LabEvaluationRunService {
                     "retrievalMode",
                     "rerankNoopReason",
                     "originalContextCharCount",
+                    RagPresetAdvancedRetrievalMetrics.KEY_SPARSE_QUERY_REWRITTEN,
+                    RagPresetAdvancedRetrievalMetrics.KEY_SPARSE_FALLBACK_STAGE,
+                    RagPresetAdvancedRetrievalMetrics.KEY_SPARSE_HIT,
+                    RagPresetAdvancedRetrievalMetrics.KEY_FUSION_STRATEGY,
+                    RagPresetAdvancedRetrievalMetrics.KEY_PRE_FUSION_COUNT,
+                    RagPresetAdvancedRetrievalMetrics.KEY_POST_FUSION_COUNT,
+                    RagPresetAdvancedRetrievalMetrics.KEY_METADATA_CANDIDATE_COUNT,
+                    RagPresetAdvancedRetrievalMetrics.KEY_METADATA_FILTER_APPLIED,
+                    RagPresetAdvancedRetrievalMetrics.KEY_METADATA_FILTER_FALLBACK,
                     "effectiveContextPresent",
                     "answerability",
                     "answerabilitySource",
+                    "negativeEvidenceFalsePositive",
                     "expectedAnswerPresent",
                     "queryTypeExpected",
                     "queryTypePredicted",
@@ -132,6 +145,12 @@ public class LabEvaluationRunService {
                     "abstentionScore",
                     "exactMatchNormalized",
                     "expectedAnswerContained",
+                    ExpectedAnswerMatchResult.KEY_CONTAINED_RAW,
+                    ExpectedAnswerMatchResult.KEY_MATCHED,
+                    ExpectedAnswerMatchResult.KEY_MATCH_TYPE,
+                    ExpectedAnswerMatchResult.KEY_MATCH_CONFIDENCE,
+                    ExpectedAnswerMatchResult.KEY_MATCH_REASON,
+                    ExpectedAnswerMatchResult.KEY_MATCH_VERSION,
                     "countMatch",
                     "booleanMatch",
                     "dateMatch",
@@ -263,6 +282,49 @@ public class LabEvaluationRunService {
                     "constraintCheckPassed",
                     "negativeEvidenceGuardTriggered",
                     "finalAnswerSource",
+                    CompositionRouteTelemetryMapper.KEY_COMPONENT_ROUTE_DECISION,
+                    CompositionRouteTelemetryMapper.KEY_COMPONENT_ROUTE_PRECEDENCE,
+                    CompositionRouteTelemetryMapper.KEY_DETERMINISTIC_TOOL_CONSIDERED,
+                    CompositionRouteTelemetryMapper.KEY_BACKEND_FUNCTION_CONSIDERED,
+                    CompositionRouteTelemetryMapper.KEY_SPARSE_HYBRID_CONSIDERED,
+                    CompositionRouteTelemetryMapper.KEY_FACTUAL_VERIFIER_CONSIDERED,
+                    "calibratedMatcherApplied",
+                    CompositionRouteTelemetryMapper.KEY_COMPOSITION_FALLBACK_REASON,
+                    "parentFallbackUsed",
+                    "parentFinalAnswerPreserved",
+                    "parentCampaignOutcomeReused",
+                    "parentCampaignOutcomeMissing",
+                    "parentSelectedFinalAnswerLength",
+                    "parentFinalAnswerHash",
+                    "selectedFinalAnswerHash",
+                    "parentMatcherVisibleAnswerHash",
+                    "selectedMatcherVisibleAnswerHash",
+                    "parentAnswerMismatchReason",
+                    "parentPresetCode",
+                    "selectedCandidateSource",
+                    "selectedParentPreset",
+                    "candidateRejectionReasons",
+                    "toolCandidateRejected",
+                    "functionCandidateRejected",
+                    "retrievalCandidateRejected",
+                    "monotonicRegressionPrevented",
+                    "baselineCandidateSource",
+                    "baselineCandidatePresetCode",
+                    "baselineCandidateSelected",
+                    "baselineOverrideAttempted",
+                    "baselineOverrideAccepted",
+                    "baselineOverrideRejectedReason",
+                    "baselineFloorApplied",
+                    "baselineFloorReason",
+                    "monotonicFloorApplied",
+                    "monotonicFloorPreventedRegression",
+                    "routeConfidence",
+                    "constraintCoverageStatus",
+                    "candidateToolConsidered",
+                    "candidateFunctionConsidered",
+                    "candidateRetrievalConsidered",
+                    "parentCandidateConsidered",
+                    "rejectedCandidateSources",
                     "campaignId",
                     "childRunId",
                     "comparisonAxis",
@@ -433,7 +495,7 @@ public class LabEvaluationRunService {
     @Transactional(readOnly = true)
     public String exportCsv(UUID userId, UUID runId) {
         EvaluationRunEntity run = requireRun(userId, runId);
-        List<EvaluationResultEntity> items = listPersistedItems(run, userId);
+        List<EvaluationResultEntity> items = listRunScopedItems(run, userId);
         String meta;
         try {
             meta = objectMapper.writeValueAsString(toDetail(run, userId));
@@ -485,7 +547,7 @@ public class LabEvaluationRunService {
         EvaluationRunEntity run = requireRun(userId, runId);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("run", toDetailMap(run, userId));
-        out.put("items", listPersistedItems(run, userId).stream().map(LabEvaluationRunService::toItemMap).toList());
+        out.put("items", listRunScopedItems(run, userId).stream().map(LabEvaluationRunService::toItemMap).toList());
         return out;
     }
 
@@ -515,7 +577,7 @@ public class LabEvaluationRunService {
     @Transactional(readOnly = true)
     public String exportMvpItemsCsv(UUID userId, UUID runId) {
         EvaluationRunEntity run = requireRun(userId, runId);
-        List<EvaluationResultEntity> items = listPersistedItems(run, userId);
+        List<EvaluationResultEntity> items = listRunScopedItems(run, userId);
         StringBuilder sb = new StringBuilder();
         sb.append(String.join(",", MVP_ITEMS_CSV_COLUMNS)).append('\n');
         for (EvaluationResultEntity it : items) {
@@ -533,7 +595,7 @@ public class LabEvaluationRunService {
     @Transactional(readOnly = true)
     public Map<String, Object> exportMvpRollupsJson(UUID userId, UUID runId) {
         EvaluationRunEntity run = requireRun(userId, runId);
-        List<EvaluationResultEntity> items = listPersistedItems(run, userId);
+        List<EvaluationResultEntity> items = listRunScopedItems(run, userId);
         Map<String, Object> rollups = BenchmarkMvpRollupCalculator.build(items, run);
         if (run.getCampaign() != null) {
             LinkedHashMap<String, Object> enriched = new LinkedHashMap<>(rollups);
@@ -651,13 +713,20 @@ public class LabEvaluationRunService {
         return m;
     }
 
+    private List<EvaluationResultEntity> listRunScopedItems(EvaluationRunEntity run, UUID userId) {
+        if (run == null || run.getId() == null) {
+            return List.of();
+        }
+        return evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId());
+    }
+
     private List<EvaluationResultEntity> listPersistedItems(EvaluationRunEntity run, UUID userId) {
         if (run == null || run.getId() == null) {
             return List.of();
         }
         EvaluationCampaignEntity campaign = run.getCampaign();
         if (campaign == null || campaign.getId() == null) {
-            return evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId());
+            return listRunScopedItems(run, userId);
         }
         List<UUID> childRunIds =
                 evaluationRunRepository.findByCampaignIdAndUserId(campaign.getId(), userId).stream()
@@ -665,7 +734,7 @@ public class LabEvaluationRunService {
                         .filter(Objects::nonNull)
                         .toList();
         if (childRunIds.isEmpty()) {
-            return evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId());
+            return listRunScopedItems(run, userId);
         }
         return evaluationResultRepository.findByRun_IdInOrderByEvaluatedAtAsc(childRunIds);
     }

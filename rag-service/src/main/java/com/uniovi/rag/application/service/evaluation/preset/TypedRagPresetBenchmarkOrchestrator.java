@@ -61,7 +61,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
-import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 /**
@@ -144,6 +143,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
             Set<RagExperimentalPresetCode> requestedPresets,
             BiConsumer<Integer, Integer> itemProgress,
             Runnable cancellationCheck) {
+        LabBenchmarkExecutionContext.clearCampaignPresetBindings();
         RagImplementationProperties impl =
                 implementationProperties != null ? implementationProperties : new RagImplementationProperties();
         RagFeatureConfiguration base =
@@ -232,9 +232,13 @@ public class TypedRagPresetBenchmarkOrchestrator {
                         "questionCount", questions != null ? questions.size() : 0,
                         "autoReindex", autoReindexPolicy.enabled()));
 
-        Map<RagExperimentalPresetCode, RagPresetDefinition> defByPreset =
+        Map<RagExperimentalPresetCode, RagPresetDefinition> workbookByPreset =
                 catalog.stream()
                         .collect(Collectors.toMap(RagPresetDefinition::presetId, d -> d, (a, b) -> a, LinkedHashMap::new));
+        Map<RagExperimentalPresetCode, RagPresetDefinition> defByPreset = new LinkedHashMap<>(workbookByPreset);
+        for (RagExperimentalPresetCode code : codesForPlan) {
+            LabPresetCatalogBridge.resolve(code, workbookByPreset).ifPresent(def -> defByPreset.put(code, def));
+        }
 
         int totalOps = codesForPlan.size() * Math.max(1, questions.size());
         AtomicInteger progressed = new AtomicInteger(0);
@@ -282,8 +286,23 @@ public class TypedRagPresetBenchmarkOrchestrator {
             if (gk == LabPresetRunGroupKey.DIRECT_LLM) {
                 exec = exec.withReindexAction("NONE").withReindexStatus("SKIPPED");
             } else if (gk == LabPresetRunGroupKey.NO_INDEX) {
-                exec = exec.withReindexAction("NONE").withReindexStatus("SKIPPED");
-                exec = seedCorpusEvidenceSnapshot(exec, baseGroup, runPlan);
+                if (groupRequiresP1CorpusEvidence(baseGroup) && autoReindexPolicy.enabled()) {
+                    try {
+                        exec = ensureGroupSnapshot(run, baseGroup, exec, autoReindexPolicy);
+                    } catch (RuntimeException reindexEx) {
+                        exec =
+                                exec.withReindexAction(
+                                                exec.reindexAction() != null ? exec.reindexAction() : "BUILD_AND_ACTIVATE")
+                                        .withReindexStatus("FAILED")
+                                        .withErrorCode(REINDEX_FAILED)
+                                        .withErrorReason(
+                                                reindexEx.getMessage() != null ? reindexEx.getMessage() : REINDEX_FAILED)
+                                        .withCompletedAt(Instant.now());
+                    }
+                } else {
+                    exec = exec.withReindexAction("NONE").withReindexStatus("SKIPPED");
+                    exec = seedCorpusEvidenceSnapshot(exec, baseGroup, runPlan);
+                }
             } else if (gk == LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN) {
                 exec = exec.withReindexAction("NONE").withReindexStatus("NOT_SUPPORTED");
                 for (String codeStr : baseGroup.presetCodes()) {
@@ -725,6 +744,20 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 plan.corpusId(),
                 plan.strategyVersion(),
                 plan.createdAt());
+    }
+
+    private static boolean groupRequiresP1CorpusEvidence(LabPresetRunPlanModels.LabPresetRunGroup group) {
+        if (group == null || group.presetCodes() == null) {
+            return false;
+        }
+        for (String codeStr : group.presetCodes()) {
+            Optional<RagExperimentalPresetCode> parsed = RagExperimentalPresetCode.tryParse(codeStr);
+            if (parsed.isPresent()
+                    && ExperimentalPresetCanonicalCatalog.requiresSnapshotAssembledCorpusEvidence(parsed.get())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static UUID resolveCorpusEvidenceSeedSnapshotId(
@@ -1286,6 +1319,13 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 ctx != null ? ctx.labelledDatasetSha256() : null);
         if (ctx != null) {
             DatasetQuestionSubsetSupport.copySubsetMetadataToMetrics(contract, ctx.subset());
+            if (ctx.subset() != null
+                    && DatasetQuestionSubsetSupport.FILTER_GOLD_SUBSET.equals(ctx.subset().filterMode())
+                    && ctx.subset().subsetId() != null
+                    && !ctx.subset().subsetId().isBlank()) {
+                DatasetQuestionSubsetSupport.enrichAnswerabilityFromGoldManifest(
+                        contract, question.id(), ctx.subset().subsetId());
+            }
         }
         if (!contract.isEmpty()) {
             row.put(JSON_KEY_DATASET_CONTRACT, contract);

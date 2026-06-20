@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
@@ -62,7 +63,14 @@ class LabBenchmarkConfigPreflightServiceTest {
                         indexSnapshotCompatibilityService,
                         evaluationCorpusApplicationService,
                         projectIndexProfileService,
-                        labIndexProfileOverrideFactory);
+                        labIndexProfileOverrideFactory,
+                        corpusAvailabilityGate);
+        lenient()
+                .when(corpusAvailabilityGate.evaluateForPreset(any(), any(), any(), any()))
+                .thenReturn(new CorpusAvailabilityGate.Result(true, 2, List.of(), 2, 10L, null, null));
+        lenient()
+                .when(corpusAvailabilityGate.probeForPreset(any(), any(), any(), any()))
+                .thenReturn(Map.of("corpusAvailable", true, "vectorChunkRowCount", 10L));
     }
 
     @Test
@@ -326,6 +334,59 @@ class LabBenchmarkConfigPreflightServiceTest {
                         ex ->
                                 assertThat(((ResponseStatusException) ex).getReason())
                                         .isEqualTo(LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_REINDEX));
+    }
+
+    @Test
+    void ragDefersP1SnapshotCheckWhenAutoReindexEnabledDespiteMissingVectorRows() {
+        UUID userId = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
+        when(corpusAvailabilityGate.evaluateForPreset(
+                        eq(userId), eq(corpusId), any(), eq(com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode.P1)))
+                .thenReturn(
+                        new CorpusAvailabilityGate.Result(
+                                false,
+                                2,
+                                List.of(UUID.randomUUID(), UUID.randomUUID()),
+                                2,
+                                0L,
+                                CorpusAvailabilityGate.REINDEX_REQUIRED,
+                                "no snapshot"));
+        when(corpusAvailabilityGate.probeForPreset(
+                        eq(userId), eq(corpusId), any(), eq(com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode.P1)))
+                .thenReturn(Map.of("corpusAvailable", false, "vectorChunkRowCount", 0L));
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        UUID.randomUUID(),
+                        corpusId,
+                        null,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "n",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of("P1"),
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        false,
+                        null,
+                        true,
+                        true,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(), List.of(), null, null);
+        LabBenchmarkConfigPreflightResult result =
+                service.validateOrThrow(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req);
+        assertThat(result.passed()).isTrue();
+        assertThat(result.details()).containsEntry("p1SnapshotPreflight", "DEFERRED_AUTO_REINDEX");
     }
 
     @Test

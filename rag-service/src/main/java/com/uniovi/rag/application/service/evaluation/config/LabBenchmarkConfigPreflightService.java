@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.evaluation.preset.CorpusAvailabilityGate;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetBenchmarkGate;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import com.uniovi.rag.application.service.evaluation.preset.LabIndexSnapshotCompatibilityService;
@@ -45,6 +46,7 @@ public class LabBenchmarkConfigPreflightService {
     private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
     private final ProjectIndexProfileService projectIndexProfileService;
     private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
+    private final CorpusAvailabilityGate corpusAvailabilityGate;
 
     public LabBenchmarkConfigPreflightService(
             RagFeatureConfiguration ragFeatureConfiguration,
@@ -53,7 +55,8 @@ public class LabBenchmarkConfigPreflightService {
             LabIndexSnapshotCompatibilityService indexSnapshotCompatibilityService,
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
             ProjectIndexProfileService projectIndexProfileService,
-            LabIndexProfileOverrideFactory labIndexProfileOverrideFactory) {
+            LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
+            CorpusAvailabilityGate corpusAvailabilityGate) {
         this.ragFeatureConfiguration = ragFeatureConfiguration;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.embeddingSpaceGuard = embeddingSpaceGuard;
@@ -61,6 +64,7 @@ public class LabBenchmarkConfigPreflightService {
         this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
         this.projectIndexProfileService = projectIndexProfileService;
         this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
+        this.corpusAvailabilityGate = corpusAvailabilityGate;
     }
 
     /**
@@ -118,6 +122,8 @@ public class LabBenchmarkConfigPreflightService {
             }
         }
 
+        validateP1CorpusSnapshotCompatibility(userId, request, presets, details);
+
         String embeddingModelId = resolveEmbeddingModelId(request);
         if (embeddingModelId != null && presets.stream().anyMatch(ExperimentalPresetCanonicalCatalog::embeddingRequired)) {
             assertEmbeddingDimension(embeddingModelId);
@@ -148,6 +154,69 @@ public class LabBenchmarkConfigPreflightService {
                 request.autoReindexEffective(),
                 false,
                 details);
+    }
+
+    private void validateP1CorpusSnapshotCompatibility(
+            UUID userId,
+            StartBenchmarkRunRequest request,
+            List<RagExperimentalPresetCode> presets,
+            Map<String, Object> details) {
+        if (request.corpusId() == null || presets == null || presets.isEmpty()) {
+            return;
+        }
+        boolean includesP1 = presets.stream().anyMatch(p -> p == RagExperimentalPresetCode.P1);
+        if (!includesP1) {
+            return;
+        }
+
+        Optional<KnowledgeIndexSnapshotEntity> active =
+                knowledgeSnapshotService.findActiveCorpusSnapshot(request.corpusId());
+        List<UUID> snapshotIds = active.map(s -> List.of(s.getId())).orElse(List.of());
+        CorpusAvailabilityGate.Result gate =
+                corpusAvailabilityGate.evaluateForPreset(
+                        userId, request.corpusId(), snapshotIds, RagExperimentalPresetCode.P1);
+        Map<String, Object> probe =
+                corpusAvailabilityGate.probeForPreset(
+                        userId, request.corpusId(), snapshotIds, RagExperimentalPresetCode.P1);
+
+        details.put("p1CorpusEvidenceProbe", probe);
+        details.put("corpusId", request.corpusId().toString());
+        if (request.datasetId() != null) {
+            details.put("datasetId", request.datasetId().toString());
+        }
+        details.put(
+                "activeSnapshotId",
+                active.map(s -> s.getId().toString()).orElse(null));
+
+        if (gate.satisfied()) {
+            details.put("p1SnapshotCompatible", true);
+            details.put("p1SnapshotPreflight", "COMPATIBLE");
+            return;
+        }
+
+        // P1 is in NO_INDEX group: generic index preflight deferral does not apply; auto-reindex prepares P1 rows.
+        if (request.autoReindexEffective() && request.allowActiveSnapshotMutationEffective()) {
+            details.put("p1SnapshotCompatible", "DEFERRED");
+            details.put("p1SnapshotPreflight", "DEFERRED_AUTO_REINDEX");
+            details.put(
+                    "p1DeferredReason",
+                    "P1 requires snapshot-bound vector rows; auto-reindex will prepare the NO_INDEX group snapshot.");
+            return;
+        }
+
+        fail(HttpStatus.BAD_REQUEST, mapP1GateToConfigCode(gate.reasonCode()));
+    }
+
+    private static String mapP1GateToConfigCode(String reasonCode) {
+        if (CorpusAvailabilityGate.SNAPSHOT_VECTOR_ROWS_MISSING.equals(reasonCode)
+                || CorpusAvailabilityGate.REINDEX_REQUIRED.equals(reasonCode)
+                || LabCorpusReasonCodes.SNAPSHOT_EMPTY.equals(reasonCode)) {
+            return LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_REINDEX;
+        }
+        if (CorpusAvailabilityGate.NO_COMPATIBLE_SNAPSHOT.equals(reasonCode)) {
+            return LabRuntimeConfigReasonCodes.SNAPSHOT_CONFIG_MISMATCH;
+        }
+        return LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_REINDEX;
     }
 
     private void validateIndexForPresets(
