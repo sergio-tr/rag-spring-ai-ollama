@@ -39,7 +39,15 @@ final class AnswerabilityLabelRules {
     private static final Pattern P_NO_EXISTE = Pattern.compile("\\bno\\s+existen?\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern P_NINGUNA = Pattern.compile("\\bninguna?\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern P_NO_SE_ENCUENTRA = Pattern.compile("\\bno\\s+se\\s+encuentra\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern P_NO_SE_MENCIONA = Pattern.compile("\\bno\\s+se\\s+menciona\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern P_NO_SE_MENCIONA =
+            Pattern.compile("\\bno\\s+se\\s+mencion(?:a|an)\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern P_NO_SE_COMENTO =
+            Pattern.compile("\\bno\\s+se\\s+coment(?:o|aron)\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern P_NO_SE_DETALLA =
+            Pattern.compile("\\bno\\s+se\\s+detall(?:a|aron)\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern P_NO_APARECE = Pattern.compile("\\bno\\s+aparece\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern P_NO_HAY_CONSTANCIA =
+            Pattern.compile("\\bno\\s+hay\\s+constancia\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern P_NO_CONSTA = Pattern.compile("\\bno\\s+consta\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern P_EXPLICIT_NO = Pattern.compile("^\\s*no\\s*,", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
@@ -101,6 +109,10 @@ final class AnswerabilityLabelRules {
                 || P_NINGUNA.matcher(normalized).find()
                 || P_NO_SE_ENCUENTRA.matcher(normalized).find()
                 || P_NO_SE_MENCIONA.matcher(normalized).find()
+                || P_NO_SE_COMENTO.matcher(normalized).find()
+                || P_NO_SE_DETALLA.matcher(normalized).find()
+                || P_NO_APARECE.matcher(normalized).find()
+                || P_NO_HAY_CONSTANCIA.matcher(normalized).find()
                 || P_NO_CONSTA.matcher(normalized).find()
                 || P_EXPLICIT_NO.matcher(normalized).find();
     }

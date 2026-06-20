@@ -126,6 +126,31 @@ class DatasetQuestionSubsetSupportTest {
         assertThat(DatasetQuestionSubsetSupport.resolvedExpectedItemCount(Map.of(), 60, 1)).isEqualTo(60);
     }
 
+    @Test
+    void goldSubsetManifest_enrichesAnswerabilityFromManifestEntry() {
+        Map<String, Object> metrics = new LinkedHashMap<>();
+        boolean applied =
+                DatasetQuestionSubsetSupport.enrichAnswerabilityFromGoldManifest(
+                        metrics, "RAG-003", GoldSubsetManifestLoader.GOLD_SUBSET_V1);
+
+        assertThat(applied).isTrue();
+        assertThat(metrics.get(DatasetMetricContract.KEY_ANSWERABILITY)).isEqualTo("UNANSWERABLE");
+        assertThat(metrics.get(DatasetMetricContract.KEY_ANSWERABILITY_SOURCE))
+                .isEqualTo(AnswerabilitySource.GOLD_SUBSET_MANIFEST.name());
+    }
+
+    @Test
+    void enrichAnswerabilityFromPersistedSubset_usesSubsetIdOnMetrics() {
+        Map<String, Object> metrics = new LinkedHashMap<>();
+        metrics.put("subsetId", GoldSubsetManifestLoader.GOLD_SUBSET_V1);
+
+        boolean applied =
+                DatasetQuestionSubsetSupport.enrichAnswerabilityFromPersistedSubset(metrics, "RAG-001");
+
+        assertThat(applied).isTrue();
+        assertThat(metrics.get(DatasetMetricContract.KEY_ANSWERABILITY)).isEqualTo("ANSWERABLE");
+    }
+
     private static RagPresetQuestion question(String id) {
         return new RagPresetQuestion(
                 id,

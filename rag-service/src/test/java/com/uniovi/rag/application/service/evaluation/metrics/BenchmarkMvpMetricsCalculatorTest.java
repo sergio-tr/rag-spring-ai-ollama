@@ -354,4 +354,137 @@ class BenchmarkMvpMetricsCalculatorTest {
         assertThat(csv.get("executionRoute")).isEqualTo("FUNCTION_CALLING_ROUTE");
         assertThat(csv.get("routingRouteKind")).isEqualTo("FUNCTION_CALLING_ROUTE");
     }
+
+    @Test
+    void ragRow_exportsFunctionProposalFieldsToCsv() {
+        EvaluationResultEntity e = new EvaluationResultEntity();
+        e.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        e.setQueryType("COUNT_DOCUMENTS");
+        e.setExpectedAnswer("1");
+        e.setActualAnswer("1");
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+        mp.put(BenchmarkResultRowKeys.PRESET_CODE, "P9");
+        mp.put(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_MODE, "BACKEND_DETERMINISTIC");
+        mp.put(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_SOURCE, "QUERY_SHAPE");
+        mp.put(RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_VALID, true);
+        mp.put(RagPresetToolMetrics.KEY_BACKEND_FUNCTION_CALL_ATTEMPTED, true);
+        e.setMetricsPayload(mp);
+
+        Map<String, String> csv = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(e, null);
+
+        assertThat(csv.get("functionProposalMode")).isEqualTo("BACKEND_DETERMINISTIC");
+        assertThat(csv.get("functionProposalSource")).isEqualTo("QUERY_SHAPE");
+        assertThat(csv.get("functionProposalValid")).isEqualTo("true");
+        assertThat(csv.get("backendFunctionCallAttempted")).isEqualTo("true");
+    }
+
+    @Test
+    void ragRow_exportsSparseHybridExtendedFieldsToCsv() {
+        EvaluationResultEntity e = new EvaluationResultEntity();
+        e.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+        mp.put(BenchmarkResultRowKeys.PRESET_CODE, "P8");
+        mp.put(RagPresetAdvancedRetrievalMetrics.KEY_SPARSE_QUERY_REWRITTEN, true);
+        mp.put(RagPresetAdvancedRetrievalMetrics.KEY_SPARSE_FALLBACK_STAGE, "SYNONYM");
+        mp.put(RagPresetAdvancedRetrievalMetrics.KEY_SPARSE_HIT, true);
+        mp.put(RagPresetAdvancedRetrievalMetrics.KEY_FUSION_STRATEGY, "RRF");
+        mp.put(RagPresetAdvancedRetrievalMetrics.KEY_PRE_FUSION_COUNT, 12);
+        mp.put(RagPresetAdvancedRetrievalMetrics.KEY_POST_FUSION_COUNT, 8);
+        mp.put(RagPresetAdvancedRetrievalMetrics.KEY_METADATA_CANDIDATE_COUNT, 3);
+        mp.put(RagPresetAdvancedRetrievalMetrics.KEY_METADATA_FILTER_APPLIED, true);
+        mp.put(RagPresetAdvancedRetrievalMetrics.KEY_METADATA_FILTER_FALLBACK, false);
+        e.setMetricsPayload(mp);
+
+        Map<String, String> csv = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(e, null);
+
+        assertThat(csv.get("sparseQueryRewritten")).isEqualTo("true");
+        assertThat(csv.get("sparseFallbackStage")).isEqualTo("SYNONYM");
+        assertThat(csv.get("fusionStrategy")).isEqualTo("RRF");
+        assertThat(csv.get("metadataFilterApplied")).isEqualTo("true");
+    }
+
+    @Test
+    void ragRow_goldSubsetRun_enrichesAnswerabilityFromManifestAtExportTime() {
+        EvaluationResultEntity e = new EvaluationResultEntity();
+        e.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        e.setExpectedAnswer("x");
+        e.setActualAnswer("y");
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+        mp.put(BenchmarkResultRowKeys.PRESET_CODE, "P6");
+        mp.put(BenchmarkResultRowKeys.DATASET_QUESTION_ID, "RAG-001");
+        e.setMetricsPayload(mp);
+
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setAggregatesJson(
+                Map.of(
+                        DatasetQuestionSubsetSupport.AGG_KEY_DATASET_QUESTION_FILTER,
+                        DatasetQuestionSubsetSupport.FILTER_GOLD_SUBSET,
+                        DatasetQuestionSubsetSupport.AGG_KEY_SUBSET_ID,
+                        GoldSubsetManifestLoader.GOLD_SUBSET_V1,
+                        DatasetQuestionSubsetSupport.AGG_KEY_FILTERED_QUESTION_IDS,
+                        List.of("RAG-001"),
+                        DatasetQuestionSubsetSupport.AGG_KEY_FILTERED_QUESTION_COUNT,
+                        1));
+
+        Map<String, String> csv = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(e, run);
+
+        assertThat(csv.get("answerability")).isEqualTo("ANSWERABLE");
+        assertThat(csv.get("answerabilitySource")).isEqualTo(AnswerabilitySource.GOLD_SUBSET_MANIFEST.name());
+    }
+
+    @Test
+    void ragRow_unanswerable_exportsNegativeEvidenceFalsePositiveToCsv() {
+        EvaluationResultEntity e = new EvaluationResultEntity();
+        e.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        e.setExpectedAnswer("none");
+        e.setActualAnswer("The document says 42.");
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+        mp.put(BenchmarkResultRowKeys.PRESET_CODE, "P3");
+        mp.put(DatasetMetricContract.KEY_ANSWERABILITY, Answerability.UNANSWERABLE.name());
+        e.setMetricsPayload(mp);
+
+        Map<String, String> csv = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(e, null);
+
+        assertThat(csv.get("negativeEvidenceFalsePositive")).isEqualTo("true");
+    }
+
+    @Test
+    void ragRow_exportsBaselineFloorTelemetryToCsv() {
+        EvaluationResultEntity e = new EvaluationResultEntity();
+        e.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        e.setExpectedAnswer("expected");
+        e.setActualAnswer("parent answer");
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+        mp.put(BenchmarkResultRowKeys.PRESET_CODE, "P15");
+        mp.put("selectedCandidateSource", "PARENT_P7");
+        mp.put("parentCampaignOutcomeReused", true);
+        mp.put("parentFinalAnswerPreserved", true);
+        mp.put("parentFinalAnswerHash", "abc");
+        mp.put("selectedFinalAnswerHash", "abc");
+        mp.put("baselineCandidateSource", "PARENT_P7");
+        mp.put("baselineCandidatePresetCode", "P7");
+        mp.put("baselineCandidateSelected", true);
+        mp.put("baselineOverrideAttempted", false);
+        mp.put("baselineOverrideAccepted", false);
+        mp.put("baselineFloorApplied", true);
+        mp.put("baselineFloorReason", "parent_p7_over_abstention");
+        mp.put("monotonicFloorApplied", true);
+        mp.put("monotonicFloorPreventedRegression", true);
+        e.setMetricsPayload(mp);
+
+        Map<String, String> csv = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(e, null);
+
+        assertThat(csv.get("baselineCandidateSelected")).isEqualTo("true");
+        assertThat(csv.get("baselineCandidateSource")).isEqualTo("PARENT_P7");
+        assertThat(csv.get("baselineCandidatePresetCode")).isEqualTo("P7");
+        assertThat(csv.get("monotonicFloorApplied")).isEqualTo("true");
+        assertThat(csv.get("monotonicFloorPreventedRegression")).isEqualTo("true");
+        assertThat(csv.get("parentFinalAnswerHash")).isEqualTo("abc");
+        assertThat(csv.get("selectedFinalAnswerHash")).isEqualTo("abc");
+    }
 }

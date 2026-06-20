@@ -1,5 +1,8 @@
 package com.uniovi.rag.application.service.evaluation.metrics;
 
+import com.uniovi.rag.application.service.evaluation.metrics.matching.ExpectedAnswerMatchCalibrator;
+import com.uniovi.rag.application.service.runtime.routing.CompositionRouteTelemetryMapper;
+import com.uniovi.rag.application.service.evaluation.metrics.matching.ExpectedAnswerMatchResult;
 import com.uniovi.rag.application.service.evaluation.metrics.querytype.QueryTypeEvaluatorRegistry;
 import com.uniovi.rag.application.service.evaluation.metrics.querytype.StructuredEvaluationResult;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
@@ -134,6 +137,32 @@ public final class RagPresetAnalysisMetrics {
                                 expectedType, expectedAnswer, actualAnswer, answerMode)
                         : StructuredEvaluationResult.notAvailable();
         structured.mergeInto(out);
+
+        Map<String, Object> calibrationContext = new LinkedHashMap<>(mp);
+        calibrationContext.putAll(out);
+        ExpectedAnswerMatchResult calibratedMatch =
+                ExpectedAnswerMatchCalibrator.calibrate(
+                        expectedAnswer,
+                        actualAnswer,
+                        answerability,
+                        expectedType,
+                        calibrationContext,
+                        contained,
+                        abstention,
+                        semantic);
+        calibratedMatch.mergeInto(out, contained);
+        out.put("calibratedMatcherApplied", true);
+
+        Map<String, Object> compositionSeed = new LinkedHashMap<>(mp);
+        compositionSeed.putAll(out);
+        CompositionRouteTelemetryMapper.enrich(compositionSeed);
+        copyIfPresent(out, compositionSeed, CompositionRouteTelemetryMapper.KEY_COMPONENT_ROUTE_DECISION);
+        copyIfPresent(out, compositionSeed, CompositionRouteTelemetryMapper.KEY_COMPONENT_ROUTE_PRECEDENCE);
+        copyIfPresent(out, compositionSeed, CompositionRouteTelemetryMapper.KEY_DETERMINISTIC_TOOL_CONSIDERED);
+        copyIfPresent(out, compositionSeed, CompositionRouteTelemetryMapper.KEY_BACKEND_FUNCTION_CONSIDERED);
+        copyIfPresent(out, compositionSeed, CompositionRouteTelemetryMapper.KEY_SPARSE_HYBRID_CONSIDERED);
+        copyIfPresent(out, compositionSeed, CompositionRouteTelemetryMapper.KEY_FACTUAL_VERIFIER_CONSIDERED);
+        copyIfPresent(out, compositionSeed, CompositionRouteTelemetryMapper.KEY_COMPOSITION_FALLBACK_REASON);
 
         AbstentionCorrectness abstentionCorrectness = abstentionCorrectness(answerability, abstention.abstained());
         out.put(KEY_ABSTENTION_CORRECTNESS, abstentionCorrectness.name());

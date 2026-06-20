@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.evaluation.metrics;
 
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
+import com.uniovi.rag.application.service.evaluation.metrics.matching.ExpectedAnswerMatchResult;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,5 +66,38 @@ class RagPresetAnalysisMetricsTest {
                 RagPresetAnalysisMetrics.compute(mp, "3", "There are 3 documents.", RagExperimentalPresetCode.P3);
         assertThat(out.get("queryTypeExpected")).isEqualTo("COUNT_DOCUMENTS");
         assertThat(out.get("structuredScore")).isEqualTo(1.0);
+    }
+
+    @Test
+    void compute_emitsCalibratedMatchFields() {
+        Map<String, Object> mp = new LinkedHashMap<>(Map.of("query_type", "COUNT_DOCUMENTS"));
+        Map<String, Object> out =
+                RagPresetAnalysisMetrics.compute(mp, "tres ocasiones", "Hubo tres reuniones.", RagExperimentalPresetCode.P3);
+
+        assertThat(out.get("expectedAnswerContained")).isEqualTo(false);
+        assertThat(out.get(ExpectedAnswerMatchResult.KEY_CONTAINED_RAW)).isEqualTo(false);
+        assertThat(out.get(ExpectedAnswerMatchResult.KEY_MATCHED)).isEqualTo(true);
+        assertThat(out.get(ExpectedAnswerMatchResult.KEY_MATCH_TYPE)).isEqualTo("NUMERIC_VALUE_MATCH");
+        assertThat(out.get("calibratedMatcherApplied")).isEqualTo(true);
+    }
+
+    @Test
+    void compute_emitsCompositionTelemetryWithoutAffectingFinalScore() {
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(DatasetMetricContract.KEY_ANSWERABILITY, Answerability.ANSWERABLE.name());
+        mp.put("query_type", "COUNT_DOCUMENTS");
+        mp.put("finalAnswerSource", "GENERATED");
+        mp.put("routingRouteKind", "RETRIEVAL_WORKFLOW_ROUTE");
+        mp.put("hybridApplied", true);
+        mp.put("verifierAttempted", true);
+
+        Map<String, Object> out =
+                RagPresetAnalysisMetrics.compute(mp, "tres ocasiones", "Hubo tres reuniones.", RagExperimentalPresetCode.P15);
+
+        assertThat(out.get("calibratedMatcherApplied")).isEqualTo(true);
+        assertThat(out.get("componentRouteDecision")).isEqualTo("RETRIEVAL");
+        assertThat(out.get("factualVerifierConsidered")).isEqualTo(true);
+        assertThat(out.get("sparseHybridConsidered")).isEqualTo(true);
+        assertThat(out.get("finalScore")).isNotNull();
     }
 }

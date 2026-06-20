@@ -5,6 +5,8 @@ import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.application.service.evaluation.RagBenchmarkHumanReasons;
+import com.uniovi.rag.application.service.evaluation.metrics.matching.ExpectedAnswerMatchResult;
+import com.uniovi.rag.application.service.runtime.routing.CompositionRouteTelemetryMapper;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
@@ -207,7 +209,11 @@ public final class BenchmarkMvpMetricsCalculator {
         RagPresetRetrievalExportSupport.putCsvExportFields(row, mp);
         @SuppressWarnings("unchecked")
         Map<String, Object> analysis = (Map<String, Object>) mvp.get("analysis");
-        putAnalysisCsvFields(row, analysis != null && !analysis.isEmpty() ? analysis : mp);
+        Map<String, Object> analysisSource = new LinkedHashMap<>(mp);
+        if (analysis != null && !analysis.isEmpty()) {
+            analysisSource.putAll(analysis);
+        }
+        putAnalysisCsvFields(row, analysisSource);
 
         row.put("groupKey", csvVal(mp.get("groupKey")));
         row.put("indexCompatibilityStatus", csvVal(mp.get("indexCompatibilityStatus")));
@@ -638,10 +644,17 @@ public final class BenchmarkMvpMetricsCalculator {
 
     private static void ensureAnalysisComputed(
             Map<String, Object> mp, EvaluationResultEntity item, EvaluationRunEntity run) {
+        String datasetQuestionId = str(mp.get(BenchmarkResultRowKeys.DATASET_QUESTION_ID));
+        if (run != null) {
+            DatasetQuestionSubsetSupport.copySubsetMetadataFromRun(mp, run);
+        }
+        boolean answerabilityEnriched =
+                DatasetQuestionSubsetSupport.enrichAnswerabilityFromPersistedSubset(mp, datasetQuestionId);
         boolean hadExpected = mp.containsKey(DatasetMetricContract.KEY_QUERY_TYPE_EXPECTED);
         DatasetMetricContract.ensureQueryTypeExpected(mp, item.getQueryType());
         boolean needsAnalysis =
-                !mp.containsKey("analysisVersion")
+                answerabilityEnriched
+                        || !mp.containsKey("analysisVersion")
                         || (!hadExpected && mp.containsKey(DatasetMetricContract.KEY_QUERY_TYPE_EXPECTED));
         if (!needsAnalysis) {
             return;
@@ -701,6 +714,12 @@ public final class BenchmarkMvpMetricsCalculator {
                         "semanticScore",
                         "exactMatchNormalized",
                         "expectedAnswerContained",
+                        ExpectedAnswerMatchResult.KEY_CONTAINED_RAW,
+                        ExpectedAnswerMatchResult.KEY_MATCHED,
+                        ExpectedAnswerMatchResult.KEY_MATCH_TYPE,
+                        ExpectedAnswerMatchResult.KEY_MATCH_CONFIDENCE,
+                        ExpectedAnswerMatchResult.KEY_MATCH_REASON,
+                        ExpectedAnswerMatchResult.KEY_MATCH_VERSION,
                         "countMatch",
                         "booleanMatch",
                         "dateMatch",
@@ -754,6 +773,14 @@ public final class BenchmarkMvpMetricsCalculator {
                         RagPresetToolMetrics.KEY_FUNCTION_CALLING_USED,
                         RagPresetToolMetrics.KEY_FUNCTION_CALL_ATTEMPTED,
                         RagPresetToolMetrics.KEY_FUNCTION_CALL_NAME,
+                        RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_MODE,
+                        RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_SOURCE,
+                        RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_VALID,
+                        RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_REPAIR_ATTEMPTED,
+                        RagPresetToolMetrics.KEY_FUNCTION_PROPOSAL_REPAIR_SUCCEEDED,
+                        RagPresetToolMetrics.KEY_BACKEND_FUNCTION_CALL_ATTEMPTED,
+                        RagPresetToolMetrics.KEY_NATIVE_PROVIDER_FUNCTION_CALL_ATTEMPTED,
+                        RagPresetToolMetrics.KEY_FUNCTION_TOOL_KIND,
                         RagPresetToolMetrics.KEY_FUNCTION_CALL_ARGUMENTS_VALID,
                         RagPresetToolMetrics.KEY_FUNCTION_CALL_SUCCEEDED,
                         RagPresetToolMetrics.KEY_FUNCTION_CALL_FALLBACK_REASON,
@@ -796,6 +823,15 @@ public final class BenchmarkMvpMetricsCalculator {
                         RagPresetAdvancedRetrievalMetrics.KEY_CANDIDATE_ORIGINS,
                         RagPresetAdvancedRetrievalMetrics.KEY_SPARSE_RETRIEVAL_STATUS,
                         RagPresetAdvancedRetrievalMetrics.KEY_HYBRID_APPLIED,
+                        RagPresetAdvancedRetrievalMetrics.KEY_SPARSE_QUERY_REWRITTEN,
+                        RagPresetAdvancedRetrievalMetrics.KEY_SPARSE_FALLBACK_STAGE,
+                        RagPresetAdvancedRetrievalMetrics.KEY_SPARSE_HIT,
+                        RagPresetAdvancedRetrievalMetrics.KEY_FUSION_STRATEGY,
+                        RagPresetAdvancedRetrievalMetrics.KEY_PRE_FUSION_COUNT,
+                        RagPresetAdvancedRetrievalMetrics.KEY_POST_FUSION_COUNT,
+                        RagPresetAdvancedRetrievalMetrics.KEY_METADATA_CANDIDATE_COUNT,
+                        RagPresetAdvancedRetrievalMetrics.KEY_METADATA_FILTER_APPLIED,
+                        RagPresetAdvancedRetrievalMetrics.KEY_METADATA_FILTER_FALLBACK,
                         "groundingPolicy",
                         "verifierAttempted",
                         "verifierPassed",
@@ -805,7 +841,50 @@ public final class BenchmarkMvpMetricsCalculator {
                         "constraintType",
                         "constraintCheckPassed",
                         "negativeEvidenceGuardTriggered",
-                        "finalAnswerSource")) {
+                        "finalAnswerSource",
+                        CompositionRouteTelemetryMapper.KEY_COMPONENT_ROUTE_DECISION,
+                        CompositionRouteTelemetryMapper.KEY_COMPONENT_ROUTE_PRECEDENCE,
+                        CompositionRouteTelemetryMapper.KEY_DETERMINISTIC_TOOL_CONSIDERED,
+                        CompositionRouteTelemetryMapper.KEY_BACKEND_FUNCTION_CONSIDERED,
+                        CompositionRouteTelemetryMapper.KEY_SPARSE_HYBRID_CONSIDERED,
+                        CompositionRouteTelemetryMapper.KEY_FACTUAL_VERIFIER_CONSIDERED,
+                        "calibratedMatcherApplied",
+                        CompositionRouteTelemetryMapper.KEY_COMPOSITION_FALLBACK_REASON,
+                        "parentFallbackUsed",
+                        "parentFinalAnswerPreserved",
+                        "parentCampaignOutcomeReused",
+                        "parentCampaignOutcomeMissing",
+                        "parentSelectedFinalAnswerLength",
+                        "parentFinalAnswerHash",
+                        "selectedFinalAnswerHash",
+                        "parentMatcherVisibleAnswerHash",
+                        "selectedMatcherVisibleAnswerHash",
+                        "parentAnswerMismatchReason",
+                        "parentPresetCode",
+                        "selectedCandidateSource",
+                        "selectedParentPreset",
+                        "candidateRejectionReasons",
+                        "toolCandidateRejected",
+                        "functionCandidateRejected",
+                        "retrievalCandidateRejected",
+                        "monotonicRegressionPrevented",
+                        "routeConfidence",
+                        "constraintCoverageStatus",
+                        "candidateToolConsidered",
+                        "candidateFunctionConsidered",
+                        "candidateRetrievalConsidered",
+                        "parentCandidateConsidered",
+                        "baselineCandidateSource",
+                        "baselineCandidatePresetCode",
+                        "baselineCandidateSelected",
+                        "baselineOverrideAttempted",
+                        "baselineOverrideAccepted",
+                        "baselineOverrideRejectedReason",
+                        "baselineFloorApplied",
+                        "baselineFloorReason",
+                        "monotonicFloorApplied",
+                        "monotonicFloorPreventedRegression",
+                        "rejectedCandidateSources")) {
             if (mp.containsKey(key)) {
                 out.put(key, mp.get(key));
             }
@@ -839,6 +918,14 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("abstentionScore", csvVal(mp.get(RagPresetAnalysisMetrics.KEY_ABSTENTION_SCORE)));
         row.put("exactMatchNormalized", csvVal(mp.get("exactMatchNormalized")));
         row.put("expectedAnswerContained", csvVal(mp.get("expectedAnswerContained")));
+        row.put(ExpectedAnswerMatchResult.KEY_CONTAINED_RAW, csvVal(mp.get(ExpectedAnswerMatchResult.KEY_CONTAINED_RAW)));
+        row.put(ExpectedAnswerMatchResult.KEY_MATCHED, csvVal(mp.get(ExpectedAnswerMatchResult.KEY_MATCHED)));
+        row.put(ExpectedAnswerMatchResult.KEY_MATCH_TYPE, csvVal(mp.get(ExpectedAnswerMatchResult.KEY_MATCH_TYPE)));
+        row.put(
+                ExpectedAnswerMatchResult.KEY_MATCH_CONFIDENCE,
+                csvVal(mp.get(ExpectedAnswerMatchResult.KEY_MATCH_CONFIDENCE)));
+        row.put(ExpectedAnswerMatchResult.KEY_MATCH_REASON, csvVal(mp.get(ExpectedAnswerMatchResult.KEY_MATCH_REASON)));
+        row.put(ExpectedAnswerMatchResult.KEY_MATCH_VERSION, csvVal(mp.get(ExpectedAnswerMatchResult.KEY_MATCH_VERSION)));
         row.put("countMatch", csvVal(mp.get("countMatch")));
         row.put("booleanMatch", csvVal(mp.get("booleanMatch")));
         row.put("dateMatch", csvVal(mp.get("dateMatch")));
@@ -964,6 +1051,63 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("constraintCheckPassed", csvVal(mp.get("constraintCheckPassed")));
         row.put("negativeEvidenceGuardTriggered", csvVal(mp.get("negativeEvidenceGuardTriggered")));
         row.put("finalAnswerSource", csvVal(mp.get("finalAnswerSource")));
+        row.put(
+                CompositionRouteTelemetryMapper.KEY_COMPONENT_ROUTE_DECISION,
+                csvVal(mp.get(CompositionRouteTelemetryMapper.KEY_COMPONENT_ROUTE_DECISION)));
+        row.put(
+                CompositionRouteTelemetryMapper.KEY_COMPONENT_ROUTE_PRECEDENCE,
+                csvVal(mp.get(CompositionRouteTelemetryMapper.KEY_COMPONENT_ROUTE_PRECEDENCE)));
+        row.put(
+                CompositionRouteTelemetryMapper.KEY_DETERMINISTIC_TOOL_CONSIDERED,
+                csvVal(mp.get(CompositionRouteTelemetryMapper.KEY_DETERMINISTIC_TOOL_CONSIDERED)));
+        row.put(
+                CompositionRouteTelemetryMapper.KEY_BACKEND_FUNCTION_CONSIDERED,
+                csvVal(mp.get(CompositionRouteTelemetryMapper.KEY_BACKEND_FUNCTION_CONSIDERED)));
+        row.put(
+                CompositionRouteTelemetryMapper.KEY_SPARSE_HYBRID_CONSIDERED,
+                csvVal(mp.get(CompositionRouteTelemetryMapper.KEY_SPARSE_HYBRID_CONSIDERED)));
+        row.put(
+                CompositionRouteTelemetryMapper.KEY_FACTUAL_VERIFIER_CONSIDERED,
+                csvVal(mp.get(CompositionRouteTelemetryMapper.KEY_FACTUAL_VERIFIER_CONSIDERED)));
+        row.put("calibratedMatcherApplied", csvVal(mp.get("calibratedMatcherApplied")));
+        row.put(
+                CompositionRouteTelemetryMapper.KEY_COMPOSITION_FALLBACK_REASON,
+                csvVal(mp.get(CompositionRouteTelemetryMapper.KEY_COMPOSITION_FALLBACK_REASON)));
+        row.put("parentFallbackUsed", csvVal(mp.get("parentFallbackUsed")));
+        row.put("parentFinalAnswerPreserved", csvVal(mp.get("parentFinalAnswerPreserved")));
+        row.put("parentCampaignOutcomeReused", csvVal(mp.get("parentCampaignOutcomeReused")));
+        row.put("parentCampaignOutcomeMissing", csvVal(mp.get("parentCampaignOutcomeMissing")));
+        row.put("parentSelectedFinalAnswerLength", csvVal(mp.get("parentSelectedFinalAnswerLength")));
+        row.put("parentFinalAnswerHash", csvVal(mp.get("parentFinalAnswerHash")));
+        row.put("selectedFinalAnswerHash", csvVal(mp.get("selectedFinalAnswerHash")));
+        row.put("parentMatcherVisibleAnswerHash", csvVal(mp.get("parentMatcherVisibleAnswerHash")));
+        row.put("selectedMatcherVisibleAnswerHash", csvVal(mp.get("selectedMatcherVisibleAnswerHash")));
+        row.put("parentAnswerMismatchReason", csvVal(mp.get("parentAnswerMismatchReason")));
+        row.put("parentPresetCode", csvVal(firstNonNull(mp.get("parentPresetCode"), mp.get("selectedParentPreset"))));
+        row.put("selectedCandidateSource", csvVal(mp.get("selectedCandidateSource")));
+        row.put("selectedParentPreset", csvVal(mp.get("selectedParentPreset")));
+        row.put("candidateRejectionReasons", csvVal(mp.get("candidateRejectionReasons")));
+        row.put("toolCandidateRejected", csvVal(mp.get("toolCandidateRejected")));
+        row.put("functionCandidateRejected", csvVal(mp.get("functionCandidateRejected")));
+        row.put("retrievalCandidateRejected", csvVal(mp.get("retrievalCandidateRejected")));
+        row.put("monotonicRegressionPrevented", csvVal(mp.get("monotonicRegressionPrevented")));
+        row.put("routeConfidence", csvVal(mp.get("routeConfidence")));
+        row.put("constraintCoverageStatus", csvVal(mp.get("constraintCoverageStatus")));
+        row.put("candidateToolConsidered", csvVal(mp.get("candidateToolConsidered")));
+        row.put("candidateFunctionConsidered", csvVal(mp.get("candidateFunctionConsidered")));
+        row.put("candidateRetrievalConsidered", csvVal(mp.get("candidateRetrievalConsidered")));
+        row.put("parentCandidateConsidered", csvVal(mp.get("parentCandidateConsidered")));
+        row.put("baselineCandidateSource", csvVal(mp.get("baselineCandidateSource")));
+        row.put("baselineCandidatePresetCode", csvVal(mp.get("baselineCandidatePresetCode")));
+        row.put("baselineCandidateSelected", csvVal(mp.get("baselineCandidateSelected")));
+        row.put("baselineOverrideAttempted", csvVal(mp.get("baselineOverrideAttempted")));
+        row.put("baselineOverrideAccepted", csvVal(mp.get("baselineOverrideAccepted")));
+        row.put("baselineOverrideRejectedReason", csvVal(mp.get("baselineOverrideRejectedReason")));
+        row.put("baselineFloorApplied", csvVal(mp.get("baselineFloorApplied")));
+        row.put("baselineFloorReason", csvVal(mp.get("baselineFloorReason")));
+        row.put("monotonicFloorApplied", csvVal(mp.get("monotonicFloorApplied")));
+        row.put("monotonicFloorPreventedRegression", csvVal(mp.get("monotonicFloorPreventedRegression")));
+        row.put("rejectedCandidateSources", csvVal(mp.get("rejectedCandidateSources")));
     }
 
     private static Object firstNonNull(Object a, Object b) {

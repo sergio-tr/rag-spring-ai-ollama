@@ -190,6 +190,68 @@ public final class DatasetQuestionSubsetSupport {
             metrics.put("subsetName", subset.subsetName());
             metrics.put("subsetVersion", subset.subsetVersion());
         }
+        if (subset.filterMode() != null && !subset.filterMode().isBlank()) {
+            metrics.put(AGG_KEY_DATASET_QUESTION_FILTER, subset.filterMode());
+        }
+    }
+
+    /**
+     * Applies authoritative answerability from a gold-subset manifest entry when the workbook row lacks
+     * declared unanswerable/ambiguous columns.
+     */
+    public static boolean enrichAnswerabilityFromGoldManifest(
+            Map<String, Object> metrics, String datasetQuestionId, String manifestId) {
+        if (metrics == null
+                || datasetQuestionId == null
+                || datasetQuestionId.isBlank()
+                || manifestId == null
+                || manifestId.isBlank()) {
+            return false;
+        }
+        GoldSubsetManifest manifest = GoldSubsetManifestLoader.load(manifestId);
+        for (GoldSubsetManifest.Entry entry : manifest.entries()) {
+            if (!datasetQuestionId.equals(entry.datasetQuestionId())) {
+                continue;
+            }
+            if (entry.answerability() == null || entry.answerability().isBlank()) {
+                return false;
+            }
+            Answerability answerability;
+            try {
+                answerability = Answerability.valueOf(entry.answerability().trim());
+            } catch (IllegalArgumentException ex) {
+                return false;
+            }
+            AnswerabilityLabelResult label =
+                    new AnswerabilityLabelResult(
+                            answerability,
+                            AnswerabilitySource.GOLD_SUBSET_MANIFEST,
+                            "gold_subset:" + manifestId,
+                            AnswerabilityLabelConfidence.HIGH,
+                            "gold_subset_entry");
+            DatasetMetricContract.applyLabelResult(metrics, label, manifest.labelledDatasetSha256());
+            if (entry.errorCategory() != null && !entry.errorCategory().isBlank()) {
+                metrics.put("goldErrorCategory", entry.errorCategory());
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /** Export-time enrichment when persisted metrics lack answerability but carry gold-subset metadata. */
+    public static boolean enrichAnswerabilityFromPersistedSubset(
+            Map<String, Object> metrics, String datasetQuestionId) {
+        if (metrics == null
+                || datasetQuestionId == null
+                || datasetQuestionId.isBlank()
+                || DatasetMetricContract.readAnswerability(metrics) != Answerability.UNKNOWN) {
+            return false;
+        }
+        String subsetId = str(metrics.get("subsetId"));
+        if (subsetId == null || subsetId.isBlank()) {
+            return false;
+        }
+        return enrichAnswerabilityFromGoldManifest(metrics, datasetQuestionId, subsetId);
     }
 
     public static void copySubsetMetadataFromRun(Map<String, Object> metrics, EvaluationRunEntity run) {

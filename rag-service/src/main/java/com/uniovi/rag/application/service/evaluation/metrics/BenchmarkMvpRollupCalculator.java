@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation.metrics;
 
+import com.uniovi.rag.application.service.evaluation.metrics.matching.ExpectedAnswerMatchResult;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
@@ -43,6 +44,7 @@ public final class BenchmarkMvpRollupCalculator {
                 "byPreset",
                 groupRollups(mvps, m -> keyOrUnknown(presetKey(BenchmarkMvpMetricsCalculator.operational(m)))));
         root.put("byRoute", groupRollups(mvps, m -> keyOrUnknown(routeKey(m))));
+        root.put("byFinalAnswerSource", groupRollups(mvps, m -> keyOrUnknown(finalAnswerSourceKey(m))));
         root.put(
                 "byBenchmarkSupportStatus",
                 groupRollups(mvps, m -> keyOrUnknown(benchmarkSupportStatusKey(m))));
@@ -146,6 +148,16 @@ public final class BenchmarkMvpRollupCalculator {
         DoubleSummaryStatistics finalContextChunks = new DoubleSummaryStatistics();
         DoubleSummaryStatistics promptContextChars = new DoubleSummaryStatistics();
         DoubleSummaryStatistics compressedContextChars = new DoubleSummaryStatistics();
+
+        int calibratedEligibleCount = 0;
+        int calibratedMatchedCount = 0;
+        int calibratedEligibleAnswerable = 0;
+        int calibratedMatchedAnswerable = 0;
+        int calibratedEligibleUnanswerable = 0;
+        int calibratedMatchedUnanswerable = 0;
+        int calibratedCorrectNegativeCount = 0;
+        int calibratedNoMatchCount = 0;
+        int unsafeToJudgeCount = 0;
 
         for (Map<String, Object> mvp : bucketMvps) {
             Map<String, Object> op = BenchmarkMvpMetricsCalculator.operational(mvp);
@@ -394,6 +406,16 @@ public final class BenchmarkMvpRollupCalculator {
                 acceptMetric(
                         analysis.get(RagPresetAdvancedRetrievalMetrics.KEY_COMPRESSED_CONTEXT_CHAR_COUNT),
                         compressedContextChars);
+                CalibratedMatchCounters calibrated = accumulateCalibratedMatch(analysis);
+                calibratedEligibleCount += calibrated.eligible;
+                calibratedMatchedCount += calibrated.matched;
+                calibratedEligibleAnswerable += calibrated.eligibleAnswerable;
+                calibratedMatchedAnswerable += calibrated.matchedAnswerable;
+                calibratedEligibleUnanswerable += calibrated.eligibleUnanswerable;
+                calibratedMatchedUnanswerable += calibrated.matchedUnanswerable;
+                calibratedCorrectNegativeCount += calibrated.correctNegative;
+                calibratedNoMatchCount += calibrated.noMatch;
+                unsafeToJudgeCount += calibrated.unsafeToJudge;
             }
         }
 
@@ -506,6 +528,16 @@ public final class BenchmarkMvpRollupCalculator {
         onExecuted.put(
                 "averageCompressedContextChars",
                 compressedContextChars.getCount() > 0 ? compressedContextChars.getAverage() : null);
+        onExecuted.put("calibratedExpectedAnswerMatchRate", rate(calibratedMatchedCount, calibratedEligibleCount));
+        onExecuted.put("calibratedMatchRateAnswerable", rate(calibratedMatchedAnswerable, calibratedEligibleAnswerable));
+        onExecuted.put(
+                "calibratedMatchRateUnanswerable",
+                rate(calibratedMatchedUnanswerable, calibratedEligibleUnanswerable));
+        onExecuted.put(
+                "calibratedCorrectNegativeRate",
+                rate(calibratedCorrectNegativeCount, calibratedEligibleUnanswerable));
+        onExecuted.put("calibratedNoMatchRate", rate(calibratedNoMatchCount, calibratedEligibleCount));
+        onExecuted.put("unsafeToJudgeRate", rate(unsafeToJudgeCount, calibratedEligibleCount));
         out.put("onExecuted", onExecuted);
 
         Map<String, Object> retrievalOnExec = new LinkedHashMap<>();
@@ -562,6 +594,68 @@ public final class BenchmarkMvpRollupCalculator {
 
     private static String presetKey(Map<String, Object> op) {
         return str(op.get("presetCode"));
+    }
+
+    private static String finalAnswerSourceKey(Map<String, Object> mvp) {
+        Map<String, Object> analysis = BenchmarkMvpMetricsCalculator.analysis(mvp);
+        if (analysis != null) {
+            String source = str(analysis.get("finalAnswerSource"));
+            if (!source.isBlank()) {
+                return source;
+            }
+        }
+        Map<String, Object> op = BenchmarkMvpMetricsCalculator.operational(mvp);
+        String source = str(op.get("finalAnswerSource"));
+        return source.isBlank() ? LabBenchmarkExportLabels.MISSING_METADATA : source;
+    }
+
+    private static CalibratedMatchCounters accumulateCalibratedMatch(Map<String, Object> analysis) {
+        CalibratedMatchCounters counters = new CalibratedMatchCounters();
+        if (analysis == null || analysis.isEmpty()) {
+            return counters;
+        }
+        if (!analysis.containsKey(ExpectedAnswerMatchResult.KEY_MATCH_TYPE)) {
+            return counters;
+        }
+        counters.eligible = 1;
+        String answerability = str(analysis.get(DatasetMetricContract.KEY_ANSWERABILITY));
+        if (Answerability.ANSWERABLE.name().equals(answerability)) {
+            counters.eligibleAnswerable = 1;
+        } else if (Answerability.UNANSWERABLE.name().equals(answerability)) {
+            counters.eligibleUnanswerable = 1;
+        }
+        boolean matched = Boolean.TRUE.equals(analysis.get(ExpectedAnswerMatchResult.KEY_MATCHED));
+        if (matched) {
+            counters.matched = 1;
+            if (Answerability.ANSWERABLE.name().equals(answerability)) {
+                counters.matchedAnswerable = 1;
+            } else if (Answerability.UNANSWERABLE.name().equals(answerability)) {
+                counters.matchedUnanswerable = 1;
+            }
+        }
+        String matchType = str(analysis.get(ExpectedAnswerMatchResult.KEY_MATCH_TYPE));
+        if ("NEGATIVE_EQUIVALENCE".equals(matchType) || "CORRECT_ABSTENTION".equals(matchType)) {
+            if (matched) {
+                counters.correctNegative = 1;
+            }
+        } else if ("NO_MATCH".equals(matchType)) {
+            counters.noMatch = 1;
+        } else if ("UNSAFE_TO_JUDGE".equals(matchType)) {
+            counters.unsafeToJudge = 1;
+        }
+        return counters;
+    }
+
+    private static final class CalibratedMatchCounters {
+        int eligible;
+        int matched;
+        int eligibleAnswerable;
+        int matchedAnswerable;
+        int eligibleUnanswerable;
+        int matchedUnanswerable;
+        int correctNegative;
+        int noMatch;
+        int unsafeToJudge;
     }
 
     private static String routeKey(Map<String, Object> mvp) {
