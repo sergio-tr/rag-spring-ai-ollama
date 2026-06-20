@@ -20,6 +20,7 @@ import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPr
 import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.evaluation.preset.CampaignPresetExecutionOrder;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
@@ -360,7 +361,8 @@ public class BenchmarkRunOrchestrator {
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
         validateScienceFields(kind, request);
-        List<String> presetCodes = request.experimentalPresetCodes();
+        List<String> presetCodes =
+                CampaignPresetExecutionOrder.orderForParentReplay(request.experimentalPresetCodes());
 
         UserEntity user = userRepository.findById(userId).orElseThrow();
         EvaluationCampaignEntity camp = new EvaluationCampaignEntity();

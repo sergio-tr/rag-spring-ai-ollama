@@ -8,6 +8,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -102,14 +103,20 @@ public class LabCampaignBenchmarkExecutor {
                 null,
                 null));
 
-        for (EvaluationRunEntity run : runs) {
-            slice.run(task, mutation, run.getId());
+        try (AutoCloseable campaignScope = LabBenchmarkExecutionContext.openCampaignScope(campaignId)) {
+            for (EvaluationRunEntity run : runs) {
+                slice.run(task, mutation, run.getId());
+            }
+            List<UUID> runIds = runs.stream().map(EvaluationRunEntity::getId).toList();
+            Map<String, Object> terminalPayload =
+                    LabCampaignTerminalPayloadBuilder.build(
+                            campaignId, runs, evaluationResultRepository, labPresetAxisSupport);
+            labBenchmarkCompletionService.completeCampaign(mutation, task.getId(), runIds, terminalPayload);
+        } catch (RuntimeException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalStateException("Campaign execution failed: " + campaignId, ex);
         }
-        List<UUID> runIds = runs.stream().map(EvaluationRunEntity::getId).toList();
-        Map<String, Object> terminalPayload =
-                LabCampaignTerminalPayloadBuilder.build(
-                        campaignId, runs, evaluationResultRepository, labPresetAxisSupport);
-        labBenchmarkCompletionService.completeCampaign(mutation, task.getId(), runIds, terminalPayload);
     }
 
     private CampaignExecutionPlan buildPlan(UUID campaignId, List<EvaluationRunEntity> runs) {

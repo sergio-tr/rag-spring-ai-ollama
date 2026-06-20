@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.evaluation;
 
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
+import com.uniovi.rag.domain.EvaluationRunStatus;
 import com.uniovi.rag.domain.evaluation.EvaluationStudyType;
 import com.uniovi.rag.infrastructure.persistence.EvaluationCampaignRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
@@ -68,9 +69,17 @@ public class LabCampaignService {
         if (req == null || orchestrator == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
         }
-        boolean autoReindex = baseConfigBoolean(req.baseConfig(), "autoReindex", true);
+        Map<String, Object> baseConfig = req.baseConfig();
+        boolean autoReindex = baseConfigBoolean(baseConfig, "autoReindex", true);
         boolean allowActiveSnapshotMutation =
-                baseConfigBoolean(req.baseConfig(), "allowActiveSnapshotMutation", true);
+                baseConfigBoolean(baseConfig, "allowActiveSnapshotMutation", true);
+        boolean bootstrapCorpusFromClasspathDocs =
+                baseConfigBoolean(baseConfig, "bootstrapCorpusFromClasspathDocs", false);
+        boolean bootstrapSkipExisting = baseConfigBoolean(baseConfig, "bootstrapSkipExisting", true);
+        boolean bootstrapFailOnDocumentError =
+                baseConfigBoolean(baseConfig, "bootstrapFailOnDocumentError", true);
+        String classpathDocsLocation = baseConfigString(baseConfig, "classpathDocsLocation", null);
+        String bootstrapCorpusScope = baseConfigString(baseConfig, "bootstrapCorpusScope", null);
         StartBenchmarkRunRequest body =
                 new StartBenchmarkRunRequest(
                         req.datasetId(),
@@ -93,11 +102,11 @@ public class LabCampaignService {
                         allowActiveSnapshotMutation,
                         null,
                         null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
+                        bootstrapCorpusFromClasspathDocs,
+                        classpathDocsLocation,
+                        bootstrapCorpusScope,
+                        bootstrapSkipExisting,
+                        bootstrapFailOnDocumentError,
                         req.indexSnapshotIds(),
                         req.datasetQuestionIds(),
                         req.goldSubsetManifestId(), req.routingQueryTypeOracleEnabled());
@@ -118,6 +127,7 @@ public class LabCampaignService {
         EvaluationCampaignEntity c = requireCampaign(userId, campaignId);
         List<EvaluationRunEntity> runs = evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId);
         CampaignContext ctx = resolveCampaignContext(c, runs);
+        Map<String, Object> meta = c.getMetaJson() != null ? c.getMetaJson() : Map.of();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("campaignId", c.getId());
         out.put("campaignType", ctx.campaignType());
@@ -130,8 +140,99 @@ public class LabCampaignService {
         out.put("projectId", c.getProject() != null ? c.getProject().getId() : null);
         out.put("runCount", runs.size());
         out.put("runIds", runs.stream().map(EvaluationRunEntity::getId).toList());
-        out.put("meta", c.getMetaJson() != null ? c.getMetaJson() : Map.of());
+        out.put("meta", meta);
+        out.putAll(deriveCampaignProgress(runs, meta));
         return out;
+    }
+
+    /** Derived completion state for polling scripts (campaigns have no top-level run {@code status}). */
+    Map<String, Object> deriveCampaignProgress(List<EvaluationRunEntity> runs, Map<String, Object> meta) {
+        int doneRuns = 0;
+        int pendingRuns = 0;
+        int runningRuns = 0;
+        int failedRuns = 0;
+        int persistedItems = 0;
+        for (EvaluationRunEntity run : runs) {
+            if (run == null) {
+                continue;
+            }
+            String status = run.getStatus() != null ? run.getStatus().name() : EvaluationRunStatus.PENDING.name();
+            switch (status) {
+                case "DONE" -> doneRuns++;
+                case "RUNNING" -> runningRuns++;
+                case "ERROR", "FAILED", "CANCELLED", "PARTIAL_CANCELLED" -> failedRuns++;
+                default -> pendingRuns++;
+            }
+            if (run.getId() != null) {
+                persistedItems +=
+                        evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId()).size();
+            }
+        }
+        int plannedTotalItems = readPlannedTotalItems(meta, runs.size());
+        String completionStatus =
+                deriveCompletionStatus(
+                        doneRuns, pendingRuns, runningRuns, failedRuns, runs.size(), persistedItems, plannedTotalItems);
+        Map<String, Object> progress = new LinkedHashMap<>();
+        progress.put("completionStatus", completionStatus);
+        progress.put("doneRunCount", doneRuns);
+        progress.put("pendingRunCount", pendingRuns);
+        progress.put("runningRunCount", runningRuns);
+        progress.put("failedRunCount", failedRuns);
+        progress.put("persistedItemCount", persistedItems);
+        progress.put("plannedTotalItems", plannedTotalItems);
+        progress.put("globalCompletedItems", persistedItems);
+        progress.put("globalTotalItems", plannedTotalItems > 0 ? plannedTotalItems : persistedItems);
+        return progress;
+    }
+
+    private static int readPlannedTotalItems(Map<String, Object> meta, int runCount) {
+        if (meta != null) {
+            Object planned = meta.get("plannedTotalItems");
+            if (planned instanceof Number n && n.intValue() > 0) {
+                return n.intValue();
+            }
+            Object perAxis = meta.get("perAxisItemCount");
+            if (perAxis instanceof Number n && n.intValue() > 0 && runCount > 0) {
+                return n.intValue() * runCount;
+            }
+            Object progress = meta.get("jobProgress");
+            if (progress instanceof Map<?, ?> job) {
+                Object total = job.get("globalTotalItems");
+                if (total instanceof Number n && n.intValue() > 0) {
+                    return n.intValue();
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static String deriveCompletionStatus(
+            int doneRuns,
+            int pendingRuns,
+            int runningRuns,
+            int failedRuns,
+            int totalRuns,
+            int persistedItems,
+            int plannedTotalItems) {
+        if (totalRuns == 0) {
+            return "PENDING";
+        }
+        if (runningRuns > 0) {
+            return "RUNNING";
+        }
+        if (failedRuns > 0 && doneRuns == 0 && pendingRuns == 0) {
+            return "FAILED";
+        }
+        if (doneRuns == totalRuns && (plannedTotalItems <= 0 || persistedItems >= plannedTotalItems)) {
+            return "COMPLETE";
+        }
+        if (doneRuns > 0 && (pendingRuns > 0 || persistedItems < plannedTotalItems)) {
+            return "PARTIAL";
+        }
+        if (pendingRuns == totalRuns) {
+            return "PENDING";
+        }
+        return "PARTIAL";
     }
 
     @Transactional(readOnly = true)
@@ -647,6 +748,18 @@ public class LabCampaignService {
             return Boolean.parseBoolean(s);
         }
         return defaultValue;
+    }
+
+    private static String baseConfigString(Map<String, Object> baseConfig, String key, String defaultValue) {
+        if (baseConfig == null || key == null || !baseConfig.containsKey(key)) {
+            return defaultValue;
+        }
+        Object raw = baseConfig.get(key);
+        if (raw == null) {
+            return defaultValue;
+        }
+        String s = raw.toString().trim();
+        return s.isEmpty() ? defaultValue : s;
     }
 
     private record CampaignContext(String campaignType, String comparisonAxis, boolean comparativeMode, int axisCount) {}

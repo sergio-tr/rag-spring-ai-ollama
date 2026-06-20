@@ -273,7 +273,8 @@ class BenchmarkRunOrchestratorTest {
                         indexSnapshotCompatibilityService,
                         evaluationCorpusApplicationService,
                         projectIndexProfileService,
-                        labIndexProfileOverrideFactory);
+                        labIndexProfileOverrideFactory,
+                        corpusAvailabilityGate);
         BenchmarkRunOrchestrator orch =
                 new BenchmarkRunOrchestrator(
                         userRepository,

@@ -35,6 +35,40 @@ class LabCampaignServiceTest {
             new LabPresetAxisSupport(new EvaluationReferenceBundleLoader(new EvaluationWorkbookParser()));
 
     @Test
+    void summary_partialLadderCampaign_exposesCompletionStatusForPolling() {
+        UUID userId = UUID.randomUUID();
+        UUID campaignId = UUID.randomUUID();
+
+        EvaluationCampaignRepository campaigns = mock(EvaluationCampaignRepository.class);
+        EvaluationRunRepository runs = mock(EvaluationRunRepository.class);
+        EvaluationResultRepository results = mock(EvaluationResultRepository.class);
+
+        EvaluationCampaignEntity c = campaign(userId, campaignId, "RAG_PRESET_BENCHMARK");
+        c.setMetaJson(Map.of("plannedTotalItems", 720, "perAxisItemCount", 60));
+        when(campaigns.findByIdAndUser_Id(campaignId, userId)).thenReturn(Optional.of(c));
+
+        EvaluationRunEntity done = ragPresetRun("P0");
+        done.setStatus(EvaluationRunStatus.DONE);
+        EvaluationRunEntity pending = ragPresetRun("P9");
+        pending.setStatus(EvaluationRunStatus.PENDING);
+        when(runs.findByCampaignIdAndUserId(campaignId, userId)).thenReturn(List.of(done, pending));
+        when(results.findByRun_IdOrderByEvaluatedAtAsc(done.getId())).thenReturn(repeatOutcomeItems(60, "P0"));
+        when(results.findByRun_IdOrderByEvaluatedAtAsc(pending.getId())).thenReturn(List.of());
+
+        LabCampaignService svc = new LabCampaignService(campaigns, runs, results, labPresetAxisSupport);
+        Map<String, Object> out = svc.summary(userId, campaignId);
+
+        assertThat(out.get("completionStatus")).isEqualTo("PARTIAL");
+        assertThat(out.get("doneRunCount")).isEqualTo(1);
+        assertThat(out.get("pendingRunCount")).isEqualTo(1);
+        assertThat(out.get("persistedItemCount")).isEqualTo(60);
+        assertThat(out.get("plannedTotalItems")).isEqualTo(720);
+        assertThat(out.get("globalCompletedItems")).isEqualTo(60);
+        assertThat(out.get("globalTotalItems")).isEqualTo(720);
+        assertThat(out).doesNotContainKey("status");
+    }
+
+    @Test
     void startCampaign_passesAutoReindexFlagsFromBaseConfig() {
         UUID userId = UUID.randomUUID();
         UUID corpusId = UUID.randomUUID();
@@ -84,6 +118,69 @@ class LabCampaignServiceTest {
                         eq(userId), eq("USER"), eq(BenchmarkKind.RAG_PRESET_END_TO_END), captor.capture());
         assertThat(captor.getValue().autoReindex()).isTrue();
         assertThat(captor.getValue().allowActiveSnapshotMutation()).isTrue();
+    }
+
+    @Test
+    void startCampaign_passesBootstrapFlagsFromBaseConfig() {
+        UUID userId = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID datasetId = UUID.randomUUID();
+        UUID campaignId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+
+        BenchmarkRunOrchestrator orchestrator = mock(BenchmarkRunOrchestrator.class);
+        when(orchestrator.startJsonBenchmark(
+                        eq(userId),
+                        eq("USER"),
+                        eq(BenchmarkKind.RAG_PRESET_END_TO_END),
+                        any(StartBenchmarkRunRequest.class)))
+                .thenReturn(BenchmarkJobAccepted.ofCampaign(runId, taskId, campaignId, 4));
+
+        LabCampaignService svc =
+                new LabCampaignService(
+                        mock(EvaluationCampaignRepository.class),
+                        mock(EvaluationRunRepository.class),
+                        mock(EvaluationResultRepository.class),
+                        labPresetAxisSupport);
+
+        StartCampaignRequestDto req =
+                new StartCampaignRequestDto(
+                        "bootstrap-corpus",
+                        "RAG_PRESET_BENCHMARK",
+                        datasetId,
+                        corpusId,
+                        projectId,
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of("P1"),
+                        List.of(),
+                        null,
+                        Map.of(
+                                "autoReindex", true,
+                                "allowActiveSnapshotMutation", true,
+                                "bootstrapCorpusFromClasspathDocs", true,
+                                "classpathDocsLocation", "classpath*:docs/**/*",
+                                "bootstrapCorpusScope", "PROJECT_SHARED",
+                                "bootstrapSkipExisting", false,
+                                "bootstrapFailOnDocumentError", true),
+                        null);
+
+        svc.startCampaign(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req, orchestrator);
+
+        org.mockito.ArgumentCaptor<StartBenchmarkRunRequest> captor =
+                org.mockito.ArgumentCaptor.forClass(StartBenchmarkRunRequest.class);
+        verify(orchestrator)
+                .startJsonBenchmark(
+                        eq(userId), eq("USER"), eq(BenchmarkKind.RAG_PRESET_END_TO_END), captor.capture());
+        StartBenchmarkRunRequest captured = captor.getValue();
+        assertThat(captured.bootstrapCorpusFromClasspathDocsEffective()).isTrue();
+        assertThat(captured.classpathDocsLocationOrDefault()).isEqualTo("classpath*:docs/**/*");
+        assertThat(captured.bootstrapCorpusScopeOrDefault()).isEqualTo("PROJECT_SHARED");
+        assertThat(captured.bootstrapSkipExistingEffective()).isFalse();
+        assertThat(captured.bootstrapFailOnDocumentErrorEffective()).isTrue();
     }
 
     @Test

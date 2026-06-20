@@ -14,6 +14,7 @@ import com.uniovi.rag.domain.evaluation.workbook.DifficultyLevel;
 import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.application.service.evaluation.preset.CampaignParentOutcomeRecorder;
 import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolBenchmarkContext;
 import com.uniovi.rag.application.service.knowledge.document.DocumentService;
@@ -295,10 +296,12 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 DeterministicToolBenchmarkContext.setExpectedQueryType(
                         q.queryType().map(QueryType::name).orElse(null));
             }
+            Runnable closeBenchmarkItem = LabBenchmarkExecutionContext.openBenchmarkItemScope(q.id());
             try {
                 QueryResponse queryResponse = queryServiceToUse.generateResponse(questionText);
                 String llmResponse =
                         queryResponse != null && queryResponse.getAnswer() != null ? queryResponse.getAnswer() : "";
+                CampaignParentOutcomeRecorder.maybeRecord(q.id(), queryResponse, llmResponse);
                 String evaluation = evaluateResponse(questionText, correctAnswer, llmResponse);
                 LlmJudgeItemResult.Builder builder =
                         buildEvalQuestionResult(questionText, correctAnswer, llmResponse, evaluation, queryResponse)
@@ -336,6 +339,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 resultsForPrompt.add(builder.build());
                 log().warn("RAG preset evaluation item failed for questionId={}", q.id(), ex);
             } finally {
+                closeBenchmarkItem.run();
                 DeterministicToolBenchmarkContext.clearItemScope();
             }
         }
