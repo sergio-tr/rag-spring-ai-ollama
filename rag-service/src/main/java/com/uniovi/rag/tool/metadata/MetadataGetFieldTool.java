@@ -7,7 +7,11 @@ import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -71,8 +75,8 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, detectedField, date, 0, "no_documents"), query), getClass());
         }
 
-        // Step 2: Extract minutes in parallel
-        List<Minute> minutes = extractMinutesInParallel(docs);
+        // Step 2: Extract minutes in parallel and merge chunk-level attendee lists per acta
+        List<Minute> minutes = mergeMinutesByDocumentId(extractMinutesInParallel(docs));
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for get field query: {}", query);
             List<String> dateCandidates = extractDateCandidates(query, ner);
@@ -109,9 +113,13 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         }
         // If no date in query, use all relevant minutes
         List<Minute> minutesToEvaluate = dateFilteredMinutes.isEmpty() ? relevantMinutes : dateFilteredMinutes;
+        Map<String, String> textByMinuteId = combinedTextByMinuteId(docs);
 
-        // Step 5: Evaluate each minute with LLM to validate it contains the requested information
-        List<Minute> validatedMinutes = evaluateMinutesWithLLM(query, minutesToEvaluate);
+        // Step 5: Metadata-authoritative fields skip LLM minute validation (chunk metadata is sparse).
+        List<Minute> validatedMinutes =
+                usesMetadataAuthoritativeExtraction(detectedField)
+                        ? minutesToEvaluate
+                        : evaluateMinutesWithLLM(query, minutesToEvaluate);
         if (validatedMinutes.isEmpty()) {
             log().info("No minutes validated by LLM for get field query: {}", query);
             return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, detectedField, date, minutesToEvaluate.size(), "no_validated_minutes"), query), getClass());
@@ -124,7 +132,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         }
 
         // Step 7: Extract field values in parallel (only from validated minutes)
-        List<FieldResult> results = extractFieldValuesInParallel(validatedMinutes, detectedField);
+        List<FieldResult> results = extractFieldValuesInParallel(validatedMinutes, detectedField, textByMinuteId);
         if (results.isEmpty()) {
             log().info("No field values extracted for query: {} (field: {})", query, detectedField);
             return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, detectedField, date, validatedMinutes.size(), "field_not_found_in_metadata"), query), getClass());
@@ -180,9 +188,10 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
     /**
      * Extracts field values in parallel
      */
-    private List<FieldResult> extractFieldValuesInParallel(List<Minute> minutes, String detectedField) {
+    private List<FieldResult> extractFieldValuesInParallel(
+            List<Minute> minutes, String detectedField, Map<String, String> textByMinuteId) {
         List<CompletableFuture<FieldResult>> futures = minutes.stream()
-                .map(minute -> supplyAsync(() -> extractFieldValue(minute, detectedField)))
+                .map(minute -> supplyAsync(() -> extractFieldValue(minute, detectedField, textByMinuteId)))
                 .toList();
 
         return futures.stream()
@@ -221,11 +230,12 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         return fieldValue;
     }
 
-    private FieldResult extractFieldValue(Minute minute, String detectedField) {
+    private FieldResult extractFieldValue(Minute minute, String detectedField, Map<String, String> textByMinuteId) {
         log().debug("Extracting field '{}' from minute {} (date: {})", 
                    detectedField, minute.id(), minute.date());
         
         String fieldValue = resolveFieldValueWithAlternatives(detectedField, minute);
+        fieldValue = enrichFromDocumentTextIfNeeded(detectedField, minute, fieldValue, textByMinuteId);
         
         if (fieldValue == null || fieldValue.isBlank()) {
             log().warn("Could not extract field '{}' from minute {} (date: {}). " +
@@ -240,7 +250,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                    detectedField, minute.id(), fieldValue);
 
         return new FieldResult(
-            minute.id(),
+            minute.filename() != null && !minute.filename().isBlank() ? minute.filename() : minute.id(),
             minute.date(),
             minute.place(),
             detectedField,
@@ -393,6 +403,10 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             return generateNotFoundMessage(query);
         }
 
+        if (isAttendeesField(detectedField)) {
+            return formatAttendeesFieldAnswer(query, results);
+        }
+
         // Direct answer style (no "se encontraron X...")
         List<FieldResult> top = results.stream().limit(5).toList();
 
@@ -494,6 +508,117 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             }
         }
         return rawValue;
+    }
+
+    private static boolean isAttendeesField(String detectedField) {
+        if (detectedField == null) {
+            return false;
+        }
+        String f = detectedField.toLowerCase();
+        return FIELD_ATTENDEES.equals(f) || "asistentes".equals(f) || "participantes".equals(f);
+    }
+
+    /**
+     * Deterministic attendee listing — avoids LLM truncation of long participant lists.
+     */
+    private String formatAttendeesFieldAnswer(String query, List<FieldResult> results) {
+        FieldResult best = results.get(0);
+        String date = best.getDate() != null ? best.getDate() : "fecha desconocida";
+        String source = best.getMinuteId() != null ? best.getMinuteId() : "";
+        String raw = best.getFieldValue() != null ? best.getFieldValue() : "";
+        List<String> names =
+                Arrays.stream(raw.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isBlank())
+                        .toList();
+        if (names.isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        StringBuilder answer = new StringBuilder();
+        answer.append("En el acta del ")
+                .append(date);
+        if (!source.isBlank()) {
+            answer.append(" (").append(source).append(")");
+        }
+        answer.append(", los participantes fueron: ");
+        answer.append(String.join(", ", names));
+        answer.append(" (").append(names.size()).append(" en total).");
+        return formatResponse(answer.toString(), query);
+    }
+
+    private static boolean usesMetadataAuthoritativeExtraction(String detectedField) {
+        if (detectedField == null) {
+            return false;
+        }
+        String f = detectedField.toLowerCase(Locale.ROOT);
+        return isAttendeesField(f)
+                || FIELD_PRESIDENT.equals(f)
+                || FIELD_SECRETARY.equals(f)
+                || "presidente".equals(f)
+                || "secretario".equals(f)
+                || "secretaria".equals(f)
+                || "date".equals(f)
+                || FIELD_DURATION.equals(f)
+                || "durationminutes".equals(f)
+                || "agenda".equals(f)
+                || f.contains("orden");
+    }
+
+    private Map<String, String> combinedTextByMinuteId(List<Document> docs) {
+        Map<String, StringBuilder> buckets = new LinkedHashMap<>();
+        for (Document doc : docs) {
+            String id = getDocumentIdFromDoc(doc);
+            if (id == null || id.isBlank()) {
+                continue;
+            }
+            String text = doc.getText();
+            if (text == null || text.isBlank()) {
+                continue;
+            }
+            buckets.computeIfAbsent(id, ignored -> new StringBuilder()).append(text).append('\n');
+        }
+        Map<String, String> out = new HashMap<>();
+        buckets.forEach((id, sb) -> out.put(id, sb.toString().trim()));
+        return out;
+    }
+
+    private String enrichFromDocumentTextIfNeeded(
+            String detectedField, Minute minute, String fieldValue, Map<String, String> textByMinuteId) {
+        String text = textByMinuteId.get(minute.id());
+        if (text == null || text.isBlank()) {
+            return fieldValue;
+        }
+        if (isAttendeesField(detectedField)) {
+            List<String> parsed = extractor.extractAttendees(text);
+            if (!parsed.isEmpty()) {
+                return String.join(", ", parsed);
+            }
+            return fieldValue;
+        }
+        if (fieldValue != null && !fieldValue.isBlank()) {
+            return fieldValue;
+        }
+        String f = detectedField == null ? "" : detectedField.toLowerCase(Locale.ROOT);
+        if (FIELD_PRESIDENT.equals(f) || "presidente".equals(f)) {
+            return extractor.extractLiteralField(FIELD_PRESIDENT, text);
+        }
+        if (FIELD_SECRETARY.equals(f) || "secretario".equals(f) || "secretaria".equals(f)) {
+            return extractor.extractLiteralField(FIELD_SECRETARY, text);
+        }
+        if ("date".equals(f)) {
+            return extractor.extractDate(text);
+        }
+        if (FIELD_DURATION.equals(f) || "durationminutes".equals(f)) {
+            int minutes = extractor.calculateDuration(text);
+            return minutes > 0 ? Integer.toString(minutes) : fieldValue;
+        }
+        if ("agenda".equals(f) || f.contains("orden")) {
+            String agenda = extractor.extractAgenda(text);
+            if (agenda != null && !agenda.isBlank()) {
+                return agenda;
+            }
+        }
+        return fieldValue;
     }
 
     /**

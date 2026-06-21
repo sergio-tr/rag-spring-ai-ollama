@@ -54,4 +54,18 @@ class MetadataCountDocumentsToolTest {
         assertNotNull(result);
         assertNotNull(result.result());
     }
+
+    @Test
+    void detectStartTimeCountQuery_matchesSpanishStartTimeCount() throws Exception {
+        var method =
+                MetadataCountDocumentsTool.class.getDeclaredMethod(
+                        "detectStartTimeCountQuery", String.class, JSONObject.class);
+        method.setAccessible(true);
+        Object detected =
+                method.invoke(
+                        tool,
+                        "¿Cuántas reuniones comenzaron a las 19:00 horas?",
+                        new JSONObject());
+        assertNotNull(detected);
+    }
 }

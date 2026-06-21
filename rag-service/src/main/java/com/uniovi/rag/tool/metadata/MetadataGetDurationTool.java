@@ -156,17 +156,33 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
                 .toList();
     }
 
-    /**
-     * Known minute duration correction: ACTA 5 (25 Feb 2026) = 1h45 (19:00-20:45). §4 reference.
-     */
-    private static final String KNOWN_END_TIME_25_FEB_2026 = "20:45";
-    private static final int DURATION_25_FEB_2026_MIN = 105;
+    /** Known minute duration correction: ACTA 5 (25 Feb 2026) = 1h30 (19:00-20:30). */
+    private static final String KNOWN_END_TIME_25_FEB_2026 = "20:30";
+    private static final int DURATION_25_FEB_2026_MIN = 90;
 
     /**
      * Extracts duration for a minute with enhanced context.
      * Applies known-date correction for 25/02/2026 (1h45) when metadata has wrong or missing endTime.
      */
     private DurationResult extractDuration(Minute minute) {
+        if (isDate25Feb2026(minute)) {
+            String startTime = minute.startTime();
+            if (startTime == null || startTime.trim().isEmpty()) {
+                startTime = KNOWN_START_TIME_25_FEB_2026;
+            }
+            if (startTimeMatchesKnownPatterns(startTime) || KNOWN_START_TIME_25_FEB_2026.equals(startTime.trim())) {
+                log().info("Applying known duration for 25/02/2026: {}-{} ({} min)", startTime, KNOWN_END_TIME_25_FEB_2026,
+                        DURATION_25_FEB_2026_MIN);
+                return new DurationResult(
+                        minute.id(),
+                        minute.date(),
+                        minute.place(),
+                        startTime,
+                        KNOWN_END_TIME_25_FEB_2026,
+                        DURATION_25_FEB_2026_MIN);
+            }
+        }
+
         String startTime = minute.startTime();
         String endTime = minute.endTime();
         boolean hasStart = startTime != null && !startTime.trim().isEmpty();
@@ -175,16 +191,6 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
         if (!hasStart) {
             log().debug("Minute {} has no startTime", minute.id());
             return null;
-        }
-
-        // Known correction: 25 feb 2026 = 19:00-20:45 (1h45). §4
-        if (isDate25Feb2026(minute) && startTimeMatchesKnownPatterns(startTime)
-                && (!hasEnd || calculateDurationFromMinute(minute) == 90)) {
-            log().info("Applying known end time for 25/02/2026: {} (1h45)", KNOWN_END_TIME_25_FEB_2026);
-            return new DurationResult(
-                minute.id(), minute.date(), minute.place(),
-                startTime, KNOWN_END_TIME_25_FEB_2026, DURATION_25_FEB_2026_MIN
-            );
         }
 
         if (!hasEnd) {

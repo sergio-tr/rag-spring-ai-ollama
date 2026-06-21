@@ -75,6 +75,14 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         if (early != null) {
             return early;
         }
+        String personOnDateDate = extractDateFromQuery(query, ner);
+        String personOnDateName = extractPersonNameFromQuery(query, ner);
+        if (personOnDateDate != null && personOnDateName != null && !personOnDateName.isBlank()) {
+            ToolResult personResult = handlePersonInActaOnDateQuery(query, docs, ner);
+            if (personResult != null) {
+                return personResult;
+            }
+        }
 
         DocumentsOrEarlyExit yearStep = applyYearFilter(query, ner, docs);
         if (yearStep.earlyExit() != null) {
@@ -115,7 +123,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
     }
 
     private ToolResult tryPersonInActaOnDateQuery(String query, List<Document> docs, JSONObject ner) {
-        if (docs.isEmpty() || !isPersonInActaOnDateQuery(query)) {
+        if (docs.isEmpty() || !isPersonInActaOnDateQuery(query, ner)) {
             return null;
         }
         return handlePersonInActaOnDateQuery(query, docs, ner);
@@ -181,14 +189,14 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
     }
 
     /** True when the query asks whether a specific person appears in the minutes for a specific date. */
-    private boolean isPersonInActaOnDateQuery(String query) {
+    private boolean isPersonInActaOnDateQuery(String query, JSONObject ner) {
         if (query == null || query.trim().isEmpty()) return false;
         String q = query.toLowerCase().trim();
         boolean hasPersonInActaPhrase = (q.contains("aparece") || q.contains("figura") || q.contains("confirma"))
                 && (q.contains("acta") || q.contains("reunión") || q.contains("reunion"));
         if (!hasPersonInActaPhrase) return false;
-        String requestedDate = extractDateFromQuery(query, null);
-        String personName = extractPersonNameFromQuery(query, null);
+        String requestedDate = extractDateFromQuery(query, ner);
+        String personName = extractPersonNameFromQuery(query, ner);
         return requestedDate != null && personName != null && !personName.isBlank();
     }
 
@@ -205,18 +213,73 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         List<Minute> minutes = extractMinutesInParallel(docsForDate);
         if (minutes.isEmpty()) return null;
         final String normalizedPerson = normalizePersonName(personName);
-        boolean attendeeMatched = minutes.stream()
-                .filter(m -> m.attendees() != null)
-                .flatMap(m -> m.attendees().stream())
-                .filter(Objects::nonNull)
-                .map(this::normalizePersonName)
-                .anyMatch(normAttendee -> normAttendee.equals(normalizedPerson)
-                        || normAttendee.contains(normalizedPerson)
-                        || normalizedPerson.contains(normAttendee));
-        if (attendeeMatched) {
-            return ToolResult.from(formatResponse("Sí, " + personName + " figura como asistente en esa reunión.", query), getClass());
+        boolean personMatched = minutes.stream().anyMatch(m -> minuteContainsPerson(m, normalizedPerson, personName));
+        String displayDate = formatActaDateForAnswer(requestedDate, minutes);
+        if (personMatched) {
+            return ToolResult.from(
+                    formatResponse("Sí, " + personName + " figura en el acta del " + displayDate + ".", query),
+                    getClass());
         }
-        return ToolResult.from(formatResponse("No, " + personName + " no figura en el acta de esa fecha.", query), getClass());
+        return ToolResult.from(
+                formatResponse("No, " + personName + " no figura en el acta del " + displayDate + ".", query),
+                getClass());
+    }
+
+    private String formatActaDateForAnswer(String requestedDate, List<Minute> minutes) {
+        if (minutes != null) {
+            for (Minute minute : minutes) {
+                if (minute != null && minute.date() != null && !minute.date().isBlank()) {
+                    return minute.date();
+                }
+            }
+        }
+        if (requestedDate == null || requestedDate.isBlank()) {
+            return "esa fecha";
+        }
+        try {
+            java.time.LocalDate parsed = parseDateFlexible(requestedDate);
+            if (parsed != null) {
+                String[] months = {
+                    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+                    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+                };
+                return parsed.getDayOfMonth() + " de " + months[parsed.getMonthValue() - 1] + " de " + parsed.getYear();
+            }
+        } catch (Exception ignored) {
+            // fall through
+        }
+        return requestedDate;
+    }
+
+    private boolean minuteContainsPerson(Minute minute, String normalizedPerson, String displayName) {
+        if (minute == null || normalizedPerson.isBlank()) {
+            return false;
+        }
+        if (nameMatches(minute.president(), normalizedPerson, displayName)) {
+            return true;
+        }
+        if (nameMatches(minute.secretary(), normalizedPerson, displayName)) {
+            return true;
+        }
+        if (minute.attendees() != null) {
+            for (String attendee : minute.attendees()) {
+                if (nameMatches(attendee, normalizedPerson, displayName)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean nameMatches(String candidate, String normalizedPerson, String displayName) {
+        if (candidate == null || candidate.isBlank()) {
+            return false;
+        }
+        String normalizedCandidate = normalizePersonName(candidate);
+        return normalizedCandidate.equals(normalizedPerson)
+                || normalizedCandidate.contains(normalizedPerson)
+                || normalizedPerson.contains(normalizedCandidate)
+                || candidate.equalsIgnoreCase(displayName);
     }
 
     /**

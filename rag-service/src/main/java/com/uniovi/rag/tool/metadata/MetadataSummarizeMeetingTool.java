@@ -40,6 +40,7 @@ import java.util.stream.Collectors;
             new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"},
             ner
         );
+        docs = mergeChunksByDocumentId(docs);
         
         // Validate date if present in query
         String requestedDate = extractDateFromQuery(query, ner);
@@ -59,10 +60,17 @@ import java.util.stream.Collectors;
             return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
-        List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
+        List<Minute> relevantMinutes;
+        if (requestedDate != null) {
+            relevantMinutes = minutes;
+        } else {
+            relevantMinutes = filterRelevantMinutes(query, minutes, ner);
+        }
         if (relevantMinutes.isEmpty()) {
             return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
+
+        relevantMinutes = mergeMinutesByDocumentId(relevantMinutes);
 
         List<SummaryResult> results = generateSummariesInParallel(query, relevantMinutes);
         if (results.isEmpty()) {
@@ -93,9 +101,9 @@ import java.util.stream.Collectors;
         boolean asksForTopicsOrPoints = asksForTopicsOrPoints(query);
         String summary;
         if (asksForTopicsOrPoints) {
-            summary = generateSummaryWithLLM(query, minute);
+            summary = buildSummaryFromMetadata(minute);
             if (summary.isBlank()) {
-                summary = buildSummaryFromMetadata(minute);
+                summary = generateSummaryWithLLM(query, minute);
             }
         } else {
             summary = buildSummaryFromMetadata(minute);
@@ -124,15 +132,20 @@ import java.util.stream.Collectors;
                 || q.contains("qué se habló") || q.contains("temas tratados") || q.contains("qué se trató")
                 || q.contains("orden del día") || q.contains("qué decisiones") || q.contains("qué acuerdos")
                 || q.contains("qué se acordó") || q.contains("explica los puntos") || q.contains("indica los puntos")
-                || q.contains("qué se habló") || q.contains("resume los puntos") || q.contains("qué se trató en la reunión");
+                || q.contains("resume los puntos") || q.contains("qué se trató en la reunión")
+                || q.contains("resume la reunión") || q.contains("resume la reunion")
+                || q.contains("resumen de la reunión") || q.contains("resumen de la reunion")
+                || (q.contains("resume") && (q.contains("reunión") || q.contains("reunion") || q.contains("acta")));
     }
 
     private String buildSummaryFromMetadata(Minute minute) {
         if (minute == null) {
             return "";
         }
-        // Build summary from metadata - this will be refined by LLM if needed
         List<String> parts = new ArrayList<>();
+        if (minute.date() != null && !minute.date().isBlank()) {
+            parts.add("Reunión del " + minute.date());
+        }
         if (minute.summary() != null && !minute.summary().isBlank()) {
             parts.add(minute.summary());
         }
@@ -158,7 +171,11 @@ import java.util.stream.Collectors;
         // P9: When user asks for "puntos tratados" or "qué se discutió", insist on including topics/agenda in the summary
         boolean asksForTopics = asksForTopicsOrPoints(query);
         boolean asksForGeneralSummary = query != null && (query.toLowerCase().contains("resumen general")
-                || query.toLowerCase().contains("general summary") || query.toLowerCase().contains("overview of the meeting"));
+                || query.toLowerCase().contains("general summary") || query.toLowerCase().contains("overview of the meeting")
+                || query.toLowerCase().contains("resume la reunión") || query.toLowerCase().contains("resume la reunion")
+                || query.toLowerCase().contains("resumen de la reunión") || query.toLowerCase().contains("resumen de la reunion")
+                || (query.toLowerCase().contains("resume") && (query.toLowerCase().contains("reunión")
+                        || query.toLowerCase().contains("reunion") || query.toLowerCase().contains("acta"))));
         // Item 54: When user asks for "acuerdos" or "decisiones", prioritize the list of decisions in the answer
         boolean asksForAgreementsOrDecisions = query != null && (query.toLowerCase().contains("acuerdos")
                 || query.toLowerCase().contains("decisiones") || query.toLowerCase().contains("qué se decidió")
@@ -269,22 +286,56 @@ import java.util.stream.Collectors;
         }
 
         boolean asksForAgreements = query != null && (query.toLowerCase().contains("acuerdos") || query.toLowerCase().contains("decisiones"));
-        int maxCharsPerSummary = asksForAgreements ? 500 : 200;
+        boolean asksForTopics = asksForTopicsOrPoints(query);
+        int maxCharsPerSummary = asksForAgreements ? 500 : (asksForTopics ? 400 : 200);
         StringBuilder summaryContent = new StringBuilder();
         appendLimitedMeetingSummaries(summaryContent, results, maxCharsPerSummary);
+
+        if (asksForTopics) {
+            String direct = summaryContent.toString().trim();
+            if (!direct.isBlank() && containsTopicSignals(direct)) {
+                return formatResponse(direct, query);
+            }
+        }
 
         String prompt = buildMeetingSummaryUserPrompt(query, summaryContent.toString());
 
         try {
             String response = getLLMResponseCached(prompt);
             if (response != null && !response.trim().isEmpty()) {
-                return formatResponse(response, query);
+                String trimmed = response.trim();
+                if (asksForTopics && !containsTopicSignals(trimmed)) {
+                    String fallback = summaryContent.toString().trim();
+                    if (!fallback.isBlank()) {
+                        return formatResponse(fallback, query);
+                    }
+                }
+                return formatResponse(trimmed, query);
             }
         } catch (Exception e) {
             log().warn("Error generating summary answer with LLM, using raw content", e);
         }
 
         return summaryContent.toString().trim();
+    }
+
+    private static boolean containsTopicSignals(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String lower = text.toLowerCase();
+        return lower.contains("tema")
+                || lower.contains("agenda")
+                || lower.contains("orden del día")
+                || lower.contains("orden del dia")
+                || lower.contains("decision")
+                || lower.contains("acuerd")
+                || lower.contains("presupuesto")
+                || lower.contains("ascensor")
+                || lower.contains("calefacc")
+                || lower.contains("cámara")
+                || lower.contains("camara")
+                || lower.contains("limpieza");
     }
 
     /** Appends up to 3 meeting blocks for the summarization prompt. */
