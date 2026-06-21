@@ -62,6 +62,9 @@ import static org.mockito.Mockito.when;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.ObjectProvider;
 
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy;
+
 class RagExecutionOrchestratorMemoryTest {
 
     @Test
@@ -97,8 +100,8 @@ class RagExecutionOrchestratorMemoryTest {
                         clarificationStrategy,
                         routingStrategy,
                         mock(DeterministicToolRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy.class),
+                        mock(FunctionCallingRoutingStrategy.class),
+                        mock(AdvisorRoutingStrategy.class),
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),

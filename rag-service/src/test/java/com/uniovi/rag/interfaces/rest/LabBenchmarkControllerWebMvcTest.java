@@ -47,6 +47,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.stream.IntStream;
+
 @WebMvcTest(controllers = LabBenchmarkController.class)
 @ContextConfiguration(classes = RagWebMvcTestApplication.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -289,7 +291,7 @@ class LabBenchmarkControllerWebMvcTest {
     void listItems_campaignCoordinator_returnsCampaignWideItems() throws Exception {
         UUID runId = UUID.randomUUID();
         List<EvaluationResultItemDto> items =
-                java.util.stream.IntStream.range(0, 240)
+                IntStream.range(0, 240)
                         .mapToObj(
                                 i ->
                                         new EvaluationResultItemDto(

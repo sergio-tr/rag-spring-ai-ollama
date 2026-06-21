@@ -33,6 +33,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.uniovi.rag.domain.AsyncTaskType;
+import java.util.Optional;
+import java.util.stream.IntStream;
+
 @ExtendWith(MockitoExtension.class)
 class LabCampaignBenchmarkExecutorTest {
 
@@ -68,7 +72,7 @@ class LabCampaignBenchmarkExecutorTest {
         AsyncTaskEntity task =
                 Mockito.spy(
                         AsyncTaskEntity.queued(
-                                user, com.uniovi.rag.domain.AsyncTaskType.EVAL_RAG, Map.of(), Instant.now()));
+                                user, AsyncTaskType.EVAL_RAG, Map.of(), Instant.now()));
         Mockito.lenient().when(task.getId()).thenReturn(taskId);
 
         EvaluationRunEntity p0 = childRun(p0Id, "P0");
@@ -79,7 +83,7 @@ class LabCampaignBenchmarkExecutorTest {
         campaign.setMetaJson(Map.of("totalItems", 120, "axisCount", 2));
 
         when(evaluationRunRepository.findByCampaign_IdOrderByCreatedAtAsc(campaignId)).thenReturn(List.of(p0, p1));
-        when(evaluationCampaignRepository.findById(campaignId)).thenReturn(java.util.Optional.of(campaign));
+        when(evaluationCampaignRepository.findById(campaignId)).thenReturn(Optional.of(campaign));
         when(labPresetAxisSupport.resolvePresetCode(p0)).thenReturn("P0");
         when(labPresetAxisSupport.resolvePresetCode(p1)).thenReturn("P1");
         when(labPresetAxisSupport.resolvePresetLabel(any())).thenReturn("label");
@@ -120,7 +124,7 @@ class LabCampaignBenchmarkExecutorTest {
     }
 
     private static List<EvaluationResultEntity> repeatItems(int count) {
-        return java.util.stream.IntStream.range(0, count)
+        return IntStream.range(0, count)
                 .mapToObj(
                         i -> {
                             EvaluationResultEntity e = new EvaluationResultEntity();

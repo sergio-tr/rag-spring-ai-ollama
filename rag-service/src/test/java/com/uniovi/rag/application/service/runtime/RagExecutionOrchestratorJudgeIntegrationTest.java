@@ -61,13 +61,15 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import org.springframework.beans.factory.ObjectProvider;
 
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
+
 class RagExecutionOrchestratorJudgeIntegrationTest {
 
     private final DeterministicToolRoutingStrategy deterministicToolRoutingStrategy =
             MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy();
     private final FunctionCallingRoutingStrategy functionCallingRoutingStrategy =
             MonotonicRouteSafetyTestSupport.functionCallingRoutingStrategy();
-    private final com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy advisorRoutingStrategy =
+    private final AdvisorRoutingStrategy advisorRoutingStrategy =
             MonotonicRouteSafetyTestSupport.advisorRoutingStrategy();
 
     @Test

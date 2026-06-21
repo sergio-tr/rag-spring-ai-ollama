@@ -62,6 +62,9 @@ import static org.mockito.Mockito.when;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.ObjectProvider;
 
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy;
+
 class RagExecutionOrchestratorReasoningTest {
 
     @Test
@@ -216,8 +219,8 @@ class RagExecutionOrchestratorReasoningTest {
                         clarificationStrategy,
                         routing,
                         mock(DeterministicToolRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy.class),
+                        mock(FunctionCallingRoutingStrategy.class),
+                        mock(AdvisorRoutingStrategy.class),
                         mock(JudgeStrategy.class),
                         new StructuredAnswerPlanService(chatClient, new ObjectMapper()),
                         new AnswerVerificationService(chatClient),

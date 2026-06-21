@@ -50,6 +50,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry;
+
 @ExtendWith(MockitoExtension.class)
 class AdvancedRetrievalPipelineTest {
 
@@ -262,7 +264,7 @@ class AdvancedRetrievalPipelineTest {
                                         dense.size(),
                                         0,
                                         dense.size()),
-                                new com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry(
+                                new FusionTelemetry(
                                         "DENSE_ONLY_FALLBACK", 1, dense.size(), 0, false)));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
         when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
@@ -303,7 +305,7 @@ class AdvancedRetrievalPipelineTest {
                 .thenReturn(
                         new RetrievalFusionService.FusionResult(
                                 fused,
-                                new com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry("RRF", 2, 1, 0, true)));
+                                new FusionTelemetry("RRF", 2, 1, 0, true)));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(List.of(dense));
         when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
 
@@ -352,7 +354,7 @@ class AdvancedRetrievalPipelineTest {
                                         0,
                                         0,
                                         "dense=1;sparse=0;fused=1"),
-                                new com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry(
+                                new FusionTelemetry(
                                         "DENSE_ONLY_FALLBACK", 1, 1, 0, false)));
         when(retrievalReranker.rerank(any(), any(), any()))
                 .thenReturn(new RetrievalReranker.RerankResult(List.of(longChunk), List.of()));
@@ -390,13 +392,13 @@ class AdvancedRetrievalPipelineTest {
         when(retrievalFusionService.fuseWithTelemetry(eq(req), eq(dense), eq(List.of())))
                 .thenReturn(
                         new RetrievalFusionService.FusionResult(
-                                new com.uniovi.rag.domain.runtime.retrieval.RetrievedContextSet(
+                                new RetrievedContextSet(
                                         dense,
                                         Optional.empty(),
                                         dense.size(),
                                         0,
                                         dense.size()),
-                                new com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry(
+                                new FusionTelemetry(
                                         "DENSE_ONLY_FALLBACK", 1, dense.size(), 0, false)));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
         when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");

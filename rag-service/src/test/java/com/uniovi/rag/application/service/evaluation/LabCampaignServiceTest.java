@@ -29,6 +29,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.stream.IntStream;
+import org.mockito.ArgumentCaptor;
+
 class LabCampaignServiceTest {
 
     private final LabPresetAxisSupport labPresetAxisSupport =
@@ -111,8 +114,8 @@ class LabCampaignServiceTest {
 
         svc.startCampaign(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req, orchestrator);
 
-        org.mockito.ArgumentCaptor<StartBenchmarkRunRequest> captor =
-                org.mockito.ArgumentCaptor.forClass(StartBenchmarkRunRequest.class);
+        ArgumentCaptor<StartBenchmarkRunRequest> captor =
+                ArgumentCaptor.forClass(StartBenchmarkRunRequest.class);
         verify(orchestrator)
                 .startJsonBenchmark(
                         eq(userId), eq("USER"), eq(BenchmarkKind.RAG_PRESET_END_TO_END), captor.capture());
@@ -170,8 +173,8 @@ class LabCampaignServiceTest {
 
         svc.startCampaign(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req, orchestrator);
 
-        org.mockito.ArgumentCaptor<StartBenchmarkRunRequest> captor =
-                org.mockito.ArgumentCaptor.forClass(StartBenchmarkRunRequest.class);
+        ArgumentCaptor<StartBenchmarkRunRequest> captor =
+                ArgumentCaptor.forClass(StartBenchmarkRunRequest.class);
         verify(orchestrator)
                 .startJsonBenchmark(
                         eq(userId), eq("USER"), eq(BenchmarkKind.RAG_PRESET_END_TO_END), captor.capture());
@@ -478,7 +481,7 @@ class LabCampaignServiceTest {
     }
 
     private static List<EvaluationResultEntity> repeatOutcomeItems(int count, String presetCode) {
-        return java.util.stream.IntStream.range(0, count)
+        return IntStream.range(0, count)
                 .mapToObj(
                         i -> {
                             EvaluationResultEntity row = new EvaluationResultEntity();

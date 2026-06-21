@@ -17,6 +17,8 @@ import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import java.util.List;
 import java.util.Optional;
 
+import org.mockito.stubbing.Answer;
+
 public final class MonotonicRouteSafetyTestSupport {
 
     private MonotonicRouteSafetyTestSupport() {}
@@ -50,7 +52,7 @@ public final class MonotonicRouteSafetyTestSupport {
                 .thenReturn(RouteCandidateValidationResult.accepted(0.9, "TOPIC_COVERED"));
         when(service.validateRetrievalAnswer(any(QueryPlan.class), any(), anyBoolean()))
                 .thenReturn(RouteCandidateValidationResult.accepted(0.85, "TOPIC_COVERED"));
-        org.mockito.stubbing.Answer<Optional<MonotonicRouteSafetyService.CandidateScore>> pickSafe =
+        Answer<Optional<MonotonicRouteSafetyService.CandidateScore>> pickSafe =
                 invocation -> {
                     Optional<MonotonicRouteSafetyService.CandidateScore> tool = invocation.getArgument(1);
                     Optional<MonotonicRouteSafetyService.CandidateScore> function = invocation.getArgument(2);

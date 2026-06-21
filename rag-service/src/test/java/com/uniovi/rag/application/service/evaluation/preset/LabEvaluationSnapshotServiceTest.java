@@ -32,6 +32,8 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.beans.factory.ObjectProvider;
 
+import com.uniovi.rag.domain.knowledge.CorpusScope;
+
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class LabEvaluationSnapshotServiceTest {
@@ -363,7 +365,7 @@ class LabEvaluationSnapshotServiceTest {
         when(knowledgeIndexSnapshotRepository.findById(snapshotId)).thenReturn(Optional.of(built));
         when(corpusAvailabilityGate.snapshotHasVectorRows(userId, corpusId, snapshotId)).thenReturn(true);
         when(knowledgePipelineOrchestrator.computeSnapshotSignatureHex(
-                        eq(indexProjectId), eq(com.uniovi.rag.domain.knowledge.CorpusScope.PROJECT_SHARED), eq(null), any()))
+                        eq(indexProjectId), eq(CorpusScope.PROJECT_SHARED), eq(null), any()))
                 .thenReturn("sig-current");
 
         ExperimentalPresetCanonicalCatalog.IndexRequirements requirements =

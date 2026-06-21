@@ -66,6 +66,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingPolicy;
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
+
 class RagExecutionOrchestratorDeterministicToolRoutingTest {
 
     private final DeterministicToolRoutingStrategy deterministicToolRoutingStrategy =
@@ -214,9 +217,9 @@ class RagExecutionOrchestratorDeterministicToolRoutingTest {
                         adaptiveRoutingStrategy,
                         deterministicToolRoutingStrategy,
                         functionCallingRoutingStrategy,
-                        new com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy(
-                                new com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingPolicy(),
-                                new com.uniovi.rag.application.service.runtime.routing.RouteExecutionGateBuilder()),
+                        new AdvisorRoutingStrategy(
+                                new AdvisorRoutingPolicy(),
+                                new RouteExecutionGateBuilder()),
                         judgeStrategy,
                         MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),

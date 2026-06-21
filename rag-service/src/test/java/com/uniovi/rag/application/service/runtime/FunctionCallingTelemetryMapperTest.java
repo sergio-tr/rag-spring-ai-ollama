@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
+
 class FunctionCallingTelemetryMapperTest {
 
     @Test
@@ -95,10 +98,10 @@ class FunctionCallingTelemetryMapperTest {
         ExecutionTrace withProposal =
                 new ExecutionTrace(
                         List.of(
-                                new com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace(
+                                new ExecutionStageTrace(
                                         "function_calling_proposal",
                                         0L,
-                                        com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome.SUCCESS,
+                                        ExecutionStageOutcome.SUCCESS,
                                         "functionProposalMode=BACKEND_DETERMINISTIC;functionProposalSource=QUERY_SHAPE;functionProposalValid=true;functionProposalRepairAttempted=false;functionProposalRepairSucceeded=false;backendFunctionCallAttempted=true;nativeProviderFunctionCallAttempted=false;functionCallName=countDocuments;functionToolKind=COUNT_DOCUMENTS_TOOL")),
                         trace.workflowName(),
                         trace.retrievalUsed(),

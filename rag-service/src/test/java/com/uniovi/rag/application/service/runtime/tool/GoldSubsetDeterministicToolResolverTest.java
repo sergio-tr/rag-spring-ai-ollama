@@ -38,6 +38,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
+
 class GoldSubsetDeterministicToolResolverTest {
 
     private DefaultDeterministicToolResolver resolver;
@@ -136,7 +138,7 @@ class GoldSubsetDeterministicToolResolverTest {
         QueryType expected = parseType(entry.queryTypeExpected());
         QueryIntent intent = intentFor(expected, entry.question());
         ExpectedAnswerShape shape = shapeFor(expected);
-        Map<String, String> slots = new java.util.LinkedHashMap<>();
+        Map<String, String> slots = new LinkedHashMap<>();
         if (expected == QueryType.COUNT_AND_EXPLAIN) {
             slots.put("explain", "true");
         }

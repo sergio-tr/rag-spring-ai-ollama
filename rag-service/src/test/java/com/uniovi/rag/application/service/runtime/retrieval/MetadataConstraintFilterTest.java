@@ -14,6 +14,12 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
+import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
+import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
+import com.uniovi.rag.domain.runtime.query.QueryIntent;
+import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
+
 class MetadataConstraintFilterTest {
 
     private final MetadataConstraintFilter filter = new MetadataConstraintFilter();
@@ -103,15 +109,15 @@ class MetadataConstraintFilterTest {
                 "q",
                 "L",
                 Optional.empty(),
-                com.uniovi.rag.domain.runtime.query.ClassifierStatus.DISABLED,
-                com.uniovi.rag.domain.runtime.query.QueryIntent.UNKNOWN,
+                ClassifierStatus.DISABLED,
+                QueryIntent.UNKNOWN,
                 Map.of(),
                 List.of(),
                 List.of(),
                 entities,
-                com.uniovi.rag.domain.runtime.query.StructuredRewriteResult.identityDisabled("r", "r"),
-                com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape.UNKNOWN,
-                com.uniovi.rag.domain.runtime.query.AmbiguityAssessment.sufficient(),
+                StructuredRewriteResult.identityDisabled("r", "r"),
+                ExpectedAnswerShape.UNKNOWN,
+                AmbiguityAssessment.sufficient(),
                 "c",
                 "m",
                 List.of());
@@ -137,15 +143,15 @@ class MetadataConstraintFilterTest {
                 "q",
                 "L",
                 Optional.empty(),
-                com.uniovi.rag.domain.runtime.query.ClassifierStatus.DISABLED,
-                com.uniovi.rag.domain.runtime.query.QueryIntent.UNKNOWN,
+                ClassifierStatus.DISABLED,
+                QueryIntent.UNKNOWN,
                 Map.of(),
                 List.of(),
                 List.of(),
                 entities,
-                com.uniovi.rag.domain.runtime.query.StructuredRewriteResult.identityDisabled("r", "r"),
-                com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape.UNKNOWN,
-                com.uniovi.rag.domain.runtime.query.AmbiguityAssessment.sufficient(),
+                StructuredRewriteResult.identityDisabled("r", "r"),
+                ExpectedAnswerShape.UNKNOWN,
+                AmbiguityAssessment.sufficient(),
                 "c",
                 "m",
                 List.of());

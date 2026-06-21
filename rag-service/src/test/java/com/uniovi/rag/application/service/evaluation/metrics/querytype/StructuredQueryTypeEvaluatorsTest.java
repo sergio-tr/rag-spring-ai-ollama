@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.uniovi.rag.application.service.evaluation.metrics.StructuredScoreStatus;
+
 class StructuredQueryTypeEvaluatorsTest {
 
     @Test
@@ -43,7 +45,7 @@ class StructuredQueryTypeEvaluatorsTest {
     @Test
     void durationEvaluation_matchesMinutes() {
         var result = StructuredQueryTypeEvaluators.durationEvaluation("45 minutes", "The meeting lasted 45 mins.");
-        assertThat(result.status()).isEqualTo(com.uniovi.rag.application.service.evaluation.metrics.StructuredScoreStatus.COMPUTED);
+        assertThat(result.status()).isEqualTo(StructuredScoreStatus.COMPUTED);
         assertThat(result.durationMatch()).isTrue();
         assertThat(result.score()).isEqualTo(1.0);
     }
@@ -60,6 +62,6 @@ class StructuredQueryTypeEvaluatorsTest {
     void compareEvaluation_unavailableWithoutStructuredGold() {
         var result = StructuredQueryTypeEvaluators.compareEvaluation("yes", "no");
         assertThat(result.status())
-                .isEqualTo(com.uniovi.rag.application.service.evaluation.metrics.StructuredScoreStatus.NOT_AVAILABLE);
+                .isEqualTo(StructuredScoreStatus.NOT_AVAILABLE);
     }
 }

@@ -38,6 +38,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
+import java.time.Instant;
+
 @ExtendWith(MockitoExtension.class)
 class LabBenchmarkConfigPreflightServiceTest {
 
@@ -292,8 +295,8 @@ class LabBenchmarkConfigPreflightServiceTest {
                         10,
                         ProjectIndexProfile.computeProfileHash(
                                 MaterializationStrategy.HYBRID, true, "meta-v1", "mxbai-embed-large", 400, 10),
-                        java.time.Instant.now(),
-                        java.time.Instant.now());
+                        Instant.now(),
+                        Instant.now());
         when(projectIndexProfileService.ensureDefault(indexProjectId)).thenReturn(profile);
         when(labIndexProfileOverrideFactory.buildEffectiveProfile(any(), any(), any())).thenReturn(profile);
         when(corpusAvailabilityGate.snapshotHasVectorRows(userId, corpusId, snapshotId)).thenReturn(false);
@@ -341,7 +344,7 @@ class LabBenchmarkConfigPreflightServiceTest {
         UUID userId = UUID.randomUUID();
         UUID corpusId = UUID.randomUUID();
         when(corpusAvailabilityGate.evaluateForPreset(
-                        eq(userId), eq(corpusId), any(), eq(com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode.P1)))
+                        eq(userId), eq(corpusId), any(), eq(RagExperimentalPresetCode.P1)))
                 .thenReturn(
                         new CorpusAvailabilityGate.Result(
                                 false,
@@ -352,7 +355,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                                 CorpusAvailabilityGate.REINDEX_REQUIRED,
                                 "no snapshot"));
         when(corpusAvailabilityGate.probeForPreset(
-                        eq(userId), eq(corpusId), any(), eq(com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode.P1)))
+                        eq(userId), eq(corpusId), any(), eq(RagExperimentalPresetCode.P1)))
                 .thenReturn(Map.of("corpusAvailable", false, "vectorChunkRowCount", 0L));
 
         StartBenchmarkRunRequest req =

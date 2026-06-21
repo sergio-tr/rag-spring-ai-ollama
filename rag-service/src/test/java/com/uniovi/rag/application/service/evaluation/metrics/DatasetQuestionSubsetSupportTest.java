@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
+
 class DatasetQuestionSubsetSupportTest {
 
     @Test
@@ -35,7 +37,7 @@ class DatasetQuestionSubsetSupportTest {
         GoldSubsetManifest manifest = GoldSubsetManifestLoader.load(GoldSubsetManifestLoader.GOLD_SUBSET_V1);
         DatasetQuestionSubsetSupport.ResolvedSubset subset =
                 DatasetQuestionSubsetSupport.resolve(
-                        new com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest(
+                        new StartBenchmarkRunRequest(
                                 null,
                                 null,
                                 null,
@@ -85,7 +87,7 @@ class DatasetQuestionSubsetSupportTest {
     void resolvedItemCount_goldSubsetMini_is18NotFullDataset() {
         int subsetQuestions =
                 DatasetQuestionSubsetSupport.resolvedItemCount(
-                        new com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest(
+                        new StartBenchmarkRunRequest(
                                 null,
                                 null,
                                 null,

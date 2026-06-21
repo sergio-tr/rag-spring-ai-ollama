@@ -17,6 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.util.stream.IntStream;
+
 class LabCampaignTerminalPayloadBuilderTest {
 
     private final LabPresetAxisSupport labPresetAxisSupport =
@@ -89,7 +91,7 @@ class LabCampaignTerminalPayloadBuilderTest {
     }
 
     private static List<EvaluationResultEntity> repeatItems(int count) {
-        return java.util.stream.IntStream.range(0, count)
+        return IntStream.range(0, count)
                 .mapToObj(
                         i -> {
                             EvaluationResultEntity e = new EvaluationResultEntity();

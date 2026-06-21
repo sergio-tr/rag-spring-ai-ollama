@@ -39,6 +39,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 
+import org.mockito.ArgumentMatchers;
+
 @ExtendWith(MockitoExtension.class)
 class KnowledgePipelineOrchestratorProfileOverrideTest {
 
@@ -318,7 +320,7 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
         assertThat(out).isEqualTo(snapshotId);
         verify(jdbcTemplate, never())
                 .update(
-                        org.mockito.ArgumentMatchers.contains("metadata->>'projectDocumentId'"),
+                        ArgumentMatchers.contains("metadata->>'projectDocumentId'"),
                         any(),
                         any());
     }

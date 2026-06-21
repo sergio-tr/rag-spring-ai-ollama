@@ -10,6 +10,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
+import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
+
 class ParentCandidateSnapshotTest {
 
     @Test
@@ -21,7 +23,7 @@ class ParentCandidateSnapshotTest {
 
         ParentCandidateSnapshot snapshot =
                 ParentCandidateSnapshot.capture(
-                        com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode.P7,
+                        RagExperimentalPresetCode.P7,
                         outcome,
                         Optional.empty(),
                         false);
@@ -40,7 +42,7 @@ class ParentCandidateSnapshotTest {
         ExecutionOutcome outcome = new ExecutionOutcome(result, ExecutionTrace.placeholder());
         ParentCandidateSnapshot snapshot =
                 ParentCandidateSnapshot.capture(
-                        com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode.P7,
+                        RagExperimentalPresetCode.P7,
                         outcome,
                         Optional.empty(),
                         false);
@@ -56,7 +58,7 @@ class ParentCandidateSnapshotTest {
         ExecutionOutcome outcome = new ExecutionOutcome(result, ExecutionTrace.placeholder());
         ParentCandidateSnapshot snapshot =
                 ParentCandidateSnapshot.capture(
-                        com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode.P7,
+                        RagExperimentalPresetCode.P7,
                         outcome,
                         Optional.empty(),
                         false);

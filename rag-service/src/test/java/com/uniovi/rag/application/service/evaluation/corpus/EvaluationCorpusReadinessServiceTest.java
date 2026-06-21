@@ -21,6 +21,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.junit.jupiter.api.BeforeEach;
+
 @ExtendWith(MockitoExtension.class)
 class EvaluationCorpusReadinessServiceTest {
 
@@ -31,7 +33,7 @@ class EvaluationCorpusReadinessServiceTest {
 
     @InjectMocks private EvaluationCorpusReadinessService service;
 
-    @org.junit.jupiter.api.BeforeEach
+    @BeforeEach
     void setUpReadinessTests() {
         lenient().when(storageIntegrityService.hasReadyDocumentWithMissingBinary(any())).thenReturn(false);
         lenient()

@@ -9,6 +9,8 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
+import com.uniovi.rag.domain.runtime.advisor.AdvisorOutcome;
+
 class ToolExecutionTelemetryMapperTest {
 
     @Test
@@ -163,7 +165,7 @@ class ToolExecutionTelemetryMapperTest {
         ExecutionTrace trace =
                 withToolFields(
                         AdaptiveRouteKind.ADVISOR_ROUTE.name(),
-                        com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome.NOT_ATTEMPTED.name(),
+                        DeterministicToolOutcome.NOT_ATTEMPTED.name(),
                         "",
                         "suppressed_by_routing_advisor",
                         false);
@@ -205,7 +207,7 @@ class ToolExecutionTelemetryMapperTest {
                         true,
                         true,
                         "RETRIEVAL_ADVISOR,CONTEXT_PACKING_ADVISOR",
-                        com.uniovi.rag.domain.runtime.advisor.AdvisorOutcome.EXECUTED_SUCCESS.name(),
+                        AdvisorOutcome.EXECUTED_SUCCESS.name(),
                         2,
                         1,
                         trace.judgeAttempted(),

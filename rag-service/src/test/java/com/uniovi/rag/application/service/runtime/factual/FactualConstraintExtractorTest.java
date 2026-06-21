@@ -14,6 +14,9 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
+import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
+import com.uniovi.rag.domain.runtime.query.QueryIntent;
+
 class FactualConstraintExtractorTest {
 
     @Test
@@ -100,8 +103,8 @@ class FactualConstraintExtractorTest {
                 question,
                 "UNCLASSIFIED",
                 Optional.empty(),
-                com.uniovi.rag.domain.runtime.query.ClassifierStatus.DISABLED,
-                com.uniovi.rag.domain.runtime.query.QueryIntent.UNKNOWN,
+                ClassifierStatus.DISABLED,
+                QueryIntent.UNKNOWN,
                 Map.of(),
                 List.of(),
                 List.of(),

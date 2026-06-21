@@ -67,6 +67,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingPolicy;
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
+
 class RagExecutionOrchestratorFunctionCallingRoutingTest {
 
     private final DeterministicToolRoutingStrategy deterministicToolRoutingStrategy =
@@ -232,9 +236,9 @@ class RagExecutionOrchestratorFunctionCallingRoutingTest {
                         adaptiveRoutingStrategy,
                         deterministicToolRoutingStrategy,
                         functionCallingRoutingStrategy,
-                        new com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy(
-                                new com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingPolicy(),
-                                new com.uniovi.rag.application.service.runtime.routing.RouteExecutionGateBuilder()),
+                        new AdvisorRoutingStrategy(
+                                new AdvisorRoutingPolicy(),
+                                new RouteExecutionGateBuilder()),
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
@@ -369,7 +373,7 @@ class RagExecutionOrchestratorFunctionCallingRoutingTest {
             Map<String, Object> normalizedPayload,
             List<String> traceNotes,
             boolean shortCircuited,
-            List<com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace> stageTraces) {
+            List<ExecutionStageTrace> stageTraces) {
         return new FunctionCallingExecutionResult(
                 outcome,
                 success,

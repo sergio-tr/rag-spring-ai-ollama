@@ -31,6 +31,11 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
+import java.util.Optional;
+
 /**
  * End-to-end P3 retrieval propagation: dense search → pipeline → sources → telemetry.
  */
@@ -90,8 +95,8 @@ class P3RetrievalPipelineIntegrationTest {
                         Map.of(),
                         List.of(),
                         List.of(),
-                        com.uniovi.rag.domain.runtime.query.EntityExtractionResult.emptyWithNote(""),
-                        com.uniovi.rag.domain.runtime.retrieval.RetrievalMode.DENSE_ONLY,
+                        EntityExtractionResult.emptyWithNote(""),
+                        RetrievalMode.DENSE_ONLY,
                         10,
                         10,
                         20,
@@ -100,10 +105,10 @@ class P3RetrievalPipelineIntegrationTest {
                         RetrievalPolicy.denseFetchLimit(10),
                         List.of(snapshotId),
                         projectId,
-                        java.util.Optional.empty(),
+                        Optional.empty(),
                         List.of("all"),
                         true,
-                        java.util.Optional.empty());
+                        Optional.empty());
 
         DenseRetrievalOutcome outcome = denseRetrievalStrategy.retrieveWithOutcome(req);
         assertThat(outcome.candidates()).isNotEmpty();
@@ -129,7 +134,7 @@ class P3RetrievalPipelineIntegrationTest {
                                 false,
                                 List.of(snapshotId),
                                 null,
-                                java.util.Optional.empty(),
+                                Optional.empty(),
                                 List.of())
                         .withResponseSources(ChatSourceMapper.toPersistedMapsFromInternal(List.of(source)));
 
@@ -165,6 +170,6 @@ class P3RetrievalPipelineIntegrationTest {
                 false,
                 RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
                 RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
-                com.uniovi.rag.domain.knowledge.MaterializationStrategy.CHUNK_LEVEL);
+                MaterializationStrategy.CHUNK_LEVEL);
     }
 }

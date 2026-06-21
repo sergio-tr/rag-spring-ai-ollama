@@ -63,6 +63,11 @@ import static org.mockito.Mockito.when;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.ObjectProvider;
 
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingExecutionResult;
+import com.uniovi.rag.domain.runtime.routing.RouteExecutionGate;
+
 class RagExecutionOrchestratorClarificationTest {
 
     @Test
@@ -108,8 +113,8 @@ class RagExecutionOrchestratorClarificationTest {
                         clarificationStrategy,
                         routingStrategy,
                         mock(DeterministicToolRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy.class),
+                        mock(FunctionCallingRoutingStrategy.class),
+                        mock(AdvisorRoutingStrategy.class),
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
@@ -222,8 +227,8 @@ class RagExecutionOrchestratorClarificationTest {
         ClarificationPolicyResolver clarificationPolicyResolver = mock(ClarificationPolicyResolver.class);
         ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
-        com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy advisorRoutingStrategy =
-                mock(com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy.class);
+        AdvisorRoutingStrategy advisorRoutingStrategy =
+                mock(AdvisorRoutingStrategy.class);
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
 
         when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
@@ -256,15 +261,15 @@ class RagExecutionOrchestratorClarificationTest {
                                 AdvisorMode.ENABLED, false, List.of(), "", List.of(), Optional.empty()));
         when(advisorRoutingStrategy.execute(any(), any()))
                 .thenReturn(
-                        new com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingExecutionResult(
-                                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED,
+                        new AdaptiveRoutingExecutionResult(
+                                AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED,
                                 true,
-                                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.ADVISOR_ROUTE,
+                                AdaptiveRouteKind.ADVISOR_ROUTE,
                                 false,
                                 Optional.empty(),
                                 false,
-                                new com.uniovi.rag.domain.runtime.routing.RouteExecutionGate(
-                                        com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.ADVISOR_ROUTE,
+                                new RouteExecutionGate(
+                                        AdaptiveRouteKind.ADVISOR_ROUTE,
                                         false,
                                         false,
                                         false,
@@ -289,7 +294,7 @@ class RagExecutionOrchestratorClarificationTest {
                         clarificationStrategy,
                         routingStrategy,
                         mock(DeterministicToolRoutingStrategy.class),
-                        mock(com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy.class),
+                        mock(FunctionCallingRoutingStrategy.class),
                         advisorRoutingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),

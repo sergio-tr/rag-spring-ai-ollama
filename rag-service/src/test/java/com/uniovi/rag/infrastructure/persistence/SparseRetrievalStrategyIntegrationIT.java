@@ -76,6 +76,7 @@ class SparseRetrievalStrategyIntegrationIT {
 
     @BeforeEach
     void setUp() {
+        jdbcTemplate = new JdbcTemplate(sharedDataSource);
         SparseQueryPreparer preparer = new SparseQueryPreparer(new SparseDomainSynonyms());
         sparseRetrievalStrategy =
                 new SparseRetrievalStrategy(
@@ -120,7 +121,7 @@ class SparseRetrievalStrategyIntegrationIT {
         RetrievalCandidate first = hits.getFirst();
         assertThat(first.metadata().get("retrievalOrigin")).isEqualTo("SPARSE");
         assertThat(first.metadata().get("indexSnapshotId")).isEqualTo(snapshotId.toString());
-        assertThat(first.metadata().get("document_id")).isEqualTo(documentId.toString());
+        assertThat(first.metadata().get("documentId")).isEqualTo(documentId.toString());
         assertThat(first.content()).contains(PROBE_TOKEN);
     }
 
@@ -138,7 +139,7 @@ class SparseRetrievalStrategyIntegrationIT {
                         request(snapshotId, projectId, PROBE_TOKEN, List.of(allowedDoc.toString()), false));
 
         assertThat(scoped).hasSize(1);
-        assertThat(scoped.getFirst().metadata().get("document_id")).isEqualTo(allowedDoc.toString());
+        assertThat(scoped.getFirst().metadata().get("documentId")).isEqualTo(allowedDoc.toString());
     }
 
     @Test
