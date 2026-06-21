@@ -222,7 +222,7 @@ if [ "$MODE" = dev ]; then
   fi
 
   has_nvidia_runtime() {
-    docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'
+    docker run --rm --gpus all nvidia/cuda:12.5.1-base-ubuntu22.04 nvidia-smi >/dev/null 2>&1
   }
 
   # Always try to enable NVIDIA GPU if the host supports it, unless user explicitly didn't request it.
@@ -234,6 +234,11 @@ if [ "$MODE" = dev ]; then
       echo "Warning: NVIDIA runtime not available on this Docker host; falling back to CPU." >&2
     fi
     WITH_NVIDIA=false
+  fi
+
+  CLASSIFIER_CUDA_BASE_IMAGE=nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04
+  if [ "$WITH_CLASSIFIER_GPU" = true ] && [ "$WITH_NVIDIA" = true ]; then
+    export CLASSIFIER_PYTHON_BASE_IMAGE="$CLASSIFIER_CUDA_BASE_IMAGE"
   fi
 
   COMPOSE_FILES=(-f "docker-compose.yml")
@@ -461,6 +466,11 @@ else
     echo "Warning: NVIDIA runtime not available on this Docker host; falling back to CPU." >&2
   fi
   WITH_NVIDIA=false
+fi
+
+CLASSIFIER_CUDA_BASE_IMAGE=nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04
+if [ "$WITH_CLASSIFIER_GPU" = true ] && [ "$WITH_NVIDIA" = true ]; then
+  export CLASSIFIER_PYTHON_BASE_IMAGE="$CLASSIFIER_CUDA_BASE_IMAGE"
 fi
 
 COMPOSE_FILES=(-f "docker-compose.yml")

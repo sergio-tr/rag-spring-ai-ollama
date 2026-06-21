@@ -65,7 +65,7 @@ services:
       context: ../classifier-service
       dockerfile: Dockerfile
       args:
-        BASE_IMAGE: ${CLASSIFIER_PYTHON_BASE_IMAGE:-python:3.11-slim}
+        BASE_IMAGE: ${CLASSIFIER_PYTHON_BASE_IMAGE:-nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04}
         PORT: ${PORT:-8000}
         MODELS_DIR: ${MODELS_DIR:-/app/models}
         DATA_DIR: ${DATA_DIR:-/app/data}
@@ -158,8 +158,8 @@ services:
         # Prefer rag-service legal versions so webapp build stays aligned with backend validation.
         NEXT_PUBLIC_LEGAL_PRIVACY_VERSION: ${WEBAPP_NEXT_PUBLIC_LEGAL_PRIVACY_VERSION:-${NEXT_PUBLIC_LEGAL_PRIVACY_VERSION:-${RAG_AUTH_LEGAL_PRIVACY_POLICY_VERSION:-2026-06}}}
         NEXT_PUBLIC_LEGAL_TERMS_VERSION: ${WEBAPP_NEXT_PUBLIC_LEGAL_TERMS_VERSION:-${NEXT_PUBLIC_LEGAL_TERMS_VERSION:-${RAG_AUTH_LEGAL_TERMS_VERSION:-2026-06}}}
-        NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME: ${WEBAPP_NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME:-${NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME:-}}
-        NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME: ${WEBAPP_NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME:-${NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME:-}}
+        NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME: ${WEBAPP_NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME:-${NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME:-rag_access_token}}
+        NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME: ${WEBAPP_NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME:-${NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME:-rag_refresh_token}}
     # Host ports: compose.dev-direct-ports.yml (--rag, no --proxy) or reverse-proxy (--rag --proxy).
     env_file:
       - ../webapp/.env
