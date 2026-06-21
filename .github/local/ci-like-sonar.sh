@@ -44,12 +44,12 @@ if git rev-parse --is-shallow-repository 2>/dev/null | grep -q true; then
   echo "WARN: Shallow clone. SonarCloud needs full history for blame/new code. Run: git fetch --unshallow" >&2
 fi
 
-export SPRING_DATASOURCE_URL="${SPRING_DATASOURCE_URL:-jdbc:postgresql://localhost:5432/vectordb}"
+export SPRING_DATASOURCE_URL="${SPRING_DATASOURCE_URL:-jdbc:postgresql://localhost:${RAG_LOCAL_POSTGRES_PORT}/vectordb}"
 export SPRING_DATASOURCE_USERNAME="${SPRING_DATASOURCE_USERNAME:-postgres}"
 export SPRING_DATASOURCE_PASSWORD="${SPRING_DATASOURCE_PASSWORD:-postgres}"
 export RAG_JWT_SECRET="${RAG_JWT_SECRET:-test-secret-key-for-jwt-signing-must-be-long-enough-32}"
 export RAG_TEST_USE_TESTCONTAINERS_DATASOURCE="${RAG_TEST_USE_TESTCONTAINERS_DATASOURCE:-false}"
-export INTEGRATION_JDBC_URL="${INTEGRATION_JDBC_URL:-jdbc:postgresql://localhost:5432/testdb}"
+export INTEGRATION_JDBC_URL="${INTEGRATION_JDBC_URL:-jdbc:postgresql://localhost:${RAG_LOCAL_POSTGRES_PORT}/testdb}"
 export MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED="${MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED:-false}"
 
 # If default `java` is < 21 but OpenJDK 21 is installed under /usr/lib/jvm (typical apt layout), use it for this script.
@@ -187,12 +187,12 @@ prepare_postgres() {
       docker start "${CONTAINER_NAME}"
     fi
   else
-    echo "Creating container ${CONTAINER_NAME} (${IMAGE}) on port 5432..."
+    echo "Creating container ${CONTAINER_NAME} (${IMAGE}) on port ${RAG_LOCAL_POSTGRES_PORT}..."
     docker run -d --name "${CONTAINER_NAME}" \
       -e POSTGRES_USER=postgres \
       -e POSTGRES_PASSWORD=postgres \
       -e POSTGRES_DB=vectordb \
-      -p 5432:5432 \
+      -p "${RAG_LOCAL_POSTGRES_PORT}:5432" \
       "${IMAGE}"
   fi
 

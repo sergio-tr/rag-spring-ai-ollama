@@ -201,9 +201,10 @@ wait_for_backend() {
 }
 
 wait_for_classifier() {
-  log "Waiting for classifier health: http://127.0.0.1:8000/health"
+  log "Waiting for classifier health on ${CI_NETWORK}: http://${CLASSIFIER_CONTAINER}:8000/health"
   for _ in $(seq 1 120); do
-    if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+    if docker run --rm --network "${CI_NETWORK}" curlimages/curl:8.5.0 \
+      -fsS "http://${CLASSIFIER_CONTAINER}:8000/health" >/dev/null 2>&1; then
       log "Classifier healthy."
       return 0
     fi
@@ -215,7 +216,8 @@ wait_for_classifier() {
 }
 
 start_classifier() {
-  if curl -sf "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
+  if [[ "${INTEGRATION_REQUIRE_CLASSIFIER}" != "1" ]] \
+      && curl -sf "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
     log "Classifier already reachable on :8000; reusing host service."
     return 0
   fi
@@ -367,6 +369,7 @@ host_gateway="$(resolve_host_gateway_ip)"
 log "Pytest container host mapping: host.docker.internal -> ${host_gateway}"
 set -o pipefail
 docker run --rm \
+  --network "${CI_NETWORK}" \
   --add-host="host.docker.internal:${host_gateway}" \
   -v "${REPO_ROOT}:/repo" \
   -w /repo \
@@ -377,7 +380,7 @@ docker run --rm \
   -e INTEGRATION_FAIL_ON_UNREACHABLE="${INTEGRATION_FAIL_ON_UNREACHABLE}" \
   -e INTEGRATION_REQUIRE_CLASSIFIER="${INTEGRATION_REQUIRE_CLASSIFIER}" \
   -e INTEGRATION_BACKEND_URL="http://host.docker.internal:9000" \
-  -e INTEGRATION_CLASSIFIER_URL="http://host.docker.internal:8000" \
+  -e INTEGRATION_CLASSIFIER_URL="http://${CLASSIFIER_CONTAINER}:8000" \
   -e INTEGRATION_ADMIN_EMAIL="${INTEGRATION_ADMIN_EMAIL}" \
   -e INTEGRATION_ADMIN_PASSWORD="${INTEGRATION_ADMIN_PASSWORD}" \
   -e INTEGRATION_LOGIN_EMAIL="${INTEGRATION_LOGIN_EMAIL}" \
