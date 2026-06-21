@@ -142,7 +142,8 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         notes.add(stageNote("qu_assess_ambiguity", "OK", msSince(t6), "ambiguityStatus=" + ambiguity.status().name()));
 
         // 8) Build QueryPlan
-        Map<String, String> slots = rewrite.slotFilling();
+        Map<String, String> slots = QueryPlanSlotEnricher.enrich(
+                normalized.normalizedText(), classifierQueryType, rewrite.slotFilling());
         return new QueryPlan(
                 QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1,
                 rawLiteral,

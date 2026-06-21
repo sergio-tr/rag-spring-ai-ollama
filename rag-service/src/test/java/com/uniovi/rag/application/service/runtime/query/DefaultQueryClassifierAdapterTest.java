@@ -113,6 +113,50 @@ class DefaultQueryClassifierAdapterTest {
     }
 
     @Test
+    void spanishParticipantsRuleOverride_bypassesLowConfidence() {
+        QueryClassifier classifier = mock(QueryClassifier.class);
+        String q = "dime los participantes del acta del 25 de febrero de 2026";
+        when(classifier.classifyInference(q, "cls"))
+                .thenReturn(new ClassifierInferenceResponse("EXTRACT_ENTITIES", 0.16, "hash1", List.of()));
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
+
+        ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), q);
+
+        assertEquals(ClassifierStatus.OK, out.classifierStatus());
+        assertEquals(QueryType.GET_FIELD, out.classifierQueryType().orElseThrow());
+        assertEquals("RULE_OVERRIDE", out.note());
+    }
+
+    @Test
+    void spanishCountRuleOverride_bypassesLowConfidence() {
+        QueryClassifier classifier = mock(QueryClassifier.class);
+        String q = "¿Cuántas actas mencionan el ascensor?";
+        when(classifier.classifyInference(q, "cls"))
+                .thenReturn(new ClassifierInferenceResponse("SUMMARIZE_MEETING", 0.18, "hash1", List.of()));
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
+
+        ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), q);
+
+        assertEquals(ClassifierStatus.OK, out.classifierStatus());
+        assertEquals(QueryType.COUNT_DOCUMENTS, out.classifierQueryType().orElseThrow());
+        assertEquals("RULE_OVERRIDE", out.note());
+    }
+
+    @Test
+    void spanishDurationRuleOverride_bypassesLowConfidence() {
+        QueryClassifier classifier = mock(QueryClassifier.class);
+        String q = "Duración de la reunión del 25 de febrero de 2026.";
+        when(classifier.classifyInference(q, "cls"))
+                .thenReturn(new ClassifierInferenceResponse("GET_FIELD", 0.12, "hash1", List.of()));
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
+
+        ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), q);
+
+        assertEquals(ClassifierStatus.OK, out.classifierStatus());
+        assertEquals(QueryType.GET_DURATION, out.classifierQueryType().orElseThrow());
+    }
+
+    @Test
     void okClassification_returnsOk() {
         QueryClassifier classifier = mock(QueryClassifier.class);
         when(classifier.classifyInference("How many documents?", "cls"))

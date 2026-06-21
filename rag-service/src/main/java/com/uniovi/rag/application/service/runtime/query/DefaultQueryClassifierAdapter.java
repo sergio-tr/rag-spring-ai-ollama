@@ -64,6 +64,34 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
             if (parsed == null) {
                 return invalidOutput(ctx, modelIdUsed, "INVALID_OUTPUT:unknown_label");
             }
+            Optional<QueryType> explicitRule = ClassifierOverrides.matchRule(normalizedText);
+            if (explicitRule.isPresent()) {
+                ClassifierOutcome ruleOverride =
+                        new ClassifierOutcome(
+                                explicitRule.get().name(),
+                                explicitRule,
+                                ClassifierStatus.OK,
+                                modelIdUsed,
+                                "RULE_OVERRIDE",
+                                Optional.ofNullable(inference.confidence()),
+                                optionalHash(inference));
+                tagClassifierSpan(ruleOverride);
+                return ruleOverride;
+            }
+            QueryType overridden = ClassifierOverrides.apply(normalizedText, parsed);
+            if (overridden != parsed) {
+                ClassifierOutcome ruleOverride =
+                        new ClassifierOutcome(
+                                overridden.name(),
+                                Optional.of(overridden),
+                                ClassifierStatus.OK,
+                                modelIdUsed,
+                                "RULE_OVERRIDE",
+                                Optional.ofNullable(inference.confidence()),
+                                optionalHash(inference));
+                tagClassifierSpan(ruleOverride);
+                return ruleOverride;
+            }
             if (isLowConfidence(inference.confidence())) {
                 ClassifierOutcome low =
                         new ClassifierOutcome(
@@ -77,11 +105,10 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
                 tagClassifierSpan(low);
                 return low;
             }
-            QueryType out = ClassifierOverrides.apply(normalizedText, parsed);
             ClassifierOutcome ok =
                     new ClassifierOutcome(
-                            out.name(),
-                            Optional.of(out),
+                            overridden.name(),
+                            Optional.of(overridden),
                             ClassifierStatus.OK,
                             modelIdUsed,
                             "OK",
