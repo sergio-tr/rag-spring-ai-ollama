@@ -227,7 +227,7 @@ start_classifier() {
     -v "${REPO_ROOT}:/repo" \
     -v "${PIP_CACHE_VOLUME}:/root/.cache/pip" \
     -w /repo/classifier-service \
-          python:3.11-slim bash -lc "pip install -q -r requirements.txt && uvicorn uvicorn_entry:app --host 0.0.0.0 --port 8000" \
+          nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04 bash -lc "pip install -q -r requirements.txt && uvicorn uvicorn_entry:app --host 0.0.0.0 --port 8000" \
     >/dev/null
 }
 
@@ -267,7 +267,7 @@ seed_integration_users() {
 }
 
 run_pytest_linux() {
-  log "Running pytest in python:3.11-slim container."
+  log "Running pytest in nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04 container."
   rm -f "${PYTEST_LOG_PATH}"
   set +e
   docker run --rm \
@@ -286,7 +286,7 @@ run_pytest_linux() {
     -e INTEGRATION_LOGIN_EMAIL="${INTEGRATION_LOGIN_EMAIL}" \
     -e INTEGRATION_LOGIN_PASSWORD="${INTEGRATION_LOGIN_PASSWORD}" \
     -e INTEGRATION_RAG_PRODUCT_BASE_PATH="/api/v5" \
-    python:3.11-slim bash -lc \
+    nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04 bash -lc \
       "pip install -r tests/integration/requirements.txt >/dev/null && python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py"
   status=$?
   set -e
@@ -386,7 +386,7 @@ docker run --rm \
   -e INTEGRATION_LOGIN_EMAIL="${INTEGRATION_LOGIN_EMAIL}" \
   -e INTEGRATION_LOGIN_PASSWORD="${INTEGRATION_LOGIN_PASSWORD}" \
   -e INTEGRATION_RAG_PRODUCT_BASE_PATH="/api/v5" \
-  python:3.11-slim bash -lc \
+  nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04 bash -lc \
     "pip install -r tests/integration/requirements.txt >/dev/null && python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py" \
   2>&1 | tee "${PYTEST_LOG_PATH}"
 pytest_status=${PIPESTATUS[0]}
