@@ -37,6 +37,9 @@ public class ConversationQuestionCondensor {
                         You are a deterministic query condenser for a multi-turn conversation.
                         Output ONLY a single plain text planning query. No markdown. No quotes.
                         Do not invent facts. Use only the provided history and the latest user turn.
+                        When the latest turn uses demonstratives (esa reunión, ese acta, esa fecha),
+                        expand them with the most recent meeting date or acta reference from HISTORY.
+                        When the latest turn asks who presided, include the anchored acta date from HISTORY.
                         """)
                 .user(prompt);
 
