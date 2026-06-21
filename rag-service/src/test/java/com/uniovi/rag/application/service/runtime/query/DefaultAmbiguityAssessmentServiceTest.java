@@ -31,6 +31,38 @@ class DefaultAmbiguityAssessmentServiceTest {
     }
 
     @Test
+    void assess_treatsExtractFieldAsCompatibleWithGetFieldClassifier() {
+        DefaultAmbiguityAssessmentService sut = new DefaultAmbiguityAssessmentService();
+
+        AmbiguityAssessment out =
+                sut.assess(
+                        new NormalizedQuery("raw", "dime los participantes del acta del 25 de febrero de 2026", List.of()),
+                        Optional.of(QueryType.GET_FIELD),
+                        "GET_FIELD",
+                        ClassifierStatus.OK,
+                        rewriteWithAction("EXTRACT_FIELD"),
+                        EntityExtractionResult.emptyWithNote(null));
+
+        assertThat(out.status()).isEqualTo(AmbiguityStatus.SUFFICIENT);
+    }
+
+    @Test
+    void assess_treatsListAsCompatibleWithGetFieldClassifier() {
+        DefaultAmbiguityAssessmentService sut = new DefaultAmbiguityAssessmentService();
+
+        AmbiguityAssessment out =
+                sut.assess(
+                        new NormalizedQuery("raw", "dime los participantes del acta del 25 de febrero de 2026", List.of()),
+                        Optional.of(QueryType.GET_FIELD),
+                        "GET_FIELD",
+                        ClassifierStatus.OK,
+                        rewriteWithAction("LIST"),
+                        EntityExtractionResult.emptyWithNote(null));
+
+        assertThat(out.status()).isEqualTo(AmbiguityStatus.SUFFICIENT);
+    }
+
+    @Test
     void assess_detectsConflict_betweenClassifierAndRewriteAction() {
         DefaultAmbiguityAssessmentService sut = new DefaultAmbiguityAssessmentService();
 
@@ -63,6 +95,68 @@ class DefaultAmbiguityAssessmentServiceTest {
 
         assertThat(out.status()).isEqualTo(AmbiguityStatus.MISSING_INFORMATION);
         assertThat(out.missingFields()).contains("time_reference");
+    }
+
+    @Test
+    void assess_detectsMissingDate_forAmbiguousPresident() {
+        DefaultAmbiguityAssessmentService sut = new DefaultAmbiguityAssessmentService();
+
+        AmbiguityAssessment out =
+                sut.assess(
+                        new NormalizedQuery("raw", "¿Quién fue el presidente?", List.of()),
+                        Optional.empty(),
+                        "UNCLASSIFIED",
+                        ClassifierStatus.LOW_CONFIDENCE,
+                        StructuredRewriteResult.identityFallback("¿Quién fue el presidente?", null),
+                        EntityExtractionResult.emptyWithNote(null));
+
+        assertThat(out.status()).isEqualTo(AmbiguityStatus.MISSING_INFORMATION);
+        assertThat(out.missingFields()).contains("time_reference");
+    }
+
+    @Test
+    void assess_detectsMissingDate_forAmbiguousPresident_evenWithGeneralTemporalContext() {
+        DefaultAmbiguityAssessmentService sut = new DefaultAmbiguityAssessmentService();
+
+        EntityExtractionResult entities =
+                new EntityExtractionResult(
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        Optional.of("general"),
+                        Optional.empty(),
+                        Optional.empty(),
+                        List.of());
+
+        AmbiguityAssessment out =
+                sut.assess(
+                        new NormalizedQuery("raw", "¿Quién fue el presidente?", List.of()),
+                        Optional.empty(),
+                        "UNCLASSIFIED",
+                        ClassifierStatus.LOW_CONFIDENCE,
+                        StructuredRewriteResult.identityFallback("¿Quién fue el presidente?", null),
+                        entities);
+
+        assertThat(out.status()).isEqualTo(AmbiguityStatus.MISSING_INFORMATION);
+        assertThat(out.missingFields()).contains("time_reference");
+    }
+
+    @Test
+    void assess_returnsSufficient_forSummaryWithExplicitYear() {
+        DefaultAmbiguityAssessmentService sut = new DefaultAmbiguityAssessmentService();
+
+        AmbiguityAssessment out =
+                sut.assess(
+                        new NormalizedQuery("raw", "Resume el acta del año 2030.", List.of()),
+                        Optional.empty(),
+                        "label",
+                        ClassifierStatus.DISABLED,
+                        StructuredRewriteResult.identityFallback("Resume el acta del año 2030.", null),
+                        EntityExtractionResult.emptyWithNote(null));
+
+        assertThat(out.status()).isEqualTo(AmbiguityStatus.SUFFICIENT);
     }
 
     @Test

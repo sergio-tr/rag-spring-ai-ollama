@@ -102,6 +102,18 @@ class DateExistenceGuardTest {
     }
 
     @Test
+    void returnsNoActaForSummarizeMeetingWhenDateMissingInCorpus() {
+        Document doc = new Document("content", Map.of("date_iso", "2025-02-24"));
+        when(retriever.retrieve(anyString())).thenReturn(List.of(doc));
+
+        Optional<ToolResult> result = guard.checkNoActaForDate(
+                "Resume el acta del año 2030.", QueryType.SUMMARIZE_MEETING, null);
+
+        assertTrue(result.isPresent());
+        assertTrue(result.get().result().contains("ninguna acta"));
+    }
+
+    @Test
     void returnsEmptyWhenNormalizedDateInvalidButDocsExist() {
         QueryDateExtractor mockExtractor = mock(QueryDateExtractor.class);
         when(mockExtractor.extractNormalizedDate(anyString(), any())).thenReturn("not-an-iso-date");

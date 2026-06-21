@@ -68,7 +68,8 @@ public class ClarificationPolicyResolver {
 
     private static boolean ambiguityRequiresClarification(AmbiguityStatus status) {
         return switch (status) {
-            case AMBIGUOUS, MISSING_INFORMATION, CONFLICTING_CUES -> true;
+            case AMBIGUOUS, MISSING_INFORMATION -> true;
+            case CONFLICTING_CUES -> false;
             case SUFFICIENT, UNKNOWN -> false;
         };
     }

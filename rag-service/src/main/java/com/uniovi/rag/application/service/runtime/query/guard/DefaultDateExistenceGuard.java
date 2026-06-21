@@ -12,6 +12,7 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * Default implementation of DateExistenceGuard.
@@ -23,7 +24,9 @@ public class DefaultDateExistenceGuard implements DateExistenceGuard {
             QueryType.DECISION_EXTRACTION,
             QueryType.GET_FIELD,
             QueryType.GET_DURATION,
-            QueryType.COUNT_DOCUMENTS
+            QueryType.COUNT_DOCUMENTS,
+            QueryType.SUMMARIZE_MEETING,
+            QueryType.SUMMARIZE_TOPIC
     );
 
     private static final String NO_ACTA_DECISION = "No hay ninguna acta registrada en esa fecha, por lo tanto no se puede extraer ninguna decisión.";
@@ -70,6 +73,12 @@ public class DefaultDateExistenceGuard implements DateExistenceGuard {
             return Optional.empty();
         }
 
+        boolean yearOnlyQuery =
+                query != null
+                        && Pattern.compile("(?:del\\s+)?año\\s+\\d{4}", Pattern.CASE_INSENSITIVE)
+                                .matcher(query)
+                                .find();
+
         boolean anyDocMatchesDate = false;
         for (Document doc : docs) {
             Map<String, Object> meta = doc.getMetadata();
@@ -80,7 +89,12 @@ public class DefaultDateExistenceGuard implements DateExistenceGuard {
                     : (dateObj != null ? dateObj.toString().trim() : null);
             if (docDateStr == null) continue;
             LocalDate docDate = dateExtractor.parseToLocalDate(docDateStr);
-            if (docDate != null && docDate.equals(requestedDate)) {
+            if (docDate == null) continue;
+            if (yearOnlyQuery && docDate.getYear() == requestedDate.getYear()) {
+                anyDocMatchesDate = true;
+                break;
+            }
+            if (docDate.equals(requestedDate)) {
                 anyDocMatchesDate = true;
                 break;
             }

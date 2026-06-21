@@ -96,6 +96,15 @@ class ClarificationPolicyResolverTest {
     }
 
     @Test
+    void resolve_notNeeded_forConflictingCues() {
+        ExecutionContext ctx = ctxBase("hi", false, false, false, Optional.empty());
+        QueryPlan plan = plan(AmbiguityStatus.CONFLICTING_CUES, List.of());
+        ClarificationDecision d = resolver.resolve(ctx, plan);
+        assertThat(d.ask()).isFalse();
+        assertThat(d.terminalOutcome()).isEqualTo(ClarificationOutcome.NOT_NEEDED);
+    }
+
+    @Test
     void selectKind_conflictStatus_selectsConflictingCuesKind() {
         QueryPlan plan = plan(AmbiguityStatus.CONFLICTING_CUES, List.of());
         assertThat(resolver.selectKind(plan))

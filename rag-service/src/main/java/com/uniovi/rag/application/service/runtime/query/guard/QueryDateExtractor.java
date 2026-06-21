@@ -84,6 +84,10 @@ public class QueryDateExtractor implements Loggable {
         findAllMatches(Pattern.compile(
                 "(\\d{1,2}\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\\s+\\d{4})",
                 Pattern.CASE_INSENSITIVE), query, out);
+        Matcher yearOnly = Pattern.compile("(?:del\\s+)?año\\s+(\\d{4})", Pattern.CASE_INSENSITIVE).matcher(query);
+        if (yearOnly.find()) {
+            out.add(yearOnly.group(1) + "-01-01");
+        }
     }
 
     private static void findAllMatches(Pattern pattern, String query, List<String> out) {
