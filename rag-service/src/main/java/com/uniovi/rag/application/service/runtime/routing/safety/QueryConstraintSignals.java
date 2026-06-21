@@ -64,6 +64,8 @@ public record QueryConstraintSignals(
         addTopicKeyword(query, "videovigilancia", topics);
         addTopicKeyword(query, "calefaccion", topics);
         addTopicKeyword(query, "radiacion", topics);
+        addTopicKeyword(query, "presupuesto", topics);
+        addTopicKeyword(query, "presupuestos", topics);
 
         Set<String> entities = new LinkedHashSet<>();
         if (plan.targetEntities() != null) {

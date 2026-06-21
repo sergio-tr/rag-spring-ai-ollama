@@ -22,10 +22,6 @@ public class FunctionCallingRoutingPolicy {
             reasons.add("functionCallingEnabled=false");
             return disabled(workflowFallback, reasons);
         }
-        if (rag.deterministicToolRoutingEnabled()) {
-            reasons.add("deterministicToolRoutingEnabled=true");
-            return disabled(workflowFallback, reasons);
-        }
         if (rag.adaptiveRoutingEnabled()) {
             reasons.add("adaptiveRoutingEnabled=true");
             return disabled(workflowFallback, reasons);

@@ -19,7 +19,9 @@ class DeterministicToolApplicabilityTest {
 
     @Test
     void applicableTypes_coversStructuredKinds() {
-        assertThat(DeterministicToolApplicability.applicableTypes()).hasSize(7);
+        assertThat(DeterministicToolApplicability.applicableTypes()).hasSize(8);
+        assertThat(DeterministicToolApplicability.toolKindForQueryType(QueryType.SUMMARIZE_MEETING))
+                .contains(DeterministicToolKind.SUMMARIZE_MEETING_TOOL);
         assertThat(DeterministicToolApplicability.toolKindForQueryType(QueryType.GET_DURATION))
                 .contains(DeterministicToolKind.GET_DURATION_TOOL);
         assertThat(DeterministicToolApplicability.toolKindForQueryType(QueryType.FILTER_AND_LIST))

@@ -62,6 +62,35 @@ class DefaultDeterministicToolResolverTest {
     }
 
     @Test
+    void structuredGetField_selectsTool_whenAmbiguityConflictingButClassifierAuthoritative() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1,
+                        "dime los participantes del acta del 25 de febrero de 2026",
+                        "dime los participantes del acta del 25 de febrero de 2026",
+                        "dime los participantes del acta del 25 de febrero de 2026",
+                        "dime los participantes del acta del 25 de febrero de 2026",
+                        "GET_FIELD",
+                        Optional.of(QueryType.GET_FIELD),
+                        ClassifierStatus.OK,
+                        QueryIntent.EXTRACT_FIELD,
+                        Map.of("field", "attendees"),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled("q", "test"),
+                        ExpectedAnswerShape.FIELD_VALUE,
+                        new AmbiguityAssessment(AmbiguityStatus.CONFLICTING_CUES, List.of("CONFLICT"), List.of()),
+                        "cid",
+                        "cls",
+                        List.of());
+        var d = resolver.resolve(ctx(rag), plan);
+        assertThat(d.outcome()).isEqualTo(DeterministicToolOutcome.SELECTED);
+        assertThat(d.selectedToolKind()).contains(DeterministicToolKind.GET_FIELD_TOOL);
+    }
+
+    @Test
     void selectsCountDocuments() {
         RagConfig rag = baseRag(true, false);
         QueryPlan plan = minimalPlan(QueryIntent.COUNT, ExpectedAnswerShape.SCALAR_COUNT, AmbiguityStatus.SUFFICIENT);

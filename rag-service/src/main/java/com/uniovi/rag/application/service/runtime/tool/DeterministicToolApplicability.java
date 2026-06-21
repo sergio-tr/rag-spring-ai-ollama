@@ -17,7 +17,8 @@ public final class DeterministicToolApplicability {
                     QueryType.FIND_PARAGRAPH,
                     QueryType.COUNT_AND_EXPLAIN,
                     QueryType.GET_DURATION,
-                    QueryType.FILTER_AND_LIST);
+                    QueryType.FILTER_AND_LIST,
+                    QueryType.SUMMARIZE_MEETING);
 
     private DeterministicToolApplicability() {}
 
@@ -37,6 +38,7 @@ public final class DeterministicToolApplicability {
             case COUNT_AND_EXPLAIN -> Optional.of(DeterministicToolKind.COUNT_AND_EXPLAIN_TOOL);
             case GET_DURATION -> Optional.of(DeterministicToolKind.GET_DURATION_TOOL);
             case FILTER_AND_LIST -> Optional.of(DeterministicToolKind.FILTER_AND_LIST_TOOL);
+            case SUMMARIZE_MEETING -> Optional.of(DeterministicToolKind.SUMMARIZE_MEETING_TOOL);
             default -> Optional.empty();
         };
     }

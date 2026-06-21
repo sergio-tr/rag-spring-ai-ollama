@@ -314,6 +314,21 @@ class RouteCandidateConstraintValidatorTest {
                 .anyMatch(r -> r.contains("month_constraint"));
     }
 
+    @Test
+    void acceptsGetFieldAgendaAnswerWithoutRepeatingQueryYear() {
+        QueryPlan plan =
+                plan(
+                        "¿Cuáles fueron los puntos del orden del día del 24 de febrero de 2025?",
+                        QueryType.GET_FIELD);
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan,
+                        "- Lectura y aprobación del acta anterior\n- Estado de cuentas y presupuesto anual\n- Reparaciones y mantenimiento",
+                        Optional.of(DeterministicToolKind.GET_FIELD_TOOL));
+
+        assertThat(result.safe()).isTrue();
+    }
+
     private static QueryPlan plan(String query, QueryType queryType) {
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,

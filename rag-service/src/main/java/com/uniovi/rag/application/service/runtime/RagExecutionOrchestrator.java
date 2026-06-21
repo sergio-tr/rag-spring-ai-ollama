@@ -240,11 +240,20 @@ public class RagExecutionOrchestrator {
             var r = adaptiveRoutingStrategy.execute(ctx, plan);
             return RoutingSnapshot.enabled(r.routingRouteKind(), r.gate(), r.stageTraces());
         }
+        if (rag.toolsEnabled()) {
+            var structuredToolRoute = deterministicToolRoutingStrategy.execute(rag, plan);
+            if (structuredToolRoute.routingRouteKind() == AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE) {
+                return RoutingSnapshot.enabled(
+                        structuredToolRoute.routingRouteKind(),
+                        structuredToolRoute.gate(),
+                        structuredToolRoute.stageTraces());
+            }
+        }
         if (rag.deterministicToolRoutingEnabled() && !rag.functionCallingEnabled()) {
             var r = deterministicToolRoutingStrategy.execute(rag, plan);
             return RoutingSnapshot.enabled(r.routingRouteKind(), r.gate(), r.stageTraces());
         }
-        if (rag.functionCallingEnabled() && !rag.deterministicToolRoutingEnabled() && !rag.adaptiveRoutingEnabled()) {
+        if (rag.functionCallingEnabled() && !rag.adaptiveRoutingEnabled()) {
             var r = functionCallingRoutingStrategy.execute(rag, plan);
             return RoutingSnapshot.enabled(r.routingRouteKind(), r.gate(), r.stageTraces());
         }

@@ -1,8 +1,10 @@
 package com.uniovi.rag.application.service.runtime.tool;
 
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
+import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.tool.DeterministicEvidenceLevel;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolDecision;
@@ -39,7 +41,7 @@ public class DefaultDeterministicToolResolver implements DeterministicToolResolv
         if (mode == ToolExecutionMode.DISABLED) {
             return disabledDecision(mode, ctx, plan, List.of("toolsEnabled=false"), "tool_disabled_by_config");
         }
-        if (plan.ambiguityAssessment().status() != AmbiguityStatus.SUFFICIENT) {
+        if (!ambiguityAllowsDeterministicTool(plan)) {
             return new DeterministicToolDecision(
                     mode,
                     DeterministicToolOutcome.SUPPRESSED_BY_AMBIGUITY,
@@ -49,6 +51,11 @@ public class DefaultDeterministicToolResolver implements DeterministicToolResolv
                     normalizedInputs(ctx, plan, DeterministicEvidenceLevel.NONE, false, false, false),
                     Optional.of("tool_suppressed_by_ambiguity"),
                     Optional.empty());
+        }
+
+        Optional<DeterministicToolDecision> structuredGetField = structuredGetFieldDecision(mode, ctx, plan);
+        if (structuredGetField.isPresent()) {
+            return structuredGetField.get();
         }
 
         DeterministicToolEvidenceEvaluator.Evaluation evaluation = DeterministicToolEvidenceEvaluator.evaluate(plan);
@@ -117,6 +124,47 @@ public class DefaultDeterministicToolResolver implements DeterministicToolResolv
     @Override
     public DeterministicToolDecision resolve(ExecutionContext ctx, QueryPlan plan, String workflowName) {
         return resolve(ctx, plan);
+    }
+
+    private static boolean ambiguityAllowsDeterministicTool(QueryPlan plan) {
+        return switch (plan.ambiguityAssessment().status()) {
+            case SUFFICIENT -> true;
+            case CONFLICTING_CUES ->
+                    plan.classifierStatus() == ClassifierStatus.OK
+                            && plan.classifierQueryType().filter(qt -> qt == QueryType.GET_FIELD).isPresent()
+                            && DeterministicToolEvidenceEvaluator.requiredArgumentsPresent(
+                                    DeterministicToolKind.GET_FIELD_TOOL, plan);
+            default -> false;
+        };
+    }
+
+    private static Optional<DeterministicToolDecision> structuredGetFieldDecision(
+            ToolExecutionMode mode, ExecutionContext ctx, QueryPlan plan) {
+        if (plan.classifierStatus() != ClassifierStatus.OK) {
+            return Optional.empty();
+        }
+        if (plan.classifierQueryType().filter(qt -> qt == QueryType.GET_FIELD).isEmpty()) {
+            return Optional.empty();
+        }
+        if (!DeterministicToolEvidenceEvaluator.requiredArgumentsPresent(DeterministicToolKind.GET_FIELD_TOOL, plan)) {
+            return Optional.empty();
+        }
+        DeterministicToolEvidenceEvaluator.Evaluation evaluation = DeterministicToolEvidenceEvaluator.evaluate(plan);
+        return Optional.of(
+                new DeterministicToolDecision(
+                        mode,
+                        DeterministicToolOutcome.SELECTED,
+                        true,
+                        Optional.of(DeterministicToolKind.GET_FIELD_TOOL),
+                        List.of("structured_get_field_classifier_route", "selected=GET_FIELD_TOOL"),
+                        routingTelemetry(
+                                ctx,
+                                plan,
+                                evaluation,
+                                false,
+                                ""),
+                        Optional.empty(),
+                        Optional.empty()));
     }
 
     private static DeterministicToolDecision disabledDecision(
