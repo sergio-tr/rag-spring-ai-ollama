@@ -400,6 +400,8 @@ describe("useLabJobSse", () => {
   });
 
   it("maps onConnecting to reconnecting when stream was live without recent events", async () => {
+    const nowSpy = vi.spyOn(Date, "now");
+    nowSpy.mockReturnValue(1_000);
     let streamCallbacks: LabJobStreamCallbacks | undefined;
     let releaseStream: (() => void) | undefined;
     vi.spyOn(labJobSse, "streamLabJobLive").mockImplementation((_path, options) => {
@@ -415,13 +417,14 @@ describe("useLabJobSse", () => {
       streamCallbacks?.onLive?.();
     });
     await waitFor(() => expect(result.current.connectionState).toBe("live"));
-    await new Promise((r) => setTimeout(r, 3_100));
+    nowSpy.mockReturnValue(1_000 + 3_500);
     act(() => {
       streamCallbacks?.onConnecting?.();
     });
     expect(result.current.connectionState).toBe("reconnecting");
     releaseStream?.();
     unmount();
+    nowSpy.mockRestore();
   });
 
   it("stays live on reconnecting callbacks when events arrived recently", async () => {
