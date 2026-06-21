@@ -6,6 +6,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.uniovi.rag.domain.runtime.policy.AnswerGroundingPolicy;
+
 public final class FactualVerifierTelemetry {
 
     public static final String STAGE_VERIFY = "factual_verify";
@@ -112,7 +114,7 @@ public final class FactualVerifierTelemetry {
         target.put("groundingPolicy", constraints.groundingPolicy().name());
         target.put("constraintType", constraints.constraintType().name());
         boolean negativeGuard =
-                constraints.groundingPolicy() == com.uniovi.rag.domain.runtime.policy.AnswerGroundingPolicy.NEGATIVE_EVIDENCE
+                constraints.groundingPolicy() == AnswerGroundingPolicy.NEGATIVE_EVIDENCE
                         || constraints.absenceQuestion();
         target.put("negativeEvidenceGuardTriggered", negativeGuard);
     }

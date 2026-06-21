@@ -84,6 +84,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
+import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallProposal;
+
 @Component
 public class RagExecutionOrchestrator {
 
@@ -1106,7 +1108,7 @@ public class RagExecutionOrchestrator {
                 fr.outcome() == FunctionCallingOutcome.EXECUTED_SUCCESS && fr.shortCircuited();
         String toolKindStr =
                 fr.selectedToolKind()
-                        .or(() -> fr.proposal().flatMap(com.uniovi.rag.domain.runtime.functioncalling.FunctionCallProposal::toolKind))
+                        .or(() -> fr.proposal().flatMap(FunctionCallProposal::toolKind))
                         .map(Enum::name)
                         .orElse("");
         return new FcGate(

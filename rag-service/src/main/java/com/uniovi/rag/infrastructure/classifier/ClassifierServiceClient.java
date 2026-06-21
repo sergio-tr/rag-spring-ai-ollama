@@ -20,7 +20,7 @@ import org.springframework.web.client.RestTemplate;
 record ClassifyResponseDto(
         String queryType,
         Double confidence,
-        java.util.List<TopPredictionDto> topPredictions,
+        List<TopPredictionDto> topPredictions,
         String labelSetHash) {}
 
 record TopPredictionDto(String queryType, Double confidence) {}

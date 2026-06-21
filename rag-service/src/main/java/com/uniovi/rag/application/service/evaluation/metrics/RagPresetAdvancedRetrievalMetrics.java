@@ -4,6 +4,8 @@ import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import java.util.List;
+
 /** Promotes advanced retrieval telemetry onto preset benchmark metrics rows. */
 public final class RagPresetAdvancedRetrievalMetrics {
 
@@ -337,8 +339,8 @@ public final class RagPresetAdvancedRetrievalMetrics {
         if (raw == null) {
             raw = mp.get(targetKey);
         }
-        if (raw instanceof java.util.List<?> list && !list.isEmpty()) {
-            out.put(targetKey, java.util.List.copyOf(list));
+        if (raw instanceof List<?> list && !list.isEmpty()) {
+            out.put(targetKey, List.copyOf(list));
         }
     }
 

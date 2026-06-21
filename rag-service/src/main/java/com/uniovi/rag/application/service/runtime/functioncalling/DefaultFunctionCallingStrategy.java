@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
+
 @Component
 public class DefaultFunctionCallingStrategy implements FunctionCallingStrategy {
 
@@ -77,7 +79,7 @@ public class DefaultFunctionCallingStrategy implements FunctionCallingStrategy {
                 false,
                 proposal.toolKind(),
                 "",
-                java.util.Map.of(),
+                Map.of(),
                 List.of("proposal_not_executable"),
                 false,
                 List.of(BackendControlledFunctionCallingExecutor.proposalStage(proposal, backendAttempted)),

@@ -16,6 +16,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
+import com.uniovi.rag.domain.model.QueryType;
+
 /** Proposes function calls from deterministic query-shape evidence and query plan fields. */
 @Component
 public class BackendFunctionCallProposer {
@@ -124,7 +126,7 @@ public class BackendFunctionCallProposer {
                         qt -> {
                             try {
                                 return DeterministicToolApplicability.toolKindForQueryType(
-                                        com.uniovi.rag.domain.model.QueryType.valueOf(qt.trim()));
+                                        QueryType.valueOf(qt.trim()));
                             } catch (IllegalArgumentException e) {
                                 return Optional.empty();
                             }

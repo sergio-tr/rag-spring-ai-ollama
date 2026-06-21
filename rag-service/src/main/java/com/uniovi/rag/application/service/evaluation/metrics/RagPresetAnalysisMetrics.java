@@ -11,6 +11,8 @@ import com.uniovi.rag.domain.model.QueryType;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import java.util.List;
+
 /** Computes analysis fields for preset evaluation rows from persisted metrics and answers. */
 public final class RagPresetAnalysisMetrics {
 
@@ -357,7 +359,7 @@ public final class RagPresetAnalysisMetrics {
     private static boolean hasIds(Map<String, Object> mp, String... keys) {
         for (String key : keys) {
             Object raw = mp.get(key);
-            if (raw instanceof java.util.List<?> list && !list.isEmpty()) {
+            if (raw instanceof List<?> list && !list.isEmpty()) {
                 return true;
             }
         }

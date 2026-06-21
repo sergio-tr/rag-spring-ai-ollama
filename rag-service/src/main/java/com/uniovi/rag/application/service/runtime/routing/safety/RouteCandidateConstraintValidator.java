@@ -15,6 +15,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
+import java.util.Comparator;
+
 /** Runtime-only validation of route candidates against query constraints. */
 @Component
 public class RouteCandidateConstraintValidator {
@@ -314,7 +316,7 @@ public class RouteCandidateConstraintValidator {
     private static Optional<String> primaryEntityToken(QueryConstraintSignals signals) {
         return signals.entityTokens().stream()
                 .filter(entity -> entity != null && entity.contains(" "))
-                .max(java.util.Comparator.comparingInt(String::length));
+                .max(Comparator.comparingInt(String::length));
     }
 
     private static boolean topicEntityCoBoundInSameEvidenceUnit(String answerText, QueryConstraintSignals signals) {

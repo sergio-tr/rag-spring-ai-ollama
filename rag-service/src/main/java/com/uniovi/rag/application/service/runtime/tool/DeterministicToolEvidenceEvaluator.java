@@ -11,6 +11,8 @@ import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Optional;
 
+import java.util.Map;
+
 /** Evaluates deterministic query-shape evidence for tool kind selection. */
 public final class DeterministicToolEvidenceEvaluator {
 
@@ -313,7 +315,7 @@ public final class DeterministicToolEvidenceEvaluator {
                 .orElse(QueryIntent.UNKNOWN);
     }
 
-    private static java.util.Map<String, String> rewriteSlots(QueryPlan plan) {
+    private static Map<String, String> rewriteSlots(QueryPlan plan) {
         return plan.structuredRewriteResult().slotFilling();
     }
 

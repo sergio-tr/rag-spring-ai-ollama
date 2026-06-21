@@ -4,12 +4,14 @@ import java.text.Normalizer;
 import java.util.Locale;
 import java.util.Set;
 
+import java.util.Arrays;
+
 /** Spanish-oriented normalization helpers for lexical sparse retrieval. */
 public final class SpanishRetrievalTextSupport {
 
     private static final Set<String> STOPWORDS =
             Set.copyOf(
-                    java.util.Arrays.asList(
+                    Arrays.asList(
                             "a", "al", "algo", "alguna", "algunas", "alguno", "algunos", "ante", "como", "con",
                             "cual", "cuales", "cuando", "cuanta", "cuantas", "cuantos", "de", "del", "dime", "donde",
                             "el", "en", "es", "esta", "estas", "este", "estos", "exactamente", "fue", "fueron",

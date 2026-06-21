@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 
+import com.uniovi.rag.domain.runtime.query.QueryPlan;
+
 @Service
 public class MonotonicRouteSafetyService {
 
@@ -20,7 +22,7 @@ public class MonotonicRouteSafetyService {
     }
 
     public RouteCandidateValidationResult validateToolResult(
-            com.uniovi.rag.domain.runtime.query.QueryPlan plan, DeterministicToolExecutionResult toolResult) {
+            QueryPlan plan, DeterministicToolExecutionResult toolResult) {
         if (toolResult == null
                 || toolResult.outcome() != DeterministicToolOutcome.EXECUTED_SUCCESS
                 || !toolResult.success()) {
@@ -30,7 +32,7 @@ public class MonotonicRouteSafetyService {
     }
 
     public RouteCandidateValidationResult validateFunctionResult(
-            com.uniovi.rag.domain.runtime.query.QueryPlan plan, FunctionCallingExecutionResult fcResult) {
+            QueryPlan plan, FunctionCallingExecutionResult fcResult) {
         if (fcResult == null || fcResult.answerText() == null || fcResult.answerText().isBlank()) {
             return RouteCandidateValidationResult.rejected("function_empty");
         }
@@ -38,7 +40,7 @@ public class MonotonicRouteSafetyService {
     }
 
     public RouteCandidateValidationResult validateRetrievalAnswer(
-            com.uniovi.rag.domain.runtime.query.QueryPlan plan, String answer, boolean abstained) {
+            QueryPlan plan, String answer, boolean abstained) {
         return validator.validateRetrievalAnswer(plan, answer, abstained);
     }
 
@@ -48,7 +50,7 @@ public class MonotonicRouteSafetyService {
             String answerPreview) {}
 
     public Optional<CandidateScore> selectSafest(
-            com.uniovi.rag.domain.runtime.query.QueryPlan plan,
+            QueryPlan plan,
             Optional<CandidateScore> tool,
             Optional<CandidateScore> function,
             CandidateScore retrieval) {
@@ -56,7 +58,7 @@ public class MonotonicRouteSafetyService {
     }
 
     public Optional<CandidateScore> selectSafest(
-            com.uniovi.rag.domain.runtime.query.QueryPlan plan,
+            QueryPlan plan,
             Optional<CandidateScore> tool,
             Optional<CandidateScore> function,
             CandidateScore retrieval,

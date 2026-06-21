@@ -9,6 +9,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
+import java.util.Collection;
+import java.util.Optional;
+
 /**
  * Canonical experimental presets P0–P15.
  *
@@ -364,12 +367,12 @@ public final class ExperimentalPresetCanonicalCatalog {
     }
 
     /** True when every requested preset code can execute without an evaluation corpus (currently P0-only selections). */
-    public static boolean allCanRunWithoutCorpus(java.util.Collection<String> presetCodes) {
+    public static boolean allCanRunWithoutCorpus(Collection<String> presetCodes) {
         if (presetCodes == null || presetCodes.isEmpty()) {
             return false;
         }
         for (String raw : presetCodes) {
-            java.util.Optional<RagExperimentalPresetCode> parsed = RagExperimentalPresetCode.tryParse(raw);
+            Optional<RagExperimentalPresetCode> parsed = RagExperimentalPresetCode.tryParse(raw);
             if (parsed.isEmpty() || !canRunWithoutCorpus(parsed.get())) {
                 return false;
             }

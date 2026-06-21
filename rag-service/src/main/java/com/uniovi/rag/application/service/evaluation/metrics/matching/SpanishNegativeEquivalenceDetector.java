@@ -3,6 +3,9 @@ package com.uniovi.rag.application.service.evaluation.metrics.matching;
 import com.uniovi.rag.application.service.evaluation.metrics.Answerability;
 import com.uniovi.rag.application.service.evaluation.metrics.AnswerabilityNegativeSignals;
 
+import java.util.Locale;
+import java.util.Set;
+
 /** Detects Spanish negative-equivalence between expected absence and actual denial answers. */
 public final class SpanishNegativeEquivalenceDetector {
 
@@ -83,7 +86,7 @@ public final class SpanishNegativeEquivalenceDetector {
         if (finalAnswerSource == null || finalAnswerSource.isBlank()) {
             return false;
         }
-        String upper = finalAnswerSource.toUpperCase(java.util.Locale.ROOT);
+        String upper = finalAnswerSource.toUpperCase(Locale.ROOT);
         return upper.contains("FORCED_ABSTENTION") || upper.contains("DATE_GUARD_ABSTENTION");
     }
 
@@ -118,8 +121,8 @@ public final class SpanishNegativeEquivalenceDetector {
         return substantiveTopicTokens >= 1;
     }
 
-    private static final java.util.Set<String> GENERIC_ABSENCE_TOKENS =
-            java.util.Set.of(
+    private static final Set<String> GENERIC_ABSENCE_TOKENS =
+            Set.of(
                     "datos",
                     "dato",
                     "informacion",

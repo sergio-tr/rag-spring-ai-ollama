@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import java.time.LocalDate;
+
 /** Conservative calibrated expected-answer matcher for evaluation and reporting. */
 public final class ExpectedAnswerMatchCalibrator {
 
@@ -121,8 +123,8 @@ public final class ExpectedAnswerMatchCalibrator {
     }
 
     private static Optional<ExpectedAnswerMatchResult> dateValueMatch(String expected, String actual) {
-        Set<java.time.LocalDate> expDates = ScoringValueExtractor.extractDates(expected);
-        Set<java.time.LocalDate> actDates = ScoringValueExtractor.extractDates(actual);
+        Set<LocalDate> expDates = ScoringValueExtractor.extractDates(expected);
+        Set<LocalDate> actDates = ScoringValueExtractor.extractDates(actual);
         if (expDates.isEmpty()) {
             return Optional.of(ExpectedAnswerMatchResult.unsafeToJudge("date_extraction_failed"));
         }

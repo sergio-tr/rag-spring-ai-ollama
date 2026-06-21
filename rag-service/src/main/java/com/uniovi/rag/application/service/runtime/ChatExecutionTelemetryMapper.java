@@ -18,6 +18,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
+
 /**
  * Privacy-safe execution hints exposed on chat assistant rows ({@code execution_metadata}) and {@link com.uniovi.rag.application.result.chat.QueryResponse} telemetry.
  */
@@ -421,7 +424,7 @@ public final class ChatExecutionTelemetryMapper {
                         .orElseGet(
                                 () ->
                                         d.retrievalMode()
-                                                        == com.uniovi.rag.domain.runtime.retrieval.RetrievalMode
+                                                        == RetrievalMode
                                                                 .HYBRID_DENSE_SPARSE
                                                 && d.denseCandidateCount() > 0
                                                 && d.sparseCandidateCount() > 0
@@ -460,10 +463,10 @@ public final class ChatExecutionTelemetryMapper {
         Optional<RetrievalDiagnostics> diag = trace.retrievalDiagnostics();
         if (diag.isPresent()) {
             RetrievalDiagnostics d = diag.get();
-            if (d.retrievalMode() == com.uniovi.rag.domain.runtime.retrieval.RetrievalMode.HYBRID_DENSE_SPARSE) {
+            if (d.retrievalMode() == RetrievalMode.HYBRID_DENSE_SPARSE) {
                 return trace.metadataUsed() ? "HYBRID_DENSE_SPARSE_METADATA" : "HYBRID_DENSE_SPARSE";
             }
-            if (d.retrievalMode() == com.uniovi.rag.domain.runtime.retrieval.RetrievalMode.DENSE_ONLY) {
+            if (d.retrievalMode() == RetrievalMode.DENSE_ONLY) {
                 if (trace.metadataUsed()) {
                     return "CHUNK_DENSE_METADATA";
                 }
@@ -505,7 +508,7 @@ public final class ChatExecutionTelemetryMapper {
 
     private static void putRetrievalSparseStatusFromStages(
             ExecutionTrace trace, RetrievalDiagnostics d, Map<String, Object> m) {
-        if (d.retrievalMode() != com.uniovi.rag.domain.runtime.retrieval.RetrievalMode.HYBRID_DENSE_SPARSE) {
+        if (d.retrievalMode() != RetrievalMode.HYBRID_DENSE_SPARSE) {
             m.put("sparseRetrievalStatus", "NOT_APPLICABLE");
             return;
         }
@@ -515,13 +518,13 @@ public final class ChatExecutionTelemetryMapper {
                     continue;
                 }
                 String msg = stage.message() != null ? stage.message() : "";
-                if (stage.outcome() == com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome.SKIPPED
+                if (stage.outcome() == ExecutionStageOutcome.SKIPPED
                         && msg.contains("sparse_unavailable")) {
                     m.put("retrievalSparseStatus", "sparse_unavailable");
                     m.put("sparseRetrievalStatus", "UNAVAILABLE");
                     return;
                 }
-                if (stage.outcome() == com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome.SUCCESS) {
+                if (stage.outcome() == ExecutionStageOutcome.SUCCESS) {
                     if (d.sparseCandidateCount() > 0) {
                         m.put("sparseRetrievalStatus", "OK");
                     } else {
