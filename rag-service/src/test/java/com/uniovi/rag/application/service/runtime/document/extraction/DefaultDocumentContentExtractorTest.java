@@ -36,6 +36,13 @@ class DefaultDocumentContentExtractorTest {
     }
 
     @Test
+    void extractTime_start_spacedHourFormatFromActaHeaders() {
+        String content = "Hora de inicio: 19: 00 h\nHora de finalización: 20: 30 h";
+        assertEquals("19:00", extractor.extractTime(content, "start"));
+        assertEquals("20:30", extractor.extractTime(content, "end"));
+    }
+
+    @Test
     void extractTime_end() {
         String content = "Hora de finalización: 11:45";
         assertEquals("11:45", extractor.extractTime(content, "end"));
@@ -96,10 +103,12 @@ class DefaultDocumentContentExtractorTest {
     @Test
     void extractAttendees_parsesBulletLinesAndStripsRoles() {
         String content = """
-                Lugar: Sala
+                Asistentes:
                 • Alice Example (Presidente)
                 • Bob Example (Secretario)
                 • Carol Example
+                Orden del día:
+                • Ruegos y preguntas
                 """;
 
         List<String> attendees = extractor.extractAttendees(content);
@@ -107,5 +116,53 @@ class DefaultDocumentContentExtractorTest {
         assertEquals(List.of("Alice Example", "Bob Example", "Carol Example"), attendees);
         assertEquals("Alice Example", extractor.extractLiteralField("president", content));
         assertEquals("Bob Example", extractor.extractLiteralField("secretary", content));
+    }
+
+    @Test
+    void extractAttendees_acta5CombinedRetrieverStyle_returnsSeventeen() throws Exception {
+        String content = java.nio.file.Files.readString(java.nio.file.Path.of("/tmp/acta5combined.txt"));
+        List<String> attendees = extractor.extractAttendees(content);
+        assertEquals(17, attendees.size(), () -> "got " + attendees.size() + ": " + attendees);
+    }
+
+    @Test
+    void extractAttendees_acta5FullDocument_returnsSeventeen() throws Exception {
+        String content = java.nio.file.Files.readString(java.nio.file.Path.of("/tmp/acta5full.txt"));
+        List<String> attendees = extractor.extractAttendees(content);
+        assertEquals(17, attendees.size(), () -> "got " + attendees.size() + ": " + attendees);
+        assertEquals("Jorge Moreno Navarro", extractor.extractLiteralField("president", content));
+    }
+
+    @Test
+    void extractAttendees_roleOnFollowingLine_assignsPresident() {
+        String content = """
+                Asistentes: Se cuenta con la asistencia de 17 propietarios.
+                • Jorge Moreno Navarro
+                (Presidente)
+                • Laura Díaz Castro
+                • Natalia Vázquez Gutiérrez (Secretaria)
+                Orden del día:
+                • Ruegos y preguntas
+                """;
+
+        assertEquals("Jorge Moreno Navarro", extractor.extractLiteralField("president", content));
+        assertEquals("Natalia Vázquez Gutiérrez", extractor.extractLiteralField("secretary", content));
+        assertEquals(3, extractor.extractAttendees(content).size());
+    }
+
+    @Test
+    void extractAgenda_findsBulletPointsAfterHeader() {
+        String content = """
+                Orden del día:
+                • Lectura y aprobación del acta anterior
+                • Estado de cuentas y presupuesto anual
+                • Reparaciones y mantenimiento del edificio
+                Ruegos y preguntas
+                """;
+
+        String agenda = extractor.extractAgenda(content);
+        assertNotNull(agenda);
+        assertTrue(agenda.toLowerCase().contains("lectura"));
+        assertTrue(agenda.toLowerCase().contains("presupuesto"));
     }
 }

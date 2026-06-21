@@ -84,6 +84,9 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     }
 
     protected int effectiveTopK() {
+        if (topK != defaultTopK) {
+            return topK;
+        }
         RagExecutionContext ctx = RagExecutionContextHolder.get();
         if (ctx != null && ctx.resolvedConfig() != null && ctx.resolvedConfig().topK() > 0) {
             return ctx.resolvedConfig().topK();
@@ -92,6 +95,9 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     }
 
     protected double effectiveSimilarityThreshold() {
+        if (similarityThreshold != defaultSimilarityThreshold) {
+            return similarityThreshold;
+        }
         RagExecutionContext ctx = RagExecutionContextHolder.get();
         if (ctx != null && ctx.resolvedConfig() != null && ctx.resolvedConfig().similarityThreshold() > 0) {
             return ctx.resolvedConfig().similarityThreshold();
@@ -179,7 +185,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
 
     @Override
     public void setSimilarityThreshold(double similarityThreshold) {
-        if (similarityThreshold > 0 && similarityThreshold <= 1) {
+        if (similarityThreshold >= 0 && similarityThreshold <= 1) {
             this.similarityThreshold = similarityThreshold;
         }
     }
@@ -607,6 +613,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         Map<String, Object> combinedMetadata = new HashMap<>(bestMetadataChunk.getMetadata());
         // Remove chunk-specific metadata
         combinedMetadata.remove("chunk_index");
+        combinedMetadata.remove("chunkIndex");
         combinedMetadata.remove("total_chunks");
         
         return new Document(combinedText, combinedMetadata);
@@ -619,9 +626,15 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         if (doc == null) {
             return null;
         }
-        Object chunkIndex = doc.getMetadata().get("chunk_index");
-        if (chunkIndex instanceof Number) {
-            return ((Number) chunkIndex).intValue();
+        Map<String, Object> metadata = doc.getMetadata();
+        if (metadata == null) {
+            return null;
+        }
+        for (String key : List.of("chunk_index", "chunkIndex")) {
+            Object chunkIndex = metadata.get(key);
+            if (chunkIndex instanceof Number number) {
+                return number.intValue();
+            }
         }
         return null;
     }
