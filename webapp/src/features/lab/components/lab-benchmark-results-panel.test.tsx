@@ -9,6 +9,7 @@ vi.mock("@/features/lab/lib/lab-benchmark-results-api", () => ({
   fetchLabEvaluationRun: vi.fn(),
   fetchLabCampaignRuns: vi.fn(),
   fetchCampaignComparison: vi.fn(),
+  fetchCampaignItemsBundle: vi.fn(),
   fetchMvpRollupsJson: vi.fn(),
   fetchMvpItemsBundle: vi.fn(),
   downloadMvpExport: vi.fn(),
@@ -22,6 +23,7 @@ import {
   fetchLabEvaluationRun,
   fetchLabCampaignRuns,
   fetchCampaignComparison,
+  fetchCampaignItemsBundle,
   fetchMvpItemsBundle,
   fetchMvpRollupsJson,
 } from "@/features/lab/lib/lab-benchmark-results-api";
@@ -70,6 +72,65 @@ describe("LabBenchmarkResultsPanel", () => {
     vi.mocked(fetchMvpRollupsJson).mockReset();
     vi.mocked(fetchMvpItemsBundle).mockReset();
     vi.mocked(fetchCampaignComparison).mockReset();
+    vi.mocked(fetchCampaignItemsBundle).mockReset();
+    vi.mocked(fetchCampaignItemsBundle).mockResolvedValue({ items: [] });
+  });
+
+  it("resolves campaignId from run detail when prop is missing", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      benchmarkKind: "RAG_PRESET_END_TO_END",
+      campaignId: "recovered-campaign-id",
+      campaignMode: true,
+      campaignPersistedItemCount: 240,
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 240 }, onExecuted: { n: 240, meanNormalizedExactMatch: 0.5 } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "item-1",
+          question: "Q1",
+          presetCode: "P0",
+          presetLabel: "Corpus text only",
+          status: "EXECUTED",
+          mvp: { operational: { outcome: "EXECUTED", presetCode: "P0" } },
+        },
+      ],
+    });
+    vi.mocked(fetchLabCampaignRuns).mockResolvedValue([]);
+    vi.mocked(fetchCampaignComparison).mockResolvedValue({
+      comparisonAxis: "PRESET_CODE",
+      rows: [
+        {
+          presetKey: "P0",
+          presetLabel: "Corpus text only",
+          executed: 60,
+          skipped: 0,
+          totalItems: 60,
+          scoreAnswerable: 0.91,
+          benchmarkSupportStatus: "SINGLE_TURN_SUPPORTED",
+        },
+        {
+          presetKey: "P1",
+          presetLabel: "Dense retrieval",
+          executed: 60,
+          skipped: 0,
+          totalItems: 60,
+          scoreAnswerable: 0.82,
+        },
+      ],
+    } as never);
+
+    renderPanel({ evaluationRunId: baseRun.id });
+
+    await waitFor(() => expect(screen.getByTestId("lab-export-campaign-items-json")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("lab-campaign-comparison-panel")).toBeInTheDocument());
+    expect(fetchCampaignComparison).toHaveBeenCalledWith("recovered-campaign-id");
+    expect(screen.getByText("Answerable score")).toBeInTheDocument();
+    expect(screen.getByText("0.910")).toBeInTheDocument();
+    expect(screen.queryByTestId("lab-benchmark-no-executed-warning")).not.toBeInTheDocument();
   });
 
   it("loads rollups and shows outcome badges when enabled", async () => {
@@ -146,7 +207,7 @@ describe("LabBenchmarkResultsPanel", () => {
 
     renderPanel({ evaluationRunId: baseRun.id });
 
-    await waitFor(() => expect(screen.getByText(/CUSTOM_LABEL: 2/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Unknown outcome: 2/i)).toBeInTheDocument());
   });
 
   it("hides trend graph for LLM benchmarks and shows no empty trend copy", async () => {
@@ -306,6 +367,225 @@ describe("LabBenchmarkResultsPanel", () => {
 
     await waitFor(() => expect(screen.getByTestId("lab-benchmark-results-panel")).toBeInTheDocument());
     expect(screen.getAllByText("P2").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders preset labels for RAG preset campaign comparison rows", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      benchmarkKind: "RAG_PRESET_END_TO_END",
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 0 }, onExecuted: { n: 0, meanNormalizedExactMatch: null } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({ items: [] });
+    vi.mocked(fetchLabCampaignRuns).mockResolvedValue([
+      { runId: "r-p0", presetCode: "P0", presetLabel: "Corpus text only", status: "SUCCEEDED" },
+      { runId: "r-p2", presetCode: "P2", presetLabel: "Document-level dense retrieval", status: "SUCCEEDED" },
+    ]);
+    vi.mocked(fetchCampaignComparison).mockResolvedValue({
+      comparisonAxis: "PRESET_CODE",
+      comparisonAxisLabel: "RAG preset",
+      rows: [
+        {
+          presetKey: "P2",
+          presetLabel: "Document-level dense retrieval",
+          modelLabel: "gemma3:4b",
+          totalItems: 60,
+          executed: 60,
+          skipped: 0,
+          meanExactMatch: 0.8,
+        },
+        {
+          presetKey: "P0",
+          presetLabel: "Corpus text only",
+          modelLabel: "gemma3:4b",
+          totalItems: 60,
+          executed: 0,
+          skipped: 60,
+          meanExactMatch: null,
+        },
+      ],
+    } as never);
+    vi.mocked(fetchCampaignItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "exec-1",
+          question: "What is RAG?",
+          answer: "Retrieval augmented generation",
+          presetCode: "P2",
+          presetLabel: "Document-level dense retrieval",
+          status: "EXECUTED",
+          mvp: {
+            generation: { correctness: 0.9 },
+            operational: { outcome: "EXECUTED", presetCode: "P2", modelId: "gemma3:4b" },
+          },
+        },
+        {
+          itemId: "skip-1",
+          question: "Skipped question",
+          presetCode: "P0",
+          presetLabel: "Corpus text only",
+          status: "SKIPPED",
+          failureReason: "INDEX_PREPARATION_REQUIRED",
+          mvp: {
+            operational: {
+              outcome: "SKIPPED",
+              presetCode: "P0",
+              skipReasonCode: "INDEX_PREPARATION_REQUIRED",
+            },
+          },
+        },
+      ],
+    });
+
+    renderPanel({ evaluationRunId: baseRun.id, campaignId: "rag-campaign" });
+
+    await waitFor(() => expect(screen.getByTestId("lab-campaign-comparison-panel")).toBeInTheDocument());
+    expect(screen.getAllByText(/Document-level dense retrieval/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Corpus text only/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByTestId("lab-campaign-comparison-panel").textContent).not.toMatch(/gemma3:4b/i);
+    expect(screen.queryByTestId("lab-benchmark-no-executed-warning")).not.toBeInTheDocument();
+    expect(screen.getByTestId("lab-campaign-partial-summary")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-outcome-EXECUTED")).toHaveTextContent(/60/i);
+    expect(screen.getByText(/What is RAG\?/i)).toBeInTheDocument();
+  });
+
+  it("selecting an executed comparison row shows executed items for that preset", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      benchmarkKind: "RAG_PRESET_END_TO_END",
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 0 }, onExecuted: { n: 0, meanNormalizedExactMatch: null } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({ items: [] });
+    vi.mocked(fetchLabCampaignRuns).mockResolvedValue([]);
+    vi.mocked(fetchCampaignComparison).mockResolvedValue({
+      comparisonAxis: "PRESET_CODE",
+      rows: [
+        { presetKey: "P2", presetLabel: "Dense retrieval", executed: 1, skipped: 0, totalItems: 1 },
+        { presetKey: "P0", presetLabel: "Corpus text", executed: 0, skipped: 1, totalItems: 1 },
+      ],
+    } as never);
+    vi.mocked(fetchCampaignItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "p2-item",
+          question: "Executed for P2",
+          presetCode: "P2",
+          presetLabel: "Dense retrieval",
+          status: "EXECUTED",
+          mvp: { generation: { correctness: 0.5 }, operational: { outcome: "EXECUTED", presetCode: "P2" } },
+        },
+        {
+          itemId: "p0-item",
+          question: "Skipped for P0",
+          presetCode: "P0",
+          presetLabel: "Corpus text",
+          status: "SKIPPED",
+          failureReason: "INDEX_PREPARATION_REQUIRED",
+          mvp: { operational: { outcome: "SKIPPED", presetCode: "P0", skipReasonCode: "INDEX_PREPARATION_REQUIRED" } },
+        },
+      ],
+    });
+
+    renderPanel({ evaluationRunId: baseRun.id, campaignId: "rag-campaign" });
+
+    await waitFor(() => expect(screen.getByTestId("lab-comparison-row-0")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("lab-comparison-row-0"));
+    await waitFor(() => expect(screen.getByText(/Executed for P2/i)).toBeInTheDocument());
+    expect(screen.queryByText(/Skipped for P0/i)).not.toBeInTheDocument();
+  });
+
+  it("selecting a skipped comparison row shows concise skip reasons and collapsed technical details", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      benchmarkKind: "RAG_PRESET_END_TO_END",
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { SKIPPED: 1 }, onExecuted: { n: 0, meanNormalizedExactMatch: null } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({ items: [] });
+    vi.mocked(fetchLabCampaignRuns).mockResolvedValue([]);
+    vi.mocked(fetchCampaignComparison).mockResolvedValue({
+      comparisonAxis: "PRESET_CODE",
+      rows: [
+        { presetKey: "P2", presetLabel: "Dense retrieval", executed: 1, skipped: 0, totalItems: 1 },
+        { presetKey: "P0", presetLabel: "Corpus text", executed: 0, skipped: 1, totalItems: 1 },
+      ],
+    } as never);
+    vi.mocked(fetchCampaignItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "p0-item",
+          question: "Skipped for P0",
+          presetCode: "P0",
+          status: "SKIPPED",
+          failureReason: "INDEX_PREPARATION_REQUIRED",
+          mvp: { operational: { outcome: "SKIPPED", presetCode: "P0", skipReasonCode: "INDEX_PREPARATION_REQUIRED" } },
+        },
+      ],
+    });
+
+    renderPanel({ evaluationRunId: baseRun.id, campaignId: "rag-campaign" });
+
+    await waitFor(() => expect(screen.getByTestId("lab-comparison-row-1")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("lab-comparison-row-1"));
+    await waitFor(() => expect(screen.getByText(/Skipped for P0/i)).toBeInTheDocument());
+    expect(screen.getByText(/Index preparation is required/i)).toBeInTheDocument();
+    const technical = screen.getByTestId("lab-item-technical-p0-item");
+    expect(technical).not.toHaveAttribute("open");
+    expect(technical.querySelector("pre")?.textContent).toContain("INDEX_PREPARATION_REQUIRED");
+  });
+
+  it("preset filter uses preset identity from comparison rows", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      benchmarkKind: "RAG_PRESET_END_TO_END",
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 1 }, onExecuted: { n: 1, meanNormalizedExactMatch: 0.5 } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({ items: [] });
+    vi.mocked(fetchLabCampaignRuns).mockResolvedValue([]);
+    vi.mocked(fetchCampaignComparison).mockResolvedValue({
+      comparisonAxis: "PRESET_CODE",
+      rows: [
+        { presetKey: "P2", presetLabel: "Dense retrieval", executed: 1, totalItems: 1 },
+        { presetKey: "P0", presetLabel: "Corpus text", executed: 0, skipped: 1, totalItems: 1 },
+      ],
+    } as never);
+    vi.mocked(fetchCampaignItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "p2-item",
+          question: "Only P2",
+          presetCode: "P2",
+          status: "EXECUTED",
+          mvp: { generation: { correctness: 0.5 }, operational: { outcome: "EXECUTED", presetCode: "P2", modelId: "gemma3:4b" } },
+        },
+        {
+          itemId: "p0-item",
+          question: "Only P0",
+          presetCode: "P0",
+          status: "SKIPPED",
+          mvp: { operational: { outcome: "SKIPPED", presetCode: "P0" } },
+        },
+      ],
+    });
+
+    renderPanel({ evaluationRunId: baseRun.id, campaignId: "rag-campaign" });
+
+    await waitFor(() => expect(screen.getByTestId("lab-results-filter-preset")).toBeInTheDocument());
+    const presetSelect = screen.getByTestId("lab-results-filter-preset") as HTMLSelectElement;
+    const optionValues = Array.from(presetSelect.options).map((option) => option.value);
+    expect(optionValues).toContain("P2");
+    expect(optionValues).toContain("P0");
+    expect(optionValues).not.toContain("gemma3:4b");
+
+    fireEvent.change(presetSelect, { target: { value: "P2" } });
+    await waitFor(() => expect(screen.getByText(/Only P2/i)).toBeInTheDocument());
+    expect(screen.queryByText(/Only P0/i)).not.toBeInTheDocument();
   });
 
   it("shows empty comparison state when campaign has fewer than two rows", async () => {

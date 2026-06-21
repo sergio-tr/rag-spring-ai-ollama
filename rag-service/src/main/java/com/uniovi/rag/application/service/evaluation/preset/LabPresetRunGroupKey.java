@@ -4,7 +4,9 @@ package com.uniovi.rag.application.service.evaluation.preset;
  * Execution bucket for product P0–P14 preset sweeps (index-aware Lab planning).
  */
 public enum LabPresetRunGroupKey {
-    /** Presets with {@link ExperimentalPresetCanonicalCatalog.RequiredMaterialization#NONE} only (no remaining experimental presets here after P0/P1 index alignment). */
+    /** P0 — direct LLM without corpus assembly or index binding. */
+    DIRECT_LLM,
+    /** P1 — full corpus prompt assembled from evaluation corpus snapshot rows. */
     NO_INDEX,
     /** P2 — document-level dense retrieval. */
     DOCUMENT_LEVEL,
@@ -12,8 +14,8 @@ public enum LabPresetRunGroupKey {
     CHUNK_LEVEL,
     /** P4–P7 — chunk-level + metadata index support. */
     CHUNK_LEVEL_METADATA,
-    /** P8–P12 — hybrid materialization + metadata. */
+    /** P8–P10 — hybrid materialization + metadata. */
     HYBRID_METADATA,
-    /** P13, P14 — not runnable in single-turn Lab harness. */
+    /** P11–P14 — not runnable in single-turn Lab harness. */
     MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN
 }

@@ -82,6 +82,22 @@ describe("user-facing-error-messages", () => {
     expect(isTechnicalErrorMessage("upstream EMBEDDING_DIMENSION_MISMATCH detail")).toBe(false);
   });
 
+  it("isTechnicalErrorMessage treats JDBC and NPE messages as technical", () => {
+    expect(
+      isTechnicalErrorMessage(
+        "PreparedStatementCallback; bad SQL grammar [SELECT COUNT(*) FROM vector_store]",
+      ),
+    ).toBe(true);
+    expect(isTechnicalErrorMessage("NullPointerException")).toBe(true);
+    expect(
+      mapUserFacingErrorMessage(
+        "PreparedStatementCallback; bad SQL grammar [SELECT COUNT(*)]",
+        t,
+        "fb",
+      ),
+    ).toBe("fb");
+  });
+
   it("mapUserFacingErrorMessageEnglish handles empty, unknown, and plain messages", () => {
     expect(mapUserFacingErrorMessageEnglish("", "fb")).toBe("fb");
     expect(mapUserFacingErrorMessageEnglish("UNKNOWN_CODE", "fb")).toBe("fb");

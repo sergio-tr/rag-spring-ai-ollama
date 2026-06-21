@@ -16,8 +16,8 @@ class RejectUpgradeRequestsMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         upgrade = (request.headers.get("upgrade") or "").strip().lower()
-        connection = (request.headers.get("connection") or "").strip().lower()
-        if upgrade == "websocket" or ("upgrade" in connection and upgrade):
+        # Reject WebSocket upgrades only; HTTP/2 clients (Upgrade: h2c) must not be blocked.
+        if upgrade == "websocket":
             return JSONResponse(
                 status_code=400,
                 content={

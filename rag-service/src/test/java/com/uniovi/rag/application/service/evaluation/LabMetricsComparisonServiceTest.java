@@ -5,11 +5,15 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.when;
 
+import com.uniovi.rag.application.service.evaluation.metrics.DatasetMetricContract;
+import com.uniovi.rag.application.service.evaluation.metrics.RagPresetAnalysisMetrics;
+import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -110,6 +114,32 @@ class LabMetricsComparisonServiceTest {
         assertEquals(true, header.contains("executedCount"));
         assertEquals(true, header.contains("meanNormalizedExactMatch"));
         assertEquals(true, header.contains("meanLatencyMsWherePresent"));
+        assertEquals(true, header.contains("scoreAnswerable"));
+        assertEquals(true, header.contains("finalScoreSampleCount"));
+    }
+
+    @Test
+    void tableRows_exposeAnswerabilityScoreFields() {
+        UUID userId = UUID.randomUUID();
+        UUID r1 = UUID.randomUUID();
+        UUID r2 = UUID.randomUUID();
+        EvaluationRunEntity run1 = ragRun(r1, "sha", Instant.parse("2026-01-01T00:00:00Z"));
+        EvaluationRunEntity run2 = ragRun(r2, "sha", Instant.parse("2026-01-02T00:00:00Z"));
+
+        when(runRepo.findByIdInAndUser_Id(List.of(r1, r2), userId)).thenReturn(List.of(run1, run2));
+        when(resultRepo.findByRun_IdOrderByEvaluatedAtAsc(r1))
+                .thenReturn(List.of(scoredRagItem(run1, "P0", 0.9)));
+        when(resultRepo.findByRun_IdOrderByEvaluatedAtAsc(r2))
+                .thenReturn(List.of(scoredRagItem(run2, "P0", 0.7)));
+
+        LabMetricsComparisonService svc = new LabMetricsComparisonService(runRepo, resultRepo);
+        Map<String, Object> out = svc.compareMetrics(userId, List.of(r1, r2), null, null);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("tableRows");
+        assertNotNull(rows);
+        assertEquals(2, rows.size());
+        assertNotNull(rows.getFirst().get("scoreAnswerable"));
+        assertEquals(1L, rows.getFirst().get("finalScoreSampleCount"));
     }
 
     private static EvaluationRunEntity llmRun(UUID id, String sha, Instant createdAt) {
@@ -158,6 +188,30 @@ class LabMetricsComparisonServiceTest {
         e.setLatencyMs(latencyMs);
         e.setEvaluatedAt(Instant.now());
         e.setMetricsPayload(Map.of(BenchmarkResultRowKeys.PRESET_CODE, presetCode));
+        return e;
+    }
+
+    private static EvaluationResultEntity scoredRagItem(EvaluationRunEntity run, String presetCode, double finalScore) {
+        EvaluationResultEntity e = new EvaluationResultEntity();
+        e.setRun(run);
+        e.setBenchmarkKind("RAG_PRESET_END_TO_END");
+        e.setQueryType("RAG");
+        e.setExpectedAnswer("A");
+        e.setActualAnswer("A");
+        e.setLatencyMs(10L);
+        e.setEvaluatedAt(Instant.now());
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+        mp.put(BenchmarkResultRowKeys.PRESET_CODE, presetCode);
+        mp.put("analysisVersion", RagPresetAnalysisMetrics.ANALYSIS_VERSION);
+        mp.put(DatasetMetricContract.KEY_ANSWERABILITY, "ANSWERABLE");
+        mp.put("abstained", false);
+        mp.put("finalScore", finalScore);
+        mp.put("scoreFinal", finalScore);
+        mp.put("retrievalCoverageStatus", "HAS_CONTEXT");
+        mp.put("sourceCoverageStatus", "HAS_CONTEXT");
+        mp.put("queryTypeMatch", "MATCH");
+        e.setMetricsPayload(mp);
         return e;
     }
 }

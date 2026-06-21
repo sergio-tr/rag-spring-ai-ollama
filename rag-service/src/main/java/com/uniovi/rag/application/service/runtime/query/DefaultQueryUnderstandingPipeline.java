@@ -69,14 +69,22 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         String classifyStatus = switch (c.classifierStatus()) {
             case OK -> "OK";
             case DISABLED -> QU_NOTE_DISABLED;
-            case INVALID_OUTPUT -> QU_NOTE_FALLBACK;
+            case INVALID_OUTPUT, LOW_CONFIDENCE -> QU_NOTE_FALLBACK;
             case UNAVAILABLE, TIMEOUT, INVALID_REQUEST -> QU_NOTE_ERROR;
         };
-        notes.add(stageNote("qu_classify", classifyStatus, msSince(t1),
-                "classifierStatus=" + c.classifierStatus().name()
-                        + " classifierModelId=" + c.classifierModelIdUsed()
-                        + " classifierLabel=" + c.classifierLabel()
-                        + " note=" + c.note()));
+        StringBuilder classifyDetail =
+                new StringBuilder("classifierStatus=")
+                        .append(c.classifierStatus().name())
+                        .append(" classifierModelId=")
+                        .append(c.classifierModelIdUsed())
+                        .append(" classifierLabel=")
+                        .append(c.classifierLabel());
+        c.classifierConfidence()
+                .ifPresent(conf -> classifyDetail.append(" classifierConfidence=").append(conf));
+        c.classifierLabelSetHash()
+                .ifPresent(hash -> classifyDetail.append(" classifierLabelSetHash=").append(hash));
+        classifyDetail.append(" note=").append(c.note());
+        notes.add(stageNote("qu_classify", classifyStatus, msSince(t1), classifyDetail.toString()));
 
         String classifierLabel = c.classifierLabel();
         Optional<QueryType> classifierQueryType = c.classifierQueryType();

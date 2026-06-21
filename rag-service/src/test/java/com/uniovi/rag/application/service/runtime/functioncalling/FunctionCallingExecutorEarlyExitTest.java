@@ -44,6 +44,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -116,12 +118,48 @@ class FunctionCallingExecutorEarlyExitTest {
     }
 
     @Test
-    void run_returnsInvalidModelOutput_whenArgumentsFailValidation() {
+    void run_repairsMismatchedQueryOnce_thenExecutesTool() {
         AssistantMessage assistant = mock(AssistantMessage.class);
         when(assistant.hasToolCalls()).thenReturn(true);
         ToolCall tc = mock(ToolCall.class);
         when(tc.name()).thenReturn("COUNT_DOCUMENTS_TOOL");
         when(tc.arguments()).thenReturn("{\"query\":\"not-matching-rewritten\"}");
+        when(assistant.getToolCalls()).thenReturn(List.of(tc));
+
+        AssistantMessage followUp = mock(AssistantMessage.class);
+        when(followUp.hasToolCalls()).thenReturn(false);
+        when(followUp.getText()).thenReturn("There are 2 matching documents.");
+
+        ToolResult raw = mock(ToolResult.class);
+        when(meetingMinutesToolExecutionCore.execute(any(), any(), any()))
+                .thenReturn(MeetingMinutesToolRawResult.ok(DeterministicToolKind.COUNT_DOCUMENTS_TOOL, raw));
+        when(resultMapper.stableAnswerText(raw, DeterministicToolKind.COUNT_DOCUMENTS_TOOL)).thenReturn("2");
+        when(resultMapper.normalizedPayload(raw, DeterministicToolKind.COUNT_DOCUMENTS_TOOL))
+                .thenReturn(Map.of("count", 2));
+
+        FunctionCallingExecutor executor =
+                new FunctionCallingExecutor(
+                        chatClientForAssistantThenFollowUp(assistant, followUp),
+                        toolRegistry,
+                        meetingMinutesToolExecutionCore,
+                        resultMapper);
+        FunctionCallingExecutionResult r =
+                executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
+
+        assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.EXECUTED_SUCCESS);
+        assertThat(r.nativeProviderFunctionCallAttempted()).isTrue();
+        assertThat(r.backendFunctionCallAttempted()).isFalse();
+        assertThat(r.traceNotes()).noneMatch(n -> n.startsWith("bad_args:"));
+        verify(meetingMinutesToolExecutionCore).execute(any(), any(), any());
+    }
+
+    @Test
+    void run_returnsInvalidModelOutput_whenArgumentsUnrecoverableAfterRepair() {
+        AssistantMessage assistant = mock(AssistantMessage.class);
+        when(assistant.hasToolCalls()).thenReturn(true);
+        ToolCall tc = mock(ToolCall.class);
+        when(tc.name()).thenReturn("COUNT_DOCUMENTS_TOOL");
+        when(tc.arguments()).thenReturn("not-json");
         when(assistant.getToolCalls()).thenReturn(List.of(tc));
 
         FunctionCallingExecutor executor =
@@ -131,6 +169,8 @@ class FunctionCallingExecutorEarlyExitTest {
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
         assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.INVALID_MODEL_OUTPUT);
+        assertThat(r.traceNotes()).anyMatch(n -> n.startsWith("bad_args:"));
+        verify(meetingMinutesToolExecutionCore, never()).execute(any(), any(), any());
     }
 
     @Test
@@ -216,6 +256,26 @@ class FunctionCallingExecutorEarlyExitTest {
         when(chatResponse.getResult()).thenReturn(generation);
         when(chatClient.prompt().system(anyString()).user(anyString()).options(any(OllamaOptions.class)).call().chatResponse())
                 .thenReturn(chatResponse);
+        return chatClient;
+    }
+
+    private static ChatClient chatClientForAssistantThenFollowUp(
+            AssistantMessage toolRound, AssistantMessage followUpRound) {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        Generation toolGeneration = mock(Generation.class);
+        when(toolGeneration.getOutput()).thenReturn(toolRound);
+        ChatResponse toolResponse = mock(ChatResponse.class);
+        when(toolResponse.getResult()).thenReturn(toolGeneration);
+
+        Generation followGeneration = mock(Generation.class);
+        when(followGeneration.getOutput()).thenReturn(followUpRound);
+        ChatResponse followResponse = mock(ChatResponse.class);
+        when(followResponse.getResult()).thenReturn(followGeneration);
+
+        when(chatClient.prompt().system(anyString()).user(anyString()).options(any(OllamaOptions.class)).call().chatResponse())
+                .thenReturn(toolResponse);
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
+                .thenReturn(followResponse);
         return chatClient;
     }
 

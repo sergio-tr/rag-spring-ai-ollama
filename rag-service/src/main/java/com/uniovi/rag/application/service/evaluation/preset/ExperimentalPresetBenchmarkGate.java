@@ -17,6 +17,8 @@ public final class ExperimentalPresetBenchmarkGate {
             return Optional.of("PRESET_CODE_MISSING");
         }
         return switch (preset) {
+            case P11 -> Optional.of("PRESET_ADAPTIVE_ROUTING_BENCHMARK_NOT_SUPPORTED");
+            case P12 -> Optional.of("PRESET_JUDGE_ENHANCED_BENCHMARK_NOT_SUPPORTED");
             case P13 -> Optional.of("PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED");
             case P14 -> Optional.of("PRESET_CONVERSATIONAL_MEMORY_BENCHMARK_NOT_SUPPORTED");
             default -> Optional.empty();

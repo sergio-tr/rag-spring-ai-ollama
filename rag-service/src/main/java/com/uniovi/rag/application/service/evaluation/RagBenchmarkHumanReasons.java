@@ -7,6 +7,29 @@ public final class RagBenchmarkHumanReasons {
 
     private RagBenchmarkHumanReasons() {}
 
+    /** Human text for terminal SKIPPED/FAILED rows — never implies in-flight index preparation. */
+    public static String terminalSkipHumanize(String codeOrMessage) {
+        if (codeOrMessage == null || codeOrMessage.isBlank()) {
+            return "This benchmark item could not be run.";
+        }
+        String raw = codeOrMessage.trim();
+        String code = raw.contains(":") ? raw.substring(0, raw.indexOf(':')).trim() : raw;
+        String upper = code.toUpperCase();
+
+        return switch (upper) {
+            case "REINDEX_REQUIRED", "NO_ACTIVE_INDEX", "FEATURE_REQUIRES_REINDEX", "INDEX_REQUIRES_REINDEX" ->
+                    "No usable index snapshot exists for this preset. Enable auto-reindex or prepare the index manually.";
+            case "INDEX_PREPARATION_REQUIRED" ->
+                    "Index preparation did not complete before this item was skipped.";
+            case "SNAPSHOT_INCOMPATIBLE", "SNAPSHOT_VECTOR_ROWS_MISSING", "NO_COMPATIBLE_SNAPSHOT",
+                    "SNAPSHOT_CONFIG_MISMATCH" ->
+                    "No compatible index snapshot with searchable content exists for this preset.";
+            case "REINDEX_FAILED", "AUTO_REINDEX_FAILED", "INDEX_BUILD_EMPTY" ->
+                    "The index could not be prepared for this preset.";
+            default -> humanize(codeOrMessage);
+        };
+    }
+
     public static String humanize(String codeOrMessage) {
         if (codeOrMessage == null || codeOrMessage.isBlank()) {
             return "This benchmark item could not be run.";
@@ -27,6 +50,8 @@ public final class RagBenchmarkHumanReasons {
             case "REINDEX_IN_PROGRESS" -> "Another index operation is already in progress.";
             case "REINDEX_REQUIRED", "NO_ACTIVE_INDEX", "FEATURE_REQUIRES_REINDEX", "INDEX_REQUIRES_REINDEX" ->
                     "The project index must be rebuilt before this preset can run.";
+            case "INDEX_PREPARATION_REQUIRED" ->
+                    "Documents are ready; the search index will be prepared when the evaluation runs.";
             case "SNAPSHOT_INCOMPATIBLE", "NO_COMPATIBLE_SNAPSHOT", "SNAPSHOT_CONFIG_MISMATCH" ->
                     "No compatible index snapshot exists for this preset.";
             case "PRESET_NOT_SUPPORTED", "NOT_SUPPORTED" ->
@@ -34,10 +59,14 @@ public final class RagBenchmarkHumanReasons {
             case "EMBEDDING_DIMENSION_MISMATCH" ->
                     "The embedding model is not compatible with the vector index.";
             case "EXPERIMENTAL_PRESET_CODES_EMPTY" ->
-                    "Select at least one experimental preset (P0–P12) before starting the benchmark.";
+                    "Select at least one experimental preset (P0–P10) before starting the benchmark.";
             case "UNSUPPORTED_PRESET" -> "The selected experimental preset is not supported.";
             case "PRESET_NOT_LAB_SELECTABLE", "PRESET_NOT_SINGLE_TURN_BENCHMARK" ->
                     "This preset is not available for single-turn Lab benchmarks (use Chat for multi-turn presets).";
+            case "PRESET_ADAPTIVE_ROUTING_BENCHMARK_NOT_SUPPORTED" ->
+                    "Adaptive routing preset (P11) is not available for single-turn Lab benchmarks.";
+            case "PRESET_JUDGE_ENHANCED_BENCHMARK_NOT_SUPPORTED" ->
+                    "Judge-enhanced preset (P12) is not available for single-turn Lab benchmarks.";
             case "PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED" ->
                     "Clarification preset (P13) is not supported in the Lab single-turn harness.";
             case "PRESET_CONVERSATIONAL_MEMORY_BENCHMARK_NOT_SUPPORTED" ->

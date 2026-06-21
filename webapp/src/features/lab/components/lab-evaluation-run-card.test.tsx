@@ -207,18 +207,19 @@ function presetCodesFixture() {
     description: "",
     requiredCapabilities: [] as string[],
     supported: true,
-    supportStatus: i >= 13 ? "REQUIRES_MULTI_TURN" : "EXECUTABLE",
-    reasonIfUnsupported: i >= 13 ? "FUTURE_MULTI_TURN_NOT_SELECTABLE" : null,
+    supportStatus:
+      i >= 13 ? "FUTURE_MULTI_TURN_NOT_SELECTABLE" : i >= 11 ? "NOT_COMPARABLE_IN_SINGLE_TURN_LAB" : "EXECUTABLE",
+    reasonIfUnsupported: null,
     requiresMultiTurn: i >= 13,
     mapsToRuntimeCapabilities: {},
     allowedOutcomes: ["EXECUTED", "FAILED", "SKIPPED", "NOT_SUPPORTED"] as const,
     chatSelectable: true,
-    labSelectable: true,
+    labSelectable: i <= 10,
     labOnly: false,
     corpusRequired: true,
     requiresSnapshot: true,
     requiresProjectDocuments: true,
-    singleTurnBenchmarkSelectable: i <= 12,
+    singleTurnBenchmarkSelectable: i <= 10,
     protocolStageIndex: i,
     parentPresetCode: i > 0 ? `P${i - 1}` : null,
     effectiveTerminalRuntimeJson: "{}",
@@ -601,7 +602,7 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.getByTestId("lab-benchmark-llm-models-llama:judge")).toBeChecked();
   });
 
-  it("restores RAG preset picks P0–P12 from localStorage and sanitizes P13/P14", () => {
+  it("restores RAG preset picks P0–P10 from localStorage and sanitizes P11–P14", () => {
     localStorage.setItem("lab:evaluation-draft:v1:RAG_PRESET_END_TO_END", storedRagDraft({}));
     vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
       data: [ragDataset],
@@ -623,11 +624,12 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
     expect(screen.getByTestId("lab-draft-presets-sanitized")).toBeInTheDocument();
-    for (let i = 0; i <= 12; i += 1) {
+    for (let i = 0; i <= 10; i += 1) {
       expect(screen.getByTestId(`lab-experimental-preset-P${i}`)).toBeChecked();
     }
-    expect(screen.getByTestId("lab-experimental-preset-P13")).not.toBeChecked();
-    expect(screen.getByTestId("lab-experimental-preset-P14")).not.toBeChecked();
+    for (let i = 11; i <= 14; i += 1) {
+      expect(screen.getByTestId(`lab-experimental-preset-P${i}`)).not.toBeChecked();
+    }
   });
 
   it("disables Run when corpus readiness reports NO_DOCUMENTS blocker", () => {
@@ -703,7 +705,7 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.queryByTestId("lab-corpus-not-ready-hint")).not.toBeInTheDocument();
   });
 
-  it("disables Run when index is not ready even if documents are runnable", () => {
+  it("enables Run when index is missing but documents are runnable", () => {
     useEvaluationCorpusMock.mockReturnValue({
       ...defaultEvaluationCorpusApi,
       corpusRunnable: true,
@@ -713,7 +715,7 @@ describe("LabEvaluationRunCard", () => {
         runnable: true,
         reindexRequired: true,
         activeSnapshotId: null,
-        snapshotBlocker: "REINDEX_REQUIRED",
+        snapshotBlocker: "INDEX_PREPARATION_REQUIRED",
         primaryBlocker: null,
         primaryBlockerMessage: null,
       },
@@ -738,8 +740,9 @@ describe("LabEvaluationRunCard", () => {
         />
       </LabEvalHarness>,
     );
-    expect(screen.getByTestId("lab-rag-run")).toBeDisabled();
-    expect(screen.getByTestId("lab-corpus-index-hint")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-rag-run")).toBeEnabled();
+    expect(screen.queryByTestId("lab-corpus-index-hint")).not.toBeInTheDocument();
+    expect(screen.getByTestId("lab-corpus-index-will-prepare")).toBeInTheDocument();
   });
 
   it("shows evaluation corpus panel for RAG without active project", () => {
@@ -763,9 +766,36 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
     expect(screen.getByTestId("lab-evaluation-corpus-panel")).toBeInTheDocument();
+    expect(screen.queryByText(/No active project selected/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-corpus-import-hint")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Select an active project before running a RAG preset benchmark/i),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows evaluation corpus panel for embedding without active project", () => {
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+      data: [embeddingDataset],
+      isLoading: false,
+      isFetched: true,
+      isSuccess: true,
+    } as never);
+    render(
+      <LabEvalHarness>
+        <LabEvaluationRunCard
+          benchmarkKind="EMBEDDING_RETRIEVAL"
+          sectionKey="evaluation-embedding"
+          taskTypeHint="EMBEDDING_EVALUATION"
+          cardTitle="Embedding evaluation"
+          cardDescription="Compare embedding models."
+          runButtonTestId="lab-embedding-run"
+          radioGroupName="follow-corpus-embedding"
+        />
+      </LabEvalHarness>,
+    );
+    expect(screen.getByTestId("lab-evaluation-corpus-panel")).toBeInTheDocument();
+    expect(screen.queryByText(/No active project selected/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-corpus-import-hint")).not.toBeInTheDocument();
   });
 
   it("shows draft warning when stored dataset id no longer exists", () => {

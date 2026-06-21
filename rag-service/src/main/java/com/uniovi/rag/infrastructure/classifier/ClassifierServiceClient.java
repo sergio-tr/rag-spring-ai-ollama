@@ -17,7 +17,13 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 /** Response DTO for classifier-service POST /classify (camelCase). */
-record ClassifyResponseDto(String queryType) {}
+record ClassifyResponseDto(
+        String queryType,
+        Double confidence,
+        List<TopPredictionDto> topPredictions,
+        String labelSetHash) {}
+
+record TopPredictionDto(String queryType, Double confidence) {}
 
 /**
  * Query classifier that calls the classifier-service API over HTTP/1.1 POST JSON.
@@ -65,9 +71,28 @@ public class ClassifierServiceClient implements QueryClassifier {
     }
 
     @Override
+    public ClassifierInferenceResponse classifyInference(String query, String modelIdOverride) {
+        if (baseUrl.isEmpty() || query == null) {
+            return null;
+        }
+        ClassifyResponseDto body = exchangeClassify(query, modelIdOverride);
+        if (body == null || body.queryType() == null || body.queryType().isBlank()) {
+            return null;
+        }
+        List<ClassifierInferenceResponse.TopPrediction> tops =
+                body.topPredictions() == null
+                        ? List.of()
+                        : body.topPredictions().stream()
+                                .filter(p -> p != null && p.queryType() != null && !p.queryType().isBlank())
+                                .map(p -> new ClassifierInferenceResponse.TopPrediction(p.queryType(), p.confidence()))
+                                .toList();
+        return new ClassifierInferenceResponse(body.queryType(), body.confidence(), body.labelSetHash(), tops);
+    }
+
+    @Override
     public QueryType classify(String query, String modelId) {
-        String raw = classifyWithText(query, modelId);
-        return parseQueryType(raw);
+        ClassifierInferenceResponse response = classifyInference(query, modelId);
+        return response == null ? null : parseQueryType(response.queryType());
     }
 
     private QueryType parseQueryType(String raw) {
@@ -91,11 +116,13 @@ public class ClassifierServiceClient implements QueryClassifier {
 
     @Override
     public String classifyWithText(String query, String modelIdOverride) {
+        ClassifierInferenceResponse response = classifyInference(query, modelIdOverride);
+        return response == null ? null : response.queryType();
+    }
+
+    private ClassifyResponseDto exchangeClassify(String query, String modelIdOverride) {
         if (baseUrl.isEmpty()) {
             log().debug("[CLASSIFIER] Classifier-service URL not configured, returning null");
-            return null;
-        }
-        if (query == null) {
             return null;
         }
         String url = baseUrl + "/classify";
@@ -110,8 +137,7 @@ public class ClassifierServiceClient implements QueryClassifier {
             ResponseEntity<ClassifyResponseDto> response =
                     restTemplate.exchange(url, HttpMethod.POST, request, ClassifyResponseDto.class);
             if (response.getStatusCode().is2xxSuccessful()) {
-                ClassifyResponseDto responseBody = response.getBody();
-                return (responseBody != null && responseBody.queryType() != null) ? responseBody.queryType() : null;
+                return response.getBody();
             }
             throw ClassifierHttpErrorSupport.fromHttpStatus(
                     response.getStatusCode().value(), "", url, null);

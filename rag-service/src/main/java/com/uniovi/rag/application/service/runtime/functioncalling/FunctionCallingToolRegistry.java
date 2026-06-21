@@ -5,9 +5,7 @@ import org.springframework.ai.tool.ToolCallback;
 
 import java.util.List;
 
-/**
- * Whitelist registry for FC tool exposure (§9.3, §6.11).
- */
+/** Whitelist registry for function-calling tool exposure. */
 public interface FunctionCallingToolRegistry {
 
     /**

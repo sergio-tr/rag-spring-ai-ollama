@@ -15,6 +15,7 @@ import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -52,15 +53,17 @@ public class SecurityConfiguration {
         String productBasePath = ragApiPathProperties.getProductBasePath();
         String productAuthBase = productBasePath + "/auth";
         http
-                // Stateless Bearer JWT — see class Javadoc (CSRF targets automatic cookie submission).
+                // Stateless Bearer JWT
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(c -> c.configurationSource(corsConfigurationSource))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // Persist JWT auth on the request
+                .securityContext(
+                        s -> s.securityContextRepository(new RequestAttributeSecurityContextRepository()))
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint(new RestAuthenticationEntryPoint(requestMappingHandlerMapping))
                         .accessDeniedHandler(new RestAccessDeniedHandler()))
                 .authorizeHttpRequests(a -> a
-                        // New primary auth contract under product API base path.
                         .requestMatchers(HttpMethod.GET, productAuthBase + "/me").authenticated()
                         .requestMatchers(
                                 productAuthBase + "/login",

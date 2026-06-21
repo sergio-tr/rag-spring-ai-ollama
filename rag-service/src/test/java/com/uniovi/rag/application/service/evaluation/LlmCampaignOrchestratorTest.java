@@ -24,6 +24,8 @@ import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPr
 import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
+import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleLoader;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
@@ -73,6 +75,8 @@ class LlmCampaignOrchestratorTest {
     @Mock private EvaluationCorpusRepository evaluationCorpusRepository;
     @Mock private LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService;
     @Mock private ObjectProvider<RuntimeObservability> runtimeObservability;
+    private final LabPresetAxisSupport labPresetAxisSupport =
+            new LabPresetAxisSupport(new EvaluationReferenceBundleLoader(new EvaluationWorkbookParser()));
 
     @BeforeEach
     void stubCorpusReadiness() {
@@ -82,6 +86,7 @@ class LlmCampaignOrchestratorTest {
                         new EvaluationCorpusReadinessDto(
                                 UUID.randomUUID(),
                                 UUID.randomUUID(),
+                                1,
                                 1,
                                 1,
                                 0,
@@ -124,6 +129,8 @@ class LlmCampaignOrchestratorTest {
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
                         labBenchmarkConfigPreflightService,
+                        labPresetAxisSupport,
+                        new LabBenchmarkDefaultModelResolver("gemma3:4b", "mxbai-embed-large:latest"),
                         runtimeObservability);
 
         UUID userId = UUID.randomUUID();
@@ -199,7 +206,7 @@ class LlmCampaignOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         BenchmarkJobAccepted accepted = orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req);
         assertThat(accepted.campaignId()).isPresent();
@@ -235,6 +242,8 @@ class LlmCampaignOrchestratorTest {
                         evaluationCorpusReadinessService,
                         evaluationCorpusRepository,
                         labBenchmarkConfigPreflightService,
+                        labPresetAxisSupport,
+                        new LabBenchmarkDefaultModelResolver("gemma3:4b", "mxbai-embed-large:latest"),
                         runtimeObservability);
 
         UUID userId = UUID.randomUUID();
@@ -308,7 +317,7 @@ class LlmCampaignOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         BenchmarkJobAccepted accepted = orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req);
         assertThat(accepted.campaignId()).isPresent();

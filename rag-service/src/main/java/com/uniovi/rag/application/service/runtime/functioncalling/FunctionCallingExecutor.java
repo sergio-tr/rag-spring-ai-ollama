@@ -10,6 +10,7 @@ import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.MeetingMinutesToolRawResult;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
+import com.uniovi.rag.application.service.runtime.FunctionCallingTelemetrySupport;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
 import com.uniovi.rag.application.service.runtime.tool.MeetingMinutesToolExecutionCore;
 import org.springframework.ai.chat.client.ChatClient;
@@ -53,6 +54,7 @@ public class FunctionCallingExecutor {
     @SuppressWarnings("deprecation")
     public FunctionCallingExecutionResult run(ExecutionContext ctx, QueryPlan plan, FunctionCallingDecision decision) {
         List<ExecutionStageTrace> stages = new ArrayList<>();
+        stages.add(FunctionCallingTelemetrySupport.nativeProposalStage(true, "", ""));
         String msgBase = "outcome=pending";
         try {
             String firstUser = FunctionCallingPrompts.buildFirstRoundUserMessage(plan);
@@ -111,6 +113,9 @@ public class FunctionCallingExecutor {
                         stages,
                         List.of("unknown_tool_name"));
             }
+            stages.add(
+                    FunctionCallingTelemetrySupport.nativeProposalStage(
+                            true, tc.name(), kind.name()));
             Set<DeterministicToolKind> allowed =
                     decision.exposedToolKinds().stream().collect(Collectors.toSet());
             if (!allowed.contains(kind)) {
@@ -123,9 +128,9 @@ public class FunctionCallingExecutor {
                         stages,
                         List.of("tool_not_exposed"));
             }
-            try {
-                FcToolArgumentParser.parseOrThrow(tc.arguments(), kind, plan);
-            } catch (IllegalArgumentException e) {
+            FunctionCallSchemaValidator.ValidationWithRepairResult validation =
+                    FunctionCallSchemaValidator.validateWithOptionalRepair(tc.arguments(), kind, plan);
+            if (!validation.valid()) {
                 stages.add(fcResultMapStage(FunctionCallingOutcome.INVALID_MODEL_OUTPUT));
                 return terminalOutcome(
                         FunctionCallingOutcome.INVALID_MODEL_OUTPUT,
@@ -133,7 +138,7 @@ public class FunctionCallingExecutor {
                         Map.of(),
                         Optional.empty(),
                         stages,
-                        List.of("bad_args:" + e.getMessage()));
+                        List.of("bad_args:" + validation.validationError()));
             }
 
             MeetingMinutesToolRawResult raw = meetingMinutesToolExecutionCore.execute(kind, ctx, plan);
@@ -213,7 +218,10 @@ public class FunctionCallingExecutor {
                     payload,
                     List.of("fc_success"),
                     true,
-                    stages);
+                    stages,
+                    Optional.empty(),
+                    false,
+                    true);
         } catch (RuntimeException e) {
             stages.add(fcResultMapStage(FunctionCallingOutcome.EXECUTED_FAILED_INFRA));
             return terminalOutcome(
@@ -249,6 +257,9 @@ public class FunctionCallingExecutor {
                 normalizedPayload,
                 notes,
                 false,
-                stages);
+                stages,
+                Optional.empty(),
+                false,
+                true);
     }
 }

@@ -341,7 +341,7 @@ function ChatPageInner() {
   const { data: convs } = useConversations(projectId);
   const createConv = useCreateConversation(projectId);
   const patchConv = usePatchConversation(projectId);
-  // R1: runtime-state is the authoritative steady-state validation source.
+  // Runtime state is the authoritative steady-state validation source.
   const { data: rawMessages, refetch: refetchMessages } = useConversationMessages(conversationId ?? undefined);
   const messages = useMemo(() => {
     if (!rawMessages) return rawMessages;
@@ -508,7 +508,7 @@ function ChatPageInner() {
     [t],
   );
 
-  // R1: /runtime-config/validate remains draft-only; do not use it for steady-state rendering.
+  // /runtime-config/validate remains draft-only; do not use for steady-state rendering.
 
   /** Cancel in-flight chat job when switching project, conversation, or unmounting. */
   useEffect(() => {
@@ -730,7 +730,7 @@ function ChatPageInner() {
       }
       if (!targetConversationId) return;
 
-      // R1: rely on runtime-state as the authoritative validation source.
+      // Rely on runtime-state as the authoritative validation source.
       const rs = await apiFetch<{
         isValid?: boolean;
         blockingIssues?: { code?: string | null; message?: string | null }[];

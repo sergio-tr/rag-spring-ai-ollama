@@ -25,6 +25,11 @@ import com.uniovi.rag.domain.runtime.retrieval.CompressionOutcome;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievedContextSet;
+import com.uniovi.rag.domain.runtime.retrieval.MetadataFilterTelemetry;
+import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalFallbackStage;
+import com.uniovi.rag.domain.runtime.retrieval.SparseQueryPreparation;
+import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalTelemetry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -44,6 +49,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry;
 
 @ExtendWith(MockitoExtension.class)
 class AdvancedRetrievalPipelineTest {
@@ -75,6 +82,9 @@ class AdvancedRetrievalPipelineTest {
     @Mock
     private MetadataAppendixLoader metadataAppendixLoader;
 
+    @Mock
+    private MetadataConstraintFilter metadataConstraintFilter;
+
     @InjectMocks
     private AdvancedRetrievalPipeline pipeline;
 
@@ -86,7 +96,7 @@ class AdvancedRetrievalPipelineTest {
         RetrievalRequest req = retrievalRequest(sid, RetrievalMode.DENSE_ONLY);
 
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
-        when(denseRetrievalStrategy.retrieve(req)).thenReturn(List.of());
+        when(denseRetrievalStrategy.retrieveWithOutcome(req)).thenReturn(emptyDenseOutcome());
         when(retrievalFilter.filterBasic(eq(req), eq(List.of()))).thenReturn(List.of());
         when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("");
 
@@ -105,7 +115,7 @@ class AdvancedRetrievalPipelineTest {
                 List.of(new RetrievalCandidate("c1", "x", Map.of(), 0.1, 0.0, 1, 0, sid, 1.0));
 
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
-        when(denseRetrievalStrategy.retrieve(req)).thenReturn(dense);
+        when(denseRetrievalStrategy.retrieveWithOutcome(req)).thenReturn(denseOutcome(dense));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
         when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
 
@@ -127,7 +137,7 @@ class AdvancedRetrievalPipelineTest {
                 List.of(new RetrievalCandidate("c1", "x", Map.of(), 0.1, 0.0, 1, 0, sid, 1.0));
 
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
-        when(denseRetrievalStrategy.retrieve(req)).thenReturn(dense);
+        when(denseRetrievalStrategy.retrieveWithOutcome(req)).thenReturn(denseOutcome(dense));
         when(retrievalReranker.rerank(eq(req), eq(plan), eq(dense)))
                 .thenReturn(new RetrievalReranker.RerankResult(dense, List.of()));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
@@ -155,11 +165,13 @@ class AdvancedRetrievalPipelineTest {
         List<RetrievalCandidate> dense = List.of(protectedDate, tail);
 
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
-        when(denseRetrievalStrategy.retrieve(req)).thenReturn(dense);
+        when(denseRetrievalStrategy.retrieveWithOutcome(req)).thenReturn(denseOutcome(dense));
         when(retrievalReranker.rerank(eq(req), eq(plan), eq(dense)))
                 .thenReturn(new RetrievalReranker.RerankResult(dense, List.of()));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
         when(retrievalFilter.filterAdvanced(eq(req), eq(plan), any())).thenReturn(dense);
+        when(metadataConstraintFilter.apply(eq(req), eq(plan), eq(dense)))
+                .thenReturn(new MetadataConstraintFilter.FilterResult(dense, new MetadataFilterTelemetry(false, false)));
         when(contextCompressionStrategy.compressPreservingEvidence(eq(dense), anyInt(), any()))
                 .thenReturn(new ContextCompressionStrategy.CompressionResult(List.of(protectedDate), new CompressionOutcome(50, 10, 1, List.of("drop_lowest_rerank_tail_unprotected_first"))));
         when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
@@ -189,7 +201,7 @@ class AdvancedRetrievalPipelineTest {
         List<RetrievalCandidate> dense = List.of(wrongYear, exact);
 
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
-        when(denseRetrievalStrategy.retrieve(req)).thenReturn(dense);
+        when(denseRetrievalStrategy.retrieveWithOutcome(req)).thenReturn(denseOutcome(dense));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
         when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
 
@@ -217,7 +229,7 @@ class AdvancedRetrievalPipelineTest {
         List<RetrievalCandidate> dense = List.of(wrongYear, exact);
 
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
-        when(denseRetrievalStrategy.retrieve(req)).thenReturn(dense);
+        when(denseRetrievalStrategy.retrieveWithOutcome(req)).thenReturn(denseOutcome(dense));
         when(retrievalFilter.filterBasic(eq(req), any())).thenAnswer(inv -> inv.getArgument(1));
         when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
 
@@ -232,19 +244,175 @@ class AdvancedRetrievalPipelineTest {
     }
 
     @Test
-    void retrieve_hybridSparseFailure_propagatesRagServiceException() {
+    void retrieve_hybridSparseZero_continuesDensePathAndRecordsNotes() {
         UUID sid = UUID.randomUUID();
         ExecutionContext ctx = executionContext(sid);
         QueryPlan plan = minimalPlan();
         RetrievalRequest req = retrievalRequest(sid, RetrievalMode.HYBRID_DENSE_SPARSE);
+        List<RetrievalCandidate> dense =
+                List.of(new RetrievalCandidate("c1", "x", Map.of(), 0.1, 0.0, 1, 0, sid, 1.0));
 
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
-        when(hybridRetrievalStrategy.dense(req)).thenReturn(List.of());
-        when(hybridRetrievalStrategy.sparse(req))
-                .thenThrow(RagServiceException.hybridSparseRetrievalFailed(new RuntimeException("db")));
+        when(hybridRetrievalStrategy.dense(req)).thenReturn(dense);
+        when(hybridRetrievalStrategy.sparseWithOutcome(req, plan)).thenReturn(emptySparseOutcome());
+        when(retrievalFusionService.fuseWithTelemetry(eq(req), eq(dense), eq(List.of())))
+                .thenReturn(
+                        new RetrievalFusionService.FusionResult(
+                                new RetrievedContextSet(
+                                        dense,
+                                        Optional.empty(),
+                                        dense.size(),
+                                        0,
+                                        dense.size()),
+                                new FusionTelemetry(
+                                        "DENSE_ONLY_FALLBACK", 1, dense.size(), 0, false)));
+        when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
+        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
 
-        assertThatThrownBy(() -> pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow"))
-                .isInstanceOf(RagServiceException.class);
+        var out = pipeline.retrieve(ctx, plan, "ChunkDenseMetadataWorkflow");
+
+        assertThat(out.traceNotes()).contains("sparse_zero_matches", "hybrid_not_applied");
+        assertThat(out.diagnostics().sparseCandidateCount()).isZero();
+        assertThat(out.diagnostics().denseCandidateCount()).isEqualTo(1);
+    }
+
+    @Test
+    void retrieve_hybridWithSparseHits_recordsFusionOriginsInStage() {
+        UUID sid = UUID.randomUUID();
+        ExecutionContext ctx = executionContext(sid);
+        QueryPlan plan = minimalPlan();
+        RetrievalRequest req = retrievalRequest(sid, RetrievalMode.HYBRID_DENSE_SPARSE);
+        RetrievalCandidate dense =
+                new RetrievalCandidate("shared", "dense", Map.of(), 0.2, 0.0, 1, 0, sid, 0.5);
+        RetrievalCandidate sparse =
+                new RetrievalCandidate("shared", "sparse", Map.of(), 0.0, 0.3, 0, 1, sid, 0.4);
+        RetrievedContextSet fused =
+                new RetrievedContextSet(
+                        List.of(dense),
+                        Optional.empty(),
+                        1,
+                        1,
+                        1,
+                        0,
+                        0,
+                        1,
+                        "dense=1;sparse=1;both=1;fused=1");
+
+        when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
+        when(hybridRetrievalStrategy.dense(req)).thenReturn(List.of(dense));
+        when(hybridRetrievalStrategy.sparseWithOutcome(req, plan)).thenReturn(sparseOutcome(List.of(sparse)));
+        when(retrievalFusionService.fuseWithTelemetry(eq(req), any(), any()))
+                .thenReturn(
+                        new RetrievalFusionService.FusionResult(
+                                fused,
+                                new FusionTelemetry("RRF", 2, 1, 0, true)));
+        when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(List.of(dense));
+        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+
+        var out = pipeline.retrieve(ctx, plan, "ChunkDenseMetadataWorkflow");
+
+        assertThat(out.retrievalStageTraces())
+                .anyMatch(
+                        s ->
+                                "retrieval_fuse".equals(s.stageName())
+                                        && s.message().contains("both=1"));
+        assertThat(out.diagnostics().sparseCandidateCount()).isEqualTo(1);
+    }
+
+    @Test
+    void retrieve_forcedCompressionBudget_reducesCharsAndPreservesChunkIds() {
+        UUID sid = UUID.randomUUID();
+        ExecutionContext ctx = executionContext(sid, true, true);
+        QueryPlan plan = minimalPlan();
+        RetrievalRequest req = retrievalRequestWithMaxChars(sid, RetrievalMode.HYBRID_DENSE_SPARSE, 80);
+        RetrievalCandidate longChunk =
+                new RetrievalCandidate(
+                        "keep-me",
+                        "x".repeat(200),
+                        Map.of("chunkId", "keep-me"),
+                        0.1,
+                        0.0,
+                        1,
+                        0,
+                        sid,
+                        1.0);
+        ContextCompressionStrategy realCompression = new ContextCompressionStrategy();
+
+        when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
+        when(hybridRetrievalStrategy.dense(req)).thenReturn(List.of(longChunk));
+        when(hybridRetrievalStrategy.sparseWithOutcome(req, plan)).thenReturn(emptySparseOutcome());
+        when(retrievalFusionService.fuseWithTelemetry(eq(req), any(), eq(List.of())))
+                .thenReturn(
+                        new RetrievalFusionService.FusionResult(
+                                new RetrievedContextSet(
+                                        List.of(longChunk),
+                                        Optional.empty(),
+                                        1,
+                                        0,
+                                        1,
+                                        1,
+                                        0,
+                                        0,
+                                        "dense=1;sparse=0;fused=1"),
+                                new FusionTelemetry(
+                                        "DENSE_ONLY_FALLBACK", 1, 1, 0, false)));
+        when(retrievalReranker.rerank(any(), any(), any()))
+                .thenReturn(new RetrievalReranker.RerankResult(List.of(longChunk), List.of()));
+        when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(List.of(longChunk));
+        when(retrievalFilter.filterAdvanced(eq(req), any(), any())).thenReturn(List.of(longChunk));
+        when(metadataConstraintFilter.apply(eq(req), eq(plan), any()))
+                .thenAnswer(inv -> new MetadataConstraintFilter.FilterResult(inv.getArgument(2), new MetadataFilterTelemetry(false, false)));
+        when(contextCompressionStrategy.compressPreservingEvidence(any(), eq(80), any()))
+                .thenAnswer(
+                        inv ->
+                                realCompression.compressPreservingEvidence(
+                                        inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
+        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+
+        var out = pipeline.retrieve(ctx, plan, "ChunkDenseMetadataWorkflow");
+
+        assertThat(out.diagnostics().compressionCharsBefore()).isGreaterThan(out.diagnostics().compressionCharsAfter());
+        assertThat(out.finalCandidates()).isNotEmpty();
+        assertThat(out.finalCandidates().getFirst().candidateId()).isEqualTo("keep-me");
+    }
+
+    @Test
+    void retrieve_hybridSparseFailure_fallsBackToDenseFusion() {
+        UUID sid = UUID.randomUUID();
+        ExecutionContext ctx = executionContext(sid);
+        QueryPlan plan = minimalPlan();
+        RetrievalRequest req = retrievalRequest(sid, RetrievalMode.HYBRID_DENSE_SPARSE);
+        List<RetrievalCandidate> dense =
+                List.of(new RetrievalCandidate("c1", "x", Map.of(), 0.1, 0.0, 1, 0, sid, 1.0));
+
+        when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
+        when(hybridRetrievalStrategy.dense(req)).thenReturn(dense);
+        when(hybridRetrievalStrategy.sparseWithOutcome(req, plan))
+                .thenThrow(RagServiceException.hybridSparseRetrievalFailed(new RuntimeException("db")));
+        when(retrievalFusionService.fuseWithTelemetry(eq(req), eq(dense), eq(List.of())))
+                .thenReturn(
+                        new RetrievalFusionService.FusionResult(
+                                new RetrievedContextSet(
+                                        dense,
+                                        Optional.empty(),
+                                        dense.size(),
+                                        0,
+                                        dense.size()),
+                                new FusionTelemetry(
+                                        "DENSE_ONLY_FALLBACK", 1, dense.size(), 0, false)));
+        when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
+        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+
+        var out = pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow");
+
+        assertThat(out.traceNotes()).contains("sparse_unavailable", "hybrid_not_applied");
+        assertThat(out.retrievalStageTraces())
+                .anyMatch(
+                        s ->
+                                "retrieval_sparse".equals(s.stageName())
+                                        && s.outcome() == ExecutionStageOutcome.SKIPPED);
+        assertThat(out.diagnostics().sparseCandidateCount()).isZero();
+        assertThat(out.diagnostics().denseCandidateCount()).isEqualTo(1);
     }
 
     private static ExecutionContext executionContext(UUID snapshotId) {
@@ -447,5 +615,34 @@ class AdvancedRetrievalPipelineTest {
                 "c",
                 "m",
                 List.of());
+    }
+
+    private static DenseRetrievalOutcome emptyDenseOutcome() {
+        return new DenseRetrievalOutcome(List.of(), 0, 0, 0);
+    }
+
+    private static DenseRetrievalOutcome denseOutcome(List<RetrievalCandidate> dense) {
+        int n = dense != null ? dense.size() : 0;
+        return new DenseRetrievalOutcome(dense, n, n, n);
+    }
+
+    private static SparseRetrievalOutcome emptySparseOutcome() {
+        SparseQueryPreparation prep = new SparseQueryPreparation("q", "q", List.of(), List.of(), List.of(), List.of(), List.of());
+        return new SparseRetrievalOutcome(
+                List.of(),
+                prep,
+                SparseRetrievalFallbackStage.NO_HIT,
+                "",
+                new SparseRetrievalTelemetry("q", "", SparseRetrievalFallbackStage.NO_HIT, false, "no_lexical_match"));
+    }
+
+    private static SparseRetrievalOutcome sparseOutcome(List<RetrievalCandidate> candidates) {
+        SparseQueryPreparation prep = new SparseQueryPreparation("q", "q", List.of("term"), List.of(), List.of(), List.of(), List.of());
+        return new SparseRetrievalOutcome(
+                candidates,
+                prep,
+                SparseRetrievalFallbackStage.OR_KEYWORDS,
+                "term",
+                new SparseRetrievalTelemetry("q", "term", SparseRetrievalFallbackStage.OR_KEYWORDS, true, ""));
     }
 }

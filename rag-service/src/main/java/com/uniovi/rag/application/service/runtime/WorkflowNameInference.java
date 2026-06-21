@@ -56,4 +56,37 @@ public final class WorkflowNameInference {
         }
         return "UNSUPPORTED_CONFIGURATION";
     }
+
+    /**
+     * Stable retrieval route label for exports and telemetry. Distinct from {@link #inferWorkflowName(RagConfig)}
+     * when hybrid materialization reuses a dense-metadata workflow bean.
+     */
+    public static String inferRetrievalRoute(RagConfig rag) {
+        if (rag == null) {
+            return null;
+        }
+        if (!rag.useRetrieval() && !rag.naiveFullCorpusInPromptEnabled()) {
+            return "DIRECT_LLM";
+        }
+        if (!rag.useRetrieval() && rag.naiveFullCorpusInPromptEnabled()) {
+            return rag.corpusGroundedDirectWorkflow() ? "CORPUS_GROUNDED_DIRECT" : "FULL_CORPUS";
+        }
+        MaterializationStrategy strategy = rag.materializationStrategy();
+        if (strategy == MaterializationStrategy.DOCUMENT_LEVEL) {
+            return "DOCUMENT_DENSE";
+        }
+        if (strategy == MaterializationStrategy.CHUNK_LEVEL && !rag.metadataEnabled()) {
+            return "CHUNK_DENSE";
+        }
+        if (strategy == MaterializationStrategy.CHUNK_LEVEL && rag.metadataEnabled()) {
+            return "CHUNK_DENSE_METADATA";
+        }
+        if (strategy == MaterializationStrategy.HYBRID && !rag.metadataEnabled()) {
+            return "HYBRID_DENSE_SPARSE";
+        }
+        if (strategy == MaterializationStrategy.HYBRID && rag.metadataEnabled()) {
+            return "HYBRID_DENSE_SPARSE_METADATA";
+        }
+        return "UNSUPPORTED_CONFIGURATION";
+    }
 }

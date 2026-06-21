@@ -110,8 +110,13 @@ public class LabExperimentalPresetCatalogService {
         if (!runtimeOk) {
             return "NOT_SUPPORTED";
         }
-        if (labBenchmarkBlocked && (code == RagExperimentalPresetCode.P13 || code == RagExperimentalPresetCode.P14)) {
-            return "FUTURE_MULTI_TURN_NOT_SELECTABLE";
+        if (labBenchmarkBlocked) {
+            if (code == RagExperimentalPresetCode.P13 || code == RagExperimentalPresetCode.P14) {
+                return "FUTURE_MULTI_TURN_NOT_SELECTABLE";
+            }
+            if (code == RagExperimentalPresetCode.P11 || code == RagExperimentalPresetCode.P12) {
+                return "NOT_COMPARABLE_IN_SINGLE_TURN_LAB";
+            }
         }
         return "EXECUTABLE";
     }

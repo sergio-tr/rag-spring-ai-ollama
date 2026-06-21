@@ -135,7 +135,14 @@ public class EvaluationCanonicalPersistenceService {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> summary = (Map<String, Object>) evaluationPayload.get("evaluation_summary");
-        run.setAggregatesJson(summary != null ? new LinkedHashMap<>(summary) : Map.of());
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (run.getAggregatesJson() != null && !run.getAggregatesJson().isEmpty()) {
+            merged.putAll(run.getAggregatesJson());
+        }
+        if (summary != null && !summary.isEmpty()) {
+            merged.putAll(summary);
+        }
+        run.setAggregatesJson(merged.isEmpty() ? Map.of() : Map.copyOf(merged));
         if (summary != null && Boolean.TRUE.equals(summary.get("cancelled"))) {
             run.setStatus(EvaluationRunStatus.ERROR);
             Map<String, Object> agg = run.getAggregatesJson() != null ? new LinkedHashMap<>(run.getAggregatesJson()) : new LinkedHashMap<>();

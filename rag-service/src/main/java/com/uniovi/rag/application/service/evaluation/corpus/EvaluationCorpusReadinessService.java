@@ -20,14 +20,17 @@ public class EvaluationCorpusReadinessService {
     private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
     private final CorpusAvailabilityGate corpusAvailabilityGate;
     private final KnowledgeSnapshotService knowledgeSnapshotService;
+    private final EvaluationCorpusStorageIntegrityService storageIntegrityService;
 
     public EvaluationCorpusReadinessService(
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
             CorpusAvailabilityGate corpusAvailabilityGate,
-            KnowledgeSnapshotService knowledgeSnapshotService) {
+            KnowledgeSnapshotService knowledgeSnapshotService,
+            EvaluationCorpusStorageIntegrityService storageIntegrityService) {
         this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
         this.corpusAvailabilityGate = corpusAvailabilityGate;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
+        this.storageIntegrityService = storageIntegrityService;
     }
 
     @Transactional
@@ -64,6 +67,8 @@ public class EvaluationCorpusReadinessService {
             } else {
                 primaryBlocker = LabCorpusReasonCodes.NO_READY_DOCUMENTS;
             }
+        } else if (storageIntegrityService.hasReadyDocumentWithMissingBinary(docs)) {
+            primaryBlocker = LabCorpusReasonCodes.DOCUMENT_BINARY_MISSING;
         }
 
         Optional<KnowledgeIndexSnapshotEntity> activeSnapshot =
@@ -79,7 +84,7 @@ public class EvaluationCorpusReadinessService {
         boolean reindexRequired = false;
         if (primaryBlocker == null) {
             if (activeSnapshotId == null) {
-                snapshotBlocker = LabCorpusReasonCodes.REINDEX_REQUIRED;
+                snapshotBlocker = LabCorpusReasonCodes.INDEX_PREPARATION_REQUIRED;
                 snapshotBlockerDetailCode = "NO_ACTIVE_INDEX";
                 reindexRequired = true;
             } else {
@@ -100,13 +105,15 @@ public class EvaluationCorpusReadinessService {
                 primaryBlocker != null
                         ? RagBenchmarkHumanReasons.humanize(primaryBlocker)
                         : (snapshotBlocker != null ? RagBenchmarkHumanReasons.humanize(snapshotBlocker) : null);
-        boolean runnable = ready > 0 && primaryBlocker == null;
+        int storageReady = storageIntegrityService.storageReadyDocumentIds(docs).size();
+        boolean runnable = storageReady > 0 && primaryBlocker == null;
 
         return new EvaluationCorpusReadinessDto(
                 corpusId,
                 context.indexProjectId(),
                 docs.size(),
                 ready,
+                storageReady,
                 processing,
                 failed,
                 primaryBlocker,
@@ -128,6 +135,12 @@ public class EvaluationCorpusReadinessService {
         }
         if (CorpusAvailabilityGate.SNAPSHOT_VECTOR_ROWS_MISSING.equals(gateCode)) {
             return LabCorpusReasonCodes.SNAPSHOT_VECTOR_ROWS_MISSING;
+        }
+        if (LabCorpusReasonCodes.SNAPSHOT_EMPTY.equals(gateCode)) {
+            return LabCorpusReasonCodes.SNAPSHOT_EMPTY;
+        }
+        if (LabCorpusReasonCodes.SNAPSHOT_STALE.equals(gateCode)) {
+            return LabCorpusReasonCodes.SNAPSHOT_STALE;
         }
         if (CorpusAvailabilityGate.NO_COMPATIBLE_SNAPSHOT.equals(gateCode)) {
             return LabCorpusReasonCodes.NO_COMPATIBLE_SNAPSHOT;

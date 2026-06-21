@@ -19,7 +19,33 @@ public record FunctionCallingExecutionResult(
         Map<String, Object> normalizedPayload,
         List<String> traceNotes,
         boolean shortCircuited,
-        List<ExecutionStageTrace> stageTraces) {
+        List<ExecutionStageTrace> stageTraces,
+        Optional<FunctionCallProposal> proposal,
+        boolean backendFunctionCallAttempted,
+        boolean nativeProviderFunctionCallAttempted) {
+
+    public FunctionCallingExecutionResult(
+            FunctionCallingOutcome outcome,
+            boolean success,
+            Optional<DeterministicToolKind> selectedToolKind,
+            String answerText,
+            Map<String, Object> normalizedPayload,
+            List<String> traceNotes,
+            boolean shortCircuited,
+            List<ExecutionStageTrace> stageTraces) {
+        this(
+                outcome,
+                success,
+                selectedToolKind,
+                answerText,
+                normalizedPayload,
+                traceNotes,
+                shortCircuited,
+                stageTraces,
+                Optional.empty(),
+                false,
+                false);
+    }
 
     public FunctionCallingExecutionResult {
         traceNotes = List.copyOf(Objects.requireNonNull(traceNotes, "traceNotes"));
@@ -27,5 +53,6 @@ public record FunctionCallingExecutionResult(
         answerText = answerText != null ? answerText : "";
         normalizedPayload = Map.copyOf(Objects.requireNonNull(normalizedPayload, "normalizedPayload"));
         selectedToolKind = Objects.requireNonNullElseGet(selectedToolKind, Optional::empty);
+        proposal = Objects.requireNonNullElseGet(proposal, Optional::empty);
     }
 }

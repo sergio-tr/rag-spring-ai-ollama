@@ -193,7 +193,6 @@ export function ChatConfigurationPanelContent() {
   }, [caps]);
 
   const mergedRuntimeFlagValues = useMemo(() => {
-    // Effective config already includes runtimeOverride; keep this name to avoid invasive refactors in R1.
     return effectiveConfig && typeof effectiveConfig === "object"
       ? (effectiveConfig as Record<string, unknown>)
       : ({} as Record<string, unknown>);

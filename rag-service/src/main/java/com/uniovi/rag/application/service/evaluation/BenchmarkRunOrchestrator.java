@@ -20,7 +20,11 @@ import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPr
 import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.evaluation.preset.CampaignPresetExecutionOrder;
+import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
+import com.uniovi.rag.application.service.evaluation.metrics.DatasetQuestionSubsetSupport;
 import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
 import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
@@ -82,7 +86,7 @@ public class BenchmarkRunOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(BenchmarkRunOrchestrator.class);
 
-    static final String AGG_KEY_REQUESTED_PRESET_CODES = "requested_preset_codes";
+    public static final String AGG_KEY_REQUESTED_PRESET_CODES = "requested_preset_codes";
     static final String AGG_KEY_AUTO_REINDEX_POLICY = "autoReindexPolicy";
     static final String AGG_KEY_AUTO_REINDEX_LOCK_ACQUIRED = "autoReindexLockAcquired";
     static final String AGG_KEY_AUTO_REINDEX_MODE = "autoReindexMode";
@@ -110,6 +114,8 @@ public class BenchmarkRunOrchestrator {
     private final EvaluationCorpusReadinessService evaluationCorpusReadinessService;
     private final EvaluationCorpusRepository evaluationCorpusRepository;
     private final LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService;
+    private final LabPresetAxisSupport labPresetAxisSupport;
+    private final LabBenchmarkDefaultModelResolver labBenchmarkDefaultModelResolver;
     private final ObjectProvider<RuntimeObservability> runtimeObservability;
 
     @Autowired(required = false)
@@ -135,6 +141,8 @@ public class BenchmarkRunOrchestrator {
             EvaluationCorpusReadinessService evaluationCorpusReadinessService,
             EvaluationCorpusRepository evaluationCorpusRepository,
             LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService,
+            LabPresetAxisSupport labPresetAxisSupport,
+            LabBenchmarkDefaultModelResolver labBenchmarkDefaultModelResolver,
             ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.userRepository = userRepository;
         this.evaluationDatasetRepository = evaluationDatasetRepository;
@@ -155,6 +163,8 @@ public class BenchmarkRunOrchestrator {
         this.evaluationCorpusReadinessService = evaluationCorpusReadinessService;
         this.evaluationCorpusRepository = evaluationCorpusRepository;
         this.labBenchmarkConfigPreflightService = labBenchmarkConfigPreflightService;
+        this.labPresetAxisSupport = labPresetAxisSupport;
+        this.labBenchmarkDefaultModelResolver = labBenchmarkDefaultModelResolver;
         this.runtimeObservability = runtimeObservability;
     }
 
@@ -180,9 +190,19 @@ public class BenchmarkRunOrchestrator {
         validateRunKind(roleName, request.runKind());
         validateAutoReindexRequest(kind, request);
         validateClasspathCorpusBootstrapRequest(kind, request);
+        EvaluationCorpusReadinessDto ragReadiness = null;
+        if (kind == BenchmarkKind.RAG_PRESET_END_TO_END) {
+            LabRagRunDiagnostics.logIncomingRequest(log, userId, request);
+            if (request.corpusId() != null) {
+                ragReadiness = evaluationCorpusReadinessService.getReadiness(userId, request.corpusId());
+            }
+        }
         validateDocumentBackedCorpus(userId, kind, request);
         LabBenchmarkConfigPreflightResult configPreflight =
                 validateAndRecordConfigPreflight(userId, kind, request);
+        if (kind == BenchmarkKind.RAG_PRESET_END_TO_END) {
+            LabRagRunDiagnostics.logConfigPreflight(log, null, configPreflight);
+        }
         requireNoActiveLabJob(userId, resolveConcurrencyScopeId(userId, request));
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
@@ -212,6 +232,20 @@ public class BenchmarkRunOrchestrator {
                 };
 
         attachTaskAndRunning(run, taskId);
+        if (kind == BenchmarkKind.RAG_PRESET_END_TO_END) {
+            UUID resolvedConfigId =
+                    run.getResolvedConfigSnapshot() != null ? run.getResolvedConfigSnapshot().getId() : null;
+            UUID indexSnapshotId = run.getIndexSnapshot() != null ? run.getIndexSnapshot().getId() : null;
+            LabRagRunDiagnostics.logRunAccepted(
+                    log,
+                    run.getId(),
+                    taskId,
+                    request.corpusId(),
+                    request.experimentalPresetCodes(),
+                    resolvedConfigId,
+                    indexSnapshotId,
+                    ragReadiness);
+        }
         RuntimeObservability obs = runtimeObservability.getIfAvailable();
         if (obs != null) {
             obs.labRunAccepted(
@@ -327,7 +361,8 @@ public class BenchmarkRunOrchestrator {
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
         validateScienceFields(kind, request);
-        List<String> presetCodes = request.experimentalPresetCodes();
+        List<String> presetCodes =
+                CampaignPresetExecutionOrder.orderForParentReplay(request.experimentalPresetCodes());
 
         UserEntity user = userRepository.findById(userId).orElseThrow();
         EvaluationCampaignEntity camp = new EvaluationCampaignEntity();
@@ -346,10 +381,20 @@ public class BenchmarkRunOrchestrator {
         meta.put("benchmarkKind", kind.name());
         meta.put("experimentalPresetCodes", presetCodes);
         meta.put("comparativeMode", presetCodes.size() >= 2);
-        int perRunItems = resolveDatasetItemCount(dataset, kind);
+        int perRunItems = resolveDatasetItemCount(dataset, kind, request);
         int plannedTotalItems = perRunItems * presetCodes.size();
         meta.put("perAxisItemCount", perRunItems);
         meta.put("plannedTotalItems", plannedTotalItems);
+        if (request.hasDatasetQuestionSubset()) {
+            DatasetQuestionSubsetSupport.ResolvedSubset subset = DatasetQuestionSubsetSupport.resolve(request);
+            meta.put(DatasetQuestionSubsetSupport.AGG_KEY_DATASET_QUESTION_FILTER, subset.filterMode());
+            meta.put(DatasetQuestionSubsetSupport.AGG_KEY_FILTERED_QUESTION_IDS, subset.questionIds());
+            if (subset.subsetId() != null && !subset.subsetId().isBlank()) {
+                meta.put(DatasetQuestionSubsetSupport.AGG_KEY_SUBSET_ID, subset.subsetId());
+                meta.put(DatasetQuestionSubsetSupport.AGG_KEY_SUBSET_NAME, subset.subsetName());
+                meta.put(DatasetQuestionSubsetSupport.AGG_KEY_SUBSET_VERSION, subset.subsetVersion());
+            }
+        }
         camp.setMetaJson(meta);
         camp = evaluationCampaignRepository.save(camp);
 
@@ -382,7 +427,9 @@ public class BenchmarkRunOrchestrator {
                             request.bootstrapCorpusScope(),
                             request.bootstrapSkipExisting(),
                             request.bootstrapFailOnDocumentError(),
-                            List.of());
+                            List.of(),
+                            request.datasetQuestionIds(),
+                            request.goldSubsetManifestId(), request.routingQueryTypeOracleEnabled());
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, presetCode));
@@ -390,6 +437,7 @@ public class BenchmarkRunOrchestrator {
             applyOptionalLinks(run, childReq);
             applyCorpusReadinessAggregates(userId, run, childReq);
             applyConfigPreflightAggregates(run, configPreflight);
+            labPresetAxisSupport.enrichRagPresetChildRun(run, camp.getId(), presetCode);
             run = evaluationRunRepository.save(run);
 
             if (firstRunId == null) {
@@ -474,7 +522,9 @@ public class BenchmarkRunOrchestrator {
                             request.bootstrapCorpusScope(),
                             request.bootstrapSkipExisting(),
                             request.bootstrapFailOnDocumentError(),
-                            List.of());
+                            List.of(),
+                            request.datasetQuestionIds(),
+                            request.goldSubsetManifestId(), request.routingQueryTypeOracleEnabled());
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, modelId));
@@ -606,7 +656,9 @@ public class BenchmarkRunOrchestrator {
                             request.bootstrapCorpusScope(),
                             request.bootstrapSkipExisting(),
                             request.bootstrapFailOnDocumentError(),
-                            List.of());
+                            List.of(),
+                            request.datasetQuestionIds(),
+                            request.goldSubsetManifestId(), request.routingQueryTypeOracleEnabled());
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, modelId));
@@ -1003,7 +1055,8 @@ public class BenchmarkRunOrchestrator {
         run.setEmbeddingDownstreamRag(request.embeddingDownstreamRagEffective());
         if (!request.experimentalPresetCodes().isEmpty()
                 || request.autoReindexEffective()
-                || request.bootstrapCorpusFromClasspathDocsEffective()) {
+                || request.bootstrapCorpusFromClasspathDocsEffective()
+                || request.hasDatasetQuestionSubset()) {
             Map<String, Object> agg = new LinkedHashMap<>();
             if (run.getAggregatesJson() != null && !run.getAggregatesJson().isEmpty()) {
                 agg.putAll(run.getAggregatesJson());
@@ -1011,6 +1064,7 @@ public class BenchmarkRunOrchestrator {
             if (!request.experimentalPresetCodes().isEmpty()) {
                 agg.put(AGG_KEY_REQUESTED_PRESET_CODES, request.experimentalPresetCodes());
             }
+            DatasetQuestionSubsetSupport.applyToAggregates(agg, request);
             if (request.autoReindexEffective()) {
                 agg.put(AGG_KEY_AUTO_REINDEX_POLICY, LabAutoReindexPolicy.fromRequest(request).toMap());
                 agg.put(AGG_KEY_AUTO_REINDEX_LOCK_ACQUIRED, Boolean.FALSE);
@@ -1028,11 +1082,14 @@ public class BenchmarkRunOrchestrator {
             }
             run.setAggregatesJson(Map.copyOf(agg));
         }
-        if (request.llmModelId() != null && !request.llmModelId().isBlank()) {
-            run.setLlmModelId(request.llmModelId().trim());
+        String llmModelId = labBenchmarkDefaultModelResolver.resolveLlmModelId(request.llmModelId());
+        if (llmModelId != null) {
+            run.setLlmModelId(llmModelId);
         }
-        if (request.embeddingModelId() != null && !request.embeddingModelId().isBlank()) {
-            run.setEmbeddingModelId(request.embeddingModelId().trim());
+        String embeddingModelId =
+                labBenchmarkDefaultModelResolver.resolveEmbeddingModelId(request.embeddingModelId());
+        if (embeddingModelId != null) {
+            run.setEmbeddingModelId(embeddingModelId);
         }
     }
 
@@ -1059,7 +1116,7 @@ public class BenchmarkRunOrchestrator {
                     HttpStatus.BAD_REQUEST,
                     "AUTO_REINDEX_UNSUPPORTED_FOR_BENCHMARK_KIND: autoReindex is only supported for RAG_PRESET_END_TO_END");
         }
-        if (request.corpusId() == null) {
+        if (request.corpusId() == null && !ExperimentalPresetCanonicalCatalog.allCanRunWithoutCorpus(request.experimentalPresetCodes())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     EvaluationCorpusApplicationService.NO_CORPUS_SELECTED + ": autoReindex requires corpusId");
@@ -1076,6 +1133,9 @@ public class BenchmarkRunOrchestrator {
             return;
         }
         if (request == null || request.corpusId() == null) {
+            if (ExperimentalPresetCanonicalCatalog.allCanRunWithoutCorpus(request != null ? request.experimentalPresetCodes() : null)) {
+                return;
+            }
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, EvaluationCorpusApplicationService.NO_CORPUS_SELECTED);
         }
@@ -1131,22 +1191,9 @@ public class BenchmarkRunOrchestrator {
         if (run.getAggregatesJson() != null && !run.getAggregatesJson().isEmpty()) {
             agg.putAll(run.getAggregatesJson());
         }
-        Map<String, Object> snapshot = new LinkedHashMap<>();
-        snapshot.put("corpusId", request.corpusId().toString());
-        snapshot.put("documentCount", readiness.documentCount());
-        snapshot.put("readyCount", readiness.readyCount());
-        snapshot.put("processingCount", readiness.processingCount());
-        snapshot.put("failedCount", readiness.failedCount());
-        snapshot.put("primaryBlocker", readiness.primaryBlocker());
-        snapshot.put("snapshotBlocker", readiness.snapshotBlocker());
-        snapshot.put("snapshotBlockerDetailCode", readiness.snapshotBlockerDetailCode());
-        snapshot.put("reindexRequired", readiness.reindexRequired());
-        snapshot.put(
-                "selectedSnapshotIds",
-                readiness.selectedSnapshotIds() != null
-                        ? readiness.selectedSnapshotIds().stream().map(UUID::toString).toList()
-                        : List.of());
-        agg.put(AGG_KEY_CORPUS_READINESS, Collections.unmodifiableMap(snapshot));
+        agg.put(
+                AGG_KEY_CORPUS_READINESS,
+                LabCorpusReadinessAggregates.toSnapshot(request.corpusId(), readiness));
         run.setAggregatesJson(new LinkedHashMap<>(agg));
     }
 
@@ -1222,6 +1269,17 @@ public class BenchmarkRunOrchestrator {
             case EMBEDDING_RETRIEVAL -> EvaluationRunType.RAG_FULL;
             case CLASSIFIER_METRICS -> EvaluationRunType.CLASSIFIER;
         };
+    }
+
+    private static int resolveDatasetItemCount(
+            EvaluationDatasetEntity dataset, BenchmarkKind kind, StartBenchmarkRunRequest request) {
+        if (request != null) {
+            Integer subsetCount = DatasetQuestionSubsetSupport.resolvedItemCount(request);
+            if (subsetCount != null && subsetCount > 0) {
+                return subsetCount;
+            }
+        }
+        return resolveDatasetItemCount(dataset, kind);
     }
 
     private static int resolveDatasetItemCount(EvaluationDatasetEntity dataset, BenchmarkKind kind) {

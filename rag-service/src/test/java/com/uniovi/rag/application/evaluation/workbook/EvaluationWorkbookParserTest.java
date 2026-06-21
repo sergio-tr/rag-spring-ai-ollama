@@ -122,6 +122,40 @@ class EvaluationWorkbookParserTest {
     }
 
     @Test
+    void ragPresetBenchmark_unanswerableColumn_setsDeclaredFlag() throws Exception {
+        Workbook wb = new XSSFWorkbook();
+        addChunkRegistry(wb, "c1", "d1");
+        Sheet rag = wb.createSheet(WorkbookSheetNames.RAG_PRESET_QUESTIONS_ENRICHED);
+        writeRow(
+                rag.createRow(0),
+                "id",
+                "question",
+                "expected_answer",
+                "query_type",
+                "difficulty",
+                "unanswerable",
+                "gold_document_ids");
+        for (int i = 1; i <= 20; i++) {
+            writeRow(
+                    rag.createRow(i),
+                    "r" + i,
+                    "Unknown future event " + i + "?",
+                    "",
+                    "BOOLEAN_QUERY",
+                    "LOW",
+                    i == 1 ? "true" : "false",
+                    i == 1 ? "ACTA_1" : "");
+        }
+
+        WorkbookParseResult result = parse(wb, ExperimentalDatasetType.RAG_PRESET_BENCHMARK);
+        assertThat(result.validationReport().hasErrors()).isFalse();
+        var q = result.workbook().ragPresetQuestionsEnriched().getFirst();
+        assertThat(q.unanswerable()).isTrue();
+        assertThat(q.unanswerableDeclared()).isTrue();
+        assertThat(q.goldDocumentIds()).containsExactly("ACTA_1");
+    }
+
+    @Test
     void referenceBundle_classpathArtifact_hasNoErrors() throws Exception {
         ClassPathResource r = new ClassPathResource(EvaluationReferenceBundleLoader.CLASSPATH_LOCATION);
         assertThat(r.exists()).isTrue();

@@ -14,8 +14,14 @@ public final class LabRuntimeConfigReasonCodes {
 
     public static final String UNSUPPORTED_PRESET = "UNSUPPORTED_PRESET";
 
-    /** P13/P14 or other presets not allowed in single-turn Lab benchmark harness. */
+    /** Presets not allowed in single-turn Lab benchmark harness (P11–P14). */
     public static final String PRESET_NOT_LAB_SELECTABLE = "PRESET_NOT_LAB_SELECTABLE";
+
+    public static final String PRESET_ADAPTIVE_ROUTING_BENCHMARK_NOT_SUPPORTED =
+            "PRESET_ADAPTIVE_ROUTING_BENCHMARK_NOT_SUPPORTED";
+
+    public static final String PRESET_JUDGE_ENHANCED_BENCHMARK_NOT_SUPPORTED =
+            "PRESET_JUDGE_ENHANCED_BENCHMARK_NOT_SUPPORTED";
 
     /** Alias retained for harness-specific messages. */
     public static final String PRESET_NOT_SINGLE_TURN_BENCHMARK = PRESET_NOT_LAB_SELECTABLE;

@@ -63,9 +63,9 @@ test.describe("Closure LAB LLM model evidence @closure @fullstack", () => {
       );
     }
 
-    const llmModelIds = await ensureLlmCampaignModelsReady(page, 2);
+    const llmModelIds = await ensureLlmCampaignModelsReady(page, 3);
     evidenceLog(`selectable LLM models for run: ${llmModelIds.join(", ")}`);
-    expect(llmModelIds.length).toBeGreaterThanOrEqual(2);
+    expect(llmModelIds.length).toBeGreaterThanOrEqual(3);
 
     await gotoLabEvaluationPage(page, "llm");
     await assertLabDatasetControlsVisible(page);

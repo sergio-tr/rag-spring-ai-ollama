@@ -1,10 +1,15 @@
 package com.uniovi.rag.application.service.evaluation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.service.evaluation.metrics.Answerability;
+import com.uniovi.rag.application.service.evaluation.metrics.DatasetMetricContract;
+import com.uniovi.rag.application.service.evaluation.metrics.DatasetQuestionSubsetSupport;
+import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
@@ -12,7 +17,10 @@ import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.domain.AsyncTaskStatus;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
 import com.uniovi.rag.interfaces.rest.dto.CompareRunsResponseDto;
+import com.uniovi.rag.interfaces.rest.dto.EvaluationResultItemDto;
 import com.uniovi.rag.interfaces.rest.dto.LatestLabRunRecoveryDto;
 import org.springframework.data.domain.Pageable;
 import org.junit.jupiter.api.Test;
@@ -49,6 +57,9 @@ class LabEvaluationRunServiceTest {
 
     @Mock
     private RagApiPathProperties apiPathProperties;
+
+    @Mock
+    private LabPresetAxisSupport labPresetAxisSupport;
 
     @InjectMocks
     private LabEvaluationRunService service;
@@ -135,6 +146,62 @@ class LabEvaluationRunServiceTest {
     }
 
     @Test
+    void mvpCsvColumns_includeNegativeEvidenceFalsePositive() {
+        assertThat(LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS())
+                .contains("negativeEvidenceFalsePositive");
+    }
+
+    @Test
+    void mvpCsvColumns_includeBaselineFloorTelemetryFields() {
+        assertThat(LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS())
+                .containsSubsequence(
+                        "baselineCandidateSource",
+                        "baselineCandidatePresetCode",
+                        "baselineCandidateSelected",
+                        "baselineOverrideAttempted",
+                        "baselineOverrideAccepted",
+                        "baselineOverrideRejectedReason",
+                        "baselineFloorApplied",
+                        "baselineFloorReason",
+                        "monotonicFloorApplied",
+                        "monotonicFloorPreventedRegression");
+    }
+
+    @Test
+    void exportMvpItemsCsv_includesNegativeEvidenceFalsePositiveColumn() {
+        UUID userId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setId(runId);
+        run.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+
+        EvaluationResultEntity item = new EvaluationResultEntity();
+        item.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        item.setRun(run);
+        item.setExpectedAnswer("none");
+        item.setActualAnswer("found something");
+        item.setMetricsPayload(
+                Map.of(
+                        BenchmarkResultRowKeys.ITEM_OUTCOME,
+                        "EXECUTED",
+                        BenchmarkResultRowKeys.PRESET_CODE,
+                        "P3",
+                        DatasetMetricContract.KEY_ANSWERABILITY,
+                        Answerability.UNANSWERABLE.name(),
+                        "negativeEvidenceFalsePositive",
+                        true));
+
+        when(evaluationRunRepository.findByIdAndUser_Id(runId, userId)).thenReturn(Optional.of(run));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId)).thenReturn(List.of(item));
+
+        String csv = service.exportMvpItemsCsv(userId, runId);
+
+        assertThat(csv.split("\n", 2)[0]).contains("negativeEvidenceFalsePositive");
+        assertThat(csv).contains("true");
+    }
+
+    @Test
     void mvpCsvColumns_includeRequiredLabMetricsAndEvidenceFields() {
         assertThat(LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS())
                 .contains(
@@ -209,5 +276,150 @@ class LabEvaluationRunServiceTest {
         assertThat(dto.hasResults()).isTrue();
         assertThat(dto.pollPath()).isEqualTo("/api/v5/lab/jobs/" + taskId);
         assertThat(dto.streamPath()).isEqualTo("/api/v5/lab/jobs/" + taskId + "/events");
+    }
+
+    @Test
+    void exportMvpItemsCsv_returnsSubsetRowsWithoutCampaign() {
+        UUID userId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setId(runId);
+        run.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        run.setAggregatesJson(
+                Map.of(
+                        DatasetQuestionSubsetSupport.AGG_KEY_FILTERED_QUESTION_COUNT,
+                        18,
+                        DatasetQuestionSubsetSupport.AGG_KEY_DATASET_QUESTION_FILTER,
+                        DatasetQuestionSubsetSupport.FILTER_GOLD_SUBSET));
+
+        EvaluationResultEntity item = new EvaluationResultEntity();
+        item.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        item.setRun(run);
+        item.setMetricsPayload(Map.of("datasetQuestionId", "RAG-001"));
+
+        when(evaluationRunRepository.findByIdAndUser_Id(runId, userId)).thenReturn(Optional.of(run));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId)).thenReturn(List.of(item));
+
+        String csv = service.exportMvpItemsCsv(userId, runId);
+
+        assertThat(csv).contains("datasetQuestionId");
+        assertThat(csv.lines().count()).isGreaterThan(1);
+    }
+
+    @Test
+    void listItems_campaignRun_returnsAllChildPresetRows() {
+        UUID userId = UUID.randomUUID();
+        UUID campaignId = UUID.randomUUID();
+        UUID coordinatorRunId = UUID.randomUUID();
+        UUID p0RunId = UUID.randomUUID();
+        UUID p1RunId = UUID.randomUUID();
+
+        EvaluationCampaignEntity campaign = mock(EvaluationCampaignEntity.class);
+        when(campaign.getId()).thenReturn(campaignId);
+
+        EvaluationRunEntity coordinator = mock(EvaluationRunEntity.class);
+        when(coordinator.getId()).thenReturn(coordinatorRunId);
+        when(coordinator.getCampaign()).thenReturn(campaign);
+
+        EvaluationRunEntity p0 = mock(EvaluationRunEntity.class);
+        when(p0.getId()).thenReturn(p0RunId);
+        EvaluationRunEntity p1 = mock(EvaluationRunEntity.class);
+        when(p1.getId()).thenReturn(p1RunId);
+
+        EvaluationResultEntity item0 = mock(EvaluationResultEntity.class);
+        EvaluationResultEntity item1 = mock(EvaluationResultEntity.class);
+        when(item0.getId()).thenReturn(UUID.randomUUID());
+        when(item1.getId()).thenReturn(UUID.randomUUID());
+        when(item0.getBenchmarkKind()).thenReturn(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        when(item1.getBenchmarkKind()).thenReturn(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+
+        when(evaluationRunRepository.findByIdAndUser_Id(coordinatorRunId, userId)).thenReturn(Optional.of(coordinator));
+        when(evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId)).thenReturn(List.of(p0, p1));
+        when(evaluationResultRepository.findByRun_IdInOrderByEvaluatedAtAsc(List.of(p0RunId, p1RunId)))
+                .thenReturn(List.of(item0, item1));
+
+        List<EvaluationResultItemDto> items = service.listItems(userId, coordinatorRunId);
+        assertThat(items).hasSize(2);
+    }
+
+    @Test
+    void exportMvpRollupsJson_campaignChildRun_usesRunScopedItemsOnly() {
+        UUID userId = UUID.randomUUID();
+        UUID campaignId = UUID.randomUUID();
+        UUID p0RunId = UUID.randomUUID();
+
+        EvaluationCampaignEntity campaign = mock(EvaluationCampaignEntity.class);
+        when(campaign.getId()).thenReturn(campaignId);
+
+        EvaluationRunEntity p0 = mock(EvaluationRunEntity.class);
+        when(p0.getId()).thenReturn(p0RunId);
+        when(p0.getCampaign()).thenReturn(campaign);
+
+        EvaluationResultEntity item0 = new EvaluationResultEntity();
+        item0.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+        item0.setMetricsPayload(Map.of("itemOutcome", "EXECUTED", "presetCode", "P0"));
+
+        when(evaluationRunRepository.findByIdAndUser_Id(p0RunId, userId)).thenReturn(Optional.of(p0));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(p0RunId)).thenReturn(List.of(item0));
+        lenient()
+                .when(evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId))
+                .thenReturn(List.of(p0));
+
+        Map<String, Object> rollups = service.exportMvpRollupsJson(userId, p0RunId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> global = (Map<String, Object>) rollups.get("globalMacro");
+        @SuppressWarnings("unchecked")
+        Map<String, Long> outcomeCounts = (Map<String, Long>) global.get("outcomeCounts");
+        assertThat(outcomeCounts.get("EXECUTED")).isEqualTo(1L);
+    }
+
+    @Test
+    void findLatestRunForRecovery_campaignRun_includesCampaignMetadata() {
+        UUID userId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID campaignId = UUID.randomUUID();
+        UUID childRunId = UUID.randomUUID();
+
+        UserEntity user = mock(UserEntity.class);
+        when(user.getId()).thenReturn(userId);
+
+        AsyncTaskEntity task = spy(
+                AsyncTaskEntity.queued(user, AsyncTaskType.EVAL_RAG, Map.of(), Instant.now()));
+        lenient().when(task.getId()).thenReturn(taskId);
+        task.setStatus(AsyncTaskStatus.SUCCEEDED);
+
+        EvaluationCampaignEntity campaign = mock(EvaluationCampaignEntity.class);
+        when(campaign.getId()).thenReturn(campaignId);
+
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setId(runId);
+        run.setUser(user);
+        run.setAsyncTask(task);
+        run.setCampaign(campaign);
+        run.setBenchmarkKind(BenchmarkKind.RAG_PRESET_END_TO_END.name());
+
+        EvaluationRunEntity child = mock(EvaluationRunEntity.class);
+        when(child.getId()).thenReturn(childRunId);
+
+        when(apiPathProperties.getProductBasePath()).thenReturn("/api/v5");
+        when(evaluationRunRepository.findRecentByUserAndBenchmarkKind(
+                        eq(userId),
+                        eq(BenchmarkKind.RAG_PRESET_END_TO_END.name()),
+                        any(Pageable.class)))
+                .thenReturn(List.of(run));
+        when(evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId)).thenReturn(List.of(run, child));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId)).thenReturn(List.of());
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(childRunId)).thenReturn(List.of());
+
+        LatestLabRunRecoveryDto dto =
+                service.findLatestRunForRecovery(userId, BenchmarkKind.RAG_PRESET_END_TO_END, null);
+
+        assertThat(dto).isNotNull();
+        assertThat(dto.campaignId()).isEqualTo(campaignId);
+        assertThat(dto.campaignChildRunIds()).containsExactly(runId, childRunId);
+        assertThat(dto.persistedItemCount()).isZero();
     }
 }

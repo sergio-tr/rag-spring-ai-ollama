@@ -1,6 +1,8 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
+import com.uniovi.rag.application.service.knowledge.document.KnowledgeChunkMetadataFactory;
 import com.uniovi.rag.configuration.RagVectorProperties;
+import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
@@ -424,6 +426,70 @@ class DenseRetrievalStrategyTest {
 
         var out = denseRetrievalStrategy.retrieve(req);
         assertThat(out).hasSize(2);
+    }
+
+    @Test
+    void retrieve_appliesSnapshotBoundFilterExpression() {
+        UUID sid = UUID.randomUUID();
+        RetrievalRequest req = baseRequest(sid, 5);
+        when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
+
+        denseRetrievalStrategy.retrieve(req);
+
+        ArgumentCaptor<SearchRequest> cap = ArgumentCaptor.forClass(SearchRequest.class);
+        verify(vectorStore).similaritySearch(cap.capture());
+        assertThat(cap.getValue().hasFilterExpression()).isTrue();
+    }
+
+    @Test
+    void retrieve_evaluationCorpusMetadataShape_survivesProjectFilter() {
+        RagExecutionContextHolder.clear();
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID sid = UUID.randomUUID();
+        RagExecutionContextHolder.set(
+                new RagExecutionContext(null, null, projectId.toString(), baseRag(), List.of("all"), "trace"));
+
+        Map<String, Object> meta =
+                KnowledgeChunkMetadataFactory.buildV2(
+                        CorpusScope.PROJECT_SHARED,
+                        documentId,
+                        projectId,
+                        null,
+                        sid,
+                        "sig",
+                        "acta.pdf",
+                        2,
+                        5,
+                        "hash123");
+        Document doc = new Document("chunk text", meta);
+        when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(doc));
+
+        DenseRetrievalOutcome outcome = denseRetrievalStrategy.retrieveWithOutcome(baseRequest(sid, 10));
+
+        assertThat(outcome.candidates()).hasSize(1);
+        assertThat(outcome.postProjectCandidateCount()).isEqualTo(1);
+        assertThat(outcome.candidates().getFirst().candidateId()).endsWith(":2");
+    }
+
+    @Test
+    void retrieveWithOutcome_reportsStageCounts() {
+        UUID sid = UUID.randomUUID();
+        Document wrongSnapshot =
+                new Document(
+                        "noise",
+                        Map.of("indexSnapshotId", UUID.randomUUID().toString(), "document_id", "d0", "chunk_index", 0));
+        Document ok =
+                new Document(
+                        "hit",
+                        Map.of("indexSnapshotId", sid.toString(), "document_id", "d1", "chunk_index", 1));
+        when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(wrongSnapshot, ok));
+
+        DenseRetrievalOutcome outcome = denseRetrievalStrategy.retrieveWithOutcome(baseRequest(sid, 5));
+
+        assertThat(outcome.rawCandidateCount()).isEqualTo(2);
+        assertThat(outcome.postSnapshotCandidateCount()).isEqualTo(1);
+        assertThat(outcome.candidates()).hasSize(1);
     }
 
     @Test

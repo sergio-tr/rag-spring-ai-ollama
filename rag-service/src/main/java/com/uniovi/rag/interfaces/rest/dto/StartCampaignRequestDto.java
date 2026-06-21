@@ -19,14 +19,19 @@ public record StartCampaignRequestDto(
         List<String> embeddingModelIds,
         List<UUID> indexSnapshotIds,
         List<String> experimentalPresetCodes,
-        Map<String, Object> baseConfig
+        List<String> datasetQuestionIds,
+        String goldSubsetManifestId,
+        Map<String, Object> baseConfig,
+        Boolean routingQueryTypeOracleEnabled
 ) {
     public StartCampaignRequestDto {
         llmModelIds = llmModelIds == null ? List.of() : llmModelIds;
         embeddingModelIds = embeddingModelIds == null ? List.of() : embeddingModelIds;
         indexSnapshotIds = indexSnapshotIds == null ? List.of() : indexSnapshotIds;
         experimentalPresetCodes = experimentalPresetCodes == null ? List.of() : experimentalPresetCodes;
+        datasetQuestionIds = datasetQuestionIds == null ? List.of() : datasetQuestionIds;
         baseConfig = baseConfig == null ? Map.of() : baseConfig;
+        routingQueryTypeOracleEnabled = Boolean.TRUE.equals(routingQueryTypeOracleEnabled);
     }
 }
 

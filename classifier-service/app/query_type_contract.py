@@ -39,6 +39,32 @@ def validate_query_type_label(label: str) -> str:
     return normalized
 
 
+def label_set_hash(labels: list[str]) -> str:
+    """Stable short hash for a model label ordering."""
+    import hashlib
+
+    payload = ",".join(labels)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def validate_loaded_labels(labels: list[str]) -> list[str]:
+    """Ensures every label is a known Java QueryType; raises ValueError on unknown entries."""
+    if not labels:
+        raise ValueError("labels file must not be empty")
+    unknown = [label for label in labels if label not in JAVA_QUERY_TYPES]
+    if unknown:
+        raise ValueError(f"unsupported labels (not in Java QueryType enum): {unknown}")
+    return labels
+
+
+def canonical_class_order(class_names: list[str]) -> list[str]:
+    """Orders model class names using the shared Java enum declaration order."""
+    present = set(class_names)
+    ordered = [name for name in JAVA_QUERY_TYPE_ORDER if name in present]
+    extras = [name for name in class_names if name not in ordered]
+    return ordered + extras
+
+
 def read_labels_file_lines(path: str) -> list[str]:
     """Reads non-empty, non-comment lines from a labels file."""
     from pathlib import Path

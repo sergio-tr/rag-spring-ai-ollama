@@ -1,7 +1,11 @@
 package com.uniovi.rag.application.service.evaluation.preset;
 
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusStorageIntegrityService;
+import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.evaluation.RagBenchmarkHumanReasons;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
+import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,13 +41,34 @@ public class CorpusAvailabilityGate {
             "This preset requires corpus evidence, but usable evidence could not be assembled.";
 
     private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
+    private final EvaluationCorpusStorageIntegrityService storageIntegrityService;
     private final NamedParameterJdbcTemplate namedParameterJdbcTemplate;
 
     public CorpusAvailabilityGate(
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
+            EvaluationCorpusStorageIntegrityService storageIntegrityService,
             NamedParameterJdbcTemplate namedParameterJdbcTemplate) {
         this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
+        this.storageIntegrityService = storageIntegrityService;
         this.namedParameterJdbcTemplate = namedParameterJdbcTemplate;
+    }
+
+    /**
+     * Preset-aware gate: P1 assembles corpus from snapshot-bound rows; P2+ materialized indexes require READY documents
+     * and non-empty vector rows; P0 does not require corpus evidence.
+     */
+    public Result evaluateForPreset(
+            UUID userId, UUID corpusId, List<UUID> snapshotIds, RagExperimentalPresetCode code) {
+        if (code != null && ExperimentalPresetCanonicalCatalog.canRunWithoutCorpus(code)) {
+            return new Result(true, 0, List.of(), 0, 0L, null, null);
+        }
+        if (code != null && ExperimentalPresetCanonicalCatalog.requiresSnapshotAssembledCorpusEvidence(code)) {
+            return evaluate(userId, corpusId, snapshotIds);
+        }
+        if (code != null && ExperimentalPresetCanonicalCatalog.needsVectorIndex(code)) {
+            return evaluate(userId, corpusId, snapshotIds);
+        }
+        return evaluateDocumentsOnly(userId, corpusId);
     }
 
     /** Structured diagnostics merged into Lab metrics payloads (never blocks callers beyond gate semantics). */
@@ -74,6 +99,103 @@ public class CorpusAvailabilityGate {
         return Map.copyOf(m);
     }
 
+    public Map<String, Object> probeForPreset(
+            UUID userId, UUID corpusId, List<UUID> snapshotIds, RagExperimentalPresetCode preset) {
+        LinkedHashMap<String, Object> m = new LinkedHashMap<>();
+        boolean corpusReq = preset != null && ExperimentalPresetCanonicalCatalog.corpusRequired(preset);
+        if (preset != null && ExperimentalPresetCanonicalCatalog.canRunWithoutCorpus(preset)) {
+            m.put("corpusRequired", false);
+            return Map.copyOf(m);
+        }
+        Result r = evaluateForPreset(userId, corpusId, snapshotIds, preset);
+        m.put("corpusRequired", corpusReq);
+        m.put("corpusAvailable", r.satisfied());
+        m.put("evaluationCorpusId", corpusId != null ? corpusId.toString() : null);
+        m.put("evaluationCorpusDocumentIds", r.readyDocumentIds().stream().map(UUID::toString).toList());
+        m.put("corpusDocumentCount", r.corpusDocumentCount());
+        m.put("readySharedDocsWithStorageUriCount", r.readySharedDocsWithUriCount());
+        m.put("vectorChunkRowCount", r.vectorChunkRowCount());
+        List<String> selectedSnapshotIds =
+                snapshotIds != null
+                        ? snapshotIds.stream().filter(id -> id != null).map(UUID::toString).toList()
+                        : List.of();
+        m.put("selectedSnapshotIds", selectedSnapshotIds);
+        if (!r.satisfied()) {
+            m.put("skippedReasonCode", r.reasonCode());
+            m.put("skippedReason", r.reasonMessage());
+        }
+        return Map.copyOf(m);
+    }
+
+    /** READY evaluation-corpus documents without vector index requirements. */
+    public Result evaluateDocumentsOnly(UUID userId, UUID corpusId) {
+        if (corpusId == null) {
+            return failed(0, List.of(), 0, NO_CORPUS_SELECTED, "No evaluation corpus was selected.");
+        }
+        EvaluationCorpusApplicationService.EvaluationCorpusContext context;
+        try {
+            context = evaluationCorpusApplicationService.requireContext(userId, corpusId);
+        } catch (Exception ex) {
+            return failed(0, List.of(), 0, NO_CORPUS_SELECTED, "No evaluation corpus was selected.");
+        }
+        List<KnowledgeDocumentEntity> docs = context.documents();
+        if (docs == null || docs.isEmpty()) {
+            return failed(0, List.of(), 0, NO_DOCUMENTS, "The selected evaluation corpus has no documents.");
+        }
+        Result storageBlocker = evaluateStorageIntegrity(docs);
+        if (storageBlocker != null) {
+            return storageBlocker;
+        }
+        List<UUID> readyDocIds = storageIntegrityService.storageReadyDocumentIds(docs);
+        int docsReady = readyDocIds.size();
+        if (docsReady <= 0) {
+            return failed(
+                    docs.size(),
+                    readyDocIds,
+                    0,
+                    NO_READY_DOCUMENTS,
+                    "The selected evaluation corpus has documents, but none are READY with stored content.");
+        }
+        return new Result(true, docs.size(), readyDocIds, docsReady, 0L, null, null);
+    }
+
+    /** Counts {@code vector_store} rows bound to the evaluation corpus project and snapshot ids. */
+    public long countVectorRows(UUID indexProjectId, List<UUID> snapshotIds) {
+        if (indexProjectId == null || snapshotIds == null || snapshotIds.isEmpty()) {
+            return 0L;
+        }
+        MapSqlParameterSource p = new MapSqlParameterSource();
+        p.addValue("projectId", indexProjectId);
+        p.addValue("snapshotIds", snapshotIds);
+        Long cnt =
+                namedParameterJdbcTemplate.queryForObject(
+                        """
+                        SELECT COUNT(*) FROM vector_store
+                        WHERE project_id = :projectId
+                          AND (metadata->>'indexSnapshotId')::uuid IN (:snapshotIds)
+                        """,
+                        p,
+                        Long.class);
+        return cnt != null ? cnt : 0L;
+    }
+
+    public boolean snapshotHasVectorRows(UUID userId, UUID corpusId, UUID snapshotId) {
+        if (snapshotId == null) {
+            return false;
+        }
+        EvaluationCorpusApplicationService.EvaluationCorpusContext context;
+        try {
+            context = evaluationCorpusApplicationService.requireContext(userId, corpusId);
+        } catch (Exception ex) {
+            return false;
+        }
+        UUID indexProjectId = context.indexProjectId();
+        if (indexProjectId == null) {
+            return false;
+        }
+        return countVectorRows(indexProjectId, List.of(snapshotId)) > 0L;
+    }
+
     public Result evaluate(UUID userId, UUID corpusId, List<UUID> snapshotIds) {
         if (corpusId == null) {
             return failed(0, List.of(), 0, NO_CORPUS_SELECTED, "No evaluation corpus was selected.");
@@ -88,7 +210,11 @@ public class CorpusAvailabilityGate {
         if (docs == null || docs.isEmpty()) {
             return failed(0, List.of(), 0, NO_DOCUMENTS, "The selected evaluation corpus has no documents.");
         }
-        List<UUID> readyDocIds = context.readyDocumentIds();
+        Result storageBlocker = evaluateStorageIntegrity(docs);
+        if (storageBlocker != null) {
+            return storageBlocker;
+        }
+        List<UUID> readyDocIds = storageIntegrityService.storageReadyDocumentIds(docs);
         int docsReady = readyDocIds.size();
         if (docsReady <= 0) {
             return failed(
@@ -115,19 +241,7 @@ public class CorpusAvailabilityGate {
                     REINDEX_REQUIRED,
                     "Documents are READY, but no snapshot was selected for corpus evidence.");
         }
-        MapSqlParameterSource p = new MapSqlParameterSource();
-        p.addValue("projectId", indexProjectId);
-        p.addValue("snapshotIds", snapshotIds.stream().map(UUID::toString).toList());
-        Long cnt =
-                namedParameterJdbcTemplate.queryForObject(
-                        """
-                        SELECT COUNT(*) FROM vector_store
-                        WHERE project_id = :projectId
-                          AND (metadata->>'indexSnapshotId')::uuid IN (:snapshotIds)
-                        """,
-                        p,
-                        Long.class);
-        long rows = cnt != null ? cnt : 0L;
+        long rows = countVectorRows(indexProjectId, snapshotIds);
         if (rows <= 0) {
             return failed(
                     docs.size(),
@@ -137,6 +251,19 @@ public class CorpusAvailabilityGate {
                     "A snapshot was selected, but it has no vector rows for the evaluation corpus.");
         }
         return new Result(true, docs.size(), readyDocIds, docsReady, rows, null, null);
+    }
+
+    private Result evaluateStorageIntegrity(List<KnowledgeDocumentEntity> docs) {
+        if (!storageIntegrityService.hasReadyDocumentWithMissingBinary(docs)) {
+            return null;
+        }
+        List<UUID> storageReady = storageIntegrityService.storageReadyDocumentIds(docs);
+        return failed(
+                docs.size(),
+                storageReady,
+                0L,
+                LabCorpusReasonCodes.DOCUMENT_BINARY_MISSING,
+                RagBenchmarkHumanReasons.humanize(LabCorpusReasonCodes.DOCUMENT_BINARY_MISSING));
     }
 
     private static Result failed(

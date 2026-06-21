@@ -5,9 +5,7 @@ import com.uniovi.rag.tool.ToolResult;
 
 import java.util.Map;
 
-/**
- * Maps tool execution output to FC answer text and normalized payload for follow-up prompting (§9.5).
- */
+/** Maps tool execution output to FC answer text and normalized payload for follow-up prompting. */
 public interface FunctionCallingResultMapper {
 
     Map<String, Object> normalizedPayload(ToolResult raw, DeterministicToolKind kind);

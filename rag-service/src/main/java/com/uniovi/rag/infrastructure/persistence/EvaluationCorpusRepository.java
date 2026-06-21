@@ -19,4 +19,6 @@ public interface EvaluationCorpusRepository extends JpaRepository<EvaluationCorp
 
     @Query("SELECT c.name FROM EvaluationCorpusEntity c WHERE c.id = :corpusId")
     Optional<String> findNameById(@Param("corpusId") UUID corpusId);
+
+    boolean existsByIndexProject_Id(UUID indexProjectId);
 }

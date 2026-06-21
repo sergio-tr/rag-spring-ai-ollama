@@ -91,6 +91,48 @@ class BenchmarkMvpMetricsCalculatorIndexPlanTest {
     }
 
     @Test
+    void mvp_csv_columns_include_factual_verifier_export_fields() {
+        assertThat(LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS())
+                .containsSubsequence(
+                        "groundingPolicy",
+                        "verifierAttempted",
+                        "verifierPassed",
+                        "verifierFailureReason",
+                        "verifierRevisionAttempted",
+                        "verifierForcedAbstention",
+                        "constraintType",
+                        "constraintCheckPassed",
+                        "negativeEvidenceGuardTriggered",
+                        "finalAnswerSource");
+    }
+
+    @Test
+    void csv_row_includes_factual_verifier_fields_when_present() {
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        EvaluationResultEntity item = new EvaluationResultEntity();
+        item.setBenchmarkKind("RAG_PRESET_END_TO_END");
+        item.setMetricsPayload(
+                new LinkedHashMap<>(
+                        Map.of(
+                                "groundingPolicy", "NEGATIVE_EVIDENCE",
+                                "verifierAttempted", true,
+                                "verifierPassed", false,
+                                "verifierFailureReason", "NEGATIVE_FALSE_POSITIVE",
+                                "verifierRevisionAttempted", true,
+                                "verifierForcedAbstention", true,
+                                "constraintType", "TOPIC",
+                                "constraintCheckPassed", false,
+                                "negativeEvidenceGuardTriggered", true,
+                                "finalAnswerSource", "FORCED_ABSTENTION")));
+
+        Map<String, String> row = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(item, run);
+        assertThat(row.get("groundingPolicy")).isEqualTo("NEGATIVE_EVIDENCE");
+        assertThat(row.get("verifierAttempted")).isEqualTo("true");
+        assertThat(row.get("verifierFailureReason")).isEqualTo("NEGATIVE_FALSE_POSITIVE");
+        assertThat(row.get("finalAnswerSource")).isEqualTo("FORCED_ABSTENTION");
+    }
+
+    @Test
     void golden_example_header_matches_live_mvp_column_list() throws Exception {
         String expected =
                 new String(
@@ -137,6 +179,31 @@ class BenchmarkMvpMetricsCalculatorIndexPlanTest {
         assertThat(row.get("evaluationDatasetId")).isEqualTo(dsId.toString());
         assertThat(row.get("evaluationDatasetSha256")).hasSize(64);
         assertThat(row.get("resolvedConfigSnapshotId")).isEqualTo(cfgId.toString());
+    }
+
+    @Test
+    void mvp_csv_columns_include_deterministic_tool_evidence_fields() {
+        assertThat(LabEvaluationRunService.MVP_ITEMS_CSV_COLUMNS_FOR_TESTS())
+                .containsSubsequence(
+                        "toolCoverageStatus",
+                        RagPresetToolMetrics.KEY_DETERMINISTIC_EVIDENCE_LEVEL,
+                        RagPresetToolMetrics.KEY_ROUTING_ORACLE_USED,
+                        "routingRouteKind");
+    }
+
+    @Test
+    void csv_row_includes_deterministic_tool_evidence_fields_when_present() {
+        EvaluationResultEntity item = new EvaluationResultEntity();
+        item.setBenchmarkKind("RAG_PRESET_END_TO_END");
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+        mp.put(RagPresetToolMetrics.KEY_DETERMINISTIC_EVIDENCE_LEVEL, "STRONG");
+        mp.put(RagPresetToolMetrics.KEY_ROUTING_ORACLE_USED, false);
+        item.setMetricsPayload(mp);
+
+        Map<String, String> row = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(item, new EvaluationRunEntity());
+        assertThat(row.get(RagPresetToolMetrics.KEY_DETERMINISTIC_EVIDENCE_LEVEL)).isEqualTo("STRONG");
+        assertThat(row.get(RagPresetToolMetrics.KEY_ROUTING_ORACLE_USED)).isEqualTo("false");
     }
 
     @Test

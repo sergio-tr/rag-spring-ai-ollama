@@ -1,6 +1,6 @@
 -- Backfill vector_store.project_id (column) from metadata->>'projectId'.
 --
--- Root cause (Phase R0):
+-- Root cause:
 -- Spring AI PgVectorStore writes `metadata.projectId` but does not populate our optional `project_id` column.
 -- Several retrieval paths (naive full corpus, scoped filters, future SQL optimizations) rely on `project_id`.
 -- When NULL, project-scoped retrieval returns zero candidates even though chunks exist.

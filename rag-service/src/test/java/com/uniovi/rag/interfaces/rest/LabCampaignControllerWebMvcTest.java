@@ -89,5 +89,15 @@ class LabCampaignControllerWebMvcTest {
                 .andExpect(jsonPath("$.campaignId").value(cid.toString()))
                 .andExpect(jsonPath("$.items").isArray());
     }
+
+    @Test
+    void exportMvpItemsCsv_returns200() throws Exception {
+        UUID cid = UUID.randomUUID();
+        when(labCampaignService.exportCampaignItemsCsv(eq(userId), eq(cid)))
+                .thenReturn("campaignId,presetKey\n" + cid + ",P0\n");
+        mockMvc.perform(get(path("/lab/campaigns/" + cid + "/export/mvp/items.csv")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("presetKey")));
+    }
 }
 

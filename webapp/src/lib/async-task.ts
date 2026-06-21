@@ -93,7 +93,7 @@ export async function pollLabJob(
   );
 }
 
-/** One-shot status for Lab job recovery (R4 / backend resume hydration). */
+/** One-shot status for Lab job recovery (backend resume hydration). */
 export async function fetchLabJobStatusOnce(
   jobId: string,
   options?: { signal?: AbortSignal },

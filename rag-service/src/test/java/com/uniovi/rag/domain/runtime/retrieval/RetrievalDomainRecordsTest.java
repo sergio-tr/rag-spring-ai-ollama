@@ -43,7 +43,7 @@ class RetrievalDomainRecordsTest {
                         false,
                         List.of(),
                         List.of(),
-                        Optional.empty());
+                        Optional.empty(), 0, 0, false, 0);
         assertTrue(d.fusionMode().isEmpty());
         assertEquals("", d.snapshotIdsJoined());
     }
@@ -112,7 +112,7 @@ class RetrievalDomainRecordsTest {
                         true,
                         List.of("rc"),
                         List.of("rc"),
-                        Optional.of("rc:0.50"));
+                        Optional.of("rc:0.50"), 0, 0, false, 0);
         CuratedContextSet curated =
                 new CuratedContextSet(
                         List.of(c),

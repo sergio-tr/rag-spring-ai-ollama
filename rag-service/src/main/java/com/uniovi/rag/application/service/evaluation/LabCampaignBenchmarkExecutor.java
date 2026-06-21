@@ -2,11 +2,14 @@ package com.uniovi.rag.application.service.evaluation;
 
 import com.uniovi.rag.domain.LabJobEventType;
 import com.uniovi.rag.infrastructure.persistence.EvaluationCampaignRepository;
+import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,18 +31,24 @@ public class LabCampaignBenchmarkExecutor {
 
     private final EvaluationRunRepository evaluationRunRepository;
     private final EvaluationCampaignRepository evaluationCampaignRepository;
+    private final EvaluationResultRepository evaluationResultRepository;
     private final LabJobEventService labJobEventService;
     private final LabBenchmarkCompletionService labBenchmarkCompletionService;
+    private final LabPresetAxisSupport labPresetAxisSupport;
 
     public LabCampaignBenchmarkExecutor(
             EvaluationRunRepository evaluationRunRepository,
             EvaluationCampaignRepository evaluationCampaignRepository,
+            EvaluationResultRepository evaluationResultRepository,
             LabJobEventService labJobEventService,
-            LabBenchmarkCompletionService labBenchmarkCompletionService) {
+            LabBenchmarkCompletionService labBenchmarkCompletionService,
+            LabPresetAxisSupport labPresetAxisSupport) {
         this.evaluationRunRepository = evaluationRunRepository;
         this.evaluationCampaignRepository = evaluationCampaignRepository;
+        this.evaluationResultRepository = evaluationResultRepository;
         this.labJobEventService = labJobEventService;
         this.labBenchmarkCompletionService = labBenchmarkCompletionService;
+        this.labPresetAxisSupport = labPresetAxisSupport;
     }
 
     public void runCampaign(
@@ -94,12 +103,20 @@ public class LabCampaignBenchmarkExecutor {
                 null,
                 null));
 
-        Map<String, Object> lastPayload = Map.of("campaignId", campaignId.toString());
-        for (EvaluationRunEntity run : runs) {
-            lastPayload = slice.run(task, mutation, run.getId());
+        try (AutoCloseable campaignScope = LabBenchmarkExecutionContext.openCampaignScope(campaignId)) {
+            for (EvaluationRunEntity run : runs) {
+                slice.run(task, mutation, run.getId());
+            }
+            List<UUID> runIds = runs.stream().map(EvaluationRunEntity::getId).toList();
+            Map<String, Object> terminalPayload =
+                    LabCampaignTerminalPayloadBuilder.build(
+                            campaignId, runs, evaluationResultRepository, labPresetAxisSupport);
+            labBenchmarkCompletionService.completeCampaign(mutation, task.getId(), runIds, terminalPayload);
+        } catch (RuntimeException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalStateException("Campaign execution failed: " + campaignId, ex);
         }
-        List<UUID> runIds = runs.stream().map(EvaluationRunEntity::getId).toList();
-        labBenchmarkCompletionService.completeCampaign(mutation, task.getId(), runIds, lastPayload);
     }
 
     private CampaignExecutionPlan buildPlan(UUID campaignId, List<EvaluationRunEntity> runs) {
@@ -119,12 +136,16 @@ public class LabCampaignBenchmarkExecutor {
         }
         List<CampaignExecutionPlan.CampaignRunAxis> axes = new ArrayList<>();
         for (EvaluationRunEntity run : runs) {
-            String label =
-                    run.getLlmModelId() != null
-                            ? run.getLlmModelId()
-                            : run.getEmbeddingModelId() != null
-                                    ? run.getEmbeddingModelId()
-                                    : resolvePresetAxisLabel(run);
+            String label;
+            if (LabPresetAxisSupport.isRagPresetCampaignRun(run)) {
+                label = labPresetAxisSupport.comparisonLabel(run);
+            } else if (run.getLlmModelId() != null && !run.getLlmModelId().isBlank()) {
+                label = run.getLlmModelId().trim();
+            } else if (run.getEmbeddingModelId() != null && !run.getEmbeddingModelId().isBlank()) {
+                label = run.getEmbeddingModelId().trim();
+            } else {
+                label = resolvePresetAxisLabel(run);
+            }
             axes.add(new CampaignExecutionPlan.CampaignRunAxis(run.getId(), label, perAxisItemCount));
         }
         if (plannedTotalItems <= 0 && perAxisItemCount > 0) {

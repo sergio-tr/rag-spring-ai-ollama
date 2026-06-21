@@ -28,6 +28,8 @@ import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPr
 import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
+import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleLoader;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
@@ -76,6 +78,8 @@ class RagPresetCampaignOrchestratorTest {
     @Mock private EvaluationCorpusRepository evaluationCorpusRepository;
     @Mock private LabBenchmarkConfigPreflightService labBenchmarkConfigPreflightService;
     @Mock private ObjectProvider<RuntimeObservability> runtimeObservability;
+    private final LabPresetAxisSupport labPresetAxisSupport =
+            new LabPresetAxisSupport(new EvaluationReferenceBundleLoader(new EvaluationWorkbookParser()));
 
     @BeforeEach
     void stubCorpus() {
@@ -100,6 +104,7 @@ class RagPresetCampaignOrchestratorTest {
                         new EvaluationCorpusReadinessDto(
                                 corpusId,
                                 UUID.randomUUID(),
+                                1,
                                 1,
                                 1,
                                 0,
@@ -193,7 +198,7 @@ class RagPresetCampaignOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(), List.of(), null, null);
 
         BenchmarkJobAccepted accepted =
                 orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req);
@@ -215,6 +220,18 @@ class RagPresetCampaignOrchestratorTest {
                                 r.getAggregatesJson() != null
                                         && r.getAggregatesJson()
                                                 .containsKey(BenchmarkRunOrchestrator.AGG_KEY_CONFIG_PREFLIGHT));
+        assertThat(childRuns)
+                .allMatch(
+                        r ->
+                                r.getAggregatesJson() != null
+                                        && r.getAggregatesJson()
+                                                .containsKey(LabPresetAxisSupport.AGG_KEY_PRESET_KEY));
+        assertThat(childRuns)
+                .allMatch(
+                        r ->
+                                r.getAggregatesJson() != null
+                                        && LabPresetAxisSupport.COMPARISON_AXIS_PRESET.equals(
+                                                r.getAggregatesJson().get(LabPresetAxisSupport.AGG_KEY_COMPARISON_AXIS)));
     }
 
     private BenchmarkRunOrchestrator orchestrator() {
@@ -238,6 +255,8 @@ class RagPresetCampaignOrchestratorTest {
                 evaluationCorpusReadinessService,
                 evaluationCorpusRepository,
                 labBenchmarkConfigPreflightService,
+                labPresetAxisSupport,
+                new LabBenchmarkDefaultModelResolver("gemma3:4b", "mxbai-embed-large:latest"),
                 runtimeObservability);
     }
 }

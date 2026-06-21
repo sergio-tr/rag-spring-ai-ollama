@@ -102,6 +102,52 @@ class LabBenchmarkCompletionServiceTest {
                 .toList();
     }
 
+    @Test
+    void completeCampaign_rejectsPersistedCountMismatchWithClosure() {
+        UUID taskId = UUID.randomUUID();
+        UUID p0 = UUID.randomUUID();
+        UUID p1 = UUID.randomUUID();
+        when(evaluationRunRepository.findAggregatesJsonByRunId(p0))
+                .thenReturn(Optional.of(Map.of("expectedItemCount", 60)));
+        when(evaluationRunRepository.findAggregatesJsonByRunId(p1))
+                .thenReturn(Optional.of(Map.of("expectedItemCount", 60)));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(p0)).thenReturn(executedItems(60));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(p1)).thenReturn(executedItems(60));
+
+        Map<String, Object> payload =
+                Map.of(LabCampaignTerminalPayloadBuilder.KEY_PERSISTED_ITEM_COUNT, 60, "resultsSource", "DATABASE");
+
+        service().completeCampaign(mutation, taskId, List.of(p0, p1), payload);
+
+        verify(mutation)
+                .markFailed(eq(taskId), any(), eq("PERSISTENCE_MISMATCH"));
+        verify(mutation, never()).markSucceeded(eq(taskId), any());
+    }
+
+    @Test
+    void completeCampaign_succeedsWhenPersistedCountMatchesClosure() {
+        UUID taskId = UUID.randomUUID();
+        UUID p0 = UUID.randomUUID();
+        UUID p1 = UUID.randomUUID();
+        when(evaluationRunRepository.findAggregatesJsonByRunId(p0))
+                .thenReturn(Optional.of(Map.of("expectedItemCount", 60)));
+        when(evaluationRunRepository.findAggregatesJsonByRunId(p1))
+                .thenReturn(Optional.of(Map.of("expectedItemCount", 60)));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(p0)).thenReturn(executedItems(60));
+        when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(p1)).thenReturn(executedItems(60));
+
+        Map<String, Object> payload =
+                Map.of(
+                        LabCampaignTerminalPayloadBuilder.KEY_PERSISTED_ITEM_COUNT,
+                        120,
+                        LabCampaignTerminalPayloadBuilder.KEY_RESULTS_SOURCE,
+                        "DATABASE");
+
+        service().completeCampaign(mutation, taskId, List.of(p0, p1), payload);
+
+        verify(mutation).markSucceeded(eq(taskId), any());
+    }
+
     private static List<EvaluationResultEntity> skippedItems(int count) {
         return IntStream.range(0, count)
                 .mapToObj(

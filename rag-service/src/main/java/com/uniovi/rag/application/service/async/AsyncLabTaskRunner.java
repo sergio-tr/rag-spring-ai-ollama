@@ -150,7 +150,7 @@ public class AsyncLabTaskRunner {
             log.info("async_task_cancelled taskId={} msg={}", taskId, e.getMessage());
             mutation.markCancelled(taskId, shortMessage(e));
         } catch (Exception e) {
-            log.warn("Async task {} failed: {}", taskId, e.getMessage());
+            log.warn("Async task {} failed: {}", taskId, e.getMessage(), e);
             mutation.markFailed(taskId, shortMessage(e));
         } finally {
             if (type != null) {

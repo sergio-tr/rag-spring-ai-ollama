@@ -16,6 +16,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -49,19 +50,29 @@ public class DenseRetrievalStrategy {
     }
 
     public List<RetrievalCandidate> retrieve(RetrievalRequest req) {
+        return retrieveWithOutcome(req).candidates();
+    }
+
+    public DenseRetrievalOutcome retrieveWithOutcome(RetrievalRequest req) {
         double sim = effectiveSimilarityThreshold();
-        SearchRequest searchReq =
-                SearchRequest.builder().query(req.queryText()).topK(req.denseFetchLimit()).similarityThreshold(sim).build();
+        SearchRequest.Builder searchBuilder =
+                SearchRequest.builder().query(req.queryText()).topK(req.denseFetchLimit()).similarityThreshold(sim);
+        Filter.Expression snapshotFilter = SnapshotBoundRetrievalFilter.buildForRequest(req.snapshotIds());
+        if (snapshotFilter != null) {
+            searchBuilder.filterExpression(snapshotFilter);
+        }
         PgVectorStore store = resolveVectorStore(req);
-        List<Document> raw = store.similaritySearch(searchReq);
+        List<Document> raw = store.similaritySearch(searchBuilder.build());
+        int rawCount = raw.size();
+
         Set<String> allowed = req.snapshotIds().stream().map(UUID::toString).collect(Collectors.toSet());
-        List<Document> filtered = new ArrayList<>();
+        List<Document> postSnapshot = new ArrayList<>();
         for (Document d : raw) {
             if (snapshotMatches(d, allowed)) {
-                filtered.add(d);
+                postSnapshot.add(d);
             }
         }
-        filtered = applyProjectAndDocumentFilter(filtered);
+        List<Document> filtered = applyProjectAndDocumentFilter(postSnapshot);
         int rank = 1;
         List<RetrievalCandidate> out = new ArrayList<>();
         for (Document d : filtered) {
@@ -90,7 +101,7 @@ public class DenseRetrievalStrategy {
                 break;
             }
         }
-        return out;
+        return new DenseRetrievalOutcome(out, rawCount, postSnapshot.size(), filtered.size());
     }
 
     private PgVectorStore resolveVectorStore(RetrievalRequest req) {

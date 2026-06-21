@@ -10,6 +10,7 @@ import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
+import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
@@ -95,8 +96,14 @@ class EvalRagJobHandlerTest {
     @Mock
     private LabBenchmarkCompletionService labBenchmarkCompletionService;
 
+    @Mock
+    private EvaluationResultRepository evaluationResultRepository;
+
     @BeforeEach
     void stubCorpusSummary() {
+        Mockito.lenient()
+                .when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(ArgumentMatchers.any()))
+                .thenReturn(List.of());
         Mockito.lenient()
                 .when(evaluationCorpusApplicationService.getSummary(ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn(
@@ -127,7 +134,8 @@ class EvalRagJobHandlerTest {
                 evaluationCorpusApplicationService,
                 labCampaignBenchmarkExecutor,
                 evaluationRunRagJobContextLoader,
-                labBenchmarkCompletionService);
+                labBenchmarkCompletionService,
+                evaluationResultRepository);
     }
 
     @Test
@@ -139,8 +147,9 @@ class EvalRagJobHandlerTest {
     void run_withRunId_usesTypedRag_neverRemovedEvaluateApi() {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
         when(evaluationRunRagJobContextLoader.loadContext(runId))
-                .thenReturn(Optional.of(baseContext(runId, null, null, false, false)));
+                .thenReturn(Optional.of(baseContext(runId, corpusId, null, false, false)));
         RagPresetQuestion q = sampleQuestion();
         when(experimentalDatasetResolver.resolve(runId))
                 .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
@@ -231,8 +240,9 @@ class EvalRagJobHandlerTest {
     void run_marksRunFailed_thenRethrows_whenEvaluationThrows() {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
         when(evaluationRunRagJobContextLoader.loadContext(runId))
-                .thenReturn(Optional.of(baseContext(runId, null, null, false, false)));
+                .thenReturn(Optional.of(baseContext(runId, corpusId, null, false, false)));
         when(experimentalDatasetResolver.resolve(runId))
                 .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(sampleQuestion()), List.of()));
         when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
@@ -251,6 +261,69 @@ class EvalRagJobHandlerTest {
                 .hasMessage("boom");
 
         verify(canonicalPersistence).markRunFailed(runId, "boom");
+    }
+
+    @Test
+    void run_completes_whenLegacyCorpusReadinessAggregateContainsNullOptionalBlockers() {
+        UUID taskId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
+        Map<String, Object> readiness = new LinkedHashMap<>();
+        readiness.put("corpusId", corpusId.toString());
+        readiness.put("documentCount", 5);
+        readiness.put("readyCount", 5);
+        readiness.put("primaryBlocker", null);
+        readiness.put("snapshotBlocker", null);
+        Map<String, Object> aggregates = new LinkedHashMap<>();
+        aggregates.put("corpusReadiness", readiness);
+        EvaluationRunRagJobContext ctx =
+                new EvaluationRunRagJobContext(
+                        runId,
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "RAG_PRESET_BENCHMARK",
+                        corpusId,
+                        "Lab KB",
+                        UUID.randomUUID(),
+                        false,
+                        false,
+                        aggregates,
+                        List.of("P0"));
+        when(evaluationRunRagJobContextLoader.loadContext(runId)).thenReturn(Optional.of(ctx));
+        when(experimentalDatasetResolver.resolve(runId))
+                .thenReturn(
+                        new TypedBenchmarkDataset.RagPresetQuestions(List.of(sampleQuestion()), List.of()));
+        when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
+                        eq(runId),
+                        ArgumentMatchers.any(),
+                        eq(featureConfiguration),
+                        eq(implementationProperties),
+                        ArgumentMatchers.anySet(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any()))
+                .thenReturn(EvaluationTestFixtures.emptyRagRunPayload());
+        AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
+
+        handler().run(task, mutation);
+
+        verify(labJobProgressTracker)
+                .emitRagEvaluationAccepted(
+                        eq(taskId),
+                        eq(runId),
+                        eq(corpusId),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.isNull(),
+                        ArgumentMatchers.argThat(
+                                payload -> payload != null && !payload.containsValue(null)));
+        verify(typedRagPresetBenchmarkOrchestrator)
+                .runPresetBenchmark(
+                        eq(runId),
+                        ArgumentMatchers.any(),
+                        eq(featureConfiguration),
+                        eq(implementationProperties),
+                        ArgumentMatchers.anySet(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any());
     }
 
     @Test
@@ -288,8 +361,9 @@ class EvalRagJobHandlerTest {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
         when(evaluationRunRagJobContextLoader.loadContext(runId))
-                .thenReturn(Optional.of(baseContext(runId, null, projectId, true, false)));
+                .thenReturn(Optional.of(baseContext(runId, corpusId, projectId, true, false)));
         when(projectIndexOperationLockService.tryAcquire(eq(projectId), Mockito.any(), eq(runId), Mockito.any()))
                 .thenReturn(ProjectIndexOperationLockService.LockAttempt.acquired(null));
         when(experimentalDatasetResolver.resolve(runId))
@@ -315,8 +389,9 @@ class EvalRagJobHandlerTest {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
         when(evaluationRunRagJobContextLoader.loadContext(runId))
-                .thenReturn(Optional.of(baseContext(runId, null, projectId, true, false)));
+                .thenReturn(Optional.of(baseContext(runId, corpusId, projectId, true, false)));
         when(projectIndexOperationLockService.tryAcquire(eq(projectId), Mockito.any(), eq(runId), Mockito.any()))
                 .thenReturn(ProjectIndexOperationLockService.LockAttempt.rejected("ALREADY_LOCKED", null));
 
@@ -440,6 +515,9 @@ class EvalRagJobHandlerTest {
                 List.of(),
                 List.of(),
                 "",
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,

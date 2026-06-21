@@ -31,6 +31,7 @@ public class ClassifierHealthIndicator implements HealthIndicator {
         this.classifierBaseUrl = stripTrailingSlash(classifierBaseUrl);
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(Math.max(500, healthProperties.getConnectTimeoutMs())))
+                .version(HttpClient.Version.HTTP_1_1)
                 .build();
     }
 

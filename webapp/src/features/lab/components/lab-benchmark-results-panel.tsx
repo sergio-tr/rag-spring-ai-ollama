@@ -8,30 +8,40 @@ import {
   downloadCampaignSummaryJson,
   downloadMvpExport,
   fetchCampaignComparison,
+  fetchCampaignItemsBundle,
   fetchLabCampaignRuns,
   fetchLabEvaluationRun,
   fetchMvpItemsBundle,
   fetchMvpRollupsJson,
 } from "@/features/lab/lib/lab-benchmark-results-api";
 import {
-  formatGroupLabel,
+  aggregateComparisonOutcomeCounts,
   formatMetricCell,
   formatOutcomeLabel,
   formatPresetDisplay,
   isExtensionPreset,
   isMissingMetadata,
+  isPresetComparisonAxis,
   normalizeMetadataKey,
   parseComparisonRows,
+  formatComparisonScore,
+  formatSupportStatusLabel,
+  isKnownOutcomeKey,
+  resolveComparisonRowLabel,
+  resolvePresetKeyFromComparisonRow,
   shouldShowPresetTrend,
   shouldShowTrendEmptyState,
   sortComparisonRows,
   type ComparisonRow,
 } from "@/features/lab/lib/lab-benchmark-labels";
+import { mapBenchmarkSkipReason } from "@/features/lab/lib/lab-benchmark-skip-reasons";
 import { mapUserFacingErrorMessage } from "@/lib/user-facing-error-messages";
 import { formatBenchmarkKindLabel, sanitizeLabPrimarySurfaceCopy } from "@/lib/product-copy";
 import {
+  countOutcomesFromItems,
   readGlobalOutcomeCounts,
   readMvpItems,
+  readAnswerableScoreFromComparisonRow,
   readOnExecutedSummary,
 } from "@/features/lab/lib/lab-benchmark-mvp-utils";
 import { getSafeApiErrorMessage } from "@/lib/api-client";
@@ -49,6 +59,7 @@ type ResultTableRow = {
   answer: string;
   outcome: string;
   note: string;
+  technicalDetail: string;
   presetCode: string;
   presetLabel: string;
   modelId: string;
@@ -74,6 +85,30 @@ function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values.filter((value) => value.trim().length > 0))).sort((a, b) => a.localeCompare(b));
 }
 
+function findComparisonRowByPresetKey(rows: ComparisonRow[], presetKey: string): ComparisonRow | undefined {
+  if (!presetKey) {
+    return undefined;
+  }
+  return rows.find((row) => resolvePresetKeyFromComparisonRow(row) === presetKey);
+}
+
+function outcomeCountsFromComparisonRow(row: ComparisonRow | undefined): Record<string, number> {
+  if (!row) {
+    return {};
+  }
+  const out: Record<string, number> = {};
+  const add = (key: string, value: unknown) => {
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+      out[key] = value;
+    }
+  };
+  add("EXECUTED", row.executed);
+  add("FAILED", row.failed);
+  add("SKIPPED", row.skipped);
+  add("NOT_SUPPORTED", row.notSupported);
+  return out;
+}
+
 function displayModelId(modelId: string, t: (key: string) => string): string {
   if (!modelId || modelId === "—" || isMissingMetadata(modelId)) {
     return t("benchmarkLabelMissingMetadata");
@@ -86,15 +121,27 @@ function toResultTableRow(row: unknown, idx: number, t: (key: string) => string)
   const mvp = asRecord(item?.mvp);
   const generation = asRecord(mvp?.generation);
   const op = asRecord(mvp?.operational);
-  const outcome = typeof op?.outcome === "string" && op.outcome ? op.outcome : "—";
+  const outcomeFromStatus = typeof item?.status === "string" && item.status.trim() ? item.status.trim() : "";
+  const outcome = typeof op?.outcome === "string" && op.outcome ? op.outcome : outcomeFromStatus || "—";
   const unsupportedReason =
     typeof op?.unsupportedReason === "string" && op.unsupportedReason.trim() ? op.unsupportedReason.trim() : "";
   const skipReasonCode =
-    typeof op?.skipReasonCode === "string" && op.skipReasonCode.trim() ? op.skipReasonCode.trim() : "";
-  const skipReason = typeof op?.skipReason === "string" && op.skipReason.trim() ? op.skipReason.trim() : "";
-  const rawPreset = typeof op?.presetCode === "string" ? op.presetCode.trim() : "";
+    typeof op?.skipReasonCode === "string" && op.skipReasonCode.trim()
+      ? op.skipReasonCode.trim()
+      : typeof item?.failureReason === "string" && item.failureReason.trim()
+        ? item.failureReason.trim().split(":")[0]?.trim() ?? ""
+        : "";
+  const skipReason =
+    typeof op?.skipReason === "string" && op.skipReason.trim()
+      ? op.skipReason.trim()
+      : typeof item?.failureReason === "string"
+        ? item.failureReason.trim()
+        : "";
+  const rawPresetTop = typeof item?.presetCode === "string" ? item.presetCode.trim() : "";
+  const rawPreset = typeof op?.presetCode === "string" && op.presetCode.trim() ? op.presetCode.trim() : rawPresetTop;
   const presetCode = rawPreset && !isMissingMetadata(rawPreset) ? rawPreset : "—";
-  const rawModel = typeof op?.modelId === "string" ? op.modelId.trim() : "";
+  const rawModelTop = typeof item?.modelLabel === "string" ? item.modelLabel.trim() : "";
+  const rawModel = typeof op?.modelId === "string" && op.modelId.trim() ? op.modelId.trim() : rawModelTop;
   const modelId = rawModel && !isMissingMetadata(rawModel) ? rawModel : "—";
   const presetLabelRaw = typeof item?.presetLabel === "string" ? item.presetLabel : "";
   const mp = asRecord(item?.metricsPayload);
@@ -125,6 +172,11 @@ function toResultTableRow(row: unknown, idx: number, t: (key: string) => string)
   } else if (typeof mp?.retrieved_document_ids === "string" && mp.retrieved_document_ids.trim()) {
     sourcesSummary = mp.retrieved_document_ids.split(";").filter(Boolean).length + " doc(s)";
   }
+  const skipMapped = mapBenchmarkSkipReason(
+    skipReasonCode || skipReason,
+    t,
+    formatOutcomeLabel("SKIPPED", t),
+  );
   const note =
     isExtensionPreset(presetCode)
       ? t("benchmarkNoteExtension")
@@ -135,20 +187,26 @@ function toResultTableRow(row: unknown, idx: number, t: (key: string) => string)
             formatOutcomeLabel("NOT_SUPPORTED", t),
           )
         : outcome === "SKIPPED"
-          ? mapUserFacingErrorMessage(
-              skipReasonCode || skipReason,
-              t,
-              skipReason || formatOutcomeLabel("SKIPPED", t),
-            )
+          ? skipMapped.primary
           : outcome === "FAILED"
             ? t("benchmarkNoteSeeExport")
             : "—";
+  const technicalDetail =
+    outcome === "SKIPPED" || outcome === "FAILED" || outcome === "NOT_SUPPORTED"
+      ? skipMapped.technical || unsupportedReason || skipReason || ""
+      : "";
   return {
-    id: typeof item?.id === "string" && item.id ? item.id : `row-${idx}`,
+    id:
+      typeof item?.itemId === "string" && item.itemId
+        ? item.itemId
+        : typeof item?.id === "string" && item.id
+          ? item.id
+          : `row-${idx}`,
     question,
     answer,
     outcome,
     note,
+    technicalDetail,
     presetCode,
     presetLabel,
     modelId,
@@ -163,9 +221,28 @@ function toResultTableRow(row: unknown, idx: number, t: (key: string) => string)
   };
 }
 
-function trendRows(rows: ResultTableRow[]): Array<{ presetCode: string; score: number | null; extension: boolean }> {
+function trendRows(
+  comparisonRows: ComparisonRow[],
+  fallbackRows: ResultTableRow[],
+): Array<{ presetCode: string; score: number | null; extension: boolean }> {
+  const fromComparison = comparisonRows
+    .map((row) => {
+      const presetCode = resolvePresetKeyFromComparisonRow(row);
+      if (!presetCode) {
+        return null;
+      }
+      return {
+        presetCode,
+        score: readAnswerableScoreFromComparisonRow(row),
+        extension: isExtensionPreset(presetCode),
+      };
+    })
+    .filter((entry): entry is { presetCode: string; score: number | null; extension: boolean } => entry != null);
+  if (fromComparison.some((entry) => entry.score != null)) {
+    return fromComparison.sort((a, b) => a.presetCode.localeCompare(b.presetCode, undefined, { numeric: true }));
+  }
   const grouped = new Map<string, number[]>();
-  for (const row of rows) {
+  for (const row of fallbackRows) {
     if (!row.presetCode || row.presetCode === "—") continue;
     if (row.correctness == null) {
       grouped.set(row.presetCode, grouped.get(row.presetCode) ?? []);
@@ -248,24 +325,39 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
   const campId = campaignId?.trim() ?? "";
   const [modelFilter, setModelFilter] = useState("ALL");
   const [presetFilter, setPresetFilter] = useState("ALL");
+  const [selectedComparisonKey, setSelectedComparisonKey] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ["lab", "benchmark-mvp-results", runId, campId],
     enabled,
     queryFn: async () => {
-      const [run, rollups, itemsBundle] = await Promise.all([
-        fetchLabEvaluationRun(runId),
+      const run = await fetchLabEvaluationRun(runId);
+      const effectiveCampaignId =
+        campId || (typeof run.campaignId === "string" ? run.campaignId.trim() : "");
+      const [rollups, itemsBundle, campaignRuns, campaignComparison, campaignItemsBundle] = await Promise.all([
         fetchMvpRollupsJson(runId),
         fetchMvpItemsBundle(runId),
+        effectiveCampaignId ? fetchLabCampaignRuns(effectiveCampaignId) : Promise.resolve(null),
+        effectiveCampaignId ? fetchCampaignComparison(effectiveCampaignId).catch(() => null) : Promise.resolve(null),
+        effectiveCampaignId
+          ? fetchCampaignItemsBundle(effectiveCampaignId).catch(() => null)
+          : Promise.resolve(null),
       ]);
-      const campaignRuns = campId ? await fetchLabCampaignRuns(campId) : null;
-      const campaignComparison = campId ? await fetchCampaignComparison(campId).catch(() => null) : null;
-      return { run, rollups, itemsBundle, campaignRuns, campaignComparison };
+      return {
+        run,
+        rollups,
+        itemsBundle,
+        campaignRuns,
+        campaignComparison,
+        campaignItemsBundle,
+        effectiveCampaignId,
+      };
     },
   });
 
   const benchmarkKind = query.data?.run.benchmarkKind ?? null;
   const campaignComparison = query.data?.campaignComparison;
+  const effectiveCampaignId = query.data?.effectiveCampaignId?.trim() ?? campId;
 
   const comparisonRows = useMemo(() => {
     if (!campaignComparison) {
@@ -299,13 +391,58 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
     return null;
   }
 
-  const occ = readGlobalOutcomeCounts(payload.rollups);
-  const executedOutcomeCount = occ.EXECUTED ?? 0;
-  const macroExecuted = readOnExecutedSummary(payload.rollups.globalMacro);
-  const mvpRows = readMvpItems(payload.itemsBundle);
+  const campaignComparisonRecord =
+    payload.campaignComparison && typeof payload.campaignComparison === "object"
+      ? (payload.campaignComparison as Record<string, unknown>)
+      : null;
+  const comparisonAxis =
+    typeof campaignComparisonRecord?.comparisonAxis === "string"
+      ? campaignComparisonRecord.comparisonAxis
+      : "";
+  const isCampaignMode = effectiveCampaignId.length > 0;
+  const campaignItemRows =
+    payload.campaignItemsBundle && typeof payload.campaignItemsBundle === "object"
+      ? readMvpItems(payload.campaignItemsBundle)
+      : [];
+  const useCampaignItems = isCampaignMode && campaignItemRows.length > 0;
+  const mvpRows = useCampaignItems ? campaignItemRows : readMvpItems(payload.itemsBundle);
   const tableRows = mvpRows.map((row, idx) => toResultTableRow(row, idx, t));
+  const campaignOutcomeCounts =
+    comparisonRows.length > 0
+      ? aggregateComparisonOutcomeCounts(comparisonRows)
+      : countOutcomesFromItems(mvpRows);
+  const runOutcomeCounts = readGlobalOutcomeCounts(payload.rollups);
+  const effectivePresetScope =
+    selectedComparisonKey ?? (presetFilter !== "ALL" ? presetFilter : null);
+  const scopedComparisonRow = effectivePresetScope
+    ? findComparisonRowByPresetKey(comparisonRows, effectivePresetScope)
+    : undefined;
+  const scopedOutcomeCounts = outcomeCountsFromComparisonRow(scopedComparisonRow);
+  const occ = isCampaignMode
+    ? effectivePresetScope
+      ? Object.keys(scopedOutcomeCounts).length > 0
+        ? scopedOutcomeCounts
+        : countOutcomesFromItems(
+            tableRows.filter((row) => row.presetCode === effectivePresetScope),
+          )
+      : campaignOutcomeCounts
+    : runOutcomeCounts;
+  const executedOutcomeCount = occ.EXECUTED ?? 0;
+  const campaignExecutedTotal = campaignOutcomeCounts.EXECUTED ?? 0;
+  const macroExecuted = readOnExecutedSummary(payload.rollups.globalMacro);
   const modelOptions = sortedUnique(tableRows.map((row) => row.modelId).filter((id) => id !== "—"));
-  const presetOptions = sortedUnique(tableRows.map((row) => row.presetCode).filter((code) => code !== "—"));
+  const presetOptions = isPresetComparisonAxis(comparisonAxis) && comparisonRows.length > 0
+    ? comparisonRows
+        .map((row) => {
+          const key = resolvePresetKeyFromComparisonRow(row);
+          const label = resolveComparisonRowLabel(row, comparisonAxis);
+          return key ? { key, label } : null;
+        })
+        .filter((entry): entry is { key: string; label: string } => entry != null)
+    : sortedUnique(tableRows.map((row) => row.presetCode).filter((code) => code !== "—")).map((code) => {
+        const sample = tableRows.find((row) => row.presetCode === code);
+        return { key: code, label: sample?.presetLabel && sample.presetLabel !== "—" ? sample.presetLabel : code };
+      });
   const filteredRows = sortByCorrectnessDesc(
     tableRows.filter(
       (row) =>
@@ -315,7 +452,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
   );
   const executedRows = filteredRows.filter((row) => row.outcome === "EXECUTED");
   const failedSkippedRows = filteredRows.filter((row) => FAILED_SKIPPED_OUTCOMES.has(row.outcome));
-  const trend = trendRows(filteredRows);
+  const trend = trendRows(comparisonRows, filteredRows);
   const plottableTrend = trend.filter((point) => point.score != null);
   const showTrendChart = shouldShowPresetTrend(benchmarkKind, plottableTrend.length);
   const showTrendEmpty = shouldShowTrendEmptyState(benchmarkKind, mvpRows.length > 0, plottableTrend.length);
@@ -336,11 +473,6 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
       if (normalized !== "MISSING_METADATA") uniquePresetCodes.add(normalized);
     }
   }
-
-  const campaignComparisonRecord =
-    payload.campaignComparison && typeof payload.campaignComparison === "object"
-      ? (payload.campaignComparison as Record<string, unknown>)
-      : null;
 
   const knowledgeBaseFromRuns = payload.campaignRuns?.find((r) => {
     const row = r as Record<string, unknown>;
@@ -398,14 +530,14 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          {campId ? (
+          {effectiveCampaignId ? (
             <>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 data-testid="lab-export-campaign-items-json"
-                onClick={() => void downloadCampaignItemsJson(campId)}
+                onClick={() => void downloadCampaignItemsJson(effectiveCampaignId)}
               >
                 {t("benchmarkExportCampaignItemsJson")}
               </Button>
@@ -414,7 +546,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                 variant="outline"
                 size="sm"
                 data-testid="lab-export-campaign-summary-json"
-                onClick={() => void downloadCampaignSummaryJson(campId)}
+                onClick={() => void downloadCampaignSummaryJson(effectiveCampaignId)}
               >
                 {t("benchmarkExportCampaignSummaryJson")}
               </Button>
@@ -423,7 +555,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                 variant="outline"
                 size="sm"
                 data-testid="lab-export-campaign-items-csv"
-                onClick={() => void downloadCampaignExport(campId, "items.csv")}
+                onClick={() => void downloadCampaignExport(effectiveCampaignId, "items.csv")}
               >
                 {t("benchmarkExportCampaignItemsCsv")}
               </Button>
@@ -432,7 +564,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                 variant="outline"
                 size="sm"
                 data-testid="lab-export-campaign-summary-csv"
-                onClick={() => void downloadCampaignExport(campId, "summary.csv")}
+                onClick={() => void downloadCampaignExport(effectiveCampaignId, "summary.csv")}
               >
                 {t("benchmarkExportCampaignSummaryCsv")}
               </Button>
@@ -441,7 +573,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                 variant="outline"
                 size="sm"
                 data-testid="lab-export-campaign-bundle-json"
-                onClick={() => void downloadCampaignExport(campId, "bundle.json")}
+                onClick={() => void downloadCampaignExport(effectiveCampaignId, "bundle.json")}
               >
                 {t("benchmarkExportCampaignBundleJson")}
               </Button>
@@ -477,7 +609,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
         </div>
       </div>
 
-      {campId && payload.campaignRuns && payload.campaignRuns.length > 0 ? (
+      {effectiveCampaignId && payload.campaignRuns && payload.campaignRuns.length > 0 ? (
         <div className="space-y-2" data-testid="lab-campaign-runs-panel">
           <span className="text-muted-foreground text-xs font-medium">{t("benchmarkCampaignRunsTitle")}</span>
           <div className="max-h-40 overflow-auto rounded-md border bg-background/40 p-2 text-xs">
@@ -493,13 +625,14 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                       : typeof row.embeddingModelId === "string"
                         ? displayModelId(row.embeddingModelId, t)
                         : "—";
+                const presetCode = typeof row.presetCode === "string" ? row.presetCode.trim() : "";
+                const presetLabel = typeof row.presetLabel === "string" ? row.presetLabel.trim() : "";
                 const preset =
-                  typeof row.presetLabel === "string" && row.presetLabel
-                    ? row.presetLabel
-                    : typeof row.presetCode === "string"
-                      ? row.presetCode
-                      : "";
-                const axisLabel = preset || model;
+                  presetLabel && presetCode
+                    ? formatPresetDisplay(presetCode, presetLabel)
+                    : presetLabel || presetCode;
+                const axisLabel =
+                  isPresetComparisonAxis(comparisonAxis) && preset ? preset : preset || model;
                 const status = typeof row.status === "string" ? row.status : "—";
                 return (
                   <li
@@ -522,7 +655,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
         </div>
       ) : null}
 
-      {campId && campaignComparisonRecord ? (
+      {effectiveCampaignId && campaignComparisonRecord ? (
         comparisonRows.length >= 2 ? (
         <div className="space-y-2" data-testid="lab-campaign-comparison-panel">
           <span className="text-muted-foreground text-xs font-medium">{t("benchmarkCampaignComparisonTitle")}</span>
@@ -543,6 +676,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                   <th className="p-2 font-medium">{t("benchmarkColNotSupported")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColFailed")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColSkipped")}</th>
+                  <th className="p-2 font-medium">{t("benchmarkColAnswerableScore")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColExact")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColSemantic")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColRecall")}</th>
@@ -551,17 +685,46 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
               </thead>
               <tbody>
                 {comparisonRows.slice(0, 50).map((r, idx) => {
-                  const label =
-                    r.comparisonLabel ??
-                    formatGroupLabel(r.groupKey ?? "", r.groupValue ?? "", t);
+                  const presetKey = resolvePresetKeyFromComparisonRow(r);
+                  const label = resolveComparisonRowLabel(r, comparisonAxis);
+                  const selected = presetKey.length > 0 && selectedComparisonKey === presetKey;
                   return (
-                    <tr key={`${label}-${idx}`} className="border-border border-t" data-testid={`lab-comparison-row-${idx}`}>
-                      <td className="p-2">{label}</td>
+                    <tr
+                      key={`${presetKey || label}-${idx}`}
+                      className={
+                        selected
+                          ? "border-border cursor-pointer border-t bg-primary/10"
+                          : "border-border hover:bg-muted/30 cursor-pointer border-t"
+                      }
+                      data-testid={`lab-comparison-row-${idx}`}
+                      data-comparison-key={presetKey || undefined}
+                      onClick={() => {
+                        if (!presetKey) return;
+                        const next = selectedComparisonKey === presetKey ? null : presetKey;
+                        setSelectedComparisonKey(next);
+                        setPresetFilter(next ?? "ALL");
+                      }}
+                    >
+                      <td className="p-2">
+                        <div>{label}</div>
+                        {formatSupportStatusLabel(
+                          typeof r.benchmarkSupportStatus === "string" ? r.benchmarkSupportStatus : undefined,
+                          t,
+                        ) ? (
+                          <div className="text-muted-foreground text-[10px]">
+                            {formatSupportStatusLabel(
+                              typeof r.benchmarkSupportStatus === "string" ? r.benchmarkSupportStatus : undefined,
+                              t,
+                            )}
+                          </div>
+                        ) : null}
+                      </td>
                       <td className="p-2">{String(r.totalItems ?? "—")}</td>
                       <td className="p-2">{String(r.executed ?? "—")}</td>
                       <td className="p-2">{String(r.notSupported ?? "—")}</td>
                       <td className="p-2">{String(r.failed ?? "—")}</td>
                       <td className="p-2">{String(r.skipped ?? "—")}</td>
+                      <td className="p-2 font-mono">{formatComparisonScore(r.scoreAnswerable)}</td>
                       <td className="p-2 font-mono">{formatComparisonMetric(r.meanExactMatch)}</td>
                       <td className="p-2 font-mono">{formatComparisonMetric(r.meanSemanticScore)}</td>
                       <td className="p-2 font-mono">{formatComparisonMetric(r.meanRecallAt1)}</td>
@@ -573,6 +736,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             </table>
           </div>
           <p className="text-muted-foreground text-[11px]">{t("benchmarkCampaignComparisonHint")}</p>
+          <p className="text-muted-foreground text-[11px]">{t("benchmarkScoreInterpretationHint")}</p>
         </div>
         ) : (
           <output className="text-muted-foreground block text-xs" data-testid="lab-campaign-comparison-empty">
@@ -581,14 +745,46 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
         )
       ) : null}
 
-      {executedOutcomeCount <= 0 ? (
-        <output
-          role="alert"
-          className="text-destructive block text-xs font-medium"
-          data-testid="lab-benchmark-no-executed-warning"
-        >
-          {t("benchmarkNoExecutedItemsSummary")}
+      {isCampaignMode && comparisonRows.length >= 2 && !effectivePresetScope ? (
+        <p className="text-muted-foreground text-[11px]" data-testid="lab-campaign-scope-hint">
+          {t("benchmarkCampaignScopeHint")}
+        </p>
+      ) : null}
+
+      {isCampaignMode &&
+      !effectivePresetScope &&
+      campaignExecutedTotal > 0 &&
+      ((campaignOutcomeCounts.SKIPPED ?? 0) > 0 ||
+        (campaignOutcomeCounts.FAILED ?? 0) > 0 ||
+        (campaignOutcomeCounts.NOT_SUPPORTED ?? 0) > 0) ? (
+        <output className="text-muted-foreground block text-xs" data-testid="lab-campaign-partial-summary">
+          {t("benchmarkCampaignPartialSummary", {
+            executed: String(campaignExecutedTotal),
+            skipped: String(campaignOutcomeCounts.SKIPPED ?? 0),
+            failed: String(campaignOutcomeCounts.FAILED ?? 0),
+            notSupported: String(campaignOutcomeCounts.NOT_SUPPORTED ?? 0),
+          })}
         </output>
+      ) : null}
+
+      {executedOutcomeCount <= 0 ? (
+        effectivePresetScope ? (
+          <output
+            role="status"
+            className="text-muted-foreground block text-xs"
+            data-testid="lab-benchmark-scope-no-executed"
+          >
+            {t("benchmarkScopeNoExecutedItems")}
+          </output>
+        ) : isCampaignMode && campaignExecutedTotal > 0 ? null : (
+          <output
+            role="alert"
+            className="text-destructive block text-xs font-medium"
+            data-testid="lab-benchmark-no-executed-warning"
+          >
+            {t("benchmarkNoExecutedItemsSummary")}
+          </output>
+        )
       ) : null}
 
       <div className="space-y-2">
@@ -610,7 +806,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             .filter(([k]) => !PRIMARY_OUTCOME_KEYS.has(k))
             .map(([k, n]) => (
               <span key={k} className="bg-background rounded-md border px-2 py-1 font-mono text-xs">
-                {k}: {n}
+                {isKnownOutcomeKey(k) ? formatOutcomeLabel(k, t) : t("benchmarkOutcomeLabel.unknown")}: {n}
               </span>
             ))}
         </div>
@@ -645,12 +841,16 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             className="bg-background w-full rounded-md border px-2 py-1"
             data-testid="lab-results-filter-preset"
             value={presetFilter}
-            onChange={(event) => setPresetFilter(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value;
+              setPresetFilter(value);
+              setSelectedComparisonKey(value === "ALL" ? null : value);
+            }}
           >
             <option value="ALL">{t("benchmarkFilterAll")}</option>
             {presetOptions.map((preset) => (
-              <option key={preset} value={preset}>
-                {preset}
+              <option key={preset.key} value={preset.key}>
+                {preset.label}
               </option>
             ))}
           </select>
@@ -789,7 +989,19 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                       <td className="p-2 align-top">{row.presetLabel !== "—" ? row.presetLabel : "—"}</td>
                       <td className="p-2 align-top">{displayModelId(row.modelId, t)}</td>
                       <td className="p-2 align-top">{formatOutcomeLabel(row.outcome, t)}</td>
-                      <td className="text-muted-foreground p-2 align-top">{row.note}</td>
+                      <td className="text-muted-foreground p-2 align-top">
+                        <span>{row.note}</span>
+                        {row.technicalDetail ? (
+                          <details className="mt-1" data-testid={`lab-item-technical-${row.id}`}>
+                            <summary className="cursor-pointer text-[10px]">
+                              {t("benchmarkTechnicalDetailsSummary")}
+                            </summary>
+                            <pre className="text-muted-foreground mt-1 max-w-xs overflow-auto whitespace-pre-wrap font-mono text-[10px]">
+                              {row.technicalDetail}
+                            </pre>
+                          </details>
+                        ) : null}
+                      </td>
                     </tr>
                   );
                 })}

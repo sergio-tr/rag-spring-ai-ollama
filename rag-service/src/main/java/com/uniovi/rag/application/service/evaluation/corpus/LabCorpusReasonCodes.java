@@ -26,11 +26,20 @@ public final class LabCorpusReasonCodes {
     /** No active index snapshot bound for the evaluation corpus. */
     public static final String NO_ACTIVE_SNAPSHOT = "NO_ACTIVE_SNAPSHOT";
 
+    /** Documents are ready; index will be prepared automatically when evaluation runs. */
+    public static final String INDEX_PREPARATION_REQUIRED = "INDEX_PREPARATION_REQUIRED";
+
     public static final String NO_COMPATIBLE_SNAPSHOT = "NO_COMPATIBLE_SNAPSHOT";
 
     public static final String REINDEX_REQUIRED = "REINDEX_REQUIRED";
 
     public static final String SNAPSHOT_VECTOR_ROWS_MISSING = "SNAPSHOT_VECTOR_ROWS_MISSING";
+
+    /** Snapshot selected but has zero {@code vector_store} rows (prepare/reuse layer). */
+    public static final String SNAPSHOT_EMPTY = "SNAPSHOT_EMPTY";
+
+    /** Snapshot document signature no longer matches the READY evaluation corpus. */
+    public static final String SNAPSHOT_STALE = "SNAPSHOT_STALE";
 
     public static final String DOCUMENT_IMPORT_NOT_FOUND = "DOCUMENT_IMPORT_NOT_FOUND";
 

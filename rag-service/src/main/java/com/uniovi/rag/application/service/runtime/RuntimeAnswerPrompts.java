@@ -49,9 +49,79 @@ public final class RuntimeAnswerPrompts {
             Provide your direct answer now (in the same language as the question):
             """;
 
-    /**
-     * Attempt-first grounded template: never substitute a blanket abstention when context is non-empty.
-     */
+    private static final String DEFAULT_RETRIEVAL_TEMPLATE =
+            """
+            You are a helpful assistant answering questions about meeting minutes / project documents.
+
+            CRITICAL RULES:
+            1. Base factual claims ONLY on the CONTEXT below. Do not invent acta-specific names, dates, counts, or facts.
+            2. If the CONTEXT does not contain enough information to answer safely, say so clearly.
+            3. Do not substitute a similar topic or nearby acta when the question asks for something specific.
+            4. Answer in the SAME LANGUAGE as the user's question.
+            5. Be concise.
+
+            %s
+            <Question> %s </Question>
+            <Context> %s </Context>
+
+            Answer now:
+            """;
+
+    private static final String NEGATIVE_EVIDENCE_TEMPLATE =
+            """
+            You are a helpful assistant answering questions about meeting minutes / project documents.
+
+            CRITICAL RULES:
+            1. Use ONLY the CONTEXT below for factual claims.
+            2. If the question asks whether something was discussed, mentioned, or exists, answer "no" or state it is not mentioned ONLY when the exact topic is absent from the CONTEXT.
+            3. Do NOT answer "yes" or describe related topics (e.g. videovigilancia, cámaras, ascensor) when the asked topic is not present in the CONTEXT.
+            4. Do NOT summarize unrelated fragments as if they answered the question.
+            5. If the exact topic, date, or entity is not supported by the CONTEXT, state clearly that it is not found in the available sources.
+            6. Answer in the SAME LANGUAGE as the user's question.
+
+            %s
+            <Question> %s </Question>
+            <Context> %s </Context>
+
+            Answer now:
+            """;
+
+    private static final String NUMERIC_OR_DATE_TEMPLATE =
+            """
+            You are a helpful assistant answering questions about meeting minutes / project documents.
+
+            CRITICAL RULES:
+            1. Use ONLY explicit numbers, dates, and durations stated in the CONTEXT. Do not calculate from unrelated numbers.
+            2. If the question asks for a count, quote only counts explicitly supported by the CONTEXT.
+            3. If the question asks for a specific date or year, do not substitute a nearby date or acta.
+            4. If the CONTEXT lacks the requested date, year, count, or duration, state that the sources do not contain it.
+            5. Answer in the SAME LANGUAGE as the user's question.
+
+            %s
+            <Question> %s </Question>
+            <Context> %s </Context>
+
+            Answer now:
+            """;
+
+    private static final String ENTITY_OR_TOPIC_TEMPLATE =
+            """
+            You are a helpful assistant answering questions about meeting minutes / project documents.
+
+            CRITICAL RULES:
+            1. Use ONLY the CONTEXT below. Cite the acta or date when stating a fact when possible.
+            2. For entity or topic questions, confirm presence only if the entity or topic phrase appears in the CONTEXT.
+            3. Do not infer presence from related but different topics.
+            4. If the entity or topic is not in the CONTEXT, state that it is not mentioned in the sources.
+            5. Answer in the SAME LANGUAGE as the user's question.
+
+            %s
+            <Question> %s </Question>
+            <Context> %s </Context>
+
+            Answer now:
+            """;
+
     private static final String ATTEMPT_DOCUMENT_TEMPLATE =
             """
             You are a helpful assistant answering questions about meeting minutes / project documents.
@@ -85,7 +155,8 @@ public final class RuntimeAnswerPrompts {
             3. If the exact date/acta is not supported, abstain clearly and optionally mention nearby actas as alternatives only.
             4. Never invent names, dates, counts, roles, attendees, or president/vice-president/secretary fields not present in the CONTEXT.
             5. Do not merge evidence from different actas unless the user asks for comparison.
-            6. Answer in the SAME LANGUAGE as the user's question.
+            6. Every stated fact must be supported by the CONTEXT; cite acta or date when possible.
+            7. Answer in the SAME LANGUAGE as the user's question.
 
             %s
             <Question> %s </Question>
@@ -222,13 +293,17 @@ public final class RuntimeAnswerPrompts {
                 dateMismatchNotice.filter(s -> s != null && !s.isBlank()).map(s -> s.trim() + "\n\n").orElse("");
         String contextCombined = notice + c0;
 
-        AnswerGroundingPolicy p = policy != null ? policy : AnswerGroundingPolicy.ATTEMPT_WITH_CONTEXT;
+        AnswerGroundingPolicy p = policy != null ? policy : AnswerGroundingPolicy.DEFAULT_RETRIEVAL_GROUNDED;
         return switch (p) {
             case DIRECT_UNGROUNDED_BASELINE -> String.format(DIRECT_BASELINE_USER_TEMPLATE, planSection, q);
             case CORPUS_GROUNDED_BASELINE ->
-                    String.format(ATTEMPT_DOCUMENT_TEMPLATE, planSection, q, contextCombined);
+                    String.format(DEFAULT_RETRIEVAL_TEMPLATE, planSection, q, contextCombined);
             case STRICT_GROUNDED -> String.format(STRICT_DOCUMENT_TEMPLATE, planSection, q, contextCombined);
             case NEGATIVE_GROUNDED -> String.format(NEGATIVE_DOCUMENT_TEMPLATE, planSection, q, contextCombined);
+            case NEGATIVE_EVIDENCE -> String.format(NEGATIVE_EVIDENCE_TEMPLATE, planSection, q, contextCombined);
+            case NUMERIC_OR_DATE -> String.format(NUMERIC_OR_DATE_TEMPLATE, planSection, q, contextCombined);
+            case ENTITY_OR_TOPIC -> String.format(ENTITY_OR_TOPIC_TEMPLATE, planSection, q, contextCombined);
+            case DEFAULT_RETRIEVAL_GROUNDED -> String.format(DEFAULT_RETRIEVAL_TEMPLATE, planSection, q, contextCombined);
             case ATTEMPT_WITH_CONTEXT -> String.format(ATTEMPT_DOCUMENT_TEMPLATE, planSection, q, contextCombined);
         };
     }

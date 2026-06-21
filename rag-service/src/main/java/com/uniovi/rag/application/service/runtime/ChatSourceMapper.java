@@ -65,7 +65,13 @@ public final class ChatSourceMapper {
             m.put("distanceLabel", "distance");
             if (s.chunkIndex() != null) m.put("chunkIndex", s.chunkIndex());
             if (s.detectedDate() != null) m.put("detectedDate", s.detectedDate());
-            if (s.metadata() != null && !s.metadata().isEmpty()) m.put("metadata", s.metadata());
+            if (s.metadata() != null && !s.metadata().isEmpty()) {
+                m.put("metadata", s.metadata());
+                Object chunkId = s.metadata().get("chunkId");
+                if (chunkId != null && !String.valueOf(chunkId).isBlank()) {
+                    m.put("chunkId", String.valueOf(chunkId));
+                }
+            }
             out.add(Map.copyOf(m));
         }
         return List.copyOf(out);

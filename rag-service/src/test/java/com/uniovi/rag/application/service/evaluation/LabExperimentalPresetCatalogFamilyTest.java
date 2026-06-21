@@ -33,11 +33,17 @@ class LabExperimentalPresetCatalogFamilyTest {
         LabExperimentalPresetCatalogService catalog =
                 new LabExperimentalPresetCatalogService(loader, new RagFeatureConfiguration());
         List<ExperimentalPresetCatalogItemDto> items = catalog.list();
-        assertThat(items).hasSize(15);
+        assertThat(items).hasSize(RagExperimentalPresetCode.values().length);
 
         for (ExperimentalPresetCatalogItemDto item : items) {
             RagExperimentalPresetCode code = RagExperimentalPresetCode.valueOf(item.code());
             RagPresetDefinition def = defs.get(code);
+            if (code == RagExperimentalPresetCode.P15) {
+                assertThat(def).isNull();
+                assertThat(item.labSelectable()).isTrue();
+                assertThat(item.singleTurnBenchmarkSelectable()).isTrue();
+                continue;
+            }
             assertThat(def).as("workbook row for %s", code).isNotNull();
             assertThat(item.family())
                     .as("family for %s", code)

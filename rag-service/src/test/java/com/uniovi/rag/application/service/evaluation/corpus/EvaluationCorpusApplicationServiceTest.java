@@ -14,6 +14,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.application.port.BinaryStoragePort;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusStorageIntegrityService;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
@@ -61,6 +62,7 @@ class EvaluationCorpusApplicationServiceTest {
     @Mock private ProjectAccessService projectAccessService;
     @Mock private KnowledgeIngestionService knowledgeIngestionService;
     @Mock private BinaryStoragePort binaryStoragePort;
+    @Mock private EvaluationCorpusStorageIntegrityService storageIntegrityService;
 
     private EvaluationCorpusApplicationService service;
     private final UUID userId = UUID.randomUUID();
@@ -76,7 +78,8 @@ class EvaluationCorpusApplicationServiceTest {
                         userRepository,
                         projectAccessService,
                         knowledgeIngestionService,
-                        binaryStoragePort);
+                        binaryStoragePort,
+                        storageIntegrityService);
     }
 
     @Test

@@ -30,14 +30,14 @@ public class LabIndexProfileOverrideFactory {
             case DOCUMENT_LEVEL -> MaterializationStrategy.DOCUMENT_LEVEL;
             case CHUNK_LEVEL, CHUNK_LEVEL_METADATA -> MaterializationStrategy.CHUNK_LEVEL;
             case HYBRID_METADATA -> MaterializationStrategy.HYBRID;
-            case NO_INDEX, MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN -> current.materializationStrategy();
+            case DIRECT_LLM, NO_INDEX, MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN -> current.materializationStrategy();
         };
 
         boolean metadataEnabled = switch (groupKey) {
             case CHUNK_LEVEL_METADATA, HYBRID_METADATA -> true;
             case CHUNK_LEVEL -> false;
             case DOCUMENT_LEVEL -> req.requiresMetadataSupport();
-            case NO_INDEX, MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN -> current.metadataEnabled();
+            case DIRECT_LLM, NO_INDEX, MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN -> current.metadataEnabled();
         };
 
         String embeddingModelId = current.embeddingModelId();

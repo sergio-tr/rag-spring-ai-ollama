@@ -8,11 +8,31 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 
 
+def _registered_route_paths(app: FastAPI) -> list[str]:
+    """Collect route paths across FastAPI router layouts (incl. 0.137+ _IncludedRouter)."""
+    paths: list[str] = []
+    for route in app.routes:
+        path = getattr(route, "path", None)
+        if path:
+            paths.append(str(path))
+        contexts = getattr(route, "effective_route_contexts", None)
+        if callable(contexts):
+            for ctx in contexts():
+                ctx_path = getattr(ctx, "path", None)
+                if ctx_path:
+                    paths.append(str(ctx_path))
+        for child in getattr(route, "routes", None) or ():
+            child_path = getattr(child, "path", None)
+            if child_path:
+                paths.append(str(child_path))
+    return paths
+
+
 def test_create_app_registers_title_and_router():
     app = create_app()
     assert "Classifier" in app.title
-    paths = [getattr(r, "path", "") for r in app.routes]
-    assert any("/health" in str(p) for p in paths)
+    paths = _registered_route_paths(app)
+    assert any(p == "/health" or p.endswith("/health") for p in paths)
 
 
 def test_http_exception_handler_normalizes_error_shapes():

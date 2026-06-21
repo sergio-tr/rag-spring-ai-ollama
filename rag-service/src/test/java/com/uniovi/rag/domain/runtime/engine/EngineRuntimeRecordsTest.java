@@ -318,7 +318,7 @@ class EngineRuntimeRecordsTest {
                                         false,
                                         List.of(),
                                         List.of(),
-                                        Optional.empty())),
+                                        Optional.empty(), 0, 0, false, 0)),
                         List.of());
         assertThat(r.retrievalDiagnostics()).isPresent();
     }

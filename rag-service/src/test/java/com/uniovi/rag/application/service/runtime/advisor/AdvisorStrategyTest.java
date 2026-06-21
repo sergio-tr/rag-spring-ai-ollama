@@ -63,7 +63,7 @@ class AdvisorStrategyTest {
                                 false,
                                 List.of(),
                                 List.of(),
-                                Optional.empty()),
+                                Optional.empty(), 0, 0, false, 0),
                         List.of(),
                         List.of());
         PackedContextSet packed =
@@ -143,7 +143,7 @@ class AdvisorStrategyTest {
                                 false,
                                 List.of(),
                                 List.of(),
-                                Optional.empty()),
+                                Optional.empty(), 0, 0, false, 0),
                         List.of(),
                         List.of());
         when(retrieval.retrieve(any(), any(QueryPlan.class), eq("ChunkDenseRagWorkflow"))).thenReturn(curated);

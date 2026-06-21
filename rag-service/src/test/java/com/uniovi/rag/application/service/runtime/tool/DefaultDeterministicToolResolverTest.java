@@ -86,6 +86,154 @@ class DefaultDeterministicToolResolverTest {
     }
 
     @Test
+    void nonApplicableClassifierQueryType_blocksCountHeuristic() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P6_QU_CORE_V1,
+                        "raw",
+                        "raw",
+                        "norm",
+                        "rewritten",
+                        "lbl",
+                        Optional.of(QueryType.GET_DURATION),
+                        ClassifierStatus.OK,
+                        QueryIntent.COUNT,
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled("norm", ""),
+                        ExpectedAnswerShape.SCALAR_COUNT,
+                        AmbiguityAssessment.sufficient(),
+                        "cid",
+                        "",
+                        List.of());
+        var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+        assertThat(d.selected()).isFalse();
+        assertThat(d.outcome()).isEqualTo(DeterministicToolOutcome.NOT_APPLICABLE);
+    }
+
+    @Test
+    void invalidOutput_suppressesWhenNoShapeEvidence() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                planWithStatus(
+                        QueryIntent.UNKNOWN,
+                        ExpectedAnswerShape.UNKNOWN,
+                        AmbiguityStatus.SUFFICIENT,
+                        Optional.of(QueryType.COUNT_DOCUMENTS),
+                        ClassifierStatus.INVALID_OUTPUT);
+        var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+        assertThat(d.selected()).isFalse();
+        assertThat(d.normalizedInputs().get("routeSuppressedByClassifier")).isEqualTo("false");
+    }
+
+    @Test
+    void lowConfidence_strongCountShape_selectsTool() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                planWithStatus(
+                        QueryIntent.COUNT,
+                        ExpectedAnswerShape.SCALAR_COUNT,
+                        AmbiguityStatus.SUFFICIENT,
+                        Optional.empty(),
+                        ClassifierStatus.LOW_CONFIDENCE);
+        var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+        assertThat(d.selected()).isTrue();
+        assertThat(d.selectedToolKind()).contains(DeterministicToolKind.COUNT_DOCUMENTS_TOOL);
+        assertThat(d.normalizedInputs().get("deterministicEvidenceLevel")).isEqualTo("STRONG");
+        assertThat(d.normalizedInputs().get("routeSuppressedByClassifier")).isEqualTo("false");
+    }
+
+    @Test
+    void invalidOutput_strongCountShape_selectsTool() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                planWithStatus(
+                        QueryIntent.COUNT,
+                        ExpectedAnswerShape.SCALAR_COUNT,
+                        AmbiguityStatus.SUFFICIENT,
+                        Optional.empty(),
+                        ClassifierStatus.INVALID_OUTPUT);
+        var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+        assertThat(d.selected()).isTrue();
+        assertThat(d.selectedToolKind()).contains(DeterministicToolKind.COUNT_DOCUMENTS_TOOL);
+    }
+
+    @Test
+    void lowConfidence_unsupportedSummarizeShape_doesNotSelectTool() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                planWithStatus(
+                        QueryIntent.SUMMARIZE,
+                        ExpectedAnswerShape.SUMMARY,
+                        AmbiguityStatus.SUFFICIENT,
+                        Optional.empty(),
+                        ClassifierStatus.LOW_CONFIDENCE);
+        var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+        assertThat(d.selected()).isFalse();
+        assertThat(d.suppressionReason()).contains(DefaultDeterministicToolResolver.REASON_UNSUPPORTED_QUERY_TYPE);
+    }
+
+    @Test
+    void oracleEnabled_selectsFromExpectedQueryType() throws Exception {
+        RagConfig rag = baseRag(true, false);
+        DeterministicToolBenchmarkContext.setRoutingOracleEnabled(true);
+        try (AutoCloseable ignored = DeterministicToolBenchmarkContext.openItem("COUNT_DOCUMENTS")) {
+            QueryPlan plan =
+                    planWithStatus(
+                            QueryIntent.UNKNOWN,
+                            ExpectedAnswerShape.UNKNOWN,
+                            AmbiguityStatus.SUFFICIENT,
+                            Optional.empty(),
+                            ClassifierStatus.LOW_CONFIDENCE);
+            var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+            assertThat(d.selected()).isTrue();
+            assertThat(d.selectedToolKind()).contains(DeterministicToolKind.COUNT_DOCUMENTS_TOOL);
+            assertThat(d.normalizedInputs().get("routingOracleUsed")).isEqualTo("true");
+            assertThat(d.normalizedInputs().get("deterministicEvidenceLevel")).isEqualTo("ORACLE");
+        } finally {
+            DeterministicToolBenchmarkContext.clearRunScope();
+        }
+    }
+
+    @Test
+    void oracleDisabled_ignoresExpectedQueryType() throws Exception {
+        RagConfig rag = baseRag(true, false);
+        try (AutoCloseable ignored = DeterministicToolBenchmarkContext.openItem("COUNT_DOCUMENTS")) {
+            QueryPlan plan =
+                    planWithStatus(
+                            QueryIntent.UNKNOWN,
+                            ExpectedAnswerShape.UNKNOWN,
+                            AmbiguityStatus.SUFFICIENT,
+                            Optional.empty(),
+                            ClassifierStatus.LOW_CONFIDENCE);
+            var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+            assertThat(d.selected()).isFalse();
+            assertThat(d.normalizedInputs().get("routingOracleUsed")).isEqualTo("false");
+        } finally {
+            DeterministicToolBenchmarkContext.clearRunScope();
+        }
+    }
+
+    @Test
+    void unavailable_allowsStrongUnambiguousHeuristic() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                planWithStatus(
+                        QueryIntent.COUNT,
+                        ExpectedAnswerShape.SCALAR_COUNT,
+                        AmbiguityStatus.SUFFICIENT,
+                        Optional.empty(),
+                        ClassifierStatus.UNAVAILABLE);
+        var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+        assertThat(d.selected()).isTrue();
+        assertThat(d.selectedToolKind()).contains(DeterministicToolKind.COUNT_DOCUMENTS_TOOL);
+        assertThat(d.normalizedInputs().get("heuristicRouteUsed")).isEqualTo("true");
+    }
+
+    @Test
     void getField_requiresSlotField() {
         RagConfig rag = baseRag(true, false);
         QueryPlan plan =
@@ -203,6 +351,15 @@ class DefaultDeterministicToolResolverTest {
             ExpectedAnswerShape shape,
             AmbiguityStatus amb,
             Optional<QueryType> classifierQt) {
+        return planWithStatus(intent, shape, amb, classifierQt, ClassifierStatus.OK);
+    }
+
+    private static QueryPlan planWithStatus(
+            QueryIntent intent,
+            ExpectedAnswerShape shape,
+            AmbiguityStatus amb,
+            Optional<QueryType> classifierQt,
+            ClassifierStatus status) {
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,
                 "raw",
@@ -211,7 +368,7 @@ class DefaultDeterministicToolResolverTest {
                 "rewritten",
                 "lbl",
                 classifierQt,
-                ClassifierStatus.OK,
+                status,
                 intent,
                 Map.of(),
                 List.of(),

@@ -4,6 +4,7 @@ import {
   assertNoForbiddenLabCopy,
   gotoLabEvaluationPage,
   prepareLabE2eTest,
+  uploadLabCorpusFileViaUi,
 } from "../support/lab-helpers";
 
 test.describe("Closure LAB document ingestion state @closure @fullstack @wave2", () => {
@@ -26,8 +27,7 @@ test.describe("Closure LAB document ingestion state @closure @fullstack @wave2",
 
     const actaPath = actaKnowledgeBaseFilePath();
     const actaName = /acta-24-02-2025\.txt/i;
-    const uploadInput = page.getByTestId("lab-corpus-upload-input");
-    await uploadInput.setInputFiles(actaPath);
+    await uploadLabCorpusFileViaUi(page, actaPath);
 
     const docRow = kbPanel
       .getByTestId("lab-corpus-document-list")

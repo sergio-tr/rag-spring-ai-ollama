@@ -15,8 +15,16 @@ public enum AnswerGroundingPolicy {
     CORPUS_GROUNDED_BASELINE,
     /** Prefer answering from retrieved fragments; express uncertainty; never substitute generic abstention when context is non-empty. */
     ATTEMPT_WITH_CONTEXT,
-    /** Strong grounding; still allows partial answers when fragments exist (no blind abstention). */
+    /** Default retrieval path with corpus-only factual claims. */
+    DEFAULT_RETRIEVAL_GROUNDED,
+    /** Strong grounding; every constraint must match supporting text. */
     STRICT_GROUNDED,
-    /** Post-retrieval / evidence-preservation framing; emphasize surviving fragments and uncertainty. */
+    /** Absence and negative-evidence questions; forbid affirmative answers without exact support. */
+    NEGATIVE_EVIDENCE,
+    /** Count, duration, date, and comparator questions. */
+    NUMERIC_OR_DATE,
+    /** Entity, topic lookup, boolean presence, and find-paragraph questions. */
+    ENTITY_OR_TOPIC,
+    /** Post-retrieval legacy framing; superseded by factual policies for document-bound questions. */
     NEGATIVE_GROUNDED
 }

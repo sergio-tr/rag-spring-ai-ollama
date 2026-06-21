@@ -47,3 +47,12 @@ CREATE INDEX IF NOT EXISTS idx_vector_store_metadata_filename ON vector_store ((
 CREATE INDEX IF NOT EXISTS idx_vector_store_metadata_date_president ON vector_store
     ((metadata->>'date'), (metadata->>'president'));
 
+ALTER TABLE vector_store
+    ADD COLUMN IF NOT EXISTS project_id UUID;
+
+ALTER TABLE vector_store
+    ADD COLUMN IF NOT EXISTS content_tsv tsvector
+        GENERATED ALWAYS AS (to_tsvector('simple', coalesce(content, ''))) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_vector_store_content_tsv ON vector_store USING GIN (content_tsv);
+

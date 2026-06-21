@@ -63,6 +63,8 @@ public final class RuntimeObservabilityAttributes {
             m.put("retrievedChunkCount", String.valueOf(tel.get("retrievalAfterCompressionCount")));
         } else if (tel.get("contextChunkCount") != null) {
             m.put("retrievedChunkCount", String.valueOf(tel.get("contextChunkCount")));
+        } else if (tel.get("sourceCount") != null) {
+            m.put("retrievedChunkCount", String.valueOf(tel.get("sourceCount")));
         }
         if (trace.promptContextCharCount() > 0) {
             m.put("promptCharCount", String.valueOf(trace.promptContextCharCount()));

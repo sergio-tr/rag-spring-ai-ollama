@@ -12,9 +12,26 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LocalBinaryStorageAdapterTest {
+
+    @Test
+    void isReadableNonEmpty_falseWhenMissing(@TempDir Path root) {
+        LocalBinaryStorageAdapter adapter = new LocalBinaryStorageAdapter(root.toString());
+        assertFalse(adapter.isReadableNonEmpty("missing/source.bin"));
+    }
+
+    @Test
+    void isReadableNonEmpty_trueForStoredFile(@TempDir Path root) throws Exception {
+        LocalBinaryStorageAdapter adapter = new LocalBinaryStorageAdapter(root.toString());
+        byte[] data = "payload".getBytes(StandardCharsets.UTF_8);
+        BinaryStoragePort.StoredObject stored =
+                adapter.store(new ByteArrayInputStream(data), data.length, "test/key.bin");
+        assertTrue(adapter.isReadableNonEmpty(stored.relativeUri()));
+    }
 
     @Test
     void store_openStream_delete_roundTrip(@TempDir Path root) throws Exception {

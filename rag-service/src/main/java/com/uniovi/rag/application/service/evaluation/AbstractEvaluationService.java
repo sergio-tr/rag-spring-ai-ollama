@@ -14,7 +14,12 @@ import com.uniovi.rag.domain.evaluation.workbook.DifficultyLevel;
 import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.application.service.evaluation.preset.CampaignParentOutcomeRecorder;
+import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolBenchmarkContext;
 import com.uniovi.rag.application.service.knowledge.document.DocumentService;
+import com.uniovi.rag.application.service.runtime.ChatExecutionTelemetryMapper;
+import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
 import com.uniovi.rag.application.service.runtime.execution.QueryExecutionService;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -167,6 +172,11 @@ public abstract class AbstractEvaluationService implements EvaluationService {
      * @param config The configuration to use for loading documents
      */
     public void loadDataWithConfiguration(RagFeatureConfiguration config) {
+        if (LabBenchmarkExecutionContext.currentLabRuntimeContext().isPresent()) {
+            log().debug("Skipping evaluation document reload — Lab evaluation corpus is already bound");
+            dataLoaded = true;
+            return;
+        }
         // Check if config is different from default
         boolean isCustomConfig = !configsEqual(config, featureConfig);
         
@@ -282,10 +292,16 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             String questionText = q.question();
             String correctAnswer = q.expectedAnswer() != null ? q.expectedAnswer() : "";
             long t0 = System.nanoTime();
+            if (DeterministicToolBenchmarkContext.routingOracleEnabled()) {
+                DeterministicToolBenchmarkContext.setExpectedQueryType(
+                        q.queryType().map(QueryType::name).orElse(null));
+            }
+            Runnable closeBenchmarkItem = LabBenchmarkExecutionContext.openBenchmarkItemScope(q.id());
             try {
                 QueryResponse queryResponse = queryServiceToUse.generateResponse(questionText);
                 String llmResponse =
                         queryResponse != null && queryResponse.getAnswer() != null ? queryResponse.getAnswer() : "";
+                CampaignParentOutcomeRecorder.maybeRecord(q.id(), queryResponse, llmResponse);
                 String evaluation = evaluateResponse(questionText, correctAnswer, llmResponse);
                 LlmJudgeItemResult.Builder builder =
                         buildEvalQuestionResult(questionText, correctAnswer, llmResponse, evaluation, queryResponse)
@@ -297,10 +313,9 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 if (datasetQt != null) {
                     builder.queryType(datasetQt);
                 }
-                if (queryResponse != null
-                        && queryResponse.getChatTelemetry() != null
-                        && !queryResponse.getChatTelemetry().isEmpty()) {
-                    builder.chatTelemetry(queryResponse.getChatTelemetry());
+                Map<String, Object> mergedTelemetry = mergeQueryResponseTelemetry(queryResponse);
+                if (!mergedTelemetry.isEmpty()) {
+                    builder.chatTelemetry(mergedTelemetry);
                 }
                 LlmJudgeItemResult result = builder.build();
                 resultsForPrompt.add(result);
@@ -323,12 +338,34 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 }
                 resultsForPrompt.add(builder.build());
                 log().warn("RAG preset evaluation item failed for questionId={}", q.id(), ex);
+            } finally {
+                closeBenchmarkItem.run();
+                DeterministicToolBenchmarkContext.clearItemScope();
             }
         }
         return new RagPresetEvaluationBatchResult(
                 configurationSnapshot(customConfig),
                 resultsForPrompt,
                 EvaluationSummaryBuilder.summarize(resultsForPrompt));
+    }
+
+    private static Map<String, Object> mergeQueryResponseTelemetry(QueryResponse queryResponse) {
+        if (queryResponse == null) {
+            return Map.of();
+        }
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (queryResponse.getChatTelemetry() != null && !queryResponse.getChatTelemetry().isEmpty()) {
+            merged.putAll(queryResponse.getChatTelemetry());
+        }
+        if (queryResponse.getSources() != null && !queryResponse.getSources().isEmpty()) {
+            List<Map<String, Object>> sourceMaps =
+                    ChatSourceMapper.toPersistedMapsFromInternal(queryResponse.getSources());
+            if (!sourceMaps.isEmpty()) {
+                merged.put("sources", sourceMaps);
+                ChatExecutionTelemetryMapper.enrichRetrievedIdentifiersFromSources(merged, sourceMaps);
+            }
+        }
+        return merged.isEmpty() ? Map.of() : Map.copyOf(merged);
     }
 
     private static Map<String, Object> configurationSnapshot(RagFeatureConfiguration customConfig) {

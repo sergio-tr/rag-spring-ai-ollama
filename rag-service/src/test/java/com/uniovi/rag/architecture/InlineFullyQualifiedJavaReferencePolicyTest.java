@@ -76,7 +76,7 @@ class InlineFullyQualifiedJavaReferencePolicyTest {
                 String withoutStrings = STRING_LITERAL_PATTERN.matcher(rawLine).replaceAll("\"\"");
                 Matcher matcher = INLINE_FQCN_PATTERN.matcher(withoutStrings);
                 while (matcher.find()) {
-                    String symbol = matcher.group(1);
+                    String symbol = normalizeToClassFqcn(matcher.group(1));
                     String relPath = file.toString().replace('\\', '/');
                     if (!isAcceptedException(relPath, symbol)) {
                         violations.add(relPath + ":" + (i + 1) + " -> " + symbol);
@@ -91,6 +91,30 @@ class InlineFullyQualifiedJavaReferencePolicyTest {
     private static boolean isAcceptedException(String relPath, String symbol) {
         Set<String> allowed = ACCEPTED_EXCEPTIONS.get(relPath);
         return allowed != null && allowed.contains(symbol);
+    }
+
+    static String normalizeToClassFqcn(String symbol) {
+        String s = symbol;
+        while (s.contains(".")) {
+            int dot = s.lastIndexOf('.');
+            String tail = s.substring(dot + 1);
+            if (shouldStripTailSegment(tail)) {
+                s = s.substring(0, dot);
+            } else {
+                break;
+            }
+        }
+        return s;
+    }
+
+    private static boolean shouldStripTailSegment(String tail) {
+        if (tail.isEmpty() || "class".equals(tail)) {
+            return true;
+        }
+        if (Character.isLowerCase(tail.charAt(0))) {
+            return true;
+        }
+        return tail.equals(tail.toUpperCase()) || tail.matches("P\\d+");
     }
 
     private static Map<String, Set<String>> acceptedExceptions() {

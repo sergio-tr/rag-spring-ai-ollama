@@ -54,6 +54,22 @@ public class LocalBinaryStorageAdapter implements BinaryStoragePort {
     }
 
     @Override
+    public boolean isReadableNonEmpty(String relativeUri) {
+        if (relativeUri == null || relativeUri.isBlank()) {
+            return false;
+        }
+        try {
+            Path p = root.resolve(relativeUri.startsWith("/") ? relativeUri.substring(1) : relativeUri).normalize();
+            if (!p.startsWith(root)) {
+                return false;
+            }
+            return Files.isRegularFile(p) && Files.size(p) > 0L;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    @Override
     public void delete(String relativeUri) throws IOException {
         Files.deleteIfExists(resolveExisting(relativeUri));
     }

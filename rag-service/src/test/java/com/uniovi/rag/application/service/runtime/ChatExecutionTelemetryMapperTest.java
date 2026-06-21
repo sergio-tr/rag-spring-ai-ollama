@@ -24,7 +24,7 @@ class ChatExecutionTelemetryMapperTest {
         assertThat(ChatExecutionTelemetryMapper.fromTrace(ExecutionTrace.placeholder()))
                 .containsEntry("clarificationRequired", false)
                 .containsEntry("memoryAttempted", false)
-                .containsEntry("routingAttempted", false)
+                .containsEntry("routingAttempted", true)
                 .containsEntry("judgeAttempted", false)
                 .containsEntry("reasoningAttempted", false);
     }

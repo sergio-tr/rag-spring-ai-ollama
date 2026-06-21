@@ -54,15 +54,15 @@ class LabExperimentalPresetCatalogServiceTest {
 
         var rows = cut.list();
 
-        assertThat(rows).hasSize(15);
-        assertThat(rows).extracting("code").contains("P0", "P14");
+        assertThat(rows).hasSize(16);
+        assertThat(rows).extracting("code").contains("P0", "P14", "P15");
         assertThat(rows).extracting("code").doesNotHaveDuplicates();
         assertThat(rows).allMatch(r -> r.productPresetId() != null && !r.productPresetId().isBlank());
         assertThat(rows).allMatch(r -> r.labOnly() == (r.labSelectable() && !r.chatSelectable()));
         var p0 = rows.stream().filter(r -> "P0".equals(r.code())).findFirst().orElseThrow();
-        assertThat(p0.corpusRequired()).isTrue();
-        assertThat(p0.requiresSnapshot()).isTrue();
-        assertThat(p0.requiresProjectDocuments()).isTrue();
+        assertThat(p0.corpusRequired()).isFalse();
+        assertThat(p0.requiresSnapshot()).isFalse();
+        assertThat(p0.requiresProjectDocuments()).isFalse();
         assertThat(p0.singleTurnBenchmarkSelectable()).isTrue();
         assertThat(p0.protocolStageIndex()).isZero();
         assertThat(p0.parentPresetCode()).isNull();
@@ -94,6 +94,14 @@ class LabExperimentalPresetCatalogServiceTest {
         var p12 = rows.stream().filter(r -> "P12".equals(r.code())).findFirst().orElseThrow();
         assertThat(p11.requiresMultiTurn()).isFalse();
         assertThat(p12.requiresMultiTurn()).isFalse();
+        assertThat(p11.singleTurnBenchmarkSelectable()).isFalse();
+        assertThat(p12.singleTurnBenchmarkSelectable()).isFalse();
+        assertThat(p11.labSelectable()).isFalse();
+        assertThat(p12.labSelectable()).isFalse();
+        assertThat(p11.supportStatus()).isEqualTo("NOT_COMPARABLE_IN_SINGLE_TURN_LAB");
+        assertThat(p12.supportStatus()).isEqualTo("NOT_COMPARABLE_IN_SINGLE_TURN_LAB");
+        assertThat(p11.chatSelectable()).isTrue();
+        assertThat(p12.chatSelectable()).isTrue();
 
         // Post-retrieval is implemented, so P8 can be chat-selectable (unless blocked for other reasons).
         var p6 = rows.stream().filter(r -> "P6".equals(r.code())).findFirst().orElseThrow();

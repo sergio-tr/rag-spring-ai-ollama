@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.evaluation;
 
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
+import com.uniovi.rag.domain.EvaluationRunStatus;
 import com.uniovi.rag.domain.evaluation.EvaluationStudyType;
 import com.uniovi.rag.infrastructure.persistence.EvaluationCampaignRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
@@ -11,8 +12,11 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCorpusEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
+import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkExportSupport;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpMetricsCalculator;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpRollupCalculator;
+import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpSchema;
 import com.uniovi.rag.application.service.evaluation.metrics.LabBenchmarkExportLabels;
 import com.uniovi.rag.infrastructure.persistence.evaluation.LabCampaignHumanExportBuilder;
 import com.uniovi.rag.interfaces.rest.dto.StartCampaignRequestDto;
@@ -38,14 +42,17 @@ public class LabCampaignService {
     private final EvaluationCampaignRepository evaluationCampaignRepository;
     private final EvaluationRunRepository evaluationRunRepository;
     private final EvaluationResultRepository evaluationResultRepository;
+    private final LabPresetAxisSupport labPresetAxisSupport;
 
     public LabCampaignService(
             EvaluationCampaignRepository evaluationCampaignRepository,
             EvaluationRunRepository evaluationRunRepository,
-            EvaluationResultRepository evaluationResultRepository) {
+            EvaluationResultRepository evaluationResultRepository,
+            LabPresetAxisSupport labPresetAxisSupport) {
         this.evaluationCampaignRepository = evaluationCampaignRepository;
         this.evaluationRunRepository = evaluationRunRepository;
         this.evaluationResultRepository = evaluationResultRepository;
+        this.labPresetAxisSupport = labPresetAxisSupport;
     }
 
     /**
@@ -62,6 +69,17 @@ public class LabCampaignService {
         if (req == null || orchestrator == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
         }
+        Map<String, Object> baseConfig = req.baseConfig();
+        boolean autoReindex = baseConfigBoolean(baseConfig, "autoReindex", true);
+        boolean allowActiveSnapshotMutation =
+                baseConfigBoolean(baseConfig, "allowActiveSnapshotMutation", true);
+        boolean bootstrapCorpusFromClasspathDocs =
+                baseConfigBoolean(baseConfig, "bootstrapCorpusFromClasspathDocs", false);
+        boolean bootstrapSkipExisting = baseConfigBoolean(baseConfig, "bootstrapSkipExisting", true);
+        boolean bootstrapFailOnDocumentError =
+                baseConfigBoolean(baseConfig, "bootstrapFailOnDocumentError", true);
+        String classpathDocsLocation = baseConfigString(baseConfig, "classpathDocsLocation", null);
+        String bootstrapCorpusScope = baseConfigString(baseConfig, "bootstrapCorpusScope", null);
         StartBenchmarkRunRequest body =
                 new StartBenchmarkRunRequest(
                         req.datasetId(),
@@ -80,16 +98,18 @@ public class LabCampaignService {
                         req.embeddingModelIds(),
                         false,
                         req.name(),
+                        autoReindex,
+                        allowActiveSnapshotMutation,
                         null,
                         null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        req.indexSnapshotIds());
+                        bootstrapCorpusFromClasspathDocs,
+                        classpathDocsLocation,
+                        bootstrapCorpusScope,
+                        bootstrapSkipExisting,
+                        bootstrapFailOnDocumentError,
+                        req.indexSnapshotIds(),
+                        req.datasetQuestionIds(),
+                        req.goldSubsetManifestId(), req.routingQueryTypeOracleEnabled());
 
         BenchmarkJobAccepted accepted = orchestrator.startJsonBenchmark(userId, "USER", kind, body);
         UUID campaignId = accepted.campaignId().orElse(null);
@@ -107,6 +127,7 @@ public class LabCampaignService {
         EvaluationCampaignEntity c = requireCampaign(userId, campaignId);
         List<EvaluationRunEntity> runs = evaluationRunRepository.findByCampaignIdAndUserId(campaignId, userId);
         CampaignContext ctx = resolveCampaignContext(c, runs);
+        Map<String, Object> meta = c.getMetaJson() != null ? c.getMetaJson() : Map.of();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("campaignId", c.getId());
         out.put("campaignType", ctx.campaignType());
@@ -119,8 +140,99 @@ public class LabCampaignService {
         out.put("projectId", c.getProject() != null ? c.getProject().getId() : null);
         out.put("runCount", runs.size());
         out.put("runIds", runs.stream().map(EvaluationRunEntity::getId).toList());
-        out.put("meta", c.getMetaJson() != null ? c.getMetaJson() : Map.of());
+        out.put("meta", meta);
+        out.putAll(deriveCampaignProgress(runs, meta));
         return out;
+    }
+
+    /** Derived completion state for polling scripts (campaigns have no top-level run {@code status}). */
+    Map<String, Object> deriveCampaignProgress(List<EvaluationRunEntity> runs, Map<String, Object> meta) {
+        int doneRuns = 0;
+        int pendingRuns = 0;
+        int runningRuns = 0;
+        int failedRuns = 0;
+        int persistedItems = 0;
+        for (EvaluationRunEntity run : runs) {
+            if (run == null) {
+                continue;
+            }
+            String status = run.getStatus() != null ? run.getStatus().name() : EvaluationRunStatus.PENDING.name();
+            switch (status) {
+                case "DONE" -> doneRuns++;
+                case "RUNNING" -> runningRuns++;
+                case "ERROR", "FAILED", "CANCELLED", "PARTIAL_CANCELLED" -> failedRuns++;
+                default -> pendingRuns++;
+            }
+            if (run.getId() != null) {
+                persistedItems +=
+                        evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId()).size();
+            }
+        }
+        int plannedTotalItems = readPlannedTotalItems(meta, runs.size());
+        String completionStatus =
+                deriveCompletionStatus(
+                        doneRuns, pendingRuns, runningRuns, failedRuns, runs.size(), persistedItems, plannedTotalItems);
+        Map<String, Object> progress = new LinkedHashMap<>();
+        progress.put("completionStatus", completionStatus);
+        progress.put("doneRunCount", doneRuns);
+        progress.put("pendingRunCount", pendingRuns);
+        progress.put("runningRunCount", runningRuns);
+        progress.put("failedRunCount", failedRuns);
+        progress.put("persistedItemCount", persistedItems);
+        progress.put("plannedTotalItems", plannedTotalItems);
+        progress.put("globalCompletedItems", persistedItems);
+        progress.put("globalTotalItems", plannedTotalItems > 0 ? plannedTotalItems : persistedItems);
+        return progress;
+    }
+
+    private static int readPlannedTotalItems(Map<String, Object> meta, int runCount) {
+        if (meta != null) {
+            Object planned = meta.get("plannedTotalItems");
+            if (planned instanceof Number n && n.intValue() > 0) {
+                return n.intValue();
+            }
+            Object perAxis = meta.get("perAxisItemCount");
+            if (perAxis instanceof Number n && n.intValue() > 0 && runCount > 0) {
+                return n.intValue() * runCount;
+            }
+            Object progress = meta.get("jobProgress");
+            if (progress instanceof Map<?, ?> job) {
+                Object total = job.get("globalTotalItems");
+                if (total instanceof Number n && n.intValue() > 0) {
+                    return n.intValue();
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static String deriveCompletionStatus(
+            int doneRuns,
+            int pendingRuns,
+            int runningRuns,
+            int failedRuns,
+            int totalRuns,
+            int persistedItems,
+            int plannedTotalItems) {
+        if (totalRuns == 0) {
+            return "PENDING";
+        }
+        if (runningRuns > 0) {
+            return "RUNNING";
+        }
+        if (failedRuns > 0 && doneRuns == 0 && pendingRuns == 0) {
+            return "FAILED";
+        }
+        if (doneRuns == totalRuns && (plannedTotalItems <= 0 || persistedItems >= plannedTotalItems)) {
+            return "COMPLETE";
+        }
+        if (doneRuns > 0 && (pendingRuns > 0 || persistedItems < plannedTotalItems)) {
+            return "PARTIAL";
+        }
+        if (pendingRuns == totalRuns) {
+            return "PENDING";
+        }
+        return "PARTIAL";
     }
 
     @Transactional(readOnly = true)
@@ -140,8 +252,10 @@ public class LabCampaignService {
             row.put("llmModelId", r.getLlmModelId());
             row.put("embeddingModelId", r.getEmbeddingModelId());
             row.put("presetCode", resolvePresetCode(r));
+            row.put("presetKey", resolvePresetCode(r));
             row.put("modelLabel", humanModelLabel(r));
             row.put("presetLabel", humanPresetLabel(r));
+            row.put("comparisonLabel", comparisonLabel(r));
             row.put("corpusName", humanCorpusName(r));
             row.put("datasetName", humanDatasetName(r));
             row.put("comparisonAxis", ctx.comparisonAxis());
@@ -179,6 +293,10 @@ public class LabCampaignService {
             }
         }
         out.put("items", items);
+        out.put("totalPersistedItems", items.size());
+        out.put(
+                "presetCodes",
+                runs.stream().map(this::resolvePresetCode).filter(s -> s != null && !s.isBlank()).distinct().toList());
         return out;
     }
 
@@ -220,6 +338,7 @@ public class LabCampaignService {
         long skippedRuns = runs.stream().filter(r -> r.getStatus() != null && "SKIPPED".equals(r.getStatus().name())).count();
 
         Map<String, Object> out = new LinkedHashMap<>();
+        out.put("schemaVersion", BenchmarkMvpSchema.VERSION);
         out.put("campaignId", campaignId);
         out.put("campaignType", ctx.campaignType());
         out.put("comparisonAxis", ctx.comparisonAxis());
@@ -260,6 +379,7 @@ public class LabCampaignService {
             List<EvaluationResultEntity> items = evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId());
             for (EvaluationResultEntity it : items) {
                 Map<String, String> row = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(it, run);
+                labPresetAxisSupport.enrichItemExportRow(row, run, it);
                 List<String> cells = new ArrayList<>();
                 cells.add(csvEscape(campaignId.toString()));
                 cells.add(csvEscape(ctx.campaignType()));
@@ -314,7 +434,19 @@ public class LabCampaignService {
                 "meanExactMatch",
                 "meanSemanticScore",
                 "meanRecallAt1",
-                "meanLatencyMs"
+                "meanLatencyMs",
+                "comparisonLabel",
+                "presetKey",
+                "presetOrder",
+                "benchmarkSupportStatus",
+                "singleTurnSupported",
+                "comparableInSingleTurn",
+                "scoreGlobal",
+                "scoreAnswerable",
+                "scoreUnanswerable",
+                "scoreAmbiguous",
+                "scoreUnknownAnswerability",
+                "finalScoreSampleCount"
         );
         StringBuilder sb = new StringBuilder();
         sb.append(String.join(",", cols)).append('\n');
@@ -355,10 +487,18 @@ public class LabCampaignService {
             row.put("runName", run.getName());
             row.put("modelLabel", humanModelLabel(run));
             row.put("presetLabel", humanPresetLabel(run));
+            row.put("presetKey", resolvePresetCode(run));
+            row.put("comparisonLabel", comparisonLabel(run));
+            Map<String, Object> firstMetrics = readFirstItemMetrics(run);
+            String presetCode = resolvePresetCode(run);
+            row.put("presetOrder", BenchmarkExportSupport.resolvePresetOrder(presetCode, firstMetrics));
             row.put("corpusName", humanCorpusName(run));
             row.put("datasetName", humanDatasetName(run));
             row.put("status", run.getStatus() != null ? run.getStatus().name() : "");
             row.put("failureReason", resolveFailureReason(run, bucket));
+            row.put("benchmarkSupportStatus", BenchmarkExportSupport.resolveBenchmarkSupportStatus(presetCode, firstMetrics));
+            row.put("singleTurnSupported", BenchmarkExportSupport.resolveSingleTurnSupported(firstMetrics));
+            row.put("comparableInSingleTurn", BenchmarkExportSupport.resolveComparableInSingleTurn(firstMetrics));
             rows.add(row);
         }
         return rows;
@@ -379,7 +519,7 @@ public class LabCampaignService {
         return m;
     }
 
-    private static CampaignContext resolveCampaignContext(EvaluationCampaignEntity c, List<EvaluationRunEntity> runs) {
+    private CampaignContext resolveCampaignContext(EvaluationCampaignEntity c, List<EvaluationRunEntity> runs) {
         String studyType = c.getStudyType() != null ? c.getStudyType().trim() : "";
         String campaignType;
         String comparisonAxis;
@@ -395,7 +535,7 @@ public class LabCampaignService {
             campaignType = "RAG_PRESET";
             comparisonAxis = COMPARISON_AXIS_PRESET;
         }
-        int axisCount = countDistinctAxisValues(comparisonAxis, runs);
+        int axisCount = countDistinctPresetOrAxisValues(comparisonAxis, runs);
         boolean comparativeMode = readComparativeMode(c) || axisCount >= 2;
         return new CampaignContext(campaignType, comparisonAxis, comparativeMode, axisCount);
     }
@@ -408,15 +548,15 @@ public class LabCampaignService {
         return Boolean.TRUE.equals(v);
     }
 
-    private static int countDistinctAxisValues(String comparisonAxis, List<EvaluationRunEntity> runs) {
-        return (int) runs.stream().map(r -> resolveAxisValueStatic(comparisonAxis, r)).distinct().count();
+    private int countDistinctPresetOrAxisValues(String comparisonAxis, List<EvaluationRunEntity> runs) {
+        return (int) runs.stream().map(r -> resolveAxisValue(comparisonAxis, r)).distinct().count();
     }
 
-    private static String resolveAxisValue(CampaignContext ctx, EvaluationRunEntity run) {
-        return resolveAxisValueStatic(ctx.comparisonAxis(), run);
+    private String resolveAxisValue(CampaignContext ctx, EvaluationRunEntity run) {
+        return resolveAxisValue(ctx.comparisonAxis(), run);
     }
 
-    private static String resolveAxisValueStatic(String comparisonAxis, EvaluationRunEntity run) {
+    private String resolveAxisValue(String comparisonAxis, EvaluationRunEntity run) {
         return switch (comparisonAxis) {
             case COMPARISON_AXIS_EMBEDDING -> nullToEmpty(run.getEmbeddingModelId());
             case COMPARISON_AXIS_PRESET -> resolvePresetCode(run);
@@ -424,18 +564,16 @@ public class LabCampaignService {
         };
     }
 
-    @SuppressWarnings("unchecked")
-    private static String resolvePresetCode(EvaluationRunEntity run) {
-        if (run.getAggregatesJson() != null) {
-            Object codes = run.getAggregatesJson().get(BenchmarkRunOrchestrator.AGG_KEY_REQUESTED_PRESET_CODES);
-            if (codes instanceof List<?> list && !list.isEmpty()) {
-                Object first = list.getFirst();
-                if (first != null) {
-                    return String.valueOf(first).trim();
-                }
-            }
-        }
-        return "";
+    private String resolvePresetCode(EvaluationRunEntity run) {
+        return labPresetAxisSupport.resolvePresetCode(run);
+    }
+
+    private String humanPresetLabel(EvaluationRunEntity run) {
+        return labPresetAxisSupport.resolvePresetLabel(run);
+    }
+
+    private String comparisonLabel(EvaluationRunEntity run) {
+        return labPresetAxisSupport.comparisonLabel(run);
     }
 
     private static String humanModelLabel(EvaluationRunEntity run) {
@@ -446,11 +584,6 @@ public class LabCampaignService {
             return run.getEmbeddingModelId().trim();
         }
         return "";
-    }
-
-    private static String humanPresetLabel(EvaluationRunEntity run) {
-        String code = resolvePresetCode(run);
-        return code.isBlank() ? "" : code;
     }
 
     private static UUID knowledgeBaseId(EvaluationRunEntity run) {
@@ -555,7 +688,25 @@ public class LabCampaignService {
         Map<String, Object> ret = (Map<String, Object>) bucket.getOrDefault("retrievalOnExecutedWhereApplicable", Map.of());
         out.put("meanRecallAt1", ret.get("meanRecallAt1"));
         out.put("meanLatencyMs", onExecuted.get("meanLatencyMsWherePresent"));
+        out.put("scoreGlobal", onExecuted.get("scoreGlobal"));
+        out.put("scoreAnswerable", onExecuted.get("scoreAnswerable"));
+        out.put("scoreUnanswerable", onExecuted.get("scoreUnanswerable"));
+        out.put("scoreAmbiguous", onExecuted.get("scoreAmbiguous"));
+        out.put("scoreUnknownAnswerability", onExecuted.get("scoreUnknownAnswerability"));
+        out.put("finalScoreSampleCount", onExecuted.get("finalScoreSampleCount"));
+        out.put("abstentionRate", onExecuted.get("abstentionRate"));
+        out.put("correctAbstentionRate", onExecuted.get("correctAbstentionRate"));
+        out.put("wrongAbstentionRate", onExecuted.get("wrongAbstentionRate"));
         return out;
+    }
+
+    private Map<String, Object> readFirstItemMetrics(EvaluationRunEntity run) {
+        List<EvaluationResultEntity> items =
+                evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(run.getId());
+        if (items.isEmpty() || items.getFirst().getMetricsPayload() == null) {
+            return Map.of();
+        }
+        return items.getFirst().getMetricsPayload();
     }
 
     private static long longNum(Object o) {
@@ -583,6 +734,32 @@ public class LabCampaignService {
         String t = s.replace("\"", "\"\"");
         boolean needsQuotes = t.contains(",") || t.contains("\n") || t.contains("\r") || t.contains("\"");
         return needsQuotes ? "\"" + t + "\"" : t;
+    }
+
+    private static boolean baseConfigBoolean(Map<String, Object> baseConfig, String key, boolean defaultValue) {
+        if (baseConfig == null || key == null || !baseConfig.containsKey(key)) {
+            return defaultValue;
+        }
+        Object raw = baseConfig.get(key);
+        if (raw instanceof Boolean b) {
+            return b;
+        }
+        if (raw instanceof String s) {
+            return Boolean.parseBoolean(s);
+        }
+        return defaultValue;
+    }
+
+    private static String baseConfigString(Map<String, Object> baseConfig, String key, String defaultValue) {
+        if (baseConfig == null || key == null || !baseConfig.containsKey(key)) {
+            return defaultValue;
+        }
+        Object raw = baseConfig.get(key);
+        if (raw == null) {
+            return defaultValue;
+        }
+        String s = raw.toString().trim();
+        return s.isEmpty() ? defaultValue : s;
     }
 
     private record CampaignContext(String campaignType, String comparisonAxis, boolean comparativeMode, int axisCount) {}

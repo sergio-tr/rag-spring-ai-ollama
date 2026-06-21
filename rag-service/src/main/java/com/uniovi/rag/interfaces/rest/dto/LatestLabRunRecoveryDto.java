@@ -1,6 +1,7 @@
 package com.uniovi.rag.interfaces.rest.dto;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -17,4 +18,7 @@ public record LatestLabRunRecoveryDto(
         Map<String, Object> result,
         Instant startedAt,
         Instant completedAt,
-        boolean hasResults) {}
+        boolean hasResults,
+        UUID campaignId,
+        Integer persistedItemCount,
+        List<UUID> campaignChildRunIds) {}

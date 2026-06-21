@@ -124,11 +124,14 @@ def test_run_traced_exception_records_error():
 def test_classification_service_span_attrs_use_query_length_not_raw_query():
     from unittest.mock import patch
 
+    from app.models.classification_result import ClassificationResult
     from app.services.classification_service import ClassificationService
 
     engine = MagicMock()
     engine._loader.is_loaded.return_value = True
-    engine.predict.return_value = "COUNT_DOCUMENTS"
+    engine.predict_detailed.return_value = ClassificationResult(
+        query_type="COUNT_DOCUMENTS", confidence=0.95
+    )
     service = ClassificationService(engine)
     captured_attrs: dict = {}
 

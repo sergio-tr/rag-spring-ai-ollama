@@ -123,9 +123,9 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 true,
                                 true,
                                 false,
-                                true,
-                                true,
-                                true,
+                                false,
+                                false,
+                                false,
                                 true,
                                 0,
                                 null,
@@ -285,8 +285,8 @@ class ChatPresetCatalogControllerWebMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.productPresets.length()").value(3))
                 .andExpect(jsonPath("$.experimentalPresets.length()").value(15))
-                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P0')].corpusRequired").value(true))
-                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P0')].requiresSnapshot").value(true))
+                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P0')].corpusRequired").value(false))
+                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P0')].requiresSnapshot").value(false))
                 .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P13')].chatSelectable").value(true))
                 .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P14')].chatSelectable").value(true))
                 .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P6')].chatSelectable").value(true))

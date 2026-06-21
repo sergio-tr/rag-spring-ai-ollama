@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.port.PendingClarificationStore;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
@@ -13,6 +14,7 @@ import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeli
 import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
 import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.DeterministicToolRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -61,6 +63,11 @@ import static org.mockito.Mockito.when;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.ObjectProvider;
 
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingExecutionResult;
+import com.uniovi.rag.domain.runtime.routing.RouteExecutionGate;
+
 class RagExecutionOrchestratorClarificationTest {
 
     @Test
@@ -105,10 +112,13 @@ class RagExecutionOrchestratorClarificationTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
+                        mock(DeterministicToolRoutingStrategy.class),
+                        mock(FunctionCallingRoutingStrategy.class),
+                        mock(AdvisorRoutingStrategy.class),
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
 
         var out = orchestrator.execute(in);
 
@@ -217,6 +227,8 @@ class RagExecutionOrchestratorClarificationTest {
         ClarificationPolicyResolver clarificationPolicyResolver = mock(ClarificationPolicyResolver.class);
         ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
+        AdvisorRoutingStrategy advisorRoutingStrategy =
+                mock(AdvisorRoutingStrategy.class);
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
 
         when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
@@ -247,6 +259,25 @@ class RagExecutionOrchestratorClarificationTest {
                 .thenReturn(
                         new AdvisorDecision(
                                 AdvisorMode.ENABLED, false, List.of(), "", List.of(), Optional.empty()));
+        when(advisorRoutingStrategy.execute(any(), any()))
+                .thenReturn(
+                        new AdaptiveRoutingExecutionResult(
+                                AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED,
+                                true,
+                                AdaptiveRouteKind.ADVISOR_ROUTE,
+                                false,
+                                Optional.empty(),
+                                false,
+                                new RouteExecutionGate(
+                                        AdaptiveRouteKind.ADVISOR_ROUTE,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        Optional.empty(),
+                                        false),
+                                List.of()));
 
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
@@ -262,10 +293,13 @@ class RagExecutionOrchestratorClarificationTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
+                        mock(DeterministicToolRoutingStrategy.class),
+                        mock(FunctionCallingRoutingStrategy.class),
+                        advisorRoutingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
 
         orchestrator.execute(merged);
 

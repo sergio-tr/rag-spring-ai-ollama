@@ -7,12 +7,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 RAG_SERVICE="${REPO_ROOT}/rag-service"
 
 POSTGRES_CONTAINER="${RAG_CI_POSTGRES_CONTAINER:-rag-ci-pg}"
-POSTGRES_IMAGE="${RAG_PLATFORM_POSTGRES_IMAGE:-pgvector/pgvector:0.8.2-pg16-bookworm}"
-POSTGRES_PORT="${RAG_LOCAL_POSTGRES_PORT:-5432}"
+POSTGRES_IMAGE="${RAG_PLATFORM_POSTGRES_IMAGE}"
+POSTGRES_PORT="${RAG_LOCAL_POSTGRES_PORT}"
 CI_NETWORK="${RAG_CI_NETWORK:-rag-ci}"
 BACKEND_CONTAINER="${RAG_CI_BACKEND_CONTAINER:-rag-ci-backend}"
 CLASSIFIER_CONTAINER="${RAG_CI_CLASSIFIER_CONTAINER:-rag-ci-classifier}"
@@ -170,7 +172,7 @@ start_backend() {
     -e RAG_API_PRODUCT_BASE_PATH=/api/v5 \
     -e RAG_HEALTH_OLLAMA_ENABLED=false \
     -e RAG_HEALTH_CLASSIFIER_ENABLED=false \
-    eclipse-temurin:21-jdk bash -lc "./mvnw -B -DskipTests spring-boot:run -Dspring-boot.run.profiles=e2e" \
+    eclipse-temurin:21-jdk bash -lc "./mvnw -B -DskipTests compile spring-boot:run -Dspring-boot.run.profiles=e2e -Dspring-boot.run.jvmArguments=-Dspring.devtools.restart.enabled=false" \
     >/dev/null
 }
 
@@ -199,9 +201,10 @@ wait_for_backend() {
 }
 
 wait_for_classifier() {
-  log "Waiting for classifier health: http://127.0.0.1:8000/health"
+  log "Waiting for classifier health on ${CI_NETWORK}: http://${CLASSIFIER_CONTAINER}:8000/health"
   for _ in $(seq 1 120); do
-    if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+    if docker run --rm --network "${CI_NETWORK}" curlimages/curl:8.5.0 \
+      -fsS "http://${CLASSIFIER_CONTAINER}:8000/health" >/dev/null 2>&1; then
       log "Classifier healthy."
       return 0
     fi
@@ -213,6 +216,11 @@ wait_for_classifier() {
 }
 
 start_classifier() {
+  if [[ "${INTEGRATION_REQUIRE_CLASSIFIER}" != "1" ]] \
+      && curl -sf "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
+    log "Classifier already reachable on :8000; reusing host service."
+    return 0
+  fi
   log "Starting classifier container (uvicorn) on :8000."
   docker rm -f "${CLASSIFIER_CONTAINER}" >/dev/null 2>&1 || true
   docker run -d --name "${CLASSIFIER_CONTAINER}" --network "${CI_NETWORK}" -p 8000:8000 \
@@ -361,6 +369,7 @@ host_gateway="$(resolve_host_gateway_ip)"
 log "Pytest container host mapping: host.docker.internal -> ${host_gateway}"
 set -o pipefail
 docker run --rm \
+  --network "${CI_NETWORK}" \
   --add-host="host.docker.internal:${host_gateway}" \
   -v "${REPO_ROOT}:/repo" \
   -w /repo \
@@ -371,7 +380,7 @@ docker run --rm \
   -e INTEGRATION_FAIL_ON_UNREACHABLE="${INTEGRATION_FAIL_ON_UNREACHABLE}" \
   -e INTEGRATION_REQUIRE_CLASSIFIER="${INTEGRATION_REQUIRE_CLASSIFIER}" \
   -e INTEGRATION_BACKEND_URL="http://host.docker.internal:9000" \
-  -e INTEGRATION_CLASSIFIER_URL="http://host.docker.internal:8000" \
+  -e INTEGRATION_CLASSIFIER_URL="http://${CLASSIFIER_CONTAINER}:8000" \
   -e INTEGRATION_ADMIN_EMAIL="${INTEGRATION_ADMIN_EMAIL}" \
   -e INTEGRATION_ADMIN_PASSWORD="${INTEGRATION_ADMIN_PASSWORD}" \
   -e INTEGRATION_LOGIN_EMAIL="${INTEGRATION_LOGIN_EMAIL}" \
