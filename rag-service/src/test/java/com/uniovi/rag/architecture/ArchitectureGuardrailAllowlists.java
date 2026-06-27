@@ -201,6 +201,7 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.project.ProjectService", // ARCH-DEBT-ADMIN-MODEL
             "com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService", // ARCH-DEBT-QUERY-RUNTIME
             "com.uniovi.rag.application.service.runtime.KnowledgeRuntimeSnapshotSelector", // ARCH-DEBT-KNOWLEDGE
+            "com.uniovi.rag.application.service.runtime.config.MaterializationAwareSnapshotResolver", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService", // ARCH-DEBT-RUNTIME-CONFIG
             "com.uniovi.rag.application.service.runtime.memory.ConversationHistoryLoader", // ARCH-DEBT-CHAT
             "com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService", // ARCH-DEBT-TRACE
