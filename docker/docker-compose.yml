@@ -122,6 +122,13 @@ services:
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-}
       LITELLM_CHAT_MODEL: ${LITELLM_CHAT_MODEL:-}
       RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${CLASSIFIER_SERVICE_PORT:-8000}
+      # Auth/OAuth (rag-service/.env via compose --env-file; explicit so container recreate is not required for every .env edit).
+      RAG_AUTH_WEBAPP_BASE_URL: ${RAG_AUTH_WEBAPP_BASE_URL:-http://localhost}
+      RAG_AUTH_BACKEND_BASE_URL: ${RAG_AUTH_BACKEND_BASE_URL:-http://localhost}
+      RAG_AUTH_OAUTH_ENABLED: ${RAG_AUTH_OAUTH_ENABLED:-false}
+      RAG_AUTH_OAUTH_GOOGLE_CLIENT_ID: ${RAG_AUTH_OAUTH_GOOGLE_CLIENT_ID:-${GOOGLE_OAUTH_CLIENT_ID:-}}
+      RAG_AUTH_OAUTH_GOOGLE_CLIENT_SECRET: ${RAG_AUTH_OAUTH_GOOGLE_CLIENT_SECRET:-${GOOGLE_OAUTH_CLIENT_SECRET:-}}
+      RAG_CORS_ALLOWED_ORIGINS: ${RAG_CORS_ALLOWED_ORIGINS:-}
       # Keep container health independent from "model loaded" gates.
       RAG_HEALTH_CLASSIFIER_REQUIRE_MODEL_LOADED: "false"
       RAG_STORAGE_ROOT: ${RAG_STORAGE_ROOT:-/var/lib/rag/storage}
@@ -378,7 +385,7 @@ services:
       args:
         BASE_IMAGE: ${GRAFANA_BASE_IMAGE:-grafana/grafana:11.2.0}
     ports:
-      - "${GRAFANA_PORT:-3000}:${OBS_INTERNAL_GRAFANA:-3000}"
+      - "${GRAFANA_PORT:-3030}:${OBS_INTERNAL_GRAFANA:-3000}"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-CHANGE_ME}
       GF_USERS_ALLOW_SIGN_UP: "false"
