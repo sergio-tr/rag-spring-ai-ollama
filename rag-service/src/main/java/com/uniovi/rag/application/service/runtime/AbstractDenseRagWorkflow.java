@@ -16,7 +16,7 @@ import com.uniovi.rag.domain.runtime.policy.AnswerGroundingPolicy;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
-import org.springframework.ai.chat.client.ChatClient;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.ArrayList;
@@ -28,10 +28,10 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
     private final AdvancedRetrievalPipeline advancedRetrievalPipeline;
 
     protected AbstractDenseRagWorkflow(
-            ChatClient chatClient,
+            RagLlmChatInvoker llmChatInvoker,
             AdvancedRetrievalPipeline advancedRetrievalPipeline,
             @Autowired(required = false) ObservabilitySupport observability) {
-        super(chatClient, observability);
+        super(llmChatInvoker, observability);
         this.advancedRetrievalPipeline = advancedRetrievalPipeline;
     }
 

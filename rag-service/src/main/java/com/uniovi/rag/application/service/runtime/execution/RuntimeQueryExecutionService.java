@@ -2,7 +2,11 @@ package com.uniovi.rag.application.service.runtime.execution;
 
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.result.chat.QueryResponse;
+import com.uniovi.rag.application.exception.llm.LlmProviderException;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
+import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.infrastructure.llm.openaicompat.OpenAiCompatibleLlmException;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionMapper;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
@@ -112,9 +116,14 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
                 String errorResponse = generateErrorResponse("", new IllegalArgumentException(ERR_EMPTY_QUERY));
                 return QueryResponse.fromLLM(errorResponse);
             }
-            ollamaConnectivityChecker.prepareForQuery(chatModel);
-            return executeOrchestrated(executionContextFactory.buildForHttpQuery(query, chatModel));
-        } catch (RagServiceException | ResponseStatusException e) {
+            ExecutionContext ctx = executionContextFactory.buildForHttpQuery(query, chatModel);
+            try {
+                prepareOllamaForContext(ctx);
+                return executeOrchestrated(ctx);
+            } finally {
+                OrchestrationLlmConfigScope.clear();
+            }
+        } catch (RagServiceException | ResponseStatusException | LlmProviderException | OpenAiCompatibleLlmException e) {
             throw e;
         } catch (Exception e) {
             return handleUnexpected(query, e);
@@ -162,14 +171,17 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
                             documentFilter,
                             chatModel,
                             Optional.ofNullable(userMessageId));
-            ollamaConnectivityChecker.prepareForQuery(
-                    ChatGenerationModelSelector.effectiveChatModelId(ctx).orElse(null));
-            RuntimeObservability obs = runtimeObservability != null ? runtimeObservability.getIfAvailable() : null;
-            if (obs != null) {
-                return obs.chatGenerate(ctx, () -> executeOrchestrated(ctx));
+            try {
+                prepareOllamaForContext(ctx);
+                RuntimeObservability obs = runtimeObservability != null ? runtimeObservability.getIfAvailable() : null;
+                if (obs != null) {
+                    return obs.chatGenerate(ctx, () -> executeOrchestrated(ctx));
+                }
+                return executeOrchestrated(ctx);
+            } finally {
+                OrchestrationLlmConfigScope.clear();
             }
-            return executeOrchestrated(ctx);
-        } catch (RagServiceException | ResponseStatusException e) {
+        } catch (RagServiceException | ResponseStatusException | LlmProviderException | OpenAiCompatibleLlmException e) {
             throw e;
         } catch (Exception e) {
             return handleUnexpected(query, e);
@@ -250,6 +262,15 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
                         result.usedKnowledgeSnapshotIds(),
                         ctx.correlationId());
         return RagExecutionMapper.toQueryResponse(result);
+    }
+
+    private void prepareOllamaForContext(ExecutionContext ctx) {
+        String chatModel = ChatGenerationModelSelector.effectiveChatModelId(ctx).orElse(null);
+        boolean requireOllamaChat =
+                OrchestrationLlmConfigScope.current()
+                        .map(config -> config.provider() == LlmProvider.OLLAMA_NATIVE)
+                        .orElse(true);
+        ollamaConnectivityChecker.prepareForQuery(chatModel, requireOllamaChat);
     }
 
     private QueryResponse handleUnexpected(String query, Exception e) {

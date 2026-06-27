@@ -20,6 +20,10 @@ import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.application.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -54,6 +58,7 @@ class ExecutionContextFactoryTest {
     @Mock private ModelCatalogPort modelCatalogPort;
     @Mock private ClarificationStateResolver clarificationStateResolver;
     @Mock private ConversationMemoryStrategy conversationMemoryStrategy;
+    @Mock private ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     @Mock private ResolvedRuntimeConfig resolvedRuntimeConfig;
     @Mock private QueryPlan queryPlan;
     @Mock private PackedContextSet packedContextSet;
@@ -63,10 +68,25 @@ class ExecutionContextFactoryTest {
     @AfterEach
     void clearBenchmarkContext() {
         LabBenchmarkExecutionContext.clear();
+        OrchestrationLlmConfigScope.clear();
     }
 
     @BeforeEach
     void setUp() {
+        lenient()
+                .when(resolvedLlmConfigResolver.resolveForOrchestratedExecute(any(), any(), any(), any(), any()))
+                .thenReturn(
+                        new ResolvedLlmConfig(
+                                LlmProvider.OLLAMA_NATIVE,
+                                "http://localhost:11434",
+                                "gemma3:4b",
+                                "mxbai-embed-large:latest",
+                                null,
+                                null,
+                                0.1,
+                                60_000,
+                                null,
+                                java.util.Map.of()));
         factory =
                 new ExecutionContextFactory(
                         runtimeConfigResolutionService,
@@ -75,6 +95,7 @@ class ExecutionContextFactoryTest {
                         modelCatalogPort,
                         clarificationStateResolver,
                         conversationMemoryStrategy,
+                        resolvedLlmConfigResolver,
                         null);
     }
 

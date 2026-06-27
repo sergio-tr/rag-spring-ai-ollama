@@ -50,6 +50,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import org.springframework.ai.chat.client.ChatClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -71,31 +73,9 @@ class RagExecutionOrchestratorReasoningTest {
     @Test
     void execute_whenReasoningEnabled_injectsAnswerPlanIntoPrompt_andAddsTraceStages() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().user(anyString()).call().content())
-                .thenReturn("""
-                        {
-                          "strategy":"SAFE_STRUCTURED_PLAN",
-                          "objective":"Summarize the acta if (and only if) exact evidence exists.",
-                          "expectedEvidence":["Exact date match"],
-                          "answerConstraints":["Use only context for document claims","If mismatch, say so"],
-                          "verificationChecklist":["Check exact date","No invented facts"],
-                          "safeSummary":"Verify exact evidence; avoid guessing."
-                        }
-                        """);
-        when(chatClient.prompt().user(anyString()).options(any()).call().content())
-                .thenReturn("""
-                        {
-                          "strategy":"SAFE_STRUCTURED_PLAN",
-                          "objective":"Summarize the acta if (and only if) exact evidence exists.",
-                          "expectedEvidence":["Exact date match"],
-                          "answerConstraints":["Use only context for document claims","If mismatch, say so"],
-                          "verificationChecklist":["Check exact date","No invented facts"],
-                          "safeSummary":"Verify exact evidence; avoid guessing."
-                        }
-                        """);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("final-answer");
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("final-answer");
-
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().content())
+                .thenReturn("{\"steps\":[\"step1\"]}", "Verified", "Final-answer");
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("Final-answer");
         RagConfig rag =
                 new RagConfig(
                         false,
@@ -177,7 +157,7 @@ class RagExecutionOrchestratorReasoningTest {
                 });
 
         WorkflowSelector selector = mock(WorkflowSelector.class);
-        DirectLlmWorkflow direct = new DirectLlmWorkflow(chatClient, null);
+        DirectLlmWorkflow direct = new DirectLlmWorkflow(llmChatInvoker, null);
         when(selector.select(any())).thenReturn(direct);
 
         ClarificationPolicyResolver clarificationPolicyResolver = mock(ClarificationPolicyResolver.class);

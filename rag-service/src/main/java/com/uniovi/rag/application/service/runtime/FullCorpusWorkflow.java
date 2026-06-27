@@ -7,7 +7,7 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.policy.AnswerGroundingPolicy;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
-import org.springframework.ai.chat.client.ChatClient;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -22,11 +22,11 @@ public class FullCorpusWorkflow extends AbstractExecutionWorkflow {
     private final RuntimePromptBudgeter promptBudgeter;
 
     public FullCorpusWorkflow(
-            ChatClient chatClient,
+            RagLlmChatInvoker llmChatInvoker,
             SnapshotCorpusAssembler snapshotCorpusAssembler,
             RuntimePromptBudgeter promptBudgeter,
             @Autowired(required = false) ObservabilitySupport observability) {
-        super(chatClient, observability);
+        super(llmChatInvoker, observability);
         this.snapshotCorpusAssembler = snapshotCorpusAssembler;
         this.promptBudgeter = promptBudgeter;
     }

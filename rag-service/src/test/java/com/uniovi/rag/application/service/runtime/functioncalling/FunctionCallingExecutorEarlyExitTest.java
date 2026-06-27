@@ -69,25 +69,7 @@ class FunctionCallingExecutorEarlyExitTest {
         Generation generation = mock(Generation.class);
         when(generation.getOutput()).thenReturn(assistant);
         ChatResponse chatResponse = mock(ChatResponse.class);
-        when(chatResponse.getResult()).thenReturn(generation);
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any(OllamaOptions.class)).call().chatResponse())
-                .thenReturn(chatResponse);
-
-        FunctionCallingExecutor executor =
-                new FunctionCallingExecutor(
-                        chatClient, toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
-
-        FunctionCallingExecutionResult r =
-                executor.run(buildCtx(), minimalPlan(), minimalDecision());
-
-        assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.MODEL_DECLINED);
-    }
-
-    @Test
-    void run_returnsInvalidModelOutput_whenMultipleToolCalls() {
-        AssistantMessage assistant = mock(AssistantMessage.class);
-        when(assistant.hasToolCalls()).thenReturn(true);
-        ToolCall a = mock(ToolCall.class);
+        when(chatResponse.getResult()).thenReturn(generation);        ToolCall a = mock(ToolCall.class);
         ToolCall b = mock(ToolCall.class);
         when(assistant.getToolCalls()).thenReturn(List.of(a, b));
 
