@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   activeJobMatchesCard,
-  computeLabActiveJobRecovery,
+  computeLabActiveJobResumption,
   isSectionBenchmarkConsistent,
   orderingKeyForActiveJob,
   expectedBenchmarkKindForSection,
-} from "./use-lab-active-job-recovery";
+} from "./use-lab-active-job-resumption";
 import type { ActiveLabJobDto } from "@/types/api";
 import type { PersistedLabJobRecord } from "@/features/lab/lib/lab-job-persistence";
 
@@ -59,9 +59,9 @@ function sessionRec(partial: Partial<PersistedLabJobRecord> & Pick<PersistedLabJ
   };
 }
 
-describe("computeLabActiveJobRecovery", () => {
+describe("computeLabActiveJobResumption", () => {
   it("returns none when sectionKey and benchmarkKind are inconsistent", () => {
-    const d = computeLabActiveJobRecovery({
+    const d = computeLabActiveJobResumption({
       sectionKey: "evaluation-rag",
       benchmarkKind: "LLM_JUDGE_QA",
       activeProjectId: null,
@@ -75,7 +75,7 @@ describe("computeLabActiveJobRecovery", () => {
   });
 
   it("returns none while backend active jobs are loading", () => {
-    const d = computeLabActiveJobRecovery({
+    const d = computeLabActiveJobResumption({
       sectionKey: "evaluation-llm",
       benchmarkKind: "LLM_JUDGE_QA",
       activeProjectId: null,
@@ -90,7 +90,7 @@ describe("computeLabActiveJobRecovery", () => {
 
   it("falls back to session_only when backend active jobs request fails", () => {
     const rec = sessionRec({ jobId: "sess-err", sectionKey: "evaluation-embedding" });
-    const d = computeLabActiveJobRecovery({
+    const d = computeLabActiveJobResumption({
       sectionKey: "evaluation-embedding",
       benchmarkKind: "EMBEDDING_RETRIEVAL",
       activeProjectId: null,
@@ -104,7 +104,7 @@ describe("computeLabActiveJobRecovery", () => {
   });
 
   it("returns none when backend active jobs request fails and session has no usable record", () => {
-    const d = computeLabActiveJobRecovery({
+    const d = computeLabActiveJobResumption({
       sectionKey: "evaluation-embedding",
       benchmarkKind: "EMBEDDING_RETRIEVAL",
       activeProjectId: null,
@@ -119,7 +119,7 @@ describe("computeLabActiveJobRecovery", () => {
 
   it("returns auto_follow for a single matching backend job (empty session)", () => {
     const job = activeJob({ jobId: "job-1", benchmarkKind: "LLM_JUDGE_QA", projectId: null });
-    const d = computeLabActiveJobRecovery({
+    const d = computeLabActiveJobResumption({
       sectionKey: "evaluation-llm",
       benchmarkKind: "LLM_JUDGE_QA",
       activeProjectId: null,
@@ -139,7 +139,7 @@ describe("computeLabActiveJobRecovery", () => {
 
   it("defaults follow mode to sse when draft has no preference", () => {
     const job = activeJob({ jobId: "job-2", benchmarkKind: "EMBEDDING_RETRIEVAL" });
-    const d = computeLabActiveJobRecovery({
+    const d = computeLabActiveJobResumption({
       sectionKey: "evaluation-embedding",
       benchmarkKind: "EMBEDDING_RETRIEVAL",
       activeProjectId: null,
@@ -157,7 +157,7 @@ describe("computeLabActiveJobRecovery", () => {
 
   it("returns session_only when backend has no match but session has in-flight row", () => {
     const rec = sessionRec({ jobId: "sess-1", sectionKey: "evaluation-llm" });
-    const d = computeLabActiveJobRecovery({
+    const d = computeLabActiveJobResumption({
       sectionKey: "evaluation-llm",
       benchmarkKind: "LLM_JUDGE_QA",
       activeProjectId: null,
@@ -188,7 +188,7 @@ describe("computeLabActiveJobRecovery", () => {
         result: null,
       },
     });
-    const d = computeLabActiveJobRecovery({
+    const d = computeLabActiveJobResumption({
       sectionKey: "evaluation-llm",
       benchmarkKind: "LLM_JUDGE_QA",
       activeProjectId: null,
@@ -205,7 +205,7 @@ describe("computeLabActiveJobRecovery", () => {
     const t = "2024-01-02T00:00:00.000Z";
     const a = activeJob({ jobId: "a", benchmarkKind: "LLM_JUDGE_QA", startedAt: t, updatedAt: t });
     const b = activeJob({ jobId: "b", benchmarkKind: "LLM_JUDGE_QA", startedAt: t, updatedAt: t });
-    const d = computeLabActiveJobRecovery({
+    const d = computeLabActiveJobResumption({
       sectionKey: "evaluation-llm",
       benchmarkKind: "LLM_JUDGE_QA",
       activeProjectId: null,
@@ -234,7 +234,7 @@ describe("computeLabActiveJobRecovery", () => {
       startedAt: "2024-01-03T00:00:00.000Z",
       updatedAt: "2024-01-03T00:00:00.000Z",
     });
-    const d = computeLabActiveJobRecovery({
+    const d = computeLabActiveJobResumption({
       sectionKey: "evaluation-rag",
       benchmarkKind: "RAG_PRESET_END_TO_END",
       activeProjectId: null,
@@ -263,7 +263,7 @@ describe("computeLabActiveJobRecovery", () => {
       startedAt: "2024-01-02T00:00:00.000Z",
       updatedAt: "2024-01-02T00:02:00.000Z",
     });
-    const d = computeLabActiveJobRecovery({
+    const d = computeLabActiveJobResumption({
       sectionKey: "evaluation-llm",
       benchmarkKind: "LLM_JUDGE_QA",
       activeProjectId: null,

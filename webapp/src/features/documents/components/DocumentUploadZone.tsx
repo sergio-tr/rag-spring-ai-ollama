@@ -68,7 +68,10 @@ type UploadItem = {
 };
 
 function nextClientId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `upload-${Date.now().toString(36)}`;
 }
 
 async function sleep(ms: number): Promise<void> {

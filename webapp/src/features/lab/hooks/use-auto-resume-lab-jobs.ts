@@ -8,11 +8,11 @@ import type { AsyncTaskStatusDto, BenchmarkKind } from "@/types/api";
 import { useCallback, useEffect, useRef } from "react";
 import { useActiveLabJobs } from "./use-active-lab-jobs";
 import {
-  type LabActiveJobRecoveryDecision,
+  type LabActiveJobResumptionDecision,
   type LabActiveJobResumeCandidate,
   sessionRecordToCandidate,
-  useLabActiveJobRecovery,
-} from "./use-lab-active-job-recovery";
+  useLabActiveJobResumption,
+} from "./use-lab-active-job-resumption";
 
 export type AutoResumeLabJobsFollowInput = Readonly<{
   candidate: LabActiveJobResumeCandidate;
@@ -33,7 +33,7 @@ export type UseAutoResumeLabJobsOptions = Readonly<{
 }>;
 
 export type UseAutoResumeLabJobsResult = Readonly<{
-  decision: LabActiveJobRecoveryDecision;
+  decision: LabActiveJobResumptionDecision;
   activeJobsLoading: boolean;
   activeJobsError: unknown | null;
   followCandidate: (candidate: LabActiveJobResumeCandidate) => Promise<void>;
@@ -59,7 +59,7 @@ export function useAutoResumeLabJobs(options: UseAutoResumeLabJobsOptions): UseA
   const clearOtherLabJobsForSection = useLabJobSessionStore((s) => s.clearOtherLabJobsForSection);
   const autoFollowHandledRef = useRef<string | null>(null);
 
-  const recovery = useLabActiveJobRecovery({
+  const recovery = useLabActiveJobResumption({
     sectionKey,
     benchmarkKind,
     activeProjectId,
