@@ -20,6 +20,8 @@ BACKEND_CONTAINER="${RAG_CI_BACKEND_CONTAINER:-rag-ci-backend}"
 CLASSIFIER_CONTAINER="${RAG_CI_CLASSIFIER_CONTAINER:-rag-ci-classifier}"
 MAVEN_CACHE_VOLUME="${RAG_MAVEN_CACHE_VOLUME:-rag-m2-cache}"
 PIP_CACHE_VOLUME="${RAG_PIP_CACHE_VOLUME:-rag-pip-cache}"
+PYTEST_IMAGE="${RAG_CI_PYTEST_IMAGE:-python:3.11-slim}"
+CLASSIFIER_IMAGE="${RAG_CI_CLASSIFIER_IMAGE:-python:3.11-slim}"
 
 STOP_AFTER="${RAG_CI_STOP_CONTAINER:-0}"
 
@@ -215,19 +217,39 @@ wait_for_classifier() {
   return 1
 }
 
+reuse_classifier_on_ci_network() {
+  if ! curl -sf "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
+    return 1
+  fi
+  local published
+  published="$(docker ps --filter "publish=8000" --format '{{.Names}}' | head -n 1)"
+  if [[ -z "${published}" ]]; then
+    return 1
+  fi
+  log "Classifier reachable on :8000; reusing container ${published} on ${CI_NETWORK}."
+  docker network connect "${CI_NETWORK}" "${published}" >/dev/null 2>&1 || true
+  CLASSIFIER_CONTAINER="${published}"
+  export CLASSIFIER_CONTAINER
+  return 0
+}
+
 start_classifier() {
-  if [[ "${INTEGRATION_REQUIRE_CLASSIFIER}" != "1" ]] \
-      && curl -sf "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
-    log "Classifier already reachable on :8000; reusing host service."
+  if reuse_classifier_on_ci_network; then
     return 0
   fi
-  log "Starting classifier container (uvicorn) on :8000."
+  log "Starting classifier container (uvicorn) on ${CI_NETWORK}:8000."
   docker rm -f "${CLASSIFIER_CONTAINER}" >/dev/null 2>&1 || true
-  docker run -d --name "${CLASSIFIER_CONTAINER}" --network "${CI_NETWORK}" -p 8000:8000 \
+  local -a port_args=()
+  if ! is_tcp_port_busy 8000; then
+    port_args=(-p 8000:8000)
+  else
+    log "Host :8000 busy; starting ${CLASSIFIER_CONTAINER} without host port publish."
+  fi
+  docker run -d --name "${CLASSIFIER_CONTAINER}" --network "${CI_NETWORK}" "${port_args[@]}" \
     -v "${REPO_ROOT}:/repo" \
     -v "${PIP_CACHE_VOLUME}:/root/.cache/pip" \
     -w /repo/classifier-service \
-          nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04 bash -lc "pip install -q -r requirements.txt && uvicorn uvicorn_entry:app --host 0.0.0.0 --port 8000" \
+          "${CLASSIFIER_IMAGE}" bash -lc "pip install -q -r requirements.txt && uvicorn uvicorn_entry:app --host 0.0.0.0 --port 8000" \
     >/dev/null
 }
 
@@ -267,7 +289,7 @@ seed_integration_users() {
 }
 
 run_pytest_linux() {
-  log "Running pytest in nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04 container."
+  log "Running pytest in ${PYTEST_IMAGE} container."
   rm -f "${PYTEST_LOG_PATH}"
   set +e
   docker run --rm \
@@ -286,7 +308,7 @@ run_pytest_linux() {
     -e INTEGRATION_LOGIN_EMAIL="${INTEGRATION_LOGIN_EMAIL}" \
     -e INTEGRATION_LOGIN_PASSWORD="${INTEGRATION_LOGIN_PASSWORD}" \
     -e INTEGRATION_RAG_PRODUCT_BASE_PATH="/api/v5" \
-    nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04 bash -lc \
+    "${PYTEST_IMAGE}" bash -lc \
       "pip install -r tests/integration/requirements.txt >/dev/null && python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py"
   status=$?
   set -e
@@ -386,7 +408,7 @@ docker run --rm \
   -e INTEGRATION_LOGIN_EMAIL="${INTEGRATION_LOGIN_EMAIL}" \
   -e INTEGRATION_LOGIN_PASSWORD="${INTEGRATION_LOGIN_PASSWORD}" \
   -e INTEGRATION_RAG_PRODUCT_BASE_PATH="/api/v5" \
-  nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04 bash -lc \
+  "${PYTEST_IMAGE}" bash -lc \
     "pip install -r tests/integration/requirements.txt >/dev/null && python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py" \
   2>&1 | tee "${PYTEST_LOG_PATH}"
 pytest_status=${PIPESTATUS[0]}
