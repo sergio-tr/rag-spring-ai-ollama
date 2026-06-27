@@ -78,13 +78,13 @@ public class SnapshotCorpusAssembler {
         assertSnapshotFilter(snapshotIds);
         MapSqlParameterSource p = new MapSqlParameterSource();
         p.addValue("projectId", projectId);
-        p.addValue("snapshotIds", snapshotIds);
+        p.addValue("snapshotIds", snapshotIds.stream().map(UUID::toString).toList());
         if (ctx.documentFilterIsAll()) {
             return namedJdbc.query(
                     """
                     SELECT content FROM vector_store
                     WHERE project_id = :projectId
-                      AND (metadata->>'indexSnapshotId')::uuid IN (:snapshotIds)
+                      AND metadata->>'indexSnapshotId' IN (:snapshotIds)
                     ORDER BY COALESCE(chunk_index, 0), id
                     """,
                     p,
@@ -104,7 +104,7 @@ public class SnapshotCorpusAssembler {
                 """
                 SELECT content FROM vector_store
                 WHERE project_id = :projectId
-                  AND (metadata->>'indexSnapshotId')::uuid IN (:snapshotIds)
+                  AND metadata->>'indexSnapshotId' IN (:snapshotIds)
                   AND metadata->>'document_id' IN (:docIds)
                 ORDER BY COALESCE(chunk_index, 0), id
                 """,

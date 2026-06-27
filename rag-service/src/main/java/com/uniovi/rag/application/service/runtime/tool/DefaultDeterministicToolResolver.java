@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.tool;
 
+import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -127,15 +129,62 @@ public class DefaultDeterministicToolResolver implements DeterministicToolResolv
     }
 
     private static boolean ambiguityAllowsDeterministicTool(QueryPlan plan) {
+        if (isCompoundMonthTopicAttendeeFilterPlan(plan)) {
+            return true;
+        }
+        if (isCorpusWideExactAttendeeCountListingPlan(plan)) {
+            return true;
+        }
         return switch (plan.ambiguityAssessment().status()) {
             case SUFFICIENT -> true;
             case CONFLICTING_CUES ->
                     plan.classifierStatus() == ClassifierStatus.OK
-                            && plan.classifierQueryType().filter(qt -> qt == QueryType.GET_FIELD).isPresent()
-                            && DeterministicToolEvidenceEvaluator.requiredArgumentsPresent(
-                                    DeterministicToolKind.GET_FIELD_TOOL, plan);
+                            && plan.classifierQueryType()
+                                    .filter(qt -> conflictingCueAllowsTool(plan, qt))
+                                    .isPresent();
             default -> false;
         };
+    }
+
+    private static boolean isCorpusWideExactAttendeeCountListingPlan(QueryPlan plan) {
+        if (plan == null) {
+            return false;
+        }
+        for (String candidate :
+                List.of(plan.normalizedQueryText(), plan.rewrittenQueryText(), plan.rawUserQuery())) {
+            if (candidate != null
+                    && ActaFieldAnchorHeuristics.isCorpusWideExactAttendeeCountListing(
+                            candidate.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isCompoundMonthTopicAttendeeFilterPlan(QueryPlan plan) {
+        if (plan == null) {
+            return false;
+        }
+        for (String candidate :
+                List.of(plan.normalizedQueryText(), plan.rewrittenQueryText(), plan.rawUserQuery())) {
+            if (candidate != null
+                    && ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(
+                            candidate.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean conflictingCueAllowsTool(QueryPlan plan, QueryType queryType) {
+        if (ActaFieldAnchorHeuristics.needsActaAnchor(plan)) {
+            return false;
+        }
+        if (queryType == QueryType.GET_FIELD) {
+            return DeterministicToolEvidenceEvaluator.requiredArgumentsPresent(
+                    DeterministicToolKind.GET_FIELD_TOOL, plan);
+        }
+        return DeterministicToolApplicability.isApplicableQueryType(queryType);
     }
 
     private static Optional<DeterministicToolDecision> structuredGetFieldDecision(

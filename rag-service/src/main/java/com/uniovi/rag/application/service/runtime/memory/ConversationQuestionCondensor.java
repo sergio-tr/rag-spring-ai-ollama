@@ -9,6 +9,7 @@ import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Single-call, bounded, LLM-backed condensation for conversational planning input (P12).
@@ -30,6 +31,12 @@ public class ConversationQuestionCondensor {
             String preMemoryPlanningInputText) {
         Objects.requireNonNull(ctx, "ctx");
         Objects.requireNonNull(slice, "slice");
+
+        Optional<String> deterministic =
+                ConversationFollowUpResolver.expand(slice.turns(), literalLatestUserTurn);
+        if (deterministic.isPresent() && !deterministic.get().isBlank()) {
+            return deterministic.get();
+        }
 
         String prompt = buildUserPrompt(slice, literalLatestUserTurn, preMemoryPlanningInputText);
         var spec = chatClient.prompt()

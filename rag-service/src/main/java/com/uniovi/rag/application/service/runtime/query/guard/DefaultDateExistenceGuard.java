@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.runtime.query.guard;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.ToolResult;
+import com.uniovi.rag.tool.metadata.StructuredMinuteMetadataSupport;
 import org.json.JSONObject;
 import org.springframework.ai.document.Document;
 
@@ -12,6 +13,7 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -53,7 +55,29 @@ public class DefaultDateExistenceGuard implements DateExistenceGuard {
         }
 
         List<Document> docs = retriever.retrieve(query);
+        boolean yearOnlyQuery =
+                query != null
+                        && Pattern.compile(
+                                        "(?:en\\s+el\\s+)?(?:del\\s+)?año\\s+\\d{4}",
+                                        Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
+                                .matcher(query)
+                                .find();
+
         if (docs == null || docs.isEmpty()) {
+            if (yearOnlyQuery && queryType == QueryType.COUNT_DOCUMENTS) {
+                Matcher yearMatcher =
+                        Pattern.compile(
+                                        "(?:en\\s+el\\s+)?(?:del\\s+)?año\\s+(\\d{4})",
+                                        Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
+                                .matcher(query);
+                if (yearMatcher.find()) {
+                    String year = yearMatcher.group(1);
+                    return Optional.of(
+                            new ToolResult(
+                                    StructuredMinuteMetadataSupport.formatYearOnlyActaCorpusAbsence(year),
+                                    GUARD_SOURCE));
+                }
+            }
             try {
                 LocalDate requested = LocalDate.parse(requestedNormalized, DateTimeFormatter.ISO_LOCAL_DATE);
                 LocalDate today = LocalDate.now();
@@ -72,12 +96,6 @@ public class DefaultDateExistenceGuard implements DateExistenceGuard {
         } catch (DateTimeParseException e) {
             return Optional.empty();
         }
-
-        boolean yearOnlyQuery =
-                query != null
-                        && Pattern.compile("(?:del\\s+)?año\\s+\\d{4}", Pattern.CASE_INSENSITIVE)
-                                .matcher(query)
-                                .find();
 
         boolean anyDocMatchesDate = false;
         for (Document doc : docs) {
@@ -102,6 +120,12 @@ public class DefaultDateExistenceGuard implements DateExistenceGuard {
 
         if (anyDocMatchesDate) {
             return Optional.empty();
+        }
+
+        if (yearOnlyQuery && queryType == QueryType.COUNT_DOCUMENTS) {
+            String year = String.valueOf(requestedDate.getYear());
+            String message = StructuredMinuteMetadataSupport.formatYearOnlyActaCorpusAbsence(year);
+            return Optional.of(new ToolResult(message, GUARD_SOURCE));
         }
 
         log().info("DateExistenceGuard: no document found for date {} (normalized: {}). Returning standard no-acta response for queryType={}",

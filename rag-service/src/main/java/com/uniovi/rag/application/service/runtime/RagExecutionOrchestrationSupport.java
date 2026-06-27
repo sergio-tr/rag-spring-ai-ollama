@@ -125,6 +125,21 @@ public final class RagExecutionOrchestrationSupport {
 					List.of());
 		}
 
+		public static JudgeSnapshot preservedDeterministicTool(String answerText) {
+			return new JudgeSnapshot(
+					false,
+					JudgeCandidateSource.DETERMINISTIC_TOOL,
+					false,
+					false,
+					false,
+					JudgeOutcome.ACCEPTED,
+					false,
+					JudgeKind.POST_ANSWER_JUDGE,
+					"outcome=ACCEPTED_DETERMINISTIC_TOOL_PRESERVED",
+					answerText != null ? answerText : "",
+					List.of());
+		}
+
 		public static JudgeSnapshot fromResult(JudgeCandidateSource source, JudgeExecutionResult r) {
 			return new JudgeSnapshot(
 					r.judgeAttempted(),

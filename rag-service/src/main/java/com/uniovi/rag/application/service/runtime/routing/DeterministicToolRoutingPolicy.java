@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.routing;
 
+import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
 import com.uniovi.rag.application.service.runtime.query.QueryPlanSlotEnricher;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolApplicability;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceEvaluator;
@@ -14,6 +15,7 @@ import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingMode;
 import com.uniovi.rag.domain.runtime.tool.DeterministicEvidenceLevel;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 
@@ -106,7 +108,11 @@ public class DeterministicToolRoutingPolicy {
         }
         if (classifierType.get() == QueryType.SUMMARIZE_MEETING
                 || classifierType.get() == QueryType.BOOLEAN_QUERY
-                || classifierType.get() == QueryType.COUNT_DOCUMENTS) {
+                || classifierType.get() == QueryType.COUNT_DOCUMENTS
+                || classifierType.get() == QueryType.GET_DURATION
+                || classifierType.get() == QueryType.FILTER_AND_LIST
+                || classifierType.get() == QueryType.FIND_PARAGRAPH
+                || classifierType.get() == QueryType.COUNT_AND_EXPLAIN) {
             return Optional.of(structuredFieldDecision(classifierType.get(), workflowFallback));
         }
         DeterministicToolEvidenceEvaluator.Evaluation evaluation = DeterministicToolEvidenceEvaluator.evaluate(plan);
@@ -136,6 +142,12 @@ public class DeterministicToolRoutingPolicy {
     }
 
     private static boolean ambiguityAllowsStructuredRoute(QueryPlan plan) {
+        if (isCompoundMonthTopicAttendeeFilterPlan(plan)) {
+            return true;
+        }
+        if (ActaFieldAnchorHeuristics.needsActaAnchor(plan)) {
+            return false;
+        }
         return switch (plan.ambiguityAssessment().status()) {
             case SUFFICIENT -> true;
             case CONFLICTING_CUES ->
@@ -145,6 +157,21 @@ public class DeterministicToolRoutingPolicy {
                                     .isPresent();
             default -> false;
         };
+    }
+
+    private static boolean isCompoundMonthTopicAttendeeFilterPlan(QueryPlan plan) {
+        if (plan == null) {
+            return false;
+        }
+        for (String candidate :
+                List.of(plan.normalizedQueryText(), plan.rewrittenQueryText(), plan.rawUserQuery())) {
+            if (candidate != null
+                    && ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(
+                            candidate.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean hasGetFieldSlot(QueryPlan plan) {

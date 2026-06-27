@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.query;
 
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolApplicability;
 import com.uniovi.rag.configuration.RagClassifierProperties;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
@@ -58,41 +59,42 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
         try {
             ClassifierInferenceResponse inference = classifier.classifyInference(normalizedText, modelIdUsed);
             if (inference == null || inference.queryType() == null || inference.queryType().isBlank()) {
-                return invalidOutput(ctx, modelIdUsed, "INVALID_OUTPUT");
+                return recoverOrInvalid(ctx, modelIdUsed, normalizedText, "INVALID_OUTPUT");
             }
             QueryType parsed = parseQueryType(inference.queryType());
             if (parsed == null) {
-                return invalidOutput(ctx, modelIdUsed, "INVALID_OUTPUT:unknown_label");
+                return recoverOrInvalid(ctx, modelIdUsed, normalizedText, "INVALID_OUTPUT:unknown_label");
+            }
+            Optional<QueryType> deterministic = ClassifierDeterministicResolver.resolve(normalizedText);
+            if (deterministic.isPresent()) {
+                return deterministicOutcome(
+                        deterministic.get(), modelIdUsed, "DETERMINISTIC_PATTERN", inference);
             }
             Optional<QueryType> explicitRule = ClassifierOverrides.matchRule(normalizedText);
             if (explicitRule.isPresent()) {
-                ClassifierOutcome ruleOverride =
-                        new ClassifierOutcome(
-                                explicitRule.get().name(),
-                                explicitRule,
-                                ClassifierStatus.OK,
-                                modelIdUsed,
-                                "RULE_OVERRIDE",
-                                Optional.ofNullable(inference.confidence()),
-                                optionalHash(inference));
-                tagClassifierSpan(ruleOverride);
-                return ruleOverride;
+                return ruleOutcome(explicitRule.get(), modelIdUsed, "RULE_OVERRIDE", inference);
             }
             QueryType overridden = ClassifierOverrides.apply(normalizedText, parsed);
-            if (overridden != parsed) {
-                ClassifierOutcome ruleOverride =
+            if (ClassifierOverrides.shouldRejectCountDocumentsForUndatedParticipantCount(normalizedText, overridden)) {
+                ClassifierOutcome low =
                         new ClassifierOutcome(
-                                overridden.name(),
-                                Optional.of(overridden),
-                                ClassifierStatus.OK,
+                                UNCLASSIFIED,
+                                Optional.empty(),
+                                ClassifierStatus.LOW_CONFIDENCE,
                                 modelIdUsed,
-                                "RULE_OVERRIDE",
+                                "UNDATED_PARTICIPANT_COUNT_REQUIRES_CLARIFICATION",
                                 Optional.ofNullable(inference.confidence()),
                                 optionalHash(inference));
-                tagClassifierSpan(ruleOverride);
-                return ruleOverride;
+                tagClassifierSpan(low);
+                return low;
+            }
+            if (overridden != parsed) {
+                return ruleOutcome(overridden, modelIdUsed, "RULE_OVERRIDE", inference);
             }
             if (isLowConfidence(inference.confidence())) {
+                if (DeterministicToolApplicability.isApplicableQueryType(parsed)) {
+                    return ruleOutcome(parsed, modelIdUsed, "APPLICABLE_LOW_CONFIDENCE", inference);
+                }
                 ClassifierOutcome low =
                         new ClassifierOutcome(
                                 UNCLASSIFIED,
@@ -118,6 +120,18 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
             return ok;
         } catch (ClassifierCallException e) {
             ClassifierOutcome recoverable = mapClassifierFailure(ctx, modelIdUsed, e);
+            Optional<QueryType> deterministic = ClassifierDeterministicResolver.resolve(normalizedText);
+            if (deterministic.isPresent() && recoverable.classifierStatus() != ClassifierStatus.OK) {
+                ClassifierOutcome recovered =
+                        new ClassifierOutcome(
+                                deterministic.get().name(),
+                                deterministic,
+                                ClassifierStatus.OK,
+                                modelIdUsed,
+                                "DETERMINISTIC_RECOVERED_" + recoverable.classifierStatus().name());
+                tagClassifierSpan(recovered);
+                return recovered;
+            }
             tagClassifierSpan(recoverable);
             return recoverable;
         } catch (Exception e) {
@@ -132,6 +146,43 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
             tagClassifierSpan(unavailable);
             return unavailable;
         }
+    }
+
+    private ClassifierOutcome recoverOrInvalid(
+            ExecutionContext ctx, String modelIdUsed, String normalizedText, String reason) {
+        Optional<QueryType> deterministic = ClassifierDeterministicResolver.resolve(normalizedText);
+        if (deterministic.isPresent()) {
+            ClassifierOutcome recovered =
+                    new ClassifierOutcome(
+                            deterministic.get().name(),
+                            deterministic,
+                            ClassifierStatus.OK,
+                            modelIdUsed,
+                            "DETERMINISTIC_RECOVERED_" + reason);
+            tagClassifierSpan(recovered);
+            return recovered;
+        }
+        return invalidOutput(ctx, modelIdUsed, reason);
+    }
+
+    private ClassifierOutcome ruleOutcome(
+            QueryType type, String modelIdUsed, String note, ClassifierInferenceResponse inference) {
+        ClassifierOutcome outcome =
+                new ClassifierOutcome(
+                        type.name(),
+                        Optional.of(type),
+                        ClassifierStatus.OK,
+                        modelIdUsed,
+                        note,
+                        Optional.ofNullable(inference.confidence()),
+                        optionalHash(inference));
+        tagClassifierSpan(outcome);
+        return outcome;
+    }
+
+    private ClassifierOutcome deterministicOutcome(
+            QueryType type, String modelIdUsed, String note, ClassifierInferenceResponse inference) {
+        return ruleOutcome(type, modelIdUsed, note, inference);
     }
 
     private ClassifierOutcome invalidOutput(ExecutionContext ctx, String modelIdUsed, String reason) {

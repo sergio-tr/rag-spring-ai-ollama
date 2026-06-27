@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
@@ -68,7 +69,7 @@ public class MonotonicRouteSafetyService {
         String queryText = (plan.rewrittenQueryText() == null ? "" : plan.rewrittenQueryText())
                 + " "
                 + (plan.normalizedQueryText() == null ? "" : plan.normalizedQueryText());
-        queryText = queryText.toLowerCase(java.util.Locale.ROOT);
+        queryText = queryText.toLowerCase(Locale.ROOT);
         boolean personActaVerify =
                 signals.booleanVerify()
                         && (queryText.contains("aparece") || queryText.contains("figura"))

@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime.query;
 
 import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.application.service.runtime.clarification.ClarifiedPlanningInputResolver;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
@@ -56,6 +57,7 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
                 ctx.effectivePlanningInputText() == null || ctx.effectivePlanningInputText().isBlank()
                         ? rawLiteral
                         : ctx.effectivePlanningInputText();
+        effectiveInput = ClarifiedPlanningInputResolver.resolveForPlanning(effectiveInput);
 
         // 1) Normalize (P11: only effective planning input)
         long t0 = System.nanoTime();

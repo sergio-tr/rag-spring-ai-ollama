@@ -17,7 +17,17 @@ public final class QueryPlanSlotEnricher {
         if (classifierQueryType.filter(qt -> qt == QueryType.GET_FIELD).isEmpty()) {
             return Map.copyOf(slots);
         }
+        String q = normalizedText == null ? "" : normalizedText.toLowerCase(Locale.ROOT);
         String existing = slots.get("field");
+        if ((q.contains("cuántos") || q.contains("cuantos") || q.contains("cuántas") || q.contains("cuantas"))
+                && (q.contains("participante")
+                        || q.contains("asistente")
+                        || q.contains("propietario")
+                        || q.contains("personas")
+                        || q.contains("asistieron"))) {
+            slots.put("field", "attendeesCount");
+            return Map.copyOf(slots);
+        }
         if (existing != null && !existing.isBlank()) {
             return Map.copyOf(slots);
         }
@@ -37,6 +47,9 @@ public final class QueryPlanSlotEnricher {
         }
         if (q.contains("presidente") || q.contains("presidió") || q.contains("presidio")) {
             return Optional.of("president");
+        }
+        if (q.contains("qué papel tuvo") || q.contains("que papel tuvo")) {
+            return Optional.of("role");
         }
         if (q.contains("orden del día")
                 || q.contains("orden del dia")

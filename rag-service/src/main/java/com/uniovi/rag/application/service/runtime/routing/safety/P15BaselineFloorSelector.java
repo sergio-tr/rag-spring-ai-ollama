@@ -12,6 +12,7 @@ public final class P15BaselineFloorSelector {
     public enum WinnerKind {
         PARENT_P7,
         PARENT_P6,
+        PARENT_P3,
         FUNCTION,
         TOOL,
         RETRIEVAL,
@@ -174,8 +175,7 @@ public final class P15BaselineFloorSelector {
             boolean overrideAccepted,
             String overrideRejectedReason,
             boolean preventedRegression) {
-        WinnerKind kind =
-                floor.preset() == RagExperimentalPresetCode.P6 ? WinnerKind.PARENT_P6 : WinnerKind.PARENT_P7;
+        WinnerKind kind = winnerKindForPreset(floor.preset());
         return new Decision(
                 kind,
                 Optional.of(floor),
@@ -230,6 +230,16 @@ public final class P15BaselineFloorSelector {
 
     private static boolean isPartialList(MonotonicRouteSafetyService.CandidateScore candidate) {
         return "PARTIAL".equalsIgnoreCase(candidate.validation().constraintCoverageStatus());
+    }
+
+    private static WinnerKind winnerKindForPreset(RagExperimentalPresetCode preset) {
+        if (preset == RagExperimentalPresetCode.P6) {
+            return WinnerKind.PARENT_P6;
+        }
+        if (preset == RagExperimentalPresetCode.P3) {
+            return WinnerKind.PARENT_P3;
+        }
+        return WinnerKind.PARENT_P7;
     }
 
     private static boolean hasNegativeEvidenceRisk(MonotonicRouteSafetyService.CandidateScore candidate) {

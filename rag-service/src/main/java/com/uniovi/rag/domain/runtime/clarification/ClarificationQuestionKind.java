@@ -12,10 +12,10 @@ public enum ClarificationQuestionKind {
     CONFLICTING_CUES,
     GENERIC_MISSING_INFORMATION;
 
-    /** Frozen English template per plan. */
+    /** Frozen template per plan (Spanish for acta-domain date clarification). */
     public String templateText() {
         return switch (this) {
-            case MISSING_DATE -> "Which date or meeting are you referring to?";
+            case MISSING_DATE -> "¿A qué acta o reunión te refieres? Indica la fecha o el documento.";
             case MISSING_PERSON -> "Which person are you referring to?";
             case MISSING_TOPIC -> "Which topic are you referring to?";
             case MISSING_LOCATION -> "Which location are you referring to?";

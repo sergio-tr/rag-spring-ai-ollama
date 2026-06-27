@@ -59,6 +59,12 @@ public final class RuntimeAnswerPrompts {
             3. Do not substitute a similar topic or nearby acta when the question asks for something specific.
             4. Answer in the SAME LANGUAGE as the user's question.
             5. Be concise.
+            6. For counts: state the number and name supporting actas (date or filename) when available.
+            7. For lists: enumerate all matching items clearly (one per line or bullet).
+            8. For summaries: include agenda/topics discussed, not only schedule and attendance.
+            9. When information is unavailable, explain briefly why (missing in sources, date mismatch, etc.).
+            10. Include source references (acta filename or date) when stating facts.
+            11. Never include internal routing labels, debug tokens, or English system codes in the answer.
 
             %s
             <Question> %s </Question>
@@ -137,6 +143,12 @@ public final class RuntimeAnswerPrompts {
             6. If evidence is partial, answer only the supported part and name the limitation.
             7. Answer in the SAME LANGUAGE as the user's question.
             8. Be concise.
+            9. For counts: state the number and name supporting actas when available.
+            10. For lists: enumerate all matching items clearly.
+            11. For summaries: include agenda/topics discussed, not only schedule and attendance.
+            12. When information is unavailable, explain briefly why.
+            13. Include source references (acta filename or date) when stating facts.
+            14. Never include internal routing labels or debug tokens.
 
             %s
             <Question> %s </Question>

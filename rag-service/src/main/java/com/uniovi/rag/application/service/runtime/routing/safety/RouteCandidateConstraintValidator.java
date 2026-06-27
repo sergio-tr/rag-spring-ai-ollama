@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime.routing.safety;
 
 import com.uniovi.rag.application.service.evaluation.metrics.matching.ExpectedAnswerNormalizer;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
+import com.uniovi.rag.application.service.runtime.retrieval.RetrievalEntityMatchingSupport;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
@@ -9,6 +10,7 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -45,6 +47,21 @@ public class RouteCandidateConstraintValidator {
                     "\\b\\d{1,2}\\s+de\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\s+de\\s+\\d{4}\\b",
                     Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern SLASH_DATE = Pattern.compile("\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b");
+    private static final Pattern ISO_DATE = Pattern.compile("\\b(19|20)\\d{2}-(\\d{2})-(\\d{2})\\b");
+    private static final Map<String, Integer> SPANISH_MONTH_TO_NUMBER =
+            Map.ofEntries(
+                    Map.entry("enero", 1),
+                    Map.entry("febrero", 2),
+                    Map.entry("marzo", 3),
+                    Map.entry("abril", 4),
+                    Map.entry("mayo", 5),
+                    Map.entry("junio", 6),
+                    Map.entry("julio", 7),
+                    Map.entry("agosto", 8),
+                    Map.entry("septiembre", 9),
+                    Map.entry("octubre", 10),
+                    Map.entry("noviembre", 11),
+                    Map.entry("diciembre", 12));
     private static final Pattern FILTER_LIST_FUERON_DESCRIPTOR =
             Pattern.compile(
                     "\\bfueron\\s+(?:las?|los?)\\s+([^.]{8,140})",
@@ -67,6 +84,13 @@ public class RouteCandidateConstraintValidator {
         List<String> failures = new ArrayList<>();
         String folded = ExpectedAnswerNormalizer.normalizedFold(answerText);
         Optional<QueryType> qt = signals.queryType().or(() -> toolKind.map(DeterministicToolKindMappings::toQueryType));
+
+        if (topicOccurrenceAcrossActasQuery(plan)
+                && qt.filter(t -> t == QueryType.COUNT_AND_EXPLAIN).isPresent()
+                && lexicalTopicFrequencyAnswer(folded)
+                && !hasConcreteActaReference(folded)) {
+            failures.add("topic_occurrence_lexical_frequency");
+        }
 
         if (signals.filterAndList()) {
             for (String topic : signals.topicTokens()) {
@@ -92,6 +116,12 @@ public class RouteCandidateConstraintValidator {
             failures.add("find_paragraph_hedged_answer");
         }
 
+        if (signals.findParagraphLookup()
+                && !isNegativeOrAbstentionAnswer(folded)
+                && !hasConcreteActaReference(folded)) {
+            failures.add("find_paragraph_missing_acta_reference");
+        }
+
         if (signals.absenceLikely() && concreteAffirmationWithoutAbstention(folded)) {
             failures.add("absence_query_concrete_affirmation");
         }
@@ -109,6 +139,12 @@ public class RouteCandidateConstraintValidator {
             if (relaxedGetFieldStructuredAnswer(qt, folded, plan) && !isNegativeOrAbstentionAnswer(folded)) {
                 continue;
             }
+            if (relaxedGetDurationStructuredAnswer(qt, folded) && !isNegativeOrAbstentionAnswer(folded)) {
+                continue;
+            }
+            if (relaxedStructuredMetadataAnswer(qt, folded, entity, signals) && !isNegativeOrAbstentionAnswer(folded)) {
+                continue;
+            }
             if (!entity.isBlank() && !folded.contains(entity) && !isNegativeOrAbstentionAnswer(folded)) {
                 failures.add("entity_missing:" + entity);
             }
@@ -121,7 +157,8 @@ public class RouteCandidateConstraintValidator {
             if (!answerContainsYear(folded, year) && !isNegativeOrAbstentionAnswer(folded)) {
                 if (signals.booleanVerify()
                         || plan.expectedAnswerShape() == ExpectedAnswerShape.SCALAR_BOOLEAN
-                        || signals.filterAndList()) {
+                        || signals.filterAndList()
+                        || summarizeMeetingAbsenceYearRequired(qt, signals)) {
                     failures.add("year_constraint_missing:" + year);
                 }
             }
@@ -131,9 +168,19 @@ public class RouteCandidateConstraintValidator {
             if (relaxedGetFieldStructuredAnswer(qt, folded, plan) && !isNegativeOrAbstentionAnswer(folded)) {
                 continue;
             }
-            if (!folded.contains(month) && !isNegativeOrAbstentionAnswer(folded)) {
-                failures.add("month_constraint_missing:" + month);
+            if (relaxedGetDurationStructuredAnswer(qt, folded) && !isNegativeOrAbstentionAnswer(folded)) {
+                continue;
             }
+            if (isNegativeOrAbstentionAnswer(folded)) {
+                continue;
+            }
+            if (folded.contains(month)) {
+                continue;
+            }
+            if (signals.filterAndList() && answerSatisfiesSpanishMonthInDates(folded, month)) {
+                continue;
+            }
+            failures.add("month_constraint_missing:" + month);
         }
 
         if (signals.booleanVerify() && AFFIRMATIVE_START.matcher(answerText).find()) {
@@ -264,6 +311,59 @@ public class RouteCandidateConstraintValidator {
                 && (folded.contains(" en total") || folded.contains(","));
     }
 
+    /** GET_DURATION tool answers with slash date, clock times, and explicit duration tokens. */
+    private static boolean relaxedGetDurationStructuredAnswer(Optional<QueryType> queryType, String folded) {
+        if (queryType.filter(t -> t == QueryType.GET_DURATION).isEmpty()) {
+            return false;
+        }
+        if (isNegativeOrAbstentionAnswer(folded)) {
+            return false;
+        }
+        boolean hasDate = SLASH_DATE.matcher(folded).find() || SPANISH_MONTH.matcher(folded).find();
+        boolean hasTimes = folded.matches(".*\\d{1,2}:\\d{2}.*");
+        boolean hasDuration = folded.contains("minut") || folded.contains("hora");
+        return hasDate && hasTimes && hasDuration;
+    }
+
+    private static boolean relaxedStructuredMetadataAnswer(
+            Optional<QueryType> queryType, String folded, String entity, QueryConstraintSignals signals) {
+        if (queryType.filter(
+                        t ->
+                                t == QueryType.SUMMARIZE_MEETING
+                                        || t == QueryType.GET_DURATION
+                                        || t == QueryType.GET_FIELD)
+                .isEmpty()) {
+            return false;
+        }
+        if (!isDateLikeEntity(entity)) {
+            return false;
+        }
+        return answerSatisfiesDateEntity(folded, entity, signals);
+    }
+
+    private static boolean isDateLikeEntity(String entity) {
+        if (entity == null || entity.isBlank()) {
+            return false;
+        }
+        return SLASH_DATE.matcher(entity).find()
+                || SPANISH_MONTH.matcher(entity).find()
+                || YEAR_IN_ANSWER.matcher(entity).find();
+    }
+
+    private static boolean answerSatisfiesDateEntity(
+            String folded, String entity, QueryConstraintSignals signals) {
+        Matcher yearInEntity = YEAR_IN_ANSWER.matcher(entity);
+        if (yearInEntity.find() && folded.contains(yearInEntity.group())) {
+            return true;
+        }
+        for (String month : signals.monthNames()) {
+            if (folded.contains(month)) {
+                return true;
+            }
+        }
+        return SLASH_DATE.matcher(folded).find() || CONCRETE_ACTA_DATE.matcher(folded).find();
+    }
+
     private static boolean findParagraphHedgedAnswer(String folded) {
         if (isNegativeOrAbstentionAnswer(folded)) {
             return false;
@@ -288,6 +388,9 @@ public class RouteCandidateConstraintValidator {
         if (folded.contains(topic)) {
             return true;
         }
+        if (RetrievalEntityMatchingSupport.containsEntityToken(folded, topic)) {
+            return true;
+        }
         if (topic.endsWith("n")) {
             return folded.contains(topic + "es");
         }
@@ -298,7 +401,34 @@ public class RouteCandidateConstraintValidator {
         if (isNegativeOrAbstentionAnswer(folded)) {
             return false;
         }
-        return CONCRETE_COUNT.matcher(folded).find();
+        return CONCRETE_COUNT.matcher(folded).find() || hasConcreteActaReference(folded);
+    }
+
+    private static boolean summarizeMeetingAbsenceYearRequired(
+            Optional<QueryType> queryType, QueryConstraintSignals signals) {
+        return signals.absenceLikely()
+                && queryType.filter(t -> t == QueryType.SUMMARIZE_MEETING).isPresent();
+    }
+
+    private static boolean topicOccurrenceAcrossActasQuery(QueryPlan plan) {
+        if (plan == null) {
+            return false;
+        }
+        String query =
+                ((plan.rewrittenQueryText() == null ? "" : plan.rewrittenQueryText())
+                                + " "
+                                + (plan.normalizedQueryText() == null ? "" : plan.normalizedQueryText()))
+                        .toLowerCase(Locale.ROOT);
+        return (query.contains("cuántas veces aparece") || query.contains("cuantas veces aparece"))
+                && !query.contains("en qué reuniones")
+                && !query.contains("en que reuniones");
+    }
+
+    private static boolean lexicalTopicFrequencyAnswer(String folded) {
+        return folded.contains("aparece")
+                && (folded.matches(".*\\b\\d+\\s+veces.*")
+                        || folded.contains(" dos veces")
+                        || folded.contains(" tres veces"));
     }
 
     private static boolean isNegativeOrAbstentionAnswer(String folded) {
@@ -326,6 +456,56 @@ public class RouteCandidateConstraintValidator {
             }
         }
         return false;
+    }
+
+    /**
+     * FILTER_AND_LIST tool answers often use slash/ISO dates (e.g. 25/08/2026) without repeating the Spanish
+     * month name from the query (e.g. agosto). Accept encoded month numbers in date literals.
+     */
+    private static boolean answerSatisfiesSpanishMonthInDates(String folded, String monthName) {
+        if (monthName == null || monthName.isBlank()) {
+            return false;
+        }
+        Integer expected = SPANISH_MONTH_TO_NUMBER.get(monthName.toLowerCase(Locale.ROOT));
+        if (expected == null) {
+            return false;
+        }
+        Matcher slash = SLASH_DATE.matcher(folded);
+        while (slash.find()) {
+            if (slashDateMonthMatches(slash.group(), expected)) {
+                return true;
+            }
+        }
+        Matcher iso = ISO_DATE.matcher(folded);
+        while (iso.find()) {
+            try {
+                if (Integer.parseInt(iso.group(2)) == expected) {
+                    return true;
+                }
+            } catch (NumberFormatException ignored) {
+                // continue
+            }
+        }
+        Matcher prose = CONCRETE_ACTA_DATE.matcher(folded);
+        while (prose.find()) {
+            String proseMonth = prose.group(1).toLowerCase(Locale.ROOT);
+            if (monthName.equalsIgnoreCase(proseMonth)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean slashDateMonthMatches(String slashDate, int expectedMonth) {
+        String[] parts = slashDate.split("/");
+        if (parts.length != 3) {
+            return false;
+        }
+        try {
+            return Integer.parseInt(parts[1]) == expectedMonth;
+        } catch (NumberFormatException ex) {
+            return false;
+        }
     }
 
     private static boolean mentionsConflictingMonth(String folded, Set<String> requiredMonths) {

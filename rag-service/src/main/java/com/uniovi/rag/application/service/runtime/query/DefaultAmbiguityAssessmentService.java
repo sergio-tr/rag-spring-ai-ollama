@@ -30,6 +30,21 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
         List<String> reasons = new ArrayList<>();
         List<String> missing = new ArrayList<>();
 
+        String qLower = normalized.normalizedText().toLowerCase(Locale.ROOT);
+        if (ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(qLower)) {
+            return AmbiguityAssessment.sufficient();
+        }
+        if (ActaFieldAnchorHeuristics.isCorpusWideExactAttendeeCountListing(qLower)) {
+            return AmbiguityAssessment.sufficient();
+        }
+
+        // Missing acta/date anchor takes priority over classifier/rewrite conflict (FD-CL-01).
+        if (ActaFieldAnchorHeuristics.needsActaAnchor(normalized.normalizedText(), entities)) {
+            missing.add("time_reference");
+            reasons.add("Missing acta/meeting date for scoped field lookup");
+            return new AmbiguityAssessment(AmbiguityStatus.MISSING_INFORMATION, reasons, missing);
+        }
+
         // Conflict signal: classifier (when OK) vs rewrite targetAction (when present)
         Optional<String> targetAction = rewrite != null ? rewrite.targetAction() : Optional.empty();
         if (classifierStatus == ClassifierStatus.OK && cqt.isPresent()
@@ -52,7 +67,7 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
         boolean asksCompare = q.contains("compare") || q.contains("compar");
         boolean hasTemporal =
                 (entities != null && !entities.dates().isEmpty())
-                        || hasExplicitDateInText(q)
+                        || ActaFieldAnchorHeuristics.hasExplicitDateInText(q)
                         || q.contains("last") || q.contains("últim") || q.contains("next") || q.contains("próxim");
         if ((asksSummary || asksCompare) && !hasTemporal) {
             missing.add("time_reference");
@@ -63,21 +78,13 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
         boolean asksPresident =
                 q.contains("presidente") || q.contains("presidió") || q.contains("presidio") || q.contains("presidió");
         boolean asksWho = q.contains("quién") || q.contains("quien");
-        if (asksPresident && asksWho && !hasTemporal && !q.contains("todas las actas") && !q.contains("cada acta")) {
+        if (asksPresident && asksWho && !hasTemporal && !ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)) {
             missing.add("time_reference");
             reasons.add("Missing date/meeting for president lookup");
             return new AmbiguityAssessment(AmbiguityStatus.MISSING_INFORMATION, reasons, missing);
         }
 
         return AmbiguityAssessment.sufficient();
-    }
-
-    private static boolean hasExplicitDateInText(String q) {
-        return q.matches(".*\\b\\d{4}-\\d{2}-\\d{2}\\b.*")
-                || q.matches(".*\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}\\b.*")
-                || q.matches(".*\\b\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4}\\b.*")
-                || q.matches(".*\\baño\\s+(del\\s+)?\\d{4}\\b.*")
-                || q.matches(".*\\bdel\\s+año\\s+\\d{4}\\b.*");
     }
 
     private static boolean classifierCompatibleWithRewriteAction(QueryType classifierType, String action) {

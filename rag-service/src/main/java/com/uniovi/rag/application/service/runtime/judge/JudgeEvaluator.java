@@ -23,13 +23,26 @@ public class JudgeEvaluator {
     }
 
     public JudgeEvaluation evaluate(String queryText, String candidateAnswerText, boolean retryAllowed) {
+        return evaluate(queryText, candidateAnswerText, "", retryAllowed);
+    }
+
+    public JudgeEvaluation evaluate(
+            String queryText, String candidateAnswerText, String contextText, boolean retryAllowed) {
         long startNanos = System.nanoTime();
         try {
             RuntimePromptBudgeter.BudgetResult budget =
                     promptBudgeter != null
                             ? promptBudgeter.budgetForJudgeCandidateAnswer(candidateAnswerText)
-                            : RuntimePromptBudgeter.truncate("judge_candidate_answer", candidateAnswerText, 4_000, "default_judge_max_answer_chars");
-            String prompt = buildPrompt(queryText, budget.textUsed(), retryAllowed);
+                            : RuntimePromptBudgeter.truncate(
+                                    "judge_candidate_answer", candidateAnswerText, 4_000, "default_judge_max_answer_chars");
+            RuntimePromptBudgeter.BudgetResult contextBudget =
+                    promptBudgeter != null
+                            ? promptBudgeter.budgetForJudgeCandidateAnswer(contextText)
+                            : RuntimePromptBudgeter.truncate(
+                                    "judge_context", contextText, 6_000, "default_judge_max_context_chars");
+            String prompt =
+                    buildPrompt(
+                            queryText, budget.textUsed(), contextBudget.textUsed(), retryAllowed);
             String raw = chatClient.prompt().user(prompt).call().content();
             JudgeOutcome o = parseOutcome(raw, retryAllowed);
             String feedback = extractFeedback(raw);
@@ -37,32 +50,47 @@ public class JudgeEvaluator {
                     o,
                     Optional.empty(),
                     feedback,
-                    List.of(new ExecutionStageTrace(
-                            "judge_evaluate",
-                            millisSince(startNanos),
-                            ExecutionStageOutcome.SUCCESS,
-                            "outcome=" + o + " truncated=" + budget.truncated() + " originalChars=" + budget.originalChars())));
+                    List.of(
+                            new ExecutionStageTrace(
+                                    "judge_evaluate",
+                                    millisSince(startNanos),
+                                    ExecutionStageOutcome.SUCCESS,
+                                    "outcome="
+                                            + o
+                                            + " truncated="
+                                            + budget.truncated()
+                                            + " contextChars="
+                                            + contextBudget.originalChars())));
         } catch (Exception e) {
             return new JudgeEvaluation(
                     JudgeOutcome.FAILED_SAFE,
                     Optional.empty(),
                     "",
-                    List.of(new ExecutionStageTrace(
-                            "judge_evaluate",
-                            millisSince(startNanos),
-                            ExecutionStageOutcome.FAILED,
-                            "error=" + e.getClass().getSimpleName())));
+                    List.of(
+                            new ExecutionStageTrace(
+                                    "judge_evaluate",
+                                    millisSince(startNanos),
+                                    ExecutionStageOutcome.FAILED,
+                                    "error=" + e.getClass().getSimpleName())));
         }
     }
 
-    private static String buildPrompt(String queryText, String candidateAnswerText, boolean retryAllowed) {
+    private static String buildPrompt(
+            String queryText, String candidateAnswerText, String contextText, boolean retryAllowed) {
         String retryLine = retryAllowed
                 ? "If the answer is not acceptable, output RETRY_REQUESTED."
                 : "If the answer is not acceptable, output REJECTED_NO_RETRY.";
+        String contextBlock =
+                contextText == null || contextText.isBlank()
+                        ? "(No retrieved context supplied.)"
+                        : contextText;
         return """
                 You are a post-answer judge for a RAG assistant.
 
                 Question:
+                %s
+
+                Retrieved context (verify support only; do not invent facts beyond this):
                 %s
 
                 Candidate answer:
@@ -76,14 +104,17 @@ public class JudgeEvaluator {
                 Rules:
                 - Output exactly one label on the first line.
                 - %s
-                - If the answer is acceptable, output ACCEPTED.
-                - If the answer stays within retrieved context, expresses uncertainty appropriately, and avoids inventing facts, prefer ACCEPTED over rejection.
-                - If the answer contains unsupported claims or is clearly incorrect, do not invent facts; use REJECTED or RETRY only when necessary.
-                - Do not force blanket abstention when the candidate attempts a good-faith partial summary from available context.
+                - If the answer is acceptable and supported by the retrieved context, output ACCEPTED.
+                - Reject incomplete participant lists, unsupported positive claims, and wrong dates.
+                - Do not reject validated deterministic tool/metadata answers that directly answer the question.
+                - Do not replace a correct answer with "no consta" or hedging disclaimers.
+                - If the answer contains unsupported claims or is clearly incorrect, use REJECTED or RETRY; never hallucinate missing facts.
+                - Prefer ACCEPTED when the answer is grounded in context, even if brief.
 
                 Optionally include feedback after the first line starting with "FEEDBACK:".
                 """.formatted(
                 queryText == null ? "" : queryText,
+                contextBlock,
                 candidateAnswerText == null ? "" : candidateAnswerText,
                 retryLine);
     }

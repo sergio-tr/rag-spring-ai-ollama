@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.tool;
 
+import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
 import com.uniovi.rag.application.service.runtime.query.QueryPlanSlotEnricher;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
@@ -328,7 +329,14 @@ public final class DeterministicToolEvidenceEvaluator {
         if (field == null || field.isBlank()) {
             field = QueryPlanSlotEnricher.inferFieldSlot(plan.normalizedQueryText()).orElse(null);
         }
-        return field != null && !field.isBlank();
+        if (field == null || field.isBlank()) {
+            return false;
+        }
+        if (ActaFieldAnchorHeuristics.isAttendeeScopedField(field)
+                && !ActaFieldAnchorHeuristics.hasExplicitDateInPlan(plan)) {
+            return false;
+        }
+        return true;
     }
 
     private static QueryIntent effectiveIntent(QueryPlan plan) {
@@ -414,8 +422,26 @@ public final class DeterministicToolEvidenceEvaluator {
                         || query.contains("que reuniones")
                         || query.contains("dime qué actas")
                         || query.contains("dime que actas");
-        boolean compoundFilter = query.contains(" y ") || query.contains(" y");
-        return listSubject && compoundFilter;
+        if (!listSubject) {
+            return false;
+        }
+        if (query.contains(" y ")) {
+            return true;
+        }
+        if (query.contains("tienen")
+                || query.contains("tratan")
+                || query.contains("celebradas")
+                || query.contains("duraron")
+                || query.contains("al menos")) {
+            return true;
+        }
+        return query.contains("mencionan")
+                && (query.contains("cámara")
+                        || query.contains("camara")
+                        || query.contains("videovigilancia")
+                        || query.contains("ascensor")
+                        || query.contains("convivencia")
+                        || query.contains("seguridad"));
     }
 
     private static boolean hasBooleanText(String query) {
