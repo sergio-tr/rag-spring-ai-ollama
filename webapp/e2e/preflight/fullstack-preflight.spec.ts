@@ -1,23 +1,19 @@
 import { expect, test } from "@playwright/test";
 import { seedEmail, seedPassword } from "../fixtures/users";
+import { uniqueProjectName } from "../fixtures/projects";
 import { authHeaders, loginAndGetTokens } from "../api/fixtures/auth";
 import { actuatorHealthUrl, apiBaseUrl, productUrl } from "../api/fixtures/env";
 import {
-  bootstrapBrowserSession,
+  createAndActivateProject,
+  createNewChatConversation,
   gotoWithProxyRetry,
+  loginAsSeedUser,
   openChatConfigurationPanel,
   expandChatConfigurationRuntimeSection,
+  openChatForProject,
 } from "../support/helpers";
 
 type ProjectListResponse = { items?: Array<{ id?: string; name?: string }> };
-type ConversationListResponse = { items?: Array<{ id?: string }> } | Array<{ id?: string }>;
-
-function conversationIdsFromListBody(body: ConversationListResponse): string[] {
-  if (Array.isArray(body)) {
-    return body.map((c) => c.id).filter(Boolean) as string[];
-  }
-  return (body.items ?? []).map((c) => c.id).filter(Boolean) as string[];
-}
 
 test.describe("Fullstack E2E preflight @preflight", () => {
   test("web, backend, seed auth, project seed, API base URL, and critical Chat selectors are ready", async ({
@@ -41,32 +37,12 @@ test.describe("Fullstack E2E preflight @preflight", () => {
     });
     expect(projectsRes.status(), await projectsRes.text()).toBe(200);
     const projects = (await projectsRes.json()) as ProjectListResponse;
-    const firstProject = (projects.items ?? []).find((p) => p.id);
-    expect(firstProject?.id, "seed user must have at least one project for fullstack E2E").toBeTruthy();
-    const projectId = firstProject!.id!;
+    expect((projects.items ?? []).length, "seed user must have at least one project for fullstack E2E").toBeGreaterThan(0);
 
-    const convListRes = await request.get(productUrl(`/projects/${projectId}/conversations`), {
-      headers: authHeaders(token),
-    });
-    expect(convListRes.status(), await convListRes.text()).toBe(200);
-    let conversationId = conversationIdsFromListBody((await convListRes.json()) as ConversationListResponse)[0];
-    if (!conversationId) {
-      const createRes = await request.post(productUrl(`/projects/${projectId}/conversations`), {
-        headers: { ...authHeaders(token), "Content-Type": "application/json" },
-        data: {},
-      });
-      expect(createRes.status(), await createRes.text()).toBe(201);
-      conversationId = ((await createRes.json()) as { id: string }).id;
-    }
-    expect(conversationId, "seed project must have a conversation for chat preflight").toBeTruthy();
-
-    await bootstrapBrowserSession(page, tokens, { skipProjectsReady: true });
-
-    await gotoWithProxyRetry(
-      page,
-      `/en/chat?projectId=${projectId}&conversationId=${conversationId}`,
-      { timeout: 45_000, maxAttempts: 3 },
-    );
+    await loginAsSeedUser(page);
+    const projectId = await createAndActivateProject(page, uniqueProjectName("preflight"));
+    await openChatForProject(page, projectId);
+    await createNewChatConversation(page, { projectId, allowExisting: false });
 
     const composer = page
       .getByTestId("chat-readable-column")

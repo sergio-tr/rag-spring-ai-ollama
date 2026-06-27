@@ -840,6 +840,41 @@ export async function ensureLabEvaluationCorpusReadyViaApi(
     )
     .toBe(true);
 
+  const prepareRes = await page.request.post(
+    productApiUrl(`/lab/evaluation-corpora/${encodeURIComponent(corpusId)}/prepare-index`),
+    { headers: { ...headers, Accept: "application/json" } },
+  );
+  expect([200, 201], await prepareRes.text()).toContain(prepareRes.status());
+
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get(
+          productApiUrl(`/lab/evaluation-corpora/${encodeURIComponent(corpusId)}/readiness`),
+          { headers },
+        );
+        if (!res.ok()) return false;
+        const readiness = (await res.json()) as {
+          activeSnapshotId?: string | null;
+          reindexRequired?: boolean;
+        };
+        return Boolean(readiness.activeSnapshotId) || readiness.reindexRequired === false;
+      },
+      { timeout: 180_000, intervals: [1000, 2500, 5000] },
+    )
+    .toBe(true);
+
+  await page.addInitScript(
+    ({ id, kind }) => {
+      const key = `lab:evaluation-draft:v1:${kind}`;
+      const raw = localStorage.getItem(key);
+      const base = raw ? (JSON.parse(raw) as Record<string, unknown>) : { v: 1 };
+      base.corpusId = id;
+      localStorage.setItem(key, JSON.stringify(base));
+    },
+    { id: corpusId, kind: draftKind },
+  );
+
   await page.evaluate(
     ({ id, kind }) => {
       const key = `lab:evaluation-draft:v1:${kind}`;

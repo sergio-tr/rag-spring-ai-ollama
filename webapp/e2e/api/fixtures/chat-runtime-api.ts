@@ -28,6 +28,26 @@ export type ConversationDto = {
   documentFilter?: string[];
 };
 
+export type RagPresetDto = {
+  id: string;
+  name: string;
+};
+
+export type ChatPresetCatalogDto = {
+  productPresets: RagPresetDto[];
+  experimentalPresets: Array<{ id: string; code?: string; label?: string }>;
+};
+
+export type MessageDto = {
+  id: string;
+  role: string;
+  content: string;
+  executionMetadata?: Record<string, unknown>;
+  sources?: unknown[];
+};
+
+export const DEMO_BEST_PRESET_ID = "cafe0001-0001-4001-8001-000000000003";
+
 /**
  * POST Buenos dias (or custom) and poll `/lab/jobs/{id}` until terminal.
  * Fails fast on HTTP 500/502 from POST or any poll response.
@@ -77,12 +97,69 @@ export async function postChatMessageAndPollTerminal(
 }
 
 /** Creates a fresh project, activates it, and opens an empty conversation (API-only). */
+export async function getChatPresetCatalog(
+  request: APIRequestContext,
+  token: string,
+): Promise<ChatPresetCatalogDto> {
+  const res = await request.get(productUrl("/chat/presets/catalog"), {
+    headers: authHeaders(token),
+  });
+  const raw = await res.text();
+  assertBodyNotHtml(raw, "GET chat/presets/catalog");
+  expect(res.status(), raw).toBe(200);
+  return JSON.parse(raw) as ChatPresetCatalogDto;
+}
+
+export function findDemoBestPresetId(catalog: ChatPresetCatalogDto): string {
+  const match = catalog.productPresets?.find((p) => p.name === "Demo_Best");
+  expect(match?.id, "Demo_Best preset in catalog").toBeTruthy();
+  return match!.id;
+}
+
+export async function ensureDemoBestConversation(
+  request: APIRequestContext,
+  token: string,
+): Promise<{ projectId: string; conversationId: string; demoBestPresetId: string }> {
+  const catalog = await getChatPresetCatalog(request, token);
+  const demoBestPresetId = findDemoBestPresetId(catalog);
+  const { projectId, conversationId } = await createActivatedProjectAndConversation(request, token);
+  await patchConversation(request, token, conversationId, { presetId: demoBestPresetId });
+  return { projectId, conversationId, demoBestPresetId };
+}
+
+export async function getConversationMessages(
+  request: APIRequestContext,
+  token: string,
+  conversationId: string,
+): Promise<MessageDto[]> {
+  const res = await request.get(productUrl(`/conversations/${conversationId}/messages`), {
+    headers: authHeaders(token),
+  });
+  const raw = await res.text();
+  assertBodyNotHtml(raw, `GET conversations/${conversationId}/messages`);
+  expect(res.status(), raw).toBe(200);
+  return JSON.parse(raw) as MessageDto[];
+}
+
+export async function postChatAndGetLatestAssistant(
+  request: APIRequestContext,
+  token: string,
+  conversationId: string,
+  content: string,
+  options?: { pollTimeoutMs?: number },
+): Promise<{ job: LabJobStatusBody; assistant: MessageDto | undefined }> {
+  const job = await postChatMessageAndPollTerminal(request, token, conversationId, content, options);
+  const messages = await getConversationMessages(request, token, conversationId);
+  const assistant = [...messages].reverse().find((m) => m.role === "ASSISTANT");
+  return { job, assistant };
+}
+
 /** PATCH `{product}/conversations/{id}` (subset of fields). */
 export async function patchConversation(
   request: APIRequestContext,
   token: string,
   conversationId: string,
-  body: { documentFilter?: string[]; title?: string },
+  body: { documentFilter?: string[]; title?: string; presetId?: string },
 ): Promise<void> {
   const res = await request.patch(productUrl(`/conversations/${conversationId}`), {
     headers: {
