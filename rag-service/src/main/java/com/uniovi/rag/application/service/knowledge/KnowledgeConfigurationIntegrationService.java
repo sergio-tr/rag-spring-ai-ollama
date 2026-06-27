@@ -9,6 +9,9 @@ import com.uniovi.rag.domain.knowledge.KnowledgeBuildProjection;
 import com.uniovi.rag.domain.knowledge.KnowledgeOperationKind;
 import com.uniovi.rag.domain.knowledge.KnowledgeReindexDecision;
 import com.uniovi.rag.domain.knowledge.KnowledgeReindexKind;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
+import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
 import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
@@ -91,6 +94,11 @@ public class KnowledgeConfigurationIntegrationService {
         if (metadataUpgrade.isPresent()) {
             return metadataUpgrade.get();
         }
+        Optional<KnowledgeReindexDecision> profileUpgrade =
+                indexProfileSnapshotUpgradeDecision(projection, corpusScope, conversationId, projectId);
+        if (profileUpgrade.isPresent()) {
+            return profileUpgrade.get();
+        }
         if (projection.reindexImpact() == null
                 || projection.reindexImpact().level() == ReindexImpactLevel.NO_REINDEX) {
             return new KnowledgeReindexDecision(KnowledgeReindexKind.NO_OP);
@@ -133,6 +141,45 @@ public class KnowledgeConfigurationIntegrationService {
         IndexSnapshotCapabilities caps =
                 IndexSnapshotCapabilities.fromIndexProfile(active.get().getIndexProfileJsonb());
         if (Boolean.TRUE.equals(caps.supportsMetadata())) {
+            return Optional.empty();
+        }
+        if (!knowledgePipelineOrchestrator.hasReadyDocumentsInScope(projectId, corpusScope, conversationId)) {
+            return Optional.empty();
+        }
+        return Optional.of(new KnowledgeReindexDecision(KnowledgeReindexKind.HARD_REBUILD));
+    }
+
+    /**
+     * When the resolved projection targets an index profile (materialization/metadata/chunking) that has no ACTIVE
+     * project snapshot yet, force a hard rebuild so alternate materializations can coexist per profile hash.
+     */
+    private Optional<KnowledgeReindexDecision> indexProfileSnapshotUpgradeDecision(
+            KnowledgeBuildProjection projection,
+            CorpusScope corpusScope,
+            UUID conversationId,
+            UUID projectId) {
+        if (corpusScope != CorpusScope.PROJECT_SHARED || projection == null) {
+            return Optional.empty();
+        }
+        MaterializationStrategy strategy =
+                projection.materializationStrategy() != null
+                        ? projection.materializationStrategy()
+                        : MaterializationStrategy.CHUNK_LEVEL;
+        String expectedHash =
+                ProjectIndexProfile.computeProfileHash(
+                        strategy,
+                        projection.metadataExtractionEnabled(),
+                        "",
+                        projection.embeddingModelId(),
+                        projection.chunkMaxChars(),
+                        projection.chunkOverlap());
+        Optional<KnowledgeIndexSnapshotEntity> compatible =
+                knowledgeSnapshotService.findCompatibleProjectSnapshot(
+                        projectId,
+                        snap ->
+                                snap.getStatus() == IndexSnapshotStatus.ACTIVE
+                                        && expectedHash.equals(snap.getIndexProfileHash()));
+        if (compatible.isPresent()) {
             return Optional.empty();
         }
         if (!knowledgePipelineOrchestrator.hasReadyDocumentsInScope(projectId, corpusScope, conversationId)) {

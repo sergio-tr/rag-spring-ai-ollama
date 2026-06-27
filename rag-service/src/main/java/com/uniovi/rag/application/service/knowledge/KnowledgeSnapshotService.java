@@ -170,7 +170,9 @@ public class KnowledgeSnapshotService {
                     snapshotRepository.findActiveProjectSnapshots(
                             pid, KnowledgeSnapshotScopeType.PROJECT, IndexSnapshotStatus.ACTIVE);
             for (KnowledgeIndexSnapshotEntity a : actives) {
-                if (a.getId() != null && !a.getId().equals(snapshot.getId())) {
+                if (a.getId() != null
+                        && !a.getId().equals(snapshot.getId())
+                        && Objects.equals(a.getIndexProfileHash(), snapshot.getIndexProfileHash())) {
                     a.setStatus(IndexSnapshotStatus.SUPERSEDED);
                     a.setUpdatedAt(now);
                     snapshotRepository.save(a);
@@ -287,18 +289,28 @@ public class KnowledgeSnapshotService {
     }
 
     /**
-     * §4a: at most one ACTIVE row per project (PROJECT scope) or per conversation (CONVERSATION scope).
+     * §4a: at most one ACTIVE row per index profile hash within a project (PROJECT scope) or per
+     * conversation (CONVERSATION scope).
      */
     private void assertAtMostOneActiveSnapshotInScope(KnowledgeIndexSnapshotEntity snapshot) {
         if (snapshot.getScopeType() == KnowledgeSnapshotScopeType.PROJECT) {
+            var pid = snapshot.getProject() != null ? snapshot.getProject().getId() : null;
+            if (pid == null) {
+                return;
+            }
+            String profileHash = snapshot.getIndexProfileHash();
             long n =
-                    snapshotRepository.countByProject_IdAndScopeTypeAndConversationIsNullAndStatus(
-                            snapshot.getProject().getId(),
-                            KnowledgeSnapshotScopeType.PROJECT,
-                            IndexSnapshotStatus.ACTIVE);
+                    snapshotRepository.findActiveProjectSnapshots(
+                                    pid, KnowledgeSnapshotScopeType.PROJECT, IndexSnapshotStatus.ACTIVE)
+                            .stream()
+                            .filter(
+                                    a ->
+                                            profileHash != null
+                                                    && profileHash.equals(a.getIndexProfileHash()))
+                            .count();
             if (n > 1) {
                 throw new IllegalStateException(
-                        "ACTIVE snapshot uniqueness violated: multiple ACTIVE rows for project scope");
+                        "ACTIVE snapshot uniqueness violated: multiple ACTIVE rows for project scope profile hash");
             }
         } else if (snapshot.getScopeType() == KnowledgeSnapshotScopeType.CONVERSATION
                 && snapshot.getConversation() != null) {

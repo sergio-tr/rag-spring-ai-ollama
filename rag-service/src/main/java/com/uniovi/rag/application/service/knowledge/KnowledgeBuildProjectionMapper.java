@@ -50,7 +50,8 @@ public class KnowledgeBuildProjectionMapper {
     public KnowledgeBuildProjection fromResolvedRuntimeConfig(ResolvedRuntimeConfig resolved) {
         RagConfig rag = resolved.toRagConfig();
         ReindexImpact impact = resolved.reindexImpact() != null ? resolved.reindexImpact() : ReindexImpact.none();
-        MaterializationStrategy strategy = DEFAULT_MATERIALIZATION;
+        MaterializationStrategy strategy =
+                rag.materializationStrategy() != null ? rag.materializationStrategy() : DEFAULT_MATERIALIZATION;
         int chunkMax = DEFAULT_CHUNK_MAX_CHARS;
         int overlap = DEFAULT_CHUNK_OVERLAP;
         String embedding = rag.embeddingModel() != null ? rag.embeddingModel() : "";
