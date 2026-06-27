@@ -166,13 +166,13 @@ public class CorpusAvailabilityGate {
         }
         MapSqlParameterSource p = new MapSqlParameterSource();
         p.addValue("projectId", indexProjectId);
-        p.addValue("snapshotIds", snapshotIds);
+        p.addValue("snapshotIds", snapshotIds.stream().map(UUID::toString).toList());
         Long cnt =
                 namedParameterJdbcTemplate.queryForObject(
                         """
                         SELECT COUNT(*) FROM vector_store
                         WHERE project_id = :projectId
-                          AND (metadata->>'indexSnapshotId')::uuid IN (:snapshotIds)
+                          AND metadata->>'indexSnapshotId' IN (:snapshotIds)
                         """,
                         p,
                         Long.class);

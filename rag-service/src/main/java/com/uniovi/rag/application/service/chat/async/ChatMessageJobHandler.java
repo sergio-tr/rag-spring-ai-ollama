@@ -108,6 +108,10 @@ public class ChatMessageJobHandler implements LabJobHandler {
             StringBuilder accumulated = new StringBuilder();
             for (String part : ChatStreamChunks.chunkForStream(answer)) {
                 if (cancellationRegistry.isCancelled(taskId)) {
+                    if (persistSuccessDespiteCancellationIfSafe(
+                            taskId, conversationId, assistantId, mutation, qr, answer, llmModel, start)) {
+                        return;
+                    }
                     finishCancelled(taskId, conversationId, assistantId, mutation);
                     return;
                 }
@@ -115,6 +119,10 @@ public class ChatMessageJobHandler implements LabJobHandler {
                 mutation.updateStreamingChatResult(taskId, accumulated.toString());
             }
             if (cancellationRegistry.isCancelled(taskId)) {
+                if (persistSuccessDespiteCancellationIfSafe(
+                        taskId, conversationId, assistantId, mutation, qr, answer, llmModel, start)) {
+                    return;
+                }
                 finishCancelled(taskId, conversationId, assistantId, mutation);
                 return;
             }
@@ -124,31 +132,7 @@ public class ChatMessageJobHandler implements LabJobHandler {
                     conversationId,
                     projectId,
                     qr.getSources() != null ? qr.getSources().size() : 0);
-            List<Map<String, Object>> steps = buildPipelineSteps(qr);
-            String qt = qr.getQueryType() != null ? qr.getQueryType().name() : null;
-            String traceId = chatMessageWorkService.currentTraceId();
-            Duration duration = Duration.between(start, Instant.now());
-            Map<String, Object> telemetry =
-                    qr.getChatTelemetry() != null ? qr.getChatTelemetry() : Map.of();
-            List<ChatSource> sources = qr.getSources() != null ? qr.getSources() : List.of();
-            chatMessageWorkService.applyAssistantSuccess(
-                    assistantId,
-                    conversationId,
-                    answer,
-                    sources,
-                    qt,
-                    traceId,
-                    steps,
-                    llmModel,
-                    duration,
-                    telemetry);
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("answer", answer);
-            result.put("queryType", qt);
-            result.put("sources", ChatSourceMapper.toPersistedMapsFromInternal(sources));
-            result.put("pipelineSteps", steps);
-            result.put("phase", "done");
-            mutation.markSucceeded(taskId, result);
+            persistAssistantSuccess(taskId, conversationId, assistantId, mutation, qr, answer, llmModel, start);
         } catch (RagServiceException e) {
             log.warn("Chat job {} failed: {}", taskId, e.getMessage());
             recordChatFailure(e.getErrorCode() != null ? e.getErrorCode().name() : "unknown");
@@ -173,6 +157,67 @@ public class ChatMessageJobHandler implements LabJobHandler {
             UUID taskId, UUID conversationId, UUID assistantId, AsyncTaskMutationService mutation) {
         chatMessageWorkService.applyAssistantCancelled(assistantId, conversationId);
         mutation.markCancelled(taskId, "Stopped");
+    }
+
+    /**
+     * Late supersede/cancel signals after RAG should not discard a non-empty deterministic answer.
+     *
+     * @return true when success was persisted and the job should exit without marking cancelled
+     */
+    private boolean persistSuccessDespiteCancellationIfSafe(
+            UUID taskId,
+            UUID conversationId,
+            UUID assistantId,
+            AsyncTaskMutationService mutation,
+            QueryResponse qr,
+            String answer,
+            String llmModel,
+            Instant start) {
+        if (answer == null || answer.isBlank()) {
+            return false;
+        }
+        log.info(
+                "chat_runtime_late_cancel_persist taskId={} conversationId={} answerLength={}",
+                taskId,
+                conversationId,
+                answer.length());
+        persistAssistantSuccess(taskId, conversationId, assistantId, mutation, qr, answer, llmModel, start);
+        return true;
+    }
+
+    private void persistAssistantSuccess(
+            UUID taskId,
+            UUID conversationId,
+            UUID assistantId,
+            AsyncTaskMutationService mutation,
+            QueryResponse qr,
+            String answer,
+            String llmModel,
+            Instant start) {
+        List<Map<String, Object>> steps = buildPipelineSteps(qr);
+        String qt = qr.getQueryType() != null ? qr.getQueryType().name() : null;
+        String traceId = chatMessageWorkService.currentTraceId();
+        Duration duration = Duration.between(start, Instant.now());
+        Map<String, Object> telemetry = qr.getChatTelemetry() != null ? qr.getChatTelemetry() : Map.of();
+        List<ChatSource> sources = qr.getSources() != null ? qr.getSources() : List.of();
+        chatMessageWorkService.applyAssistantSuccess(
+                assistantId,
+                conversationId,
+                answer,
+                sources,
+                qt,
+                traceId,
+                steps,
+                llmModel,
+                duration,
+                telemetry);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("answer", answer);
+        result.put("queryType", qt);
+        result.put("sources", ChatSourceMapper.toPersistedMapsFromInternal(sources));
+        result.put("pipelineSteps", steps);
+        result.put("phase", "done");
+        mutation.markSucceeded(taskId, result);
     }
 
     private void recordChatFailure(String errorCode) {

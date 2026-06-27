@@ -44,7 +44,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Chat message enqueue, draft persistence, edit/truncate, retry, and cooperative cancellation (one active chat job per user).
+ * Chat message enqueue, draft persistence, edit/truncate, retry, and cooperative cancellation (one active chat job per conversation).
  */
 @Service
 public class ChatMessageApplicationService {
@@ -99,7 +99,7 @@ public class ChatMessageApplicationService {
 
     @Transactional
     public ChatMessageAcceptedDto enqueueMessage(UUID userId, UUID conversationId, PostMessageRequest body) {
-        cancelPriorJobsForUser(userId);
+        cancelPriorChatJobsForConversation(userId, conversationId);
         ConversationEntity conv = projectAccessService.requireConversationForUser(userId, conversationId);
         ProjectEntity project = conv.getProject();
         String content = body.content().trim();
@@ -190,7 +190,7 @@ public class ChatMessageApplicationService {
 
     @Transactional
     public ChatMessageAcceptedDto retryAssistantMessage(UUID userId, UUID conversationId, UUID assistantMessageId) {
-        cancelPriorJobsForUser(userId);
+        cancelPriorChatJobsForConversation(userId, conversationId);
         MessageEntity asst = messageRepository.findById(assistantMessageId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!asst.getConversation().getId().equals(conversationId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
@@ -257,7 +257,7 @@ public class ChatMessageApplicationService {
         if (newContent == null || newContent.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "content is required");
         }
-        cancelPriorJobsForUser(userId);
+        cancelPriorChatJobsForConversation(userId, conversationId);
         MessageEntity m = messageRepository.findById(messageId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!m.getConversation().getId().equals(conversationId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
@@ -326,18 +326,30 @@ public class ChatMessageApplicationService {
         }
     }
 
-    private void cancelPriorJobsForUser(UUID userId) {
+    private void cancelPriorChatJobsForConversation(UUID userId, UUID conversationId) {
         List<AsyncTaskEntity> tasks =
                 asyncTaskRepository.findByUser_IdAndTaskTypeAndStatusIn(
                         userId,
                         AsyncTaskType.CHAT_MESSAGE,
                         List.of(AsyncTaskStatus.QUEUED, AsyncTaskStatus.RUNNING));
         for (AsyncTaskEntity t : tasks) {
+            if (!payloadConversationIdMatches(t, conversationId)) {
+                continue;
+            }
             chatJobCancellationRegistry.signalCancel(t.getId());
             if (t.getStatus() == AsyncTaskStatus.QUEUED) {
                 finalizeQueuedChatCancellation(t);
             }
         }
+    }
+
+    private static boolean payloadConversationIdMatches(AsyncTaskEntity task, UUID conversationId) {
+        Map<String, Object> payload = task.getRequestPayload();
+        if (payload == null) {
+            return false;
+        }
+        Object raw = payload.get(ChatJobPayloadKeys.CONVERSATION_ID);
+        return raw != null && conversationId.toString().equals(raw.toString());
     }
 
     private void finalizeQueuedChatCancellation(AsyncTaskEntity e) {
