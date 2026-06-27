@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.knowledge;
 
+import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
@@ -46,6 +47,7 @@ public class KnowledgeIngestionService {
     private final ProjectAccessService projectAccessService;
     private final ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
     private final EntityManager entityManager;
+    private final BinaryStoragePort binaryStoragePort;
 
     public KnowledgeIngestionService(
             KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
@@ -53,13 +55,15 @@ public class KnowledgeIngestionService {
             @Lazy ProjectDocumentIngestionService projectDocumentIngestionService,
             ProjectAccessService projectAccessService,
             ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService,
-            EntityManager entityManager) {
+            EntityManager entityManager,
+            BinaryStoragePort binaryStoragePort) {
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.projectDocumentIngestionService = projectDocumentIngestionService;
         this.projectAccessService = projectAccessService;
         this.resolvedConfigSnapshotApplicationService = resolvedConfigSnapshotApplicationService;
         this.entityManager = entityManager;
+        this.binaryStoragePort = binaryStoragePort;
     }
 
     /**
@@ -275,8 +279,9 @@ public class KnowledgeIngestionService {
         var snap =
                 resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshot(
                         userId, projectId, conversationId);
+        entityManager.flush();
         try {
-            knowledgePipelineOrchestrator.ingestFromStoredBinary(
+            knowledgePipelineOrchestrator.ingestFromStoredBinaryInCurrentTransaction(
                     projectId, projectDocumentId, snap.getId(), snap.getConfigHash());
         } catch (Exception e) {
             KnowledgeDocumentEntity rowErr = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
@@ -427,7 +432,11 @@ public class KnowledgeIngestionService {
         return toDto(requireTerminalDocumentAfterSyncIngest(projectDocumentId));
     }
 
-    private static ProjectDocumentDto toDto(KnowledgeDocumentEntity e) {
+    private ProjectDocumentDto toDto(KnowledgeDocumentEntity e) {
+        boolean storagePresent =
+                e.getStorageUri() != null
+                        && !e.getStorageUri().isBlank()
+                        && binaryStoragePort.isReadableNonEmpty(e.getStorageUri());
         return new ProjectDocumentDto(
                 e.getId(),
                 e.getFileName(),
@@ -440,6 +449,6 @@ public class KnowledgeIngestionService {
                 e.getConversation() != null ? e.getConversation().getId() : null,
                 e.getCurrentIndexSnapshot() != null ? e.getCurrentIndexSnapshot().getId() : null,
                 e.getCurrentIndexSnapshot() != null ? e.getCurrentIndexSnapshot().getSignatureHash() : null,
-                e.getStorageUri() != null && !e.getStorageUri().isBlank());
+                storagePresent);
     }
 }

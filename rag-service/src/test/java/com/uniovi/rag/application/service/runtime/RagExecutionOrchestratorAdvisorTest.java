@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
 import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
@@ -94,7 +95,7 @@ class RagExecutionOrchestratorAdvisorTest {
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
 
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         when(qu.buildPlan(in)).thenReturn(plan);
@@ -130,10 +131,10 @@ class RagExecutionOrchestratorAdvisorTest {
                         judgeStrategy,
                         MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         RagExecutionResult out = orchestrator.execute(in);
-        assertEquals("tool-answer", out.answerText());
+        assertEquals("Tool-answer", out.answerText());
         assertEquals(
                 AdvisorOutcome.NOT_REACHED_BECAUSE_DETERMINISTIC_TOOL.name(),
                 out.executionTrace().advisorOutcome());
@@ -161,7 +162,7 @@ class RagExecutionOrchestratorAdvisorTest {
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
 
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         when(qu.buildPlan(in)).thenReturn(plan);
@@ -216,10 +217,10 @@ class RagExecutionOrchestratorAdvisorTest {
                         judgeStrategy,
                         MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         RagExecutionResult out = orchestrator.execute(in);
-        assertEquals("fc-answer", out.answerText());
+        assertEquals("Fc-answer", out.answerText());
         assertEquals(
                 AdvisorOutcome.NOT_REACHED_BECAUSE_FUNCTION_CALLING.name(),
                 out.executionTrace().advisorOutcome());
@@ -249,7 +250,7 @@ class RagExecutionOrchestratorAdvisorTest {
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
 
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         when(qu.buildPlan(in)).thenReturn(plan);
@@ -336,10 +337,10 @@ class RagExecutionOrchestratorAdvisorTest {
                         judgeStrategy,
                         MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         RagExecutionResult out = orchestrator.execute(in);
-        assertEquals("wf-answer", out.answerText());
+        assertEquals("Wf-answer", out.answerText());
         assertEquals(AdvisorOutcome.EXECUTED_SUCCESS.name(), out.executionTrace().advisorOutcome());
         assertTrue(out.executionTrace().advisorAttempted());
         assertTrue(out.executionTrace().stages().stream().anyMatch(s -> "advisor_policy".equals(s.stageName())));

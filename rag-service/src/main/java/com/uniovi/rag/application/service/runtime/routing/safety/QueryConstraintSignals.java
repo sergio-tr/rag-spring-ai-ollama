@@ -64,6 +64,10 @@ public record QueryConstraintSignals(
         addTopicKeyword(query, "videovigilancia", topics);
         addTopicKeyword(query, "calefaccion", topics);
         addTopicKeyword(query, "radiacion", topics);
+        addTopicKeyword(query, "fuga", topics);
+        addTopicKeyword(query, "limpieza", topics);
+        addTopicKeyword(query, "presupuesto", topics);
+        addTopicKeyword(query, "presupuestos", topics);
 
         Set<String> entities = new LinkedHashSet<>();
         if (plan.targetEntities() != null) {
@@ -112,6 +116,7 @@ public record QueryConstraintSignals(
                         || query.contains("exactamente 21")
                         || query.contains("radiacion solar")
                         || query.contains("radiación solar")
+                        || query.contains("fuga de gas")
                         || years.stream().anyMatch(y -> y >= 2028);
 
         return new QueryConstraintSignals(

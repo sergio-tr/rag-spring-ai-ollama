@@ -645,11 +645,12 @@ public class LabEvaluationSnapshotService {
     }
 
     /** Ensures run project is wired from evaluation corpus index sandbox when only corpus is set. */
+    @Transactional
     public void ensureRunIndexProject(EvaluationRunEntity run) {
         if (run == null || run.getId() == null) {
             return;
         }
-        ensureRunIndexProjectByRunId(run.getId());
+        wireRunIndexProject(run.getId());
     }
 
     /**
@@ -657,6 +658,10 @@ public class LabEvaluationSnapshotService {
      */
     @Transactional
     public void ensureRunIndexProjectByRunId(UUID runId) {
+        wireRunIndexProject(runId);
+    }
+
+    private void wireRunIndexProject(UUID runId) {
         if (runId == null) {
             return;
         }

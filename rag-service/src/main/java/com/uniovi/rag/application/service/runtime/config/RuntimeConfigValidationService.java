@@ -8,6 +8,7 @@ import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.runtime.KnowledgeRuntimeSnapshotSelector;
+import com.uniovi.rag.application.service.runtime.WorkflowSelector;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
@@ -20,7 +21,7 @@ import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateRequest;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeSnapshotCapabilitiesDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
-import com.uniovi.rag.application.service.runtime.WorkflowSelector;
+import com.uniovi.rag.application.service.runtime.config.MaterializationAwareSnapshotResolver;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -48,6 +49,7 @@ public class RuntimeConfigValidationService {
     private final KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector;
     private final KnowledgeSnapshotService knowledgeSnapshotService;
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
+    private final MaterializationAwareSnapshotResolver materializationAwareSnapshotResolver;
 
     public RuntimeConfigValidationService(
             ConversationRepository conversationRepository,
@@ -56,7 +58,8 @@ public class RuntimeConfigValidationService {
             WorkflowSelector workflowSelector,
             KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector,
             KnowledgeSnapshotService knowledgeSnapshotService,
-            KnowledgeDocumentRepository knowledgeDocumentRepository) {
+            KnowledgeDocumentRepository knowledgeDocumentRepository,
+            MaterializationAwareSnapshotResolver materializationAwareSnapshotResolver) {
         this.conversationRepository = conversationRepository;
         this.objectMapper = objectMapper;
         this.configResolverService = configResolverService;
@@ -64,6 +67,7 @@ public class RuntimeConfigValidationService {
         this.knowledgeRuntimeSnapshotSelector = knowledgeRuntimeSnapshotSelector;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
+        this.materializationAwareSnapshotResolver = materializationAwareSnapshotResolver;
     }
 
     public RuntimeConfigValidateResponse validate(UUID userId, RuntimeConfigValidateRequest req) {
@@ -170,9 +174,31 @@ public class RuntimeConfigValidationService {
             effectiveConfig = objectMapper.convertValue(resolved.toRagConfig(), Map.class);
         }
 
-        var selection = knowledgeRuntimeSnapshotSelector.select(projectId, conversationIdForSnapshot);
+        RagConfig rag = resolved.toRagConfig();
+        ExperimentalPresetCanonicalCatalog.IndexRequirements presetReq =
+                resolveIndexRequirements(presetId, rag);
+
+        var selection =
+                knowledgeRuntimeSnapshotSelector.select(
+                        projectId, conversationIdForSnapshot, presetReq);
         KnowledgeIndexSnapshotEntity projectSnap =
-                knowledgeSnapshotService.findActiveProjectSnapshot(projectId).orElse(null);
+                projectId == null
+                        ? null
+                        : materializationAwareSnapshotResolver
+                                .resolveProjectSnapshot(projectId, presetReq)
+                                .filter(MaterializationAwareSnapshotResolver.ResolvedProjectSnapshot::compatibleWithRequirements)
+                                .flatMap(
+                                        resolvedSnap ->
+                                                knowledgeSnapshotService
+                                                        .findProjectSnapshots(projectId)
+                                                        .stream()
+                                                        .filter(s -> resolvedSnap.snapshotId().equals(s.getId()))
+                                                        .findFirst())
+                                .orElseGet(
+                                        () ->
+                                                knowledgeSnapshotService
+                                                        .findActiveProjectSnapshot(projectId)
+                                                        .orElse(null));
         KnowledgeIndexSnapshotEntity chatSnap =
                 conversationIdForSnapshot == null
                         ? null
@@ -184,7 +210,6 @@ public class RuntimeConfigValidationService {
         Map<String, Object> activeProfile = hasActiveIndex && active.getIndexProfileJsonb() != null ? active.getIndexProfileJsonb() : Map.of();
         String activeProfileHash = hasActiveIndex ? active.getIndexProfileHash() : null;
 
-        RagConfig rag = resolved.toRagConfig();
         if (rag != null) {
             if (rag.toolsEnabled() && rag.functionCallingEnabled()) {
                 warnings.add(
@@ -196,7 +221,6 @@ public class RuntimeConfigValidationService {
             }
             IndexSnapshotCapabilities snapCaps = IndexSnapshotCapabilities.fromIndexProfile(activeProfile);
 
-            ExperimentalPresetCanonicalCatalog.IndexRequirements presetReq = resolveIndexRequirements(presetId, rag);
             IndexCompatibilityResult idx =
                     IndexCompatibilityResult.check(presetReq, hasActiveIndex, snapCaps);
             long readyDocs =
@@ -286,26 +310,7 @@ public class RuntimeConfigValidationService {
 
     private static ExperimentalPresetCanonicalCatalog.IndexRequirements resolveIndexRequirements(
             Optional<UUID> presetIdOpt, RagConfig rag) {
-        if (presetIdOpt.isPresent()) {
-            var code = ExperimentalPresetCanonicalCatalog.tryResolveCodeByProductPresetId(presetIdOpt.get());
-            if (code != null) {
-                return ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(code);
-            }
-        }
-        // Fallback for non-experimental presets: derive required index capabilities from the resolved runtime config.
-        if (rag == null || !rag.useRetrieval()) {
-            return ExperimentalPresetCanonicalCatalog.IndexRequirements.none();
-        }
-        ExperimentalPresetCanonicalCatalog.RequiredMaterialization req =
-                rag.materializationStrategy() != null
-                        ? switch (rag.materializationStrategy()) {
-                            case DOCUMENT_LEVEL -> ExperimentalPresetCanonicalCatalog.RequiredMaterialization.DOCUMENT_LEVEL;
-                            case CHUNK_LEVEL -> ExperimentalPresetCanonicalCatalog.RequiredMaterialization.CHUNK_LEVEL;
-                            case HYBRID -> ExperimentalPresetCanonicalCatalog.RequiredMaterialization.HYBRID;
-                            default -> ExperimentalPresetCanonicalCatalog.RequiredMaterialization.CHUNK_LEVEL;
-                        }
-                        : ExperimentalPresetCanonicalCatalog.RequiredMaterialization.CHUNK_LEVEL;
-        return new ExperimentalPresetCanonicalCatalog.IndexRequirements(req, rag.metadataEnabled());
+        return MaterializationAwareSnapshotResolver.requirementsFromPresetAndRag(presetIdOpt, rag);
     }
 }
 

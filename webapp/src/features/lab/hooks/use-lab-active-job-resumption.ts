@@ -19,13 +19,13 @@ export type LabActiveJobResumeCandidate = Readonly<{
   source: "backend-active-job";
 }>;
 
-export type LabActiveJobRecoveryDecision =
+export type LabActiveJobResumptionDecision =
   | { kind: "none" }
   | { kind: "auto_follow"; candidate: LabActiveJobResumeCandidate }
   | { kind: "cta"; candidates: LabActiveJobResumeCandidate[]; reason: string }
   | { kind: "session_only"; record: PersistedLabJobRecord; reason: string };
 
-export type LabActiveJobRecoveryInputs = Readonly<{
+export type LabActiveJobResumptionInputs = Readonly<{
   sectionKey: LabJobSectionKey;
   benchmarkKind: BenchmarkKind;
   activeProjectId: string | null;
@@ -159,10 +159,10 @@ function pickSessionOnlyRecord(
 }
 
 /**
- * Deterministic recovery decision: backend active jobs win over session cache when both exist.
+ * Deterministic resumption decision: backend active jobs win over session cache when both exist.
  * Does not perform network I/O.
  */
-export function computeLabActiveJobRecovery(params: LabActiveJobRecoveryInputs): LabActiveJobRecoveryDecision {
+export function computeLabActiveJobResumption(params: LabActiveJobResumptionInputs): LabActiveJobResumptionDecision {
   if (!isSectionBenchmarkConsistent(params.sectionKey, params.benchmarkKind)) {
     return { kind: "none" };
   }
@@ -233,12 +233,12 @@ export function computeLabActiveJobRecovery(params: LabActiveJobRecoveryInputs):
   };
 }
 
-export type LabActiveJobRecoveryResult = Readonly<{
-  decision: LabActiveJobRecoveryDecision;
+export type LabActiveJobResumptionResult = Readonly<{
+  decision: LabActiveJobResumptionDecision;
   resolvedFollowMode: LabJobFollowMode;
 }>;
 
-export function useLabActiveJobRecovery(params: LabActiveJobRecoveryInputs): LabActiveJobRecoveryResult {
+export function useLabActiveJobResumption(params: LabActiveJobResumptionInputs): LabActiveJobResumptionResult {
   const {
     sectionKey,
     benchmarkKind,
@@ -250,7 +250,7 @@ export function useLabActiveJobRecovery(params: LabActiveJobRecoveryInputs): Lab
     sessionRecords,
   } = params;
   return useMemo(() => {
-    const decision = computeLabActiveJobRecovery({
+    const decision = computeLabActiveJobResumption({
       sectionKey,
       benchmarkKind,
       activeProjectId,

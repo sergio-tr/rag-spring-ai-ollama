@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /** High-confidence metadata constraint filtering with empty-set fallback for advanced retrieval. */
@@ -77,23 +78,35 @@ public class MetadataConstraintFilter {
     }
 
     private static boolean matchesAllTokens(RetrievalCandidate c, List<String> tokens) {
+        for (String token : tokens) {
+            if (token == null || token.isBlank()) {
+                continue;
+            }
+            if (metadataMatchesToken(c.metadata(), token) || contentMatchesToken(c, token)) {
+                continue;
+            }
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean metadataMatchesToken(Map<String, Object> metadata, String token) {
+        if (metadata == null || token == null || token.isBlank()) {
+            return false;
+        }
+        if (RetrievalEntityMatchingSupport.metadataContainsDateToken(metadata, token)) {
+            return true;
+        }
+        return RetrievalEntityMatchingSupport.metadataContainsPerson(metadata, token);
+    }
+
+    private static boolean contentMatchesToken(RetrievalCandidate c, String token) {
         String content = c.content() != null ? c.content() : "";
         String filename =
                 c.metadata() != null && c.metadata().get("filename") != null
                         ? String.valueOf(c.metadata().get("filename"))
                         : "";
-        String hay = (content + "\n" + filename).toLowerCase(Locale.ROOT);
-        for (String token : tokens) {
-            if (token == null || token.isBlank()) {
-                continue;
-            }
-            String needle = token.toLowerCase(Locale.ROOT).trim();
-            String foldedNeedle = SpanishRetrievalTextSupport.foldAccents(needle);
-            String foldedHay = SpanishRetrievalTextSupport.foldAccents(hay);
-            if (!hay.contains(needle) && !foldedHay.contains(foldedNeedle)) {
-                return false;
-            }
-        }
-        return true;
+        String hay = content + "\n" + filename;
+        return RetrievalEntityMatchingSupport.containsEntityToken(hay, token);
     }
 }

@@ -52,9 +52,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({
     RuntimeTraceRegressionSuiteDefinitionController.class,
     RegressionSuiteDefinitionMutationJacksonConfiguration.class,
-    RuntimeTraceRegressionSuiteDefinitionDetailGetFdParityWebMvcTest.Fd4OnlyJsonConverters.class
+    RuntimeTraceSuiteDefinitionGetFieldParityWebMvcTest.GetFieldParityJsonConverters.class
 })
-class RuntimeTraceRegressionSuiteDefinitionDetailGetFdParityWebMvcTest {
+class RuntimeTraceSuiteDefinitionGetFieldParityWebMvcTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -80,7 +80,7 @@ class RuntimeTraceRegressionSuiteDefinitionDetailGetFdParityWebMvcTest {
     @MockitoBean
     private DefinitionRunZipServiceBundle runZipServices;
 
-    private static ObjectMapper fd4ObjectMapper() {
+    private static ObjectMapper getFieldParityObjectMapper() {
         return new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
@@ -110,7 +110,7 @@ class RuntimeTraceRegressionSuiteDefinitionDetailGetFdParityWebMvcTest {
     }
 
     @Test
-    void t11_detailBodyEqualsFromSnapshotUnderFd4Mapper() throws Exception {
+    void detailBodyEqualsFromSnapshotUnderGetFieldParityMapper() throws Exception {
         UUID tid = UUID.randomUUID();
         RuntimeTraceRegressionSuiteDefinitionSnapshot snapshot =
                 new RuntimeTraceRegressionSuiteDefinitionSnapshot(
@@ -130,18 +130,18 @@ class RuntimeTraceRegressionSuiteDefinitionDetailGetFdParityWebMvcTest {
                         .getResponse()
                         .getContentAsByteArray();
 
-        ObjectMapper fd4 = fd4ObjectMapper();
-        assertThat(fd4.readValue(body, RuntimeTraceRegressionSuiteDefinitionDetailDto.class))
+        ObjectMapper mapper = getFieldParityObjectMapper();
+        assertThat(mapper.readValue(body, RuntimeTraceRegressionSuiteDefinitionDetailDto.class))
                 .isEqualTo(RuntimeTraceRegressionSuiteDefinitionDetailDto.fromSnapshot(snapshot));
     }
 
     @TestConfiguration
-    static class Fd4OnlyJsonConverters implements WebMvcConfigurer {
+    static class GetFieldParityJsonConverters implements WebMvcConfigurer {
 
         @Override
         public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
             converters.clear();
-            converters.add(new MappingJackson2HttpMessageConverter(fd4ObjectMapper()));
+            converters.add(new MappingJackson2HttpMessageConverter(getFieldParityObjectMapper()));
         }
     }
 }

@@ -5,6 +5,8 @@ import com.uniovi.rag.application.service.runtime.DateGroundingSupport;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
+import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
+import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.retrieval.CompressionOutcome;
 import com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet;
@@ -48,6 +50,7 @@ public class AdvancedRetrievalPipeline {
     private final RetrievalPromptTextBuilder retrievalPromptTextBuilder;
     private final MetadataAppendixLoader metadataAppendixLoader;
     private final MetadataConstraintFilter metadataConstraintFilter;
+    private final RetrievalContextExpander retrievalContextExpander;
 
     public AdvancedRetrievalPipeline(
             RetrievalRequestBuilder retrievalRequestBuilder,
@@ -59,7 +62,8 @@ public class AdvancedRetrievalPipeline {
             ContextCompressionStrategy contextCompressionStrategy,
             RetrievalPromptTextBuilder retrievalPromptTextBuilder,
             MetadataAppendixLoader metadataAppendixLoader,
-            MetadataConstraintFilter metadataConstraintFilter) {
+            MetadataConstraintFilter metadataConstraintFilter,
+            RetrievalContextExpander retrievalContextExpander) {
         this.retrievalRequestBuilder = retrievalRequestBuilder;
         this.denseRetrievalStrategy = denseRetrievalStrategy;
         this.hybridRetrievalStrategy = hybridRetrievalStrategy;
@@ -70,6 +74,7 @@ public class AdvancedRetrievalPipeline {
         this.retrievalPromptTextBuilder = retrievalPromptTextBuilder;
         this.metadataAppendixLoader = metadataAppendixLoader;
         this.metadataConstraintFilter = metadataConstraintFilter;
+        this.retrievalContextExpander = retrievalContextExpander;
     }
 
     public CuratedContextSet retrieve(ExecutionContext ctx, QueryPlan plan, String workflowName) {
@@ -200,15 +205,13 @@ public class AdvancedRetrievalPipeline {
         List<RetrievalCandidate> filteredFinal;
         int protectedCount = 0;
         int droppedByCompression = 0;
+        int dedupedDocumentCount = 0;
         ContextCompressionStrategy.CompressionResult compressed;
 
         if (!postRetrievalEnabled) {
             traces.add(skipped("retrieval_filter_advanced", "postRetrievalEnabled=false"));
             traces.add(skipped("retrieval_compress", "postRetrievalEnabled=false"));
             filteredFinal = applyDateGrounding(req, filteredBasic, traces);
-            compressed =
-                    new ContextCompressionStrategy.CompressionResult(
-                            filteredFinal, new CompressionOutcome(totalChars(filteredFinal), totalChars(filteredFinal), 0, List.of("postretrieval_disabled")));
         } else {
             long tFilterAdv = System.nanoTime();
             List<RetrievalCandidate> advancedInput = retrievalFilter.filterAdvanced(req, plan, rerankResult.candidates());
@@ -230,7 +233,31 @@ public class AdvancedRetrievalPipeline {
                                     + constraintResult.telemetry().applied()
                                     + " metadataFilterFallback="
                                     + constraintResult.telemetry().fallback()));
+        }
 
+        long tExpand = System.nanoTime();
+        RetrievalContextExpander.ExpansionResult expansion =
+                retrievalContextExpander.expand(req, plan, filteredFinal);
+        filteredFinal = expansion.candidates();
+        dedupedDocumentCount = expansion.dedupedDocumentCount();
+        traceNotes.addAll(expansion.notes());
+        traces.add(
+                stage(
+                        "retrieval_context_expand",
+                        tExpand,
+                        ExecutionStageOutcome.SUCCESS,
+                        "count=" + filteredFinal.size() + " dedupedDocs=" + dedupedDocumentCount));
+
+        if (!postRetrievalEnabled) {
+            compressed =
+                    new ContextCompressionStrategy.CompressionResult(
+                            filteredFinal,
+                            new CompressionOutcome(
+                                    totalChars(filteredFinal),
+                                    totalChars(filteredFinal),
+                                    0,
+                                    List.of("postretrieval_disabled")));
+        } else {
             Set<String> protectedIds = protectedCandidateIds(req, plan, filteredFinal);
             protectedCount = protectedIds.size();
 
@@ -259,10 +286,7 @@ public class AdvancedRetrievalPipeline {
             }
         }
 
-        RetrievalLayout layout =
-                "DocumentDenseRagWorkflow".equals(workflowName)
-                        ? RetrievalLayout.DOCUMENT_COMBINED
-                        : RetrievalLayout.CHUNK_SEPARATE;
+        RetrievalLayout layout = resolveRetrievalLayout(workflowName, plan);
         long tPack = System.nanoTime();
         String prompt = retrievalPromptTextBuilder.build(compressed.candidates(), req.queryText(), layout);
         traces.add(stage("context_pack", tPack, ExecutionStageOutcome.SUCCESS, "chars=" + (prompt != null ? prompt.length() : 0)));
@@ -319,7 +343,7 @@ public class AdvancedRetrievalPipeline {
                         comp.charsBefore(),
                         comp.charsAfter(),
                         rerankOrderChanged,
-                        retrieved.fusedCount(),
+                        dedupedDocumentCount > 0 ? dedupedDocumentCount : retrieved.fusedCount(),
                         sparseTelemetry,
                         fusionTelemetry,
                         metadataFilterTelemetry);
@@ -369,6 +393,22 @@ public class AdvancedRetrievalPipeline {
                         + " before=" + safeCandidates.size()
                         + " after=" + selected.size()));
         return selected;
+    }
+
+    private static RetrievalLayout resolveRetrievalLayout(String workflowName, QueryPlan plan) {
+        if ("DocumentDenseRagWorkflow".equals(workflowName)) {
+            return RetrievalLayout.DOCUMENT_COMBINED;
+        }
+        if (plan != null) {
+            if (plan.queryIntent() == QueryIntent.SUMMARIZE
+                    || plan.queryIntent() == QueryIntent.LIST
+                    || plan.expectedAnswerShape() == ExpectedAnswerShape.SUMMARY
+                    || plan.expectedAnswerShape() == ExpectedAnswerShape.LIST
+                    || plan.expectedAnswerShape() == ExpectedAnswerShape.PARAGRAPH) {
+                return RetrievalLayout.DOCUMENT_COMBINED;
+            }
+        }
+        return RetrievalLayout.CHUNK_SEPARATE;
     }
 
     private static RetrievalReranker.RerankResult identityRerank(RetrievalRequest req, List<RetrievalCandidate> candidates) {

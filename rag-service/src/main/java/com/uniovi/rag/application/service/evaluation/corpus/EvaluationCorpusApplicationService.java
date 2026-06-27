@@ -31,6 +31,8 @@ import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusDocumentUpl
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusDocumentsUploadResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusSummaryDto;
 import java.io.IOException;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -432,7 +434,7 @@ public class EvaluationCorpusApplicationService {
             target.setStatus(ProjectDocumentStatus.INGESTING);
             knowledgeDocumentRepository.save(target);
 
-            Path temp = Files.createTempFile("rag-lab-corpus-copy-", ".bin");
+            Path temp = createPrivateTempFile("rag-lab-corpus-copy-", ".bin");
             try (InputStream in = binaryStoragePort.openStream(copied.relativeUri())) {
                 Files.copy(in, temp, StandardCopyOption.REPLACE_EXISTING);
             }
@@ -576,6 +578,34 @@ public class EvaluationCorpusApplicationService {
             return value;
         }
         return value.substring(0, max - 1) + "…";
+    }
+
+    private static Path createPrivateTempFile(String prefix, String suffix) throws IOException {
+        Path dir = Files.createTempDirectory(prefix, posix0700IfSupported());
+        dir.toFile().deleteOnExit();
+        Path file = Files.createTempFile(dir, prefix, suffix, posix0600IfSupported());
+        file.toFile().deleteOnExit();
+        return file;
+    }
+
+    private static FileAttribute<?>[] posix0700IfSupported() {
+        try {
+            return new FileAttribute<?>[] {
+                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))
+            };
+        } catch (UnsupportedOperationException ex) {
+            return new FileAttribute<?>[0];
+        }
+    }
+
+    private static FileAttribute<?>[] posix0600IfSupported() {
+        try {
+            return new FileAttribute<?>[] {
+                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"))
+            };
+        } catch (UnsupportedOperationException ex) {
+            return new FileAttribute<?>[0];
+        }
     }
 
     public record EvaluationCorpusContext(

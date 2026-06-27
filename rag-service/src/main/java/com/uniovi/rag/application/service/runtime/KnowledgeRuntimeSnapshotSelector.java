@@ -1,7 +1,9 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
+import com.uniovi.rag.application.service.runtime.config.MaterializationAwareSnapshotResolver;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
@@ -22,23 +24,36 @@ public class KnowledgeRuntimeSnapshotSelector {
 
     private final KnowledgeSnapshotService knowledgeSnapshotService;
     private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
+    private final MaterializationAwareSnapshotResolver materializationAwareSnapshotResolver;
 
     public KnowledgeRuntimeSnapshotSelector(
             KnowledgeSnapshotService knowledgeSnapshotService,
-            KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository) {
+            KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
+            MaterializationAwareSnapshotResolver materializationAwareSnapshotResolver) {
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
+        this.materializationAwareSnapshotResolver = materializationAwareSnapshotResolver;
     }
 
     /**
      * @param conversationId {@code null} for stateless (removed HTTP) requests
      */
     public KnowledgeSnapshotSelection select(UUID projectId, UUID conversationId) {
+        return select(projectId, conversationId, ExperimentalPresetCanonicalCatalog.IndexRequirements.none());
+    }
+
+    /**
+     * Selects project and conversation snapshots, preferring a project snapshot compatible with preset index requirements.
+     */
+    public KnowledgeSnapshotSelection select(
+            UUID projectId,
+            UUID conversationId,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
         if (projectId == null) {
             return KnowledgeSnapshotSelection.empty();
         }
         Optional<KnowledgeIndexSnapshotEntity> projectSnap =
-                knowledgeSnapshotService.findActiveProjectSnapshot(projectId);
+                resolveProjectSnapshotEntity(projectId, requirements);
         Optional<KnowledgeIndexSnapshotEntity> chatSnap =
                 conversationId == null
                         ? Optional.empty()
@@ -79,6 +94,16 @@ public class KnowledgeRuntimeSnapshotSelector {
         Optional<String> dense = resolveDenseEmbeddingFromSnapshotIds(ordered);
         return new KnowledgeSnapshotSelection(
                 ordered, projectShared, Optional.empty(), Optional.empty(), Optional.empty(), dense);
+    }
+
+    private Optional<KnowledgeIndexSnapshotEntity> resolveProjectSnapshotEntity(
+            UUID projectId, ExperimentalPresetCanonicalCatalog.IndexRequirements requirements) {
+        Optional<MaterializationAwareSnapshotResolver.ResolvedProjectSnapshot> resolved =
+                materializationAwareSnapshotResolver.resolveProjectSnapshot(projectId, requirements);
+        if (resolved.isPresent() && resolved.get().compatibleWithRequirements()) {
+            return knowledgeIndexSnapshotRepository.findById(resolved.get().snapshotId());
+        }
+        return knowledgeSnapshotService.findActiveProjectSnapshot(projectId);
     }
 
     private static Optional<String> resolveDenseEmbeddingFromPair(

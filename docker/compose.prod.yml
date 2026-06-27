@@ -15,6 +15,11 @@ services:
     networks:
       - private
 
+  # Must share `private` with postgres; default network cannot resolve the `postgres` hostname.
+  postgres-collation-bootstrap:
+    networks:
+      - private
+
   classifier-service:
     ports: []
     networks:
@@ -24,6 +29,9 @@ services:
     ports: []
     networks:
       - public
+    environment:
+      # Allow BFF auth cookies over HTTP reverse-proxy (Playwright fullstack on :80).
+      E2E_ALLOW_INSECURE_COOKIES: ${E2E_ALLOW_INSECURE_COOKIES:-true}
     depends_on:
       backend:
         condition: service_started

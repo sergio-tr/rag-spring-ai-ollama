@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
 import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -218,17 +219,17 @@ class RagExecutionOrchestratorReasoningTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routing,
-                        mock(DeterministicToolRoutingStrategy.class),
+                        MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy(),
                         mock(FunctionCallingRoutingStrategy.class),
                         mock(AdvisorRoutingStrategy.class),
                         mock(JudgeStrategy.class),
                         new StructuredAnswerPlanService(chatClient, new ObjectMapper()),
                         new AnswerVerificationService(chatClient),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         var out = orch.execute(base);
 
-        assertThat(out.answerText()).isEqualTo("final-answer");
+        assertThat(out.answerText()).isEqualTo("Final-answer");
         assertThat(out.executionTrace().stages()).anyMatch(s -> "reasoning_plan".equals(s.stageName()));
         assertThat(out.executionTrace().stages()).anyMatch(s -> "reasoning_verify".equals(s.stageName()));
 

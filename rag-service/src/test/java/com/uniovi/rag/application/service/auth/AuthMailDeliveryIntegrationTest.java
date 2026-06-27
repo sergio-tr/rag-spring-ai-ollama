@@ -76,6 +76,8 @@ class AuthMailDeliveryIntegrationTest {
 
     @Test
     void register_queuesConfirmationAndSmtpSweepMarksSent() {
+        mailOutboxRepository.findTop50BySentAtIsNullOrderByCreatedAtAsc().forEach(mailOutboxRepository::delete);
+
         String email = "mail-it-" + System.nanoTime() + "@example.com";
 
         RegisterResponse response = authService.register(

@@ -33,20 +33,20 @@ export function labJobAcceptedFromLatestRun(dto: LatestLabRunRecoveryDto): LabJo
   };
 }
 
-/** True when backend latest-run query should run (no active recovery in flight). */
+/** True when backend latest-run query should run (no active resumption in flight). */
 export function shouldFetchLatestLabRun(options: Readonly<{
   activeJobsLoading: boolean;
-  recoveryDecisionKind: string;
+  resumptionDecisionKind: string;
   running: boolean;
   watchLive: boolean;
 }>): boolean {
   if (options.activeJobsLoading || options.running || options.watchLive) {
     return false;
   }
-  if (options.recoveryDecisionKind === "auto_follow" || options.recoveryDecisionKind === "cta") {
+  if (options.resumptionDecisionKind === "auto_follow" || options.resumptionDecisionKind === "cta") {
     return false;
   }
-  if (options.recoveryDecisionKind === "session_only") {
+  if (options.resumptionDecisionKind === "session_only") {
     return false;
   }
   return true;

@@ -62,6 +62,100 @@ class DefaultDeterministicToolResolverTest {
     }
 
     @Test
+    void fdCe02_exactAttendeeListing_notSuppressedByAmbiguity() {
+        RagConfig rag = baseRag(true, false);
+        String q =
+                "¿En qué reuniones hubo exactamente 21 asistentes y qué se decidió en esa reunión?";
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1,
+                        q,
+                        q,
+                        q,
+                        q,
+                        "COUNT_AND_EXPLAIN",
+                        Optional.of(QueryType.COUNT_AND_EXPLAIN),
+                        ClassifierStatus.OK,
+                        QueryIntent.COUNT,
+                        Map.of("explain", "true"),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled(q, "test"),
+                        ExpectedAnswerShape.PARAGRAPH,
+                        new AmbiguityAssessment(
+                                AmbiguityStatus.MISSING_INFORMATION,
+                                List.of("Missing acta/meeting date"),
+                                List.of("time_reference")),
+                        "cid",
+                        "cls",
+                        List.of());
+        var d = resolver.resolve(ctx(rag), plan);
+        assertThat(d.outcome()).isNotEqualTo(DeterministicToolOutcome.SUPPRESSED_BY_AMBIGUITY);
+    }
+
+    @Test
+    void suppressedByAmbiguity_undatedParticipantCountWithConflictingCues() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1,
+                        "¿Cuántos participantes asistieron?",
+                        "¿Cuántos participantes asistieron?",
+                        "¿Cuántos participantes asistieron?",
+                        "¿Cuántos participantes asistieron?",
+                        "COUNT_DOCUMENTS",
+                        Optional.of(QueryType.COUNT_DOCUMENTS),
+                        ClassifierStatus.OK,
+                        QueryIntent.COUNT,
+                        Map.of("field", "attendeesCount"),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        rewriteWithAction("EXTRACT_FIELD"),
+                        ExpectedAnswerShape.SCALAR_COUNT,
+                        new AmbiguityAssessment(
+                                AmbiguityStatus.MISSING_INFORMATION,
+                                List.of("Missing acta/meeting date"),
+                                List.of("time_reference")),
+                        "cid",
+                        "cls",
+                        List.of());
+        var d = resolver.resolve(ctx(rag), plan);
+        assertThat(d.outcome()).isEqualTo(DeterministicToolOutcome.SUPPRESSED_BY_AMBIGUITY);
+        assertThat(d.selected()).isFalse();
+    }
+
+    @Test
+    void structuredGetField_selectsTool_whenAmbiguityConflictingButClassifierAuthoritative() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1,
+                        "dime los participantes del acta del 25 de febrero de 2026",
+                        "dime los participantes del acta del 25 de febrero de 2026",
+                        "dime los participantes del acta del 25 de febrero de 2026",
+                        "dime los participantes del acta del 25 de febrero de 2026",
+                        "GET_FIELD",
+                        Optional.of(QueryType.GET_FIELD),
+                        ClassifierStatus.OK,
+                        QueryIntent.EXTRACT_FIELD,
+                        Map.of("field", "attendees"),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled("q", "test"),
+                        ExpectedAnswerShape.FIELD_VALUE,
+                        new AmbiguityAssessment(AmbiguityStatus.CONFLICTING_CUES, List.of("CONFLICT"), List.of()),
+                        "cid",
+                        "cls",
+                        List.of());
+        var d = resolver.resolve(ctx(rag), plan);
+        assertThat(d.outcome()).isEqualTo(DeterministicToolOutcome.SELECTED);
+        assertThat(d.selectedToolKind()).contains(DeterministicToolKind.GET_FIELD_TOOL);
+    }
+
+    @Test
     void selectsCountDocuments() {
         RagConfig rag = baseRag(true, false);
         QueryPlan plan = minimalPlan(QueryIntent.COUNT, ExpectedAnswerShape.SCALAR_COUNT, AmbiguityStatus.SUFFICIENT);
@@ -234,6 +328,35 @@ class DefaultDeterministicToolResolverTest {
     }
 
     @Test
+    void selectsGetDuration_whenAmbiguityConflictingButClassifierAuthoritative() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P6_QU_CORE_V1,
+                        "¿Cuál fue la duración de la reunión del 25/02/2026?",
+                        "¿Cuál fue la duración de la reunión del 25/02/2026?",
+                        "norm",
+                        "rewritten",
+                        "GET_DURATION",
+                        Optional.of(QueryType.GET_DURATION),
+                        ClassifierStatus.OK,
+                        QueryIntent.FIND,
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled("norm", ""),
+                        ExpectedAnswerShape.PARAGRAPH,
+                        new AmbiguityAssessment(AmbiguityStatus.CONFLICTING_CUES, List.of("CONFLICT"), List.of()),
+                        "cid",
+                        "",
+                        List.of());
+        var d = resolver.resolve(ctx(rag), plan);
+        assertThat(d.outcome()).isEqualTo(DeterministicToolOutcome.SELECTED);
+        assertThat(d.selectedToolKind()).contains(DeterministicToolKind.GET_DURATION_TOOL);
+    }
+
+    @Test
     void getField_requiresSlotField() {
         RagConfig rag = baseRag(true, false);
         QueryPlan plan =
@@ -379,6 +502,19 @@ class DefaultDeterministicToolResolverTest {
                 new AmbiguityAssessment(amb, List.of(), List.of()),
                 "cid",
                 "",
+                List.of());
+    }
+
+    private static StructuredRewriteResult rewriteWithAction(String action) {
+        return new StructuredRewriteResult(
+                "q",
+                true,
+                List.of(),
+                StructuredRewriteResult.STRATEGY_STRUCTURED_V1,
+                List.of(),
+                List.of(),
+                Optional.of(action),
+                Map.of(),
                 List.of());
     }
 }

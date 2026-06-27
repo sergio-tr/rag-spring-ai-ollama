@@ -243,6 +243,7 @@ start_backend() {
     -e RAG_JWT_SECRET="e2e-ci-jwt-secret-must-be-at-least-32-chars" \
     -e RAG_TEST_USE_TESTCONTAINERS_DATASOURCE=false \
     -e RAG_API_PRODUCT_BASE_PATH=/api/v5 \
+    -e RAG_AUTH_BACKEND_BASE_URL="${RAG_AUTH_BACKEND_BASE_URL:-https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}}" \
     -e RAG_HEALTH_OLLAMA_ENABLED=false \
     -e RAG_HEALTH_CLASSIFIER_ENABLED=false \
     eclipse-temurin:21-jdk bash -lc "./mvnw -B -DskipTests spring-boot:run -Dspring-boot.run.profiles=e2e" \

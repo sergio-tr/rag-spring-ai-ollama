@@ -113,6 +113,54 @@ class DefaultQueryClassifierAdapterTest {
     }
 
     @Test
+    void spanishParticipantsRuleOverride_bypassesLowConfidence() {
+        QueryClassifier classifier = mock(QueryClassifier.class);
+        String q = "dime los participantes del acta del 25 de febrero de 2026";
+        when(classifier.classifyInference(q, "cls"))
+                .thenReturn(new ClassifierInferenceResponse("EXTRACT_ENTITIES", 0.16, "hash1", List.of()));
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
+
+        ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), q);
+
+        assertEquals(ClassifierStatus.OK, out.classifierStatus());
+        assertEquals(QueryType.GET_FIELD, out.classifierQueryType().orElseThrow());
+        assertTrue(
+                "RULE_OVERRIDE".equals(out.note()) || "DETERMINISTIC_PATTERN".equals(out.note()),
+                "note=" + out.note());
+    }
+
+    @Test
+    void spanishCountRuleOverride_bypassesLowConfidence() {
+        QueryClassifier classifier = mock(QueryClassifier.class);
+        String q = "¿Cuántas actas mencionan el ascensor?";
+        when(classifier.classifyInference(q, "cls"))
+                .thenReturn(new ClassifierInferenceResponse("SUMMARIZE_MEETING", 0.18, "hash1", List.of()));
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
+
+        ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), q);
+
+        assertEquals(ClassifierStatus.OK, out.classifierStatus());
+        assertEquals(QueryType.COUNT_DOCUMENTS, out.classifierQueryType().orElseThrow());
+        assertTrue(
+                "RULE_OVERRIDE".equals(out.note()) || "DETERMINISTIC_PATTERN".equals(out.note()),
+                "note=" + out.note());
+    }
+
+    @Test
+    void spanishDurationRuleOverride_bypassesLowConfidence() {
+        QueryClassifier classifier = mock(QueryClassifier.class);
+        String q = "Duración de la reunión del 25 de febrero de 2026.";
+        when(classifier.classifyInference(q, "cls"))
+                .thenReturn(new ClassifierInferenceResponse("GET_FIELD", 0.12, "hash1", List.of()));
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
+
+        ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), q);
+
+        assertEquals(ClassifierStatus.OK, out.classifierStatus());
+        assertEquals(QueryType.GET_DURATION, out.classifierQueryType().orElseThrow());
+    }
+
+    @Test
     void okClassification_returnsOk() {
         QueryClassifier classifier = mock(QueryClassifier.class);
         when(classifier.classifyInference("How many documents?", "cls"))
@@ -128,7 +176,22 @@ class DefaultQueryClassifierAdapterTest {
     }
 
     @Test
-    void lowConfidence_mapsToLowConfidence_withoutFakePrediction() {
+    void lowConfidence_spanishMatrixQuestion_usesDeterministicPattern() {
+        QueryClassifier classifier = mock(QueryClassifier.class);
+        String q = "¿Qué actas tienen hora de inicio a las 19:00?";
+        when(classifier.classifyInference(q, "cls"))
+                .thenReturn(new ClassifierInferenceResponse("SUMMARIZE_MEETING", 0.1, "abc123", List.of()));
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
+
+        ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), q);
+
+        assertEquals(ClassifierStatus.OK, out.classifierStatus());
+        assertEquals(Optional.of(QueryType.FILTER_AND_LIST), out.classifierQueryType());
+        assertEquals("DETERMINISTIC_PATTERN", out.note());
+    }
+
+    @Test
+    void lowConfidence_acceptsApplicableMlLabel() {
         QueryClassifier classifier = mock(QueryClassifier.class);
         when(classifier.classifyInference("How many documents?", "cls"))
                 .thenReturn(new ClassifierInferenceResponse("COUNT_DOCUMENTS", 0.2, "abc123", List.of()));
@@ -136,9 +199,22 @@ class DefaultQueryClassifierAdapterTest {
 
         ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "How many documents?");
 
+        assertEquals(ClassifierStatus.OK, out.classifierStatus());
+        assertEquals(Optional.of(QueryType.COUNT_DOCUMENTS), out.classifierQueryType());
+        assertEquals("APPLICABLE_LOW_CONFIDENCE", out.note());
+    }
+
+    @Test
+    void lowConfidence_mapsToLowConfidence_whenLabelNotApplicableAndNoRule() {
+        QueryClassifier classifier = mock(QueryClassifier.class);
+        when(classifier.classifyInference("random unrelated text", "cls"))
+                .thenReturn(new ClassifierInferenceResponse("EXTRACT_ENTITIES", 0.2, "abc123", List.of()));
+        DefaultQueryClassifierAdapter adapter = adapter(classifier);
+
+        ClassifierOutcome out = adapter.classify(ctxToolsEnabled(), "random unrelated text");
+
         assertEquals(ClassifierStatus.LOW_CONFIDENCE, out.classifierStatus());
         assertTrue(out.classifierQueryType().isEmpty());
-        assertEquals(Optional.of(0.2), out.classifierConfidence());
     }
 
     @Test

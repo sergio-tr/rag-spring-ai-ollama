@@ -146,6 +146,21 @@ class RouteCandidateConstraintValidatorTest {
     }
 
     @Test
+    void acceptsFindParagraphGasLeakCorpusNegative() {
+        QueryPlan plan =
+                plan(
+                        "¿Qué se comentó respecto a la fuga de gas?",
+                        QueryType.FIND_PARAGRAPH);
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan,
+                        "No se encuentra ninguna mención a una fuga de gas en las actas disponibles.",
+                        Optional.of(DeterministicToolKind.FIND_PARAGRAPH_TOOL));
+
+        assertThat(result.safe()).isTrue();
+    }
+
+    @Test
     void acceptsCleanNegativeFindParagraphAnswer() {
         QueryPlan plan =
                 plan(
@@ -312,6 +327,218 @@ class RouteCandidateConstraintValidatorTest {
         assertThat(result.safe()).isFalse();
         assertThat(result.rejectionReasons())
                 .anyMatch(r -> r.contains("month_constraint"));
+    }
+
+    @Test
+    void acceptsFilterListAugustSlashDateAnswer() {
+        QueryPlan plan =
+                plan(
+                        "¿Qué reuniones celebradas en agosto hablaron sobre videovigilancia y tuvieron más de 18 asistentes?",
+                        QueryType.FILTER_AND_LIST);
+        String answer =
+                "La reunión del 25/08/2026 (ACTA 6) trató videovigilancia y tuvo 19 asistentes.";
+
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan, answer, Optional.of(DeterministicToolKind.FILTER_AND_LIST_TOOL));
+
+        assertThat(result.safe()).isTrue();
+        assertThat(result.rejectionReasons()).isEmpty();
+    }
+
+    @Test
+    void acceptsFilterListAugustIsoDateAnswer() {
+        QueryPlan plan =
+                plan(
+                        "¿Qué reuniones celebradas en agosto hablaron sobre videovigilancia y tuvieron más de 18 asistentes?",
+                        QueryType.FILTER_AND_LIST);
+        String answer =
+                "La reunión del 2026-08-25 (ACTA 6) trató videovigilancia y tuvo 19 asistentes.";
+
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan, answer, Optional.of(DeterministicToolKind.FILTER_AND_LIST_TOOL));
+
+        assertThat(result.safe()).isTrue();
+    }
+
+    @Test
+    void acceptsFilterListStartTimeAnswer() {
+        QueryPlan plan =
+                plan("¿Qué actas tienen hora de inicio a las 19:00?", QueryType.FILTER_AND_LIST);
+        String answer =
+                "Hay 3 actas con hora de inicio a las 19:00: ACTA 1 (24/02/2025), ACTA 2 (25/02/2025) y ACTA 5 (25/02/2026). Fuentes: ACTA 1.pdf, ACTA 2.pdf, ACTA 5.pdf.";
+
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan, answer, Optional.of(DeterministicToolKind.FILTER_AND_LIST_TOOL));
+
+        assertThat(result.safe()).isTrue();
+    }
+
+    @Test
+    void acceptsAscensorCountDocumentsAnswer() {
+        QueryPlan plan = plan("¿Cuántas actas mencionan el ascensor?", QueryType.COUNT_DOCUMENTS);
+        String answer =
+                "El ascensor se menciona en dos actas: ACTA 1.pdf (24/02/2025) y ACTA 6.pdf (25/08/2026).";
+
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan, answer, Optional.of(DeterministicToolKind.COUNT_DOCUMENTS_TOOL));
+
+        assertThat(result.safe()).isTrue();
+    }
+
+    @Test
+    void acceptsGetFieldAgendaAnswerWithoutRepeatingQueryYear() {
+        QueryPlan plan =
+                plan(
+                        "¿Cuáles fueron los puntos del orden del día del 24 de febrero de 2025?",
+                        QueryType.GET_FIELD);
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan,
+                        "- Lectura y aprobación del acta anterior\n- Estado de cuentas y presupuesto anual\n- Reparaciones y mantenimiento",
+                        Optional.of(DeterministicToolKind.GET_FIELD_TOOL));
+
+        assertThat(result.safe()).isTrue();
+    }
+
+    @Test
+    void acceptsSummarizeMeetingAnswerWhenDateEntityUsesSlashFormatInQuery() {
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P6_QU_CORE_V1,
+                        "Resume brevemente el acta del 25/02/2026.",
+                        "Resume brevemente el acta del 25/02/2026.",
+                        "Resume brevemente el acta del 25/02/2026.",
+                        "Resume brevemente el acta del 25/02/2026.",
+                        QueryType.SUMMARIZE_MEETING.name(),
+                        Optional.of(QueryType.SUMMARIZE_MEETING),
+                        ClassifierStatus.OK,
+                        QueryIntent.SUMMARIZE,
+                        Map.of(),
+                        List.of("25/02/2026"),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled(
+                                "Resume brevemente el acta del 25/02/2026.", ""),
+                        ExpectedAnswerShape.SUMMARY,
+                        new AmbiguityAssessment(AmbiguityStatus.SUFFICIENT, List.of(), List.of()),
+                        "corr",
+                        "",
+                        List.of());
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan,
+                        "La reunión del 25 de febrero de 2026 tuvo lugar de 19:00 a 20:30, con la asistencia de 17 propietarios.",
+                        Optional.of(DeterministicToolKind.SUMMARIZE_MEETING_TOOL));
+
+        assertThat(result.safe()).isTrue();
+    }
+
+    @Test
+    void acceptsGetDurationStructuredAnswerWithTimesAndMinutes() {
+        QueryPlan plan =
+                plan(
+                        "Duración de la reunión del 25 de febrero de 2026.",
+                        QueryType.GET_DURATION);
+        String answer =
+                "La reunión del 25 de febrero de 2026 comenzó a las 19:00 y terminó a las 20:30 (1 hora y 30 minutos / 90 minutos).";
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan, answer, Optional.of(DeterministicToolKind.GET_DURATION_TOOL));
+
+        assertThat(result.safe()).isTrue();
+    }
+
+    @Test
+    void rejectsGetDurationAnswerMissingDurationTokens() {
+        QueryPlan plan =
+                plan(
+                        "Duración de la reunión del 25 de febrero de 2026.",
+                        QueryType.GET_DURATION);
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan,
+                        "La reunión duró de 19:00 a 20:30.",
+                        Optional.of(DeterministicToolKind.GET_DURATION_TOOL));
+
+        assertThat(result.safe()).isFalse();
+        assertThat(result.rejectionReasons()).anyMatch(r -> r.contains("month_constraint_missing"));
+    }
+
+    @Test
+    void rejectsFindParagraphUndatedMixedActaSummary() {
+        QueryPlan plan =
+                plan(
+                        "¿Qué se dijo en relación a la limpieza de las zonas comunes?",
+                        QueryType.FIND_PARAGRAPH);
+        String mixed =
+                "Se aprobó la contratación de un nuevo servicio de limpieza con mayor frecuencia y se acordó colocar señalización adicional y reforzar el control para solucionar los problemas de estacionamiento indebido en las zonas comunes.";
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan, mixed, Optional.of(DeterministicToolKind.FIND_PARAGRAPH_TOOL));
+
+        assertThat(result.safe()).isFalse();
+        assertThat(result.rejectionReasons()).anyMatch(r -> r.contains("find_paragraph_missing_acta_reference"));
+    }
+
+    @Test
+    void rejectsFilterListAbstentionWithoutMandatoryFields() {
+        QueryPlan plan =
+                plan(
+                        "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez.",
+                        QueryType.FILTER_AND_LIST);
+        String abstention =
+                "No consta en las fuentes disponibles información suficiente para responder con seguridad.";
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan, abstention, Optional.of(DeterministicToolKind.FILTER_AND_LIST_TOOL));
+
+        assertThat(result.safe()).isFalse();
+        assertThat(result.rejectionReasons()).contains("filter_list_unsupported_abstention");
+    }
+
+    @Test
+    void rejectsCountAndExplainLexicalWordCountAnswer() {
+        QueryPlan plan =
+                plan(
+                        "Cuántas veces aparece la calefacción y en qué contexto fue tratada.",
+                        QueryType.COUNT_AND_EXPLAIN);
+        String lexicalCount =
+                "La calefacción aparece 3 veces. (1) La primera mención se refiere a la evaluación del sistema.";
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan, lexicalCount, Optional.of(DeterministicToolKind.COUNT_AND_EXPLAIN_TOOL));
+
+        assertThat(result.safe()).isFalse();
+    }
+
+    @Test
+    void rejectsCountAndExplainClarificationQuestionAsAnswer() {
+        QueryPlan plan =
+                plan(
+                        "¿En qué reuniones hubo exactamente 21 asistentes y qué se decidió en esa reunión?",
+                        QueryType.COUNT_AND_EXPLAIN);
+        String clarification = "¿A qué acta o reunión te refieres? Indica la fecha o el documento.";
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan, clarification, Optional.of(DeterministicToolKind.COUNT_AND_EXPLAIN_TOOL));
+
+        assertThat(result.safe()).isFalse();
+    }
+
+    @Test
+    void rejectsSummarizeMeetingWrongActaDumpForYearOnlyQuery() {
+        QueryPlan plan = plan("Resume el acta del año 2030.", QueryType.SUMMARIZE_MEETING);
+        String wrongActaDump =
+                "Reunión del 25 de febrero de 2026 | ACTA DE LA REUNIÓN DE LA COMUNIDAD DE VECINOS Fecha: 25 de febrero de 2026";
+        RouteCandidateValidationResult result =
+                validator.validateToolOrFunctionAnswer(
+                        plan, wrongActaDump, Optional.of(DeterministicToolKind.SUMMARIZE_MEETING_TOOL));
+
+        assertThat(result.safe()).isFalse();
     }
 
     private static QueryPlan plan(String query, QueryType queryType) {

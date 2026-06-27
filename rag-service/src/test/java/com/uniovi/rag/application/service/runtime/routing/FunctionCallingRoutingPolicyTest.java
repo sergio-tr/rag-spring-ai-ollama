@@ -32,7 +32,7 @@ class FunctionCallingRoutingPolicyTest {
     }
 
     @Test
-    void resolve_disabled_whenDeterministicToolRoutingEnabled() {
+    void resolve_selectsFunctionCallingRoute_whenDeterministicToolRoutingAlsoEnabled() {
         RagConfig rag =
                 new RagConfig(
                         true,
@@ -64,8 +64,7 @@ class FunctionCallingRoutingPolicyTest {
 
         var decision = policy.resolve(rag, minimalPlan());
 
-        assertThat(decision.primaryRouteKind()).isEqualTo(AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE);
-        assertThat(decision.reasons()).contains("deterministicToolRoutingEnabled=true");
+        assertThat(decision.primaryRouteKind()).isEqualTo(AdaptiveRouteKind.FUNCTION_CALLING_ROUTE);
     }
 
     private static RagConfig p9Rag() {

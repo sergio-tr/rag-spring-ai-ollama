@@ -53,6 +53,11 @@ wait_for_pg() {
 if docker ps -a --format '{{.Names}}' | grep -qx "${CONTAINER_NAME}"; then
   if docker ps --format '{{.Names}}' | grep -qx "${CONTAINER_NAME}"; then
     echo "Using existing running container: ${CONTAINER_NAME}"
+    mapped_port="$(docker port "${CONTAINER_NAME}" 5432/tcp 2>/dev/null | head -1 | sed 's/.*://')"
+    if [[ -n "${mapped_port}" ]]; then
+      export RAG_LOCAL_POSTGRES_PORT="${mapped_port}"
+      echo "Using published Postgres port ${RAG_LOCAL_POSTGRES_PORT} for ${CONTAINER_NAME}"
+    fi
   else
     docker start "${CONTAINER_NAME}"
   fi

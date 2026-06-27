@@ -18,10 +18,7 @@ import org.springframework.test.context.ActiveProfiles;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * P11 regression suite: critical questions and known bad patterns.
- * Asserts that responses for non-existent dates do not contain wrong years,
- * and that expected tool/routing behavior is preserved.
- * Run with data loaded and Ollama for full coverage; unit-level guards are tested in DateExistenceGuardTest.
+ * Acceptance-lane regression: critical query execution behaviors (date guards, classifier routing).
  */
 @SpringBootTest(
         classes = Application.class,
@@ -38,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @ActiveProfiles("test")
 @EnabledIf(value = "com.uniovi.rag.testsupport.TestEnvironment#isSpringBootPostgresAvailable",
         disabledReason = "Set SPRING_DATASOURCE_URL (e.g. CI) or start Docker for Testcontainers")
-class RagStabilizationRegressionTest {
+class RagAcceptanceLaneRegressionTest {
 
     @Autowired
     private QueryExecutionService queryService;

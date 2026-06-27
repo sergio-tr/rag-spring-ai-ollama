@@ -65,7 +65,7 @@ services:
       context: ../classifier-service
       dockerfile: Dockerfile
       args:
-        BASE_IMAGE: ${CLASSIFIER_PYTHON_BASE_IMAGE:-python:3.11-slim}
+        BASE_IMAGE: ${CLASSIFIER_PYTHON_BASE_IMAGE:-nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04}
         PORT: ${PORT:-8000}
         MODELS_DIR: ${MODELS_DIR:-/app/models}
         DATA_DIR: ${DATA_DIR:-/app/data}
@@ -120,6 +120,7 @@ services:
       RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${CLASSIFIER_SERVICE_PORT:-8000}
       # Keep container health independent from "model loaded" gates.
       RAG_HEALTH_CLASSIFIER_REQUIRE_MODEL_LOADED: "false"
+      RAG_STORAGE_ROOT: ${RAG_STORAGE_ROOT:-/var/lib/rag/storage}
     extra_hosts:
       # Linux/WSL2 parity for the official demo mode: Docker app + Ollama on the host.
       - "host.docker.internal:host-gateway"
@@ -143,6 +144,8 @@ services:
       timeout: 12s
       retries: 6
       start_period: 120s
+    volumes:
+      - rag_binary_storage:${RAG_STORAGE_ROOT:-/var/lib/rag/storage}
     restart: unless-stopped
 
   webapp:
@@ -158,8 +161,8 @@ services:
         # Prefer rag-service legal versions so webapp build stays aligned with backend validation.
         NEXT_PUBLIC_LEGAL_PRIVACY_VERSION: ${WEBAPP_NEXT_PUBLIC_LEGAL_PRIVACY_VERSION:-${NEXT_PUBLIC_LEGAL_PRIVACY_VERSION:-${RAG_AUTH_LEGAL_PRIVACY_POLICY_VERSION:-2026-06}}}
         NEXT_PUBLIC_LEGAL_TERMS_VERSION: ${WEBAPP_NEXT_PUBLIC_LEGAL_TERMS_VERSION:-${NEXT_PUBLIC_LEGAL_TERMS_VERSION:-${RAG_AUTH_LEGAL_TERMS_VERSION:-2026-06}}}
-        NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME: ${WEBAPP_NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME:-${NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME:-}}
-        NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME: ${WEBAPP_NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME:-${NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME:-}}
+        NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME: ${WEBAPP_NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME:-${NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME:-rag_access_token}}
+        NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME: ${WEBAPP_NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME:-${NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME:-rag_refresh_token}}
     # Host ports: compose.dev-direct-ports.yml (--rag, no --proxy) or reverse-proxy (--rag --proxy).
     env_file:
       - ../webapp/.env
@@ -411,6 +414,7 @@ services:
 
 volumes:
   postgres_data:
+  rag_binary_storage:
   prometheus_data:
   grafana_data:
   ollama_data:

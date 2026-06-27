@@ -242,7 +242,7 @@ public class SparseRetrievalStrategy {
 
         MapSqlParameterSource p = new MapSqlParameterSource();
         p.addValue("projectId", req.projectId());
-        p.addValue("snapshotIds", req.snapshotIds());
+        p.addValue("snapshotIds", snapshotIdStrings(req.snapshotIds()));
         p.addValue("limit", req.topKSparse());
 
         if (stage.tsQueryMode() == TsQueryMode.ILIKE) {
@@ -278,6 +278,10 @@ public class SparseRetrievalStrategy {
         };
     }
 
+    private static List<String> snapshotIdStrings(List<UUID> snapshotIds) {
+        return snapshotIds.stream().map(UUID::toString).toList();
+    }
+
     private List<RetrievalCandidate> executeIlike(RetrievalRequest req, String orJoined, MapSqlParameterSource p) {
         List<String> terms = splitOrTerms(orJoined);
         if (terms.isEmpty()) {
@@ -292,18 +296,27 @@ public class SparseRetrievalStrategy {
         if (patterns.isEmpty()) {
             return List.of();
         }
-        p.addValue("patterns", patterns);
+        StringBuilder likeClause = new StringBuilder(" AND (");
+        for (int i = 0; i < patterns.size(); i++) {
+            String key = "pattern" + i;
+            p.addValue(key, patterns.get(i));
+            if (i > 0) {
+                likeClause.append(" OR ");
+            }
+            likeClause.append("lower(content) LIKE :").append(key);
+        }
+        likeClause.append(") ");
 
         StringBuilder sql =
                 new StringBuilder(
                         """
-                        SELECT id, content, metadata::text AS metadata_json, chunk_index, 0.01 AS rank
+                        SELECT id, content, CAST(metadata AS TEXT) AS metadata_json, chunk_index, 0.01 AS rank
                         FROM vector_store
-                        WHERE (project_id IS NOT DISTINCT FROM CAST(:projectId AS uuid))
-                          AND (metadata->>'indexSnapshotId') IS NOT NULL
-                          AND (metadata->>'indexSnapshotId')::uuid IN (:snapshotIds)
-                          AND lower(content) LIKE ANY (CAST(:patterns AS text[]))
+                        WHERE project_id IS NOT DISTINCT FROM :projectId
+                          AND metadata->>'indexSnapshotId' IS NOT NULL
+                          AND metadata->>'indexSnapshotId' IN (:snapshotIds)
                         """);
+        sql.append(likeClause);
         if (!appendDocumentAllowlist(sql, req, p)) {
             return List.of();
         }
@@ -313,12 +326,12 @@ public class SparseRetrievalStrategy {
 
     private String buildSelectClause(String tsqueryExpr) {
         return """
-                SELECT id, content, metadata::text AS metadata_json, chunk_index,
+                SELECT id, content, CAST(metadata AS TEXT) AS metadata_json, chunk_index,
                   ts_rank_cd(content_tsv, %s) AS rank
                 FROM vector_store
-                WHERE (project_id IS NOT DISTINCT FROM CAST(:projectId AS uuid))
-                  AND (metadata->>'indexSnapshotId') IS NOT NULL
-                  AND (metadata->>'indexSnapshotId')::uuid IN (:snapshotIds)
+                WHERE project_id IS NOT DISTINCT FROM :projectId
+                  AND metadata->>'indexSnapshotId' IS NOT NULL
+                  AND metadata->>'indexSnapshotId' IN (:snapshotIds)
                   AND content_tsv @@ %s
                 """
                 .formatted(tsqueryExpr, tsqueryExpr);
@@ -342,12 +355,12 @@ public class SparseRetrievalStrategy {
         if (docUuids.isEmpty()) {
             return false;
         }
-        p.addValue("docIds", docUuids);
+        p.addValue("docIds", docUuids.stream().map(UUID::toString).toList());
         sql.append(
                 """
                  AND (
-                   (metadata->>'documentId')::uuid IN (:docIds)
-                   OR (metadata->>'projectDocumentId')::uuid IN (:docIds)
+                   metadata->>'documentId' IN (:docIds)
+                   OR metadata->>'projectDocumentId' IN (:docIds)
                  )
                 """);
         return true;

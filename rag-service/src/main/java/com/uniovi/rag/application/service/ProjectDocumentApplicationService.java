@@ -58,7 +58,7 @@ public class ProjectDocumentApplicationService {
     public List<ProjectDocumentDto> listDocuments(UUID userId, UUID projectId) {
         projectAccessService.requireOwnedProject(userId, projectId);
         return knowledgeDocumentRepository.findByProject_IdOrderByUploadedAtDesc(projectId).stream()
-                .map(ProjectDocumentApplicationService::toDto)
+                .map(this::toDto)
                 .toList();
     }
 
@@ -71,7 +71,7 @@ public class ProjectDocumentApplicationService {
                                         || (d.getCorpusScope() == CorpusScope.CHAT_LOCAL
                                                 && d.getConversation() != null
                                                 && conversationId.equals(d.getConversation().getId())))
-                .map(ProjectDocumentApplicationService::toDto)
+                .map(this::toDto)
                 .toList();
     }
 
@@ -183,7 +183,11 @@ public class ProjectDocumentApplicationService {
                 userId, row.getProject().getId(), row.getId());
     }
 
-    private static ProjectDocumentDto toDto(KnowledgeDocumentEntity e) {
+    private ProjectDocumentDto toDto(KnowledgeDocumentEntity e) {
+        boolean storagePresent =
+                e.getStorageUri() != null
+                        && !e.getStorageUri().isBlank()
+                        && binaryStoragePort.isReadableNonEmpty(e.getStorageUri());
         return new ProjectDocumentDto(
                 e.getId(),
                 e.getFileName(),
@@ -196,6 +200,6 @@ public class ProjectDocumentApplicationService {
                 e.getConversation() != null ? e.getConversation().getId() : null,
                 e.getCurrentIndexSnapshot() != null ? e.getCurrentIndexSnapshot().getId() : null,
                 e.getCurrentIndexSnapshot() != null ? e.getCurrentIndexSnapshot().getSignatureHash() : null,
-                e.getStorageUri() != null && !e.getStorageUri().isBlank());
+                storagePresent);
     }
 }

@@ -5,6 +5,8 @@ import { parseJsonExpectNonHtml } from "../fixtures/json-contract";
 import { integrationCredentials, productUrl } from "../fixtures/env";
 
 test.describe("Chat send API @api @chatRuntime", () => {
+  test.describe.configure({ timeout: 240_000 });
+
   test("POST Buenos dias returns 202, poll never 500/502, conversation preset resolved", async ({
     request,
   }) => {

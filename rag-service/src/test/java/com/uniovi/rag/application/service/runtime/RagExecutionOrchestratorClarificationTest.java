@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
 import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.port.PendingClarificationStore;
@@ -87,7 +88,7 @@ class RagExecutionOrchestratorClarificationTest {
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
 
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         PendingClarificationStore pendingStore = mock(PendingClarificationStore.class);
@@ -112,18 +113,18 @@ class RagExecutionOrchestratorClarificationTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        mock(DeterministicToolRoutingStrategy.class),
+                        MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy(),
                         mock(FunctionCallingRoutingStrategy.class),
                         mock(AdvisorRoutingStrategy.class),
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         var out = orchestrator.execute(in);
 
         assertThat(out.workflowName()).isEqualTo("clarification");
-        assertThat(out.answerText()).isEqualTo("Which date or meeting are you referring to?");
+        assertThat(out.answerText()).isEqualTo("¿A qué acta o reunión te refieres? Indica la fecha o el documento.");
         assertThat(out.executionTrace().clarificationQuestionAsked()).isTrue();
         assertThat(out.executionTrace().clarificationOutcome()).isEqualTo("ASKED_CLARIFICATION");
 
@@ -231,7 +232,7 @@ class RagExecutionOrchestratorClarificationTest {
                 mock(AdvisorRoutingStrategy.class);
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
 
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         when(clarificationPolicyResolver.resolve(any(), any()))
@@ -293,13 +294,13 @@ class RagExecutionOrchestratorClarificationTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        mock(DeterministicToolRoutingStrategy.class),
+                        MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy(),
                         mock(FunctionCallingRoutingStrategy.class),
                         advisorRoutingStrategy,
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         orchestrator.execute(merged);
 

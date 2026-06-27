@@ -192,16 +192,26 @@ else
   append_result "integration-strict" "SKIPPED_BY_FLAG" "0" "" "0"
 fi
 
-run_step "e2e-smoke" bash -lc 'cd webapp && npm run test:e2e'
+run_step "e2e-smoke" bash -lc 'cd webapp && env -u PLAYWRIGHT_SKIP_WEBSERVER -u PLAYWRIGHT_BASE_URL -u PLAYWRIGHT_IGNORE_HTTPS_ERRORS npx playwright install --with-deps chromium && npm run test:e2e:ci-fast'
 
 if [[ "${RUN_E2E_FULLSTACK}" = "1" ]]; then
-  run_step "e2e-fullstack" bash -lc '.github/local/run-e2e-fullstack-ci-like.sh'
+  run_step "e2e-fullstack" bash -lc '
+  if command -v fuser >/dev/null 2>&1; then fuser -k 3000/tcp 2>/dev/null || true; sleep 1; fi
+  env -u PLAYWRIGHT_SKIP_WEBSERVER -u PLAYWRIGHT_BASE_URL -u PLAYWRIGHT_IGNORE_HTTPS_ERRORS .github/local/run-e2e-fullstack-ci-like.sh
+'
 else
   append_result "e2e-fullstack" "SKIPPED_BY_FLAG" "0" "" "0"
 fi
 
 if [[ "${RUN_PERFORMANCE}" = "1" ]]; then
-  run_step "performance-ci-like" bash -lc '.github/local/run-performance-ci-like.sh'
+  run_step "performance-ci-like" bash -lc '
+    docker rm -f rag-ci-backend rag-ci-proxy 2>/dev/null || true
+    if command -v fuser >/dev/null 2>&1; then
+      fuser -k 3000/tcp 8443/tcp 9000/tcp 2>/dev/null || true
+      sleep 2
+    fi
+    bash .github/local/run-performance-ci-like.sh
+  '
 else
   append_result "performance-ci-like" "SKIPPED_BY_FLAG" "0" "" "0"
 fi

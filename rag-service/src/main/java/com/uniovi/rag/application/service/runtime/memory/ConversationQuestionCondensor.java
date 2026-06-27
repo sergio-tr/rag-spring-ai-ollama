@@ -9,6 +9,7 @@ import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Single-call, bounded, LLM-backed condensation for conversational planning input (P12).
@@ -31,12 +32,21 @@ public class ConversationQuestionCondensor {
         Objects.requireNonNull(ctx, "ctx");
         Objects.requireNonNull(slice, "slice");
 
+        Optional<String> deterministic =
+                ConversationFollowUpResolver.expand(slice.turns(), literalLatestUserTurn);
+        if (deterministic.isPresent() && !deterministic.get().isBlank()) {
+            return deterministic.get();
+        }
+
         String prompt = buildUserPrompt(slice, literalLatestUserTurn, preMemoryPlanningInputText);
         var spec = chatClient.prompt()
                 .system("""
                         You are a deterministic query condenser for a multi-turn conversation.
                         Output ONLY a single plain text planning query. No markdown. No quotes.
                         Do not invent facts. Use only the provided history and the latest user turn.
+                        When the latest turn uses demonstratives (esa reunión, ese acta, esa fecha),
+                        expand them with the most recent meeting date or acta reference from HISTORY.
+                        When the latest turn asks who presided, include the anchored acta date from HISTORY.
                         """)
                 .user(prompt);
 

@@ -9,6 +9,11 @@ import com.uniovi.rag.domain.knowledge.KnowledgeBuildProjection;
 import com.uniovi.rag.domain.knowledge.KnowledgeOperationKind;
 import com.uniovi.rag.domain.knowledge.KnowledgeReindexDecision;
 import com.uniovi.rag.domain.knowledge.KnowledgeReindexKind;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
+import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
+import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -30,18 +35,21 @@ public class KnowledgeConfigurationIntegrationService {
     private final ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
     private final KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
     private final ReindexService reindexService;
+    private final KnowledgeSnapshotService knowledgeSnapshotService;
 
     public KnowledgeConfigurationIntegrationService(
             ConfigResolverService configResolverService,
             KnowledgeBuildProjectionMapper knowledgeBuildProjectionMapper,
             ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService,
             KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
-            ReindexService reindexService) {
+            ReindexService reindexService,
+            KnowledgeSnapshotService knowledgeSnapshotService) {
         this.configResolverService = configResolverService;
         this.knowledgeBuildProjectionMapper = knowledgeBuildProjectionMapper;
         this.resolvedConfigSnapshotApplicationService = resolvedConfigSnapshotApplicationService;
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
         this.reindexService = reindexService;
+        this.knowledgeSnapshotService = knowledgeSnapshotService;
     }
 
     @Transactional(readOnly = true)
@@ -81,6 +89,16 @@ public class KnowledgeConfigurationIntegrationService {
             CorpusScope corpusScope,
             UUID conversationId,
             UUID projectId) {
+        Optional<KnowledgeReindexDecision> metadataUpgrade =
+                metadataSnapshotUpgradeDecision(projection, corpusScope, conversationId, projectId);
+        if (metadataUpgrade.isPresent()) {
+            return metadataUpgrade.get();
+        }
+        Optional<KnowledgeReindexDecision> profileUpgrade =
+                indexProfileSnapshotUpgradeDecision(projection, corpusScope, conversationId, projectId);
+        if (profileUpgrade.isPresent()) {
+            return profileUpgrade.get();
+        }
         if (projection.reindexImpact() == null
                 || projection.reindexImpact().level() == ReindexImpactLevel.NO_REINDEX) {
             return new KnowledgeReindexDecision(KnowledgeReindexKind.NO_OP);
@@ -102,6 +120,72 @@ public class KnowledgeConfigurationIntegrationService {
             return new KnowledgeReindexDecision(KnowledgeReindexKind.HARD_REBUILD);
         }
         return new KnowledgeReindexDecision(KnowledgeReindexKind.NO_OP);
+    }
+
+    /**
+     * When a preset requires metadata extraction but the active project snapshot was built without metadata,
+     * force a hard rebuild so chat/Lab presets (Demo_Best, P7, …) can run without manual DB flags.
+     */
+    private Optional<KnowledgeReindexDecision> metadataSnapshotUpgradeDecision(
+            KnowledgeBuildProjection projection,
+            CorpusScope corpusScope,
+            UUID conversationId,
+            UUID projectId) {
+        if (!projection.metadataExtractionEnabled() || corpusScope != CorpusScope.PROJECT_SHARED) {
+            return Optional.empty();
+        }
+        Optional<KnowledgeIndexSnapshotEntity> active = knowledgeSnapshotService.findActiveProjectSnapshot(projectId);
+        if (active.isEmpty()) {
+            return Optional.empty();
+        }
+        IndexSnapshotCapabilities caps =
+                IndexSnapshotCapabilities.fromIndexProfile(active.get().getIndexProfileJsonb());
+        if (Boolean.TRUE.equals(caps.supportsMetadata())) {
+            return Optional.empty();
+        }
+        if (!knowledgePipelineOrchestrator.hasReadyDocumentsInScope(projectId, corpusScope, conversationId)) {
+            return Optional.empty();
+        }
+        return Optional.of(new KnowledgeReindexDecision(KnowledgeReindexKind.HARD_REBUILD));
+    }
+
+    /**
+     * When the resolved projection targets an index profile (materialization/metadata/chunking) that has no ACTIVE
+     * project snapshot yet, force a hard rebuild so alternate materializations can coexist per profile hash.
+     */
+    private Optional<KnowledgeReindexDecision> indexProfileSnapshotUpgradeDecision(
+            KnowledgeBuildProjection projection,
+            CorpusScope corpusScope,
+            UUID conversationId,
+            UUID projectId) {
+        if (corpusScope != CorpusScope.PROJECT_SHARED || projection == null) {
+            return Optional.empty();
+        }
+        MaterializationStrategy strategy =
+                projection.materializationStrategy() != null
+                        ? projection.materializationStrategy()
+                        : MaterializationStrategy.CHUNK_LEVEL;
+        String expectedHash =
+                ProjectIndexProfile.computeProfileHash(
+                        strategy,
+                        projection.metadataExtractionEnabled(),
+                        "",
+                        projection.embeddingModelId(),
+                        projection.chunkMaxChars(),
+                        projection.chunkOverlap());
+        Optional<KnowledgeIndexSnapshotEntity> compatible =
+                knowledgeSnapshotService.findCompatibleProjectSnapshot(
+                        projectId,
+                        snap ->
+                                snap.getStatus() == IndexSnapshotStatus.ACTIVE
+                                        && expectedHash.equals(snap.getIndexProfileHash()));
+        if (compatible.isPresent()) {
+            return Optional.empty();
+        }
+        if (!knowledgePipelineOrchestrator.hasReadyDocumentsInScope(projectId, corpusScope, conversationId)) {
+            return Optional.empty();
+        }
+        return Optional.of(new KnowledgeReindexDecision(KnowledgeReindexKind.HARD_REBUILD));
     }
 
     private KnowledgeRebuildExecuteResult executeWithResolveAndPersist(KnowledgeConfigurationOperationInput input) {

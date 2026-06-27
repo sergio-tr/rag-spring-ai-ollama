@@ -1,5 +1,7 @@
 package com.uniovi.rag.application.service.runtime.tool;
 
+import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
+import com.uniovi.rag.application.service.runtime.query.QueryPlanSlotEnricher;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
@@ -68,8 +70,7 @@ public final class DeterministicToolEvidenceEvaluator {
 
     public static boolean requiredArgumentsPresent(DeterministicToolKind kind, QueryPlan plan) {
         if (kind == DeterministicToolKind.GET_FIELD_TOOL) {
-            String field = plan.slots().get("field");
-            return field != null && !field.isBlank();
+            return hasResolvableGetFieldSlot(plan);
         }
         return true;
     }
@@ -159,7 +160,7 @@ public final class DeterministicToolEvidenceEvaluator {
         if (kind.isEmpty()) {
             return;
         }
-        if (kind.get() == DeterministicToolKind.GET_FIELD_TOOL && !matchesGetField(plan)) {
+        if (kind.get() == DeterministicToolKind.GET_FIELD_TOOL && !hasResolvableGetFieldSlot(plan)) {
             return;
         }
         matches.add(kind.get());
@@ -188,6 +189,9 @@ public final class DeterministicToolEvidenceEvaluator {
         if (matchesGetField(plan)) {
             matches.add(DeterministicToolKind.GET_FIELD_TOOL);
         }
+        if (matchesSummarizeMeeting(plan)) {
+            matches.add(DeterministicToolKind.SUMMARIZE_MEETING_TOOL);
+        }
         return matches.size() > before;
     }
 
@@ -211,6 +215,9 @@ public final class DeterministicToolEvidenceEvaluator {
         }
         if (matches.contains(DeterministicToolKind.FIND_PARAGRAPH_TOOL) && hasFindParagraphText(query)) {
             return Optional.of(DeterministicToolKind.FIND_PARAGRAPH_TOOL);
+        }
+        if (matches.contains(DeterministicToolKind.SUMMARIZE_MEETING_TOOL) && matchesSummarizeMeeting(plan)) {
+            return Optional.of(DeterministicToolKind.SUMMARIZE_MEETING_TOOL);
         }
         return Optional.empty();
     }
@@ -292,17 +299,44 @@ public final class DeterministicToolEvidenceEvaluator {
     }
 
     private static boolean matchesGetField(QueryPlan plan) {
+        String query = queryTextLower(plan);
+        if (hasCountDocumentsText(query) || hasMeetingMentionCountText(query)) {
+            return false;
+        }
         boolean shapeOk =
-                effectiveIntent(plan) == QueryIntent.EXTRACT_FIELD
+                plan.classifierQueryType().filter(qt -> qt == QueryType.GET_FIELD).isPresent()
+                        || effectiveIntent(plan) == QueryIntent.EXTRACT_FIELD
                         || plan.expectedAnswerShape() == ExpectedAnswerShape.FIELD_VALUE;
         if (!shapeOk) {
             return false;
         }
+        return hasResolvableGetFieldSlot(plan);
+    }
+
+    private static boolean matchesSummarizeMeeting(QueryPlan plan) {
+        if (plan.classifierQueryType().filter(qt -> qt == QueryType.SUMMARIZE_MEETING).isEmpty()) {
+            return false;
+        }
+        String query = queryTextLower(plan);
+        return query.contains("resume") || query.contains("resum") || query.contains("summar");
+    }
+
+    private static boolean hasResolvableGetFieldSlot(QueryPlan plan) {
         String field = plan.slots().get("field");
         if (field == null || field.isBlank()) {
             field = rewriteSlots(plan).get("field");
         }
-        return field != null && !field.isBlank();
+        if (field == null || field.isBlank()) {
+            field = QueryPlanSlotEnricher.inferFieldSlot(plan.normalizedQueryText()).orElse(null);
+        }
+        if (field == null || field.isBlank()) {
+            return false;
+        }
+        if (ActaFieldAnchorHeuristics.isAttendeeScopedField(field)
+                && !ActaFieldAnchorHeuristics.hasExplicitDateInPlan(plan)) {
+            return false;
+        }
+        return true;
     }
 
     private static QueryIntent effectiveIntent(QueryPlan plan) {
@@ -388,8 +422,26 @@ public final class DeterministicToolEvidenceEvaluator {
                         || query.contains("que reuniones")
                         || query.contains("dime qué actas")
                         || query.contains("dime que actas");
-        boolean compoundFilter = query.contains(" y ") || query.contains(" y");
-        return listSubject && compoundFilter;
+        if (!listSubject) {
+            return false;
+        }
+        if (query.contains(" y ")) {
+            return true;
+        }
+        if (query.contains("tienen")
+                || query.contains("tratan")
+                || query.contains("celebradas")
+                || query.contains("duraron")
+                || query.contains("al menos")) {
+            return true;
+        }
+        return query.contains("mencionan")
+                && (query.contains("cámara")
+                        || query.contains("camara")
+                        || query.contains("videovigilancia")
+                        || query.contains("ascensor")
+                        || query.contains("convivencia")
+                        || query.contains("seguridad"));
     }
 
     private static boolean hasBooleanText(String query) {
@@ -421,6 +473,8 @@ public final class DeterministicToolEvidenceEvaluator {
         boolean mention =
                 query.contains("se habló de")
                         || query.contains("se hablo de")
+                        || query.contains("se habló sobre")
+                        || query.contains("se hablo sobre")
                         || query.contains("se mencionó")
                         || query.contains("se menciono");
         boolean scope =

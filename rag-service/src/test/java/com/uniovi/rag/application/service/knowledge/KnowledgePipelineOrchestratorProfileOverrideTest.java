@@ -88,7 +88,6 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
 
         when(knowledgeDocumentRepository.findByProject_IdAndCorpusScopeOrderByIdAsc(projectId, CorpusScope.PROJECT_SHARED))
                 .thenReturn(List.of(doc));
-        when(knowledgeSnapshotService.findActiveProjectSnapshot(projectId)).thenReturn(Optional.empty());
 
         when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(any())).thenReturn(1024);
         when(knowledgeIndexSnapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -191,7 +190,6 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
                                         10),
                                 Instant.now(),
                                 Instant.now()));
-        when(knowledgeSnapshotService.findActiveProjectSnapshot(projectId)).thenReturn(Optional.empty());
         when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning("qwen3-embedding:latest")).thenReturn(1024);
         when(knowledgeIndexSnapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 

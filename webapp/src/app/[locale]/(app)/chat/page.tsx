@@ -1056,7 +1056,7 @@ function ChatPageInner() {
         const id =
           typeof crypto !== "undefined" && "randomUUID" in crypto
             ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random()}-${file.name}`;
+            : `upload-${Date.now()}-${file.name}`;
         setUploadItems((prev) => [{ id, fileName: file.name, phase: "uploading" as const, file }, ...prev].slice(0, 20));
         try {
           const doc = await uploadDoc.mutateAsync(file);

@@ -52,9 +52,10 @@ public class RetrievalFusionService {
         FusionOriginSupport.OriginCounts origins = FusionOriginSupport.countOrigins(safeDense, safeSparse);
 
         Map<String, Double> scores = new HashMap<>();
+        final double denseLegWeight = sparseWouldDominateDense(safeDense, safeSparse) ? 1.18 : 1.0;
         for (int i = 0; i < safeDense.size(); i++) {
             String id = safeDense.get(i).candidateId();
-            scores.merge(id, 1.0 / (RetrievalPolicy.RRF_K + i + 1), Double::sum);
+            scores.merge(id, denseLegWeight / (RetrievalPolicy.RRF_K + i + 1), Double::sum);
         }
         for (int i = 0; i < safeSparse.size(); i++) {
             String id = safeSparse.get(i).candidateId();
@@ -207,5 +208,28 @@ public class RetrievalFusionService {
             return b;
         }
         return a;
+    }
+
+    /**
+     * When sparse leg introduces unrelated top ranks, slightly boost dense leg so relevant dense chunks are not suppressed.
+     */
+    private static boolean sparseWouldDominateDense(List<RetrievalCandidate> dense, List<RetrievalCandidate> sparse) {
+        if (dense == null || sparse == null || dense.isEmpty() || sparse.isEmpty()) {
+            return false;
+        }
+        Set<String> denseTop = new HashSet<>();
+        for (int i = 0; i < Math.min(3, dense.size()); i++) {
+            denseTop.add(dense.get(i).candidateId());
+        }
+        Set<String> sparseTop = new HashSet<>();
+        for (int i = 0; i < Math.min(3, sparse.size()); i++) {
+            sparseTop.add(sparse.get(i).candidateId());
+        }
+        if (sparseTop.isEmpty()) {
+            return false;
+        }
+        long sparseOnlyTop =
+                sparseTop.stream().filter(id -> !denseTop.contains(id)).count();
+        return sparseOnlyTop >= 2;
     }
 }

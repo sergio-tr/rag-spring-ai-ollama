@@ -21,6 +21,8 @@ import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
+import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
+import com.uniovi.rag.application.service.runtime.config.MaterializationAwareSnapshotResolver;
 import com.uniovi.rag.application.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
 import io.micrometer.tracing.Tracer;
@@ -93,8 +95,15 @@ public class ExecutionContextFactory {
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         userId, projectId, merged, correlationId);
+        Optional<UUID> presetId =
+                resolved.provenance() != null && resolved.provenance().presetId() != null
+                        ? Optional.of(resolved.provenance().presetId())
+                        : Optional.empty();
+        ExperimentalPresetCanonicalCatalog.IndexRequirements indexRequirements =
+                MaterializationAwareSnapshotResolver.requirementsFromPresetAndRag(
+                        presetId, resolved.toRagConfig());
         KnowledgeSnapshotSelection snapshots =
-                knowledgeRuntimeSnapshotSelector.select(projectId, conversationId);
+                knowledgeRuntimeSnapshotSelector.select(projectId, conversationId, indexRequirements);
         List<String> filter = copyDocumentFilter(documentFilter);
         return buildWithClarification(
                 userId,
@@ -166,8 +175,15 @@ public class ExecutionContextFactory {
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         userId, projectId, merged, correlationId);
+        Optional<UUID> presetId =
+                resolved.provenance() != null && resolved.provenance().presetId() != null
+                        ? Optional.of(resolved.provenance().presetId())
+                        : Optional.empty();
+        ExperimentalPresetCanonicalCatalog.IndexRequirements indexRequirements =
+                MaterializationAwareSnapshotResolver.requirementsFromPresetAndRag(
+                        presetId, resolved.toRagConfig());
         KnowledgeSnapshotSelection snapshots =
-                knowledgeRuntimeSnapshotSelector.select(projectId, conversationId);
+                knowledgeRuntimeSnapshotSelector.select(projectId, conversationId, indexRequirements);
         return buildWithClarification(
                 userId,
                 projectId,
@@ -246,6 +262,7 @@ public class ExecutionContextFactory {
                 mem.outcome() != ConversationMemoryOutcome.DISABLED_BY_CONFIG
                         && mem.outcome() != ConversationMemoryOutcome.NO_CONVERSATION_SCOPE;
         boolean historyLoaded = attempted && (mem.outcome() != ConversationMemoryOutcome.DISABLED_BY_CONFIG);
+        boolean memoryAppliedForTrace = memoryAppliedForTrace(mem);
         return new ExecutionContext(
                 base.userId(),
                 base.projectId(),
@@ -271,7 +288,7 @@ public class ExecutionContextFactory {
                 attempted,
                 historyLoaded,
                 mem.condensationAttempted(),
-                mem.condensationUsed(),
+                memoryAppliedForTrace,
                 mem.fallbackApplied(),
                 base.pendingClarificationLoadedForTrace(),
                 base.validPendingExistedAtLoad(),
@@ -285,6 +302,17 @@ public class ExecutionContextFactory {
                 Optional.empty(),
                 false,
                 List.of());
+    }
+
+    /** True when memory changed planning input (condensation or deterministic follow-up expansion). */
+    static boolean memoryAppliedForTrace(ConversationMemoryExecutionResult mem) {
+        if (mem == null) {
+            return false;
+        }
+        if (mem.condensationUsed()) {
+            return true;
+        }
+        return mem.outcome() == ConversationMemoryOutcome.MEMORY_APPLIED;
     }
 
     private static Optional<String> clarificationDisableReason(RagConfig rag, UUID conversationId) {

@@ -112,18 +112,68 @@ class RetrievalRerankerTest {
                 List.of("all"), true, Optional.empty());
     }
 
-    private static QueryPlan minimalPlan(List<String> entities) {
-        EntityExtractionResult entitiesResult =
+    @Test
+    void rerank_prefersSynonymTopicMatchOverExactKeywordMiss() {
+        UUID s = UUID.randomUUID();
+        RetrievalRequest req = fusionRequest("problemas en la instalacion electrica");
+        RetrievalCandidate exactKeywordMiss =
+                new RetrievalCandidate(
+                        s + ":a:0",
+                        "se debatio el presupuesto anual",
+                        Map.of("document_id", "a", "chunk_index", 0),
+                        Double.NaN,
+                        Double.NaN,
+                        1,
+                        0,
+                        s,
+                        0.05);
+        RetrievalCandidate synonymMatch =
+                new RetrievalCandidate(
+                        s + ":b:0",
+                        "se revisaron fallos en la instalacion electrica del edificio",
+                        Map.of("document_id", "b", "chunkIndex", 1),
+                        Double.NaN,
+                        Double.NaN,
+                        2,
+                        0,
+                        s,
+                        0.01);
+        EntityExtractionResult entities =
                 new EntityExtractionResult(
-                        entities,
                         List.of(),
                         List.of(),
                         List.of(),
+                        List.of("electrico"),
                         List.of(),
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
                         List.of());
+        QueryPlan plan = minimalPlan(List.of(), entities);
+
+        var result = reranker.rerank(req, plan, List.of(exactKeywordMiss, synonymMatch));
+
+        assertThat(result.candidates().getFirst().candidateId()).isEqualTo(synonymMatch.candidateId());
+    }
+
+    private static QueryPlan minimalPlan(List<String> entities) {
+        return minimalPlan(entities, null);
+    }
+
+    private static QueryPlan minimalPlan(List<String> entities, EntityExtractionResult entitiesResult) {
+        EntityExtractionResult resolved =
+                entitiesResult != null
+                        ? entitiesResult
+                        : new EntityExtractionResult(
+                                entities,
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty(),
+                                List.of());
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,
                 "raw",
@@ -137,7 +187,7 @@ class RetrievalRerankerTest {
                 Map.of(),
                 entities,
                 List.of(),
-                entitiesResult,
+                resolved,
                 StructuredRewriteResult.identityDisabled("r", "r"),
                 ExpectedAnswerShape.UNKNOWN,
                 AmbiguityAssessment.sufficient(),

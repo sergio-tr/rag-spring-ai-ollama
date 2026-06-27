@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
 import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
@@ -63,13 +64,13 @@ class RagExecutionOrchestratorSnapshotFallbackTest {
                         clarificationPolicy,
                         clarificationStrategy,
                         routingStrategy,
-                        mock(DeterministicToolRoutingStrategy.class),
+                        MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy(),
                         mock(FunctionCallingRoutingStrategy.class),
                         mock(AdvisorRoutingStrategy.class),
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
         return new OrchestratorHarness(orchestrator, direct);
     }
 

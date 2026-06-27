@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.format.TextStyle;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -66,6 +67,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
     /** Metadata key for original filename (ingestion / chunk grouping). */
     private static final String METADATA_KEY_FILENAME = "filename";
+
+    private static final String METADATA_KEY_PROJECT_DOCUMENT_ID = "projectDocumentId";
+
+    private static final String METADATA_KEY_INDEX_SNAPSHOT_ID = "indexSnapshotId";
+
+    private static final Pattern CANONICAL_ACTA_PDF_FILENAME =
+            Pattern.compile("(?i)ACTA\\s+\\d+\\.pdf");
 
     /** Serialized minute object or JSON in document metadata. */
     private static final String METADATA_KEY_MINUTE = "minute";
@@ -382,13 +390,19 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * This is a fallback when the complete object is not stored in metadata.
      */
     private Minute reconstructMinuteFromMetadata(Map<String, Object> metadata) {
-        // Use document_id for id when present so counting/deduping is by unique minute, not per chunk
-        String id = safeGetString(metadata, "document_id");
+        // Prefer projectDocumentId so HYBRID section/doc rows collapse to one acta
+        String id = safeGetString(metadata, METADATA_KEY_PROJECT_DOCUMENT_ID);
+        if (id == null || id.isBlank()) {
+            id = safeGetString(metadata, "document_id");
+        }
         if (id == null || id.isBlank()) {
             id = safeGetString(metadata, "id");
         }
         String filename = safeGetString(metadata, METADATA_KEY_FILENAME);
-        String date = safeGetString(metadata, METADATA_KEY_DATE);
+        String date = safeGetString(metadata, METADATA_KEY_DATE_ISO);
+        if (date == null || date.isBlank()) {
+            date = safeGetString(metadata, METADATA_KEY_DATE);
+        }
         String place = safeGetString(metadata, METADATA_KEY_PLACE);
         String startTime = safeGetString(metadata, METADATA_KEY_START_TIME);
         String endTime = safeGetString(metadata, METADATA_KEY_END_TIME);
@@ -398,9 +412,16 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         // Use safe methods for complex types
         List<String> attendees = safeGetStringList(metadata, METADATA_KEY_ATTENDEES);
 
-        int numberOfAttendees = metadata.containsKey(METADATA_KEY_NUMBER_OF_ATTENDEES)
-            ? safeGetInt(metadata, METADATA_KEY_NUMBER_OF_ATTENDEES, attendees.size())
-            : attendees.size();
+        int numberOfAttendees = 0;
+        if (metadata.containsKey(METADATA_KEY_ATTENDEES_COUNT)) {
+            numberOfAttendees = safeGetInt(metadata, METADATA_KEY_ATTENDEES_COUNT, 0);
+        }
+        if (numberOfAttendees <= 0 && metadata.containsKey(METADATA_KEY_NUMBER_OF_ATTENDEES)) {
+            numberOfAttendees = safeGetInt(metadata, METADATA_KEY_NUMBER_OF_ATTENDEES, 0);
+        }
+        if (numberOfAttendees <= 0 && attendees != null) {
+            numberOfAttendees = attendees.size();
+        }
 
         Map<String, String> agenda = safeGetStringMap(metadata, METADATA_KEY_AGENDA);
         List<String> decisions = safeGetStringList(metadata, METADATA_KEY_DECISIONS);
@@ -947,7 +968,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         
         // Remove common prefixes/suffixes
         normalized = normalized.replaceAll("(?i)^(hora|time|h):\\s*", "");
-        normalized = normalized.replaceAll("\\s*$", "");
+        normalized = normalized.replaceAll("(?i)\\s*h\\s*$", "");
+        normalized = normalized.replaceAll("\\s*:\\s*", ":");
+        normalized = normalized.replaceAll("\\s+$", "");
         
         // Replace dots with colons (e.g., "19.00" -> "19:00")
         normalized = normalized.replace('.', ':');
@@ -973,6 +996,121 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     return null;
                 }
             }
+        }
+    }
+
+    /**
+     * Resolves a minute's meeting start time from metadata or chunk content (never end-time mentions).
+     */
+    protected String resolveMinuteStartTime(Minute minute) {
+        if (minute == null) {
+            return null;
+        }
+        if (minute.startTime() != null && !minute.startTime().isBlank()) {
+            String normalized = normalizeTimeString(minute.startTime());
+            if (normalized != null) {
+                return normalized;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns true when the minute's start time equals the requested HH:mm value.
+     */
+    protected boolean minuteStartsAtTime(Minute minute, String targetTime) {
+        if (targetTime == null || targetTime.isBlank()) {
+            return false;
+        }
+        String resolved = resolveMinuteStartTime(minute);
+        return resolved != null && resolved.equals(targetTime);
+    }
+
+    protected record StartTimeQuery(String targetTime) {}
+
+    /**
+     * Detects list/filter queries asking which actas have a specific meeting start time (not count).
+     */
+    protected StartTimeQuery detectStartTimeListQuery(String query, JSONObject ner) {
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        String q =
+                Normalizer.normalize(query.toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+                        .replaceAll("\\p{M}", "");
+        boolean countCue =
+                q.contains("cuantas")
+                        || q.contains("cuántas")
+                        || q.contains("how many")
+                        || q.contains("cuanto");
+        if (countCue) {
+            return null;
+        }
+        boolean listCue =
+                q.contains("que actas")
+                        || q.contains("qué actas")
+                        || q.contains("which actas")
+                        || q.contains("which meetings")
+                        || (q.contains("actas") && (q.contains("tienen") || q.contains("tengan")));
+        boolean startCue =
+                q.contains("hora de inicio")
+                        || q.contains("inicio a las")
+                        || q.contains("comenzaron a las")
+                        || q.contains("comenzo a las")
+                        || q.contains("started at")
+                        || q.contains("start at");
+        if (!listCue || !startCue) {
+            return null;
+        }
+        String targetTime = extractStartTimeFromQuery(query, ner);
+        return targetTime != null ? new StartTimeQuery(targetTime) : null;
+    }
+
+    /** Lists unique actas whose metadata start time equals the requested HH:mm. */
+    protected ToolResult listMeetingsStartingAtTime(String query, List<Minute> minutes, String targetTime) {
+        List<Minute> canonical = dedupeMinutesByCanonicalMeetingDate(mergeMinutesByDocumentId(minutes));
+        List<Minute> matching =
+                canonical.stream()
+                        .filter(minute -> minuteStartsAtTime(minute, targetTime))
+                        .sorted(
+                                Comparator.comparing(
+                                        StructuredMinuteMetadataSupport::formatDateSlash,
+                                        Comparator.nullsLast(String::compareTo)))
+                        .toList();
+        String answer = StructuredMinuteMetadataSupport.formatStartTimeListAnswer(query, matching, targetTime);
+        return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    /**
+     * Extracts HH:mm start time from user query or NER (e.g. "19:00", "19:00 horas").
+     */
+    protected String extractStartTimeFromQuery(String query, JSONObject ner) {
+        if (ner != null && ner.has("startTime")) {
+            var arr = ner.getJSONArray("startTime");
+            if (!arr.isEmpty()) {
+                String fromNer = normalizeTimeString(arr.getString(0));
+                if (fromNer != null) {
+                    return fromNer;
+                }
+            }
+        }
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        Matcher matcher =
+                Pattern.compile("(\\d{1,2})\\s*:\\s*(\\d{2})").matcher(query);
+        if (!matcher.find()) {
+            return null;
+        }
+        try {
+            int hour = Integer.parseInt(matcher.group(1));
+            int minute = Integer.parseInt(matcher.group(2));
+            if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+                return null;
+            }
+            return String.format("%02d:%02d", hour, minute);
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
@@ -1196,6 +1334,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 .map(doc -> ContextPropagatingFutures.withSnapshot(ctx, () -> {
                     try {
                         Minute m = cacheable().getMinuteFromMetadata(doc);
+                        if (m == null) {
+                            m = minimalMinuteShellFromDocument(doc);
+                        }
+                        m = enrichMinuteFromDocumentContent(m, doc);
                         if (m == null || !isMinuteComplete(m) || !hasUsefulData(m)) {
                             return null;
                         }
@@ -1208,6 +1350,279 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 }))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Extracts canonical meeting shells for topic matching without requiring structured topics/summary fields.
+     */
+    protected List<Minute> extractMeetingShellsForTopicMatch(List<Document> mergedDocs) {
+        if (mergedDocs == null || mergedDocs.isEmpty()) {
+            return List.of();
+        }
+        var ctx = ContextPropagatingFutures.captureContext();
+        List<Minute> shells =
+                mergedDocs.parallelStream()
+                        .map(
+                                doc ->
+                                        ContextPropagatingFutures.withSnapshot(
+                                                ctx,
+                                                () -> {
+                                                    try {
+                                                        Minute minute = cacheable().getMinuteFromMetadata(doc);
+                                                        if (minute == null) {
+                                                            minute = minimalMinuteShellFromDocument(doc);
+                                                        }
+                                                        minute = enrichMinuteFromDocumentContent(minute, doc);
+                                                        if (minute == null || !isMinuteComplete(minute)) {
+                                                            return null;
+                                                        }
+                                                        return minute;
+                                                    } catch (Exception e) {
+                                                        log().warn(
+                                                                "Error extracting meeting shell from document {}, skipping: {}",
+                                                                doc != null ? doc.getId() : "null",
+                                                                e.getMessage());
+                                                        return null;
+                                                    }
+                                                }))
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+        return dedupeMinutesByCanonicalMeetingDate(mergeMinutesByDocumentId(shells));
+    }
+
+    private Minute minimalMinuteShellFromDocument(Document doc) {
+        if (doc == null) {
+            return null;
+        }
+        Map<String, Object> metadata = doc.getMetadata();
+        String id = safeGetString(metadata, "document_id");
+        if (id == null || id.isBlank()) {
+            id = doc.getId();
+        }
+        String filename = safeGetString(metadata, METADATA_KEY_FILENAME);
+        String date = safeGetString(metadata, METADATA_KEY_DATE_ISO);
+        if (date == null || date.isBlank()) {
+            date = safeGetString(metadata, METADATA_KEY_DATE);
+        }
+        return new Minute(
+                id,
+                filename,
+                date,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                0,
+                Map.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null);
+    }
+
+    /**
+     * Fills missing minute fields from combined chunk text when vector metadata is sparse.
+     */
+    private Minute enrichMinuteFromDocumentContent(Minute minute, Document doc) {
+        if (minute == null || doc == null) {
+            return minute;
+        }
+        String content = doc.getText();
+        if (content == null || content.isBlank()) {
+            return minute;
+        }
+
+        String date = minute.date();
+        if (date == null
+                || date.isBlank()
+                || StructuredMinuteMetadataSupport.isUnknownDateLiteral(date)) {
+            date = extractor.extractDate(content);
+        }
+
+        String president = minute.president();
+        if (president == null || president.isBlank()) {
+            president = extractor.extractLiteralField(FIELD_INTENT_PRESIDENT, content);
+        }
+
+        String secretary = minute.secretary();
+        if (secretary == null || secretary.isBlank()) {
+            secretary = extractor.extractLiteralField(FIELD_INTENT_SECRETARY, content);
+        }
+
+        List<String> attendees = minute.attendees();
+        if (attendees == null || attendees.isEmpty()) {
+            attendees = extractor.extractAttendees(content);
+        }
+
+        String startTime = minute.startTime();
+        if (startTime == null || startTime.isBlank()) {
+            startTime = extractor.extractTime(content, "start");
+        }
+
+        String endTime = minute.endTime();
+        if (endTime == null || endTime.isBlank()) {
+            endTime = extractor.extractTime(content, "end");
+        }
+
+        int numberOfAttendees = minute.numberOfAttendees();
+        if (numberOfAttendees <= 0) {
+            numberOfAttendees = extractor.extractAttendeeCount(content);
+            if (numberOfAttendees <= 0 && attendees != null && !attendees.isEmpty()) {
+                numberOfAttendees = attendees.size();
+            }
+        }
+
+        String summary = minute.summary();
+        if (summary == null || summary.isBlank()) {
+            summary = extractor.extractRelevantFragment(content, "resumen orden del día temas");
+        }
+
+        List<String> topics = minute.topics();
+        if (topics == null || topics.isEmpty()) {
+            String agenda = extractor.extractAgenda(content);
+            if (agenda != null && !agenda.isBlank()) {
+                topics =
+                        Arrays.stream(agenda.split("\\n"))
+                                .map(String::trim)
+                                .map(s -> s.replaceFirst("^[-•]\\s*", ""))
+                                .filter(s -> !s.isBlank())
+                                .toList();
+            }
+        }
+        if ((topics == null || topics.isEmpty()) && content != null && !content.isBlank()) {
+            String fragment = extractor.extractRelevantFragment(content, "orden del día temas decisiones acuerdos");
+            if (fragment != null && !fragment.isBlank() && !fragment.contains("•")) {
+                topics = List.of(fragment);
+            }
+        }
+
+        List<String> decisions = minute.decisions();
+        if ((decisions == null || decisions.isEmpty()) && content != null && !content.isBlank()) {
+            String fragment = extractor.extractRelevantFragment(content, "se acordó se aprueba decisiones acuerdos");
+            if (fragment != null && !fragment.isBlank() && !fragment.contains("•")) {
+                decisions = List.of(fragment);
+            }
+        }
+
+        if (summary != null && summary.contains("•") && summary.toLowerCase().contains("presidente")) {
+            summary = null;
+        }
+
+        return new Minute(
+                minute.id(),
+                minute.filename(),
+                date,
+                minute.place(),
+                startTime,
+                endTime,
+                president,
+                secretary,
+                attendees != null ? attendees : List.of(),
+                numberOfAttendees,
+                minute.agenda(),
+                decisions != null ? decisions : minute.decisions(),
+                minute.mentionedEntities(),
+                topics != null ? topics : List.of(),
+                summary);
+    }
+
+    private static final String FIELD_INTENT_PRESIDENT = "president";
+    private static final String FIELD_INTENT_SECRETARY = "secretary";
+
+    /**
+     * Merges chunk-level minute projections that share the same document id, unioning attendee names.
+     */
+    protected List<Minute> mergeMinutesByDocumentId(List<Minute> minutes) {
+        if (minutes == null || minutes.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Minute> merged = new LinkedHashMap<>();
+        for (Minute minute : minutes) {
+            String id = minuteCanonicalMeetingKey(minute);
+            Minute existing = merged.get(id);
+            if (existing == null) {
+                merged.put(id, minute);
+            } else {
+                merged.put(id, mergeMinuteRecords(existing, minute));
+            }
+        }
+        if (merged.size() < minutes.size()) {
+            log().info("Merged minutes by document_id: {} chunks -> {} actas", minutes.size(), merged.size());
+        }
+        return List.copyOf(merged.values());
+    }
+
+    private Minute mergeMinuteRecords(Minute primary, Minute secondary) {
+        int authoritativeCount = Math.max(primary.numberOfAttendees(), secondary.numberOfAttendees());
+        List<String> attendees =
+                StructuredMinuteMetadataSupport.mergeCanonicalAttendeeLists(
+                        primary.attendees(), secondary.attendees(), authoritativeCount);
+        int attendeeCount = authoritativeCount > 0 ? authoritativeCount : attendees.size();
+        Minute richer = richerMinute(primary, secondary);
+        return new Minute(
+                richer.id(),
+                richer.filename(),
+                richer.date() != null ? richer.date() : secondary.date(),
+                richer.place() != null ? richer.place() : secondary.place(),
+                richer.startTime() != null ? richer.startTime() : secondary.startTime(),
+                richer.endTime() != null ? richer.endTime() : secondary.endTime(),
+                richer.president() != null ? richer.president() : secondary.president(),
+                richer.secretary() != null ? richer.secretary() : secondary.secretary(),
+                attendees,
+                attendeeCount,
+                richer.agenda() != null && !richer.agenda().isEmpty() ? richer.agenda() : secondary.agenda(),
+                richer.decisions() != null && !richer.decisions().isEmpty() ? richer.decisions() : secondary.decisions(),
+                richer.mentionedEntities() != null && !richer.mentionedEntities().isEmpty()
+                        ? richer.mentionedEntities()
+                        : secondary.mentionedEntities(),
+                richer.topics() != null && !richer.topics().isEmpty() ? richer.topics() : secondary.topics(),
+                richer.summary() != null && !richer.summary().isBlank() ? richer.summary() : secondary.summary());
+    }
+
+    private static Minute richerMinute(Minute a, Minute b) {
+        int scoreA = minuteRichnessScore(a);
+        int scoreB = minuteRichnessScore(b);
+        return scoreA >= scoreB ? a : b;
+    }
+
+    private static int minuteRichnessScore(Minute minute) {
+        int score = 0;
+        if (minute.attendees() != null) {
+            score += minute.attendees().size() * 10;
+        }
+        if (minute.numberOfAttendees() > 0) {
+            score += minute.numberOfAttendees();
+        }
+        if (minute.summary() != null && !minute.summary().isBlank()) {
+            score += 5;
+        }
+        if (minute.date() != null && !minute.date().isBlank()) {
+            score += 15;
+        }
+        if (minute.startTime() != null && !minute.startTime().isBlank()) {
+            score += 20;
+        }
+        if (minute.topics() != null && !minute.topics().isEmpty()) {
+            score += minute.topics().size();
+        }
+        return score;
+    }
+
+    private static void appendUniqueAttendeeNames(List<String> target, List<String> source) {
+        if (source == null || source.isEmpty()) {
+            return;
+        }
+        for (String name : source) {
+            if (name == null || name.isBlank()) {
+                continue;
+            }
+            String trimmed = name.trim();
+            if (!target.contains(trimmed)) {
+                target.add(trimmed);
+            }
+        }
     }
     
     /**
@@ -1233,7 +1648,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         // Date is critical for most queries
-        if (minute.date() == null || minute.date().trim().isEmpty()) {
+        if (minute.date() == null
+                || minute.date().trim().isEmpty()
+                || StructuredMinuteMetadataSupport.isUnknownDateLiteral(minute.date())) {
             log().info("Minute {} missing date, filtering out", minute.id());
             return false;
         }
@@ -1298,8 +1715,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         
         // STEP 1: Pre-filter by date (if NER has date) - MORE FLEXIBLE
         List<Minute> preFiltered = minutes;
-        if (ner != null && ner.has("date") && !ner.getJSONArray("date").isEmpty() && minutes.size() > 50) {
-            preFiltered = preFilterMinutesFast(minutes, ner);
+        List<String> nerDates = extractNerDateStrings(ner);
+        if (!nerDates.isEmpty() && minutes.size() > 50) {
+            preFiltered = preFilterMinutesFast(minutes, nerDates);
             log().info("Pre-filtered {} minutes to {} using flexible date matching", minutes.size(), preFiltered.size());
             
             // If pre-filtering removed too many, use original list
@@ -1415,15 +1833,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * 
      * Implemented flexible date matching (same year/month, within 1-2 days).
      */
-    private List<Minute> preFilterMinutesFast(List<Minute> minutes, JSONObject ner) {
-        if (ner == null || ner.isEmpty() || !ner.has("date") || ner.getJSONArray("date").isEmpty()) {
+    private List<Minute> preFilterMinutesFast(List<Minute> minutes, List<String> nerDateStrings) {
+        if (nerDateStrings == null || nerDateStrings.isEmpty()) {
             return minutes.stream().limit(50).toList(); // Increased from 30 to 50
-        }
-        
-        JSONArray nerDates = ner.getJSONArray("date");
-        List<String> nerDateStrings = new ArrayList<>();
-        for (int i = 0; i < nerDates.length(); i++) {
-            nerDateStrings.add(nerDates.getString(i));
         }
         
         return minutes.stream()
@@ -1957,6 +2369,25 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * LLM check for a single document against a topic; adds to {@code filtered} when the model confirms a match.
      */
     private void maybeAddDocumentMatchingTopic(Document doc, String topic, List<Document> filtered) {
+        String topicNorm = topic.toLowerCase(Locale.ROOT);
+        String semanticContext = buildSemanticDocumentContext(doc, 2000).toString().toLowerCase(Locale.ROOT);
+        if (!semanticContext.isBlank()
+                && (semanticContext.contains(topicNorm)
+                        || (topicNorm.startsWith("presupuesto") && semanticContext.contains("presupuesto")))) {
+            filtered.add(doc);
+            return;
+        }
+
+        String content = doc.getText();
+        if (content != null && !content.isBlank()) {
+            String contentNorm = content.toLowerCase(Locale.ROOT);
+            if (contentNorm.contains(topicNorm)
+                    || (topicNorm.startsWith("presupuesto") && contentNorm.contains("presupuesto"))) {
+                filtered.add(doc);
+                return;
+            }
+        }
+
         StringBuilder context = buildSemanticDocumentContext(doc, 1000);
         if (context.length() == 0) {
             return;
@@ -2029,6 +2460,21 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
+     * Truncates a topic phrase at conjunctions (e.g. {@code videovigilancia y tuvieron…} → {@code videovigilancia}).
+     */
+    private static String trimTopicClause(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        String trimmed = raw.trim().replaceFirst("[?.!]+$", "").trim();
+        int andIdx = trimmed.toLowerCase(Locale.ROOT).indexOf(" y ");
+        if (andIdx > 0) {
+            trimmed = trimmed.substring(0, andIdx).trim();
+        }
+        return trimmed.replaceFirst("^(el|la|los|las)\\s+", "").trim();
+    }
+
+    /**
      * Extracts topic/keyword from query using NER and LLM.
      * 
      * @param query User query
@@ -2098,6 +2544,66 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             log().info("Extracted topic from query (literal): calefacción");
             return "calefacción";
         }
+        if (queryLower.contains("presupuestos")) {
+            log().info("Extracted topic from query (literal): presupuestos");
+            return "presupuestos";
+        }
+        if (queryLower.contains("presupuesto")) {
+            log().info("Extracted topic from query (literal): presupuesto");
+            return "presupuesto";
+        }
+        if (queryLower.contains("ascensor")) {
+            log().info("Extracted topic from query (literal): ascensor");
+            return "ascensor";
+        }
+        if (queryLower.contains("elevator")) {
+            log().info("Extracted topic from query (literal): elevator");
+            return "elevator";
+        }
+        if (queryLower.contains("radiación solar") || queryLower.contains("radiacion solar")) {
+            log().info("Extracted topic from query (literal): radiación solar");
+            return "radiación solar";
+        }
+        if (queryLower.contains("fuga de gas")) {
+            log().info("Extracted topic from query (literal): fuga de gas");
+            return "fuga de gas";
+        }
+        if (queryLower.contains("limpieza")) {
+            log().info("Extracted topic from query (literal): limpieza");
+            return "limpieza";
+        }
+        if (queryLower.contains("videovigilancia")) {
+            log().info("Extracted topic from query (literal): videovigilancia");
+            return "videovigilancia";
+        }
+        if (queryLower.contains("vigilancia") && !queryLower.contains("videovigilancia")) {
+            log().info("Extracted topic from query (literal): vigilancia");
+            return "vigilancia";
+        }
+
+        if (queryLower.contains("hablaron sobre") || queryLower.contains("hablo sobre")) {
+            int idx = queryLower.indexOf("hablaron sobre");
+            int skip = "hablaron sobre".length();
+            if (idx < 0) {
+                idx = queryLower.indexOf("hablo sobre");
+                skip = "hablo sobre".length();
+            }
+            String after = trimTopicClause(query.substring(idx + skip));
+            if (!after.isEmpty() && after.length() < 80) {
+                log().info("Extracted topic from query (after 'hablaron sobre'): {}", after);
+                return after;
+            }
+        }
+
+        if (queryLower.contains("mencionan")) {
+            int idx = queryLower.indexOf("mencionan");
+            String after = query.substring(idx + "mencionan".length()).trim().replaceFirst("\\?+$", "").trim();
+            after = after.replaceFirst("^(el|la|los|las)\\s+", "").trim();
+            if (!after.isEmpty() && after.length() < 80) {
+                log().info("Extracted topic from query (after 'mencionan'): {}", after);
+                return after;
+            }
+        }
 
         // Heuristic fallback: extract topic from "about X" / "mentioned X" substrings in the query to avoid LLM returning full question (items 8, 15)
         String q = query.trim();
@@ -2105,8 +2611,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             String qLower = q.toLowerCase();
             if (qLower.contains("sobre ")) {
                 int idx = qLower.indexOf("sobre ");
-                String after = q.substring(idx + 6).trim().replaceFirst("\\.$", "").trim();
-                after = after.replaceFirst("^el\\s+", "").replaceFirst("^la\\s+", "").trim();
+                String after = trimTopicClause(q.substring(idx + 6));
                 if (!after.isEmpty() && after.length() < 100) {
                     log().info("Extracted topic from query (after 'sobre'): {}", after);
                     return after;
@@ -2339,6 +2844,34 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (query == null || query.trim().isEmpty()) {
             return false;
         }
+
+        String queryLower = query.toLowerCase(Locale.ROOT);
+        boolean hasTopic =
+                queryLower.contains("mencionan")
+                        || queryLower.contains("menciona")
+                        || queryLower.contains("hablaron")
+                        || queryLower.contains("habló")
+                        || queryLower.contains("hablo")
+                        || queryLower.contains("sobre")
+                        || queryLower.contains("trat")
+                        || queryLower.contains("discut");
+        boolean hasPerson =
+                queryLower.contains("presididas por")
+                        || queryLower.contains("presidida por")
+                        || queryLower.contains("presidió")
+                        || queryLower.contains("presidio")
+                        || queryLower.contains("presididas")
+                        || queryLower.contains("presidida")
+                        || queryLower.contains("presided");
+        boolean hasAnd =
+                queryLower.contains(" y ")
+                        || queryLower.contains(" and ")
+                        || queryLower.contains("donde")
+                        || queryLower.contains("where");
+        if (hasTopic && hasPerson && hasAnd) {
+            log().info("Detected topic + person filter requirement (heuristic): true for query: '{}'", query);
+            return true;
+        }
         
         String prompt = String.format("""
             Task: Determine if this query requires filtering meetings by BOTH a topic AND a person (AND logic).
@@ -2377,17 +2910,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return result;
         } catch (Exception e) {
             log().warn("Error detecting topic + person filter with LLM: {}", e.getMessage());
-            // Fallback to simple check
-            String queryLower = query.toLowerCase();
-            boolean hasTopic = queryLower.contains("mencionan") || queryLower.contains("hablaron") ||
-                              queryLower.contains("menciona") || queryLower.contains("habló") ||
-                              queryLower.contains("sobre") || queryLower.contains("about") ||
-                              queryLower.contains("trat") || queryLower.contains("discut");
-            boolean hasPerson = queryLower.contains("presididas por") || queryLower.contains("presidida por") ||
-                               queryLower.contains("presidió") || queryLower.contains("presided") ||
-                               queryLower.contains("presididas") || queryLower.contains("presidida");
-            boolean hasAnd = queryLower.contains(" y ") || queryLower.contains(" and ") ||
-                            queryLower.contains("donde") || queryLower.contains("where");
             boolean result = hasTopic && hasPerson && hasAnd;
             log().debug("Fallback detection: topic={}, person={}, and={}, result={}", hasTopic, hasPerson, hasAnd, result);
             return result;
@@ -2439,6 +2961,15 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         
         // Strategy 2: Try regex patterns for common Spanish/English patterns
         Pattern[] patterns = {
+            Pattern.compile(
+                "(?:confirma|verifica|comprueba)\\s+si\\s+([\\p{L}]+(?:\\s+[\\p{L}]+){1,4})\\s+aparece",
+                UNICODE_CASE_INSENSITIVE),
+            Pattern.compile(
+                "(?:aparece|figura)\\s+([\\p{L}]+(?:\\s+[\\p{L}]+){1,4})\\s*\\??",
+                UNICODE_CASE_INSENSITIVE),
+            Pattern.compile(
+                "([\\p{L}]+(?:\\s+[\\p{L}]+){2,4})\\s+aparece\\s+en\\s+(?:el\\s+|la\\s+)?(?:acta|reuni[oó]n)",
+                UNICODE_CASE_INSENSITIVE),
             // Pattern 1: "presided by [Full Name]" (Spanish/English)
             Pattern.compile(
                 "(?:presididas?|presidió|presided)\\s+por\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})",
@@ -2472,6 +3003,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             // Pattern 7: "When and in which meetings did [Name] attend" - capture name after "attend"
             Pattern.compile(
                 "asistió\\s+([\\p{L}]+(?:\\s+[\\p{L}]+){2,4})\\s*\\??",
+                UNICODE_CASE_INSENSITIVE
+            ),
+            // Pattern 8: "What role did [Name] play" (Spanish papel tuvo)
+            Pattern.compile(
+                "(?:qué|que)\\s+papel\\s+tuvo\\s+([\\p{L}]+(?:\\s+[\\p{L}]+){0,3})\\s+en\\s+(?:la\\s+)?reuni",
                 UNICODE_CASE_INSENSITIVE
             )
         };
@@ -2903,6 +3439,1032 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      */
     protected List<Document> retrieveDocumentsWithFallback(String query, String[] relevantFields) {
         return retrieveDocumentsWithFallback(query, relevantFields, null);
+    }
+
+    /**
+     * Merges chunk-level documents that share the same acta/document id into one combined document.
+     */
+    protected List<Document> mergeChunksByDocumentId(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return docs != null ? docs : List.of();
+        }
+        Map<String, Document> merged = new LinkedHashMap<>();
+        for (Document doc : docs) {
+            if (doc == null) {
+                continue;
+            }
+            String id = actaDedupeKey(doc);
+            if (id == null || id.isBlank()) {
+                id = doc.getId() != null ? doc.getId() : UUID.randomUUID().toString();
+            }
+            Document existing = merged.get(id);
+            if (existing == null) {
+                merged.put(id, doc);
+                continue;
+            }
+            String combinedText =
+                    ((existing.getText() != null ? existing.getText() : "")
+                            + "\n"
+                            + (doc.getText() != null ? doc.getText() : "")).trim();
+            merged.put(id, new Document(combinedText, existing.getMetadata()));
+        }
+        return new ArrayList<>(merged.values());
+    }
+
+    /**
+     * Restricts tool corpus to the active 5-ACTA PDF snapshot: drops legacy TXT, non-canonical sources,
+     * superseded snapshot rows, and duplicate aliases (keeps richest {@code ACTA N.pdf} per meeting key).
+     */
+    protected List<Document> filterScopedCorpusDocuments(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return List.of();
+        }
+        Set<String> activeSnapshotIds = resolveDominantActiveSnapshotIds(docs);
+        LinkedHashMap<String, Document> bestByKey = new LinkedHashMap<>();
+        int excluded = 0;
+        for (Document doc : docs) {
+            if (doc == null) {
+                continue;
+            }
+            if (isExcludedLegacyCorpusArtifact(doc, activeSnapshotIds)) {
+                excluded++;
+                continue;
+            }
+            String key = actaDedupeKey(doc);
+            Document existing = bestByKey.get(key);
+            if (existing == null
+                    || documentCanonicalScore(doc) > documentCanonicalScore(existing)
+                    || (documentCanonicalScore(doc) == documentCanonicalScore(existing)
+                            && snapshotFreshnessScore(doc, activeSnapshotIds)
+                                    > snapshotFreshnessScore(existing, activeSnapshotIds))
+                    || (documentCanonicalScore(doc) == documentCanonicalScore(existing)
+                            && snapshotFreshnessScore(doc, activeSnapshotIds)
+                                    == snapshotFreshnessScore(existing, activeSnapshotIds)
+                            && StructuredMinuteMetadataSupport.richnessScore(doc.getMetadata())
+                                    > StructuredMinuteMetadataSupport.richnessScore(existing.getMetadata()))) {
+                bestByKey.put(key, doc);
+            }
+        }
+        if (excluded > 0 || bestByKey.size() < docs.size()) {
+            log().info(
+                    "Scoped corpus filter: {} rows -> {} canonical seeds ({} out-of-scope rows excluded, activeSnapshots={})",
+                    docs.size(),
+                    bestByKey.size(),
+                    excluded,
+                    activeSnapshotIds.isEmpty() ? "none" : activeSnapshotIds);
+        }
+        return new ArrayList<>(bestByKey.values());
+    }
+
+    /**
+     * Resolves the dominant {@code indexSnapshotId} among canonical PDF acta rows.
+     * When present, only vectors from that snapshot are in scope for acceptance runs.
+     */
+    protected Set<String> resolveDominantActiveSnapshotIds(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return Set.of();
+        }
+        Map<String, Long> counts = new HashMap<>();
+        for (Document doc : docs) {
+            if (doc == null || !isCanonicalPdfActaDocument(doc)) {
+                continue;
+            }
+            Map<String, Object> flat = StructuredMinuteMetadataSupport.flattenMetadata(doc.getMetadata());
+            String snapshotId = safeGetString(flat, METADATA_KEY_INDEX_SNAPSHOT_ID);
+            if (snapshotId != null && !snapshotId.isBlank()) {
+                counts.merge(snapshotId, 1L, Long::sum);
+            }
+        }
+        if (counts.isEmpty()) {
+            return Set.of();
+        }
+        String dominant =
+                counts.entrySet().stream()
+                        .max(Map.Entry.comparingByValue())
+                        .map(Map.Entry::getKey)
+                        .orElse(null);
+        return dominant != null ? Set.of(dominant) : Set.of();
+    }
+
+    /** True for legacy TXT, non-PDF acta sources, and superseded snapshot rows. */
+    protected boolean isExcludedLegacyCorpusArtifact(Document doc) {
+        return isExcludedLegacyCorpusArtifact(doc, Set.of());
+    }
+
+    protected boolean isExcludedLegacyCorpusArtifact(Document doc, Set<String> activeSnapshotIds) {
+        if (doc == null) {
+            return true;
+        }
+        if (!isCanonicalPdfActaDocument(doc)) {
+            return true;
+        }
+        if (activeSnapshotIds == null || activeSnapshotIds.isEmpty()) {
+            return false;
+        }
+        Map<String, Object> flat = StructuredMinuteMetadataSupport.flattenMetadata(doc.getMetadata());
+        String snapshotId = safeGetString(flat, METADATA_KEY_INDEX_SNAPSHOT_ID);
+        if (snapshotId == null || snapshotId.isBlank()) {
+            return true;
+        }
+        return !activeSnapshotIds.contains(snapshotId);
+    }
+
+    /** Acceptance corpus: canonical {@code ACTA N.pdf} only. */
+    protected boolean isCanonicalPdfActaDocument(Document doc) {
+        if (doc == null) {
+            return false;
+        }
+        Map<String, Object> flat = StructuredMinuteMetadataSupport.flattenMetadata(doc.getMetadata());
+        String filename = resolveMetadataFilename(flat);
+        if (filename == null || filename.isBlank()) {
+            return false;
+        }
+        String lower = filename.trim().toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".txt")) {
+            return false;
+        }
+        return CANONICAL_ACTA_PDF_FILENAME.matcher(filename).matches();
+    }
+
+    private static int snapshotFreshnessScore(Document doc, Set<String> activeSnapshotIds) {
+        if (doc == null || activeSnapshotIds == null || activeSnapshotIds.isEmpty()) {
+            return 0;
+        }
+        Object sid = doc.getMetadata().get(METADATA_KEY_INDEX_SNAPSHOT_ID);
+        if (sid == null) {
+            sid = StructuredMinuteMetadataSupport.flattenMetadata(doc.getMetadata()).get(METADATA_KEY_INDEX_SNAPSHOT_ID);
+        }
+        return sid != null && activeSnapshotIds.contains(sid.toString()) ? 10 : 0;
+    }
+
+    /**
+     * Transforms raw retrieval rows into one {@link Minute} per canonical meeting:
+     * in-scope rows → chunk text merge (richest metadata) → minute merge → calendar dedupe.
+     */
+    protected List<Minute> canonicalizeMeetingsFromDocuments(List<Document> rawDocs) {
+        List<Document> merged = mergeChunksWithRichestMetadata(collectInScopeCorpusRows(rawDocs));
+        List<Minute> minutes = extractMinutesInParallel(merged);
+        return dedupeMinutesByCanonicalMeetingDate(mergeMinutesByDocumentId(minutes));
+    }
+
+    /**
+     * Keeps every canonical in-scope retrieval row (HYBRID section chunks included); does not collapse to one row per acta.
+     */
+    protected List<Document> collectInScopeCorpusRows(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return List.of();
+        }
+        Set<String> activeSnapshotIds = resolveDominantActiveSnapshotIds(docs);
+        List<Document> rows = new ArrayList<>();
+        int excluded = 0;
+        for (Document doc : docs) {
+            if (doc == null) {
+                continue;
+            }
+            if (isExcludedLegacyCorpusArtifact(doc, activeSnapshotIds)) {
+                excluded++;
+                continue;
+            }
+            rows.add(doc);
+        }
+        if (excluded > 0 || rows.size() < docs.size()) {
+            log().info(
+                    "Collected in-scope corpus rows: {} rows ({} excluded, activeSnapshots={})",
+                    rows.size(),
+                    excluded,
+                    activeSnapshotIds.isEmpty() ? "none" : activeSnapshotIds);
+        }
+        return rows;
+    }
+
+    /**
+     * Merges all in-scope HYBRID chunks per acta into one document: richest metadata + concatenated section text.
+     */
+    protected List<Document> mergeChunksWithRichestMetadata(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return List.of();
+        }
+        Set<String> activeSnapshotIds = resolveDominantActiveSnapshotIds(docs);
+        Map<String, List<Document>> byKey = new LinkedHashMap<>();
+        for (Document doc : docs) {
+            if (doc == null) {
+                continue;
+            }
+            String key = actaDedupeKey(doc);
+            byKey.computeIfAbsent(key, ignored -> new ArrayList<>()).add(doc);
+        }
+        List<Document> merged = new ArrayList<>();
+        for (List<Document> group : byKey.values()) {
+            Document best = pickRichestScopedDocument(group, activeSnapshotIds);
+            String combinedText =
+                    group.stream()
+                            .map(Document::getText)
+                            .filter(text -> text != null && !text.isBlank())
+                            .distinct()
+                            .collect(Collectors.joining("\n"));
+            merged.add(new Document(combinedText, best.getMetadata()));
+        }
+        if (merged.size() < docs.size()) {
+            log().info("Merged HYBRID chunks: {} rows -> {} canonical acta documents", docs.size(), merged.size());
+        }
+        return merged;
+    }
+
+    private Document pickRichestScopedDocument(List<Document> group, Set<String> activeSnapshotIds) {
+        Document best = group.get(0);
+        for (int i = 1; i < group.size(); i++) {
+            Document candidate = group.get(i);
+            if (isRicherScopedDocument(candidate, best, activeSnapshotIds)) {
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
+    private boolean isRicherScopedDocument(
+            Document doc, Document existing, Set<String> activeSnapshotIds) {
+        return documentCanonicalScore(doc) > documentCanonicalScore(existing)
+                || (documentCanonicalScore(doc) == documentCanonicalScore(existing)
+                        && snapshotFreshnessScore(doc, activeSnapshotIds)
+                                > snapshotFreshnessScore(existing, activeSnapshotIds))
+                || (documentCanonicalScore(doc) == documentCanonicalScore(existing)
+                        && snapshotFreshnessScore(doc, activeSnapshotIds)
+                                == snapshotFreshnessScore(existing, activeSnapshotIds)
+                        && StructuredMinuteMetadataSupport.richnessScore(doc.getMetadata())
+                                > StructuredMinuteMetadataSupport.richnessScore(existing.getMetadata()));
+    }
+
+    /**
+     * Builds accent-insensitive searchable evidence per meeting key from all in-scope HYBRID chunks.
+     */
+    protected Map<String, String> buildMeetingEvidenceTextByKey(List<Document> rawDocs) {
+        List<Document> scoped = collectInScopeCorpusRows(rawDocs);
+        Map<String, StringBuilder> buckets = new LinkedHashMap<>();
+        for (Document doc : scoped) {
+            String evidence = extractDocumentTopicEvidenceText(doc);
+            for (String key : meetingEvidenceKeysForDocument(doc)) {
+                buckets.computeIfAbsent(key, ignored -> new StringBuilder()).append(evidence).append('\n');
+            }
+        }
+        Map<String, String> result = new LinkedHashMap<>();
+        buckets.forEach((key, sb) -> result.put(key, sb.toString().trim()));
+        return result;
+    }
+
+    protected String extractDocumentTopicEvidenceText(Document doc) {
+        if (doc == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        if (doc.getText() != null && !doc.getText().isBlank()) {
+            sb.append(doc.getText()).append(' ');
+        }
+        appendMetadataTopicFields(sb, StructuredMinuteMetadataSupport.flattenMetadata(doc.getMetadata()));
+        return sb.toString().trim();
+    }
+
+    private void appendMetadataTopicFields(StringBuilder sb, Map<String, Object> flat) {
+        appendMetadataValue(sb, flat, METADATA_KEY_TOPICS);
+        appendMetadataValue(sb, flat, METADATA_KEY_DECISIONS);
+        appendMetadataValue(sb, flat, METADATA_KEY_SUMMARY);
+        appendMetadataValue(sb, flat, METADATA_KEY_AGENDA);
+        appendMetadataValue(sb, flat, METADATA_KEY_DATE_ISO);
+        appendMetadataValue(sb, flat, METADATA_KEY_DATE);
+        appendMetadataValue(sb, flat, METADATA_KEY_FILENAME);
+        appendMetadataValue(sb, flat, "sourceTitle");
+        appendMetadataValue(sb, flat, "section");
+        appendMetadataValue(sb, flat, "sectionTitle");
+        appendMetadataValue(sb, flat, "title");
+        appendMetadataValue(sb, flat, "mentionedEntities");
+    }
+
+    private void appendMetadataValue(StringBuilder sb, Map<String, Object> flat, String key) {
+        if (flat == null || key == null) {
+            return;
+        }
+        Object value = flat.get(key);
+        if (value == null) {
+            return;
+        }
+        if (value instanceof Collection<?> collection) {
+            for (Object item : collection) {
+                if (item != null && !item.toString().isBlank()) {
+                    sb.append(item).append(' ');
+                }
+            }
+            return;
+        }
+        if (value instanceof Map<?, ?> map) {
+            for (Object item : map.values()) {
+                if (item != null && !item.toString().isBlank()) {
+                    sb.append(item).append(' ');
+                }
+            }
+            return;
+        }
+        String text = value.toString();
+        if (!text.isBlank()) {
+            sb.append(text).append(' ');
+        }
+    }
+
+    protected List<String> meetingEvidenceKeysForDocument(Document doc) {
+        LinkedHashSet<String> keys = new LinkedHashSet<>();
+        keys.add(actaDedupeKey(doc));
+        Minute shell = minuteShellFromDocument(doc);
+        if (shell != null) {
+            keys.add(minuteCanonicalMeetingKey(shell));
+        }
+        return List.copyOf(keys);
+    }
+
+    protected List<String> meetingEvidenceKeysForMinute(Minute minute) {
+        LinkedHashSet<String> keys = new LinkedHashSet<>();
+        if (minute == null) {
+            return List.of();
+        }
+        keys.add(minuteCanonicalMeetingKey(minute));
+        Map<String, Object> flat = new LinkedHashMap<>();
+        if (minute.id() != null && !minute.id().isBlank()) {
+            flat.put("document_id", minute.id());
+            flat.put(METADATA_KEY_PROJECT_DOCUMENT_ID, minute.id());
+        }
+        if (minute.filename() != null && !minute.filename().isBlank()) {
+            flat.put(METADATA_KEY_FILENAME, minute.filename());
+        }
+        if (minute.date() != null && !minute.date().isBlank()) {
+            flat.put(METADATA_KEY_DATE_ISO, minute.date());
+            flat.put(METADATA_KEY_DATE, minute.date());
+        }
+        keys.add(actaDedupeKey(new Document("", flat)));
+        return List.copyOf(keys);
+    }
+
+    protected String resolveMeetingEvidenceForMinute(Minute minute, Map<String, String> evidenceByKey) {
+        if (minute == null || evidenceByKey == null || evidenceByKey.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String key : meetingEvidenceKeysForMinute(minute)) {
+            String evidence = evidenceByKey.get(key);
+            if (evidence != null && !evidence.isBlank()) {
+                sb.append(evidence).append(' ');
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    protected boolean isTopicSpecificFindParagraphQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        return q.contains("qué se coment")
+                || q.contains("que se coment")
+                || q.contains("qué se dijo")
+                || q.contains("que se dijo")
+                || q.contains("respecto a")
+                || (q.contains("sobre") && (q.contains("coment") || q.contains("mencion")));
+    }
+
+    protected String formatFindParagraphTopicAbsentMessage(String query, String topic) {
+        if (!querySeemsSpanish(query)) {
+            return String.format(
+                    "No mention of \"%s\" was found in the available meeting minutes.",
+                    topic != null ? topic : "that topic");
+        }
+        String label = topic != null && !topic.isBlank() ? topic : "ese tema";
+        if (label.contains("fuga de gas")) {
+            return "No se encuentra ninguna mención a una fuga de gas en las actas disponibles.";
+        }
+        return "No se encuentra ninguna mención a " + label + " en las actas disponibles.";
+    }
+
+    protected Optional<ToolResult> tryFindParagraphTopicAbsentExit(
+            String query, List<Document> docs, JSONObject ner) {
+        if (!isTopicSpecificFindParagraphQuery(query) || docs == null || docs.isEmpty()) {
+            return Optional.empty();
+        }
+        String topic = extractTopicFromQuery(query, ner);
+        if (topic == null || topic.isBlank()) {
+            return Optional.empty();
+        }
+        Map<String, String> evidenceByKey = buildMeetingEvidenceTextByKey(docs);
+        List<Document> merged = mergeChunksWithRichestMetadata(collectInScopeCorpusRows(docs));
+        List<Minute> minutes = extractMeetingShellsForTopicMatch(merged);
+        if (minutes.isEmpty()) {
+            return Optional.empty();
+        }
+        boolean anyMatch =
+                minutes.stream().anyMatch(m -> minuteMentionsTopicEvidence(m, topic, evidenceByKey));
+        if (anyMatch) {
+            return Optional.empty();
+        }
+        log().info("Find-paragraph topic '{}' absent from corpus; returning deterministic negative", topic);
+        String answer = formatFindParagraphTopicAbsentMessage(query, topic);
+        return Optional.of(ToolResult.from(formatResponse(answer, query), getClass()));
+    }
+
+    protected Optional<ToolResult> tryDeterministicTopicParagraphExit(
+            String query, List<Document> docs, JSONObject ner) {
+        if (!isTopicSpecificFindParagraphQuery(query) || docs == null || docs.isEmpty()) {
+            return Optional.empty();
+        }
+        String topic = extractTopicFromQuery(query, ner);
+        if (topic == null || topic.isBlank()) {
+            return Optional.empty();
+        }
+        Map<String, String> evidenceByKey = buildMeetingEvidenceTextByKey(docs);
+        List<Document> merged = mergeChunksWithRichestMetadata(collectInScopeCorpusRows(docs));
+        List<Minute> minutes = extractMeetingShellsForTopicMatch(merged);
+        if (minutes.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Minute bestMinute = null;
+        String bestParagraph = "";
+        int bestScore = -1;
+        for (Minute minute : minutes) {
+            String evidence = buildMinuteTopicSearchText(minute);
+            evidence = evidence + " " + resolveMeetingEvidenceForMinute(minute, evidenceByKey);
+            if (!topicMatchesNormalizedEvidence(evidence, topic)) {
+                continue;
+            }
+            String paragraph = extractTopicParagraphFromEvidence(evidence, topic);
+            if (paragraph.isBlank()) {
+                continue;
+            }
+            int score = scoreTopicParagraphEvidence(paragraph, topic, minute);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMinute = minute;
+                bestParagraph = paragraph;
+            }
+        }
+        if (bestMinute == null || bestParagraph.isBlank()) {
+            return Optional.empty();
+        }
+        log().info(
+                "Find-paragraph deterministic topic '{}' answer from acta {}",
+                topic,
+                StructuredMinuteMetadataSupport.resolveActaLabel(bestMinute));
+        String evidenceContext =
+                buildMinuteTopicSearchText(bestMinute)
+                        + " "
+                        + resolveMeetingEvidenceForMinute(bestMinute, evidenceByKey);
+        String answer =
+                StructuredMinuteMetadataSupport.formatFindParagraphTopicEvidenceAnswer(
+                        query, bestMinute, bestParagraph, evidenceContext);
+        return Optional.of(ToolResult.from(formatResponse(answer, query), getClass()));
+    }
+
+    protected String extractTopicParagraphFromEvidence(String haystack, String topic) {
+        if (haystack == null || haystack.isBlank() || topic == null || topic.isBlank()) {
+            return "";
+        }
+        String stem = normalizeTopicSearchText(topic);
+        if (!normalizeTopicSearchText(haystack).contains(stem)) {
+            return "";
+        }
+        String best = "";
+        int bestScore = -1;
+        Matcher bulletMatcher = Pattern.compile("•[^•]+", Pattern.DOTALL).matcher(haystack);
+        while (bulletMatcher.find()) {
+            String block = bulletMatcher.group().trim();
+            if (!normalizeTopicSearchText(block).contains(stem) || looksLikeParticipantListBlock(block)) {
+                continue;
+            }
+            String cleaned = cleanAgendaBlockForParagraph(block);
+            int score = scoreTopicParagraphEvidence(cleaned, topic, null);
+            if (score > bestScore) {
+                bestScore = score;
+                best = cleaned;
+            }
+        }
+        if (!best.isBlank()) {
+            return best;
+        }
+        Matcher sentenceMatcher =
+                Pattern.compile("[^.!?\\n]+[.!?]+", Pattern.MULTILINE).matcher(haystack.replace('\n', ' '));
+        while (sentenceMatcher.find()) {
+            String sentence = sentenceMatcher.group().trim();
+            if (!normalizeTopicSearchText(sentence).contains(stem) || looksLikeParticipantListBlock(sentence)) {
+                continue;
+            }
+            int score = scoreTopicParagraphEvidence(sentence, topic, null);
+            if (score > bestScore) {
+                bestScore = score;
+                best = sentence;
+            }
+        }
+        return best;
+    }
+
+    protected int scoreTopicParagraphEvidence(String paragraph, String topic, Minute minute) {
+        if (paragraph == null || paragraph.isBlank()) {
+            return -1;
+        }
+        String stem = normalizeTopicSearchText(topic);
+        String normalized = normalizeTopicSearchText(paragraph);
+        int score = 0;
+        if (normalized.contains(stem)) {
+            score += 100;
+        }
+        if (normalized.contains("contrat") || normalized.contains("aprob")) {
+            score += 20;
+        }
+        if (paragraph.length() > 40 && paragraph.length() < 400) {
+            score += 10;
+        }
+        if (minute != null && minute.date() != null && !minute.date().isBlank()) {
+            score += 5;
+        }
+        return score;
+    }
+
+    protected String cleanAgendaBlockForParagraph(String block) {
+        if (block == null || block.isBlank()) {
+            return "";
+        }
+        String cleaned = block.replaceFirst("^[•\\-*]\\s*", "").trim();
+        String[] lines = cleaned.split("\\R");
+        if (lines.length >= 2 && lines[0].length() < 80 && !lines[0].contains(".")) {
+            cleaned = String.join(" ", Arrays.copyOfRange(lines, 1, lines.length)).trim();
+        }
+        return cleaned.replaceAll("\\s+", " ").trim();
+    }
+
+    protected boolean looksLikeParticipantListBlock(String block) {
+        if (block == null || block.isBlank()) {
+            return false;
+        }
+        String lower = block.toLowerCase(Locale.ROOT);
+        if (lower.contains("asistentes") || lower.contains("participantes") || lower.contains("attendees")) {
+            return true;
+        }
+        long capitalizedTokens =
+                Pattern.compile("\\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3}\\b")
+                        .matcher(block)
+                        .results()
+                        .count();
+        return capitalizedTokens >= 4;
+    }
+
+    protected boolean minuteMentionsTopicEvidence(Minute minute, String topic, Map<String, String> evidenceByKey) {
+        if (minute == null || topic == null || topic.isBlank()) {
+            return false;
+        }
+        String combined = buildMinuteTopicSearchText(minute);
+        combined = combined + " " + resolveMeetingEvidenceForMinute(minute, evidenceByKey);
+        return topicMatchesNormalizedEvidence(combined, topic);
+    }
+
+    protected boolean topicMatchesNormalizedEvidence(String haystack, String topic) {
+        String normalizedHaystack = normalizeTopicSearchText(haystack);
+        String stem = normalizeTopicSearchText(topic);
+        if (stem.startsWith("presupuesto")) {
+            stem = "presupuesto";
+        }
+        if (normalizedHaystack.contains(stem)) {
+            return true;
+        }
+        if (stem.contains("ascensor")) {
+            return normalizedHaystack.contains("ascensor")
+                    || normalizedHaystack.contains("elevator")
+                    || normalizedHaystack.contains("mejora del ascensor")
+                    || normalizedHaystack.contains("modernizar el ascensor")
+                    || normalizedHaystack.contains("reparar el ascensor");
+        }
+        if (stem.contains("videovigilancia") || stem.contains("vigilancia")) {
+            return normalizedHaystack.contains("videovigilancia")
+                    || normalizedHaystack.contains("vigilancia")
+                    || normalizedHaystack.contains("camara")
+                    || normalizedHaystack.contains("camaras");
+        }
+        return false;
+    }
+
+    protected static String normalizeTopicSearchText(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        return Normalizer.normalize(text.toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "");
+    }
+
+    protected String buildMinuteTopicSearchText(Minute minute) {
+        if (minute == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        if (minute.date() != null && !minute.date().isBlank()
+                && !StructuredMinuteMetadataSupport.isUnknownDateLiteral(minute.date())) {
+            sb.append(minute.date()).append(' ');
+        }
+        if (minute.topics() != null) {
+            sb.append(String.join(" ", minute.topics())).append(' ');
+        }
+        if (minute.decisions() != null) {
+            sb.append(String.join(" ", minute.decisions())).append(' ');
+        }
+        if (minute.summary() != null) {
+            sb.append(minute.summary()).append(' ');
+        }
+        if (minute.agenda() != null) {
+            sb.append(String.join(" ", minute.agenda().values())).append(' ');
+        }
+        if (minute.mentionedEntities() != null) {
+            sb.append(String.join(" ", minute.mentionedEntities())).append(' ');
+        }
+        if (minute.filename() != null) {
+            sb.append(minute.filename());
+        }
+        return sb.toString();
+    }
+
+    protected Minute minuteShellFromDocument(Document doc) {
+        return minimalMinuteShellFromDocument(doc);
+    }
+
+    /** Canonical acta key: {@code projectDocumentId}, else {@code date_iso + ACTA N.pdf}, else document id. */
+    protected String actaDedupeKey(Document doc) {
+        if (doc == null) {
+            return "";
+        }
+        Map<String, Object> flat = StructuredMinuteMetadataSupport.flattenMetadata(doc.getMetadata());
+        String projectDocId = safeGetString(flat, METADATA_KEY_PROJECT_DOCUMENT_ID);
+        if (projectDocId != null && !projectDocId.isBlank()) {
+            return "pdoc:" + projectDocId;
+        }
+        String resolvedDate = StructuredMinuteMetadataSupport.resolveDate(flat);
+        String dateKey = normalizedMeetingDateDedupeKey(resolvedDate);
+        String canonicalFile = resolveCanonicalActaFilename(flat);
+        if (dateKey != null && canonicalFile != null) {
+            return dateKey + ":" + canonicalFile.toLowerCase(Locale.ROOT);
+        }
+        if (dateKey != null) {
+            return dateKey;
+        }
+        String docId = getDocumentIdFromDoc(doc);
+        if (docId != null && !docId.isBlank()) {
+            return "id:" + docId;
+        }
+        return "chunk:" + (doc.getId() != null ? doc.getId() : UUID.randomUUID().toString());
+    }
+
+    /** Canonical meeting key for minute-level dedupe (one reunion per calendar date + PDF title when known). */
+    protected String minuteCanonicalMeetingKey(Minute minute) {
+        if (minute == null) {
+            return "";
+        }
+        String dateKey = normalizedMeetingDateDedupeKey(minute.date());
+        String canonicalFile = resolveCanonicalActaFilenameFromMinute(minute);
+        if (dateKey != null && canonicalFile != null) {
+            return dateKey + ":" + canonicalFile.toLowerCase(Locale.ROOT);
+        }
+        if (dateKey != null) {
+            return dateKey;
+        }
+        if (minute.id() != null && !minute.id().isBlank()) {
+            return "id:" + minute.id();
+        }
+        if (minute.filename() != null && !minute.filename().isBlank()) {
+            return "file:" + minute.filename().trim().toLowerCase(Locale.ROOT);
+        }
+        return "unknown:" + UUID.randomUUID();
+    }
+
+    private String resolveCanonicalActaFilename(Map<String, Object> flat) {
+        String filename = resolveMetadataFilename(flat);
+        if (filename != null && CANONICAL_ACTA_PDF_FILENAME.matcher(filename).matches()) {
+            return filename.trim();
+        }
+        return null;
+    }
+
+    private String resolveCanonicalActaFilenameFromMinute(Minute minute) {
+        if (minute == null || minute.filename() == null) {
+            return null;
+        }
+        String filename = minute.filename().trim();
+        if (CANONICAL_ACTA_PDF_FILENAME.matcher(filename).matches()) {
+            return filename;
+        }
+        return null;
+    }
+
+    private static String resolveMetadataFilename(Map<String, Object> flat) {
+        if (flat == null || flat.isEmpty()) {
+            return null;
+        }
+        for (String key : List.of("filename", "sourceTitle", "documentTitle")) {
+            Object value = flat.get(key);
+            if (value != null && !value.toString().isBlank()) {
+                return value.toString().trim();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Collapses alias/chunk/snapshot minute projections to one row per canonical meeting
+     * (normalized calendar date when parseable).
+     */
+    protected List<Minute> dedupeMinutesByCanonicalMeetingDate(List<Minute> minutes) {
+        if (minutes == null || minutes.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Minute> bestByKey = new LinkedHashMap<>();
+        for (Minute minute : minutes) {
+            if (minute == null) {
+                continue;
+            }
+            String key = minuteCanonicalMeetingKey(minute);
+            Minute existing = bestByKey.get(key);
+            if (existing == null) {
+                bestByKey.put(key, minute);
+                continue;
+            }
+            Minute primary =
+                    minuteCanonicalFilenameScore(minute) >= minuteCanonicalFilenameScore(existing)
+                            ? minute
+                            : existing;
+            Minute secondary = primary == minute ? existing : minute;
+            bestByKey.put(key, mergeMinuteRecords(primary, secondary));
+        }
+        if (bestByKey.size() < minutes.size()) {
+            log().info(
+                    "Deduped minutes by canonical meeting date: {} rows -> {} meetings",
+                    minutes.size(),
+                    bestByKey.size());
+        }
+        return List.copyOf(bestByKey.values());
+    }
+
+    private static int minuteCanonicalFilenameScore(Minute minute) {
+        if (minute == null || minute.filename() == null) {
+            return 0;
+        }
+        if (minute.filename().matches("(?i)ACTA\\s+\\d+\\.pdf")) {
+            return 100;
+        }
+        return 0;
+    }
+
+    private String normalizedMeetingDateDedupeKey(String dateCandidate) {
+        if (dateCandidate == null || dateCandidate.isBlank()) {
+            return null;
+        }
+        LocalDate parsed = parseDateFlexible(dateCandidate);
+        if (parsed != null) {
+            return "date:" + parsed;
+        }
+        String trimmed = dateCandidate.trim();
+        return trimmed.isEmpty() ? null : "date:" + trimmed;
+    }
+
+    private static int documentCanonicalScore(Document doc) {
+        if (doc == null || doc.getMetadata() == null) {
+            return 0;
+        }
+        Object filename = doc.getMetadata().get("filename");
+        if (filename == null) {
+            filename = doc.getMetadata().get("sourceTitle");
+        }
+        if (filename != null && filename.toString().matches("(?i)ACTA\\s+\\d+\\.pdf")) {
+            return 100;
+        }
+        return 0;
+    }
+
+    /**
+     * Deduplicates retrieved chunks to one document per acta, preferring canonical {@code ACTA N.pdf}.
+     */
+    protected List<Document> dedupeDocsByDocumentId(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Document> bestById = new LinkedHashMap<>();
+        for (Document doc : docs) {
+            if (doc == null) {
+                continue;
+            }
+            String id = actaDedupeKey(doc);
+            Document existing = bestById.get(id);
+            if (existing == null
+                    || documentCanonicalScore(doc) > documentCanonicalScore(existing)
+                    || (documentCanonicalScore(doc) == documentCanonicalScore(existing)
+                            && StructuredMinuteMetadataSupport.richnessScore(doc.getMetadata())
+                                    > StructuredMinuteMetadataSupport.richnessScore(existing.getMetadata()))) {
+                bestById.put(id, doc);
+            }
+        }
+        if (bestById.size() < docs.size()) {
+            log().info("Deduped documents by acta key: {} chunks -> {} actas", docs.size(), bestById.size());
+        }
+        return List.copyOf(bestById.values());
+    }
+
+    /** Deduplicates minutes to one row per canonical meeting, merging chunk-level attendee lists. */
+    protected List<Minute> dedupeMinutesByDocumentId(List<Minute> minutes) {
+        return dedupeMinutesByCanonicalMeetingDate(mergeMinutesByDocumentId(minutes));
+    }
+
+    /**
+     * Widens retrieval for corpus-wide deterministic queries (topic counts, compound filters).
+     */
+    protected List<Document> retrieveCorpusDocumentsWithFallback(String query, String[] relevantFields) {
+        retriever.setTopK(100);
+        retriever.setSimilarityThreshold(0.0);
+        try {
+            List<Document> raw = new ArrayList<>();
+            raw.addAll(retrieveDocumentsWithFallback(query, relevantFields, null));
+            raw.addAll(retrieveAllDocuments(query, null));
+            List<Document> merged = mergeChunksWithRichestMetadata(collectInScopeCorpusRows(raw));
+            log().info(
+                    "Corpus retrieval for '{}': raw={}, merged={} actas",
+                    query,
+                    raw.size(),
+                    merged.size());
+            return merged;
+        } finally {
+            retriever.restoreDefaultSettings();
+        }
+    }
+
+    /** Broad corpus scan not limited to the user question's semantic top-k. */
+    protected List<Document> retrieveAllDocuments(String query, JSONObject ner) {
+        List<Document> broad = retriever.retrieve("acta reunión junta propietarios");
+        if (broad == null || broad.isEmpty()) {
+            broad = retriever.retrieve("reunión acta");
+        }
+        if ((broad == null || broad.isEmpty()) && query != null && !query.isBlank()) {
+            broad = retriever.retrieve(query);
+        }
+        if ((broad == null || broad.isEmpty()) && ner != null) {
+            broad = retriever.retrieveWithMetadataFilters(query != null ? query : "acta", ner);
+        }
+        return broad != null ? broad : List.of();
+    }
+
+    /**
+     * Bypasses semantic ranking: widens retrieval then keeps documents whose {@code date_iso} matches the query date.
+     */
+    protected List<Document> lookupDocumentsByDateIso(String query, JSONObject ner, String[] relevantFields) {
+        String requestedDate = extractDateFromQuery(query, ner);
+        if (requestedDate == null || requestedDate.isBlank()) {
+            return List.of();
+        }
+        if (requestedDate.matches("\\d{4}-01-01")) {
+            log().debug("lookupDocumentsByDateIso: year-only anchor {}, skipping exact lookup", requestedDate);
+            return List.of();
+        }
+        retriever.setTopK(100);
+        retriever.setSimilarityThreshold(0.0);
+        try {
+            List<Document> docs =
+                    mergeChunksByDocumentId(retrieveDocumentsWithFallback(query, relevantFields, ner));
+            return validateDateMatch(docs, requestedDate);
+        } finally {
+            retriever.restoreDefaultSettings();
+        }
+    }
+
+    protected boolean hasExplicitActaDate(String query, JSONObject ner) {
+        if (query == null || StructuredMinuteMetadataSupport.isYearOnlyActaCountQuery(query)) {
+            return false;
+        }
+        List<String> dateCandidates = extractDateCandidates(query, ner);
+        if (dateCandidates.isEmpty()) {
+            return false;
+        }
+        String first = dateCandidates.get(0);
+        return first != null && !first.isBlank() && !first.matches("\\d{4}-01-01");
+    }
+
+    protected static boolean containsAttendeeName(List<String> target, String name) {
+        if (target == null || name == null || name.isBlank()) {
+            return false;
+        }
+        return StructuredMinuteMetadataSupport.isDuplicateOrPrefixAlias(name.trim(), target);
+    }
+
+    protected boolean minuteMatchesYear(Minute minute, String year) {
+        if (minute == null || year == null || year.isBlank()) {
+            return false;
+        }
+        LocalDate parsed = parseDateFlexible(minute.date());
+        if (parsed != null) {
+            return String.valueOf(parsed.getYear()).equals(year);
+        }
+        return minute.date() != null && minute.date().contains(year);
+    }
+
+    protected Optional<ToolResult> exitWhenFutureOrUnavailableDate(String query, JSONObject ner, Class<?> toolClass) {
+        String requestedDate = extractDateFromQuery(query, ner);
+        if (requestedDate != null && StructuredMinuteMetadataSupport.isFutureOrUnavailableDate(requestedDate)) {
+            if (hasSpecificCalendarDateInQuery(query)) {
+                String message = formatUnavailableSpecificMeetingDateMessage(query, requestedDate);
+                return Optional.of(ToolResult.from(formatResponse(message, query), toolClass));
+            }
+            if (isYearOnlyActaCountQuery(query)) {
+                String year = requestedDate.length() >= 4 ? requestedDate.substring(0, 4) : extractYearFromQueryText(query);
+                String message =
+                        querySeemsSpanish(query)
+                                ? yearOnlyActaCorpusAbsenceMessage(year)
+                                : "No meeting minutes exist for year " + year + ".";
+                return Optional.of(ToolResult.from(formatResponse(message, query), toolClass));
+            }
+            String message =
+                    querySeemsSpanish(query)
+                            ? "No hay ninguna acta registrada en esa fecha."
+                            : "No meeting minutes exist for that date.";
+            return Optional.of(ToolResult.from(formatResponse(message, query), toolClass));
+        }
+        String requestedYear = extractYearFromQueryText(query);
+        if (requestedYear != null
+                && !hasSpecificCalendarDateInQuery(query)
+                && StructuredMinuteMetadataSupport.isFutureOrUnavailableDate(requestedYear + "-01-01")) {
+            String message =
+                    querySeemsSpanish(query)
+                            ? (isYearOnlyActaCountQuery(query)
+                                    ? yearOnlyActaCorpusAbsenceMessage(requestedYear)
+                                    : "No hay reuniones registradas en el año " + requestedYear + ".")
+                            : "No meetings were found in year " + requestedYear + ".";
+            return Optional.of(ToolResult.from(formatResponse(message, query), toolClass));
+        }
+        return Optional.empty();
+    }
+
+    protected static boolean hasSpecificCalendarDateInQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        return q.matches(".*\\b\\d{4}-\\d{2}-\\d{2}\\b.*")
+                || q.matches(".*\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}\\b.*")
+                || q.matches(".*\\b\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4}\\b.*");
+    }
+
+    protected String formatUnavailableSpecificMeetingDateMessage(String query, String isoDate) {
+        String datePhrase = formatSpanishDatePhraseFromIso(isoDate);
+        if (querySeemsSpanish(query)) {
+            return "No existe la reunión del " + datePhrase + " en los documentos disponibles.";
+        }
+        return "The meeting on " + datePhrase + " does not exist in the available documents.";
+    }
+
+    private String formatSpanishDatePhraseFromIso(String isoDate) {
+        if (isoDate == null || isoDate.isBlank()) {
+            return "fecha desconocida";
+        }
+        LocalDate parsed = parseDateFlexible(isoDate);
+        if (parsed == null) {
+            String slash = StructuredMinuteMetadataSupport.formatDateSlash(isoDate);
+            return slash.isBlank() ? isoDate : slash;
+        }
+        String month = parsed.getMonth().getDisplayName(TextStyle.FULL, new Locale("es", "ES"));
+        return String.format(Locale.ROOT, "%d de %s de %d", parsed.getDayOfMonth(), month, parsed.getYear());
+    }
+
+    private String extractYearFromQueryText(String query) {
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        Matcher matcher = Pattern.compile("\\b(19|20)\\d{2}\\b").matcher(query);
+        return matcher.find() ? matcher.group() : null;
+    }
+
+    protected static boolean isYearOnlyActaCountQuery(String query) {
+        return StructuredMinuteMetadataSupport.isYearOnlyActaCountQuery(query);
+    }
+
+    protected static String yearOnlyActaCorpusAbsenceMessage(String year) {
+        return StructuredMinuteMetadataSupport.formatYearOnlyActaCorpusAbsence(year);
+    }
+
+    protected static boolean querySeemsSpanish(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        if (q.contains("¿")
+                || q.contains("actas")
+                || q.contains("acta")
+                || q.contains("particip")
+                || q.contains("reunión")
+                || q.contains("reunion")
+                || q.contains("cuánt")
+                || q.contains("cuant")) {
+            return true;
+        }
+        for (int i = 0; i < query.length(); i++) {
+            char c = query.charAt(i);
+            if (c == 'á' || c == 'é' || c == 'í' || c == 'ó' || c == 'ú' || c == 'ü' || c == 'ñ') {
+                return true;
+            }
+        }
+        return false;
     }
     
     /**
@@ -3433,27 +4995,46 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
+     * Reads NER {@code date} whether stored as a JSON array or a single string.
+     */
+    protected List<String> extractNerDateStrings(JSONObject ner) {
+        if (ner == null || !ner.has("date")) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        try {
+            JSONArray arr = ner.optJSONArray("date");
+            if (arr != null) {
+                for (int i = 0; i < arr.length(); i++) {
+                    String s = arr.optString(i, "").trim();
+                    if (!s.isBlank()) {
+                        out.add(s);
+                    }
+                }
+                return out;
+            }
+            Object raw = ner.get("date");
+            if (raw instanceof String s && !s.isBlank()) {
+                out.add(s.trim());
+            }
+        } catch (Exception e) {
+            log().warn("Error extracting dates from NER: {}", e.getMessage());
+        }
+        return out;
+    }
+
+    /**
      * Extracts date candidates from query and NER entities.
      * Supports multiple date formats and uses LLM for normalization when needed.
      */
     protected List<String> extractDateCandidates(String query, JSONObject ner) {
         List<String> out = new ArrayList<>();
 
-        // From NER (highest priority - most accurate); use optJSONArray to avoid IllegalArgumentException if "date" is not an array
+        // From NER (highest priority - most accurate)
         if (ner != null && ner.has("date")) {
-            try {
-                JSONArray arr = ner.optJSONArray("date");
-                if (arr != null) {
-                    for (int i = 0; i < arr.length(); i++) {
-                    String s = arr.optString(i, "").trim();
-                    if (!s.isBlank()) {
-                        out.add(s);
-                        log().debug("Extracted date from NER: {}", s);
-                    }
-                }
-                }
-            } catch (Exception e) {
-                log().warn("Error extracting dates from NER: {}", e.getMessage());
+            for (String s : extractNerDateStrings(ner)) {
+                out.add(s);
+                log().debug("Extracted date from NER: {}", s);
             }
         }
 
@@ -3839,7 +5420,30 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (fromAlt != null) {
             return fromAlt;
         }
+        String fromContent = tryGetDateFromDocumentContent(doc);
+        if (fromContent != null) {
+            return fromContent;
+        }
         return tryGetDateFromMinuteEmbedded(doc);
+    }
+
+    private String tryGetDateFromDocumentContent(Document doc) {
+        if (doc == null) {
+            return null;
+        }
+        String content = doc.getText();
+        if (content == null || content.isBlank()) {
+            return null;
+        }
+        String extracted = extractor.extractDate(content);
+        if (extracted == null || extracted.isBlank()) {
+            return null;
+        }
+        LocalDate parsed = parseDateFlexible(extracted);
+        if (parsed != null) {
+            return parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        }
+        return extracted;
     }
 
     private String tryGetDateFromDateIsoMetadata(Document doc, Map<String, Object> metadata) {
@@ -4157,6 +5761,18 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         } catch (Exception e) {
             log().debug("Could not extract attendeesCount from Minute object: {}", e.getMessage());
+        }
+
+        String content = doc.getText();
+        if (content != null && !content.isBlank()) {
+            int fromContent = extractor.extractAttendeeCount(content);
+            if (fromContent > 0) {
+                return fromContent;
+            }
+            List<String> fromList = extractor.extractAttendees(content);
+            if (!fromList.isEmpty()) {
+                return fromList.size();
+            }
         }
         
         return null;

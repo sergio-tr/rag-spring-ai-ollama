@@ -249,6 +249,43 @@ public class KnowledgePipelineOrchestrator {
         }
     }
 
+    /**
+     * Same as {@link #ingestFromStoredBinary} but runs {@link #ingestStoredTx} in the caller's Spring
+     * transaction so {@code resolved_config_snapshot} rows persisted in the same transaction are visible
+     * to {@code knowledge_index_snapshot} FK inserts.
+     */
+    public void ingestFromStoredBinaryInCurrentTransaction(
+            UUID projectId,
+            UUID projectDocumentId,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash) {
+        try {
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "started");
+            joinCallerTransactionTemplate.executeWithoutResult(
+                    status ->
+                            ingestStoredTx(
+                                    projectId,
+                                    projectDocumentId,
+                                    resolvedConfigSnapshotId,
+                                    resolvedConfigHash));
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "success");
+        } catch (Exception e) {
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "failure");
+            log.error("Knowledge ingest failed for project document {}: {}", projectDocumentId, e.getMessage(), e);
+            transactionTemplate.executeWithoutResult(
+                    s -> {
+                        KnowledgeDocumentEntity rowErr =
+                                knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+                        if (rowErr != null) {
+                            rowErr.setStatus(ProjectDocumentStatus.ERROR);
+                            rowErr.setErrorMessage(
+                                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                            knowledgeDocumentRepository.save(rowErr);
+                        }
+                    });
+        }
+    }
+
     private void ingestTx(
             UUID projectId,
             UUID projectDocumentId,
@@ -549,7 +586,13 @@ public class KnowledgePipelineOrchestrator {
 
             Optional<KnowledgeIndexSnapshotEntity> previousActive =
                     corpusScope == CorpusScope.PROJECT_SHARED
-                            ? knowledgeSnapshotService.findActiveProjectSnapshot(projectId)
+                            ? knowledgeSnapshotService.findCompatibleProjectSnapshot(
+                                    projectId,
+                                    s ->
+                                            s.getStatus() == IndexSnapshotStatus.ACTIVE
+                                                    && Objects.equals(
+                                                            s.getIndexProfileHash(),
+                                                            effectiveProfile.profileHash()))
                             : knowledgeSnapshotService.findActiveConversationSnapshot(conversationId);
 
             KnowledgeDocumentEntity first = scopeDocs.getFirst();
@@ -567,8 +610,10 @@ public class KnowledgePipelineOrchestrator {
             probeAndPersistSnapshotEmbeddingDimensions(effectiveProfile, effectiveProfile.materializationStrategy(), building);
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
-            for (KnowledgeDocumentEntity d : scopeDocs) {
-                deleteVectorChunksForDocument(d.getId());
+            if (corpusScope != CorpusScope.PROJECT_SHARED) {
+                for (KnowledgeDocumentEntity d : scopeDocs) {
+                    deleteVectorChunksForDocument(d.getId());
+                }
             }
 
             MaterializationStrategy strategy = projection.materializationStrategy();
@@ -710,7 +755,13 @@ public class KnowledgePipelineOrchestrator {
                                                     && Objects.equals(
                                                             s.getIndexProfileHash(), profile.profileHash()))
                             : corpusScope == CorpusScope.PROJECT_SHARED
-                                    ? knowledgeSnapshotService.findActiveProjectSnapshot(projectId)
+                                    ? knowledgeSnapshotService.findCompatibleProjectSnapshot(
+                                            projectId,
+                                            s ->
+                                                    s.getStatus() == IndexSnapshotStatus.ACTIVE
+                                                            && Objects.equals(
+                                                                    s.getIndexProfileHash(),
+                                                                    profile.profileHash()))
                                     : knowledgeSnapshotService.findActiveConversationSnapshot(conversationId);
 
             KnowledgeDocumentEntity first = scopeDocs.getFirst();
@@ -730,9 +781,10 @@ public class KnowledgePipelineOrchestrator {
             probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
-            // Evaluation corpora may keep multiple ACTIVE snapshots (one per index profile hash). A document-global
-            // vector delete would wipe rows owned by other compatible snapshots during multi-preset auto-reindex.
-            if (ownerType != KnowledgeSnapshotOwnerType.EVALUATION_CORPUS) {
+            // Multi-materialization projects and evaluation corpora keep one ACTIVE snapshot per index profile hash.
+            // Never delete document-global vectors when building an alternate materialization profile.
+            if (ownerType != KnowledgeSnapshotOwnerType.EVALUATION_CORPUS
+                    && ownerType != KnowledgeSnapshotOwnerType.PROJECT) {
                 for (KnowledgeDocumentEntity d : scopeDocs) {
                     deleteVectorChunksForDocument(d.getId());
                 }

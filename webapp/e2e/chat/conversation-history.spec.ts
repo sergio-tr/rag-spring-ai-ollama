@@ -20,7 +20,7 @@ test.describe("Conversation history", () => {
     const titleA = `E2E-Hist-A-${suffix}`;
     const titleB = `E2E-Hist-B-${suffix}`;
 
-    await createNewChatConversation(page);
+    await createNewChatConversation(page, { allowExisting: false });
     await expect(page.getByTestId("chat-message-composer")).toBeEnabled({ timeout: 15_000 });
     await page.getByRole("textbox", { name: /conversation title/i }).fill(titleA);
     await page.getByRole("textbox", { name: /conversation title/i }).blur();
@@ -29,7 +29,7 @@ test.describe("Conversation history", () => {
       timeout: 15_000,
     });
 
-    await createNewChatConversation(page);
+    await createNewChatConversation(page, { allowExisting: false });
     await expect(page).toHaveURL(/conversationId=/);
     const secondConversationUrl = page.url();
     await expect(page.getByTestId("chat-message-composer")).toBeEnabled({ timeout: 15_000 });

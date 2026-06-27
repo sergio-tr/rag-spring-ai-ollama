@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import type { BenchmarkKind, LatestLabRunRecoveryDto } from "@/types/api";
-import { latestLabBenchmarkRunQueryKey } from "@/features/lab/lib/lab-run-recovery";
+import { latestLabBenchmarkRunQueryKey } from "@/features/lab/lib/lab-run-resumption";
 
 export { latestLabBenchmarkRunQueryKey };
 

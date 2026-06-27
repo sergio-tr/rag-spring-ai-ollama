@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -89,6 +88,9 @@ public class RetrievalReranker {
             return null;
         }
         Object v = meta.get("chunk_index");
+        if (v == null) {
+            v = meta.get("chunkIndex");
+        }
         if (v instanceof Number n) {
             return n.intValue();
         }
@@ -100,22 +102,27 @@ public class RetrievalReranker {
         String haystack = haystack(c);
         int hits = 0;
         for (String t : targetEntities) {
-            if (t != null && containsIgnoreCase(haystack, t)) {
+            if (t != null && RetrievalEntityMatchingSupport.containsEntityToken(haystack, t)) {
                 hits++;
             }
         }
         for (String t : entities.people()) {
-            if (t != null && containsIgnoreCase(haystack, t)) {
+            if (t != null && RetrievalEntityMatchingSupport.containsEntityToken(haystack, t)) {
                 hits++;
             }
         }
         for (String t : entities.organizations()) {
-            if (t != null && containsIgnoreCase(haystack, t)) {
+            if (t != null && RetrievalEntityMatchingSupport.containsEntityToken(haystack, t)) {
                 hits++;
             }
         }
         for (String t : entities.locations()) {
-            if (t != null && containsIgnoreCase(haystack, t)) {
+            if (t != null && RetrievalEntityMatchingSupport.containsEntityToken(haystack, t)) {
+                hits++;
+            }
+        }
+        for (String t : entities.topics()) {
+            if (t != null && RetrievalEntityMatchingSupport.containsEntityToken(haystack, t)) {
                 hits++;
             }
         }
@@ -130,18 +137,13 @@ public class RetrievalReranker {
         return sb.toString();
     }
 
-    private static boolean containsIgnoreCase(String haystack, String needle) {
-        if (needle == null || needle.isBlank()) {
-            return false;
-        }
-        return haystack.toLowerCase(Locale.ROOT).contains(needle.trim().toLowerCase(Locale.ROOT));
-    }
-
     private static double dateScore(RetrievalRequest req, RetrievalCandidate c) {
         return DateGroundingSupport.requestedDate(req.queryText(), req.entities().dates())
-                .map(requested -> DateGroundingSupport.candidateMatchesRequestedDate(c, requested)
-                        ? W_EXACT_DATE
-                        : W_DATE_MISMATCH)
+                .map(
+                        requested ->
+                                DateGroundingSupport.candidateMatchesRequestedDate(c, requested)
+                                        ? W_EXACT_DATE
+                                        : W_DATE_MISMATCH)
                 .orElse(0.0);
     }
 

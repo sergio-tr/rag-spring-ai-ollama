@@ -109,8 +109,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>FD-p60-arch-inventory: each {@code P60-M-xx} binds to the authoritative {@code Class#method} named in the
  * microphase plan Compatibility matrix; each {@code p60_mXX} test re-states the same MockMvc observables.
  */
-@DisplayName("P60 Runtime trace regression suite HTTP contract (MockMvc)")
-public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
+@DisplayName("Runtime trace regression suite HTTP contract (MockMvc)")
+public class RuntimeTraceRegressionSuiteEndToEndContractTest {
 
     /*
      * FD-p60-arch-inventory (T-P60-e2e, T-P60-errors) — matrix row binding:
@@ -276,7 +276,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @Import({RuntimeTraceRegressionSuiteRunController.class, RegressionSuiteRestJacksonConfiguration.class})
     @ActiveProfiles("test")
     @TestPropertySource(properties = "rag.api.product-base-path=/api/v1")
-    class SliceP60RunController {
+    class SliceRunController {
 
         private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
         private static final String VALID_EMPTY_ENTRIES_JSON = "{\"entries\":[]}";
@@ -630,10 +630,10 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @AutoConfigureMockMvc(addFilters = false)
     @Import({
         RuntimeTraceRegressionSuiteRunExportController.class,
-        RuntimeTraceRegressionSuiteP60EndToEndContractTest.SliceP60RunExport.ExportServiceTestConfig.class
+        RuntimeTraceRegressionSuiteEndToEndContractTest.SliceRunExport.ExportServiceTestConfig.class
     })
     @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
-    class SliceP60RunExport {
+    class SliceRunExport {
 
         @TestConfiguration
         static class ExportServiceTestConfig {
@@ -771,7 +771,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @AutoConfigureMockMvc(addFilters = false)
     @Import(RuntimeTraceRegressionSuiteRunExportController.class)
     @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
-    class SliceP60RunExport413 {
+    class SliceRunExport413 {
 
         @Autowired
         private Environment environment;
@@ -845,10 +845,10 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @AutoConfigureMockMvc(addFilters = false)
     @Import({
         RuntimeTraceRegressionSuiteRunImportController.class,
-        RuntimeTraceRegressionSuiteP60EndToEndContractTest.SliceP60RunImport.ImportTestConfig.class
+        RuntimeTraceRegressionSuiteEndToEndContractTest.SliceRunImport.ImportTestConfig.class
     })
     @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
-    class SliceP60RunImport {
+    class SliceRunImport {
 
         @TestConfiguration
         static class ImportTestConfig {
@@ -947,7 +947,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @AutoConfigureMockMvc(addFilters = false)
     @Import(RuntimeTraceRegressionSuiteRunImportPreviewController.class)
     @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
-    class SliceP60RunImportPreview {
+    class SliceRunImportPreview {
 
         @Autowired
         private Environment environment;
@@ -1037,10 +1037,10 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @AutoConfigureMockMvc(addFilters = false)
     @Import({
         RuntimeTraceRegressionSuiteDefinitionExportController.class,
-        RuntimeTraceRegressionSuiteP60EndToEndContractTest.SliceP60DefinitionExport.ExportServiceTestConfig.class
+        RuntimeTraceRegressionSuiteEndToEndContractTest.SliceDefinitionExport.ExportServiceTestConfig.class
     })
     @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
-    class SliceP60DefinitionExport {
+    class SliceDefinitionExport {
 
         @TestConfiguration
         static class ExportServiceTestConfig {
@@ -1169,10 +1169,10 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @AutoConfigureMockMvc(addFilters = false)
     @Import({
         RuntimeTraceRegressionSuiteDefinitionImportController.class,
-        RuntimeTraceRegressionSuiteP60EndToEndContractTest.SliceP60DefinitionImport.ImportTestConfig.class
+        RuntimeTraceRegressionSuiteEndToEndContractTest.SliceDefinitionImport.ImportTestConfig.class
     })
     @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
-    class SliceP60DefinitionImport {
+    class SliceDefinitionImport {
 
         @TestConfiguration
         static class ImportTestConfig {
@@ -1285,10 +1285,10 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @AutoConfigureMockMvc(addFilters = false)
     @Import({
         RuntimeTraceRegressionSuiteDefinitionImportPreviewController.class,
-        RuntimeTraceRegressionSuiteP60EndToEndContractTest.SliceP60DefinitionImportPreview.PreviewTestConfig.class
+        RuntimeTraceRegressionSuiteEndToEndContractTest.SliceDefinitionImportPreview.PreviewTestConfig.class
     })
     @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
-    class SliceP60DefinitionImportPreview {
+    class SliceDefinitionImportPreview {
 
         @TestConfiguration
         static class PreviewTestConfig {
@@ -1388,7 +1388,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @AutoConfigureMockMvc(addFilters = false)
     @Import(RuntimeTraceRegressionSuiteDefinitionExecutionExportController.class)
     @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
-    class SliceP60DefinitionExecutionExport {
+    class SliceDefinitionExecutionExport {
 
         @Autowired
         private Environment environment;
@@ -1565,7 +1565,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @AutoConfigureMockMvc(addFilters = false)
     @Import({RuntimeTraceRegressionSuiteDefinitionController.class, RegressionSuiteDefinitionMutationJacksonConfiguration.class})
     @ActiveProfiles("test")
-    class SliceP60DefinitionReadV5 {
+    class SliceDefinitionReadV5 {
 
         @Autowired
         private Environment environment;
@@ -1720,7 +1720,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @AutoConfigureMockMvc(addFilters = false)
     @Import({RuntimeTraceRegressionSuiteDefinitionController.class, RegressionSuiteDefinitionMutationJacksonConfiguration.class})
     @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
-    class SliceP60DefinitionMutateAndExecuteApiTest {
+    class SliceDefinitionMutateAndExecuteApiTest {
 
         @Autowired
         private Environment environment;
@@ -1962,7 +1962,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @Import({RuntimeTraceRegressionSuiteDefinitionController.class, RegressionSuiteDefinitionMutationJacksonConfiguration.class})
     @ActiveProfiles("test")
     @TestPropertySource(properties = "rag.api.product-base-path=/api/v1")
-    class SliceP60DefinitionRunsV1 {
+    class SliceDefinitionRunsV1 {
 
         private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 

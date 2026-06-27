@@ -547,6 +547,47 @@ class ChatMessageApplicationServiceTest {
     }
 
     @Test
+    void cancelPriorChatJobsForConversation_onlyCancelsMatchingConversation() {
+        UUID userId = UUID.randomUUID();
+        UUID conversationId = UUID.randomUUID();
+        UUID otherConversationId = UUID.randomUUID();
+        UUID matchingTaskId = UUID.randomUUID();
+        UUID otherTaskId = UUID.randomUUID();
+
+        ConversationEntity conv = mock(ConversationEntity.class);
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(conv.getProject()).thenReturn(project);
+        when(conv.getDocumentFilter()).thenReturn(List.of());
+        when(projectAccessService.requireConversationForUser(userId, conversationId)).thenReturn(conv);
+        when(messageRepository.findMaxSeqByConversationId(conversationId)).thenReturn(0);
+        UserEntity user = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        AsyncTaskEntity matchingTask = mock(AsyncTaskEntity.class);
+        when(matchingTask.getId()).thenReturn(matchingTaskId);
+        when(matchingTask.getStatus()).thenReturn(AsyncTaskStatus.RUNNING);
+        Map<String, Object> matchingPayload = new LinkedHashMap<>();
+        matchingPayload.put(ChatJobPayloadKeys.CONVERSATION_ID, conversationId.toString());
+        when(matchingTask.getRequestPayload()).thenReturn(matchingPayload);
+
+        AsyncTaskEntity otherTask = mock(AsyncTaskEntity.class);
+        Map<String, Object> otherPayload = new LinkedHashMap<>();
+        otherPayload.put(ChatJobPayloadKeys.CONVERSATION_ID, otherConversationId.toString());
+        when(otherTask.getRequestPayload()).thenReturn(otherPayload);
+
+        when(asyncTaskRepository.findByUser_IdAndTaskTypeAndStatusIn(
+                        eq(userId), eq(AsyncTaskType.CHAT_MESSAGE), any()))
+                .thenReturn(List.of(matchingTask, otherTask));
+
+        service.enqueueMessage(userId, conversationId, new PostMessageRequest("hi", null, null));
+
+        verify(chatJobCancellationRegistry).signalCancel(matchingTaskId);
+        verify(chatJobCancellationRegistry, never()).signalCancel(otherTaskId);
+        verify(chatMessageWorkService, never()).markAssistantCancelledForQueuedJob(any());
+        verify(asyncTaskMutationService, never()).markCancelled(eq(otherTaskId), any());
+    }
+
+    @Test
     void cancelChatTask_nonChatTask_throwsBadRequest() {
         UUID userId = UUID.randomUUID();
         UUID taskId = UUID.randomUUID();

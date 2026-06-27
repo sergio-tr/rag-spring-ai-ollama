@@ -30,6 +30,7 @@ import com.uniovi.rag.domain.runtime.retrieval.MetadataFilterTelemetry;
 import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalFallbackStage;
 import com.uniovi.rag.domain.runtime.retrieval.SparseQueryPreparation;
 import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalTelemetry;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -46,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -85,8 +87,26 @@ class AdvancedRetrievalPipelineTest {
     @Mock
     private MetadataConstraintFilter metadataConstraintFilter;
 
+    @Mock
+    private RetrievalContextExpander retrievalContextExpander;
+
     @InjectMocks
     private AdvancedRetrievalPipeline pipeline;
+
+    @BeforeEach
+    void stubContextExpanderPassthrough() {
+        lenient()
+                .when(retrievalContextExpander.expand(any(), any(), any()))
+                .thenAnswer(
+                        inv -> {
+                            @SuppressWarnings("unchecked")
+                            List<RetrievalCandidate> input = inv.getArgument(2);
+                            return new RetrievalContextExpander.ExpansionResult(
+                                    input != null ? input : List.of(),
+                                    input != null ? input.size() : 0,
+                                    List.of());
+                        });
+    }
 
     @Test
     void retrieve_denseOnlyEmpty_addsRetrievalEmptyNote() {

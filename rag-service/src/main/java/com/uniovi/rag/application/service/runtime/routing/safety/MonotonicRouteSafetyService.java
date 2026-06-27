@@ -1,11 +1,13 @@
 package com.uniovi.rag.application.service.runtime.routing.safety;
 
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
@@ -64,8 +66,22 @@ public class MonotonicRouteSafetyService {
             CandidateScore retrieval,
             boolean advancedCandidateRejected) {
         QueryConstraintSignals signals = QueryConstraintSignals.fromPlan(plan);
+        String queryText = (plan.rewrittenQueryText() == null ? "" : plan.rewrittenQueryText())
+                + " "
+                + (plan.normalizedQueryText() == null ? "" : plan.normalizedQueryText());
+        queryText = queryText.toLowerCase(Locale.ROOT);
+        boolean personActaVerify =
+                signals.booleanVerify()
+                        && (queryText.contains("aparece") || queryText.contains("figura"))
+                        && (queryText.contains("acta") || queryText.contains("reunion") || queryText.contains("reunión"));
+        boolean summarizeMeeting =
+                plan.classifierQueryType().filter(qt -> qt == QueryType.SUMMARIZE_MEETING).isPresent()
+                        || queryText.contains("resume la reunion")
+                        || queryText.contains("resume la reunión");
         boolean preferRetrieval =
-                signals.booleanVerify() || signals.filterAndList() || signals.absenceLikely();
+                (signals.booleanVerify() && !personActaVerify)
+                        || signals.filterAndList()
+                        || signals.absenceLikely();
         boolean functionSafe = function.filter(c -> c.validation().safe()).isPresent();
         if (advancedCandidateRejected
                 && preferRetrieval
@@ -82,6 +98,13 @@ public class MonotonicRouteSafetyService {
         }
         if (safe.isEmpty()) {
             return Optional.empty();
+        }
+        if (summarizeMeeting) {
+            for (CandidateScore c : safe) {
+                if ("TOOL".equals(c.source())) {
+                    return Optional.of(c);
+                }
+            }
         }
         if (preferRetrieval) {
             for (CandidateScore c : safe) {

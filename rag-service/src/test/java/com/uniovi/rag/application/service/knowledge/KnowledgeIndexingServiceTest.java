@@ -9,6 +9,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.DocumentArtifactEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.vector.PgVectorStoreRegistry;
+import com.uniovi.rag.application.service.knowledge.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.application.service.knowledge.document.ProjectDocumentIngestionService;
 import com.uniovi.rag.configuration.RagIndexingEmbeddingProperties;
 import java.io.ByteArrayInputStream;
@@ -18,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +29,7 @@ import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.stubbing.Answer;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -35,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -61,11 +65,26 @@ class KnowledgeIndexingServiceTest {
             JdbcTemplate jdbcTemplate,
             ProjectDocumentIngestionService ingestionService,
             BinaryStoragePort storagePort,
-            DocumentArtifactRepository artifactRepo) {
+            DocumentArtifactRepository artifactRepo,
+            MetadataMinuteDocumentService metadataMinuteDocumentService) {
         PgVectorStoreRegistry reg = mock(PgVectorStoreRegistry.class);
         lenient().when(reg.forEmbeddingModelId(anyString())).thenReturn(vectorStore);
         return new KnowledgeIndexingService(
-                reg, jdbcTemplate, ingestionService, storagePort, artifactRepo, defaultEmbeddingGuard());
+                reg,
+                jdbcTemplate,
+                ingestionService,
+                storagePort,
+                artifactRepo,
+                defaultEmbeddingGuard(),
+                metadataMinuteDocumentService);
+    }
+
+    private static MetadataMinuteDocumentService metadataServiceReturningEmpty() {
+        MetadataMinuteDocumentService svc = mock(MetadataMinuteDocumentService.class);
+        lenient()
+                .when(svc.tryExtractDeterministicMetadataForIndexing(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        return svc;
     }
 
     @Test
@@ -77,7 +96,7 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataServiceReturningEmpty());
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -126,7 +145,7 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataServiceReturningEmpty());
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -175,7 +194,7 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataServiceReturningEmpty());
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -225,7 +244,7 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataServiceReturningEmpty());
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -267,7 +286,7 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataServiceReturningEmpty());
 
         UUID snapshotId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -309,6 +328,81 @@ class KnowledgeIndexingServiceTest {
     }
 
     @Test
+    void processDocument_acta_mergesStructuredMetadataIntoEveryVectorChunk() throws Exception {
+        PgVectorStore vectorStore = mock(PgVectorStore.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
+        BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
+        DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
+
+        MetadataMinuteDocumentService metadataService = new MetadataMinuteDocumentService(
+                mock(PgVectorStore.class), mock(ChatClient.class), mock(JdbcTemplate.class), 400);
+
+        KnowledgeIndexingService sut =
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataService);
+
+        UUID snapshotId = UUID.randomUUID();
+        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
+        KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
+        when(snapshot.getId()).thenReturn(snapshotId);
+        when(snapshot.getIndexProfileJsonb()).thenReturn(Map.of("embeddingModelId", "mxbai-embed-large"));
+        when(doc.getId()).thenReturn(UUID.randomUUID());
+        when(doc.getProject().getId()).thenReturn(UUID.randomUUID());
+        when(doc.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
+        when(doc.getConversation()).thenReturn(null);
+        when(doc.getFileName()).thenReturn("ACTA 1.pdf");
+        when(doc.getMimeType()).thenReturn("application/pdf");
+
+        String actaContent =
+                Files.readString(
+                        Path.of("src/test/resources/acta-fixtures/acta-1.txt"), StandardCharsets.UTF_8);
+        Path tempFile = tempDir.resolve("acta1.txt");
+        Files.writeString(tempFile, actaContent, StandardCharsets.UTF_8);
+        when(ingestionService.extractContent(any())).thenReturn(actaContent);
+
+        sut.processDocument(
+                new KnowledgeDocumentIndexingRequest(
+                        doc,
+                        tempFile,
+                        "ACTA 1.pdf",
+                        "application/pdf",
+                        snapshot,
+                        "abc123",
+                        MaterializationStrategy.CHUNK_LEVEL,
+                        400));
+
+        ArgumentCaptor<DocumentArtifactEntity> artifactCaptor = ArgumentCaptor.forClass(DocumentArtifactEntity.class);
+        verify(artifactRepo, Mockito.atLeast(3)).save(artifactCaptor.capture());
+        Map<String, Object> metadataPayload =
+                artifactCaptor.getAllValues().stream()
+                        .filter(a -> a.getArtifactType() == DocumentArtifactType.METADATA)
+                        .findFirst()
+                        .orElseThrow()
+                        .getPayloadJsonb();
+        assertThat(metadataPayload).containsKey("structuredActa");
+        assertThat(metadataPayload).containsKey("fieldPresence");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> structured = (Map<String, Object>) metadataPayload.get("structuredActa");
+        assertThat(structured.get("president")).isEqualTo("Juan Pérez Gutiérrez");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Document>> docs = ArgumentCaptor.forClass(List.class);
+        verify(vectorStore).add(docs.capture());
+        for (Document vectorDoc : docs.getValue()) {
+            assertThat(vectorDoc.getMetadata())
+                    .containsEntry("president", "Juan Pérez Gutiérrez")
+                    .containsEntry("date_iso", "2025-02-24")
+                    .containsEntry("documentTitle", "ACTA 1.pdf")
+                    .containsEntry("actaDate", "2025-02-24")
+                    .containsKey("fieldPresence")
+                    .containsKey("sectionType");
+            assertThat(vectorDoc.getText()).startsWith("Acta 2025-02-24");
+        }
+        assertThat(docs.getValue().stream().map(d -> d.getMetadata().get("sectionType")).distinct().count())
+                .isGreaterThan(1);
+    }
+
+    @Test
     void processDocument_throwsOnEmptyContent() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
         JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
@@ -317,7 +411,7 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataServiceReturningEmpty());
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -351,7 +445,7 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataServiceReturningEmpty());
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -391,7 +485,7 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataServiceReturningEmpty());
 
         UUID docId = UUID.randomUUID();
         DocumentArtifactEntity parsed = mock(DocumentArtifactEntity.class);
@@ -415,7 +509,7 @@ class KnowledgeIndexingServiceTest {
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut =
-                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo);
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataServiceReturningEmpty());
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class);
         when(doc.getStorageUri()).thenReturn("  ");
@@ -448,7 +542,7 @@ class KnowledgeIndexingServiceTest {
         PgVectorStoreRegistry reg = mock(PgVectorStoreRegistry.class);
         when(reg.forEmbeddingModelId(anyString())).thenReturn(vectorStore);
         KnowledgeIndexingService sut = new KnowledgeIndexingService(
-                reg, jdbcTemplate, ingestionService, storagePort, artifactRepo, guard);
+                reg, jdbcTemplate, ingestionService, storagePort, artifactRepo, guard, metadataServiceReturningEmpty());
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -498,7 +592,7 @@ class KnowledgeIndexingServiceTest {
         PgVectorStoreRegistry reg = mock(PgVectorStoreRegistry.class);
         when(reg.forEmbeddingModelId(anyString())).thenReturn(vectorStore);
         KnowledgeIndexingService sut = new KnowledgeIndexingService(
-                reg, jdbcTemplate, ingestionService, storagePort, artifactRepo, guard);
+                reg, jdbcTemplate, ingestionService, storagePort, artifactRepo, guard, metadataServiceReturningEmpty());
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);

@@ -48,6 +48,7 @@ class RuntimeConfigValidationServiceTest {
     private KnowledgeRuntimeSnapshotSelector snapshotSelector;
     private KnowledgeSnapshotService snapshotService;
     private KnowledgeDocumentRepository knowledgeDocumentRepository;
+    private MaterializationAwareSnapshotResolver materializationAwareSnapshotResolver;
     private RuntimeConfigValidationService sut;
 
     @BeforeEach
@@ -58,6 +59,7 @@ class RuntimeConfigValidationServiceTest {
         snapshotSelector = mock(KnowledgeRuntimeSnapshotSelector.class);
         snapshotService = mock(KnowledgeSnapshotService.class);
         knowledgeDocumentRepository = mock(KnowledgeDocumentRepository.class);
+        materializationAwareSnapshotResolver = mock(MaterializationAwareSnapshotResolver.class);
         sut =
                 new RuntimeConfigValidationService(
                         conversationRepository,
@@ -66,7 +68,8 @@ class RuntimeConfigValidationServiceTest {
                         workflowSelector,
                         snapshotSelector,
                         snapshotService,
-                        knowledgeDocumentRepository);
+                        knowledgeDocumentRepository,
+                        materializationAwareSnapshotResolver);
     }
 
     @Test
@@ -75,7 +78,8 @@ class RuntimeConfigValidationServiceTest {
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
-        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotSelector.select(any(), any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(materializationAwareSnapshotResolver.resolveProjectSnapshot(any(), any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
 
@@ -97,7 +101,8 @@ class RuntimeConfigValidationServiceTest {
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
-        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotSelector.select(any(), any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(materializationAwareSnapshotResolver.resolveProjectSnapshot(any(), any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
 
@@ -123,7 +128,8 @@ class RuntimeConfigValidationServiceTest {
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
-        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotSelector.select(any(), any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(materializationAwareSnapshotResolver.resolveProjectSnapshot(any(), any())).thenReturn(Optional.empty());
         KnowledgeIndexSnapshotEntity active = mock(KnowledgeIndexSnapshotEntity.class);
         when(active.getId()).thenReturn(UUID.randomUUID());
         when(active.getIndexProfileHash()).thenReturn("h");
@@ -158,7 +164,8 @@ class RuntimeConfigValidationServiceTest {
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
-        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotSelector.select(any(), any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(materializationAwareSnapshotResolver.resolveProjectSnapshot(any(), any())).thenReturn(Optional.empty());
         KnowledgeIndexSnapshotEntity active = mock(KnowledgeIndexSnapshotEntity.class);
         when(active.getId()).thenReturn(UUID.randomUUID());
         when(active.getIndexProfileHash()).thenReturn("h");
@@ -192,7 +199,8 @@ class RuntimeConfigValidationServiceTest {
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
-        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotSelector.select(any(), any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(materializationAwareSnapshotResolver.resolveProjectSnapshot(any(), any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
         when(knowledgeDocumentRepository.countByProject_IdAndStatus(any(), any())).thenReturn(0L);
@@ -226,7 +234,8 @@ class RuntimeConfigValidationServiceTest {
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
-        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotSelector.select(any(), any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(materializationAwareSnapshotResolver.resolveProjectSnapshot(any(), any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
         when(knowledgeDocumentRepository.countByProject_IdAndStatus(any(), any())).thenReturn(1L);
@@ -259,7 +268,8 @@ class RuntimeConfigValidationServiceTest {
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
-        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotSelector.select(any(), any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(materializationAwareSnapshotResolver.resolveProjectSnapshot(any(), any())).thenReturn(Optional.empty());
         KnowledgeIndexSnapshotEntity active = mock(KnowledgeIndexSnapshotEntity.class);
         when(active.getId()).thenReturn(UUID.randomUUID());
         when(active.getIndexProfileHash()).thenReturn("h");
@@ -293,7 +303,8 @@ class RuntimeConfigValidationServiceTest {
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
-        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotSelector.select(any(), any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(materializationAwareSnapshotResolver.resolveProjectSnapshot(any(), any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
 
@@ -316,7 +327,8 @@ class RuntimeConfigValidationServiceTest {
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
-        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotSelector.select(any(), any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(materializationAwareSnapshotResolver.resolveProjectSnapshot(any(), any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
 
@@ -341,7 +353,8 @@ class RuntimeConfigValidationServiceTest {
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
-        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotSelector.select(any(), any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(materializationAwareSnapshotResolver.resolveProjectSnapshot(any(), any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
         when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
 

@@ -14,7 +14,7 @@ import { LabFailedJobResultsNotice } from "@/features/lab/components/lab-failed-
 import { LabJobPanel } from "@/features/lab/components/lab-job-panel";
 import { LabJobStopConfirmDialog } from "@/features/lab/components/lab-job-stop-confirm-dialog";
 import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
-import { activeJobMatchesCard } from "@/features/lab/hooks/use-lab-active-job-recovery";
+import { activeJobMatchesCard } from "@/features/lab/hooks/use-lab-active-job-resumption";
 import { useAutoResumeLabJobs } from "@/features/lab/hooks/use-auto-resume-lab-jobs";
 import { useLatestLabBenchmarkRun } from "@/features/lab/hooks/use-latest-lab-benchmark-run";
 import {
@@ -22,7 +22,7 @@ import {
   latestLabBenchmarkRunQueryKey,
   shouldFetchLatestLabRun,
   taskStatusFromLatestRun,
-} from "@/features/lab/lib/lab-run-recovery";
+} from "@/features/lab/lib/lab-run-resumption";
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
 import {
@@ -496,7 +496,7 @@ export function LabEvaluationRunCard({
 
   const latestRunQueryEnabled = shouldFetchLatestLabRun({
     activeJobsLoading: labRecovery.activeJobsLoading,
-    recoveryDecisionKind: labRecovery.decision.kind,
+    resumptionDecisionKind: labRecovery.decision.kind,
     running,
     watchLive,
   });

@@ -6,8 +6,11 @@ import com.uniovi.rag.application.service.runtime.document.extraction.DocumentCo
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
+import java.text.Normalizer;
 import java.time.LocalDate;
+import java.util.Locale;
 import java.util.*;
+import java.util.Comparator;
 import java.util.stream.Collectors;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
@@ -15,7 +18,7 @@ import org.springframework.ai.document.Document;
 
 /**
  * Enhanced MetadataCountDocumentsTool for counting meeting minutes with intelligent analysis.
- * P12: Count is by unique document_id (dedupeMinutesByDocumentId); attendees filter is strict
+ * P12: Count is by unique canonical meeting (date-normalized dedupe); attendees filter is strict
  * (e.g. "menos de diez" uses count &lt; 10); date-existence guard for non-existent dates runs in {@link com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator}.
  */
 public class MetadataCountDocumentsTool extends AbstractMetadataTool {
@@ -32,6 +35,12 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
     }
 
     private record AttendeesFilterResult(List<Document> docs, ToolResult earlyExit) {
+    }
+
+    private record PersonActaCountQuery(String personName) {
+    }
+
+    private record StartTimeCountQuery(String targetTime) {
     }
 
     private static final String[] SPANISH_MONTH_NAMES_LOWER = {
@@ -56,13 +65,55 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         log().info("Executing count documents query: '{}' with NER: {}", 
                   query, ner != null ? ner.toString() : "null");
         
+        Optional<ToolResult> futureExit = exitWhenFutureOrUnavailableDate(query, ner, getClass());
+        if (futureExit.isPresent()) {
+            return futureExit.get();
+        }
+
+        boolean topicCountQuery =
+                (isTopicMeetingCountQuery(query) || isTopicPresenceCountQuery(query))
+                        && extractTopicFromQuery(query, ner) != null;
+
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         long startTime = System.currentTimeMillis();
-        List<Document> docs = retrieveDocumentsWithFallback(query, COUNT_RETRIEVAL_FIELDS, ner);
+        List<Document> docs =
+                topicCountQuery
+                        ? retrieveCorpusDocumentsWithFallback(query, COUNT_RETRIEVAL_FIELDS)
+                        : retrieveDocumentsWithFallback(query, COUNT_RETRIEVAL_FIELDS, ner);
 
         ToolResult early = exitWhenDateSpecifiedButNoDocuments(query, ner, docs);
         if (early != null) {
             return early;
+        }
+
+        StartTimeCountQuery startTimeCountQuery = detectStartTimeCountQuery(query, ner);
+        if (startTimeCountQuery != null) {
+            return countMeetingsStartingAtTime(query, docs, startTimeCountQuery);
+        }
+
+        String requestedYear = extractYearFromQuery(query, ner);
+        if (requestedYear != null && isYearMeetingCountQuery(query)) {
+            return countMeetingsInYear(query, docs, requestedYear);
+        }
+
+        if (requestedYear != null && !docs.isEmpty()) {
+            docs = filterDocumentsByYear(docs, requestedYear);
+            if (docs.isEmpty()) {
+                String zeroMsg =
+                        querySeemsSpanish(query)
+                                ? (isYearOnlyActaCountQuery(query)
+                                        ? yearOnlyActaCorpusAbsenceMessage(requestedYear)
+                                        : "No hay reuniones registradas en el año "
+                                                + requestedYear
+                                                + ".")
+                                : "No meetings were found in year " + requestedYear + ".";
+                return ToolResult.from(formatResponse(zeroMsg, query), getClass());
+            }
+        }
+
+        PersonActaCountQuery personActaQuery = detectPersonActaCountQuery(query, ner);
+        if (personActaQuery != null) {
+            return countActasContainingPerson(query, ner, docs, personActaQuery);
         }
 
         TopicFilterOutcome topicOutcome = filterDocumentsByExtractedTopic(query, ner, docs);
@@ -71,6 +122,10 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         }
         docs = topicOutcome.docs();
         String topic = topicOutcome.topic();
+
+        if (topic != null && (isTopicMeetingCountQuery(query) || isTopicPresenceCountQuery(query))) {
+            return countMeetingsMentioningTopic(query, docs, topic);
+        }
 
         AttendeesFilterResult attendeesResult = applyAttendeesCountFilterIfNeeded(query, docs);
         if (attendeesResult.earlyExit() != null) {
@@ -83,16 +138,16 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             return missing;
         }
 
-        // Step 1.8: Dedupe documents by document_id so we have at most one doc per minute (avoids overcounting e.g. elevator)
-        int docsBeforeDedupe = docs.size();
-        docs = dedupeDocsByDocumentId(docs);
-        if (docs.size() < docsBeforeDedupe) {
-            log().info("Deduped documents by document_id: {} -> {} unique minutes", docsBeforeDedupe, docs.size());
+        // Step 1.8: Canonical meeting projection (scope filter + HYBRID dedupe)
+        int docsBeforeCanonical = docs.size();
+        List<Minute> minutes = canonicalizeMeetingsFromDocuments(docs);
+        if (minutes.size() < docsBeforeCanonical) {
+            log().info(
+                    "Canonicalized retrieval rows: {} chunks -> {} meetings",
+                    docsBeforeCanonical,
+                    minutes.size());
         }
 
-        // Step 2: Extract minutes in parallel (chunks may repeat same document_id; count by unique minute)
-        List<Minute> minutes = extractMinutesInParallel(docs);
-        minutes = dedupeMinutesByDocumentId(minutes);
         missing = notFoundIfEmptyMinutes(query, minutes, QUERY_STAGE_COUNT);
         if (missing != null) {
             return missing;
@@ -100,6 +155,16 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
+        if (requestedYear != null) {
+            List<Minute> byYear =
+                    relevantMinutes.stream().filter(minute -> minuteMatchesYear(minute, requestedYear)).toList();
+            log().info(
+                    "Filtered {} relevant minutes to {} by calendar year {}",
+                    relevantMinutes.size(),
+                    byYear.size(),
+                    requestedYear);
+            relevantMinutes = byYear;
+        }
         ToolResult missingRelevant = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, QUERY_STAGE_COUNT);
         if (missingRelevant != null) {
             log().info("No relevant minutes found for count query: {}", query);
@@ -127,6 +192,274 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
+    private PersonActaCountQuery detectPersonActaCountQuery(String query, JSONObject ner) {
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        boolean personActaCount =
+                q.contains("en cuántas actas aparece")
+                        || q.contains("en cuantas actas aparece")
+                        || q.contains("en cuántas actas particip")
+                        || q.contains("en cuantas actas particip")
+                        || (q.contains("cuántas actas") && q.contains("aparece"))
+                        || (q.contains("cuantas actas") && q.contains("aparece"));
+        if (!personActaCount) {
+            return null;
+        }
+        String personName = extractPersonNameFromQuery(query, ner);
+        if (personName == null || personName.isBlank()) {
+            return null;
+        }
+        return new PersonActaCountQuery(personName);
+    }
+
+    private boolean isYearMeetingCountQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q =
+                Normalizer.normalize(query.toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+                        .replaceAll("\\p{M}", "");
+        boolean countCue =
+                q.contains("cuantas reuniones")
+                        || q.contains("cuántas reuniones")
+                        || q.contains("cuantas actas")
+                        || q.contains("cuántas actas")
+                        || q.contains("how many meetings")
+                        || q.contains("how many actas");
+        boolean meetingCue = q.contains("reuniones") || q.contains("reunion") || q.contains("actas");
+        boolean notTopic = !q.contains("mencion") && !q.contains("habl");
+        boolean notStartTime =
+                !q.contains("comenzaron")
+                        && !q.contains("iniciaron")
+                        && !q.contains("hora de inicio")
+                        && !q.contains("started at");
+        return countCue && meetingCue && notTopic && notStartTime;
+    }
+
+    private ToolResult countMeetingsInYear(String query, List<Document> docs, String year) {
+        if (docs == null || docs.isEmpty()) {
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        }
+        List<Minute> minutes = canonicalizeMeetingsFromDocuments(docs);
+        List<Minute> matching =
+                minutes.stream()
+                        .filter(minute -> minuteMatchesYear(minute, year))
+                        .sorted(
+                                Comparator.comparing(
+                                        StructuredMinuteMetadataSupport::formatDateSlash,
+                                        Comparator.nullsLast(String::compareTo)))
+                        .toList();
+        if (matching.isEmpty()) {
+            String zeroMsg =
+                    querySeemsSpanish(query)
+                            ? (isYearOnlyActaCountQuery(query)
+                                    ? yearOnlyActaCorpusAbsenceMessage(year)
+                                    : "No hay reuniones registradas en el año " + year + ".")
+                            : "No meetings were found in year " + year + ".";
+            return ToolResult.from(formatResponse(zeroMsg, query), getClass());
+        }
+        String answer = StructuredMinuteMetadataSupport.formatYearMeetingCountAnswer(query, matching, year);
+        log().info("Year meeting count for {}: {} actas", year, matching.size());
+        return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    private StartTimeCountQuery detectStartTimeCountQuery(String query, JSONObject ner) {
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        String q =
+                Normalizer.normalize(query.toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+                        .replaceAll("\\p{M}", "");
+        boolean countCue =
+                q.contains("cuantas reuniones")
+                        || q.contains("cuántas reuniones")
+                        || q.contains("cuantas actas")
+                        || q.contains("cuántas actas");
+        boolean startCue =
+                q.contains("comenzaron")
+                        || q.contains("comenzo")
+                        || q.contains("iniciaron")
+                        || q.contains("started at")
+                        || q.contains("start at");
+        if (!countCue || !startCue) {
+            return null;
+        }
+        String targetTime = extractStartTimeFromQuery(query, ner);
+        if (targetTime == null) {
+            return null;
+        }
+        return new StartTimeCountQuery(targetTime);
+    }
+
+    private ToolResult countMeetingsStartingAtTime(String query, List<Document> docs, StartTimeCountQuery timeQuery) {
+        if (docs == null || docs.isEmpty()) {
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        }
+        List<Minute> minutes = canonicalizeMeetingsFromDocuments(docs);
+        if (minutes.isEmpty()) {
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        }
+        List<Minute> matching =
+                minutes.stream().filter(m -> minuteStartsAtTime(m, timeQuery.targetTime())).toList();
+        int count = matching.size();
+        List<String> dates =
+                matching.stream()
+                        .map(Minute::date)
+                        .filter(Objects::nonNull)
+                        .filter(d -> !d.isBlank())
+                        .distinct()
+                        .sorted()
+                        .toList();
+        String answer = formatStartTimeCountAnswer(query, count, dates, timeQuery.targetTime());
+        return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    private String formatStartTimeCountAnswer(String query, int count, List<String> dates, String targetTime) {
+        if (querySeemsSpanish(query)) {
+            if (count == 0) {
+                return "Ninguna reunión comenzó a las " + targetTime + " horas.";
+            }
+            if (count == 1) {
+                return "Una reunión comenzó a las " + targetTime + " horas" + formatDatesSuffix(dates) + ".";
+            }
+            return count + " reuniones comenzaron a las " + targetTime + " horas" + formatDatesSuffix(dates) + ".";
+        }
+        if (count == 0) {
+            return "No meetings started at " + targetTime + ".";
+        }
+        if (count == 1) {
+            return "One meeting started at " + targetTime + formatDatesSuffix(dates) + ".";
+        }
+        return count + " meetings started at " + targetTime + formatDatesSuffix(dates) + ".";
+    }
+
+    private ToolResult countActasContainingPerson(
+            String query, JSONObject ner, List<Document> docs, PersonActaCountQuery personQuery) {
+        if (docs.isEmpty()) {
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        }
+        List<Minute> minutes = canonicalizeMeetingsFromDocuments(docs);
+        if (minutes.isEmpty()) {
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        }
+        final String normalizedPerson = normalizePersonName(personQuery.personName());
+        List<Minute> matching =
+                minutes.stream().filter(m -> minuteContainsPerson(m, normalizedPerson, personQuery.personName())).toList();
+        int count = matching.size();
+        List<String> dates =
+                matching.stream()
+                        .map(Minute::date)
+                        .filter(Objects::nonNull)
+                        .filter(d -> !d.isBlank())
+                        .distinct()
+                        .sorted()
+                        .toList();
+        String answer;
+        if (querySeemsSpanish(query)) {
+            if (count == 0) {
+                answer = personQuery.personName() + " no aparece en ninguna acta.";
+            } else if (count == 1) {
+                answer = personQuery.personName() + " aparece en 1 acta" + formatDatesSuffix(dates) + ".";
+            } else {
+                answer = personQuery.personName() + " aparece en " + count + " actas" + formatDatesSuffix(dates) + ".";
+            }
+        } else if (count == 0) {
+            answer = personQuery.personName() + " does not appear in any meeting minutes.";
+        } else {
+            answer = personQuery.personName() + " appears in " + count + " meeting minute(s)" + formatDatesSuffix(dates) + ".";
+        }
+        return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    private boolean minuteContainsPerson(Minute minute, String normalizedPerson, String displayName) {
+        if (minute == null || normalizedPerson.isBlank()) {
+            return false;
+        }
+        if (nameMatches(minute.president(), normalizedPerson, displayName)) {
+            return true;
+        }
+        if (nameMatches(minute.secretary(), normalizedPerson, displayName)) {
+            return true;
+        }
+        if (minute.attendees() != null) {
+            for (String attendee : minute.attendees()) {
+                if (nameMatches(attendee, normalizedPerson, displayName)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean nameMatches(String candidate, String normalizedPerson, String displayName) {
+        if (candidate == null || candidate.isBlank()) {
+            return false;
+        }
+        String normalizedCandidate = normalizePersonName(candidate);
+        return normalizedCandidate.equals(normalizedPerson)
+                || normalizedCandidate.contains(normalizedPerson)
+                || normalizedPerson.contains(normalizedCandidate)
+                || candidate.equalsIgnoreCase(displayName);
+    }
+
+    private static String formatDatesSuffix(List<String> dates) {
+        if (dates == null || dates.isEmpty()) {
+            return "";
+        }
+        return " (" + String.join(", ", dates) + ")";
+    }
+
+    private boolean isTopicMeetingCountQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        boolean countCue =
+                q.contains("cuántas")
+                        || q.contains("cuantas")
+                        || q.contains("en cuántas")
+                        || q.contains("en cuantas");
+        boolean topicMention =
+                q.contains("se habló")
+                        || q.contains("se hablo")
+                        || q.contains("mencion");
+        return countCue && topicMention;
+    }
+
+    private boolean isTopicPresenceCountQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        boolean spokeCue = q.contains("se habló") || q.contains("se hablo");
+        boolean meetingCue =
+                q.contains("alguna reunión")
+                        || q.contains("alguna reunion")
+                        || q.contains("en alguna")
+                        || q.contains("en las actas");
+        return spokeCue && meetingCue;
+    }
+
+    private ToolResult countMeetingsMentioningTopic(String query, List<Document> docs, String topic) {
+        if (docs == null || docs.isEmpty()) {
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        }
+        Map<String, String> evidenceByKey = buildMeetingEvidenceTextByKey(docs);
+        List<Document> merged = mergeChunksWithRichestMetadata(collectInScopeCorpusRows(docs));
+        List<Minute> minutes = extractMeetingShellsForTopicMatch(merged);
+        if (minutes.isEmpty()) {
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        }
+        List<Minute> matching =
+                minutes.stream().filter(m -> minuteMentionsTopicEvidence(m, topic, evidenceByKey)).toList();
+        String answer = StructuredMinuteMetadataSupport.formatTopicMeetingCountAnswer(query, matching, topic);
+        return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    // Topic evidence matching delegated to AbstractMetadataTool.minuteMentionsTopicEvidence
+
     private ToolResult exitWhenDateSpecifiedButNoDocuments(String query, JSONObject ner, List<Document> docs) {
         String requestedDate = extractDateFromQuery(query, ner);
         if (requestedDate != null && docs.isEmpty()) {
@@ -142,9 +475,21 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         if (topic == null || docs.isEmpty()) {
             return new TopicFilterOutcome(docs, topic, null);
         }
+        if (isTopicMeetingCountQuery(query) || isTopicPresenceCountQuery(query)) {
+            log().info(
+                    "Topic count query for '{}': scanning full corpus at minute metadata level (skip chunk pre-filter)",
+                    topic);
+            return new TopicFilterOutcome(docs, topic, null);
+        }
         log().info("Filtering documents by topic: {}", topic);
         List<Document> filteredDocs = filterDocumentsByTopic(docs, topic);
         if (filteredDocs.isEmpty()) {
+            if (isTopicPresenceCountQuery(query)) {
+                log().info(
+                        "Topic '{}' not found in chunk filter; scanning full corpus metadata for presence query",
+                        topic);
+                return new TopicFilterOutcome(docs, topic, null);
+            }
             log().info("No documents found for topic '{}' in query: {}", topic, query);
             String errorMessage = generateSpecificErrorMessage(query, "topic", topic, docs.size(),
                     "No documents mention this topic");
@@ -183,65 +528,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         return "No meeting minutes match the specified criteria.";
     }
 
-    /**
-     * Heuristic used for bilingual response templates.
-     *
-     * <p>Implemented without regex to avoid super-linear backtracking on adversarial long inputs.
-     */
-    static boolean querySeemsSpanish(String query) {
-        if (query == null || query.isBlank()) return false;
-        boolean hasAlphabetic = false;
-        boolean hasSpanishDiacritic = false;
-        for (int i = 0; i < query.length(); i++) {
-            char c = query.charAt(i);
-            if (!hasAlphabetic && Character.isAlphabetic(c)) hasAlphabetic = true;
-            if (!hasSpanishDiacritic && isSpanishDiacritic(c)) hasSpanishDiacritic = true;
-            if (hasAlphabetic && hasSpanishDiacritic) return true;
-        }
-        return false;
-    }
-
-    private static boolean isSpanishDiacritic(char c) {
-        // include ü as it's common in Spanish loanwords (e.g. pingüino)
-        return c == 'á' || c == 'é' || c == 'í' || c == 'ó' || c == 'ú' || c == 'ü' || c == 'ñ'
-                || c == 'Á' || c == 'É' || c == 'Í' || c == 'Ó' || c == 'Ú' || c == 'Ü' || c == 'Ñ';
-    }
-
-    /**
-     * Deduplicates documents by document_id so we pass at most one doc per minute to extractMinutesInParallel.
-     */
-    private List<Document> dedupeDocsByDocumentId(List<Document> docs) {
-        if (docs == null || docs.isEmpty()) return docs;
-        Set<String> seen = new LinkedHashSet<>();
-        List<Document> out = new ArrayList<>();
-        for (Document doc : docs) {
-            String id = getDocumentIdFromDoc(doc);
-            if (id == null) id = "";
-            if (seen.add(id)) {
-                out.add(doc);
-            }
-        }
-        return out;
-    }
-
-    /**
-     * Deduplicates minutes by document_id (id) so count is by unique actas, not chunks.
-     */
-    private List<Minute> dedupeMinutesByDocumentId(List<Minute> minutes) {
-        if (minutes == null || minutes.isEmpty()) return minutes;
-        Set<String> seen = new LinkedHashSet<>();
-        List<Minute> out = new ArrayList<>();
-        for (Minute m : minutes) {
-            String id = m.id() != null ? m.id() : "";
-            if (seen.add(id)) {
-                out.add(m);
-            }
-        }
-        if (out.size() < minutes.size()) {
-            log().info("Deduped minutes by document_id: {} -> {} unique actas", minutes.size(), out.size());
-        }
-        return out;
-    }
+    // dedupeDocsByDocumentId and dedupeMinutesByDocumentId inherited from AbstractMetadataTool
 
     /**
      * Performs comprehensive counting analysis

@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
 import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
@@ -37,6 +38,7 @@ import com.uniovi.rag.domain.runtime.advisor.AdvisorSuppressionReason;
 import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
+import com.uniovi.rag.domain.runtime.engine.AnswerFinality;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
@@ -84,7 +86,7 @@ class RagExecutionOrchestratorAdvisorRoutingTest {
     @Test
     void advisorEnabled_executesAdvisorWithoutAdaptiveOrFunctionCallingRouting() {
         UUID snap = UUID.randomUUID();
-        QueryPlan plan = plan(AmbiguityStatus.SUFFICIENT);
+        QueryPlan plan = planWithoutStructuredClassifierRoute(AmbiguityStatus.SUFFICIENT);
         ExecutionContext in =
                 ctx(
                         p10Rag(),
@@ -134,11 +136,12 @@ class RagExecutionOrchestratorAdvisorRoutingTest {
                                 false,
                                 List.of(),
                                 Optional.empty(),
-                                List.of()));
+                                List.of(),
+                                AnswerFinality.STANDARD));
 
         var out = harness.orchestrator().execute(in);
 
-        assertThat(out.answerText()).isEqualTo("advisor-answer");
+        assertThat(out.answerText()).isEqualTo("Advisor-answer");
         verify(harness.adaptiveRoutingStrategy(), never()).execute(any(), any());
         verify(harness.functionCallingPolicy(), never()).resolve(any(), any());
         verify(harness.tools(), never()).tryExecute(any(), any());
@@ -193,11 +196,12 @@ class RagExecutionOrchestratorAdvisorRoutingTest {
                                 false,
                                 List.of(),
                                 Optional.empty(),
-                                List.of()));
+                                List.of(),
+                                AnswerFinality.STANDARD));
 
         var out = harness.orchestrator().execute(in);
 
-        assertThat(out.answerText()).isEqualTo("workflow-answer");
+        assertThat(out.answerText()).isEqualTo("Workflow-answer");
         verify(harness.advisorStrategy(), never()).execute(any(), any(), any(), any());
         verify(harness.workflowSelector()).select(any());
 
@@ -227,7 +231,7 @@ class RagExecutionOrchestratorAdvisorRoutingTest {
         when(factory.attachQueryPlan(in, plan)).thenReturn(in);
         when(clarificationPolicyResolver.resolve(any(), any()))
                 .thenReturn(new ClarificationDecision(false, ClarificationOutcome.NOT_NEEDED, null, ""));
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(
                         inv ->
                                 new JudgeExecutionResult(
@@ -260,7 +264,7 @@ class RagExecutionOrchestratorAdvisorRoutingTest {
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         return new Harness(
                 orchestrator,
@@ -369,6 +373,29 @@ class RagExecutionOrchestratorAdvisorRoutingTest {
                 false,
                 Optional.empty(),
                 false,
+                List.of());
+    }
+
+    private static QueryPlan planWithoutStructuredClassifierRoute(AmbiguityStatus status) {
+        return new QueryPlan(
+                QueryPlan.VERSION_P6_QU_CORE_V1,
+                "raw",
+                "raw",
+                "norm",
+                "rw",
+                "lbl",
+                Optional.empty(),
+                ClassifierStatus.DISABLED,
+                QueryIntent.COUNT,
+                Map.of(),
+                List.of(),
+                List.of(),
+                EntityExtractionResult.emptyWithNote(""),
+                StructuredRewriteResult.identityDisabled("norm", ""),
+                ExpectedAnswerShape.SCALAR_COUNT,
+                new AmbiguityAssessment(status, List.of(), List.of()),
+                "corr",
+                "",
                 List.of());
     }
 

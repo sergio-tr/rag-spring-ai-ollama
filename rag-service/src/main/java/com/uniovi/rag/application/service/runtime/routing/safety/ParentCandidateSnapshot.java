@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.runtime.routing.safety;
 import com.uniovi.rag.application.service.evaluation.preset.CampaignParentOutcome;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.ExecutionOutcome;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
+import com.uniovi.rag.domain.runtime.engine.AnswerFinality;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import java.util.List;
 import java.util.Objects;
@@ -187,7 +188,8 @@ public final class ParentCandidateSnapshot {
                         result.usedTool(),
                         result.workflowStageTraces(),
                         result.retrievalDiagnostics(),
-                        result.responseSources()),
+                        result.responseSources(),
+                        result.answerFinality()),
                 outcome.trace());
     }
 

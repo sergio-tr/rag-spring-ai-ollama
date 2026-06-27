@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
 import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
@@ -145,17 +146,17 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         judgeStrategy,
                         MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         var out = orchestrator.execute(in);
-        assertThat(out.answerText()).isEqualTo("tool-answer");
+        assertThat(out.answerText()).isEqualTo("Tool-answer");
         assertThat(out.executionTrace().judgeAttempted()).isFalse();
         assertThat(out.executionTrace().judgeFinalOutcome()).isEqualTo(JudgeOutcome.NOT_ATTEMPTED.name());
         verifyNoInteractions(judgeStrategy);
     }
 
     @Test
-    void judgeEnabled_retrySucceeded_replacesAnswerText_andTraceFlags() {
+    void judgeEnabled_preservesValidatedToolAnswer_withoutRetryReplacement() {
         QueryPlan plan = plan();
         ExecutionContext in = ctx(rag(true));
 
@@ -206,7 +207,7 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                                 Map.of(),
                                 List.of()));
 
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(
                         inv ->
                                 new JudgeExecutionResult(
@@ -218,17 +219,34 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                                         inv.getArgument(5),
                                         false,
                                         List.of()));
-        when(judgeStrategy.execute(any(), eq(plan), any(), anyString(), eq(JudgeCandidateSource.DETERMINISTIC_TOOL), eq("tool-answer")))
+        when(judgeStrategy.execute(
+                        any(),
+                        eq(plan),
+                        any(),
+                        anyString(),
+                        eq(JudgeCandidateSource.DETERMINISTIC_TOOL),
+                        eq("tool-answer"),
+                        any()))
                 .thenReturn(
                         new JudgeExecutionResult(
                                 true,
-                                JudgeOutcome.RETRY_SUCCEEDED,
-                                true,
-                                true,
-                                true,
-                                "judged-answer",
-                                true,
-                                List.of(new ExecutionStageTrace("judge_evaluate", 0L, ExecutionStageOutcome.SUCCESS, "ok"))));
+                                JudgeOutcome.ACCEPTED,
+                                false,
+                                false,
+                                false,
+                                "tool-answer",
+                                false,
+                                List.of(
+                                        new ExecutionStageTrace(
+                                                "answer_quality_advisor",
+                                                0L,
+                                                ExecutionStageOutcome.SUCCESS,
+                                                "preserve=true"),
+                                        new ExecutionStageTrace(
+                                                "judge_finalize",
+                                                0L,
+                                                ExecutionStageOutcome.SUCCESS,
+                                                "outcome=ACCEPTED_TOOL_PRESERVED"))));
 
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
@@ -250,17 +268,24 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         judgeStrategy,
                         MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         var out = orchestrator.execute(in);
-        assertThat(out.answerText()).isEqualTo("judged-answer");
+        assertThat(out.answerText()).isEqualTo("Tool-answer");
         ExecutionTrace t = out.executionTrace();
         assertThat(t.judgeAttempted()).isTrue();
-        assertThat(t.judgeFinalOutcome()).isEqualTo(JudgeOutcome.RETRY_SUCCEEDED.name());
-        assertThat(t.judgeFinalAnswerFromRetry()).isTrue();
-        assertThat(t.stages().stream().anyMatch(s -> "judge_evaluate".equals(s.stageName()))).isTrue();
+        assertThat(t.judgeFinalOutcome()).isEqualTo(JudgeOutcome.ACCEPTED.name());
+        assertThat(t.judgeFinalAnswerFromRetry()).isFalse();
+        assertThat(t.stages().stream().anyMatch(s -> "answer_quality_advisor".equals(s.stageName()))).isTrue();
         verify(judgeStrategy)
-                .execute(any(), eq(plan), any(), anyString(), eq(JudgeCandidateSource.DETERMINISTIC_TOOL), eq("tool-answer"));
+                .execute(
+                        any(),
+                        eq(plan),
+                        any(),
+                        anyString(),
+                        eq(JudgeCandidateSource.DETERMINISTIC_TOOL),
+                        eq("tool-answer"),
+                        any());
     }
 
     @Test
@@ -320,7 +345,7 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         judgeStrategy,
                         MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         var out = orchestrator.execute(in);
         assertThat(out.workflowName()).isEqualTo("clarification");

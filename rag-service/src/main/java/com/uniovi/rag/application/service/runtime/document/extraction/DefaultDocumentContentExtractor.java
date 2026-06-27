@@ -60,10 +60,22 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
         }
         String c = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
         Pattern pattern = type.equals("start")
-                ? Pattern.compile("hora de inicio:\\s*(\\d{1,2}:\\d{2})", CASE_INSENSITIVE_UNICODE)
-                : Pattern.compile("(hora de finalización|hora de fin):\\s*(\\d{1,2}:\\d{2})", CASE_INSENSITIVE_UNICODE);
+                ? Pattern.compile(
+                        "(?i)hora de inicio:\\s*(\\d{1,2})\\s*:\\s*(\\d{2})\\s*h?",
+                        CASE_INSENSITIVE_UNICODE)
+                : Pattern.compile(
+                        "(?i)(?:hora de finalización|hora de fin):\\s*(\\d{1,2})\\s*:\\s*(\\d{2})\\s*h?",
+                        CASE_INSENSITIVE_UNICODE);
         Matcher matcher = pattern.matcher(c);
-        return matcher.find() ? matcher.group(matcher.groupCount()) : null;
+        if (!matcher.find()) {
+            return null;
+        }
+        int hour = Integer.parseInt(matcher.group(1));
+        int minute = Integer.parseInt(matcher.group(2));
+        if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+            return null;
+        }
+        return String.format("%02d:%02d", hour, minute);
     }
 
     @Override
@@ -142,33 +154,90 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
         if (content == null) {
             return List.of();
         }
-        // Avoid regex on multi-line untrusted input; line parsing is sufficient.
         String c = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
+        String section = attendeesSection(c);
         List<Attendee> out = new ArrayList<>();
-        for (String rawLine : c.split("\n")) {
+        String pendingName = null;
+        for (String rawLine : section.split("\n")) {
             String line = rawLine.strip();
-            if (!line.startsWith("•")) {
+            if (line.isEmpty()) {
                 continue;
             }
-            String tail = line.substring(1).strip();
-            if (tail.isEmpty()) {
-                continue;
-            }
-            String name = tail;
-            String role = "";
-            int openIdx = tail.lastIndexOf('(');
-            int closeIdx = tail.endsWith(")") ? tail.length() - 1 : -1;
-            if (openIdx != -1 && closeIdx != -1 && openIdx < closeIdx) {
-                String roleRaw = tail.substring(openIdx + 1, closeIdx).strip();
-                String candidateName = tail.substring(0, openIdx).strip();
-                if (!candidateName.isEmpty()) {
-                    name = candidateName;
-                    role = normalizeRole(roleRaw);
+            if (line.startsWith("•")) {
+                if (pendingName != null) {
+                    out.add(new Attendee(pendingName, ""));
                 }
+                ParsedBullet bullet = parseBullet(line);
+                if (!bullet.role().isBlank()) {
+                    out.add(new Attendee(bullet.name(), bullet.role()));
+                    pendingName = null;
+                } else {
+                    pendingName = bullet.name();
+                }
+                continue;
             }
-            out.add(new Attendee(name, role));
+            if (pendingName != null && isStandaloneRoleLine(line)) {
+                out.add(new Attendee(pendingName, normalizeRole(unwrapRoleLine(line))));
+                pendingName = null;
+            }
+        }
+        if (pendingName != null) {
+            out.add(new Attendee(pendingName, ""));
         }
         return out;
+    }
+
+    private static String attendeesSection(String content) {
+        Matcher header = Pattern.compile("(?i)asistentes\\s*:").matcher(content);
+        int start = header.find() ? header.start() : -1;
+        if (start < 0) {
+            start = content.toLowerCase(Locale.ROOT).indexOf("lista de asistencia");
+        }
+        if (start < 0) {
+            return content;
+        }
+        int end = content.length();
+        String lower = content.toLowerCase(Locale.ROOT);
+        for (String marker :
+                List.of("orden del día", "orden del dia", "puntos del día", "puntos del dia", "ruegos y preguntas")) {
+            int idx = lower.indexOf(marker, start + 1);
+            if (idx > start) {
+                end = Math.min(end, idx);
+            }
+        }
+        return content.substring(start, end);
+    }
+
+    private record ParsedBullet(String name, String role) {}
+
+    private static ParsedBullet parseBullet(String bulletLine) {
+        String tail = bulletLine.substring(1).strip();
+        if (tail.isEmpty()) {
+            return new ParsedBullet("", "");
+        }
+        int openIdx = tail.lastIndexOf('(');
+        int closeIdx = tail.endsWith(")") ? tail.length() - 1 : -1;
+        if (openIdx != -1 && closeIdx != -1 && openIdx < closeIdx) {
+            String roleRaw = tail.substring(openIdx + 1, closeIdx).strip();
+            String candidateName = tail.substring(0, openIdx).strip();
+            if (!candidateName.isEmpty()) {
+                return new ParsedBullet(candidateName, normalizeRole(roleRaw));
+            }
+        }
+        return new ParsedBullet(tail, "");
+    }
+
+    private static boolean isStandaloneRoleLine(String line) {
+        String trimmed = line.strip();
+        return trimmed.startsWith("(") && trimmed.endsWith(")");
+    }
+
+    private static String unwrapRoleLine(String line) {
+        String trimmed = line.strip();
+        if (trimmed.length() >= 2) {
+            return trimmed.substring(1, trimmed.length() - 1).strip();
+        }
+        return trimmed;
     }
 
     private static String normalizeRole(String raw) {

@@ -5,6 +5,7 @@ import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutio
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.ExecutionOutcome;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
+import com.uniovi.rag.domain.runtime.engine.AnswerFinality;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import java.util.List;
 import java.util.Optional;
@@ -53,7 +54,8 @@ public class IntegratedParentCampaignOutcomeResolver {
                             outcome.usedTool(),
                             List.of(),
                             Optional.empty(),
-                            List.of());
+                            List.of(),
+                            AnswerFinality.STANDARD);
             return new ExecutionOutcome(result, trace);
         }
     }

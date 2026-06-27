@@ -36,11 +36,11 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 /**
- * Recovery contract: coordinator run id resolves campaign-wide persisted rows and metadata.
+ * Resumption contract: coordinator run id resolves campaign-wide persisted rows and metadata.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-class LabCampaignRunRecoveryContractTest {
+class LabCampaignRunResumptionContractTest {
 
     private static final List<String> PRESETS = List.of("P0", "P1", "P3", "P4");
     private static final int ITEMS_PER_PRESET = 60;
@@ -73,7 +73,7 @@ class LabCampaignRunRecoveryContractTest {
     }
 
     @Test
-    void coordinatorRunId_getRun_exposesCampaignRecoveryMetadata() {
+    void coordinatorRunId_getRun_exposesCampaignResumptionMetadata() {
         CampaignFixture fixture = stubFourPresetCampaign();
 
         EvaluationRunDetailDto detail = service.getRun(fixture.userId(), fixture.coordinatorRunId());

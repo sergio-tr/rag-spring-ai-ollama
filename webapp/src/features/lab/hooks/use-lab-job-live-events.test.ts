@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import {
   activeJobMatchesCard,
-  computeLabActiveJobRecovery,
-} from "./use-lab-active-job-recovery";
+  computeLabActiveJobResumption,
+} from "./use-lab-active-job-resumption";
 import { useLabJobSse } from "./use-lab-job-sse";
 import * as asyncTask from "@/lib/async-task";
 import * as labJobSse from "@/lib/lab-job-sse";
@@ -36,7 +36,7 @@ describe("useLabJobSse recovery matching", () => {
 
   it("defaults follow mode to sse when draft has no preference", () => {
     const job = activeJob({ jobId: "job-2", benchmarkKind: "EMBEDDING_RETRIEVAL" });
-    const d = computeLabActiveJobRecovery({
+    const d = computeLabActiveJobResumption({
       sectionKey: "evaluation-embedding",
       benchmarkKind: "EMBEDDING_RETRIEVAL",
       activeProjectId: "p1",
@@ -516,7 +516,7 @@ describe("useLabJobSse", () => {
   });
 
   it("coerces legacy poll followMode drafts to sse-only recovery", () => {
-    const decision = computeLabActiveJobRecovery({
+    const decision = computeLabActiveJobResumption({
       sectionKey: "evaluation-llm",
       benchmarkKind: "LLM_JUDGE_QA",
       activeProjectId: null,

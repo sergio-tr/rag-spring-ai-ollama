@@ -25,7 +25,8 @@ public record RagExecutionResult(
         boolean usedTool,
         List<ExecutionStageTrace> workflowStageTraces,
         Optional<RetrievalDiagnostics> retrievalDiagnostics,
-        List<Map<String, Object>> responseSources) {
+        List<Map<String, Object>> responseSources,
+        AnswerFinality answerFinality) {
 
     /** Canonical ctor normalizes nullable Optional components (explicit body avoids record compact ctor Sonar noise). */
     public RagExecutionResult(
@@ -42,7 +43,8 @@ public record RagExecutionResult(
             boolean usedTool,
             List<ExecutionStageTrace> workflowStageTraces,
             Optional<RetrievalDiagnostics> retrievalDiagnostics,
-            List<Map<String, Object>> responseSources) {
+            List<Map<String, Object>> responseSources,
+            AnswerFinality answerFinality) {
         this.answerText = answerText;
         this.workflowName = workflowName;
         this.retrievalUsed = retrievalUsed;
@@ -58,6 +60,16 @@ public record RagExecutionResult(
         this.workflowStageTraces = List.copyOf(workflowStageTraces);
         this.retrievalDiagnostics = Objects.requireNonNullElseGet(retrievalDiagnostics, Optional::empty);
         this.responseSources = List.copyOf(Objects.requireNonNullElseGet(responseSources, List::of));
+        this.answerFinality =
+                Objects.requireNonNullElse(answerFinality, AnswerFinality.STANDARD);
+    }
+
+    public boolean allowPostSynthesisRewrite() {
+        return answerFinality.allowPostSynthesisRewrite();
+    }
+
+    public AnswerSource answerSource() {
+        return answerFinality.answerSource();
     }
 
     public static RagExecutionResult withPlaceholderTrace(
@@ -102,7 +114,8 @@ public record RagExecutionResult(
                 false,
                 workflowStageTraces,
                 retrievalDiagnostics,
-                List.of());
+                List.of(),
+                AnswerFinality.STANDARD);
     }
 
     public RagExecutionResult withFinalTrace(ExecutionTrace finalTrace) {
@@ -120,7 +133,8 @@ public record RagExecutionResult(
                 usedTool,
                 workflowStageTraces,
                 retrievalDiagnostics,
-                responseSources);
+                responseSources,
+                answerFinality);
     }
 
     public RagExecutionResult withResponseSources(List<Map<String, Object>> nextSources) {
@@ -138,6 +152,7 @@ public record RagExecutionResult(
                 usedTool,
                 workflowStageTraces,
                 retrievalDiagnostics,
-                nextSources);
+                nextSources,
+                answerFinality);
     }
 }

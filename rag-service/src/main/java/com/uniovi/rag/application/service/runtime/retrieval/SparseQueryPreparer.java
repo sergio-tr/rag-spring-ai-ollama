@@ -63,6 +63,11 @@ public class SparseQueryPreparer {
             if (synonyms.knownHeads().contains(folded)) {
                 presentHeads.add(folded);
             }
+            for (String head : RetrievalEntityMatchingSupport.topicSynonymHeads()) {
+                if (folded.equals(head) || (folded.contains(head) && head.length() >= 5)) {
+                    presentHeads.add(head);
+                }
+            }
         }
         LinkedHashSet<String> synonymTerms = new LinkedHashSet<>(synonyms.expandWhenHeadPresent(presentHeads));
 
