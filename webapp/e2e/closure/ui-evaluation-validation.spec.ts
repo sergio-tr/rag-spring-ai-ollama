@@ -20,9 +20,9 @@ const EVIDENCE_DIR = path.resolve(
     path.join(process.cwd(), "../.cursor/evidence/final-engineering-hardening-20260626/08_ui_evaluation_validation"),
 );
 
-function installDockerWebappApiProxy(page: Page): Promise<void> {
-  const backend = new URL(process.env.API_BASE_URL ?? "http://127.0.0.1:9000");
-  return page.route("**/api/v5/**", async (route) => {
+async function installDockerWebappApiProxy(page: Page): Promise<void> {
+  const backend = new URL(process.env.API_BASE_URL ?? "http://127.0.1:9000");
+  await page.route("**/api/v5/**", async (route) => {
     const req = route.request();
     const target = new URL(req.url());
     target.protocol = backend.protocol;

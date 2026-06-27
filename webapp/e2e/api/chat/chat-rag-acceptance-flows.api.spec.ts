@@ -145,7 +145,7 @@ test.describe("Chat RAG acceptance flows API @api @chatAcceptance", () => {
     const body = parseJsonExpectNonHtml(raw, "POST blank message") as {
       success?: boolean;
       message?: string;
-      error?: { code?: string };
+      error?: { code?: string; message?: string };
     };
     expect(body.success).toBe(false);
     expect(String(body.message ?? body.error?.message ?? "").toLowerCase()).toContain("content");

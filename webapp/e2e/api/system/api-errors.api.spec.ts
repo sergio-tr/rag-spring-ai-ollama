@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { authHeaders, loginAndGetToken } from "../fixtures/auth";
-import { apiBaseUrl, integrationCredentials, productUrl } from "../fixtures/env";
+import { integrationCredentials, productUrl } from "../fixtures/env";
 import { parseJsonExpectNonHtml } from "../fixtures/json-contract";
 
 test.describe("API error contracts @api", () => {
