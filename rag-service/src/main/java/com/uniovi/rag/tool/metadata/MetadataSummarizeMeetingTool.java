@@ -12,7 +12,9 @@ import org.springframework.ai.document.Document;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
@@ -34,6 +36,28 @@ import java.util.stream.Collectors;
         JSONObject ner = ctx.nerEntities();
 
         log().info("Executing summarize meeting query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+
+        if (StructuredMinuteMetadataSupport.isYearOnlySummarizeMeetingQuery(query)) {
+            String year = StructuredMinuteMetadataSupport.extractSummarizeYear(query);
+            if (year != null) {
+                List<Document> corpusDocs =
+                        retrieveDocumentsWithFallback(
+                                query,
+                                new String[] {
+                                    "date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"
+                                },
+                                ner);
+                List<Minute> corpusMinutes = extractMinutesInParallel(mergeChunksByDocumentId(corpusDocs));
+                boolean hasYear =
+                        corpusMinutes.stream()
+                                .anyMatch(minute -> StructuredMinuteMetadataSupport.minuteBelongsToYear(minute, year));
+                if (!hasYear) {
+                    String negative = StructuredMinuteMetadataSupport.formatYearOnlySummarizeAbsence(year);
+                    log().info("Year-only summarize negative for year {} (no corpus acta)", year);
+                    return ToolResult.from(formatResponse(negative, query), getClass());
+                }
+            }
+        }
 
         List<Document> docs = retrieveDocumentsWithFallback(
             query,
@@ -71,6 +95,16 @@ import java.util.stream.Collectors;
         }
 
         relevantMinutes = mergeMinutesByDocumentId(relevantMinutes);
+
+        if (StructuredMinuteMetadataSupport.isBriefDatedMeetingSummaryQuery(query)
+                && relevantMinutes.size() == 1) {
+            Optional<String> structured =
+                    StructuredMinuteMetadataSupport.formatStructuredBriefMeetingSummary(relevantMinutes.get(0));
+            if (structured.isPresent()) {
+                log().info("Structured brief meeting summary for query: {}", query);
+                return ToolResult.from(formatResponse(structured.get(), query), getClass());
+            }
+        }
 
         List<SummaryResult> results = generateSummariesInParallel(query, relevantMinutes);
         if (results.isEmpty()) {
@@ -287,6 +321,12 @@ import java.util.stream.Collectors;
 
         boolean asksForAgreements = query != null && (query.toLowerCase().contains("acuerdos") || query.toLowerCase().contains("decisiones"));
         boolean asksForTopics = asksForTopicsOrPoints(query);
+        if (isBriefMeetingSummary(query) && results.size() == 1) {
+            String direct = results.get(0).getSummary();
+            if (direct != null && !direct.isBlank()) {
+                return formatResponse(direct.trim(), query);
+            }
+        }
         int maxCharsPerSummary = asksForAgreements ? 500 : (asksForTopics ? 400 : 200);
         StringBuilder summaryContent = new StringBuilder();
         appendLimitedMeetingSummaries(summaryContent, results, maxCharsPerSummary);
@@ -336,6 +376,17 @@ import java.util.stream.Collectors;
                 || lower.contains("cámara")
                 || lower.contains("camara")
                 || lower.contains("limpieza");
+    }
+
+    private static boolean isBriefMeetingSummary(String query) {
+        if (query == null) {
+            return false;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        return q.contains("resume brevemente")
+                || q.contains("resumen breve")
+                || q.contains("brief summary")
+                || (q.contains("resume") && (q.contains("acta") || q.contains("reunión") || q.contains("reunion")));
     }
 
     /** Appends up to 3 meeting blocks for the summarization prompt. */

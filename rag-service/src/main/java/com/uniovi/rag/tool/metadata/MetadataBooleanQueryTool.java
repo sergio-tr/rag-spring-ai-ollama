@@ -9,9 +9,12 @@ import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
@@ -63,6 +66,16 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
     private ToolResult runBooleanQuery(String query, JSONObject ner) {
         log().info("Executing boolean query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
 
+        Optional<ToolResult> futureExit = exitWhenFutureOrUnavailableDate(query, ner, getClass());
+        if (futureExit.isPresent()) {
+            return futureExit.get();
+        }
+
+        ToolResult attendeesExistence = tryAnswerAttendeesExistenceBoolean(query);
+        if (attendeesExistence != null) {
+            return attendeesExistence;
+        }
+
         List<Document> docs = retrieveDocumentsWithFallback(
                 query,
                 new String[] {
@@ -89,6 +102,10 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             return yearStep.earlyExit();
         }
         docs = yearStep.documents();
+        ToolResult yearScopedNegative = tryDeterministicYearScopedTopicNegativeExit(query, ner, docs);
+        if (yearScopedNegative != null) {
+            return yearScopedNegative;
+        }
         ToolResult keywordError = validateTopicKeywordIfNeeded(query, ner, docs);
         if (keywordError != null) {
             return keywordError;
@@ -99,7 +116,8 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             return missing;
         }
 
-        List<Minute> minutes = extractMinutesInParallel(docs);
+        docs = dedupeDocsByDocumentId(docs);
+        List<Minute> minutes = dedupeMinutesByDocumentId(extractMinutesInParallel(docs));
         missing = notFoundIfEmptyMinutes(query, minutes, QUERY_STAGE_BOOLEAN);
         if (missing != null) {
             return missing;
@@ -156,6 +174,54 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         }
     }
 
+    /**
+     * FD-BQ-02: when query scopes a topic to a year and the topic is literally absent from
+     * year-filtered documents, return deterministic Spanish NO before LLM evidence synthesis.
+     */
+    private ToolResult tryDeterministicYearScopedTopicNegativeExit(String query, JSONObject ner, List<Document> docs) {
+        if (docs == null || docs.isEmpty() || isVotingOrDecisionQuery(query)) {
+            return null;
+        }
+        String year = extractYearFromQuery(query, ner);
+        String keyword = extractTopicFromQuery(query, ner);
+        if (year == null || year.isBlank() || keyword == null || keyword.isBlank()) {
+            return null;
+        }
+        if (keywordExistsLiterallyInDocuments(docs, keyword)) {
+            return null;
+        }
+        log().info("Deterministic year-scoped topic negative for '{}' in year {} (literal absent)", keyword, year);
+        String answer = StructuredMinuteMetadataSupport.formatYearScopedTopicNegativeBoolean(keyword, year);
+        return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    private boolean keywordExistsLiterallyInDocuments(List<Document> docs, String keyword) {
+        if (keyword == null || keyword.isBlank() || docs == null || docs.isEmpty()) {
+            return false;
+        }
+        String normalizedKeyword = normalizeForLiteralKeywordMatch(keyword);
+        for (Document doc : docs) {
+            if (doc == null) {
+                continue;
+            }
+            String context = buildDocumentContextString(doc);
+            if (context != null && normalizeForLiteralKeywordMatch(context).contains(normalizedKeyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String normalizeForLiteralKeywordMatch(String text) {
+        return text.toLowerCase(Locale.ROOT)
+                .replace("á", "a")
+                .replace("é", "e")
+                .replace("í", "i")
+                .replace("ó", "o")
+                .replace("ú", "u")
+                .replace("ñ", "n");
+    }
+
     private ToolResult validateTopicKeywordIfNeeded(String query, JSONObject ner, List<Document> docs) {
         if (docs.isEmpty() || isVotingOrDecisionQuery(query)) {
             return null;
@@ -170,6 +236,12 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             return null;
         }
         log().info("Keyword '{}' not found in any documents (precise match) for query: {}", keyword, query);
+        String year = extractYearFromQuery(query, ner);
+        if (year != null && !year.isBlank()) {
+            String answer = StructuredMinuteMetadataSupport.formatYearScopedTopicNegativeBoolean(keyword, year);
+            log().info("Year-scoped topic negative for '{}' in year {}", keyword, year);
+            return ToolResult.from(formatResponse(answer, query), getClass());
+        }
         String errorMessage = generateSpecificErrorMessage(query, "keyword", keyword, docs.size(),
                 "The keyword was not found in any documents");
         return ToolResult.from(formatResponse(errorMessage, query), getClass());
@@ -210,18 +282,20 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         }
         String personName = extractPersonNameFromQuery(query, ner);
         if (personName == null || personName.isBlank()) return null;
-        List<Minute> minutes = extractMinutesInParallel(docsForDate);
+        List<Minute> minutes = dedupeMinutesByDocumentId(extractMinutesInParallel(docsForDate));
         if (minutes.isEmpty()) return null;
         final String normalizedPerson = normalizePersonName(personName);
         boolean personMatched = minutes.stream().anyMatch(m -> minuteContainsPerson(m, normalizedPerson, personName));
         String displayDate = formatActaDateForAnswer(requestedDate, minutes);
+        String source = StructuredMinuteMetadataSupport.formatSourceReference(minutes.get(0));
+        String sourceSuffix = source.isBlank() ? "" : " (" + source + ")";
         if (personMatched) {
             return ToolResult.from(
-                    formatResponse("Sí, " + personName + " figura en el acta del " + displayDate + ".", query),
+                    formatResponse("Sí, " + personName + " figura en el acta del " + displayDate + sourceSuffix + ".", query),
                     getClass());
         }
         return ToolResult.from(
-                formatResponse("No, " + personName + " no figura en el acta del " + displayDate + ".", query),
+                formatResponse("No, " + personName + " no figura en el acta del " + displayDate + sourceSuffix + ".", query),
                 getClass());
     }
 
@@ -237,7 +311,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             return "esa fecha";
         }
         try {
-            java.time.LocalDate parsed = parseDateFlexible(requestedDate);
+            LocalDate parsed = parseDateFlexible(requestedDate);
             if (parsed != null) {
                 String[] months = {
                     "enero", "febrero", "marzo", "abril", "mayo", "junio",
@@ -596,8 +670,14 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         
         log().info("Validating keyword '{}' exists with PRECISE matching in {} documents", keyword, docs.size());
         
-        // Solar radiation: require literal string match only; do NOT accept lighting or illumination as a match (item 37)
         String kwLower = keyword != null ? keyword.toLowerCase().trim() : "";
+        // FD-BQ-02: literal topic match only; do not let LLM infer related terms as keyword presence
+        if (kwLower.contains("limpieza")) {
+            boolean found = keywordExistsLiterallyInDocuments(docs, keyword);
+            log().info("Keyword 'limpieza' literal match in documents: {}", found);
+            return found;
+        }
+        // Solar radiation: require literal string match only; do NOT accept lighting or illumination as a match (item 37)
         if (kwLower.contains("radiación solar") || kwLower.contains("radiacion solar")) {
             for (Document doc : docs) {
                 if (doc == null) continue;
@@ -713,5 +793,131 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         log().info("Keyword '{}' not found with PRECISE match in sampled documents (checked {} of {} documents)", 
                   keyword, sampleSize, docs.size());
         return false;
+    }
+
+    private ToolResult tryAnswerAttendeesExistenceBoolean(String query) {
+        if (!isHayActasAttendeeThresholdQuery(query)) {
+            return null;
+        }
+        AttendeesCountQueryInfo info = detectAttendeesCountQuery(query);
+        if (info == null) {
+            return null;
+        }
+        List<Document> docs =
+                retrieveCorpusDocumentsWithFallback(
+                        query,
+                        new String[] {
+                                META_FIELD_DATE,
+                                META_FIELD_PLACE,
+                                META_FIELD_DECISIONS,
+                                META_FIELD_TOPICS,
+                                META_FIELD_SUMMARY,
+                                META_FIELD_ATTENDEES
+                        });
+        if (docs.isEmpty()) {
+            return null;
+        }
+        docs = dedupeDocsByDocumentId(docs);
+        List<Minute> minutes = dedupeMinutesByDocumentId(extractMinutesInParallel(docs));
+        List<Minute> matching =
+                minutes.stream().filter(minute -> matchesAttendeeThreshold(minute, info)).toList();
+        String answer = formatAttendeesExistenceBooleanAnswer(query, info, matching, minutes);
+        return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    private static boolean isHayActasAttendeeThresholdQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        boolean existenceShape =
+                q.contains("hay actas")
+                        || q.contains("existen actas")
+                        || q.contains("alguna acta")
+                        || q.contains("algún acta")
+                        || q.contains("algun acta");
+        boolean participants =
+                q.contains("particip")
+                        || q.contains("asistent")
+                        || q.contains("personas")
+                        || q.contains("propietarios");
+        return existenceShape && participants;
+    }
+
+    private static boolean matchesAttendeeThreshold(Minute minute, AttendeesCountQueryInfo info) {
+        if (minute == null || info == null) {
+            return false;
+        }
+        int count = minute.numberOfAttendees();
+        if (count <= 0 && minute.attendees() != null) {
+            count = minute.attendees().size();
+        }
+        if (count <= 0) {
+            return false;
+        }
+        return switch (info.operator) {
+            case "less_than" -> count < info.threshold;
+            case "more_than" -> count > info.threshold;
+            case "equal" -> count == info.threshold;
+            default -> false;
+        };
+    }
+
+    private String formatAttendeesExistenceBooleanAnswer(
+            String query, AttendeesCountQueryInfo info, List<Minute> matching, List<Minute> allMinutes) {
+        boolean spanish = querySeemsSpanish(query);
+        if (matching.isEmpty()) {
+            int min = allMinutes.stream().mapToInt(MetadataBooleanQueryTool::attendeeCountFor).filter(c -> c > 0).min().orElse(0);
+            int max = allMinutes.stream().mapToInt(MetadataBooleanQueryTool::attendeeCountFor).filter(c -> c > 0).max().orElse(0);
+            if ("less_than".equals(info.operator)) {
+                if (spanish) {
+                    if (min > 0) {
+                        return String.format(
+                                Locale.ROOT,
+                                "No; no hay actas con menos de %d participantes. Todas las actas registran al menos %d participantes (mínimo %d, máximo %d).",
+                                info.threshold,
+                                min,
+                                min,
+                                max);
+                    }
+                    return String.format(
+                            Locale.ROOT,
+                            "No; no hay actas con menos de %d participantes (mínimo %d, máximo %d).",
+                            info.threshold,
+                            min,
+                            max);
+                }
+                return String.format(
+                        Locale.ROOT,
+                        "No meeting minutes have fewer than %d attendees (minimum %d, maximum %d).",
+                        info.threshold,
+                        min,
+                        max);
+            }
+            return spanish ? "No." : "No.";
+        }
+        if (spanish) {
+            return String.format(
+                    Locale.ROOT,
+                    "Sí, hay %d acta(s) que cumplen el criterio de %s %d participantes.",
+                    matching.size(),
+                    "less_than".equals(info.operator) ? "menos de" : "más de",
+                    info.threshold);
+        }
+        return String.format(
+                Locale.ROOT,
+                "Yes, %d meeting minute(s) match fewer than %d attendees.",
+                matching.size(),
+                info.threshold);
+    }
+
+    private static int attendeeCountFor(Minute minute) {
+        if (minute == null) {
+            return 0;
+        }
+        if (minute.numberOfAttendees() > 0) {
+            return minute.numberOfAttendees();
+        }
+        return minute.attendees() != null ? minute.attendees().size() : 0;
     }
 }

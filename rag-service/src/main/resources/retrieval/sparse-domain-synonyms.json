@@ -1,6 +1,13 @@
 {
-  "videovigilancia": ["cámaras de seguridad", "camaras de seguridad", "camara de seguridad"],
-  "calefaccion": ["calefacción"],
-  "calefacción": ["calefaccion"],
-  "limpieza": []
+  "videovigilancia": ["cámaras de seguridad", "camaras de seguridad", "camara de seguridad", "vigilancia", "seguridad"],
+  "calefaccion": ["calefacción", "climatizacion", "climatización"],
+  "calefacción": ["calefaccion", "climatizacion", "climatización"],
+  "limpieza": ["servicio de limpieza", "empresa de limpieza"],
+  "ascensor": ["elevador", "lift"],
+  "convivencia": ["normas de convivencia", "normas convivencia"],
+  "electrico": ["eléctric", "electricidad", "instalacion electrica", "instalación eléctrica"],
+  "eléctrico": ["electrico", "electricidad", "instalacion electrica"],
+  "presupuesto": ["estado de cuentas", "cuentas anuales", "presupuesto anual"],
+  "participantes": ["asistentes", "propietarios", "asistencia"],
+  "presidente": ["presidió", "presidio", "presidenta"]
 }
