@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.port.llm;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -43,7 +44,7 @@ public record LlmChatRequest(
             Double temperature,
             Integer timeoutMs,
             Map<String, Object> additionalParameters) {
-        var messageList = new java.util.ArrayList<LlmChatMessage>(2);
+        var messageList = new ArrayList<LlmChatMessage>(2);
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             messageList.add(LlmChatMessage.system(systemPrompt));
         }

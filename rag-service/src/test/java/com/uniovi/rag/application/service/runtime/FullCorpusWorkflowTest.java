@@ -53,7 +53,7 @@ class FullCorpusWorkflowTest {
         ExecutionContext ctx = minimalCtx();
         RagExecutionResult out = wf.execute(ctx);
 
-        assertThat(out.answerText()).isEqualTo("answer");
+        assertThat(out.answerText()).isEqualTo("ANS");
         verify(assembler).assembleFullCorpusText(any(ExecutionContext.class));
     }
 

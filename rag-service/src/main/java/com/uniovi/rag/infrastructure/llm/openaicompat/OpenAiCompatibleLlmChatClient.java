@@ -6,6 +6,7 @@ import com.uniovi.rag.application.port.llm.LlmChatResponse;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.infrastructure.llm.LlmOpenAiCompatibleDefaults;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
@@ -69,7 +70,7 @@ public class OpenAiCompatibleLlmChatClient implements LlmChatClient {
                         HEALTH_PROBE_USER_PROMPT,
                         temperature,
                         timeoutMs,
-                        java.util.Map.of());
+                        Map.of());
         LlmChatResponse response = chat(probe);
         return response.content() != null && !response.content().isBlank();
     }

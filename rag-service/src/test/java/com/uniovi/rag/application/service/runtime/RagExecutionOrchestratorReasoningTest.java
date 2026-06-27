@@ -213,8 +213,11 @@ class RagExecutionOrchestratorReasoningTest {
         assertThat(out.executionTrace().stages()).anyMatch(s -> "reasoning_plan".equals(s.stageName()));
         assertThat(out.executionTrace().stages()).anyMatch(s -> "reasoning_verify".equals(s.stageName()));
 
-        verify(chatClient.prompt().system(anyString()))
-                .user(argThat((String m) -> m != null && m.contains("<AnswerPlan>")));
+        verify(llmChatInvoker)
+                .invoke(
+                        any(),
+                        anyString(),
+                        argThat((String m) -> m != null && m.contains("<AnswerPlan>")));
     }
 
     private static QueryPlan plan() {

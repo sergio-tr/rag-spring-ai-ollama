@@ -2,6 +2,7 @@ package com.uniovi.rag.infrastructure.llm.openaicompat;
 
 import com.uniovi.rag.infrastructure.llm.LlmUrlUtils;
 import java.net.ConnectException;
+import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.Objects;
 import org.springframework.http.HttpEntity;
@@ -68,7 +69,7 @@ class OpenAiCompatibleChatCompletionsHttpClient {
     private static boolean isTimeout(ResourceAccessException e) {
         Throwable cause = e.getCause();
         while (cause != null) {
-            if (cause instanceof java.net.SocketTimeoutException) {
+            if (cause instanceof SocketTimeoutException) {
                 return true;
             }
             String message = cause.getMessage();

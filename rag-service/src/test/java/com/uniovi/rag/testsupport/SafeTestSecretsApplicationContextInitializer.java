@@ -68,6 +68,7 @@ public final class SafeTestSecretsApplicationContextInitializer
                 map.put("spring.datasource.url", pg.getJdbcUrl());
                 map.put("spring.datasource.username", pg.getUsername());
                 map.put("spring.datasource.password", pg.getPassword());
+                map.put("spring.flyway.clean-on-validation-error", "true");
             } catch (Throwable t) {
                 // Docker not available (common for @WebMvcTest on laptops) or Testcontainers failure — same JDBC
                 // fallback as CI service Postgres / local defaults.

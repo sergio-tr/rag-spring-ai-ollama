@@ -28,6 +28,7 @@ import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutio
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -86,7 +87,7 @@ class ExecutionContextFactoryTest {
                                 0.1,
                                 60_000,
                                 null,
-                                java.util.Map.of()));
+                                Map.of()));
         factory =
                 new ExecutionContextFactory(
                         runtimeConfigResolutionService,

@@ -63,15 +63,8 @@ class FunctionCallingExecutorEarlyExitTest {
 
     @Test
     void run_returnsModelDeclined_whenAssistantHasNoToolCalls() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         AssistantMessage assistant = mock(AssistantMessage.class);
         when(assistant.hasToolCalls()).thenReturn(false);
-        Generation generation = mock(Generation.class);
-        when(generation.getOutput()).thenReturn(assistant);
-        ChatResponse chatResponse = mock(ChatResponse.class);
-        when(chatResponse.getResult()).thenReturn(generation);        ToolCall a = mock(ToolCall.class);
-        ToolCall b = mock(ToolCall.class);
-        when(assistant.getToolCalls()).thenReturn(List.of(a, b));
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
@@ -79,7 +72,7 @@ class FunctionCallingExecutorEarlyExitTest {
         FunctionCallingExecutionResult r =
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
-        assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.INVALID_MODEL_OUTPUT);
+        assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.MODEL_DECLINED);
     }
 
     @Test
