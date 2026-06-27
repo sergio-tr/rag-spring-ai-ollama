@@ -117,6 +117,10 @@ services:
       SPRING_AI_OLLAMA_BASE_URL: ${SPRING_AI_OLLAMA_BASE_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}
       SPRING_AI_OLLAMA_CHAT_MODEL: ${SPRING_AI_OLLAMA_CHAT_MODEL:-gemma3:4b}
       SPRING_AI_OLLAMA_EMBEDDING_MODEL: ${SPRING_AI_OLLAMA_EMBEDDING_MODEL:-mxbai-embed-large:latest}
+      # OpenAI-compatible / LiteLLM (values from rag-service/.env via compose --env-file; never hardcode secrets).
+      OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY}
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-}
+      LITELLM_CHAT_MODEL: ${LITELLM_CHAT_MODEL:-}
       RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${CLASSIFIER_SERVICE_PORT:-8000}
       # Keep container health independent from "model loaded" gates.
       RAG_HEALTH_CLASSIFIER_REQUIRE_MODEL_LOADED: "false"
