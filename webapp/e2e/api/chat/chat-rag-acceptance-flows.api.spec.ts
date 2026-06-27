@@ -7,6 +7,7 @@ import {
   getConversationMessages,
   postChatAndGetLatestAssistant,
   postChatMessageAndPollTerminal,
+  rebuildProjectKnowledgeForPreset,
 } from "../fixtures/chat-runtime-api";
 import { parseJsonExpectNonHtml } from "../fixtures/json-contract";
 import { integrationCredentials, productUrl } from "../fixtures/env";
@@ -31,6 +32,7 @@ test.describe("Chat RAG acceptance flows API @api @chatAcceptance", () => {
     const { projectId, conversationId, demoBestPresetId } = await ensureDemoBestConversation(
       request,
       token,
+      { withActaCorpus: false },
     );
     expect(demoBestPresetId).toBe(DEMO_BEST_PRESET_ID);
 
@@ -109,7 +111,12 @@ test.describe("Chat RAG acceptance flows API @api @chatAcceptance", () => {
     test.setTimeout(240_000);
     const { email, password } = integrationCredentials();
     const token = await loginAndGetToken(request, email, password);
-    const { conversationId } = await ensureDemoBestConversation(request, token);
+    const { projectId, conversationId, demoBestPresetId } = await ensureDemoBestConversation(
+      request,
+      token,
+      { actaFixtureFiles: ["ACTA 1.pdf", "ACTA 6.pdf"] },
+    );
+    await rebuildProjectKnowledgeForPreset(request, token, projectId, demoBestPresetId);
 
     const job = await postChatMessageAndPollTerminal(
       request,
@@ -134,7 +141,9 @@ test.describe("Chat RAG acceptance flows API @api @chatAcceptance", () => {
   test("POST chat with blank content returns JSON 400", async ({ request }) => {
     const { email, password } = integrationCredentials();
     const token = await loginAndGetToken(request, email, password);
-    const { conversationId } = await ensureDemoBestConversation(request, token);
+    const { conversationId } = await ensureDemoBestConversation(request, token, {
+      withActaCorpus: false,
+    });
 
     const res = await request.post(productUrl(`/conversations/${conversationId}/messages`), {
       headers: { ...authHeaders(token), "Content-Type": "application/json", Accept: "application/json" },

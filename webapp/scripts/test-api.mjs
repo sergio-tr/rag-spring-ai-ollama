@@ -27,7 +27,12 @@ function runPlaywrightApi() {
   return new Promise((resolve) => {
     const child = spawn(
       process.platform === "win32" ? "npx.cmd" : "npx",
-      ["playwright", "test", "--project=api"],
+      [
+        "playwright",
+        "test",
+        "--project=api",
+        ...(process.env.RUN_CHAT_ACCEPTANCE === "1" ? [] : ["--grep-invert", "@chatAcceptance"]),
+      ],
       {
         stdio: "inherit",
         env: {
