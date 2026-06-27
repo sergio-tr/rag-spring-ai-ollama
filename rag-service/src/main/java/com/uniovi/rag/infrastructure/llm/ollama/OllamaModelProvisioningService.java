@@ -135,6 +135,17 @@ public class OllamaModelProvisioningService {
      * @param chatModelOverride user-selected chat model; if null, {@code spring.ai.ollama.chat.model} is used
      */
     public void ensureChatAndEmbeddingModelsPresent(String chatModelOverride) {
+        ensureModelsPresent(chatModelOverride, true);
+    }
+
+    /**
+     * Ensures only the configured embedding model exists (retrieval path when chat uses a non-Ollama provider).
+     */
+    public void ensureEmbeddingModelPresent() {
+        ensureModelsPresent(null, false);
+    }
+
+    private void ensureModelsPresent(String chatModelOverride, boolean includeChatModel) {
         if (!healthProperties.isOllamaEnabled()) {
             return;
         }
@@ -148,7 +159,7 @@ public class OllamaModelProvisioningService {
             if (!installed.contains(embeddingModel)) {
                 missing.add(embeddingModel);
             }
-            if (!installed.contains(effectiveChat)) {
+            if (includeChatModel && !installed.contains(effectiveChat)) {
                 missing.add(effectiveChat);
             }
             if (missing.isEmpty()) {

@@ -56,6 +56,13 @@ public class OllamaConnectivityChecker {
      * @param chatModelOverride chat model for this request (lab); {@code null} uses Spring AI default
      */
     public void prepareForQuery(String chatModelOverride) {
+        prepareForQuery(chatModelOverride, true);
+    }
+
+    /**
+     * @param includeChatModel when {@code false}, only the embedding model is required (OpenAI-compatible chat + Ollama retrieval).
+     */
+    public void prepareForQuery(String chatModelOverride, boolean includeChatModel) {
         if (!healthProperties.isOllamaEnabled()) {
             return;
         }
@@ -70,6 +77,10 @@ public class OllamaConnectivityChecker {
             Thread.currentThread().interrupt();
             throw RagServiceException.llmUnavailable(e);
         }
-        provisioningService.ensureChatAndEmbeddingModelsPresent(chatModelOverride);
+        if (includeChatModel) {
+            provisioningService.ensureChatAndEmbeddingModelsPresent(chatModelOverride);
+        } else {
+            provisioningService.ensureEmbeddingModelPresent();
+        }
     }
 }
