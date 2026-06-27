@@ -2,6 +2,9 @@ package com.uniovi.rag.tool.metadata;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.uniovi.rag.domain.model.Minute;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** Unit tests for topic search normalization used by metadata tools and structured acta support. */
@@ -27,7 +30,7 @@ class TopicNormalizationSupportTest {
     @Test
     void minuteDiscussesTopicForOccurrence_matchesAccentInsensitiveStemInSummary() {
         var minute =
-                new com.uniovi.rag.domain.model.Minute(
+                new Minute(
                         "id",
                         "ACTA 6.pdf",
                         "2026-08-25",
@@ -36,12 +39,12 @@ class TopicNormalizationSupportTest {
                         null,
                         null,
                         null,
-                        java.util.List.of(),
+                        List.of(),
                         19,
-                        java.util.Map.of(),
-                        java.util.List.of(),
-                        java.util.List.of(),
-                        java.util.List.of(),
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
                         "Se debatió la instalación de cámaras de videovigilancia en el portal.");
         assertThat(StructuredMinuteMetadataSupport.minuteDiscussesTopicForOccurrence(minute, "videovigilancia"))
                 .isTrue();

@@ -135,6 +135,9 @@ class RagExecutionOrchestratorMemoryTest {
 
         QueryPlan plan = mock(QueryPlan.class);
         when(plan.pipelineNotes()).thenReturn(List.of());
+        when(plan.normalizedQueryText()).thenReturn("q");
+        when(plan.rewrittenQueryText()).thenReturn("q");
+        when(plan.rawUserQuery()).thenReturn("q");
         when(plan.ambiguityAssessment())
                 .thenReturn(new AmbiguityAssessment(AmbiguityStatus.SUFFICIENT, List.of(), List.of()));
         when(qu.buildPlan(in)).thenReturn(plan);

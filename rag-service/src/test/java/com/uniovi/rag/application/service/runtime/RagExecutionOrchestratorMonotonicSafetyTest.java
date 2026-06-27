@@ -454,9 +454,9 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
         QueryPlan plan = queryPlan(query, QueryType.FIND_PARAGRAPH);
         ExecutionContext ctx = ctx(ragP15());
         String parentToolAnswer =
-                "Se plantea la necesidad de mejorar la limpieza en las zonas comunes. Se aprueba la contratación de un nuevo servicio de limpieza con mayor frecuencia.";
+                "En el acta del 12 de enero de 2026, se plantea la necesidad de mejorar la limpieza en las zonas comunes. Se aprueba la contratación de un nuevo servicio de limpieza con mayor frecuencia.";
         String safeFunctionAnswer =
-                "En las actas se menciona la limpieza de zonas comunes de forma general sin más detalle.";
+                "En el acta del 12 de enero de 2026 se menciona la limpieza de zonas comunes de forma general sin más detalle.";
         ExecutionWorkflow workflow = mock(ExecutionWorkflow.class);
         when(workflow.workflowName()).thenReturn("ChunkDenseRagWorkflow");
         when(workflow.execute(any()))
