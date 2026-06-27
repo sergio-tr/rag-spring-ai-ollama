@@ -120,6 +120,7 @@ services:
       RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${CLASSIFIER_SERVICE_PORT:-8000}
       # Keep container health independent from "model loaded" gates.
       RAG_HEALTH_CLASSIFIER_REQUIRE_MODEL_LOADED: "false"
+      RAG_STORAGE_ROOT: ${RAG_STORAGE_ROOT:-/var/lib/rag/storage}
     extra_hosts:
       # Linux/WSL2 parity for the official demo mode: Docker app + Ollama on the host.
       - "host.docker.internal:host-gateway"
@@ -143,6 +144,8 @@ services:
       timeout: 12s
       retries: 6
       start_period: 120s
+    volumes:
+      - rag_binary_storage:${RAG_STORAGE_ROOT:-/var/lib/rag/storage}
     restart: unless-stopped
 
   webapp:
@@ -411,6 +414,7 @@ services:
 
 volumes:
   postgres_data:
+  rag_binary_storage:
   prometheus_data:
   grafana_data:
   ollama_data:
