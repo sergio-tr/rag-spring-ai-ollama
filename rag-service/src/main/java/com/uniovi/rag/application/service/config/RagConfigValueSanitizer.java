@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.config;
 
+import com.uniovi.rag.domain.llm.LlmConfigurationKeys;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -28,10 +29,29 @@ public final class RagConfigValueSanitizer {
             "reasoningStrategy",
             "naiveFullCorpusInPromptEnabled",
             "naiveFullCorpusMaxChars",
-            "corpusGroundedDirectWorkflow");
+            "corpusGroundedDirectWorkflow",
+            LlmConfigurationKeys.PROVIDER,
+            LlmConfigurationKeys.BASE_URL,
+            LlmConfigurationKeys.API_KEY_ENV,
+            LlmConfigurationKeys.SECRET_NAME,
+            LlmConfigurationKeys.TEMPERATURE,
+            LlmConfigurationKeys.TIMEOUT_MS,
+            LlmConfigurationKeys.SYSTEM_PROMPT,
+            LlmConfigurationKeys.ADDITIONAL_PARAMETERS);
 
-    private RagConfigValueSanitizer() {
-    }
+    /** Keys that must never be persisted — use {@link LlmConfigurationKeys#API_KEY_ENV} or {@link LlmConfigurationKeys#SECRET_NAME}. */
+    public static final Set<String> FORBIDDEN_SECRET_KEYS = Set.of(
+            "apiKey",
+            "llmApiKey",
+            "openaiApiKey",
+            "api_key",
+            "llm_api_key",
+            "secret",
+            "password",
+            "bearerToken",
+            "accessToken");
+
+    private RagConfigValueSanitizer() {}
 
     public static Map<String, Object> sanitize(Map<String, Object> body) {
         if (body == null || body.isEmpty()) {
@@ -39,8 +59,15 @@ public final class RagConfigValueSanitizer {
         }
         Map<String, Object> out = new LinkedHashMap<>();
         for (Map.Entry<String, Object> e : body.entrySet()) {
-            if (ALLOWED_KEYS.contains(e.getKey())) {
-                out.put(e.getKey(), e.getValue());
+            String key = e.getKey();
+            if (FORBIDDEN_SECRET_KEYS.contains(key)) {
+                throw new IllegalArgumentException(
+                        "Forbidden configuration key '"
+                                + key
+                                + "': store only llmApiKeyEnv or llmSecretName, never the secret value");
+            }
+            if (ALLOWED_KEYS.contains(key)) {
+                out.put(key, e.getValue());
             }
         }
         return out;
