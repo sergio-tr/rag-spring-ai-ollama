@@ -66,6 +66,36 @@ class DeterministicToolEvidenceEvaluatorTest {
     }
 
     @Test
+    void fdFp02_classifierFindParagraph_noHeuristicConflictWhenClassifierAligned() {
+        String question = "¿Qué se comentó respecto a la fuga de gas?";
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1,
+                        question,
+                        question,
+                        question,
+                        question,
+                        "FIND_PARAGRAPH",
+                        Optional.of(QueryType.FIND_PARAGRAPH),
+                        ClassifierStatus.OK,
+                        QueryIntent.FIND,
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled(question, "test"),
+                        ExpectedAnswerShape.PARAGRAPH,
+                        AmbiguityAssessment.sufficient(),
+                        "cid",
+                        "cls",
+                        List.of());
+        var evaluation = DeterministicToolEvidenceEvaluator.evaluate(plan);
+        assertThat(evaluation.evidenceLevel()).isEqualTo(DeterministicEvidenceLevel.STRONG);
+        assertThat(evaluation.singleKind()).contains(DeterministicToolKind.FIND_PARAGRAPH_TOOL);
+        assertThat(DeterministicToolEvidenceEvaluator.classifierVetoReason(plan, evaluation)).isEmpty();
+    }
+
+    @Test
     void classifierGetFieldWithInferredAttendeesSlot_isStrongEvidence() {
         String question = "dime los participantes del acta del 25 de febrero de 2026";
         QueryPlan plan =

@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
 import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
@@ -142,7 +143,7 @@ class RagExecutionOrchestratorAdaptiveRoutingTest {
                                 List.of()));
         when(workflowSelector.select(any())).thenReturn(workflow);
 
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         RagExecutionOrchestrator orchestrator =
@@ -165,10 +166,10 @@ class RagExecutionOrchestratorAdaptiveRoutingTest {
                         judgeStrategy,
                         MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         var out = orchestrator.execute(in);
-        assertEquals("tool-answer", out.answerText());
+        assertEquals("Tool-answer", out.answerText());
         verify(workflowSelector, atLeastOnce()).select(any());
         verify(fcPolicy, never()).resolve(any(), any());
         verify(advisorPolicy, never()).resolve(any(), any());

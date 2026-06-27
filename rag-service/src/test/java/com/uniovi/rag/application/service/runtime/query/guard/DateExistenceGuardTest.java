@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -111,6 +112,38 @@ class DateExistenceGuardTest {
 
         assertTrue(result.isPresent());
         assertTrue(result.get().result().contains("ninguna acta"));
+    }
+
+    @Test
+    void fdCd03_yearOnly2028_negativeAnswerExplicitlyMentions2028() {
+        when(retriever.retrieve(anyString())).thenReturn(List.of());
+
+        Optional<ToolResult> result =
+                guard.checkNoActaForDate(
+                        "Número de actas registradas en el año 2028.", QueryType.COUNT_DOCUMENTS, null);
+
+        assertTrue(result.isPresent());
+        assertTrue(
+                result.get().result().contains("2028"),
+                "FD-CD-03: negative must echo year 2028");
+        assertTrue(
+                result.get().result()
+                        .equals("No existen actas correspondientes al año 2028 en el corpus."),
+                "FD-CD-03: year-only negative wording");
+    }
+
+    @Test
+    void fdCd03_yearOnly2028_doesNotUseGenericDateTemplate() {
+        when(retriever.retrieve(anyString())).thenReturn(List.of(new Document("c", Map.of("date_iso", "2025-01-01"))));
+
+        Optional<ToolResult> result =
+                guard.checkNoActaForDate(
+                        "Número de actas registradas en el año 2028.", QueryType.COUNT_DOCUMENTS, null);
+
+        assertTrue(result.isPresent());
+        assertTrue(
+                result.get().result().contains("No existen actas correspondientes al año 2028 en el corpus."));
+        assertFalse(result.get().result().contains("esa fecha"));
     }
 
     @Test

@@ -192,8 +192,8 @@ class SparseRetrievalStrategyTest {
                 .query(
                         ArgumentMatchers.argThat(
                                 (String sql) ->
-                                        sql.contains("(metadata->>'documentId')::uuid IN (:docIds)")
-                                                || sql.contains("(metadata->>'projectDocumentId')::uuid IN (:docIds)")),
+                                        sql.contains("metadata->>'documentId' IN (:docIds)")
+                                                || sql.contains("metadata->>'projectDocumentId' IN (:docIds)")),
                         any(MapSqlParameterSource.class),
                         any(RowMapper.class));
     }

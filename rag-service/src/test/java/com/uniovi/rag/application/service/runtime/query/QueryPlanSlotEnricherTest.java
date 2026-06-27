@@ -28,4 +28,24 @@ class QueryPlanSlotEnricherTest {
                         Map.of());
         assertThat(slots).containsEntry("field", "agenda");
     }
+
+    @Test
+    void fillsRoleFieldForPapelTuvoPartialNameQuery() {
+        Map<String, String> slots =
+                QueryPlanSlotEnricher.enrich(
+                        "¿Qué papel tuvo Jorge en la reunión del 25/08/2026?",
+                        Optional.of(QueryType.GET_FIELD),
+                        Map.of());
+        assertThat(slots).containsEntry("field", "role");
+    }
+
+    @Test
+    void countQueryOverridesPreclassifiedAttendeesSlot() {
+        Map<String, String> slots =
+                QueryPlanSlotEnricher.enrich(
+                        "¿Cuántos participantes asistieron a la reunión del 25/02/2026?",
+                        Optional.of(QueryType.GET_FIELD),
+                        Map.of("field", "attendees"));
+        assertThat(slots).containsEntry("field", "attendeesCount");
+    }
 }

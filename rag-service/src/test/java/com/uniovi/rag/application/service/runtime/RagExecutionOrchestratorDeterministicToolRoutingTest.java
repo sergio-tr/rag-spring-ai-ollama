@@ -1,5 +1,8 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
 import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyService;
+import com.uniovi.rag.application.service.runtime.routing.safety.RouteCandidateConstraintValidator;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
@@ -32,6 +35,8 @@ import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
+import com.uniovi.rag.application.service.runtime.DeterministicToolTerminalAnswerGuard;
+import com.uniovi.rag.domain.runtime.engine.AnswerFinality;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
@@ -53,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -70,6 +76,11 @@ import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingPolicy;
 import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
 
 class RagExecutionOrchestratorDeterministicToolRoutingTest {
+
+    @AfterEach
+    void resetGuardOverride() {
+        DeterministicToolTerminalAnswerGuard.setAcceptanceGuardTestOverride(null);
+    }
 
     private final DeterministicToolRoutingStrategy deterministicToolRoutingStrategy =
             new DeterministicToolRoutingStrategy(
@@ -95,7 +106,7 @@ class RagExecutionOrchestratorDeterministicToolRoutingTest {
                                 List.of()));
 
         var out = harness.orchestrator().execute(in);
-        assertThat(out.answerText()).isEqualTo("tool-answer");
+        assertThat(out.answerText()).isEqualTo("Tool-answer");
         verify(harness.adaptiveRoutingStrategy(), never()).execute(any(), any());
         verify(harness.functionCallingPolicy(), never()).resolve(any(), any());
         verify(harness.workflowSelector(), atLeastOnce()).select(any());
@@ -141,10 +152,11 @@ class RagExecutionOrchestratorDeterministicToolRoutingTest {
                                 false,
                                 List.of(),
                                 Optional.empty(),
-                                List.of()));
+                                List.of(),
+                                AnswerFinality.STANDARD));
 
         var out = harness.orchestrator().execute(in);
-        assertThat(out.answerText()).isEqualTo("workflow-answer");
+        assertThat(out.answerText()).isEqualTo("Workflow-answer");
         verify(harness.workflowSelector()).select(any());
         verify(harness.adaptiveRoutingStrategy(), never()).execute(any(), any());
 
@@ -156,7 +168,134 @@ class RagExecutionOrchestratorDeterministicToolRoutingTest {
                 .isEqualTo(AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE.name());
     }
 
+    @Test
+    void acceptanceGuardEnabled_preservesDeterministicCountAnswerWithoutJudgeOrWorkflowFallback() {
+        DeterministicToolTerminalAnswerGuard.setAcceptanceGuardTestOverride(true);
+        QueryPlan plan = plan(AmbiguityStatus.SUFFICIENT);
+        ExecutionContext in = ctx(p7Rag());
+        RagExecutionOrchestratorHarness harness = orchestrator(in, plan, p7Rag());
+        String toolAnswer = "No existen actas correspondientes al año 2028 en el corpus.";
+
+        when(harness.tools().tryExecute(any(), eq(plan)))
+                .thenReturn(
+                        new DeterministicToolExecutionResult(
+                                Optional.of(DeterministicToolKind.COUNT_DOCUMENTS_TOOL),
+                                DeterministicToolOutcome.EXECUTED_SUCCESS,
+                                true,
+                                toolAnswer,
+                                Map.of(),
+                                List.of()));
+
+        var out = harness.orchestrator().execute(in);
+
+        assertThat(out.answerText()).isEqualTo(toolAnswer);
+        assertThat(out.answerFinality()).isEqualTo(AnswerFinality.DETERMINISTIC_TOOL_FINAL);
+        assertThat(out.metadataUsed()).isTrue();
+        verify(harness.workflowSelector(), never()).select(any());
+        verify(harness.judgeStrategy(), never()).execute(any(), any(), any(), anyString(), any(), anyString(), any());
+    }
+
+    @Test
+    void acceptanceGuardEnabled_preservesGetDurationToolAnswerWithoutJudgeOrWorkflowFallback() {
+        DeterministicToolTerminalAnswerGuard.setAcceptanceGuardTestOverride(true);
+        String query = "Duración de la reunión del 25 de febrero de 2026.";
+        QueryPlan plan = durationPlan(AmbiguityStatus.SUFFICIENT, query);
+        ExecutionContext in = ctx(p7Rag());
+        RagExecutionOrchestratorHarness harness = orchestrator(in, plan, p7Rag());
+        String toolAnswer =
+                "La reunión del 25 de febrero de 2026 comenzó a las 19:00 y terminó a las 20:30 (1 hora y 30 minutos / 90 minutos).";
+
+        when(harness.tools().tryExecute(any(), eq(plan)))
+                .thenReturn(
+                        new DeterministicToolExecutionResult(
+                                Optional.of(DeterministicToolKind.GET_DURATION_TOOL),
+                                DeterministicToolOutcome.EXECUTED_SUCCESS,
+                                true,
+                                toolAnswer,
+                                Map.of(),
+                                List.of()));
+
+        var out = harness.orchestrator().execute(in);
+
+        assertThat(out.answerText()).isEqualTo(toolAnswer);
+        assertThat(out.answerFinality()).isEqualTo(AnswerFinality.DETERMINISTIC_TOOL_FINAL);
+        assertThat(out.usedTool()).isTrue();
+        verify(harness.workflowSelector(), never()).select(any());
+        verify(harness.judgeStrategy(), never()).execute(any(), any(), any(), anyString(), any(), anyString(), any());
+    }
+
+    @Test
+    void acceptanceGuardEnabled_preservesFilterListFl03AnswerWithoutWorkflowFallback() {
+        DeterministicToolTerminalAnswerGuard.setAcceptanceGuardTestOverride(true);
+        String query =
+                "¿Qué reuniones celebradas en agosto hablaron sobre videovigilancia y tuvieron más de 18 asistentes?";
+        QueryPlan plan = filterListPlan(AmbiguityStatus.SUFFICIENT, query);
+        ExecutionContext in = ctx(demoBestRag());
+        RagExecutionOrchestratorHarness harness = orchestratorWithRealMonotonicSafety(in, plan, demoBestRag());
+        String toolAnswer =
+                "La reunión del 25/08/2026 (ACTA 6) trató videovigilancia y tuvo 19 asistentes.";
+
+        when(harness.tools().tryExecute(any(), eq(plan)))
+                .thenReturn(
+                        new DeterministicToolExecutionResult(
+                                Optional.of(DeterministicToolKind.FILTER_AND_LIST_TOOL),
+                                DeterministicToolOutcome.EXECUTED_SUCCESS,
+                                true,
+                                toolAnswer,
+                                Map.of(),
+                                List.of()));
+
+        var out = harness.orchestrator().execute(in);
+
+        assertThat(out.answerText()).isEqualTo(toolAnswer);
+        assertThat(out.answerFinality()).isEqualTo(AnswerFinality.DETERMINISTIC_TOOL_FINAL);
+        assertThat(out.answerText()).contains("25/08/2026", "ACTA 6", "videovigilancia", "19 asistentes");
+        verify(harness.workflowSelector(), never()).select(any());
+        verify(harness.judgeStrategy(), never()).execute(any(), any(), any(), anyString(), any(), anyString(), any());
+    }
+
+    private static RagConfig demoBestRag() {
+        return new RagConfig(
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                5,
+                0.2,
+                "llm",
+                "emb",
+                "cls",
+                "reason",
+                false,
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                false,
+                MaterializationStrategy.CHUNK_LEVEL);
+    }
+
     private RagExecutionOrchestratorHarness orchestrator(ExecutionContext in, QueryPlan plan, RagConfig rag) {
+        return buildOrchestratorHarness(in, plan, MonotonicRouteSafetyTestSupport.permissiveSafety());
+    }
+
+    private RagExecutionOrchestratorHarness orchestratorWithRealMonotonicSafety(
+            ExecutionContext in, QueryPlan plan, RagConfig rag) {
+        return buildOrchestratorHarness(
+                in, plan, new MonotonicRouteSafetyService(new RouteCandidateConstraintValidator()));
+    }
+
+    private RagExecutionOrchestratorHarness buildOrchestratorHarness(
+            ExecutionContext in, QueryPlan plan, MonotonicRouteSafetyService monotonicSafety) {
         WorkflowSelector workflowSelector = mock(WorkflowSelector.class);
         QueryUnderstandingPipeline qu = mock(QueryUnderstandingPipeline.class);
         ExecutionContextFactory factory = mock(ExecutionContextFactory.class);
@@ -174,7 +313,7 @@ class RagExecutionOrchestratorDeterministicToolRoutingTest {
         when(factory.attachQueryPlan(in, plan)).thenReturn(in);
         when(clarificationPolicyResolver.resolve(any(), any()))
                 .thenReturn(new ClarificationDecision(false, ClarificationOutcome.NOT_NEEDED, null, ""));
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(
                         inv ->
                                 new JudgeExecutionResult(
@@ -223,14 +362,19 @@ class RagExecutionOrchestratorDeterministicToolRoutingTest {
                         judgeStrategy,
                         MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class),
+                        monotonicSafety,
+                        mock(ObjectProvider.class),
+                        mock(ObjectProvider.class),
+                        ConversationRecallGuardTestSupport.neverShortCircuit());
 
         return new RagExecutionOrchestratorHarness(
                 orchestrator,
                 tools,
                 workflowSelector,
                 adaptiveRoutingStrategy,
-                fcPolicy);
+                fcPolicy,
+                judgeStrategy);
     }
 
     private record RagExecutionOrchestratorHarness(
@@ -238,7 +382,8 @@ class RagExecutionOrchestratorDeterministicToolRoutingTest {
             DeterministicToolStrategy tools,
             WorkflowSelector workflowSelector,
             AdaptiveRoutingStrategy adaptiveRoutingStrategy,
-            FunctionCallingPolicyResolver functionCallingPolicy) {}
+            FunctionCallingPolicyResolver functionCallingPolicy,
+            JudgeStrategy judgeStrategy) {}
 
     private static RagConfig p7Rag() {
         return new RagConfig(
@@ -344,6 +489,52 @@ class RagExecutionOrchestratorDeterministicToolRoutingTest {
                 EntityExtractionResult.emptyWithNote(""),
                 StructuredRewriteResult.identityDisabled("norm", ""),
                 ExpectedAnswerShape.SCALAR_COUNT,
+                new AmbiguityAssessment(status, List.of(), List.of()),
+                "corr",
+                "",
+                List.of());
+    }
+
+    private static QueryPlan durationPlan(AmbiguityStatus status, String query) {
+        return new QueryPlan(
+                QueryPlan.VERSION_P6_QU_CORE_V1,
+                query,
+                query,
+                query,
+                query,
+                QueryType.GET_DURATION.name(),
+                Optional.of(QueryType.GET_DURATION),
+                ClassifierStatus.OK,
+                QueryIntent.FIND,
+                Map.of(),
+                List.of(),
+                List.of(),
+                EntityExtractionResult.emptyWithNote(""),
+                StructuredRewriteResult.identityDisabled(query, ""),
+                ExpectedAnswerShape.PARAGRAPH,
+                new AmbiguityAssessment(status, List.of(), List.of()),
+                "corr",
+                "",
+                List.of());
+    }
+
+    private static QueryPlan filterListPlan(AmbiguityStatus status, String query) {
+        return new QueryPlan(
+                QueryPlan.VERSION_P6_QU_CORE_V1,
+                query,
+                query,
+                query,
+                query,
+                QueryType.FILTER_AND_LIST.name(),
+                Optional.of(QueryType.FILTER_AND_LIST),
+                ClassifierStatus.OK,
+                QueryIntent.LIST,
+                Map.of(),
+                List.of(),
+                List.of(),
+                EntityExtractionResult.emptyWithNote(""),
+                StructuredRewriteResult.identityDisabled(query, ""),
+                ExpectedAnswerShape.LIST,
                 new AmbiguityAssessment(status, List.of(), List.of()),
                 "corr",
                 "",

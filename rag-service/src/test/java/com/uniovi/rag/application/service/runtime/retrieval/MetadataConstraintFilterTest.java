@@ -89,6 +89,93 @@ class MetadataConstraintFilterTest {
         assertThat(result.telemetry()).isEqualTo(new MetadataFilterTelemetry(false, false));
     }
 
+    @Test
+    void apply_metadataDateIsoKeepsMatchingCandidate() {
+        UUID sid = UUID.randomUUID();
+        RetrievalRequest req =
+                new RetrievalRequest(
+                        "Confirma la duración del acta del 25/02/2026.",
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        RetrievalMode.HYBRID_DENSE_SPARSE,
+                        5,
+                        5,
+                        10,
+                        5,
+                        24_000,
+                        50,
+                        List.of(sid),
+                        UUID.randomUUID(),
+                        Optional.empty(),
+                        List.of("all"),
+                        true,
+                        Optional.empty());
+        EntityExtractionResult entities =
+                new EntityExtractionResult(
+                        List.of(),
+                        List.of("2026-02-25"),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        List.of());
+        QueryPlan plan = planWithEntities(entities);
+        RetrievalCandidate matching =
+                new RetrievalCandidate(
+                        "c1",
+                        "acta sin fecha en texto",
+                        Map.of("date_iso", "2026-02-25"),
+                        0.1,
+                        0.0,
+                        1,
+                        0,
+                        sid,
+                        1.0);
+        RetrievalCandidate other =
+                new RetrievalCandidate(
+                        "c2",
+                        "otra reunion",
+                        Map.of("date_iso", "2025-01-01"),
+                        0.2,
+                        0.0,
+                        2,
+                        0,
+                        sid,
+                        0.5);
+
+        MetadataConstraintFilter.FilterResult result = filter.apply(req, plan, List.of(matching, other));
+
+        assertThat(result.candidates()).containsExactly(matching);
+        assertThat(result.telemetry()).isEqualTo(new MetadataFilterTelemetry(true, false));
+    }
+
+    private static QueryPlan planWithEntities(EntityExtractionResult entities) {
+        return new QueryPlan(
+                QueryPlan.VERSION_P6_QU_CORE_V1,
+                "q",
+                "q",
+                "q",
+                "q",
+                "L",
+                Optional.empty(),
+                ClassifierStatus.DISABLED,
+                QueryIntent.UNKNOWN,
+                Map.of(),
+                List.of(),
+                List.of(),
+                entities,
+                StructuredRewriteResult.identityDisabled("r", "r"),
+                ExpectedAnswerShape.UNKNOWN,
+                AmbiguityAssessment.sufficient(),
+                "c",
+                "m",
+                List.of());
+    }
+
     private static QueryPlan planWithPerson(String person) {
         EntityExtractionResult entities =
                 new EntityExtractionResult(

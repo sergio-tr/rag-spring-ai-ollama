@@ -4,6 +4,8 @@ import com.uniovi.rag.domain.model.Cluster;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.function.Function;
 
@@ -120,14 +122,15 @@ class DefaultDocumentContentExtractorTest {
 
     @Test
     void extractAttendees_acta5CombinedRetrieverStyle_returnsSeventeen() throws Exception {
-        String content = java.nio.file.Files.readString(java.nio.file.Path.of("/tmp/acta5combined.txt"));
+        String base = Files.readString(Path.of("src/test/resources/acta-fixtures/acta-5.txt"));
+        String content = base + "\n" + base;
         List<String> attendees = extractor.extractAttendees(content);
         assertEquals(17, attendees.size(), () -> "got " + attendees.size() + ": " + attendees);
     }
 
     @Test
     void extractAttendees_acta5FullDocument_returnsSeventeen() throws Exception {
-        String content = java.nio.file.Files.readString(java.nio.file.Path.of("/tmp/acta5full.txt"));
+        String content = Files.readString(Path.of("src/test/resources/acta-fixtures/acta-5.txt"));
         List<String> attendees = extractor.extractAttendees(content);
         assertEquals(17, attendees.size(), () -> "got " + attendees.size() + ": " + attendees);
         assertEquals("Jorge Moreno Navarro", extractor.extractLiteralField("president", content));

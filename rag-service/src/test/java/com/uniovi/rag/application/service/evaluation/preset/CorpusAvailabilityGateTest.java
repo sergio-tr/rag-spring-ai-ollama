@@ -138,8 +138,8 @@ class CorpusAvailabilityGateTest {
         gate.evaluate(userId, corpusId, List.of(snapshotId));
 
         @SuppressWarnings("unchecked")
-        List<UUID> bound = (List<UUID>) params.getValue().getValue("snapshotIds");
-        assertThat(bound).containsExactly(snapshotId);
+        List<String> bound = (List<String>) params.getValue().getValue("snapshotIds");
+        assertThat(bound).containsExactly(snapshotId.toString());
     }
 
     @Test

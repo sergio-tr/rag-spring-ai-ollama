@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
 import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
@@ -29,6 +30,7 @@ import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
+import com.uniovi.rag.domain.runtime.engine.AnswerFinality;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
@@ -50,7 +52,9 @@ import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -62,6 +66,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -82,7 +87,7 @@ class RagExecutionOrchestratorFunctionCallingRoutingTest {
 
     @Test
     void functionCallingEnabled_executesFunctionCallingWithoutAdaptiveOrDeterministicRouting() {
-        QueryPlan plan = plan(AmbiguityStatus.SUFFICIENT);
+        QueryPlan plan = planWithoutStructuredClassifierRoute(AmbiguityStatus.SUFFICIENT);
         ExecutionContext in = ctx(p9Rag());
         Harness harness = orchestrator(in, plan);
 
@@ -111,7 +116,7 @@ class RagExecutionOrchestratorFunctionCallingRoutingTest {
 
         var out = harness.orchestrator().execute(in);
 
-        assertThat(out.answerText()).isEqualTo("fc-answer");
+        assertThat(out.answerText()).isEqualTo("Fc-answer");
         verify(harness.adaptiveRoutingStrategy(), never()).execute(any(), any());
         verify(harness.tools(), never()).tryExecute(any(), any());
         verify(harness.workflowSelector(), never()).select(any());
@@ -126,8 +131,47 @@ class RagExecutionOrchestratorFunctionCallingRoutingTest {
     }
 
     @Test
-    void functionCallingEnabled_fallsBackToWorkflowWhenModelDeclines() {
+    void structuredClassifierFieldRoute_takesPrecedenceOverFunctionCalling() {
         QueryPlan plan = plan(AmbiguityStatus.SUFFICIENT);
+        ExecutionContext in = ctx(p9Rag());
+        Harness harness = orchestrator(in, plan);
+
+        ExecutionWorkflow workflow = mock(ExecutionWorkflow.class);
+        when(workflow.workflowName()).thenReturn("DirectLlmWorkflow");
+        when(workflow.execute(any()))
+                .thenReturn(
+                        RagExecutionResult.withPlaceholderTrace(
+                                "wf-fallback",
+                                "DirectLlmWorkflow",
+                                true,
+                                false,
+                                in.knowledgeSnapshotSelection().orderedSnapshotIds(),
+                                "none",
+                                List.of()));
+        when(harness.workflowSelector().select(any())).thenReturn(workflow);
+
+        when(harness.tools().tryExecute(any(), eq(plan)))
+                .thenReturn(
+                        new DeterministicToolExecutionResult(
+                                Optional.of(DeterministicToolKind.COUNT_DOCUMENTS_TOOL),
+                                DeterministicToolOutcome.EXECUTED_SUCCESS,
+                                true,
+                                "tool-answer",
+                                Map.of(),
+                                List.of()));
+
+        var out = harness.orchestrator().execute(in);
+
+        assertThat(out.answerText()).isEqualTo("Tool-answer");
+        verify(harness.functionCallingStrategy(), never()).tryExecute(any(), any(), any());
+        verify(harness.tools(), atLeastOnce()).tryExecute(any(), eq(plan));
+        assertThat(out.executionTrace().routingRouteKind())
+                .isEqualTo(AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE.name());
+    }
+
+    @Test
+    void functionCallingEnabled_fallsBackToWorkflowWhenModelDeclines() {
+        QueryPlan plan = planWithoutStructuredClassifierRoute(AmbiguityStatus.SUFFICIENT);
         ExecutionContext in = ctx(p9Rag());
         Harness harness = orchestrator(in, plan);
 
@@ -173,11 +217,12 @@ class RagExecutionOrchestratorFunctionCallingRoutingTest {
                                 false,
                                 List.of(),
                                 Optional.empty(),
-                                List.of()));
+                                List.of(),
+                                AnswerFinality.STANDARD));
 
         var out = harness.orchestrator().execute(in);
 
-        assertThat(out.answerText()).isEqualTo("workflow-answer");
+        assertThat(out.answerText()).isEqualTo("Workflow-answer");
         verify(harness.workflowSelector()).select(any());
         verify(harness.adaptiveRoutingStrategy(), never()).execute(any(), any());
 
@@ -207,7 +252,7 @@ class RagExecutionOrchestratorFunctionCallingRoutingTest {
         when(factory.attachQueryPlan(in, plan)).thenReturn(in);
         when(clarificationPolicyResolver.resolve(any(), any()))
                 .thenReturn(new ClarificationDecision(false, ClarificationOutcome.NOT_NEEDED, null, ""));
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(
                         inv ->
                                 new JudgeExecutionResult(
@@ -242,7 +287,7 @@ class RagExecutionOrchestratorFunctionCallingRoutingTest {
                         judgeStrategy,
                         mock(StructuredAnswerPlanService.class),
                         mock(AnswerVerificationService.class),
-                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class));
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         return new Harness(orchestrator, tools, workflowSelector, adaptiveRoutingStrategy, fcPolicy, fcStrategy);
     }
@@ -339,6 +384,29 @@ class RagExecutionOrchestratorFunctionCallingRoutingTest {
                 false,
                 Optional.empty(),
                 false,
+                List.of());
+    }
+
+    private static QueryPlan planWithoutStructuredClassifierRoute(AmbiguityStatus status) {
+        return new QueryPlan(
+                QueryPlan.VERSION_P6_QU_CORE_V1,
+                "raw",
+                "raw",
+                "norm",
+                "rw",
+                "lbl",
+                Optional.empty(),
+                ClassifierStatus.DISABLED,
+                QueryIntent.COUNT,
+                Map.of(),
+                List.of(),
+                List.of(),
+                EntityExtractionResult.emptyWithNote(""),
+                StructuredRewriteResult.identityDisabled("norm", ""),
+                ExpectedAnswerShape.SCALAR_COUNT,
+                new AmbiguityAssessment(status, List.of(), List.of()),
+                "corr",
+                "",
                 List.of());
     }
 

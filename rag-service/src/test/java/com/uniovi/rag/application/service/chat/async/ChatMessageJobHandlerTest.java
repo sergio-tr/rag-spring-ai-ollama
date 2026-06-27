@@ -29,6 +29,7 @@ import org.springframework.http.HttpStatus;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -177,6 +178,58 @@ class ChatMessageJobHandlerTest {
                         any(),
                         eq(Map.of()));
         verify(mutation).markSucceeded(eq(taskId), any());
+        verify(cancellationRegistry).clear(taskId);
+    }
+
+    @Test
+    void run_lateCancellationWithNonEmptyAnswer_persistsSuccess() {
+        UUID taskId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        UUID asstId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+
+        UserEntity user = mockUser(userId);
+        ProjectEntity project = mockProject(projectId);
+
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
+        when(task.getId()).thenReturn(taskId);
+        when(task.getUser()).thenReturn(user);
+        when(task.getProject()).thenReturn(project);
+        when(task.getRequestPayload()).thenReturn(validPayload(convId, asstId));
+
+        when(cancellationRegistry.isCancelled(taskId)).thenReturn(false, true);
+        when(runtimeQueryExecutionService.generateResponseForChat(
+                        eq("hello"),
+                        eq("m1"),
+                        eq(userId),
+                        eq(projectId),
+                        eq(convId),
+                        eq(List.of("d1")),
+                        any()))
+                .thenReturn(QueryResponse.fromLLMWithSources(
+                        "deterministic answer",
+                        QueryType.BOOLEAN_QUERY,
+                        List.of(new ChatSource("s1", null, "f.pdf", "snip", 0.5, "distance", 1, null, null))));
+        when(chatMessageWorkService.currentTraceId()).thenReturn("trace-1");
+
+        handler.run(task, mutation);
+
+        verify(chatMessageWorkService)
+                .applyAssistantSuccess(
+                        eq(asstId),
+                        eq(convId),
+                        eq("deterministic answer"),
+                        any(),
+                        eq("BOOLEAN_QUERY"),
+                        eq("trace-1"),
+                        any(),
+                        eq("m1"),
+                        any(),
+                        eq(Map.of()));
+        verify(mutation).markSucceeded(eq(taskId), any());
+        verify(chatMessageWorkService, never()).applyAssistantCancelled(asstId, convId);
+        verify(mutation, never()).markCancelled(taskId, "Stopped");
         verify(cancellationRegistry).clear(taskId);
     }
 

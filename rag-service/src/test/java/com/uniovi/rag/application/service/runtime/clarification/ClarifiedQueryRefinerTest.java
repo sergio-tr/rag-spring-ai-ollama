@@ -31,7 +31,7 @@ class ClarifiedQueryRefinerTest {
         String out = refiner.refine(pending, " next Tuesday ");
         assertThat(out)
                 .isEqualTo(
-                        "BASE: base \nQUESTION:Which date or meeting are you referring to?\nANSWER: next Tuesday ");
+                        "BASE: base \nQUESTION:¿A qué acta o reunión te refieres? Indica la fecha o el documento.\nANSWER: next Tuesday ");
     }
 
     @Test

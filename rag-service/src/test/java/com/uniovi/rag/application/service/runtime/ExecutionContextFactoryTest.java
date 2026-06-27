@@ -138,7 +138,7 @@ class ExecutionContextFactoryTest {
         when(runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         any(), any(), any(), anyString()))
                 .thenReturn(resolvedRuntimeConfig);
-        when(knowledgeRuntimeSnapshotSelector.select(projectId, conversationId))
+        when(knowledgeRuntimeSnapshotSelector.select(eq(projectId), eq(conversationId), any()))
                 .thenReturn(KnowledgeSnapshotSelection.empty());
         when(chatScopedRagConfigResolver.mergedConversationConfigAsJson(conversationId))
                 .thenReturn(null);
@@ -200,7 +200,11 @@ class ExecutionContextFactoryTest {
         when(runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         isNull(), isNull(), isNull(), anyString()))
                 .thenReturn(resolvedRuntimeConfig);
-        when(knowledgeRuntimeSnapshotSelector.select(null, null))
+        lenient()
+                .when(knowledgeRuntimeSnapshotSelector.select(any(), any(), any()))
+                .thenReturn(KnowledgeSnapshotSelection.empty());
+        lenient()
+                .when(knowledgeRuntimeSnapshotSelector.select(any(), isNull()))
                 .thenReturn(KnowledgeSnapshotSelection.empty());
         when(clarificationStateResolver.bootstrap(null, "q"))
                 .thenReturn(new ClarificationBootstrap("q", false, false, false));
@@ -255,7 +259,11 @@ class ExecutionContextFactoryTest {
             when(runtimeConfigResolutionService.resolveForOrchestratedExecute(
                             isNull(), isNull(), eq(terminal), anyString()))
                     .thenReturn(resolvedRuntimeConfig);
-            when(knowledgeRuntimeSnapshotSelector.select(null, null))
+            lenient()
+                    .when(knowledgeRuntimeSnapshotSelector.select(any(), any(), any()))
+                    .thenReturn(KnowledgeSnapshotSelection.empty());
+            lenient()
+                    .when(knowledgeRuntimeSnapshotSelector.select(any(), isNull()))
                     .thenReturn(KnowledgeSnapshotSelection.empty());
             when(clarificationStateResolver.bootstrap(null, "q"))
                     .thenReturn(new ClarificationBootstrap("q", false, false, false));

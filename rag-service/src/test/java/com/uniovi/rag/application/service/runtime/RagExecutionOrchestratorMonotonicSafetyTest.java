@@ -1,4 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
@@ -233,7 +234,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
         RagExecutionOrchestrator orchestrator = orchestrator(workflowSelector, tools, safety, false, false);
 
         var out = orchestrator.execute(ctx);
-        assertThat(out.answerText()).isEqualTo("retrieval-safe-answer");
+        assertThat(out.answerText()).isEqualTo("Retrieval-safe-answer");
         assertThat(out.executionTrace().routingFallbackApplied()).isTrue();
     }
 
@@ -292,7 +293,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 orchestratorP9(workflowSelector, fcPolicy, fcStrategy, safety);
 
         var out = orchestrator.execute(ctx);
-        assertThat(out.answerText()).isEqualTo("retrieval-parent-answer");
+        assertThat(out.answerText()).isEqualTo("Retrieval-parent-answer");
         assertThat(out.executionTrace().routingFallbackApplied()).isTrue();
     }
 
@@ -1728,7 +1729,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 .thenReturn(new ClarificationDecision(false, ClarificationOutcome.NOT_NEEDED, null, ""));
 
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(
                         inv ->
                                 new JudgeExecutionResult(
@@ -1754,7 +1755,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 clarificationPolicyResolver,
                 mock(ClarificationStrategy.class),
                 mock(AdaptiveRoutingStrategy.class),
-                mock(DeterministicToolRoutingStrategy.class),
+                DETERMINISTIC_TOOL_ROUTING,
                 FUNCTION_CALLING_ROUTING,
                 mock(AdvisorRoutingStrategy.class),
                 judgeStrategy,
@@ -1762,7 +1763,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 mock(AnswerVerificationService.class),
                 mock(ObjectProvider.class),
                 safety,
-                mock(ObjectProvider.class), mock(ObjectProvider.class));
+                mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
     }
 
     private static RagExecutionOrchestrator orchestratorP15IntegratedWithCampaignResolver(
@@ -1824,7 +1825,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 .thenReturn(new ClarificationDecision(false, ClarificationOutcome.NOT_NEEDED, null, ""));
 
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(
                         inv ->
                                 new JudgeExecutionResult(
@@ -1907,7 +1908,8 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 mock(ObjectProvider.class),
                 safety,
                 mock(ObjectProvider.class),
-                campaignResolverProvider);
+                campaignResolverProvider,
+                ConversationRecallGuardTestSupport.neverShortCircuit());
     }
 
     private static RagExecutionOrchestrator orchestratorP7WithCampaignResolver(
@@ -1941,7 +1943,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 .thenReturn(new ClarificationDecision(false, ClarificationOutcome.NOT_NEEDED, null, ""));
 
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(
                         inv ->
                                 new JudgeExecutionResult(
@@ -1990,7 +1992,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 clarificationPolicyResolver,
                 mock(ClarificationStrategy.class),
                 integratedAdaptive ? adaptiveRoutingStrategy : mock(AdaptiveRoutingStrategy.class),
-                integratedAdaptive ? mock(DeterministicToolRoutingStrategy.class) : DETERMINISTIC_TOOL_ROUTING,
+                DETERMINISTIC_TOOL_ROUTING,
                 mock(FunctionCallingRoutingStrategy.class),
                 mock(AdvisorRoutingStrategy.class),
                 judgeStrategy,
@@ -1999,7 +2001,8 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 mock(ObjectProvider.class),
                 safety,
                 mock(ObjectProvider.class),
-                campaignResolverProvider);
+                campaignResolverProvider,
+                ConversationRecallGuardTestSupport.neverShortCircuit());
     }
 
     private static RagExecutionOrchestrator orchestratorWithPlan(
@@ -2019,7 +2022,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 .thenReturn(new ClarificationDecision(false, ClarificationOutcome.NOT_NEEDED, null, ""));
 
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(
                         inv ->
                                 new JudgeExecutionResult(
@@ -2068,7 +2071,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 clarificationPolicyResolver,
                 mock(ClarificationStrategy.class),
                 integratedAdaptive ? adaptiveRoutingStrategy : mock(AdaptiveRoutingStrategy.class),
-                integratedAdaptive ? mock(DeterministicToolRoutingStrategy.class) : DETERMINISTIC_TOOL_ROUTING,
+                DETERMINISTIC_TOOL_ROUTING,
                 mock(FunctionCallingRoutingStrategy.class),
                 mock(AdvisorRoutingStrategy.class),
                 judgeStrategy,
@@ -2076,7 +2079,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 mock(AnswerVerificationService.class),
                 mock(ObjectProvider.class),
                 safety,
-                mock(ObjectProvider.class), mock(ObjectProvider.class));
+                mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
     }
 
     private static RagExecutionOrchestrator orchestrator(
@@ -2095,7 +2098,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 .thenReturn(new ClarificationDecision(false, ClarificationOutcome.NOT_NEEDED, null, ""));
 
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(
                         inv ->
                                 new JudgeExecutionResult(
@@ -2144,7 +2147,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 clarificationPolicyResolver,
                 mock(ClarificationStrategy.class),
                 integratedAdaptive ? adaptiveRoutingStrategy : mock(AdaptiveRoutingStrategy.class),
-                integratedAdaptive ? mock(DeterministicToolRoutingStrategy.class) : DETERMINISTIC_TOOL_ROUTING,
+                DETERMINISTIC_TOOL_ROUTING,
                 mock(FunctionCallingRoutingStrategy.class),
                 mock(AdvisorRoutingStrategy.class),
                 judgeStrategy,
@@ -2152,7 +2155,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
                 mock(AnswerVerificationService.class),
                 mock(ObjectProvider.class),
                 safety,
-                mock(ObjectProvider.class), mock(ObjectProvider.class));
+                mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
     }
 
     private static RagConfig ragP9() {

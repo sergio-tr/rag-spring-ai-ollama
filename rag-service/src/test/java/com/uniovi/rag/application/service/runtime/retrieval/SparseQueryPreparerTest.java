@@ -64,7 +64,7 @@ class SparseQueryPreparerTest {
                         "¿Qué se dijo en relación a la limpieza de las zonas comunes?", null);
 
         assertThat(prep.keywordTerms()).anyMatch(t -> t.toLowerCase().contains("limpieza"));
-        assertThat(prep.synonymTerms()).isEmpty();
+        assertThat(prep.synonymTerms()).contains("servicio de limpieza");
     }
 
     @Test
@@ -88,6 +88,16 @@ class SparseQueryPreparerTest {
         var prep = preparer.prepare("¿Qué se comentó respecto a la radiación solar?", null);
 
         assertThat(prep.synonymTerms()).isEmpty();
+    }
+
+    @Test
+    void prepare_expandsElectricoSynonymHeadFromTopicEntity() {
+        var prep =
+                preparer.prepare(
+                        "¿Qué se dijo sobre problemas eléctricos?",
+                        planWithTopics(List.of("electrico")));
+
+        assertThat(prep.synonymTerms()).anyMatch(t -> t.toLowerCase().contains("electric"));
     }
 
     private static QueryPlan planWithTopics(List<String> topics) {
