@@ -7,9 +7,12 @@ import com.uniovi.rag.application.exception.llm.LlmProviderException;
 import com.uniovi.rag.application.exception.llm.LlmSafeOperationLogger;
 import com.uniovi.rag.application.port.llm.LlmChatClient;
 import com.uniovi.rag.application.port.llm.LlmChatRequest;
+import com.uniovi.rag.application.port.llm.catalog.LlmModelCatalogPort;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
+import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
+import com.uniovi.rag.domain.llm.catalog.LlmModelUsageContext;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import java.util.Objects;
@@ -30,14 +33,20 @@ public class RagLlmChatInvoker {
     private final LlmClientResolver llmClientResolver;
     private final ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     private final ObjectMapper objectMapper;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
+    private final LlmModelCatalogPort modelCatalog;
 
     public RagLlmChatInvoker(
             LlmClientResolver llmClientResolver,
             ResolvedLlmConfigResolver resolvedLlmConfigResolver,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ChatGenerationModelSelector chatGenerationModelSelector,
+            LlmModelCatalogPort modelCatalog) {
         this.llmClientResolver = llmClientResolver;
         this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
         this.objectMapper = objectMapper;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
+        this.modelCatalog = modelCatalog;
     }
 
     /**
@@ -49,7 +58,9 @@ public class RagLlmChatInvoker {
         ResolvedLlmConfig config = effectiveConfig(ctx);
         LlmChatClient client = llmClientResolver.resolveChatClient(config);
         String model =
-                ChatGenerationModelSelector.effectiveChatModelId(ctx).orElse(config.chatModel());
+                chatGenerationModelSelector.effectiveChatModelId(ctx).orElse(config.chatModel());
+        modelCatalog.assertUsable(
+                config.provider(), model, LlmModelCapability.CHAT, LlmModelUsageContext.RAG_CHAT);
         String mergedSystem = mergeSystemPrompts(systemPrompt, config.systemPrompt());
         LlmChatRequest request =
                 LlmChatRequest.of(

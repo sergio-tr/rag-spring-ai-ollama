@@ -19,9 +19,12 @@ import java.util.Optional;
 public class ConversationQuestionCondensor {
 
     private final ChatClient chatClient;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
 
-    public ConversationQuestionCondensor(ChatClient chatClient) {
+    public ConversationQuestionCondensor(
+            ChatClient chatClient, ChatGenerationModelSelector chatGenerationModelSelector) {
         this.chatClient = chatClient;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
     }
 
     public String condense(
@@ -51,7 +54,7 @@ public class ConversationQuestionCondensor {
                 .user(prompt);
 
         OllamaOptions.Builder opt = OllamaOptions.builder().temperature(0.0);
-        ChatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(opt::model);
+        chatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(opt::model);
         spec = spec.options(opt.build());
 
         String out = spec.call().content();

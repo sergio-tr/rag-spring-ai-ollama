@@ -1,5 +1,6 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
@@ -265,6 +266,7 @@ public class RagQueryConfiguration {
             RagExecutionOrchestrator ragExecutionOrchestrator,
             RuntimeTracePersistenceService runtimeTracePersistenceService,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
+            ChatGenerationModelSelector chatGenerationModelSelector,
             @Autowired(required = false) ObservabilitySupport observability) {
         QueryExecutionService raw =
                 new RuntimeQueryExecutionService(
@@ -273,7 +275,8 @@ public class RagQueryConfiguration {
                         runtimeTracePersistenceService,
                         chatClient,
                         ollamaConnectivityChecker,
-                        knowledgeDocumentRepository);
+                        knowledgeDocumentRepository,
+                        chatGenerationModelSelector);
         if (observability != null) {
             return new TracedQueryService(raw, observability);
         }

@@ -28,9 +28,12 @@ public class AnswerVerificationService {
             """;
 
     private final ChatClient chatClient;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
 
-    public AnswerVerificationService(ChatClient chatClient) {
+    public AnswerVerificationService(
+            ChatClient chatClient, ChatGenerationModelSelector chatGenerationModelSelector) {
         this.chatClient = chatClient;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
     }
 
     public VerificationResult verify(ExecutionContext ctx, String question, String contextExcerpt, String answer) {
@@ -48,7 +51,7 @@ public class AnswerVerificationService {
             String prompt = String.format(PROMPT, safe(question, 240), safe(contextExcerpt, 900), safe(answer, 900));
             var spec = chatClient.prompt().user(prompt);
             if (ctx != null) {
-                ChatGenerationModelSelector.effectiveChatModelId(ctx)
+                chatGenerationModelSelector.effectiveChatModelId(ctx)
                         .ifPresent(m -> spec.options(OllamaOptions.builder().model(m).build()));
             }
             String raw = spec.call().content();

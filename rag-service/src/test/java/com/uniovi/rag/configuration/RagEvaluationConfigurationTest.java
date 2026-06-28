@@ -1,5 +1,6 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
@@ -53,6 +54,7 @@ class RagEvaluationConfigurationTest {
                 executionContextFactory,
                 ragExecutionOrchestrator,
                 runtimeTracePersistenceService,
+                mock(ChatGenerationModelSelector.class),
                 false);
 
         assertNotNull(factory);

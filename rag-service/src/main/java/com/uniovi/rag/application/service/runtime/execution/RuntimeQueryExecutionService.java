@@ -6,6 +6,7 @@ import com.uniovi.rag.application.exception.llm.LlmProviderException;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.infrastructure.llm.openaicompat.OpenAiCompatibleLlmException;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionMapper;
@@ -51,6 +52,7 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final ObjectProvider<RuntimeQueryExecutionService> selfProvider;
     private final ObjectProvider<RuntimeObservability> runtimeObservability;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
 
     public RuntimeQueryExecutionService(
             ExecutionContextFactory executionContextFactory,
@@ -58,7 +60,8 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
             RuntimeTracePersistenceService runtimeTracePersistenceService,
             ChatClient chatClient,
             OllamaConnectivityChecker ollamaConnectivityChecker,
-            KnowledgeDocumentRepository knowledgeDocumentRepository) {
+            KnowledgeDocumentRepository knowledgeDocumentRepository,
+            ChatGenerationModelSelector chatGenerationModelSelector) {
         this(
                 executionContextFactory,
                 ragExecutionOrchestrator,
@@ -66,6 +69,7 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
                 chatClient,
                 ollamaConnectivityChecker,
                 knowledgeDocumentRepository,
+                chatGenerationModelSelector,
                 null,
                 null);
     }
@@ -78,6 +82,7 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
             ChatClient chatClient,
             OllamaConnectivityChecker ollamaConnectivityChecker,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
+            ChatGenerationModelSelector chatGenerationModelSelector,
             ObjectProvider<RuntimeQueryExecutionService> selfProvider,
             ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.executionContextFactory = executionContextFactory;
@@ -86,6 +91,7 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
         this.chatClient = chatClient;
         this.ollamaConnectivityChecker = ollamaConnectivityChecker;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
         this.runtimeObservability = runtimeObservability;
         this.selfProvider =
                 selfProvider != null
@@ -265,12 +271,20 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
     }
 
     private void prepareOllamaForContext(ExecutionContext ctx) {
-        String chatModel = ChatGenerationModelSelector.effectiveChatModelId(ctx).orElse(null);
+        String chatModel = chatGenerationModelSelector.effectiveChatModelId(ctx).orElse(null);
         boolean requireOllamaChat =
                 OrchestrationLlmConfigScope.current()
-                        .map(config -> config.provider() == LlmProvider.OLLAMA_NATIVE)
-                        .orElse(true);
-        ollamaConnectivityChecker.prepareForQuery(chatModel, requireOllamaChat);
+                        .map(ResolvedLlmConfig::requiresOllamaNativeChat)
+                        .orElseGet(
+                                () ->
+                                        ollamaConnectivityChecker.requiresOllamaChatForDefaults());
+        boolean requireOllamaEmbedding =
+                OrchestrationLlmConfigScope.current()
+                        .map(ResolvedLlmConfig::requiresOllamaNativeEmbedding)
+                        .orElseGet(
+                                () ->
+                                        ollamaConnectivityChecker.requiresOllamaEmbeddingForDefaults());
+        ollamaConnectivityChecker.prepareForQuery(chatModel, requireOllamaChat, requireOllamaEmbedding);
     }
 
     private QueryResponse handleUnexpected(String query, Exception e) {

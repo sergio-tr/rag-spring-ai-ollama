@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.memory;
 
+import com.uniovi.rag.testsupport.llm.ChatGenerationModelSelectorTestSupport;
 import com.uniovi.rag.domain.MessageRole;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemorySlice;
@@ -28,7 +29,8 @@ class ConversationQuestionCondensorTest {
                 .content())
                 .thenReturn("  condensed query  ");
 
-        ConversationQuestionCondensor c = new ConversationQuestionCondensor(chatClient);
+        ConversationQuestionCondensor c =
+                new ConversationQuestionCondensor(chatClient, ChatGenerationModelSelectorTestSupport.permissiveMock());
         ExecutionContext ctx = mock(ExecutionContext.class);
         when(ctx.chatModelOverride()).thenReturn(Optional.empty());
 

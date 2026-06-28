@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.query;
 
+import com.uniovi.rag.testsupport.llm.ChatGenerationModelSelectorTestSupport;
 import com.uniovi.rag.configuration.RagClassifierProperties;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -186,7 +187,8 @@ class DefaultQueryUnderstandingPipelineTest {
 
         DefaultQueryClassifierAdapter classifierAdapter = classifierAdapter(classifier);
         DefaultNamedEntityExtractionAdapter nerAdapter = new DefaultNamedEntityExtractionAdapter(analyser);
-        DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(chatClient);
+        DefaultStructuredQueryRewriter rewriter =
+                new DefaultStructuredQueryRewriter(chatClient, ChatGenerationModelSelectorTestSupport.permissiveMock());
         DefaultQueryIntentResolver intentResolver = new DefaultQueryIntentResolver();
         DefaultExpectedAnswerShapeResolver shapeResolver = new DefaultExpectedAnswerShapeResolver();
         DefaultAmbiguityAssessmentService ambiguity = new DefaultAmbiguityAssessmentService();

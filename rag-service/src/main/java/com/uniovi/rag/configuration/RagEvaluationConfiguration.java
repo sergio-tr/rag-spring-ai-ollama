@@ -51,6 +51,7 @@ public class RagEvaluationConfiguration {
         ExecutionContextFactory executionContextFactory,
         RagExecutionOrchestrator ragExecutionOrchestrator,
         RuntimeTracePersistenceService runtimeTracePersistenceService,
+        com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector chatGenerationModelSelector,
         @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled
     ) {
         EvaluationServiceFactory.Settings settings =
@@ -76,7 +77,8 @@ public class RagEvaluationConfiguration {
                 ollamaConnectivityChecker,
                 executionContextFactory,
                 ragExecutionOrchestrator,
-                runtimeTracePersistenceService);
+                runtimeTracePersistenceService,
+                chatGenerationModelSelector);
     }
 
     @Bean

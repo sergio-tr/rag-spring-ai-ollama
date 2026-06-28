@@ -29,9 +29,12 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final ChatClient chatClient;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
 
-    public DefaultStructuredQueryRewriter(ChatClient chatClient) {
+    public DefaultStructuredQueryRewriter(
+            ChatClient chatClient, ChatGenerationModelSelector chatGenerationModelSelector) {
         this.chatClient = chatClient;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
     }
 
     @Override
@@ -69,7 +72,7 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
 
         // Fixed low-temperature to reduce variance (when supported by the client/model).
         OllamaOptions.Builder opt = OllamaOptions.builder().temperature(0.0);
-        ChatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(opt::model);
+        chatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(opt::model);
         spec = spec.options(opt.build());
         String out = spec.call().content();
         return out == null ? "" : out.trim();

@@ -77,7 +77,7 @@ class ExecutionContextFactoryTest {
         lenient()
                 .when(resolvedLlmConfigResolver.resolveForOrchestratedExecute(any(), any(), any(), any(), any()))
                 .thenReturn(
-                        new ResolvedLlmConfig(
+                        ResolvedLlmConfig.uniform(
                                 LlmProvider.OLLAMA_NATIVE,
                                 "http://localhost:11434",
                                 "gemma3:4b",

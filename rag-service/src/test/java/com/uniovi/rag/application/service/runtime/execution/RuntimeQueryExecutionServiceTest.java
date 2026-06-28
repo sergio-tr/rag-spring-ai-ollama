@@ -25,6 +25,7 @@ import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
+import com.uniovi.rag.testsupport.llm.ChatGenerationModelSelectorTestSupport;
 import java.net.ConnectException;
 import java.util.List;
 import java.util.Optional;
@@ -73,6 +74,7 @@ class RuntimeQueryExecutionServiceTest {
                         chatClient,
                         ollamaConnectivityChecker,
                         knowledgeDocumentRepository,
+                        ChatGenerationModelSelectorTestSupport.permissiveMock(),
                         selfProvider,
                         runtimeObservability);
         when(selfProvider.getIfAvailable()).thenReturn(service);
@@ -268,6 +270,7 @@ class RuntimeQueryExecutionServiceTest {
                         chatClient,
                         ollamaConnectivityChecker,
                         knowledgeDocumentRepository,
+                        ChatGenerationModelSelectorTestSupport.permissiveMock(),
                         provider,
                         runtimeObservability));
         when(provider.getIfAvailable()).thenReturn(self);

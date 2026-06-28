@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation;
 
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.execution.QueryExecutionService;
@@ -51,6 +52,7 @@ class EvaluationServiceFactoryTest {
                         500,
                         200,
                         false);
+        ChatGenerationModelSelector chatGenerationModelSelector = mock(ChatGenerationModelSelector.class);
         factory =
                 new EvaluationServiceFactory(
                         chatClient,
@@ -60,7 +62,8 @@ class EvaluationServiceFactoryTest {
                         ollamaConnectivityChecker,
                         executionContextFactory,
                         ragExecutionOrchestrator,
-                        runtimeTracePersistenceService);
+                        runtimeTracePersistenceService,
+                        chatGenerationModelSelector);
         implProps = new RagImplementationProperties();
     }
 

@@ -25,6 +25,7 @@ import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCa
 import com.uniovi.rag.application.service.runtime.config.MaterializationAwareSnapshotResolver;
 import com.uniovi.rag.application.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.exception.llm.LlmSafeOperationLogger;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
@@ -32,6 +33,8 @@ import io.micrometer.tracing.Tracer;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -42,6 +45,8 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @Service
 public class ExecutionContextFactory {
+
+    private static final Logger log = LoggerFactory.getLogger(ExecutionContextFactory.class);
 
     private final RuntimeConfigResolutionService runtimeConfigResolutionService;
     private final KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector;
@@ -222,6 +227,7 @@ public class ExecutionContextFactory {
         ResolvedLlmConfig llm =
                 resolvedLlmConfigResolver.resolveForOrchestratedExecute(
                         userId, projectId, presetId, terminalConversationMergedOverride, chatModelOverride);
+        LlmSafeOperationLogger.logResolvedConfig(log, llm);
         OrchestrationLlmConfigScope.bind(llm);
     }
 

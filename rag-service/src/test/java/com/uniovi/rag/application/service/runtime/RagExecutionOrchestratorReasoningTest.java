@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime;
 import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
 import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
+import com.uniovi.rag.testsupport.llm.ChatGenerationModelSelectorTestSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationPolicyResolver;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStrategy;
@@ -203,8 +204,10 @@ class RagExecutionOrchestratorReasoningTest {
                         mock(FunctionCallingRoutingStrategy.class),
                         mock(AdvisorRoutingStrategy.class),
                         mock(JudgeStrategy.class),
-                        new StructuredAnswerPlanService(chatClient, new ObjectMapper()),
-                        new AnswerVerificationService(chatClient),
+                        new StructuredAnswerPlanService(
+                                chatClient, new ObjectMapper(), ChatGenerationModelSelectorTestSupport.permissiveMock()),
+                        new AnswerVerificationService(
+                                chatClient, ChatGenerationModelSelectorTestSupport.permissiveMock()),
                         mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         var out = orch.execute(base);

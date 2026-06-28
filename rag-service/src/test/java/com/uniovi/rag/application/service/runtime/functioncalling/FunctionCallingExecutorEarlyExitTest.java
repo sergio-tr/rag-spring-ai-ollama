@@ -21,6 +21,7 @@ import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.application.service.runtime.tool.MeetingMinutesToolExecutionCore;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.MeetingMinutesToolRawResult;
+import com.uniovi.rag.testsupport.llm.ChatGenerationModelSelectorTestSupport;
 import com.uniovi.rag.tool.ToolResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -68,7 +69,7 @@ class FunctionCallingExecutorEarlyExitTest {
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
-                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper, ChatGenerationModelSelectorTestSupport.permissiveMock());
         FunctionCallingExecutionResult r =
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
@@ -85,7 +86,7 @@ class FunctionCallingExecutorEarlyExitTest {
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
-                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper, ChatGenerationModelSelectorTestSupport.permissiveMock());
         FunctionCallingExecutionResult r =
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
@@ -117,7 +118,8 @@ class FunctionCallingExecutorEarlyExitTest {
                         chatClientForAssistantThenFollowUp(assistant, followUp),
                         toolRegistry,
                         meetingMinutesToolExecutionCore,
-                        resultMapper);
+                        resultMapper,
+                        ChatGenerationModelSelectorTestSupport.permissiveMock());
         FunctionCallingExecutionResult r =
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
@@ -139,7 +141,7 @@ class FunctionCallingExecutorEarlyExitTest {
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
-                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper, ChatGenerationModelSelectorTestSupport.permissiveMock());
         FunctionCallingExecutionResult r =
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
@@ -169,7 +171,7 @@ class FunctionCallingExecutorEarlyExitTest {
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
-                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper, ChatGenerationModelSelectorTestSupport.permissiveMock());
         FunctionCallingExecutionResult r = executor.run(buildCtx(), minimalPlan(), decision);
 
         assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.INVALID_MODEL_OUTPUT);
@@ -189,7 +191,7 @@ class FunctionCallingExecutorEarlyExitTest {
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
-                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper, ChatGenerationModelSelectorTestSupport.permissiveMock());
         FunctionCallingExecutionResult r =
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
@@ -214,7 +216,7 @@ class FunctionCallingExecutorEarlyExitTest {
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
-                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper, ChatGenerationModelSelectorTestSupport.permissiveMock());
         FunctionCallingExecutionResult r =
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 

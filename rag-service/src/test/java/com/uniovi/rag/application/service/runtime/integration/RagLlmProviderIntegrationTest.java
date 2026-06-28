@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime.integration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -10,7 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.uniovi.rag.application.exception.llm.UnsupportedEmbeddingProviderException;
+import com.uniovi.rag.application.port.llm.LlmEmbeddingClient;
 import com.uniovi.rag.application.port.ConfigurationSourcePort;
 import com.uniovi.rag.application.port.llm.LlmChatClient;
 import com.uniovi.rag.application.port.llm.LlmChatRequest;
@@ -20,6 +21,9 @@ import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
+import com.uniovi.rag.testsupport.llm.LlmModelCatalogTestSupport;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -69,7 +73,9 @@ class RagLlmProviderIntegrationTest {
     private LlmChatClient openAiBoundClient;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final LlmProperties llmProperties = new LlmProperties();
+    private final LlmProperties llmProperties = LlmModelCatalogTestSupport.openAiLiteLlmProperties();
+    private final LlmModelCatalogService modelCatalog = new LlmModelCatalogService(llmProperties);
+    private final ChatGenerationModelSelector chatGenerationModelSelector = new ChatGenerationModelSelector(modelCatalog);
     private final UUID userId = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
 
     private ResolvedLlmConfigResolver configResolver;
@@ -78,9 +84,15 @@ class RagLlmProviderIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        configResolver = new ResolvedLlmConfigResolver(configurationSource, llmProperties, objectMapper);
+        configResolver = new ResolvedLlmConfigResolver(configurationSource, llmProperties, objectMapper, modelCatalog);
         clientResolver = new LlmClientResolver(clientRegistry);
-        ragInvoker = new RagLlmChatInvoker(clientResolver, configResolver, objectMapper);
+        ragInvoker =
+                new RagLlmChatInvoker(
+                        clientResolver,
+                        configResolver,
+                        objectMapper,
+                        chatGenerationModelSelector,
+                        modelCatalog);
     }
 
     @AfterEach
@@ -127,9 +139,42 @@ class RagLlmProviderIntegrationTest {
     }
 
     @Test
+    void ragInvoker_openAiWithLegacyRagGemmaModel_usesGptOssNotGemma() {
+        ResolvedLlmConfig openAiConfig =
+                ResolvedLlmConfig.uniform(
+                        LlmProvider.OPENAI_COMPATIBLE,
+                        "http://litellm:4000",
+                        "gpt-oss:20b",
+                        "embed-model",
+                        "OPENAI_COMPATIBLE_API_KEY",
+                        null,
+                        0.15,
+                        25_000,
+                        null,
+                        Map.of());
+        OrchestrationLlmConfigScope.bind(openAiConfig);
+        LlmClientResolver mockResolver = mock(LlmClientResolver.class);
+        RagLlmChatInvoker invoker =
+                new RagLlmChatInvoker(
+                        mockResolver, configResolver, objectMapper, chatGenerationModelSelector, modelCatalog);
+        when(mockResolver.resolveChatClient(openAiConfig)).thenReturn(openAiBoundClient);
+        when(openAiBoundClient.chat(any())).thenReturn(LlmChatResponse.ofContent("lite"));
+
+        ExecutionContext ctx = executionContextWithRag(
+                RagConfig.fromFeatureConfiguration(
+                        new RagFeatureConfiguration(), 5, 0.2, "gemma3:4b", "emb", "cls", "SIMPLE"));
+        String answer = invoker.invoke(ctx, "Capa RAG", "hola");
+
+        assertEquals("lite", answer);
+        ArgumentCaptor<LlmChatRequest> captor = ArgumentCaptor.forClass(LlmChatRequest.class);
+        verify(openAiBoundClient).chat(captor.capture());
+        assertEquals("gpt-oss:20b", captor.getValue().model());
+    }
+
+    @Test
     void ragInvoker_openAiBoundConfig_appliesTemperatureTimeoutAndMergedSystemPrompt() {
         ResolvedLlmConfig openAiConfig =
-                new ResolvedLlmConfig(
+                ResolvedLlmConfig.uniform(
                         LlmProvider.OPENAI_COMPATIBLE,
                         "http://litellm:4000",
                         "gpt-oss:20b",
@@ -142,7 +187,9 @@ class RagLlmProviderIntegrationTest {
                         Map.of());
         OrchestrationLlmConfigScope.bind(openAiConfig);
         LlmClientResolver mockResolver = mock(LlmClientResolver.class);
-        RagLlmChatInvoker invoker = new RagLlmChatInvoker(mockResolver, configResolver, objectMapper);
+        RagLlmChatInvoker invoker =
+                new RagLlmChatInvoker(
+                        mockResolver, configResolver, objectMapper, chatGenerationModelSelector, modelCatalog);
         when(mockResolver.resolveChatClient(openAiConfig)).thenReturn(openAiBoundClient);
         when(openAiBoundClient.chat(any())).thenReturn(LlmChatResponse.ofContent("lite"));
 
@@ -160,27 +207,25 @@ class RagLlmProviderIntegrationTest {
     }
 
     @Test
-    void openAiEmbedding_isRejectedWithClearError_noSilentFallback() {
+    void openAiEmbedding_usesOpenAiCompatibleClient_noOllamaFallback() {
         ResolvedLlmConfig openAiConfig =
-                new ResolvedLlmConfig(
+                ResolvedLlmConfig.uniform(
                         LlmProvider.OPENAI_COMPATIBLE,
                         "http://litellm:4000",
                         "gpt-oss:20b",
-                        "embed-model",
+                        "qwen3-embedding:8b",
                         "OPENAI_COMPATIBLE_API_KEY",
                         null,
                         0.1,
                         30_000,
                         null,
                         Map.of());
+        LlmEmbeddingClient embeddingClient = mock(LlmEmbeddingClient.class);
+        when(clientRegistry.createOpenAiCompatibleEmbeddingClient(openAiConfig)).thenReturn(embeddingClient);
 
-        UnsupportedEmbeddingProviderException ex =
-                assertThrows(
-                        UnsupportedEmbeddingProviderException.class,
-                        () -> clientResolver.resolveEmbeddingClient(openAiConfig));
+        LlmEmbeddingClient resolved = clientResolver.resolveEmbeddingClient(openAiConfig);
 
-        assertTrue(ex.publicMessage().toLowerCase().contains("embedding"));
-        assertTrue(ex.publicMessage().contains("OLLAMA_NATIVE"));
+        assertSame(embeddingClient, resolved);
         verify(clientRegistry, never()).ollamaNativeEmbeddingClient();
     }
 

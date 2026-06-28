@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation;
 
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.execution.QueryExecutionService;
@@ -43,6 +44,7 @@ public class EvaluationServiceFactory {
     private final ExecutionContextFactory executionContextFactory;
     private final RagExecutionOrchestrator ragExecutionOrchestrator;
     private final RuntimeTracePersistenceService runtimeTracePersistenceService;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
     private final Settings settings;
 
     public EvaluationServiceFactory(
@@ -53,7 +55,8 @@ public class EvaluationServiceFactory {
             OllamaConnectivityChecker ollamaConnectivityChecker,
             ExecutionContextFactory executionContextFactory,
             RagExecutionOrchestrator ragExecutionOrchestrator,
-            RuntimeTracePersistenceService runtimeTracePersistenceService) {
+            RuntimeTracePersistenceService runtimeTracePersistenceService,
+            ChatGenerationModelSelector chatGenerationModelSelector) {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
         this.jdbcTemplate = jdbcTemplate;
@@ -62,6 +65,7 @@ public class EvaluationServiceFactory {
         this.executionContextFactory = executionContextFactory;
         this.ragExecutionOrchestrator = ragExecutionOrchestrator;
         this.runtimeTracePersistenceService = runtimeTracePersistenceService;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
     }
 
     private static Settings normalizeSettings(Settings in) {
@@ -110,7 +114,8 @@ public class EvaluationServiceFactory {
                 runtimeTracePersistenceService,
                 chatClient,
                 ollamaConnectivityChecker,
-                null);
+                null,
+                chatGenerationModelSelector);
     }
 
     /** Creates a DocumentService with a custom configuration. */

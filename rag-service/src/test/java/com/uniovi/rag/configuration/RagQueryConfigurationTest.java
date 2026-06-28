@@ -1,6 +1,7 @@
 package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.infrastructure.classifier.ClassifierInferenceMetricsDecorator;
@@ -179,6 +180,7 @@ class RagQueryConfigurationTest {
                         mock(RagExecutionOrchestrator.class),
                         mock(RuntimeTracePersistenceService.class),
                         mock(KnowledgeDocumentRepository.class),
+                        mock(ChatGenerationModelSelector.class),
                         null);
         assertInstanceOf(RuntimeQueryExecutionService.class, qs);
     }
@@ -195,6 +197,7 @@ class RagQueryConfigurationTest {
                         mock(RagExecutionOrchestrator.class),
                         mock(RuntimeTracePersistenceService.class),
                         mock(KnowledgeDocumentRepository.class),
+                        mock(ChatGenerationModelSelector.class),
                         obs);
         assertInstanceOf(TracedQueryService.class, qs);
     }
