@@ -3,8 +3,13 @@ package com.uniovi.rag.application.service.config.llm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ConfigurationSourcePort;
+import com.uniovi.rag.application.port.llm.catalog.LlmModelCatalogPort;
 import com.uniovi.rag.domain.config.PresetProfilePayloadMerge;
+import com.uniovi.rag.domain.llm.LlmConfigurationKeys;
+import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
+import com.uniovi.rag.domain.llm.catalog.LlmModelUsageContext;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,12 +28,17 @@ public class ResolvedLlmConfigResolver {
     private final ConfigurationSourcePort configurationSource;
     private final LlmProperties llmProperties;
     private final ObjectMapper objectMapper;
+    private final LlmModelCatalogPort modelCatalog;
 
     public ResolvedLlmConfigResolver(
-            ConfigurationSourcePort configurationSource, LlmProperties llmProperties, ObjectMapper objectMapper) {
+            ConfigurationSourcePort configurationSource,
+            LlmProperties llmProperties,
+            ObjectMapper objectMapper,
+            LlmModelCatalogPort modelCatalog) {
         this.configurationSource = configurationSource;
         this.llmProperties = llmProperties;
         this.objectMapper = objectMapper;
+        this.modelCatalog = modelCatalog;
     }
 
     /**
@@ -79,9 +89,53 @@ public class ResolvedLlmConfigResolver {
                         requestRuntimeOverride,
                         objectMapper);
 
-        ResolvedLlmConfig resolved = LlmConfigurationApplicationDefaults.materialize(merged, llmProperties);
+        ResolvedLlmConfig resolved =
+                LlmConfigurationApplicationDefaults.materialize(merged, llmProperties, modelCatalog);
+        if (isApplicationOnlyResolution(userId, presetId, conversationRuntimeOverride, requestRuntimeOverride)) {
+            validateApplicationDefaults(resolved);
+        }
         resolved.validate();
         return resolved;
+    }
+
+    private boolean isApplicationOnlyResolution(
+            UUID userId,
+            UUID presetId,
+            JsonNode conversationRuntimeOverride,
+            JsonNode requestRuntimeOverride) {
+        return userId == null
+                && presetId == null
+                && (conversationRuntimeOverride == null || conversationRuntimeOverride.isNull())
+                && (requestRuntimeOverride == null || requestRuntimeOverride.isNull());
+    }
+
+    private void validateApplicationDefaults(ResolvedLlmConfig resolved) {
+        if (!llmProperties.hasExplicitProviderSplit()) {
+            LlmProvider uniform = llmProperties.getUniformStackProvider();
+            if (resolved.chatProvider() != uniform || resolved.embeddingProvider() != uniform) {
+                throw new IllegalStateException(
+                        "Application LLM providers must be uniform ("
+                                + uniform
+                                + ") when only rag.llm.default-provider is configured; got chat="
+                                + resolved.chatProvider()
+                                + " embedding="
+                                + resolved.embeddingProvider());
+            }
+        }
+        if (resolved.chatModel() != null && !resolved.chatModel().isBlank()) {
+            modelCatalog.assertUsable(
+                    resolved.chatProvider(),
+                    resolved.chatModel(),
+                    LlmModelCapability.CHAT,
+                    LlmModelUsageContext.SYSTEM_DEFAULT);
+        }
+        if (resolved.embeddingModel() != null && !resolved.embeddingModel().isBlank()) {
+            modelCatalog.assertUsable(
+                    resolved.embeddingProvider(),
+                    resolved.embeddingModel(),
+                    LlmModelCapability.EMBEDDING,
+                    LlmModelUsageContext.SYSTEM_DEFAULT);
+        }
     }
 
     /**

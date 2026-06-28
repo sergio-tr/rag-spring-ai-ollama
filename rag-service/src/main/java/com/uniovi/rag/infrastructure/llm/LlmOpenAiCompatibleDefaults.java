@@ -1,6 +1,8 @@
 package com.uniovi.rag.infrastructure.llm;
 
 import com.uniovi.rag.domain.llm.LlmProvider;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Default OpenAI-compatible / LiteLLM settings ({@code POST /v1/chat/completions}).
@@ -12,6 +14,8 @@ public class LlmOpenAiCompatibleDefaults {
     private String defaultApiKeyEnv = "OPENAI_COMPATIBLE_API_KEY";
     private String defaultChatModel = "";
     private String defaultEmbeddingModel = "";
+    private List<String> availableChatModels = new ArrayList<>();
+    private List<String> availableEmbeddingModels = new ArrayList<>();
     private long defaultTimeoutMs = 60_000L;
     private double defaultTemperature = 0.1;
 
@@ -45,6 +49,23 @@ public class LlmOpenAiCompatibleDefaults {
 
     public void setDefaultEmbeddingModel(String defaultEmbeddingModel) {
         this.defaultEmbeddingModel = defaultEmbeddingModel;
+    }
+
+    public List<String> getAvailableChatModels() {
+        return availableChatModels;
+    }
+
+    public void setAvailableChatModels(List<String> availableChatModels) {
+        this.availableChatModels = new ArrayList<>(LlmModelListNormalizer.fromPropertyValues(availableChatModels));
+    }
+
+    public List<String> getAvailableEmbeddingModels() {
+        return availableEmbeddingModels;
+    }
+
+    public void setAvailableEmbeddingModels(List<String> availableEmbeddingModels) {
+        this.availableEmbeddingModels =
+                new ArrayList<>(LlmModelListNormalizer.fromPropertyValues(availableEmbeddingModels));
     }
 
     public long getDefaultTimeoutMs() {

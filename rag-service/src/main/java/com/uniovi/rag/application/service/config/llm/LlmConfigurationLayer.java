@@ -12,7 +12,8 @@ import java.util.Optional;
 /** Mutable partial LLM settings used while merging configuration layers. */
 final class LlmConfigurationLayer {
 
-    LlmProvider provider;
+    LlmProvider chatProvider;
+    LlmProvider embeddingProvider;
     String baseUrl;
     String chatModel;
     String embeddingModel;
@@ -31,8 +32,11 @@ final class LlmConfigurationLayer {
         if (overlay == null) {
             return this;
         }
-        if (overlay.provider != null) {
-            this.provider = overlay.provider;
+        if (overlay.chatProvider != null) {
+            this.chatProvider = overlay.chatProvider;
+        }
+        if (overlay.embeddingProvider != null) {
+            this.embeddingProvider = overlay.embeddingProvider;
         }
         if (overlay.baseUrl != null && !overlay.baseUrl.isBlank()) {
             this.baseUrl = overlay.baseUrl.trim();
@@ -79,7 +83,15 @@ final class LlmConfigurationLayer {
         if (json == null || json.isNull() || json.isMissingNode() || json.isEmpty()) {
             return layer;
         }
-        layer.provider = readProvider(json, LlmConfigurationKeys.PROVIDER);
+        layer.chatProvider = readProvider(json, LlmConfigurationKeys.CHAT_PROVIDER);
+        layer.embeddingProvider = readProvider(json, LlmConfigurationKeys.EMBEDDING_PROVIDER);
+        LlmProvider legacyProvider = readProvider(json, LlmConfigurationKeys.PROVIDER);
+        if (layer.chatProvider == null) {
+            layer.chatProvider = legacyProvider;
+        }
+        if (layer.embeddingProvider == null) {
+            layer.embeddingProvider = legacyProvider;
+        }
         layer.baseUrl = readText(json, LlmConfigurationKeys.BASE_URL);
         layer.chatModel = readText(json, LlmConfigurationKeys.CHAT_MODEL);
         layer.embeddingModel = readText(json, LlmConfigurationKeys.EMBEDDING_MODEL);
@@ -163,7 +175,8 @@ final class LlmConfigurationLayer {
     }
 
     boolean isEmpty() {
-        return provider == null
+        return chatProvider == null
+                && embeddingProvider == null
                 && (baseUrl == null || baseUrl.isBlank())
                 && (chatModel == null || chatModel.isBlank())
                 && (embeddingModel == null || embeddingModel.isBlank())

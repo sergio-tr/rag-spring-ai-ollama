@@ -38,7 +38,7 @@ class LlmConfigurationMergeTest {
 
         assertEquals("user-chat", merged.chatModel);
         assertEquals(0.5, merged.temperature);
-        assertEquals(LlmProvider.OLLAMA_NATIVE, merged.provider);
+        assertEquals(LlmProvider.OLLAMA_NATIVE, merged.chatProvider);
     }
 
     @Test
@@ -80,7 +80,8 @@ class LlmConfigurationMergeTest {
                         null,
                         objectMapper);
 
-        assertEquals(LlmProvider.OPENAI_COMPATIBLE, merged.provider);
+        assertEquals(LlmProvider.OPENAI_COMPATIBLE, merged.chatProvider);
+        assertEquals(LlmProvider.OPENAI_COMPATIBLE, merged.embeddingProvider);
         assertEquals("RUNTIME_KEY", merged.apiKeyEnv);
     }
 

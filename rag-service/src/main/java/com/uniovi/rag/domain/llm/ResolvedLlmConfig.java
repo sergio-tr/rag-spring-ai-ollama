@@ -5,10 +5,13 @@ import java.util.Objects;
 
 /**
  * Effective LLM settings after cascade merge (application defaults → system → user → project → preset → runtime).
+ * Chat and embedding providers are explicit; with only {@code rag.llm.default-provider} both are uniform.
+ * Hybrid mode requires explicit {@code default-chat-provider} / {@code default-embedding-provider} (or per-layer overrides).
  * Never contains a resolved API secret — only the environment variable or secret name reference.
  */
 public record ResolvedLlmConfig(
-        LlmProvider provider,
+        LlmProvider chatProvider,
+        LlmProvider embeddingProvider,
         String baseUrl,
         String chatModel,
         String embeddingModel,
@@ -20,9 +23,62 @@ public record ResolvedLlmConfig(
         Map<String, Object> additionalParameters) {
 
     public ResolvedLlmConfig {
-        Objects.requireNonNull(provider, "provider");
+        Objects.requireNonNull(chatProvider, "chatProvider");
+        Objects.requireNonNull(embeddingProvider, "embeddingProvider");
         Objects.requireNonNull(additionalParameters, "additionalParameters");
         additionalParameters = Map.copyOf(additionalParameters);
+    }
+
+    /** Legacy alias for {@link #chatProvider()}; prefer {@link #chatProvider()} or {@link #embeddingProvider()}. */
+    public LlmProvider provider() {
+        return chatProvider;
+    }
+
+    /** True when chat and embedding use the same provider (normal product default). */
+    public boolean uniformProviders() {
+        return chatProvider == embeddingProvider;
+    }
+
+    public boolean usesOpenAiCompatibleChat() {
+        return chatProvider == LlmProvider.OPENAI_COMPATIBLE;
+    }
+
+    public boolean usesOpenAiCompatibleEmbedding() {
+        return embeddingProvider == LlmProvider.OPENAI_COMPATIBLE;
+    }
+
+    public boolean requiresOllamaNativeChat() {
+        return chatProvider == LlmProvider.OLLAMA_NATIVE;
+    }
+
+    public boolean requiresOllamaNativeEmbedding() {
+        return embeddingProvider == LlmProvider.OLLAMA_NATIVE;
+    }
+
+    /** Both capabilities share the same provider (tests and uniform configuration). */
+    public static ResolvedLlmConfig uniform(
+            LlmProvider provider,
+            String baseUrl,
+            String chatModel,
+            String embeddingModel,
+            String apiKeyEnv,
+            String secretName,
+            Double temperature,
+            Integer timeoutMs,
+            String systemPrompt,
+            Map<String, Object> additionalParameters) {
+        return new ResolvedLlmConfig(
+                provider,
+                provider,
+                baseUrl,
+                chatModel,
+                embeddingModel,
+                apiKeyEnv,
+                secretName,
+                temperature,
+                timeoutMs,
+                systemPrompt,
+                additionalParameters);
     }
 
     /**
@@ -44,10 +100,10 @@ public record ResolvedLlmConfig(
         if (temperature != null && (temperature < 0.0 || temperature > 2.0)) {
             throw new IllegalStateException("llmTemperature must be between 0.0 and 2.0");
         }
-        if (provider == LlmProvider.OPENAI_COMPATIBLE) {
+        if (usesOpenAiCompatibleChat() || usesOpenAiCompatibleEmbedding()) {
             if ((apiKeyEnv == null || apiKeyEnv.isBlank()) && (secretName == null || secretName.isBlank())) {
                 throw new IllegalStateException(
-                        "OpenAI-compatible provider requires llmApiKeyEnv or llmSecretName in resolved configuration");
+                        "OpenAI-compatible chat or embedding requires llmApiKeyEnv or llmSecretName in resolved configuration");
             }
         }
     }
@@ -66,10 +122,10 @@ public record ResolvedLlmConfig(
     }
 
     /**
-     * Ensures the configured env var / secret name is set and non-empty in the process environment.
+     * Ensures the configured env var / secret name is set and non-empty in the process environment when OpenAI-compatible is used.
      */
     public void requireApiKeyEnvResolvable() {
-        if (provider != LlmProvider.OPENAI_COMPATIBLE) {
+        if (!usesOpenAiCompatibleChat() && !usesOpenAiCompatibleEmbedding()) {
             return;
         }
         String envName = effectiveApiKeyEnv();

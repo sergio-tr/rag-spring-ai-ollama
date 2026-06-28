@@ -4,6 +4,10 @@ package com.uniovi.rag.domain.llm;
 public final class LlmConfigurationKeys {
 
     public static final String PROVIDER = "llmProvider";
+    /** Explicit chat provider; falls back to {@link #PROVIDER} when absent. */
+    public static final String CHAT_PROVIDER = "llmChatProvider";
+    /** Explicit embedding provider; falls back to {@link #PROVIDER} in JSON layers, then application default. */
+    public static final String EMBEDDING_PROVIDER = "llmEmbeddingProvider";
     public static final String BASE_URL = "llmBaseUrl";
     /** Aligned with existing {@code RagConfig#llmModel()} key. */
     public static final String CHAT_MODEL = "llmModel";

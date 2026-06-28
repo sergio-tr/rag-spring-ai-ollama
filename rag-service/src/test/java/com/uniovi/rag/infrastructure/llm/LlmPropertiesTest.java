@@ -22,6 +22,28 @@ class LlmPropertiesTest {
     }
 
     @Test
+    void uniformStackProviderWhenNoExplicitSplit() {
+        LlmProperties properties = new LlmProperties();
+        properties.setDefaultProvider(LlmProvider.OPENAI_COMPATIBLE);
+
+        assertEquals(false, properties.hasExplicitProviderSplit());
+        assertEquals(LlmProvider.OPENAI_COMPATIBLE, properties.getUniformStackProvider());
+        assertEquals(LlmProvider.OPENAI_COMPATIBLE, properties.getEffectiveDefaultChatProvider());
+        assertEquals(LlmProvider.OPENAI_COMPATIBLE, properties.getEffectiveDefaultEmbeddingProvider());
+    }
+
+    @Test
+    void explicitSplitDetectedWhenChatProviderOverrideSet() {
+        LlmProperties properties = new LlmProperties();
+        properties.setDefaultProvider(LlmProvider.OLLAMA_NATIVE);
+        properties.setDefaultChatProvider(LlmProvider.OPENAI_COMPATIBLE);
+
+        assertEquals(true, properties.hasExplicitProviderSplit());
+        assertEquals(LlmProvider.OPENAI_COMPATIBLE, properties.getEffectiveDefaultChatProvider());
+        assertEquals(LlmProvider.OLLAMA_NATIVE, properties.getEffectiveDefaultEmbeddingProvider());
+    }
+
+    @Test
     void validatePassesForOllamaNativeDefaults() {
         LlmProperties properties = new LlmProperties();
         assertDoesNotThrow(properties::validate);
@@ -77,6 +99,7 @@ class LlmPropertiesTest {
         properties.setDefaultProvider(LlmProvider.OPENAI_COMPATIBLE);
         properties.getOpenAiCompatible().setDefaultBaseUrl("http://156.35.160.78:4000");
         properties.getOpenAiCompatible().setDefaultChatModel("gpt-oss:20b");
+        properties.getOpenAiCompatible().setDefaultEmbeddingModel("qwen3-embedding:8b");
         assertDoesNotThrow(properties::validate);
     }
 }

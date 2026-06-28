@@ -1,5 +1,8 @@
 package com.uniovi.rag.infrastructure.llm;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Default Ollama-native endpoint and model settings ({@code /api/chat}, {@code /api/embed}).
  */
@@ -8,6 +11,8 @@ public class LlmOllamaDefaults {
     private String defaultBaseUrl = "http://localhost:11434";
     private String defaultChatModel = "gemma3:4b";
     private String defaultEmbeddingModel = "mxbai-embed-large:latest";
+    private List<String> availableChatModels = new ArrayList<>();
+    private List<String> availableEmbeddingModels = new ArrayList<>();
     private long defaultTimeoutMs = 60_000L;
     private double defaultTemperature = 0.1;
 
@@ -33,6 +38,23 @@ public class LlmOllamaDefaults {
 
     public void setDefaultEmbeddingModel(String defaultEmbeddingModel) {
         this.defaultEmbeddingModel = defaultEmbeddingModel;
+    }
+
+    public List<String> getAvailableChatModels() {
+        return availableChatModels;
+    }
+
+    public void setAvailableChatModels(List<String> availableChatModels) {
+        this.availableChatModels = new ArrayList<>(LlmModelListNormalizer.fromPropertyValues(availableChatModels));
+    }
+
+    public List<String> getAvailableEmbeddingModels() {
+        return availableEmbeddingModels;
+    }
+
+    public void setAvailableEmbeddingModels(List<String> availableEmbeddingModels) {
+        this.availableEmbeddingModels =
+                new ArrayList<>(LlmModelListNormalizer.fromPropertyValues(availableEmbeddingModels));
     }
 
     public long getDefaultTimeoutMs() {
