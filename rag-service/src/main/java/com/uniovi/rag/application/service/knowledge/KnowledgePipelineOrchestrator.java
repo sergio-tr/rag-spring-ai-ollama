@@ -197,9 +197,9 @@ public class KnowledgePipelineOrchestrator {
             UUID resolvedConfigSnapshotId,
             String resolvedConfigHash) {
         try {
-            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "started");
-            joinCallerTransactionTemplate.executeWithoutResult(
-                    status ->
+            runIngestWorkInCallerTransaction(
+                    projectDocumentId,
+                    () ->
                             ingestTx(
                                     projectId,
                                     projectDocumentId,
@@ -208,21 +208,6 @@ public class KnowledgePipelineOrchestrator {
                                     contentType,
                                     resolvedConfigSnapshotId,
                                     resolvedConfigHash));
-            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "success");
-        } catch (Exception e) {
-            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "failure");
-            log.error("Knowledge ingest failed for project document {}: {}", projectDocumentId, e.getMessage(), e);
-            transactionTemplate.executeWithoutResult(
-                    s -> {
-                        KnowledgeDocumentEntity rowErr =
-                                knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
-                        if (rowErr != null) {
-                            rowErr.setStatus(ProjectDocumentStatus.ERROR);
-                            rowErr.setErrorMessage(
-                                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
-                            knowledgeDocumentRepository.save(rowErr);
-                        }
-                    });
         } finally {
             deleteTempQuietly(tempFile);
         }
@@ -269,30 +254,52 @@ public class KnowledgePipelineOrchestrator {
             UUID projectDocumentId,
             UUID resolvedConfigSnapshotId,
             String resolvedConfigHash) {
-        try {
-            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "started");
-            joinCallerTransactionTemplate.executeWithoutResult(
-                    status ->
-                            ingestStoredTx(
-                                    projectId,
-                                    projectDocumentId,
-                                    resolvedConfigSnapshotId,
-                                    resolvedConfigHash));
+        runIngestWorkInCallerTransaction(
+                projectDocumentId,
+                () ->
+                        ingestStoredTx(
+                                projectId,
+                                projectDocumentId,
+                                resolvedConfigSnapshotId,
+                                resolvedConfigHash));
+    }
+
+    /**
+     * Runs ingest work in the caller's transaction. Failures are persisted as {@code ERROR} in the same
+     * transaction so a nested {@code REQUIRES_NEW} ingest (lab corpus upload) can commit instead of raising
+     * {@code UnexpectedRollbackException} ("Transaction silently rolled back because it has been marked as
+     * rollback-only").
+     */
+    private void runIngestWorkInCallerTransaction(UUID projectDocumentId, Runnable ingestWork) {
+        recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "started");
+        final boolean[] failed = {false};
+        joinCallerTransactionTemplate.executeWithoutResult(
+                status -> {
+                    try {
+                        ingestWork.run();
+                    } catch (Exception ingestEx) {
+                        failed[0] = true;
+                        recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "failure");
+                        log.error(
+                                "Knowledge ingest failed for project document {}: {}",
+                                projectDocumentId,
+                                ingestEx.getMessage(),
+                                ingestEx);
+                        markDocumentIngestError(projectDocumentId, ingestEx);
+                    }
+                });
+        if (!failed[0]) {
             recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "success");
-        } catch (Exception e) {
-            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "failure");
-            log.error("Knowledge ingest failed for project document {}: {}", projectDocumentId, e.getMessage(), e);
-            transactionTemplate.executeWithoutResult(
-                    s -> {
-                        KnowledgeDocumentEntity rowErr =
-                                knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
-                        if (rowErr != null) {
-                            rowErr.setStatus(ProjectDocumentStatus.ERROR);
-                            rowErr.setErrorMessage(
-                                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
-                            knowledgeDocumentRepository.save(rowErr);
-                        }
-                    });
+        }
+    }
+
+    private void markDocumentIngestError(UUID projectDocumentId, Exception e) {
+        KnowledgeDocumentEntity rowErr =
+                knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+        if (rowErr != null) {
+            rowErr.setStatus(ProjectDocumentStatus.ERROR);
+            rowErr.setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+            knowledgeDocumentRepository.save(rowErr);
         }
     }
 

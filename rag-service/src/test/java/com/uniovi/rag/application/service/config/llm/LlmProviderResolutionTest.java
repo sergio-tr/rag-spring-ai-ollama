@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ConfigurationSourcePort;
@@ -213,7 +214,7 @@ class LlmProviderResolutionTest {
         assertNotEquals("mxbai-embed-large:latest", config.embeddingModel());
         assertNotEquals(LlmProvider.OLLAMA_NATIVE, config.embeddingProvider());
 
-        org.mockito.Mockito.when(clientRegistry.createOpenAiCompatibleEmbeddingClient(config))
+        when(clientRegistry.createOpenAiCompatibleEmbeddingClient(config))
                 .thenReturn(openAiEmbeddingClient);
         assertEquals(openAiEmbeddingClient, clientResolver.resolveEmbeddingClient(config));
         verify(clientRegistry, never()).ollamaNativeEmbeddingClient();

@@ -16,6 +16,7 @@ import org.springframework.ai.embedding.Embedding;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 /**
@@ -27,6 +28,7 @@ import org.springframework.stereotype.Service;
  * ignored. {@link LlmProvider#OLLAMA_NATIVE} uses the requested profile model when present.
  */
 @Service
+@Profile("!e2e")
 public class ProviderAwareEmbeddingService {
 
     private final LlmClientResolver clientResolver;

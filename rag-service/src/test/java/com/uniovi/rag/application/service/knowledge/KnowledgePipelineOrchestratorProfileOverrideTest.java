@@ -26,6 +26,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntit
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.configuration.RagIndexingEmbeddingProperties;
 import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
+import java.util.LinkedHashMap;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -63,7 +64,7 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
                 .thenAnswer(
                         inv -> {
                             Map<String, Object> base = inv.getArgument(0);
-                            Map<String, Object> enriched = new java.util.LinkedHashMap<>(base != null ? base : Map.of());
+                            Map<String, Object> enriched = new LinkedHashMap<>(base != null ? base : Map.of());
                             enriched.putIfAbsent("embeddingModelId", "qwen3-embedding:latest");
                             enriched.putIfAbsent("embeddingProvider", "OLLAMA_NATIVE");
                             return enriched;

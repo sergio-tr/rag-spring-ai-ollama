@@ -1,12 +1,16 @@
 package com.uniovi.rag.integration.modelmanagement;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.domain.AllowedModelType;
+import com.uniovi.rag.domain.product.ProductDemoModel;
 import com.uniovi.rag.infrastructure.persistence.jpa.AllowedModelEntity;
 import com.uniovi.rag.interfaces.rest.admin.dto.AdminModelEntryDto;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -27,7 +31,7 @@ class AdminModelCatalogIntegrationTest {
 
         AdminModelEntryDto dto =
                 new AdminModelEntryDto(
-                        java.util.UUID.randomUUID(),
+                        UUID.randomUUID(),
                         row.getName(),
                         null,
                         row.getType(),
@@ -39,12 +43,12 @@ class AdminModelCatalogIntegrationTest {
                         null,
                         List.of());
 
-        org.junit.jupiter.api.Assertions.assertEquals("admin-fixture-llm", dto.modelId());
+        assertEquals("admin-fixture-llm", dto.modelId());
     }
 
     @Test
     void adminModelCatalogShowsProviderCapabilityAndSource() {
-        org.junit.jupiter.api.Assertions.assertEquals(
+        assertEquals(
                 AllowedModelType.LLM, AllowedModelType.valueOf("LLM"));
     }
 
@@ -52,7 +56,7 @@ class AdminModelCatalogIntegrationTest {
     void adminModelCatalogShowsUnavailableConfiguredModel() {
         AdminModelEntryDto dto =
                 new AdminModelEntryDto(
-                        java.util.UUID.randomUUID(),
+                        UUID.randomUUID(),
                         "missing-model",
                         null,
                         AllowedModelType.LLM,
@@ -63,12 +67,12 @@ class AdminModelCatalogIntegrationTest {
                         "not installed",
                         null,
                         List.of());
-        org.junit.jupiter.api.Assertions.assertFalse(dto.available());
+        assertFalse(dto.available());
     }
 
     @Test
     void adminModelCatalogShowsEmbeddingDimensionMismatch() {
-        org.junit.jupiter.api.Assertions.assertFalse(
-                com.uniovi.rag.domain.product.ProductDemoModel.NOMIC_EMBED_TEXT.fitsStoreEmbeddingDimension(1024));
+        assertFalse(
+                ProductDemoModel.NOMIC_EMBED_TEXT.fitsStoreEmbeddingDimension(1024));
     }
 }

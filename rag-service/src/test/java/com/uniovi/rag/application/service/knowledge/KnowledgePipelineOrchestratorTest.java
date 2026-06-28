@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -64,7 +65,7 @@ class KnowledgePipelineOrchestratorTest {
                 .thenAnswer(
                         inv -> {
                             Map<String, Object> base = inv.getArgument(0);
-                            Map<String, Object> enriched = new java.util.LinkedHashMap<>(base != null ? base : Map.of());
+                            Map<String, Object> enriched = new LinkedHashMap<>(base != null ? base : Map.of());
                             enriched.putIfAbsent("embeddingModelId", "mxbai-embed-large");
                             enriched.putIfAbsent("embeddingProvider", "OLLAMA_NATIVE");
                             return enriched;

@@ -1,5 +1,7 @@
 package com.uniovi.rag.infrastructure.llm;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -58,7 +60,7 @@ class LlmResolvedConfigStartupLoggerTest {
 
         String summary = LlmSafeOperationLogger.formatResolvedConfigSummary(config);
 
-        org.junit.jupiter.api.Assertions.assertTrue(summary.contains("chatProvider=OPENAI_COMPATIBLE"));
-        org.junit.jupiter.api.Assertions.assertFalse(summary.contains("OPENAI_COMPATIBLE_API_KEY"));
+        assertTrue(summary.contains("chatProvider=OPENAI_COMPATIBLE"));
+        assertFalse(summary.contains("OPENAI_COMPATIBLE_API_KEY"));
     }
 }

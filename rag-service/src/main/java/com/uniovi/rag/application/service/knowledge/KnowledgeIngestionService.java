@@ -399,14 +399,15 @@ public class KnowledgeIngestionService {
     }
 
     /**
-     * Reload row after pipeline ingest ({@code REQUIRES_NEW}) so the caller transaction does not flush a stale
-     * {@link ProjectDocumentStatus#INGESTING} over a committed READY state.
+     * Reload row after synchronous pipeline ingest in the caller transaction.
      *
-     * <p>Uses {@link EntityManager#clear()} (no preceding {@link EntityManager#flush()}) so a stale INGESTING
-     * instance in this session is discarded without being written back after nested {@code REQUIRES_NEW} ingest
-     * committed READY in another transaction (avoids "does not yet exist as a row in the database" on flush/refresh).
+     * <p>Flushes pending READY/ERROR updates, then {@link EntityManager#clear()} so the reload reflects
+     * pipeline work completed in the same transaction (lab corpus sync upload). Without flush, a
+     * post-ingest clear would reload the pre-ingest {@link ProjectDocumentStatus#INGESTING} row from the
+     * database and falsely mark the document as stale.
      */
     private KnowledgeDocumentEntity reloadProjectDocumentAfterIngest(UUID projectDocumentId) {
+        entityManager.flush();
         entityManager.clear();
         return knowledgeDocumentRepository
                 .findById(projectDocumentId)

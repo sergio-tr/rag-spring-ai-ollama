@@ -421,7 +421,9 @@ class KnowledgeIngestionServiceTest {
 
         sut.retryIngestFromStoredBinarySynchronously(userId, projectId, docId);
 
-        verify(entityManager, times(2)).flush();
+        // flush after INGESTING row save, after snapshot persist, and before reloadProjectDocumentAfterIngest clear
+        verify(entityManager, times(3)).flush();
+        verify(entityManager).clear();
         verify(orchestrator)
                 .ingestFromStoredBinaryInCurrentTransaction(projectId, docId, snapId, "hash");
     }

@@ -6,6 +6,7 @@ import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogQuery;
 import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
+import com.uniovi.rag.domain.product.ProductDemoModel;
 import com.uniovi.rag.testsupport.llm.LlmModelCatalogTestSupport;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -60,9 +61,9 @@ class ModelCatalogIntegrationTest {
 
     @Test
     void getCatalogIncludesEmbeddingDimensionCompatibility() {
-        assertThat(com.uniovi.rag.domain.product.ProductDemoModel.MXBAI_EMBED_LARGE.fitsStoreEmbeddingDimension(1024))
+        assertThat(ProductDemoModel.MXBAI_EMBED_LARGE.fitsStoreEmbeddingDimension(1024))
                 .isTrue();
-        assertThat(com.uniovi.rag.domain.product.ProductDemoModel.NOMIC_EMBED_TEXT.fitsStoreEmbeddingDimension(1024))
+        assertThat(ProductDemoModel.NOMIC_EMBED_TEXT.fitsStoreEmbeddingDimension(1024))
                 .isFalse();
     }
 

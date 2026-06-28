@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -18,6 +20,7 @@ import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.llm.ProviderAwareEmbeddingService;
+import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.configuration.RagVectorProperties;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
@@ -96,17 +99,17 @@ class KnowledgeIngestionProviderIntegrationTest {
                         60_000,
                         null,
                         Map.of());
-        LlmEmbeddingClient ollamaClient = org.mockito.Mockito.mock(LlmEmbeddingClient.class);
+        LlmEmbeddingClient ollamaClient = mock(LlmEmbeddingClient.class);
         when(clientRegistry.ollamaNativeEmbeddingClient()).thenReturn(ollamaClient);
         when(ollamaClient.embed(any()))
                 .thenReturn(
                         new LlmEmbeddingResponse(OLLAMA_LEGACY_EMBEDDING, List.of(new float[] {0.2f}), Map.of()));
-        com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope.bind(ollama);
+        OrchestrationLlmConfigScope.bind(ollama);
 
         embeddingService.embed(OLLAMA_LEGACY_EMBEDDING, List.of("chunk"));
 
         verify(ollamaClient).embed(any());
-        com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope.clear();
+        OrchestrationLlmConfigScope.clear();
     }
 
     @Test
@@ -124,7 +127,7 @@ class KnowledgeIngestionProviderIntegrationTest {
     void knowledgeIngestDoesNotFallbackToOllamaWhenOpenAiEmbeddingsFail() {
         when(configResolver.resolve(null, null, null)).thenReturn(openAiConfig());
         embeddingService.embed(OLLAMA_LEGACY_EMBEDDING, List.of("chunk"));
-        verify(clientRegistry, org.mockito.Mockito.never()).ollamaNativeEmbeddingClient();
+        verify(clientRegistry, never()).ollamaNativeEmbeddingClient();
     }
 
     @Test

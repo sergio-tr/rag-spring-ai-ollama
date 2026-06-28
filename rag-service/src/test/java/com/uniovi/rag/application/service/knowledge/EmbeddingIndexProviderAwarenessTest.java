@@ -31,6 +31,7 @@ import com.uniovi.rag.infrastructure.vector.PgVectorStoreRegistry;
 import com.uniovi.rag.infrastructure.vector.ProviderAwareEmbeddingModelFactory;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -195,7 +196,7 @@ class EmbeddingIndexProviderAwarenessTest {
 
     private static KnowledgeIndexSnapshotEntity snapshotWith(UUID id, LlmProvider provider, String model) {
         KnowledgeIndexSnapshotEntity snap = mock(KnowledgeIndexSnapshotEntity.class);
-        Map<String, Object> profile = new java.util.LinkedHashMap<>();
+        Map<String, Object> profile = new LinkedHashMap<>();
         profile.put(IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY, model);
         if (provider != null) {
             profile.put(IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY, provider.name());

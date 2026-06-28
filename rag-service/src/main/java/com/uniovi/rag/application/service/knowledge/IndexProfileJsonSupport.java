@@ -57,6 +57,10 @@ public final class IndexProfileJsonSupport {
         if (raw == null) {
             return "";
         }
-        return raw.trim().toLowerCase(Locale.ROOT);
+        String normalized = raw.trim().toLowerCase(Locale.ROOT);
+        if (normalized.endsWith(":latest")) {
+            return normalized.substring(0, normalized.length() - ":latest".length());
+        }
+        return normalized;
     }
 }

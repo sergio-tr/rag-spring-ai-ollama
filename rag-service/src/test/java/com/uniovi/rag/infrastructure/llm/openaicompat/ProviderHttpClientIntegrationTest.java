@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -83,7 +84,7 @@ class ProviderHttpClientIntegrationTest {
     @Test
     void ollamaChatCallsNativeApiChatOnly() {
         assertTrue(
-                java.util.Arrays.stream(OllamaNativeLlmEmbeddingClient.class.getMethods())
+                Arrays.stream(OllamaNativeLlmEmbeddingClient.class.getMethods())
                         .anyMatch(m -> m.getName().equals("embed")));
     }
 

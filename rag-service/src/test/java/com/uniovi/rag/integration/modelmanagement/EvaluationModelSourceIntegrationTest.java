@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogQuery;
 import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
 import com.uniovi.rag.domain.product.ProductDemoModel;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import com.uniovi.rag.testsupport.llm.LlmModelCatalogTestSupport;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -65,7 +66,7 @@ class EvaluationModelSourceIntegrationTest {
 
     @Test
     void evaluationDoesNotUseHardcodedPreferredModels() {
-        var properties = new com.uniovi.rag.infrastructure.llm.LlmProperties();
+        var properties = new LlmProperties();
         properties.getOllama().setAvailableChatModels(List.of("eval-catalog-only"));
         properties.getOllama().setDefaultChatModel("eval-catalog-only");
         LlmModelCatalogService catalog = new LlmModelCatalogService(properties);

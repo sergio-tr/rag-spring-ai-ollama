@@ -19,9 +19,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.embedding.EmbeddingRequest;
 
 @ExtendWith(MockitoExtension.class)
 class ProviderAwareEmbeddingServiceTest {
@@ -137,7 +138,7 @@ class ProviderAwareEmbeddingServiceTest {
                 .thenReturn(new LlmEmbeddingResponse("qwen3-embedding:8b", List.of(new float[] {1f}), Map.of()));
 
         var model = service.embeddingModelFor("qwen3-embedding:8b");
-        var springResponse = model.call(new org.springframework.ai.embedding.EmbeddingRequest(List.of("x"), null));
+        var springResponse = model.call(new EmbeddingRequest(List.of("x"), null));
 
         assertEquals(1, springResponse.getResults().size());
         assertEquals(1, springResponse.getResult().getOutput().length);

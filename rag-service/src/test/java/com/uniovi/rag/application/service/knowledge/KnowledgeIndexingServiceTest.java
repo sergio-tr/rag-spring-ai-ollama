@@ -18,6 +18,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -69,7 +70,7 @@ class KnowledgeIndexingServiceTest {
                 .thenAnswer(
                         inv -> {
                             Map<String, Object> base = inv.getArgument(0);
-                            Map<String, Object> enriched = new java.util.LinkedHashMap<>(base != null ? base : Map.of());
+                            Map<String, Object> enriched = new LinkedHashMap<>(base != null ? base : Map.of());
                             enriched.putIfAbsent(IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY, "mxbai-embed-large");
                             enriched.putIfAbsent(
                                     IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY, LlmProvider.OLLAMA_NATIVE.name());
