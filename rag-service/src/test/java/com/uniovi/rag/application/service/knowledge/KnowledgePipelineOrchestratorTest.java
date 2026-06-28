@@ -23,12 +23,16 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -51,7 +55,22 @@ class KnowledgePipelineOrchestratorTest {
     @Mock private ProjectIndexProfileService projectIndexProfileService;
     @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
     @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
+    @Mock private EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService;
     @Mock private PlatformTransactionManager transactionManager;
+
+    private EmbeddingIndexCompatibilityService compatibilityForTests() {
+        lenient()
+                .when(embeddingIndexCompatibilityService.enrichIndexProfile(any()))
+                .thenAnswer(
+                        inv -> {
+                            Map<String, Object> base = inv.getArgument(0);
+                            Map<String, Object> enriched = new java.util.LinkedHashMap<>(base != null ? base : Map.of());
+                            enriched.putIfAbsent("embeddingModelId", "mxbai-embed-large");
+                            enriched.putIfAbsent("embeddingProvider", "OLLAMA_NATIVE");
+                            return enriched;
+                        });
+        return embeddingIndexCompatibilityService;
+    }
 
     @Test
     void previewSnapshotSignatureHex_isDeterministicForEmptyReadyCorpus() {
@@ -84,6 +103,7 @@ class KnowledgePipelineOrchestratorTest {
                         embeddingSpaceGuard,
                         defaultEmbeddingGuard(),
                         knowledgeIndexSnapshotRepository,
+                        compatibilityForTests(),
                         transactionManager,
                         null);
 
@@ -110,6 +130,7 @@ class KnowledgePipelineOrchestratorTest {
                         embeddingSpaceGuard,
                         defaultEmbeddingGuard(),
                         knowledgeIndexSnapshotRepository,
+                        compatibilityForTests(),
                         transactionManager,
                         null);
 
@@ -141,6 +162,7 @@ class KnowledgePipelineOrchestratorTest {
                         embeddingSpaceGuard,
                         defaultEmbeddingGuard(),
                         knowledgeIndexSnapshotRepository,
+                        compatibilityForTests(),
                         transactionManager,
                         null);
 

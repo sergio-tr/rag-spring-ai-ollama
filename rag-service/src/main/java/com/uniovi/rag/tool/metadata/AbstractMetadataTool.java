@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures;
+import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
 import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.AbstractTool;
@@ -28,6 +29,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.web.server.ResponseStatusException;
 
 public abstract class AbstractMetadataTool extends AbstractTool {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
@@ -2143,9 +2145,17 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     protected List<Document> retrieveDocumentsWithMetadataFilter(String query, String[] relevantFields, JSONObject nerEntities) {
-        List<Document> docs = (nerEntities != null && !nerEntities.isEmpty())
-                ? retriever.retrieveWithMetadataFilters(query, nerEntities)
-                : retriever.retrieve(query);
+        List<Document> docs;
+        try {
+            docs = (nerEntities != null && !nerEntities.isEmpty())
+                    ? retriever.retrieveWithMetadataFilters(query, nerEntities)
+                    : retriever.retrieve(query);
+        } catch (ResponseStatusException ex) {
+            if (EmbeddingIndexCompatibilityService.isIncompatibleIndexFailure(ex)) {
+                log().warn("Vector retrieval blocked (incompatible embedding index): {}", ex.getReason());
+            }
+            throw ex;
+        }
 
         List<Document> metadataDocs = docs.stream()
                 .filter(doc -> hasMetadataFields(doc, relevantFields))

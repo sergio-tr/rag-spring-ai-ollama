@@ -53,6 +53,7 @@ public class KnowledgeIndexingService {
     private final DocumentArtifactRepository documentArtifactRepository;
     private final IndexingEmbeddingGuard indexingEmbeddingGuard;
     private final MetadataMinuteDocumentService metadataMinuteDocumentService;
+    private final EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService;
 
     public KnowledgeIndexingService(
             PgVectorStoreRegistry vectorStoreRegistry,
@@ -61,7 +62,8 @@ public class KnowledgeIndexingService {
             BinaryStoragePort binaryStoragePort,
             DocumentArtifactRepository documentArtifactRepository,
             IndexingEmbeddingGuard indexingEmbeddingGuard,
-            MetadataMinuteDocumentService metadataMinuteDocumentService) {
+            MetadataMinuteDocumentService metadataMinuteDocumentService,
+            EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService) {
         this.vectorStoreRegistry = vectorStoreRegistry;
         this.jdbcTemplate = jdbcTemplate;
         this.projectDocumentIngestionService = projectDocumentIngestionService;
@@ -69,6 +71,7 @@ public class KnowledgeIndexingService {
         this.documentArtifactRepository = documentArtifactRepository;
         this.indexingEmbeddingGuard = indexingEmbeddingGuard;
         this.metadataMinuteDocumentService = metadataMinuteDocumentService;
+        this.embeddingIndexCompatibilityService = embeddingIndexCompatibilityService;
     }
 
     /**
@@ -204,8 +207,13 @@ public class KnowledgeIndexingService {
         }
 
         if (!vectorDocs.isEmpty()) {
+            Map<String, Object> indexProfile = snapshot.getIndexProfileJsonb();
+            embeddingIndexCompatibilityService.assertIndexingCompatible(indexProfile);
+            for (Document vectorDoc : vectorDocs) {
+                stampEmbeddingIndexMetadata(vectorDoc.getMetadata(), indexProfile);
+            }
             String embeddingModelId =
-                    IndexProfileJsonSupport.readEmbeddingModelId(snapshot.getIndexProfileJsonb())
+                    IndexProfileJsonSupport.readEmbeddingModelId(indexProfile)
                             .orElseThrow(
                                     () -> new IllegalStateException(
                                             "embeddingModelId missing from knowledge_index_snapshot.index_profile_jsonb; cannot embed"));
@@ -470,6 +478,17 @@ public class KnowledgeIndexingService {
             return chunkText;
         }
         return prefix + chunkText;
+    }
+
+    private void stampEmbeddingIndexMetadata(Map<String, Object> metadata, Map<String, Object> indexProfile) {
+        if (metadata == null || indexProfile == null) {
+            return;
+        }
+        metadata.put(
+                IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY,
+                IndexProfileJsonSupport.resolveEmbeddingProviderOrLegacyDefault(indexProfile).name());
+        IndexProfileJsonSupport.readEmbeddingModelId(indexProfile)
+                .ifPresent(model -> metadata.put(IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY, model));
     }
 
     private void saveArtifact(

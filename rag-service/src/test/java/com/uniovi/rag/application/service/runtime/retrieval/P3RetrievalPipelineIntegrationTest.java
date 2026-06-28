@@ -2,6 +2,9 @@ package com.uniovi.rag.application.service.runtime.retrieval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.application.result.chat.ChatSource;
@@ -9,6 +12,7 @@ import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.application.service.knowledge.document.KnowledgeChunkMetadataFactory;
 import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
 import com.uniovi.rag.application.service.runtime.RagExecutionMapper;
+import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
 import com.uniovi.rag.configuration.RagVectorProperties;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.domain.runtime.RagConfig;
@@ -59,8 +63,10 @@ class P3RetrievalPipelineIntegrationTest {
         RagExecutionContextHolder.set(
                 new RagExecutionContext(null, null, projectId.toString(), baseRag(), List.of("all"), "trace"));
         when(ragVectorProperties.requireSnapshotEmbeddingModelId()).thenReturn(false);
+        EmbeddingIndexCompatibilityService compatibility = mock(EmbeddingIndexCompatibilityService.class);
+        lenient().doNothing().when(compatibility).assertRetrievalCompatible(any());
         denseRetrievalStrategy =
-                new DenseRetrievalStrategy(vectorStoreRegistry, vectorStore, ragVectorProperties, 10, 0.7);
+                new DenseRetrievalStrategy(vectorStoreRegistry, vectorStore, ragVectorProperties, compatibility, 10, 0.7);
     }
 
     @AfterEach

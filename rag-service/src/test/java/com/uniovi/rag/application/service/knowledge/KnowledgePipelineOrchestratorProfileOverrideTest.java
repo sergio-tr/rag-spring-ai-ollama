@@ -39,6 +39,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import org.mockito.ArgumentMatchers;
 
 @ExtendWith(MockitoExtension.class)
@@ -52,9 +54,20 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
     @Mock private ProjectIndexProfileService projectIndexProfileService;
     @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
     @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
+    @Mock private EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService;
     @Mock private PlatformTransactionManager transactionManager;
 
     private KnowledgePipelineOrchestrator orchestrator() {
+        lenient()
+                .when(embeddingIndexCompatibilityService.enrichIndexProfile(any()))
+                .thenAnswer(
+                        inv -> {
+                            Map<String, Object> base = inv.getArgument(0);
+                            Map<String, Object> enriched = new java.util.LinkedHashMap<>(base != null ? base : Map.of());
+                            enriched.putIfAbsent("embeddingModelId", "qwen3-embedding:latest");
+                            enriched.putIfAbsent("embeddingProvider", "OLLAMA_NATIVE");
+                            return enriched;
+                        });
         return new KnowledgePipelineOrchestrator(
                 jdbcTemplate,
                 knowledgeDocumentRepository,
@@ -66,6 +79,7 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
                 embeddingSpaceGuard,
                 new IndexingEmbeddingGuard(new RagIndexingEmbeddingProperties(2048, 400, true, 0.85)),
                 knowledgeIndexSnapshotRepository,
+                embeddingIndexCompatibilityService,
                 transactionManager,
                 null);
     }

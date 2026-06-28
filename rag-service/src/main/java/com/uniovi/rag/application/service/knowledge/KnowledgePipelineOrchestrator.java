@@ -37,6 +37,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -65,6 +66,7 @@ public class KnowledgePipelineOrchestrator {
     private final EmbeddingSpaceGuard embeddingSpaceGuard;
     private final IndexingEmbeddingGuard indexingEmbeddingGuard;
     private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
+    private final EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService;
     private final TransactionTemplate transactionTemplate;
     /** Joins the caller's Spring transaction (lab sync ingest); do not use {@link #transactionTemplate} here. */
     private final TransactionTemplate joinCallerTransactionTemplate;
@@ -81,6 +83,7 @@ public class KnowledgePipelineOrchestrator {
             EmbeddingSpaceGuard embeddingSpaceGuard,
             IndexingEmbeddingGuard indexingEmbeddingGuard,
             KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
+            EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService,
             PlatformTransactionManager transactionManager,
             @Autowired(required = false) MeterRegistry meterRegistry) {
         this.jdbcTemplate = jdbcTemplate;
@@ -93,6 +96,7 @@ public class KnowledgePipelineOrchestrator {
         this.embeddingSpaceGuard = embeddingSpaceGuard;
         this.indexingEmbeddingGuard = indexingEmbeddingGuard;
         this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
+        this.embeddingIndexCompatibilityService = embeddingIndexCompatibilityService;
         // Isolate ingest work so a failed inner ingest does not mark the caller transaction rollback-only.
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -101,12 +105,18 @@ public class KnowledgePipelineOrchestrator {
         this.meterRegistry = meterRegistry;
     }
 
+    private Map<String, Object> snapshotIndexProfileJsonb(ProjectIndexProfile profile) {
+        return embeddingIndexCompatibilityService.enrichIndexProfile(profile.toSnapshotJsonb());
+    }
+
     private void probeAndPersistSnapshotEmbeddingDimensions(
             ProjectIndexProfile profile, MaterializationStrategy strategy, KnowledgeIndexSnapshotEntity building) {
         if (strategy == MaterializationStrategy.STRUCTURED_SEARCH) {
             return;
         }
-        Optional<String> emb = IndexProfileJsonSupport.readEmbeddingModelId(profile.toSnapshotJsonb());
+        Optional<String> emb =
+                IndexProfileJsonSupport.readEmbeddingModelId(
+                        embeddingIndexCompatibilityService.enrichIndexProfile(profile.toSnapshotJsonb()));
         if (emb.isEmpty() || emb.get().isBlank()) {
             throw new IllegalStateException(
                     "embeddingModelId is required in the project index profile for dense/hybrid vector indexing");
@@ -337,7 +347,7 @@ public class KnowledgePipelineOrchestrator {
                         snapshotSigHex,
                         resolvedConfigSnapshotId,
                         resolvedConfigHash,
-                        profile.toSnapshotJsonb(),
+                        snapshotIndexProfileJsonb(profile),
                         profile.profileHash());
 
         probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
@@ -432,7 +442,7 @@ public class KnowledgePipelineOrchestrator {
                         snapshotSigHex,
                         resolvedConfigSnapshotId,
                         resolvedConfigHash,
-                        profile.toSnapshotJsonb(),
+                        snapshotIndexProfileJsonb(profile),
                         profile.profileHash());
 
         probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
@@ -604,7 +614,7 @@ public class KnowledgePipelineOrchestrator {
                             snapshotSigHex,
                             resolvedConfigSnapshotId,
                             projection.configHash(),
-                            effectiveProfile.toSnapshotJsonb(),
+                            snapshotIndexProfileJsonb(effectiveProfile),
                             effectiveProfile.profileHash());
 
             probeAndPersistSnapshotEmbeddingDimensions(effectiveProfile, effectiveProfile.materializationStrategy(), building);
@@ -775,7 +785,7 @@ public class KnowledgePipelineOrchestrator {
                             snapshotSigHex,
                             resolvedConfigSnapshotId,
                             resolvedConfigHash != null ? resolvedConfigHash : "lab-auto-reindex",
-                            profile.toSnapshotJsonb(),
+                            snapshotIndexProfileJsonb(profile),
                             profile.profileHash());
 
             probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);

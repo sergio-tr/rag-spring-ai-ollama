@@ -3,6 +3,7 @@ package com.uniovi.rag.configuration;
 import com.uniovi.rag.application.port.ClassifierLabPort;
 import com.uniovi.rag.application.port.ClassifierTrainBytesCommand;
 import com.uniovi.rag.infrastructure.vector.OllamaEmbeddingModelFactory;
+import com.uniovi.rag.infrastructure.vector.ProviderAwareEmbeddingModelFactory;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -52,6 +53,12 @@ public class RagE2eAiStubConfiguration {
     @Primary
     public ChatModel e2eChatModel() {
         return new E2eStubChatModel();
+    }
+
+    @Bean
+    @Primary
+    public ProviderAwareEmbeddingModelFactory e2eProviderAwareEmbeddingModelFactory() {
+        return new E2eProviderAwareEmbeddingModelFactory();
     }
 
     @Bean
@@ -117,6 +124,21 @@ public class RagE2eAiStubConfiguration {
         @Override
         public ChatResponse call(Prompt prompt) {
             return new ChatResponse(List.of(new Generation(new AssistantMessage(E2E_REPLY))));
+        }
+    }
+
+    static final class E2eProviderAwareEmbeddingModelFactory extends ProviderAwareEmbeddingModelFactory {
+
+        E2eProviderAwareEmbeddingModelFactory() {
+            super(null);
+        }
+
+        @Override
+        public EmbeddingModel forModel(String modelId) {
+            if (modelId == null || modelId.isBlank()) {
+                throw new IllegalArgumentException(MODEL_ID_KEY);
+            }
+            return new E2eStubEmbeddingModel();
         }
     }
 
