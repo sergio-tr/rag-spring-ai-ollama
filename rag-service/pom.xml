@@ -334,6 +334,10 @@
                          Put -Xshare:off first so CDS is disabled before any javaagent appends to the bootstrap classpath
                          (avoids HotSpot "Sharing is only supported for boot loader classes..."). -->
                     <argLine>-Xshare:off @{argLine} -javaagent:"${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar"</argLine>
+                    <environmentVariables>
+                        <OPENAI_COMPATIBLE_API_KEY>test-openai-compatible-key</OPENAI_COMPATIBLE_API_KEY>
+                        <TEST_OPENAI_KEY>test-openai-compatible-key</TEST_OPENAI_KEY>
+                    </environmentVariables>
                 </configuration>
             </plugin>
 
