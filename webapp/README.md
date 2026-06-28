@@ -25,21 +25,73 @@ Copy `.env.example` to `.env` (or use `./docker/scripts/create-env-webapp.sh` fr
 >
 > The Google CTA on `/login` and `/register` reads `NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED` and targets `/api/v5/auth/oauth/google/start` as a plain `<a>` (full-page navigation), not a next-intl `<Link>`, so the browser does not prepend the active locale to that API path. **Google Cloud Console** must list the backend callback URL exactly as composed from `RAG_AUTH_BACKEND_BASE_URL` + `RAG_AUTH_OAUTH_GOOGLE_REDIRECT_PATH` (see `rag-service/README.md` and `rag-service/.env.example`) to avoid `redirect_uri_mismatch`.
 
-**Product API usage (non-exhaustive):** under `NEXT_PUBLIC_RAG_API_PREFIX` (default in `.env.example`): `GET/POST/PATCH/DELETE …/projects`, `PUT …/activate`, `GET/POST …/projects/{id}/documents`, `GET/PUT …/me/preferences`, `GET/PUT …/me/personalization` (Settings → User config: structured locale/theme fields; optional read-only JSON diagnostics), `GET …/me/summary`, `GET …/me/documents` (Settings → Data: plain-language usage summary and document library; optional collapsible API reference), `POST …/me/account/export` (202) + `GET …/me/account/jobs/{id}` + `GET …/me/account/export/{id}/download` (Settings → Account: persisted job lifecycle, resume after navigation, trace + explicit ZIP download), `GET/PUT …/config/user` (legacy; prefer `/me/*` for UI prefs), `GET/PUT/DELETE …/config/project/{id}` (Settings → Project: schema-driven fields; destructive clear uses a confirmation dialog), `GET …/config/schema`, `GET/POST/DELETE …/presets` (Settings → Presets: structured fields + read-only payload preview; JSON paste/export under Advanced). Auth (via `authApiPath`): `{NEXT_PUBLIC_RAG_API_PREFIX}/auth/login`, `…/register` (**may return 202** when email confirmation is enabled), `…/confirm-email`, `…/forgot-password`, `…/reset-password`, `…/me`, **OAuth** `GET …/oauth/google/start`, `GET …/oauth/google/callback` (backend redirect), `POST …/oauth/exchange` (SPA callback page), refresh via the BFF cookie route (see `src/lib/api-client.ts`). With default prefix **`/api/v5`**, the Google button targets **`/api/v5/auth/oauth/google/start`**. Legacy `/api/auth/*` may still work during transition. Canonical contract: OpenAPI from the backend (`/v3/api-docs` when enabled) and `src/lib/api-client.ts`.
+**Product API usage (non-exhaustive):** under `NEXT_PUBLIC_RAG_API_PREFIX` (default in `.env.example`): `GET/POST/PATCH/DELETE …/projects`, `PUT …/activate`, `GET/POST …/projects/{id}/documents`, `GET/PUT …/me/preferences`, `GET/PUT …/me/personalization` (Settings → User config: structured locale/theme fields; optional read-only JSON diagnostics), `GET …/me/summary`, `GET …/me/documents` (Settings → Data: plain-language usage summary and document library; optional collapsible API reference), `POST …/me/account/export` (202) + `GET …/me/account/jobs/{id}` + `GET …/me/account/export/{id}/download` (Settings → Account: persisted job lifecycle, resume after navigation, trace + explicit ZIP download), `GET/PUT …/config/user` (USER_DEFAULT RAG config from `/config/schema`; distinct from `/me/preferences`), `GET/PUT/DELETE …/config/project/{id}` (Settings → Project: schema-driven fields; destructive clear uses a confirmation dialog), `GET …/config/schema`, `GET/POST/DELETE …/presets` (Settings → Presets: structured fields + read-only payload preview; JSON paste/export under Advanced). Auth (via `authApiPath`): `{NEXT_PUBLIC_RAG_API_PREFIX}/auth/login`, `…/register` (**may return 202** when email confirmation is enabled), `…/confirm-email`, `…/forgot-password`, `…/reset-password`, `…/me`, **OAuth** `GET …/oauth/google/start`, `GET …/oauth/google/callback` (backend redirect), `POST …/oauth/exchange` (SPA callback page), refresh via the BFF cookie route (see `src/lib/api-client.ts`). With default prefix **`/api/v5`**, the Google button targets **`/api/v5/auth/oauth/google/start`**. Canonical contract: OpenAPI from the backend (`/v3/api-docs` when enabled) and `src/lib/api-client.ts`.
 
-### Chat (SSE + conversation context)
+### Chat (async job + conversation context)
 
-The **Chat** page (`src/app/[locale]/(app)/chat/page.tsx`) loads conversations with `GET {product}/projects/{id}/conversations`, history with `GET {product}/conversations/{id}/messages`, and sends user messages via **`postSseJson`** (`src/lib/sse-post.ts`): `POST {product}/conversations/{id}/messages` with `Accept: text/event-stream` and JSON body `{ content, llmModel? }` (matches `PostMessageRequest` in the backend). Each POST includes a W3C **`traceparent`** header from `src/lib/traceparent.ts` for OpenTelemetry correlation when observability is enabled.
+The **Chat** page (`src/app/[locale]/(app)/chat/page.tsx`) loads conversations with `GET {product}/projects/{id}/conversations`, history with `GET {product}/conversations/{id}/messages`, and sends user messages with **`POST {product}/conversations/{id}/messages`** (JSON `{ content, llmModel? }` → **HTTP 202** + `LabJobAcceptedDto`). Progress and streamed answer text use **`followLabJob`** (`src/lib/lab-job-follow.ts`): poll **`GET {product}/lab/jobs/{id}`** or SSE **`GET …/lab/jobs/{id}/events`**. Each request includes a W3C **`traceparent`** header from `src/lib/traceparent.ts` when observability is enabled.
 
-Use **`PATCH {product}/conversations/{id}`** from the same UI for `presetId` / `clearPreset` and `documentFilter` (subset of project document UUIDs). Model and preset dropdowns use **`GET {product}/models`** and **`GET {product}/presets`**.
+Use **`PATCH {product}/conversations/{id}`** from the same UI for `presetId` / `clearPreset` and `documentFilter` (subset of project document UUIDs). Model and preset dropdowns use **`GET {product}/models`** and **`GET {product}/presets`**. Settings → General also lists **curated demo models** via **`GET {product}/model-registry`** (Ollama presence + **`POST {product}/model-registry/check`** / **`POST {product}/model-registry/pull`** for authenticated users; global DB allowlist edits and arbitrary admin pulls stay on **`{product}/admin/models`** and **`{product}/admin/models/pull`** for admins only).
+
+**Index/project capabilities (vs per-chat runtime):** the Chat panel shows read-only index capabilities from **`GET {product}/projects/{id}/index-profile`** and the active snapshot from **`GET {product}/projects/{id}/knowledge/snapshots/active`**. Updates use **`PUT …/index-profile`** (project settings / creation flow); changing materialization/metadata-related settings after documents are indexed may require **reindex** per backend rules. Runtime validation uses **`POST …/runtime-config/validate`** with `indexCompatibility` / `requiresReindex` when the UI merges overrides.
+
+**Conversation bootstrap:** **`POST {product}/projects/{projectId}/conversations`** may include **`initialPresetId`**, **`initialRuntimeOverride`**, and **`documentFilter`** so chats start configured before the first message (`NewConversationDialog` from Chat, sidebar, or project cards). **`POST {product}/projects`** may send **`initialIndexProfile`** (persisted with the new project; see `NewProjectDialog`).
 
 **Move conversation:** `POST {product}/projects/{sourceProjectId}/conversations/{conversationId}/move?destinationProjectId=` (**204 No Content**) reassigns the chat to another project you own; only **chat-local** corpus documents move with it, not shared project documents. The UI clears the persisted document subset after a move (`MoveConversationDialog`, `useMoveConversation`).
 
 ### Research Lab
 
-Routes under `src/app/[locale]/(app)/lab/`: **`useLabStatus`** (`src/features/lab/hooks/use-lab-status.ts`) calls **`GET {product}/lab/status`** to enable/disable evaluation buttons and show classifier availability. Long operations use **`POST {product}/lab/evaluations/*`** and **`POST {product}/lab/classifier/*`** with default **async** (**HTTP 202** + `LabJobAcceptedDto`). Progress is tracked with **`followLabJob`** (`src/lib/lab-job-follow.ts`): **polling** via `GET {product}/lab/jobs/{id}` (`src/lib/async-task.ts`) or **SSE** via `GET …/events` (`src/lib/lab-job-sse.ts`). Optional **`?sync=true`** returns inline JSON for quick local checks. **Within the same browser tab**, recent async Lab jobs are summarized in **`useLabJobSessionStore`** (`src/features/lab/store/lab-job-session.store.ts`) with **`sessionStorage`** persistence (bounded list) so navigating between Lab subsections or revisiting Lab can show **resume / stale job / completed** messaging via **`LabBackgroundJobBanner`**. Lab results are **reports only** (ADR 0001 — no silent writes to presets or project config).
+#### Running the evaluation phases from the Lab (UI-first)
 
-Playwright specs under `e2e/research/` (Lab) may skip or time out if the classifier URL is unset or the bundled benchmark workbook is unavailable (`datasets.enabled` follows `datasets.questionCount` > 0 from `GET {product}/lab/status`).
+Use the Lab navigation tabs:
+
+1. **LLM baseline** (`Lab → LLM evaluation`)
+   - **Dataset**: use the internal reference bundle if present, or upload a typed Excel workbook (template: *LLM baseline*).
+   - **Run**: start the evaluation and wait for the async job to finish.
+   - **Results**: review per-item outcomes and rollups.
+   - **Export**: use the MVP export buttons (CSV + JSON) to download run artifacts.
+
+2. **Embedding baseline** (`Lab → Embedding evaluation`)
+   - **Dataset**: typed embedding baseline workbook (template: *Embedding baseline*).
+   - **What it measures**: retrieval quality against labelled evidence (e.g. Recall@K, MRR when available).
+   - **Export**: same MVP export buttons after the run succeeds.
+
+3. **RAG preset benchmark** (`Lab → RAG evaluation`)
+   - **Dataset**: typed RAG preset benchmark workbook (template: *RAG preset benchmark*) or internal reference bundle.
+   - **Selection**: optionally select protocol presets (leave all unchecked to run the full workbook catalog).
+   - **Outcomes**: runs record outcomes like `EXECUTED`, `NOT_SUPPORTED`, and `FAILED`.
+   - **Export**: use the MVP exports to download preset-level results.
+
+## Manual validation checklist
+
+### Chat
+
+1. Upload meeting minutes (actas) from **Documents**.
+2. Wait until documents show **READY**.
+3. Open **Chat** and create a new conversation.
+4. In chat settings (⋮), select a **retrieval-enabled** preset (e.g. “RAG balanced”).
+5. Ask: **“¿Cuántas actas mencionan el ascensor?”**
+6. Verify: answer is grounded (or a controlled “insufficient context” refusal) and **Sources** are consistent.
+7. Turn on **Limit retrieval** and ensure it stays stable.
+8. Repeat the “ascensor” question with a limited scope.
+9. Upload one more document from chat settings and confirm it appears in the documents sheet when READY.
+10. Delete the chat using the delete dialog and confirm navigation back to the project chat list.
+
+### Lab
+
+1. Open **Lab → Overview** and confirm the **control panel** shows Step 1 (datasets), Step 2 (workflows), and Step 3 (exports).
+2. Open **Datasets** (templates & uploads) and confirm you can download templates and upload a workbook until its status is **VALID**.
+3. Run **LLM baseline** using a compatible **VALID** dataset (reference bundle counts if listed).
+4. Run **Embedding baseline** using a compatible **VALID** embedding workbook.
+5. Run **RAG preset benchmark** and confirm the P0–P14 explainer is visible. Use preset selection helpers (**Select core (P0–P8)** / select all / clear) if you want a subset.
+6. Confirm outcomes include **EXECUTED**, **NOT_SUPPORTED** (with reason when present), and **FAILED**.
+7. Export results from the **Results** panel after a successful run (MVP exports: `items.csv`, `items.json`, `rollups.json`).
+
+Routes under `src/app/[locale]/(app)/lab/`: **`useLabStatus`** (`src/features/lab/hooks/use-lab-status.ts`) calls **`GET {product}/lab/status`** (reference bundle flags, classifier availability). Canonical benchmarks use **`POST {product}/lab/benchmarks/{kind}/runs`** (**HTTP 202** + async task). **`LabEvaluationRunCard`** drives LLM (`LLM_JUDGE_QA`), embedding (`EMBEDDING_RETRIEVAL`), and RAG preset (`RAG_PRESET_END_TO_END`) flows under **`/lab/evaluation/llm`**, **`/lab/evaluation/embedding`**, **`/lab/evaluation/rag`**. Classifier flows remain **`POST {product}/lab/classifier/*`**. Progress uses **`followLabJob`** (`src/lib/lab-job-follow.ts`): polling **`GET {product}/lab/jobs/{id}`** or SSE **`GET …/events`**. After **`SUCCEEDED`**, the UI loads MVP summaries via **`GET …/lab/runs/{id}/export/mvp/{items.json,rollups.json}`** and offers **`items.csv`**. **`useLabJobSessionStore`** persists bounded session rows (including **`evaluationRunId`** when returned) as a **UX cache** only; **`GET {product}/lab/jobs/active`** (via **`useActiveLabJobs`** + **`useLabActiveJobRecovery`**) is the **source of truth** for resuming in-flight evaluation jobs after reload or a new tab (session cache is reconciled; backend wins on conflict). Lab outputs are **reports only** (ADR 0001).
+
+The Lab **overview** mounts **`LabExperimentalDatasetPanel`**, wired to **`GET …/lab/dataset-templates/{kind}`**, **`POST …/lab/experimental-datasets`**, **`GET …/lab/experimental-datasets`**, **`GET …/lab/experimental-datasets/{id}/validation`**.
+
+Playwright specs under `e2e/research/` (Lab) may skip or time out if the classifier URL is unset or the packaged evaluation workbook is unavailable (`datasets.enabled` follows `datasets.questionCount` > 0 from `GET {product}/lab/status`; see reference bundle fields `referenceBundleAvailable` / `referenceBundleValid`).
 
 ## Commands
 
@@ -65,9 +117,9 @@ OpenAPI for the backend: `GET http://<backend>:9000/v3/api-docs` (see `rag-servi
 
 ## Authentication and long sessions
 
-`apiFetch` attaches the JWT, retries once on **401** via the BFF route **`{NEXT_PUBLIC_RAG_API_PREFIX}/auth/refresh`** (default **`/api/v5/auth/refresh`**), then throws. If the session cannot be refreshed, **`SessionExpiredBridge`** redirects to `/{locale}/login`. Login and register calls use `skipCredentials: true` and do not trigger that redirect.
+`apiFetch` attaches the JWT, retries once on **401** via the **Next.js BFF** route **`{NEXT_PUBLIC_RAG_API_PREFIX}/auth/refresh`** (default **`/api/v5/auth/refresh`**), then throws. If the session cannot be refreshed, **`SessionExpiredBridge`** redirects to `/{locale}/login`. Login and register call the **backend** at **`{NEXT_PUBLIC_RAG_API_PREFIX}/auth/login`** (not a BFF route). Cookie session helpers live only under the BFF: **`…/auth/session`**, **`…/auth/refresh`**, **`…/auth/logout`** (implemented in `src/app/api/v5/auth/*`; nginx may also route unprefixed **`/api/auth/session|refresh|logout`** to the webapp — still BFF, not Spring).
 
-After a successful session commit, the webapp schedules a **silent refresh** about **two minutes before** the access JWT `exp` (`src/lib/auth-access-scheduler.ts`), so active users are less likely to hit 401 during SSE or ordinary requests. Backend defaults (override via env): access token **3600s**, refresh token **604800s** — see `rag-service/src/main/resources/application.properties` (`rag.jwt.access-ttl-seconds`, `rag.jwt.refresh-ttl-seconds`).
+After a successful session commit, the webapp schedules a **silent refresh** about **two minutes before** the access JWT `exp` (`src/lib/auth-access-scheduler.ts`), so active users are less likely to hit 401 during long-running chat jobs or ordinary requests. Backend defaults (override via env): access token **3600s**, refresh token **604800s** — see `rag-service/src/main/resources/application.properties` (`rag.jwt.access-ttl-seconds`, `rag.jwt.refresh-ttl-seconds`).
 
 ### Local HTTP / LAN / mobile smoke
 

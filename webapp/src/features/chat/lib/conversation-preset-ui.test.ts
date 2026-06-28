@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CHAT_DETERMINISTIC_DEFAULT_PRESET_ID,
+  resolveChatPresetLabel,
   resolveChatPresetSelectValue,
   resolveConversationPresetSelectValue,
   resolvePresetSelectLabel,
@@ -23,6 +24,10 @@ describe("conversation-preset-ui", () => {
         effectivePresetId: CHAT_DETERMINISTIC_DEFAULT_PRESET_ID,
       }),
     ).toBe(CHAT_DETERMINISTIC_DEFAULT_PRESET_ID);
+  });
+
+  it("resolveConversationPresetSelectValue falls back when conversation is missing", () => {
+    expect(resolveConversationPresetSelectValue(undefined)).toBe(CHAT_DETERMINISTIC_DEFAULT_PRESET_ID);
   });
 
   it("resolveConversationPresetSelectValue prefers persisted presetId over effectivePresetId", () => {
@@ -50,6 +55,15 @@ describe("conversation-preset-ui", () => {
       labels,
     );
     expect(label).toBe("MyPreset");
+  });
+
+  it("resolvePresetSelectLabel appends system suffix for system presets", () => {
+    const label = resolvePresetSelectLabel(
+      [{ id: "sys", name: "SystemPreset", description: null, tags: [], values: {}, system: true, createdAt: "", updatedAt: "" }],
+      "sys",
+      labels,
+    );
+    expect(label).toBe("SystemPreset (system)");
   });
 
   it("resolvePresetSelectLabel uses recommended default when catalog missing row", () => {
@@ -100,6 +114,15 @@ describe("conversation-preset-ui", () => {
     ).toBe(CHAT_DETERMINISTIC_DEFAULT_PRESET_ID);
   });
 
+  it("resolveChatPresetSelectValue uses effectivePresetId before catalog fallbacks", () => {
+    expect(
+      resolveChatPresetSelectValue(
+        { id: "c", title: "t", updatedAt: "", presetId: "   ", effectivePresetId: "effective" },
+        [{ id: "first", name: "F", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" }],
+      ),
+    ).toBe("effective");
+  });
+
   it("resolveChatPresetSelectValue uses first system preset when deterministic absent", () => {
     expect(
       resolveChatPresetSelectValue(
@@ -123,5 +146,74 @@ describe("conversation-preset-ui", () => {
 
   it("resolveChatPresetSelectValue falls back to deterministic id without catalog", () => {
     expect(resolveChatPresetSelectValue(undefined, undefined)).toBe(CHAT_DETERMINISTIC_DEFAULT_PRESET_ID);
+  });
+
+  it("resolveChatPresetLabel shows experimental code+label when selectedPresetId is experimental productPresetId", () => {
+    const label = resolveChatPresetLabel(
+      [{ id: "pr1", name: "Prod", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" }],
+      [
+        {
+          productPresetId: "exp4",
+          code: "P4",
+          family: "Experimental",
+          label: "Chunk + metadata retrieval",
+          description: "",
+          requiredCapabilities: [],
+          supported: true,
+          supportStatus: "EXECUTABLE",
+          reasonIfUnsupported: null,
+          requiresMultiTurn: false,
+          mapsToRuntimeCapabilities: {},
+          allowedOutcomes: ["EXECUTED"],
+          chatSelectable: true,
+          labSelectable: true,
+          labOnly: false,
+        },
+      ],
+      "exp4",
+      labels,
+    );
+    expect(label).toBe("P4 — Chunk + metadata retrieval");
+  });
+
+  it("resolveChatPresetLabel shows product preset labels and system suffix", () => {
+    expect(
+      resolveChatPresetLabel(
+        [{ id: "sys", name: "System Product", description: null, tags: [], values: {}, system: true, createdAt: "", updatedAt: "" }],
+        [],
+        "sys",
+        labels,
+      ),
+    ).toBe("System Product (system)");
+
+    expect(
+      resolveChatPresetLabel(
+        [{ id: "prod", name: "Product", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" }],
+        [],
+        "prod",
+        labels,
+      ),
+    ).toBe("Product");
+  });
+
+  it("resolveChatPresetLabel reports default configuration when both catalogs loaded empty", () => {
+    expect(resolveChatPresetLabel([], [], CHAT_DETERMINISTIC_DEFAULT_PRESET_ID, labels)).toBe(
+      "Default configuration",
+    );
+  });
+
+  it("resolveChatPresetLabel reports unknown preset for non-empty unresolved catalogs", () => {
+    expect(
+      resolveChatPresetLabel(
+        [{ id: "known", name: "Known", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" }],
+        [],
+        "missing",
+        labels,
+      ),
+    ).toBe("Unknown preset");
+  });
+
+  it("resolveChatPresetLabel shows Recommended Default when selectedPresetId is null", () => {
+    expect(resolveChatPresetLabel([], [], null, labels)).toBe("Recommended default");
   });
 });

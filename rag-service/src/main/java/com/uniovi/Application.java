@@ -1,6 +1,7 @@
 package com.uniovi;
 
 import com.uniovi.rag.configuration.RagAccountProperties;
+import com.uniovi.rag.configuration.RagClassifierProperties;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
@@ -8,6 +9,7 @@ import com.uniovi.rag.configuration.RagRankerProperties;
 import com.uniovi.rag.configuration.RagReasoningProperties;
 import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.infrastructure.health.RagHealthProperties;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import com.uniovi.rag.infrastructure.llm.ollama.RagOllamaProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -36,12 +38,14 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableJpaRepositories(basePackages = "com.uniovi.rag.infrastructure.persistence")
 @EnableConfigurationProperties({
     RagAccountProperties.class,
+    RagClassifierProperties.class,
     RagApiPathProperties.class,
     RagReasoningProperties.class,
     RagRankerProperties.class,
     RagFeatureConfiguration.class,
     RagImplementationProperties.class,
     RagHealthProperties.class,
+    LlmProperties.class,
     RagOllamaProperties.class,
     RagRuntimeProperties.class
 })

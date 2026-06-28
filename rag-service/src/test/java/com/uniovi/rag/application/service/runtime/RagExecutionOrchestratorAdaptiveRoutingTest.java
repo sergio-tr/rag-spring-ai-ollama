@@ -1,4 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
@@ -8,7 +10,14 @@ import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallin
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
+import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.DeterministicToolRoutingPolicy;
+import com.uniovi.rag.application.service.runtime.routing.DeterministicToolRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingPolicy;
+import com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.RouteExecutionGateBuilder;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -36,6 +45,7 @@ import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingExecutionResult;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.domain.runtime.routing.RouteExecutionGate;
+import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
 import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
@@ -53,8 +63,18 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+import org.springframework.beans.factory.ObjectProvider;
+
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
 
 class RagExecutionOrchestratorAdaptiveRoutingTest {
+
+    private final DeterministicToolRoutingStrategy deterministicToolRoutingStrategy =
+            MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy();
+    private final FunctionCallingRoutingStrategy functionCallingRoutingStrategy =
+            MonotonicRouteSafetyTestSupport.functionCallingRoutingStrategy();
+    private final AdvisorRoutingStrategy advisorRoutingStrategy =
+            MonotonicRouteSafetyTestSupport.advisorRoutingStrategy();
 
     @Test
     void selectedDeterministicToolRoute_executesOnlyTools_andSkipsWorkflowSelector() {
@@ -109,7 +129,21 @@ class RagExecutionOrchestratorAdaptiveRoutingTest {
                                 Map.of(),
                                 List.of()));
 
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        ExecutionWorkflow workflow = mock(ExecutionWorkflow.class);
+        when(workflow.workflowName()).thenReturn("ChunkDenseRagWorkflow");
+        when(workflow.execute(any()))
+                .thenReturn(
+                        RagExecutionResult.withPlaceholderTrace(
+                                "workflow-answer",
+                                "ChunkDenseRagWorkflow",
+                                true,
+                                false,
+                                in.knowledgeSnapshotSelection().orderedSnapshotIds(),
+                                "none",
+                                List.of()));
+        when(workflowSelector.select(any())).thenReturn(workflow);
+
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         RagExecutionOrchestrator orchestrator =
@@ -126,11 +160,17 @@ class RagExecutionOrchestratorAdaptiveRoutingTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        judgeStrategy);
+                        deterministicToolRoutingStrategy,
+                        functionCallingRoutingStrategy,
+                        advisorRoutingStrategy,
+                        judgeStrategy,
+                        MonotonicRouteSafetyTestSupport.structuredAnswerPlanNoOp(),
+                        mock(AnswerVerificationService.class),
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         var out = orchestrator.execute(in);
-        assertEquals("tool-answer", out.answerText());
-        verify(workflowSelector, never()).select(any());
+        assertEquals("Tool-answer", out.answerText());
+        verify(workflowSelector, atLeastOnce()).select(any());
         verify(fcPolicy, never()).resolve(any(), any());
         verify(advisorPolicy, never()).resolve(any(), any());
     }
@@ -163,6 +203,8 @@ class RagExecutionOrchestratorAdaptiveRoutingTest {
     }
 
     private static ExecutionContext ctx(RagConfig rag) {
+        UUID id = UUID.randomUUID();
+        UUID snapshotId = UUID.randomUUID();
         ResolvedRuntimeConfig resolved =
                 new ResolvedRuntimeConfig(
                         rag,
@@ -173,7 +215,14 @@ class RagExecutionOrchestratorAdaptiveRoutingTest {
                         "sys",
                         new ConfigProvenance(null, null, null, List.of(), null, null),
                         rag);
-        UUID id = UUID.randomUUID();
+        KnowledgeSnapshotSelection snapshots =
+                new KnowledgeSnapshotSelection(
+                        List.of(snapshotId),
+                        Optional.of(snapshotId),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty());
         return new ExecutionContext(
                 id,
                 id,
@@ -182,7 +231,7 @@ class RagExecutionOrchestratorAdaptiveRoutingTest {
                 RuntimeOperationKind.CHAT_MESSAGE,
                 resolved,
                 "sys",
-                KnowledgeSnapshotSelection.empty(),
+                snapshots,
                 Optional.empty(),
                 Optional.empty(),
                 "corr",

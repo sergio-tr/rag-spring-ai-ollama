@@ -10,10 +10,13 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
- * Gradual architecture rules toward hexagonal layering. Extend as packages stabilize.
+ * REST adapter and transitional-package freeze rules. Domain/application hexagonal guardrails:
+ * {@link HexagonalLayerGuardrailsTest} and {@link ArchitectureGuardrailAllowlists} (Agent A6).
  */
 @AnalyzeClasses(packages = "com.uniovi.rag", importOptions = ImportOption.DoNotIncludeTests.class)
 class LayeredArchitectureTest {
+
+	private LayeredArchitectureTest() {}
 
 	@ArchTest
 	static final ArchRule restControllersLiveInHttpAdapterPackages = classes()
@@ -47,9 +50,4 @@ class LayeredArchitectureTest {
 					.because(
 							"REST adapters must not depend on JPA entities or persistence packages; use application services (support excluded until migrated)");
 
-	@ArchTest
-	static final ArchRule topLevelDomainPackageIsFrameworkFree = classes()
-			.that().resideInAPackage("com.uniovi.rag.domain")
-			.should().onlyDependOnClassesThat().resideInAnyPackage("java..", "com.uniovi.rag.domain..", "org.jetbrains.annotations..")
-			.because("Enums and types directly under domain must stay free of Spring/Jakarta (subpackages may differ until migration completes)");
 }

@@ -6,7 +6,7 @@ import com.uniovi.rag.interfaces.rest.dto.AllowlistModelEntryDto;
 import com.uniovi.rag.interfaces.rest.dto.ModelsCatalogResponseDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.domain.AllowedModelType;
-import com.uniovi.rag.service.model.ModelsCatalogService;
+import com.uniovi.rag.application.service.model.ModelsCatalogService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;

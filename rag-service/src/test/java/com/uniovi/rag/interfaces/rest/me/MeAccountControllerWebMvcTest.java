@@ -9,7 +9,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.AccountExportArtifactEntity
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.interfaces.rest.dto.AsyncTaskStatusDto;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.async.AsyncTaskService;
+import com.uniovi.rag.application.service.async.AsyncTaskService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -159,5 +159,32 @@ class MeAccountControllerWebMvcTest {
                                         "{\"confirm\":\"DELETE_ACCOUNT_AND_ALL_DATA\",\"email\":\"u@test\"}"))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.jobId").value(job.toString()));
+    }
+
+    @Test
+    void deletion_returnsBadRequest_whenEmailDoesNotMatch() throws Exception {
+        UserEntity u = mock(UserEntity.class);
+        when(u.getEmail()).thenReturn("u@test");
+        when(userRepository.findById(eq(userId))).thenReturn(Optional.of(u));
+
+        mockMvc.perform(
+                        post(path("/me/account/deletion"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"confirm\":\"DELETE_ACCOUNT_AND_ALL_DATA\",\"email\":\"other@test\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deletion_returnsBadRequest_whenConfirmLiteralWrong() throws Exception {
+        UserEntity u = mock(UserEntity.class);
+        when(u.getEmail()).thenReturn("u@test");
+        when(userRepository.findById(eq(userId))).thenReturn(Optional.of(u));
+
+        mockMvc.perform(
+                        post(path("/me/account/deletion"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"confirm\":\"DELETE_ME\",\"email\":\"u@test\"}"))
+                .andExpect(status().isBadRequest());
     }
 }

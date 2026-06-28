@@ -19,12 +19,15 @@ export type LabJobSessionStore = {
   /** Ephemeral — not persisted. */
   pendingResume: PendingResume | null;
   resumeNonce: number;
+  /** Bumped when user stops watching a job from the session banner. */
+  forgetWatchNonce: number;
 
   upsertLabJobOnAccepted: (input: {
     accepted: LabJobAcceptedDto;
     sectionKey: LabJobSectionKey;
     followMode: LabJobFollowMode;
     taskTypeHint?: string;
+    evaluationRunId?: string | null;
   }) => void;
 
   patchLabJobFromTick: (jobId: string, status: AsyncTaskStatusDto) => void;
@@ -38,6 +41,12 @@ export type LabJobSessionStore = {
   dismissTerminalLabJob: (jobId: string) => void;
 
   clearLabJobRecord: (jobId: string) => void;
+
+  /** Clears local watch tracking only; backend run/results are unchanged. */
+  forgetLabJobWatching: (jobId: string) => void;
+
+  /** Backend wins: remove other rows for the same section so a stale cache cannot override the active job. */
+  clearOtherLabJobsForSection: (sectionKey: LabJobSectionKey, keepJobId: string) => void;
 
   requestResumeLabJob: (sectionKey: LabJobSectionKey, jobId: string) => void;
 
@@ -55,8 +64,9 @@ export const useLabJobSessionStore = create<LabJobSessionStore>()(
       records: [],
       pendingResume: null,
       resumeNonce: 0,
+      forgetWatchNonce: 0,
 
-      upsertLabJobOnAccepted: ({ accepted, sectionKey, followMode, taskTypeHint }) => {
+      upsertLabJobOnAccepted: ({ accepted, sectionKey, followMode, taskTypeHint, evaluationRunId }) => {
         const now = Date.now();
         set((s) => {
           const existing = s.records.find((r) => r.jobId === accepted.jobId);
@@ -68,6 +78,7 @@ export const useLabJobSessionStore = create<LabJobSessionStore>()(
             jobId: accepted.jobId,
             sectionKey,
             accepted,
+            evaluationRunId: evaluationRunId ?? existing?.evaluationRunId ?? null,
             followMode,
             startedAtMs: existing?.startedAtMs ?? now,
             lastUpdatedMs: now,
@@ -159,6 +170,24 @@ export const useLabJobSessionStore = create<LabJobSessionStore>()(
         }));
       },
 
+      forgetLabJobWatching: (jobId) => {
+        set((s) => ({
+          records: s.records.filter((r) => r.jobId !== jobId),
+          pendingResume: s.pendingResume?.jobId === jobId ? null : s.pendingResume,
+          forgetWatchNonce: s.forgetWatchNonce + 1,
+        }));
+      },
+
+      clearOtherLabJobsForSection: (sectionKey, keepJobId) => {
+        set((s) => ({
+          records: s.records.filter((r) => !(r.sectionKey === sectionKey && r.jobId !== keepJobId)),
+          pendingResume:
+            s.pendingResume?.sectionKey === sectionKey && s.pendingResume?.jobId !== keepJobId
+              ? null
+              : s.pendingResume,
+        }));
+      },
+
       requestResumeLabJob: (sectionKey, jobId) => {
         set((s) => ({
           pendingResume: { sectionKey, jobId },
@@ -176,7 +205,7 @@ export const useLabJobSessionStore = create<LabJobSessionStore>()(
 
       pickLatestForSection: (sectionKey) => pickLatestRecordForSection(get().records, sectionKey),
 
-      __resetVolatileForTests: () => set({ pendingResume: null, resumeNonce: 0 }),
+      __resetVolatileForTests: () => set({ pendingResume: null, resumeNonce: 0, forgetWatchNonce: 0 }),
     }),
     {
       name: "rag-lab-jobs",

@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.UUID;
 
 public interface MailOutboxRepository extends JpaRepository<MailOutboxEntity, UUID> {
+
     List<MailOutboxEntity> findTop50BySentAtIsNullOrderByCreatedAtAsc();
+
+    long deleteByRecipientIgnoreCase(String recipient);
 }
 

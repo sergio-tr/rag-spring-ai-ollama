@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
-import { createAndActivateProject, loginAsSeedUser, sendChatMessage } from "../support/helpers";
+import {
+  createAndActivateProject,
+  createNewChatConversation,
+  loginAsSeedUser,
+  sendChatMessage,
+} from "../support/helpers";
 
 /** E2E-10: multiple conversations and switch between them using stable list semantics (not raw button counts). */
 test.describe("Conversation history", () => {
@@ -15,7 +20,7 @@ test.describe("Conversation history", () => {
     const titleA = `E2E-Hist-A-${suffix}`;
     const titleB = `E2E-Hist-B-${suffix}`;
 
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page, { allowExisting: false });
     await expect(page.getByTestId("chat-message-composer")).toBeEnabled({ timeout: 15_000 });
     await page.getByRole("textbox", { name: /conversation title/i }).fill(titleA);
     await page.getByRole("textbox", { name: /conversation title/i }).blur();
@@ -24,7 +29,7 @@ test.describe("Conversation history", () => {
       timeout: 15_000,
     });
 
-    await page.getByTestId("chat-new-conversation").click();
+    await createNewChatConversation(page, { allowExisting: false });
     await expect(page).toHaveURL(/conversationId=/);
     const secondConversationUrl = page.url();
     await expect(page.getByTestId("chat-message-composer")).toBeEnabled({ timeout: 15_000 });

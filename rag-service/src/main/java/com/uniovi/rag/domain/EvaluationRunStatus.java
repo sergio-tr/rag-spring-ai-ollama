@@ -4,5 +4,7 @@ public enum EvaluationRunStatus {
     PENDING,
     RUNNING,
     DONE,
-    ERROR
+    ERROR,
+    CANCELLED,
+    PARTIAL_CANCELLED
 }

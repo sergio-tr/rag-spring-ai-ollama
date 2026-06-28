@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @Profile({ "dev", "e2e" })
-@RequestMapping("/api/admin/mail-outbox")
+@RequestMapping("${rag.api.product-base-path}/admin/mail-outbox")
 public class AdminMailOutboxController {
 
     private final MailOutboxRepository mailOutboxRepository;

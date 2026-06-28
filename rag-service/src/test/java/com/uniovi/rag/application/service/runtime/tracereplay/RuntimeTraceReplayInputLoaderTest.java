@@ -20,7 +20,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntit
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.mapper.ResolvedConfigSnapshotEntityMapper;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceDetailDto;
-import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.application.service.project.ProjectAccessService;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;

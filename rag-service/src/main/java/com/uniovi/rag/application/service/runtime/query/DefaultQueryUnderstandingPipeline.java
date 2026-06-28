@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime.query;
 
 import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.application.service.runtime.clarification.ClarifiedPlanningInputResolver;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
@@ -56,6 +57,7 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
                 ctx.effectivePlanningInputText() == null || ctx.effectivePlanningInputText().isBlank()
                         ? rawLiteral
                         : ctx.effectivePlanningInputText();
+        effectiveInput = ClarifiedPlanningInputResolver.resolveForPlanning(effectiveInput);
 
         // 1) Normalize (P11: only effective planning input)
         long t0 = System.nanoTime();
@@ -69,13 +71,22 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         String classifyStatus = switch (c.classifierStatus()) {
             case OK -> "OK";
             case DISABLED -> QU_NOTE_DISABLED;
-            case INVALID_OUTPUT -> QU_NOTE_FALLBACK;
-            case UNAVAILABLE -> QU_NOTE_ERROR;
+            case INVALID_OUTPUT, LOW_CONFIDENCE -> QU_NOTE_FALLBACK;
+            case UNAVAILABLE, TIMEOUT, INVALID_REQUEST -> QU_NOTE_ERROR;
         };
-        notes.add(stageNote("qu_classify", classifyStatus, msSince(t1),
-                "classifierStatus=" + c.classifierStatus().name()
-                        + " classifierLabel=" + c.classifierLabel()
-                        + " note=" + c.note()));
+        StringBuilder classifyDetail =
+                new StringBuilder("classifierStatus=")
+                        .append(c.classifierStatus().name())
+                        .append(" classifierModelId=")
+                        .append(c.classifierModelIdUsed())
+                        .append(" classifierLabel=")
+                        .append(c.classifierLabel());
+        c.classifierConfidence()
+                .ifPresent(conf -> classifyDetail.append(" classifierConfidence=").append(conf));
+        c.classifierLabelSetHash()
+                .ifPresent(hash -> classifyDetail.append(" classifierLabelSetHash=").append(hash));
+        classifyDetail.append(" note=").append(c.note());
+        notes.add(stageNote("qu_classify", classifyStatus, msSince(t1), classifyDetail.toString()));
 
         String classifierLabel = c.classifierLabel();
         Optional<QueryType> classifierQueryType = c.classifierQueryType();
@@ -133,7 +144,8 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         notes.add(stageNote("qu_assess_ambiguity", "OK", msSince(t6), "ambiguityStatus=" + ambiguity.status().name()));
 
         // 8) Build QueryPlan
-        Map<String, String> slots = rewrite.slotFilling();
+        Map<String, String> slots = QueryPlanSlotEnricher.enrich(
+                normalized.normalizedText(), classifierQueryType, rewrite.slotFilling());
         return new QueryPlan(
                 QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1,
                 rawLiteral,

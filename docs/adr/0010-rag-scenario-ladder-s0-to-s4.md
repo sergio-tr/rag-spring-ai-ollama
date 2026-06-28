@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The thesis requires a **defensible experimental ladder** covering baseline RAG through adaptive and judge-heavy behaviour. Informal stage naming risks **S3–S4** being treated as optional extras.
+The project requires a **defensible experimental ladder** covering baseline RAG through adaptive and judge-heavy behaviour. Informal stage naming risks **S3–S4** being treated as optional extras.
 
 ## Decision
 

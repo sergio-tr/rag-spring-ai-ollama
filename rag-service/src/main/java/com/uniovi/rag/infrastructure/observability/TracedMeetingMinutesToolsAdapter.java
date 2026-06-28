@@ -2,7 +2,7 @@ package com.uniovi.rag.infrastructure.observability;
 
 import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.domain.model.QueryType;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
 import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.tool.ToolResult;
 import java.util.Map;

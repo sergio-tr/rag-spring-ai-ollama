@@ -1,4 +1,4 @@
-# Empirical research and thesis experimentation
+# Empirical research and experimentation
 
 **Purpose:** Normative, incremental research programme for the project: hypotheses, variables, datasets, baselines, ablations, metrics, traceability, and reproducibility. This folder is the **canonical** location for methodology and run evidence **indexes**; large binary exports stay in operator-controlled storage with paths recorded in run sheets.
 
@@ -6,7 +6,7 @@
 
 - Lab benchmarks and exports: [`rag-service/README.md`](../../rag-service/README.md) (Lab benchmarks section).
 - Quality gates and mocks policy: [`docs/quality/README.md`](../quality/README.md), [`docs/testing/external-test-harness.md`](../testing/external-test-harness.md).
-- Thesis scope: [`docs/overview/thesis-scope.md`](../overview/thesis-scope.md).
+- Minimum scope: [`docs/overview/minimum-scope.md`](../overview/minimum-scope.md).
 - Unified product/Lab engine: [`docs/adr/0009-unified-product-and-lab-execution-engine.md`](../adr/0009-unified-product-and-lab-execution-engine.md).
 - Spring AI / pipeline context (supporting, not duplicate of module READMEs): [`docs/ai/README.md`](../ai/README.md).
 

@@ -31,7 +31,19 @@ describe("ExplainabilityPanel", () => {
         queryType: "RAG",
         usedTool: false,
         toolUsed: null,
-        sources: [{ doc: 1 }],
+        sources: [
+          {
+            documentId: null,
+            projectDocumentId: "d1",
+            filename: "f.pdf",
+            snippet: "s",
+            distance: 0.1,
+            distanceLabel: "distance",
+            chunkIndex: 0,
+            detectedDate: null,
+            metadata: null,
+          },
+        ],
         pipelineSteps: [{ name: "retrieve", detail: "d" }],
       },
     });
@@ -42,5 +54,27 @@ describe("ExplainabilityPanel", () => {
     );
     expect(screen.getByText("RAG")).toBeInTheDocument();
     expect(screen.getByText("retrieve")).toBeInTheDocument();
+  });
+
+  it("renders runtime telemetry when present", () => {
+    useChatExplainStore.setState({
+      isStreaming: false,
+      lastDone: {
+        answer: "a",
+        queryType: "PLAIN",
+        usedTool: false,
+        toolUsed: null,
+        sources: [],
+        pipelineSteps: [],
+        runtimeTelemetry: { memoryOutcome: "CONDENSED", routingRouteKind: "RETRIEVAL_WORKFLOW_ROUTE" },
+      },
+    });
+    render(
+      <IntlTestProvider>
+        <ExplainabilityPanel />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByTestId("explain-runtime-telemetry")).toBeInTheDocument();
+    expect(screen.getByText("memoryOutcome")).toBeInTheDocument();
   });
 });

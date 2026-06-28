@@ -36,6 +36,11 @@ vi.mock("@/features/documents/hooks/use-project-documents", () => ({
     error: docsState.error,
   }),
   useDeleteProjectDocument: () => ({ mutate: vi.fn(), isPending: false }),
+  useRetryProjectDocumentIngest: () => ({
+    mutate: vi.fn(),
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
+    isPending: false,
+  }),
 }));
 
 vi.mock("@/features/documents/components/DocumentUploadZone", () => ({

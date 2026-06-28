@@ -32,6 +32,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.uniovi.rag.domain.runtime.advisor.AdvisorKind;
+
 class AdvisorPolicyResolverTest {
 
     private final AdvisorPolicyResolver resolver = new AdvisorPolicyResolver();
@@ -67,6 +69,14 @@ class AdvisorPolicyResolverTest {
         assertTrue(d.selected());
         assertEquals(AdvisorDecision.EXECUTABLE_KINDS_5_2, d.executableKinds());
         assertTrue(d.suppressionReason().isEmpty());
+    }
+
+    @Test
+    void executableKinds_excludeMemoryAndClarificationAdvisors() {
+        QueryPlan p = plan(AmbiguityStatus.SUFFICIENT);
+        AdvisorDecision d = resolver.resolve(ctx(rag(true, true), p), p);
+        assertFalse(d.executableKinds().contains(AdvisorKind.MEMORY_ADVISOR));
+        assertFalse(d.executableKinds().contains(AdvisorKind.ROUTING_ADVISOR));
     }
 
     private static RagConfig rag(boolean useAdvisor, boolean useRetrieval) {
@@ -122,6 +132,7 @@ class AdvisorPolicyResolverTest {
                 List.of("all"),
                 Optional.empty(),
                 Optional.of(plan),
+                Optional.empty(),
                 Optional.empty(),
                 "q",
                 "q",

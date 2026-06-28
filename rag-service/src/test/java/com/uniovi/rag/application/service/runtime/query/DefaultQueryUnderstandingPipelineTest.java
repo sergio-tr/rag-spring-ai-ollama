@@ -1,5 +1,7 @@
 package com.uniovi.rag.application.service.runtime.query;
 
+import com.uniovi.rag.testsupport.llm.ChatGenerationModelSelectorTestSupport;
+import com.uniovi.rag.configuration.RagClassifierProperties;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
@@ -21,8 +23,12 @@ import com.uniovi.rag.domain.runtime.query.NormalizedQuery;
 import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
+import com.uniovi.rag.infrastructure.classifier.ClassifierInferenceResponse;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
+import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
+import io.micrometer.tracing.Tracer;
+import org.springframework.beans.factory.ObjectProvider;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,6 +40,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class DefaultQueryUnderstandingPipelineTest {
@@ -158,7 +165,8 @@ class DefaultQueryUnderstandingPipelineTest {
         RagConfig rag = rag(true, true);
 
         QueryClassifier classifier = mock(QueryClassifier.class);
-        when(classifier.classify(anyString())).thenReturn(QueryType.FILTER_AND_LIST);
+        when(classifier.classifyInference(anyString(), eq("cls")))
+                .thenReturn(new ClassifierInferenceResponse("FILTER_AND_LIST", 0.9, null, List.of()));
 
         QueryAnalyser analyser = mock(QueryAnalyser.class);
         when(analyser.analyse(anyString())).thenReturn(new JSONObject("{\"date\":[],\"place\":[],\"attendees\":[],\"topics\":[],\"mentionedEntities\":[],\"answerType\":\"unknown\",\"comparisonType\":\"none\",\"temporalContext\":\"none\"}"));
@@ -177,9 +185,10 @@ class DefaultQueryUnderstandingPipelineTest {
         when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content())
                 .thenReturn(rewriteJson);
 
-        DefaultQueryClassifierAdapter classifierAdapter = new DefaultQueryClassifierAdapter(classifier);
+        DefaultQueryClassifierAdapter classifierAdapter = classifierAdapter(classifier);
         DefaultNamedEntityExtractionAdapter nerAdapter = new DefaultNamedEntityExtractionAdapter(analyser);
-        DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(chatClient);
+        DefaultStructuredQueryRewriter rewriter =
+                new DefaultStructuredQueryRewriter(chatClient, ChatGenerationModelSelectorTestSupport.permissiveMock());
         DefaultQueryIntentResolver intentResolver = new DefaultQueryIntentResolver();
         DefaultExpectedAnswerShapeResolver shapeResolver = new DefaultExpectedAnswerShapeResolver();
         DefaultAmbiguityAssessmentService ambiguity = new DefaultAmbiguityAssessmentService();
@@ -200,6 +209,8 @@ class DefaultQueryUnderstandingPipelineTest {
         // Frozen stage ordering: first seven notes correspond to the QU stages in-order.
         assertTrue(plan.pipelineNotes().get(0).startsWith("qu_normalize "));
         assertTrue(plan.pipelineNotes().get(1).startsWith("qu_classify "));
+        assertTrue(plan.pipelineNotes().get(1).contains("classifierModelId=cls"));
+        verify(classifier).classifyInference("list all items", "cls");
         assertTrue(plan.pipelineNotes().get(2).startsWith("qu_extract_entities "));
         assertTrue(plan.pipelineNotes().get(3).startsWith("qu_rewrite "));
         assertTrue(plan.pipelineNotes().get(4).startsWith("qu_resolve_intent "));
@@ -212,7 +223,7 @@ class DefaultQueryUnderstandingPipelineTest {
         RagConfig rag = rag(false, false);
 
         QueryClassifier classifier = mock(QueryClassifier.class);
-        QueryClassifierAdapter adapter = new DefaultQueryClassifierAdapter(classifier);
+        QueryClassifierAdapter adapter = classifierAdapter(classifier);
 
         var outcome = adapter.classify(ctx(rag, "q"), "q");
         assertEquals("UNCLASSIFIED", outcome.classifierLabel());
@@ -466,6 +477,14 @@ class DefaultQueryUnderstandingPipelineTest {
 
         QueryPlan plan = pipeline.buildPlan(ctx(cfg, "q"));
         assertTrue(plan.pipelineNotes().get(2).contains("qu_status=DISABLED"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static DefaultQueryClassifierAdapter classifierAdapter(QueryClassifier classifier) {
+        ObjectProvider<RuntimeObservability> obs = mock(ObjectProvider.class);
+        ObjectProvider<Tracer> tracer = mock(ObjectProvider.class);
+        RagClassifierProperties props = new RagClassifierProperties();
+        return new DefaultQueryClassifierAdapter(classifier, props, obs, tracer);
     }
 }
 

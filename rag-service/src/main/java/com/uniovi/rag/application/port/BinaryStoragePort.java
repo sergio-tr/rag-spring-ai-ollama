@@ -15,6 +15,11 @@ public interface BinaryStoragePort {
 
     InputStream openStream(String relativeUri) throws IOException;
 
+    /**
+     * {@code true} when {@code relativeUri} resolves to a regular file with size &gt; 0.
+     */
+    boolean isReadableNonEmpty(String relativeUri);
+
     void delete(String relativeUri) throws IOException;
 
     /**

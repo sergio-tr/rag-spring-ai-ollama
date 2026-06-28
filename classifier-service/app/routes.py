@@ -91,6 +91,13 @@ TrainLabelsFileUpload = Annotated[
 ]
 TrainEpochsForm = Annotated[int, Form(description="Training epochs (default 50)")]
 TrainBatchSizeForm = Annotated[int, Form(description="Batch size (default 8)")]
+TrainOwnerIdForm = Annotated[
+    str | None,
+    Form(
+        alias="owner_id",
+        description="Optional RAG user id stored in metadata.json (audit on shared MODELS_DIR)",
+    ),
+]
 
 EvaluateModelIdQuery = Annotated[
     str | None,
@@ -176,6 +183,7 @@ async def train_endpoint(
     labels_file: TrainLabelsFileUpload = None,
     epochs: TrainEpochsForm = 50,
     batch_size: TrainBatchSizeForm = 8,
+    owner_id: TrainOwnerIdForm = None,
 ):
     """Trains a new model from the uploaded dataset and registers it under the given name (tag). Optional labels define class order/whitelist."""
     require_excel_upload(file)
@@ -202,6 +210,7 @@ async def train_endpoint(
             class_names=class_names,
             epochs=epochs,
             batch_size=batch_size,
+            owner_id=(owner_id.strip() if owner_id and owner_id.strip() else None),
         )
         if span:
             span.set_status(Status(StatusCode.OK))

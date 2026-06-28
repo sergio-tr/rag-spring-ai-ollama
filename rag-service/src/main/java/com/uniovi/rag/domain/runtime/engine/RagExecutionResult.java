@@ -3,6 +3,7 @@ package com.uniovi.rag.domain.runtime.engine;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,10 +21,12 @@ public record RagExecutionResult(
         List<UUID> usedKnowledgeSnapshotIds,
         ExecutionTrace executionTrace,
         String toolUsedLabel,
-        QueryType queryTypeForLegacy,
+        QueryType resolvedQueryType,
         boolean usedTool,
         List<ExecutionStageTrace> workflowStageTraces,
-        Optional<RetrievalDiagnostics> retrievalDiagnostics) {
+        Optional<RetrievalDiagnostics> retrievalDiagnostics,
+        List<Map<String, Object>> responseSources,
+        AnswerFinality answerFinality) {
 
     /** Canonical ctor normalizes nullable Optional components (explicit body avoids record compact ctor Sonar noise). */
     public RagExecutionResult(
@@ -36,10 +39,12 @@ public record RagExecutionResult(
             List<UUID> usedKnowledgeSnapshotIds,
             ExecutionTrace executionTrace,
             String toolUsedLabel,
-            QueryType queryTypeForLegacy,
+            QueryType resolvedQueryType,
             boolean usedTool,
             List<ExecutionStageTrace> workflowStageTraces,
-            Optional<RetrievalDiagnostics> retrievalDiagnostics) {
+            Optional<RetrievalDiagnostics> retrievalDiagnostics,
+            List<Map<String, Object>> responseSources,
+            AnswerFinality answerFinality) {
         this.answerText = answerText;
         this.workflowName = workflowName;
         this.retrievalUsed = retrievalUsed;
@@ -50,10 +55,21 @@ public record RagExecutionResult(
         this.usedKnowledgeSnapshotIds = List.copyOf(usedKnowledgeSnapshotIds);
         this.executionTrace = executionTrace;
         this.toolUsedLabel = toolUsedLabel;
-        this.queryTypeForLegacy = queryTypeForLegacy;
+        this.resolvedQueryType = resolvedQueryType;
         this.usedTool = usedTool;
         this.workflowStageTraces = List.copyOf(workflowStageTraces);
         this.retrievalDiagnostics = Objects.requireNonNullElseGet(retrievalDiagnostics, Optional::empty);
+        this.responseSources = List.copyOf(Objects.requireNonNullElseGet(responseSources, List::of));
+        this.answerFinality =
+                Objects.requireNonNullElse(answerFinality, AnswerFinality.STANDARD);
+    }
+
+    public boolean allowPostSynthesisRewrite() {
+        return answerFinality.allowPostSynthesisRewrite();
+    }
+
+    public AnswerSource answerSource() {
+        return answerFinality.answerSource();
     }
 
     public static RagExecutionResult withPlaceholderTrace(
@@ -97,7 +113,9 @@ public record RagExecutionResult(
                 null,
                 false,
                 workflowStageTraces,
-                retrievalDiagnostics);
+                retrievalDiagnostics,
+                List.of(),
+                AnswerFinality.STANDARD);
     }
 
     public RagExecutionResult withFinalTrace(ExecutionTrace finalTrace) {
@@ -111,9 +129,30 @@ public record RagExecutionResult(
                 usedKnowledgeSnapshotIds,
                 finalTrace,
                 toolUsedLabel,
-                queryTypeForLegacy,
+                resolvedQueryType,
                 usedTool,
                 workflowStageTraces,
-                retrievalDiagnostics);
+                retrievalDiagnostics,
+                responseSources,
+                answerFinality);
+    }
+
+    public RagExecutionResult withResponseSources(List<Map<String, Object>> nextSources) {
+        return new RagExecutionResult(
+                answerText,
+                workflowName,
+                retrievalUsed,
+                metadataUsed,
+                usedResolvedConfigSnapshotId,
+                usedConfigHash,
+                usedKnowledgeSnapshotIds,
+                executionTrace,
+                toolUsedLabel,
+                resolvedQueryType,
+                usedTool,
+                workflowStageTraces,
+                retrievalDiagnostics,
+                nextSources,
+                answerFinality);
     }
 }

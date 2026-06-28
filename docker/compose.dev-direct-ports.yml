@@ -1,0 +1,11 @@
+# Host port publishing for dev --rag without --proxy.
+# With --proxy, compose.dev-proxy.yml publishes nginx only; do not add this file.
+
+services:
+  backend-dev:
+    ports:
+      - "${BACKEND_PORT:-9000}:${SERVER_PORT:-9000}"
+
+  webapp:
+    ports:
+      - "${WEBAPP_HTTP_PORT:-80}:${WEBAPP_CONTAINER_PORT:-3000}"

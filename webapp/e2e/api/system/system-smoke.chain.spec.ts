@@ -40,7 +40,14 @@ test.describe.serial("System smoke chain @api @system", () => {
     });
     expect(res.status(), await res.text()).toBe(200);
     const body = (await res.json()) as {
-      datasets?: { enabled?: boolean; questionCount?: number };
+      datasets?: {
+        enabled?: boolean;
+        datasetKindsReady?: boolean;
+      };
+      datasetKindsReady?: boolean;
+      referenceBundleAvailable?: boolean;
+      referenceBundleValid?: boolean;
+      countsByDatasetKind?: Record<string, unknown>;
       evaluations?: Record<string, unknown>;
       classifier?: Record<string, unknown>;
       message?: string;
@@ -48,9 +55,13 @@ test.describe.serial("System smoke chain @api @system", () => {
     expect(body.datasets).toEqual(
       expect.objectContaining({
         enabled: expect.any(Boolean),
-        questionCount: expect.any(Number),
+        datasetKindsReady: expect.any(Boolean),
       }),
     );
+    expect(typeof body.datasetKindsReady).toBe("boolean");
+    expect(typeof body.referenceBundleAvailable).toBe("boolean");
+    expect(typeof body.referenceBundleValid).toBe("boolean");
+    expect(body.countsByDatasetKind).toEqual(expect.any(Object));
     expect(body.evaluations).toEqual(expect.any(Object));
     expect(body.classifier).toEqual(expect.any(Object));
     expect(typeof body.message).toBe("string");
@@ -77,5 +88,5 @@ test.describe.serial("System smoke chain @api @system", () => {
     expect([200, 503]).toContain(res.status());
   });
 
-  // Legacy query smoke intentionally removed (product-only).
+  // Removed query smoke intentionally removed (product-only).
 });

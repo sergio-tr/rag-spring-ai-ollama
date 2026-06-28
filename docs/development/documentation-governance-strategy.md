@@ -40,7 +40,7 @@ docs/
   overview/
   adr/
   development/              # Contributor + governance (guidelines, this strategy)
-  testing/                  # README + topic pages (e.g. legacy tool traceability)
+  testing/                  # README + topic pages (e.g. retired tool traceability)
   performance/              # README — load / micro-benchmark overview
   coverage/
 ```
@@ -92,7 +92,7 @@ docs/
 
 1. **Promote** selected narrative into official paths or merge into existing `docs/**/*.md` as **short** sections + links.
 2. **Update** [documentation-guidelines.md](documentation-guidelines.md) when governance rules change.
-3. **Optional:** Add `docs/_archive/` for thesis PDFs or snapshots if retention is required (clear banner: not maintained).
+3. **Optional:** Add `docs/_archive/` for archived PDFs or snapshots if retention is required (clear banner: not maintained).
 
 ---
 

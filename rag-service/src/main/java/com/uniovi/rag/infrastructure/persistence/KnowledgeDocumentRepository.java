@@ -70,11 +70,15 @@ public interface KnowledgeDocumentRepository extends JpaRepository<KnowledgeDocu
 
     long countByProject_Id(UUID projectId);
 
+    long countByProject_IdAndStatus(UUID projectId, ProjectDocumentStatus status);
+
     long countByProject_IdAndIdIn(UUID projectId, List<UUID> ids);
 
     List<KnowledgeDocumentEntity> findByConversation_IdAndCorpusScope(UUID conversationId, CorpusScope corpusScope);
 
     List<KnowledgeDocumentEntity> findByProject_IdAndCorpusScopeOrderByIdAsc(UUID projectId, CorpusScope corpusScope);
+
+    List<KnowledgeDocumentEntity> findByStatus(ProjectDocumentStatus status);
 
     @Modifying
     @Query(

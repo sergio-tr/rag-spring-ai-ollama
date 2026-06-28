@@ -1,4 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.port.PendingClarificationStore;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
@@ -10,7 +12,10 @@ import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallin
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
+import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.DeterministicToolRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -56,6 +61,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.ObjectProvider;
+
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingExecutionResult;
+import com.uniovi.rag.domain.runtime.routing.RouteExecutionGate;
 
 class RagExecutionOrchestratorClarificationTest {
 
@@ -76,7 +88,7 @@ class RagExecutionOrchestratorClarificationTest {
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
 
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         PendingClarificationStore pendingStore = mock(PendingClarificationStore.class);
@@ -101,12 +113,18 @@ class RagExecutionOrchestratorClarificationTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        judgeStrategy);
+                        MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy(),
+                        mock(FunctionCallingRoutingStrategy.class),
+                        mock(AdvisorRoutingStrategy.class),
+                        judgeStrategy,
+                        mock(StructuredAnswerPlanService.class),
+                        mock(AnswerVerificationService.class),
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         var out = orchestrator.execute(in);
 
         assertThat(out.workflowName()).isEqualTo("clarification");
-        assertThat(out.answerText()).isEqualTo("Which date or meeting are you referring to?");
+        assertThat(out.answerText()).isEqualTo("¿A qué acta o reunión te refieres? Indica la fecha o el documento.");
         assertThat(out.executionTrace().clarificationQuestionAsked()).isTrue();
         assertThat(out.executionTrace().clarificationOutcome()).isEqualTo("ASKED_CLARIFICATION");
 
@@ -150,6 +168,7 @@ class RagExecutionOrchestratorClarificationTest {
                         Optional.empty(),
                         "corr",
                         List.of("all"),
+                        Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
@@ -209,9 +228,11 @@ class RagExecutionOrchestratorClarificationTest {
         ClarificationPolicyResolver clarificationPolicyResolver = mock(ClarificationPolicyResolver.class);
         ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
+        AdvisorRoutingStrategy advisorRoutingStrategy =
+                mock(AdvisorRoutingStrategy.class);
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
 
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         when(clarificationPolicyResolver.resolve(any(), any()))
@@ -239,6 +260,25 @@ class RagExecutionOrchestratorClarificationTest {
                 .thenReturn(
                         new AdvisorDecision(
                                 AdvisorMode.ENABLED, false, List.of(), "", List.of(), Optional.empty()));
+        when(advisorRoutingStrategy.execute(any(), any()))
+                .thenReturn(
+                        new AdaptiveRoutingExecutionResult(
+                                AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED,
+                                true,
+                                AdaptiveRouteKind.ADVISOR_ROUTE,
+                                false,
+                                Optional.empty(),
+                                false,
+                                new RouteExecutionGate(
+                                        AdaptiveRouteKind.ADVISOR_ROUTE,
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        Optional.empty(),
+                                        false),
+                                List.of()));
 
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
@@ -254,7 +294,13 @@ class RagExecutionOrchestratorClarificationTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        judgeStrategy);
+                        MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy(),
+                        mock(FunctionCallingRoutingStrategy.class),
+                        advisorRoutingStrategy,
+                        judgeStrategy,
+                        mock(StructuredAnswerPlanService.class),
+                        mock(AnswerVerificationService.class),
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         orchestrator.execute(merged);
 
@@ -317,6 +363,7 @@ class RagExecutionOrchestratorClarificationTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 "when is it",
                 "when is it",
                 Optional.empty(),
@@ -358,6 +405,7 @@ class RagExecutionOrchestratorClarificationTest {
                 ctx.chatModelOverride(),
                 Optional.of(plan),
                 Optional.empty(),
+                ctx.structuredAnswerPlan(),
                 ctx.preMemoryPlanningInputText(),
                 ctx.effectivePlanningInputText(),
                 ctx.memorySlice(),

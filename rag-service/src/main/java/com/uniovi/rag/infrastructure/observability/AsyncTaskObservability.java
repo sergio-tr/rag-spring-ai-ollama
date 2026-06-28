@@ -1,5 +1,6 @@
 package com.uniovi.rag.infrastructure.observability;
 
+import com.uniovi.rag.application.service.evaluation.async.LabJobPayloadKeys;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 
@@ -42,6 +43,26 @@ public final class AsyncTaskObservability {
         if (task.getProject() != null) {
             m.put("rag.project_id", task.getProject().getId().toString());
         }
+        UUID evaluationRunId = parseEvaluationRunId(task.getRequestPayload());
+        if (evaluationRunId != null) {
+            m.put("rag.evaluation_run_id", evaluationRunId.toString());
+            m.put("runId", evaluationRunId.toString());
+        }
         return m;
+    }
+
+    private static UUID parseEvaluationRunId(Map<String, Object> payload) {
+        if (payload == null) {
+            return null;
+        }
+        Object raw = payload.get(LabJobPayloadKeys.EVALUATION_RUN_ID);
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return UUID.fromString(String.valueOf(raw));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 }

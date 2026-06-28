@@ -39,7 +39,7 @@ class EvaluationService(TracedService):
         path = (eval_dataset_path or "").strip() or self._config.get_default_eval_dataset_path()
         if not Path(path).exists():
             raise EvaluationError(
-                f"Evaluation dataset not found: {path}. Upload a file or set DATA_DIR with evaluation_dataset.xlsx."
+                f"Evaluation dataset not found: {path}. Upload a file or place a dataset under DATA_DIR."
             )
         return self.run_traced(
             "classifier.service.evaluate",

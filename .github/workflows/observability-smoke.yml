@@ -1,4 +1,4 @@
-# Legacy compose filename regression + schedule. Full compose validation: docker-compose-ci.yml.
+# Obsolete compose filename regression + schedule. Full compose validation: docker-compose-ci.yml.
 # Schedule / manual — does not block PR merges by default.
 name: Observability smoke
 
@@ -27,5 +27,5 @@ jobs:
               exit 1
             fi
           done
-          echo "OK: no legacy compose fragment files under docker/."
+          echo "OK: no obsolete compose fragment files under docker/."
 

@@ -8,12 +8,15 @@ import { NewProjectDialog } from "./NewProjectDialog";
 
 const createHook = vi.hoisted(() => ({
   mutateAsync: vi.fn().mockResolvedValue({
-    id: "p1",
-    name: "N",
-    docCount: 0,
-    convCount: 0,
-    updatedAt: "",
+    project: {
+      id: "p1",
+      name: "N",
+      docCount: 0,
+      convCount: 0,
+      updatedAt: "",
+    },
   }),
+  reset: vi.fn(),
   isPending: false,
   isError: false,
 }));
@@ -21,6 +24,7 @@ const createHook = vi.hoisted(() => ({
 vi.mock("@/features/projects/hooks/use-projects", () => ({
   useCreateProject: () => ({
     mutateAsync: createHook.mutateAsync,
+    reset: createHook.reset,
     isPending: createHook.isPending,
     isError: createHook.isError,
   }),
@@ -50,7 +54,17 @@ describe("NewProjectDialog", () => {
     await user.click(screen.getByRole("button", { name: /^New project$/i }));
     await user.type(screen.getByLabelText(/^Name$/i), "My project");
     await user.click(screen.getByRole("button", { name: /^Create$/i }));
-    await vi.waitFor(() => expect(createHook.mutateAsync).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(createHook.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "My project",
+          initialIndexProfile: expect.objectContaining({
+            materializationStrategy: "CHUNK_LEVEL",
+            metadataEnabled: false,
+          }),
+        }),
+      ),
+    );
   });
 
   it("shows validation error when name is empty", async () => {

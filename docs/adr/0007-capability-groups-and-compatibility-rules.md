@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The codebase uses **feature flags** and layered configuration. A flat flag forest leads to **inconsistent** combinations and unmaintainable conditionals, harming reproducibility for Lab and thesis defence.
+The codebase uses **feature flags** and layered configuration. A flat flag forest leads to **inconsistent** combinations and unmaintainable conditionals, harming reproducibility for Lab.
 
 ## Decision
 
@@ -18,7 +18,7 @@ The codebase uses **feature flags** and layered configuration. A flat flag fores
 
 - Configuration UI and APIs should converge on **capabilities and presets** over time.
 - Invalid combinations must be **rejected or degraded** with explicit traces, not silent fallthrough.
-- Legacy paths without real use remain subject to removal policy in [target-architecture.md](../architecture/target-architecture.md).
+- Alternate HTTP paths without real use remain subject to removal policy in [target-architecture.md](../architecture/target-architecture.md).
 
 ## References
 

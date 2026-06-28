@@ -20,7 +20,11 @@ import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import org.junit.jupiter.api.Test;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import org.springframework.ai.chat.client.ChatClient;
+
+import com.uniovi.rag.configuration.RagRuntimeProperties;
 
 import java.util.List;
 import java.util.Map;
@@ -39,19 +43,17 @@ class FullCorpusWorkflowTest {
 
     @Test
     void execute_assemblesCorpus_andInvokesChat_andReturnsPlaceholderTraceResult() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("answer");
-
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
         SnapshotCorpusAssembler assembler = mock(SnapshotCorpusAssembler.class);
         when(assembler.assembleFullCorpusText(any(ExecutionContext.class)))
                 .thenReturn("CORPUS");
 
-        FullCorpusWorkflow wf = new FullCorpusWorkflow(chatClient, assembler, null);
+        FullCorpusWorkflow wf = new FullCorpusWorkflow(llmChatInvoker, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), null);
 
         ExecutionContext ctx = minimalCtx();
         RagExecutionResult out = wf.execute(ctx);
 
-        assertThat(out.answerText()).isEqualTo("answer");
+        assertThat(out.answerText()).isEqualTo("ANS");
         verify(assembler).assembleFullCorpusText(any(ExecutionContext.class));
     }
 

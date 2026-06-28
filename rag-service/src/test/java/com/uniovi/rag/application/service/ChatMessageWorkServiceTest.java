@@ -7,6 +7,9 @@ import com.uniovi.rag.infrastructure.persistence.MessageRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
+import com.uniovi.rag.application.result.chat.ChatSource;
+import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,6 +17,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -37,6 +41,9 @@ class ChatMessageWorkServiceTest {
 
     @Mock
     private ConversationRepository conversationRepository;
+
+    @Mock
+    private ObjectProvider<RuntimeObservability> runtimeObservability;
 
     @InjectMocks
     private ChatMessageWorkService chatMessageWorkService;
@@ -67,7 +74,8 @@ class ChatMessageWorkServiceTest {
         when(messageRepository.findById(assistantId)).thenReturn(Optional.of(m));
         when(conversationRepository.findById(convId)).thenReturn(Optional.of(conv));
 
-        List<Map<String, Object>> sources = List.of(Map.of("id", "d1"));
+        List<ChatSource> sources =
+                List.of(new ChatSource("d1", null, "f.pdf", "snip", 0.12, "distance", 3, null, null));
         chatMessageWorkService.applyAssistantSuccess(
                 assistantId,
                 convId,
@@ -80,7 +88,7 @@ class ChatMessageWorkServiceTest {
                 Duration.ofMillis(1500));
 
         assertThat(m.getContent()).isEqualTo("answer");
-        assertThat(m.getSources()).isEqualTo(sources);
+        assertThat(m.getSources()).isEqualTo(ChatSourceMapper.toPersistedMapsFromInternal(sources));
         assertThat(m.getQueryType()).isEqualTo("COUNT");
         assertThat(m.getTraceId()).isEqualTo("trace-1");
         assertThat(m.getStatus()).isEqualTo(MessageProcessingStatus.DONE);
@@ -89,6 +97,32 @@ class ChatMessageWorkServiceTest {
         assertThat(meta).containsEntry("durationMs", 1500L);
         assertThat(meta).containsEntry("documentCount", 1);
         verify(conversationRepository).save(conv);
+    }
+
+    @Test
+    void applyAssistantSuccess_mergesChatTelemetryIntoExecutionMetadata() {
+        UUID assistantId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        MessageEntity m = new MessageEntity();
+        ConversationEntity conv = mock(ConversationEntity.class);
+        when(messageRepository.findById(assistantId)).thenReturn(Optional.of(m));
+        when(conversationRepository.findById(convId)).thenReturn(Optional.of(conv));
+
+        chatMessageWorkService.applyAssistantSuccess(
+                assistantId,
+                convId,
+                "answer",
+                List.of(),
+                "PLAIN",
+                "trace-9",
+                List.of(),
+                "llama",
+                Duration.ofMillis(1),
+                Map.of("memoryAttempted", true, "memoryOutcome", "CONDENSED"));
+
+        assertThat(m.getExecutionMetadata())
+                .containsEntry("memoryAttempted", true)
+                .containsEntry("memoryOutcome", "CONDENSED");
     }
 
     @Test

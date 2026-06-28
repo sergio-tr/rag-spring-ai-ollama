@@ -1,6 +1,6 @@
 package com.uniovi.rag.interfaces.rest;
 
-import com.uniovi.rag.application.service.KnowledgeLegacyBackfillService;
+import com.uniovi.rag.application.service.KnowledgeVectorMetadataBackfillService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -8,6 +8,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -24,23 +25,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ContextConfiguration(classes = RagWebMvcTestApplication.class)
 @AutoConfigureMockMvc(addFilters = false)
 @Import(AdminKnowledgeController.class)
+@TestPropertySource(properties = "rag.api.product-base-path=/api/v5")
 class AdminKnowledgeControllerWebMvcTest {
 
     @Autowired
     private MockMvc mockMvc;
 
     @MockitoBean
-    private KnowledgeLegacyBackfillService knowledgeLegacyBackfillService;
+    private KnowledgeVectorMetadataBackfillService knowledgeVectorMetadataBackfillService;
 
     @Test
-    void backfillLegacy_returnsUpdatedRows() throws Exception {
+    void backfillVectorMetadata_returnsUpdatedRows() throws Exception {
         UUID projectId = UUID.randomUUID();
-        when(knowledgeLegacyBackfillService.backfillProject(eq(projectId))).thenReturn(3);
+        when(knowledgeVectorMetadataBackfillService.backfillProject(eq(projectId))).thenReturn(3);
 
-        mockMvc.perform(post("/api/admin/knowledge/backfill-legacy").param("projectId", projectId.toString()))
+        mockMvc.perform(post("/api/v5/admin/knowledge/backfill-vector-metadata").param("projectId", projectId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.updatedRows").value(3));
 
-        verify(knowledgeLegacyBackfillService).backfillProject(projectId);
+        verify(knowledgeVectorMetadataBackfillService).backfillProject(projectId);
     }
 }

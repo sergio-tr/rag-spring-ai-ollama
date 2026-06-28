@@ -5,20 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-QUERY_TYPES_ALLOWED = {
-    "COUNT_DOCUMENTS",
-    "EXTRACT_ENTITIES",
-    "COUNT_AND_EXPLAIN",
-    "FIND_PARAGRAPH",
-    "DECISION_EXTRACTION",
-    "GET_DURATION",
-    "GET_FIELD",
-    "SUMMARIZE_TOPIC",
-    "SUMMARIZE_MEETING",
-    "BOOLEAN_QUERY",
-    "FILTER_AND_LIST",
-    "COMPARE",
-}
+from app.query_type_contract import JAVA_QUERY_TYPES
+
+QUERY_TYPES_ALLOWED = JAVA_QUERY_TYPES
 
 
 def test_health_returns_200(client: TestClient):

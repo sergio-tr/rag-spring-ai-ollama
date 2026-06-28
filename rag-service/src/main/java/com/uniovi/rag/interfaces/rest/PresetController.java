@@ -4,7 +4,7 @@ import com.uniovi.rag.interfaces.rest.dto.CreateRagPresetRequest;
 import com.uniovi.rag.interfaces.rest.dto.RagPresetDto;
 import com.uniovi.rag.interfaces.rest.dto.UpdateRagPresetRequest;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.preset.PresetService;
+import com.uniovi.rag.application.service.preset.PresetService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;

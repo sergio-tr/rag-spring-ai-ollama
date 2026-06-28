@@ -30,6 +30,7 @@ export function useActivateClassifierModel() {
     onSuccess: (_, variables) => {
       void qc.invalidateQueries({ queryKey: classifierModelsQueryKey });
       void qc.invalidateQueries({ queryKey: ["config", "project", variables.body.projectId] });
+      void qc.invalidateQueries({ queryKey: ["chat-runtime-state"] });
     },
   });
 }

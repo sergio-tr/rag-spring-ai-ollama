@@ -1,4 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
@@ -8,7 +10,10 @@ import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallin
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
+import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.DeterministicToolRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -37,6 +42,8 @@ import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
 import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
 import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
+import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
+import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
@@ -55,6 +62,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.ObjectProvider;
+
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy;
 
 class RagExecutionOrchestratorMemoryTest {
 
@@ -73,7 +85,7 @@ class RagExecutionOrchestratorMemoryTest {
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
         JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
 
-        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString(), any()))
                 .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         RagExecutionOrchestrator orchestrator =
@@ -90,7 +102,13 @@ class RagExecutionOrchestratorMemoryTest {
                         clarificationPolicy,
                         clarificationStrategy,
                         routingStrategy,
-                        judgeStrategy);
+                        MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy(),
+                        mock(FunctionCallingRoutingStrategy.class),
+                        mock(AdvisorRoutingStrategy.class),
+                        judgeStrategy,
+                        mock(StructuredAnswerPlanService.class),
+                        mock(AnswerVerificationService.class),
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         ExecutionStageTrace mem1 =
                 new ExecutionStageTrace(
@@ -117,6 +135,11 @@ class RagExecutionOrchestratorMemoryTest {
 
         QueryPlan plan = mock(QueryPlan.class);
         when(plan.pipelineNotes()).thenReturn(List.of());
+        when(plan.normalizedQueryText()).thenReturn("q");
+        when(plan.rewrittenQueryText()).thenReturn("q");
+        when(plan.rawUserQuery()).thenReturn("q");
+        when(plan.ambiguityAssessment())
+                .thenReturn(new AmbiguityAssessment(AmbiguityStatus.SUFFICIENT, List.of(), List.of()));
         when(qu.buildPlan(in)).thenReturn(plan);
         when(factory.attachQueryPlan(in, plan)).thenReturn(in);
 
@@ -216,6 +239,7 @@ class RagExecutionOrchestratorMemoryTest {
                 Optional.empty(),
                 "corr",
                 List.of("all"),
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),

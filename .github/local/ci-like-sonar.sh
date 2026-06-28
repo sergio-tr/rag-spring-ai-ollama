@@ -44,12 +44,12 @@ if git rev-parse --is-shallow-repository 2>/dev/null | grep -q true; then
   echo "WARN: Shallow clone. SonarCloud needs full history for blame/new code. Run: git fetch --unshallow" >&2
 fi
 
-export SPRING_DATASOURCE_URL="${SPRING_DATASOURCE_URL:-jdbc:postgresql://localhost:5432/vectordb}"
+export SPRING_DATASOURCE_URL="${SPRING_DATASOURCE_URL:-jdbc:postgresql://localhost:${RAG_LOCAL_POSTGRES_PORT}/vectordb}"
 export SPRING_DATASOURCE_USERNAME="${SPRING_DATASOURCE_USERNAME:-postgres}"
 export SPRING_DATASOURCE_PASSWORD="${SPRING_DATASOURCE_PASSWORD:-postgres}"
 export RAG_JWT_SECRET="${RAG_JWT_SECRET:-test-secret-key-for-jwt-signing-must-be-long-enough-32}"
 export RAG_TEST_USE_TESTCONTAINERS_DATASOURCE="${RAG_TEST_USE_TESTCONTAINERS_DATASOURCE:-false}"
-export INTEGRATION_JDBC_URL="${INTEGRATION_JDBC_URL:-jdbc:postgresql://localhost:5432/testdb}"
+export INTEGRATION_JDBC_URL="${INTEGRATION_JDBC_URL:-jdbc:postgresql://localhost:${RAG_LOCAL_POSTGRES_PORT}/testdb}"
 export MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED="${MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED:-false}"
 
 # If default `java` is < 21 but OpenJDK 21 is installed under /usr/lib/jvm (typical apt layout), use it for this script.
@@ -109,7 +109,7 @@ require_jdk21() {
   local line
   line=$(java -version 2>&1 | head -n 1)
   if [[ "$line" =~ version\ \"1\.[0-9]+\. ]]; then
-    echo "ERROR: JDK 21+ required; found legacy ${line}" >&2
+    echo "ERROR: JDK 21+ required; found outdated JDK ${line}" >&2
     print_java21_hint
     exit 1
   fi
@@ -187,12 +187,12 @@ prepare_postgres() {
       docker start "${CONTAINER_NAME}"
     fi
   else
-    echo "Creating container ${CONTAINER_NAME} (${IMAGE}) on port 5432..."
+    echo "Creating container ${CONTAINER_NAME} (${IMAGE}) on port ${RAG_LOCAL_POSTGRES_PORT}..."
     docker run -d --name "${CONTAINER_NAME}" \
       -e POSTGRES_USER=postgres \
       -e POSTGRES_PASSWORD=postgres \
       -e POSTGRES_DB=vectordb \
-      -p 5432:5432 \
+      -p "${RAG_LOCAL_POSTGRES_PORT}:5432" \
       "${IMAGE}"
   fi
 
@@ -234,13 +234,17 @@ chmod +x rag-service/mvnw
 echo "==> Classifier: pytest + coverage.xml"
 (
   cd classifier-service
-  python -m pip install -r requirements.txt
+  CLASSIFIER_PYTHON="python3"
+  if command -v python3.11 >/dev/null 2>&1; then
+    CLASSIFIER_PYTHON="python3.11"
+  fi
+  "${CLASSIFIER_PYTHON}" -m pip install -r requirements.txt
   export MODELS_DIR=./models
   export DATA_DIR=./data
-  python -m pytest tests/unit tests/regression/test_baseline_lib.py \
+  "${CLASSIFIER_PYTHON}" -m pytest tests/unit tests/regression/test_baseline_lib.py \
     -m "not integration and not slow" \
     -v
-  python scripts/patch_coverage_xml_for_sonar.py
+  "${CLASSIFIER_PYTHON}" scripts/patch_coverage_xml_for_sonar.py
 )
 
 echo "==> Webapp: Vitest coverage (lcov.info)"

@@ -48,7 +48,7 @@ describe("LabBackgroundJobBanner", () => {
   beforeEach(() => {
     push.mockClear();
     sessionStorage.removeItem("rag-lab-jobs");
-    useLabJobSessionStore.setState({ records: [], pendingResume: null, resumeNonce: 0 });
+    useLabJobSessionStore.setState({ records: [], pendingResume: null, resumeNonce: 0, forgetWatchNonce: 0 });
     useLabJobSessionStore.persist.clearStorage();
   });
 
@@ -103,5 +103,36 @@ describe("LabBackgroundJobBanner", () => {
     await user.click(screen.getByRole("button", { name: /Resume watching/i }));
     expect(useLabJobSessionStore.getState().resumeNonce).toBeGreaterThan(0);
     expect(push).toHaveBeenCalledWith("/lab/classifier");
+  });
+
+  it("stop watching clears session record and bumps forget nonce", async () => {
+    const user = userEvent.setup();
+    useLabJobSessionStore.setState({
+      records: [
+        makeRecord({
+          jobId: "job-live",
+          sectionKey: "evaluation-llm",
+          lastStatus: {
+            id: "job-live",
+            taskType: "LAB",
+            status: "RUNNING",
+            terminal: false,
+            progressText: null,
+            errorMessage: null,
+            failureCode: null,
+            result: null,
+          },
+        }),
+      ],
+      forgetWatchNonce: 0,
+    });
+    render(
+      <IntlTestProvider>
+        <LabBackgroundJobBanner />
+      </IntlTestProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /Stop watching/i }));
+    expect(useLabJobSessionStore.getState().records).toHaveLength(0);
+    expect(useLabJobSessionStore.getState().forgetWatchNonce).toBe(1);
   });
 });

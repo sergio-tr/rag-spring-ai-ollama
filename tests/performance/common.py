@@ -13,7 +13,7 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class LegacyRequestRecord:
+class HistoricalQueryRequestRecord:
     question: str
     ok: bool
     status_code: int | None

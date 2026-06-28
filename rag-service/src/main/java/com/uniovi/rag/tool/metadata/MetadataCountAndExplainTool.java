@@ -3,8 +3,8 @@ package com.uniovi.rag.tool.metadata;
 import com.uniovi.rag.domain.model.Explanation;
 import com.uniovi.rag.domain.model.ExplanationCluster;
 import com.uniovi.rag.domain.model.Minute;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
 import org.json.JSONObject;
@@ -42,20 +42,56 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         JSONObject ner = ctx.nerEntities();
         
         log().info("Executing count and explain query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+
+        if (StructuredMinuteMetadataSupport.isCorpusWideExactAttendeeCountQuery(query)) {
+            Optional<Integer> exactCount =
+                    StructuredMinuteMetadataSupport.extractExactAttendeeCountFromQuery(query);
+            if (exactCount.isPresent()) {
+                List<Document> corpusDocs =
+                        retrieveCorpusDocumentsWithFallback(query, COUNT_EXPLAIN_RETRIEVAL_FIELDS);
+                List<Minute> corpusMinutes =
+                        corpusDocs.isEmpty()
+                                ? List.of()
+                                : mergeMinutesByDocumentId(extractMinutesInParallel(corpusDocs));
+                boolean hasExact =
+                        corpusMinutes.stream()
+                                .anyMatch(
+                                        minute ->
+                                                StructuredMinuteMetadataSupport.resolveAttendeeCount(minute)
+                                                        == exactCount.get());
+                if (!hasExact) {
+                    String negative =
+                            StructuredMinuteMetadataSupport.formatExactAttendeeCountCorpusNegative(
+                                    exactCount.get(), corpusMinutes);
+                    log().info(
+                            "Exact attendee count negative for {} (no corpus match among {} actas)",
+                            exactCount.get(),
+                            corpusMinutes.size());
+                    return ToolResult.from(formatResponse(negative, query), getClass());
+                }
+            }
+        }
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
-        List<Document> docs = retrieveDocumentsWithFallback(query, COUNT_EXPLAIN_RETRIEVAL_FIELDS, ner);
+        List<Document> docs =
+                StructuredMinuteMetadataSupport.isTopicOccurrenceAcrossActasQuery(query)
+                        ? retrieveCorpusDocumentsWithFallback(query, COUNT_EXPLAIN_RETRIEVAL_FIELDS)
+                        : retrieveDocumentsWithFallback(query, COUNT_EXPLAIN_RETRIEVAL_FIELDS, ner);
 
         ToolResult missing = notFoundIfEmptyDocuments(query, docs, QUERY_STAGE_COUNT_AND_EXPLAIN);
         if (missing != null) {
             return missing;
         }
 
-        // Step 2: Extract minutes in parallel
-        List<Minute> minutes = extractMinutesInParallel(docs);
+        // Step 2: Extract minutes in parallel (deduped by acta)
+        List<Minute> minutes = mergeMinutesByDocumentId(extractMinutesInParallel(docs));
         missing = notFoundIfEmptyMinutes(query, minutes, QUERY_STAGE_COUNT_AND_EXPLAIN);
         if (missing != null) {
             return missing;
+        }
+
+        if (StructuredMinuteMetadataSupport.isTopicOccurrenceAcrossActasQuery(query)) {
+            return answerTopicOccurrenceAcrossActas(query, minutes, ner);
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
@@ -468,6 +504,31 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         }
         
         return summary.toString();
+    }
+
+    private ToolResult answerTopicOccurrenceAcrossActas(String query, List<Minute> minutes, JSONObject ner) {
+        String topic = extractTopicFromQuery(query, ner);
+        if (topic == null || topic.isBlank()) {
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        }
+        List<Minute> relevant = filterRelevantMinutes(query, minutes, ner);
+        List<Minute> matching =
+                relevant.stream()
+                        .filter(minute ->
+                                StructuredMinuteMetadataSupport.minuteDiscussesTopicForOccurrence(
+                                        minute, topic))
+                        .toList();
+        if (matching.isEmpty()) {
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        }
+        String answer =
+                StructuredMinuteMetadataSupport.formatTopicOccurrenceCountAndExplainAnswer(
+                        query, topic, matching);
+        log().info(
+                "Structured topic occurrence answer for '{}': {} matching acta(s)",
+                topic,
+                matching.size());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
 }

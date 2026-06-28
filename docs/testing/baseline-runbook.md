@@ -76,7 +76,48 @@ npm run build         # next build
 
 ---
 
-## 4. Sonar Cloud inputs (G4)
+## 4. Stack integration (strict, no false-green)
+
+Stack integration (pytest under `tests/integration/`) is **not** a unit gate. For closure-grade evidence, run it in **strict mode** so unreachable services cause **failures**, not skips.
+
+**Preferred closure command (CI-like containers):**
+
+```bash
+# Strict by default; writes a full pytest log to /tmp/pytest-integration-ci-like.log
+.github/local/run-integration-ci-like.sh
+```
+
+**Closure policy:** a run where **all tests are skipped** is **invalid** (false-green). The script enforces this by parsing the pytest output log and failing when `skipped == collected`.
+
+**Optional strictness knobs:**
+
+- `INTEGRATION_STRICT=1` (default in the script): fail on unreachable services
+- `INTEGRATION_REQUIRE_CLASSIFIER=1`: require classifier reachability in this run
+
+**Artifacts (for evidence):**
+
+- `/tmp/pytest-integration-ci-like.log`
+- container logs on failure: `docker logs rag-ci-backend`, `docker logs rag-ci-classifier`
+
+---
+
+## 5. E2E fullstack (Playwright `@fullstack`)
+
+**Preferred closure command (proxy-mode parity):**
+
+```bash
+.github/local/run-e2e-fullstack-ci-like.sh
+```
+
+**Evidence artifacts:**
+
+- `webapp/playwright-report/`
+- Playwright traces/screenshots (when enabled by config)
+- `/tmp/webapp-e2e.log` and `/tmp/proxy-e2e.log` (script defaults)
+
+---
+
+## 6. Sonar Cloud inputs (G4)
 
 Sonar does **not** replace local gates; it aggregates reports produced by the steps above.
 
@@ -95,7 +136,7 @@ See also [../development/sonar-local-analysis.md](../development/sonar-local-ana
 
 ---
 
-## 5. Where to record results
+## 7. Where to record results
 
 Update the **Baseline execution record** table in [../quality/README.md](../quality/README.md) when you re-run on a new commit or toolchain.
 

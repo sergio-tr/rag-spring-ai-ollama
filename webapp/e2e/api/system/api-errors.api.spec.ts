@@ -1,12 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { authHeaders, loginAndGetToken } from "../fixtures/auth";
-import { apiBaseUrl, integrationCredentials, productUrl } from "../fixtures/env";
+import { integrationCredentials, productUrl } from "../fixtures/env";
 import { parseJsonExpectNonHtml } from "../fixtures/json-contract";
 
 test.describe("API error contracts @api", () => {
-  test("unknown /api route returns JSON 404", async ({ request }) => {
-    const res = await request.get(`${apiBaseUrl()}/api/does-not-exist`, {
-      headers: { Accept: "application/json" },
+  test("authenticated unknown product API route returns JSON 404", async ({ request }) => {
+    const { email, password } = integrationCredentials();
+    const token = await loginAndGetToken(request, email, password);
+    const res = await request.get(productUrl("/does-not-exist"), {
+      headers: { ...authHeaders(token), Accept: "application/json" },
     });
     expect(res.status()).toBe(404);
     const ct = res.headers()["content-type"] ?? "";

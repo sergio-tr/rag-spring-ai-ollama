@@ -15,6 +15,7 @@ import com.uniovi.rag.domain.knowledge.KnowledgeOperationKind;
 import com.uniovi.rag.domain.knowledge.KnowledgeReindexKind;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -22,6 +23,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -49,8 +52,48 @@ class KnowledgeConfigurationIntegrationServiceTest {
     @Mock
     private ReindexService reindexService;
 
+    @Mock
+    private KnowledgeSnapshotService knowledgeSnapshotService;
+
     @InjectMocks
     private KnowledgeConfigurationIntegrationService knowledgeConfigurationIntegrationService;
+
+    @Test
+    void computeReindexDecision_metadataRequiredButSnapshotWithoutMetadata_forcesHardRebuild() {
+        UUID projectId = UUID.randomUUID();
+        KnowledgeBuildProjection projection =
+                new KnowledgeBuildProjection(
+                        1,
+                        MaterializationStrategy.CHUNK_LEVEL,
+                        400,
+                        0,
+                        "embed",
+                        true,
+                        ReindexImpact.none(),
+                        null,
+                        "abc");
+        KnowledgeIndexSnapshotEntity snap = new KnowledgeIndexSnapshotEntity();
+        snap.setIndexProfileJsonb(
+                Map.of(
+                        "materializationStrategy",
+                        "CHUNK_LEVEL",
+                        "supportsMetadata",
+                        false,
+                        "embeddingModelId",
+                        "mxbai-embed-large:latest",
+                        "chunkMaxChars",
+                        400));
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(projectId)).thenReturn(Optional.of(snap));
+        when(knowledgePipelineOrchestrator.hasReadyDocumentsInScope(
+                        projectId, CorpusScope.PROJECT_SHARED, null))
+                .thenReturn(true);
+
+        var decision =
+                knowledgeConfigurationIntegrationService.computeReindexDecision(
+                        projection, CorpusScope.PROJECT_SHARED, null, projectId);
+
+        assertThat(decision.kind()).isEqualTo(KnowledgeReindexKind.HARD_REBUILD);
+    }
 
     @Test
     void previewRebuild_doesNotPersistResolvedConfigSnapshot() {

@@ -16,15 +16,25 @@ import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryExecutionResult;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
+import com.uniovi.rag.domain.runtime.reasoning.StructuredAnswerPlan;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
-import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
+import com.uniovi.rag.application.service.runtime.config.MaterializationAwareSnapshotResolver;
+import com.uniovi.rag.application.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.exception.llm.LlmSafeOperationLogger;
+import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
 import io.micrometer.tracing.Tracer;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -36,6 +46,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ExecutionContextFactory {
 
+    private static final Logger log = LoggerFactory.getLogger(ExecutionContextFactory.class);
+
     private final RuntimeConfigResolutionService runtimeConfigResolutionService;
     private final KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector;
     private final ChatScopedRagConfigResolver chatScopedRagConfigResolver;
@@ -43,6 +55,7 @@ public class ExecutionContextFactory {
     private final Tracer tracer;
     private final ClarificationStateResolver clarificationStateResolver;
     private final ConversationMemoryStrategy conversationMemoryStrategy;
+    private final ResolvedLlmConfigResolver resolvedLlmConfigResolver;
 
     public ExecutionContextFactory(
             RuntimeConfigResolutionService runtimeConfigResolutionService,
@@ -51,6 +64,7 @@ public class ExecutionContextFactory {
             ModelCatalogPort modelCatalogPort,
             ClarificationStateResolver clarificationStateResolver,
             ConversationMemoryStrategy conversationMemoryStrategy,
+            ResolvedLlmConfigResolver resolvedLlmConfigResolver,
             @Autowired(required = false) Tracer tracer) {
         this.runtimeConfigResolutionService = runtimeConfigResolutionService;
         this.knowledgeRuntimeSnapshotSelector = knowledgeRuntimeSnapshotSelector;
@@ -58,6 +72,7 @@ public class ExecutionContextFactory {
         this.modelCatalogPort = modelCatalogPort;
         this.clarificationStateResolver = clarificationStateResolver;
         this.conversationMemoryStrategy = conversationMemoryStrategy;
+        this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
         this.tracer = tracer;
     }
 
@@ -91,9 +106,17 @@ public class ExecutionContextFactory {
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         userId, projectId, merged, correlationId);
+        Optional<UUID> presetId =
+                resolved.provenance() != null && resolved.provenance().presetId() != null
+                        ? Optional.of(resolved.provenance().presetId())
+                        : Optional.empty();
+        ExperimentalPresetCanonicalCatalog.IndexRequirements indexRequirements =
+                MaterializationAwareSnapshotResolver.requirementsFromPresetAndRag(
+                        presetId, resolved.toRagConfig());
         KnowledgeSnapshotSelection snapshots =
-                knowledgeRuntimeSnapshotSelector.select(projectId, conversationId);
+                knowledgeRuntimeSnapshotSelector.select(projectId, conversationId, indexRequirements);
         List<String> filter = copyDocumentFilter(documentFilter);
+        bindResolvedLlmConfig(userId, projectId, resolved, merged, model);
         return buildWithClarification(
                 userId,
                 projectId,
@@ -108,21 +131,37 @@ public class ExecutionContextFactory {
                 originatingUserMessageId);
     }
 
-    public ExecutionContext buildForLegacyHttp(String rawUserQuery, String chatModelOverride) {
+    /** Lab evaluation and other HTTP-scoped turns without a conversation (uses thread-local lab context when set). */
+    public ExecutionContext buildForHttpQuery(String rawUserQuery, String chatModelOverride) {
         String correlationId =
                 Optional.ofNullable(TraceMdcBridge.currentCorrelationTraceId(tracer))
                         .orElseGet(() -> UUID.randomUUID().toString());
         Optional<String> model = validateAndNormalizeChatModel(chatModelOverride);
+        JsonNode benchmarkTerminal =
+                LabBenchmarkExecutionContext.currentTerminalOverride().orElse(null);
+        LabBenchmarkExecutionContext.LabRuntimeContext labCtx =
+                LabBenchmarkExecutionContext.currentLabRuntimeContext().orElse(null);
+        UUID projectId = labCtx != null ? labCtx.projectId() : null;
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(
-                        null, null, null, correlationId);
-        KnowledgeSnapshotSelection snapshots = knowledgeRuntimeSnapshotSelector.select(null, null);
+                        null, projectId, benchmarkTerminal, correlationId);
+        KnowledgeSnapshotSelection snapshots;
+        if (labCtx != null && labCtx.snapshotIds() != null && !labCtx.snapshotIds().isEmpty()) {
+            snapshots = knowledgeRuntimeSnapshotSelector.selectExplicit(projectId, labCtx.snapshotIds());
+        } else if (labCtx != null && labCtx.forcedSnapshotSelection()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "LAB_FORCED_SNAPSHOT_SELECTION_REQUIRES_SNAPSHOT_IDS");
+        } else {
+            snapshots = knowledgeRuntimeSnapshotSelector.select(projectId, null);
+        }
+        bindResolvedLlmConfig(null, projectId, resolved, benchmarkTerminal, model);
         return buildWithClarification(
                 null,
-                null,
+                projectId,
                 null,
                 rawUserQuery,
-                RuntimeOperationKind.LEGACY_HTTP,
+                RuntimeOperationKind.STATELESS_HTTP,
                 resolved,
                 snapshots,
                 correlationId,
@@ -149,8 +188,16 @@ public class ExecutionContextFactory {
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         userId, projectId, merged, correlationId);
+        Optional<UUID> presetId =
+                resolved.provenance() != null && resolved.provenance().presetId() != null
+                        ? Optional.of(resolved.provenance().presetId())
+                        : Optional.empty();
+        ExperimentalPresetCanonicalCatalog.IndexRequirements indexRequirements =
+                MaterializationAwareSnapshotResolver.requirementsFromPresetAndRag(
+                        presetId, resolved.toRagConfig());
         KnowledgeSnapshotSelection snapshots =
-                knowledgeRuntimeSnapshotSelector.select(projectId, conversationId);
+                knowledgeRuntimeSnapshotSelector.select(projectId, conversationId, indexRequirements);
+        bindResolvedLlmConfig(userId, projectId, resolved, merged, model);
         return buildWithClarification(
                 userId,
                 projectId,
@@ -163,6 +210,25 @@ public class ExecutionContextFactory {
                 copyDocumentFilter(documentFilter),
                 model,
                 Optional.empty());
+    }
+
+    private void bindResolvedLlmConfig(
+            UUID userId,
+            UUID projectId,
+            ResolvedRuntimeConfig resolved,
+            JsonNode terminalConversationMergedOverride,
+            Optional<String> chatModelOverride) {
+        UUID presetId =
+                resolved != null
+                                && resolved.provenance() != null
+                                && resolved.provenance().presetId() != null
+                        ? resolved.provenance().presetId()
+                        : null;
+        ResolvedLlmConfig llm =
+                resolvedLlmConfigResolver.resolveForOrchestratedExecute(
+                        userId, projectId, presetId, terminalConversationMergedOverride, chatModelOverride);
+        LlmSafeOperationLogger.logResolvedConfig(log, llm);
+        OrchestrationLlmConfigScope.bind(llm);
     }
 
     private ExecutionContext buildWithClarification(
@@ -198,6 +264,7 @@ public class ExecutionContextFactory {
                 chatModelOverride,
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 preMemory,
                 boot.effectivePlanningInputText(),
                 Optional.empty(),
@@ -228,6 +295,7 @@ public class ExecutionContextFactory {
                 mem.outcome() != ConversationMemoryOutcome.DISABLED_BY_CONFIG
                         && mem.outcome() != ConversationMemoryOutcome.NO_CONVERSATION_SCOPE;
         boolean historyLoaded = attempted && (mem.outcome() != ConversationMemoryOutcome.DISABLED_BY_CONFIG);
+        boolean memoryAppliedForTrace = memoryAppliedForTrace(mem);
         return new ExecutionContext(
                 base.userId(),
                 base.projectId(),
@@ -244,6 +312,7 @@ public class ExecutionContextFactory {
                 base.chatModelOverride(),
                 base.queryPlan(),
                 base.advisorPackedContextSet(),
+                base.structuredAnswerPlan(),
                 preMemory,
                 mem.finalPlanningInputText(),
                 mem.slice(),
@@ -252,7 +321,7 @@ public class ExecutionContextFactory {
                 attempted,
                 historyLoaded,
                 mem.condensationAttempted(),
-                mem.condensationUsed(),
+                memoryAppliedForTrace,
                 mem.fallbackApplied(),
                 base.pendingClarificationLoadedForTrace(),
                 base.validPendingExistedAtLoad(),
@@ -266,6 +335,17 @@ public class ExecutionContextFactory {
                 Optional.empty(),
                 false,
                 List.of());
+    }
+
+    /** True when memory changed planning input (condensation or deterministic follow-up expansion). */
+    static boolean memoryAppliedForTrace(ConversationMemoryExecutionResult mem) {
+        if (mem == null) {
+            return false;
+        }
+        if (mem.condensationUsed()) {
+            return true;
+        }
+        return mem.outcome() == ConversationMemoryOutcome.MEMORY_APPLIED;
     }
 
     private static Optional<String> clarificationDisableReason(RagConfig rag, UUID conversationId) {
@@ -304,6 +384,7 @@ public class ExecutionContextFactory {
                 ctx.chatModelOverride(),
                 Optional.of(plan),
                 Optional.empty(),
+                ctx.structuredAnswerPlan(),
                 ctx.preMemoryPlanningInputText(),
                 ctx.effectivePlanningInputText(),
                 ctx.memorySlice(),
@@ -357,6 +438,61 @@ public class ExecutionContextFactory {
                 ctx.chatModelOverride(),
                 ctx.queryPlan(),
                 Optional.of(packedContextSet),
+                ctx.structuredAnswerPlan(),
+                ctx.preMemoryPlanningInputText(),
+                ctx.effectivePlanningInputText(),
+                ctx.memorySlice(),
+                ctx.memoryOutcome(),
+                ctx.memoryStageTraces(),
+                ctx.memoryAttempted(),
+                ctx.memoryHistoryLoaded(),
+                ctx.memoryCondensationAttempted(),
+                ctx.memoryCondensationUsed(),
+                ctx.memoryFallbackApplied(),
+                ctx.pendingClarificationLoadedForTrace(),
+                ctx.validPendingExistedAtLoad(),
+                ctx.invalidPendingRecoveredThisTurn(),
+                ctx.clarificationDisableReason(),
+                ctx.originatingUserMessageId(),
+                ctx.routingAttempted(),
+                ctx.routingOutcome(),
+                ctx.routingRouteKind(),
+                ctx.routingFallbackApplied(),
+                ctx.routingFallbackRouteKind(),
+                ctx.routingWorkflowSelectorInvoked(),
+                ctx.routingStageTraces());
+    }
+
+    /**
+     * Attaches a safe structured answer plan for R8A.
+     */
+    public ExecutionContext attachStructuredAnswerPlan(ExecutionContext ctx, StructuredAnswerPlan plan) {
+        if (ctx == null) {
+            throw new IllegalArgumentException("ctx must not be null");
+        }
+        if (plan == null) {
+            throw new IllegalArgumentException("plan must not be null");
+        }
+        if (ctx.structuredAnswerPlan().isPresent()) {
+            throw new IllegalStateException("ExecutionContext already contains a StructuredAnswerPlan");
+        }
+        return new ExecutionContext(
+                ctx.userId(),
+                ctx.projectId(),
+                ctx.conversationId(),
+                ctx.userQuery(),
+                ctx.operationKind(),
+                ctx.resolved(),
+                ctx.effectiveSystemPrompt(),
+                ctx.knowledgeSnapshotSelection(),
+                ctx.configHash(),
+                ctx.pinnedResolvedConfigSnapshotId(),
+                ctx.correlationId(),
+                ctx.documentFilter(),
+                ctx.chatModelOverride(),
+                ctx.queryPlan(),
+                ctx.advisorPackedContextSet(),
+                Optional.of(plan),
                 ctx.preMemoryPlanningInputText(),
                 ctx.effectivePlanningInputText(),
                 ctx.memorySlice(),

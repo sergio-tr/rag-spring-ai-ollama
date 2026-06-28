@@ -42,4 +42,14 @@ class UserFacingErrorSanitizerTest {
                 "fallback",
                 UserFacingErrorSanitizer.sanitizeOrDefault("<html>x</html>", 80, "fallback"));
     }
+
+    @Test
+    void sanitize_jdbcGrammarError_returnsEmpty() {
+        String jdbc =
+                "PreparedStatementCallback; bad SQL grammar [SELECT COUNT(*) FROM vector_store WHERE project_id = ?]";
+        assertEquals("", UserFacingErrorSanitizer.sanitize(jdbc, 600));
+        assertEquals(
+                "Job failed",
+                UserFacingErrorSanitizer.sanitizeOrDefault(jdbc, 600, "Job failed"));
+    }
 }

@@ -73,7 +73,7 @@ class RuntimeTraceRegressionSuiteDefinitionFlywaySchemaIntegrationTest {
     @Test
     void uniqueUserName_enforced() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser(jdbc);
         Instant now = Instant.now();
         UUID a = UUID.randomUUID();
         UUID b = UUID.randomUUID();
@@ -85,7 +85,7 @@ class RuntimeTraceRegressionSuiteDefinitionFlywaySchemaIntegrationTest {
     @Test
     void check_byTraceIds_rejectsConversationColumn() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser(jdbc);
         Instant now = Instant.now();
         UUID defId = UUID.randomUUID();
         insertDefinition(jdbc, defId, userId, "chk-trace", now);
@@ -105,7 +105,7 @@ class RuntimeTraceRegressionSuiteDefinitionFlywaySchemaIntegrationTest {
     @Test
     void cascadeDeleteDefinition_removesEntriesAndTraces() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser(jdbc);
         Instant now = Instant.now();
         UUID defId = UUID.randomUUID();
         insertDefinition(jdbc, defId, userId, "cascade-me", now);
@@ -130,6 +130,17 @@ class RuntimeTraceRegressionSuiteDefinitionFlywaySchemaIntegrationTest {
         Integer traces = jdbc.queryForObject("SELECT COUNT(*)::int FROM runtime_trace_regression_suite_definition_entry_trace", Integer.class);
         assertThat(entries).isZero();
         assertThat(traces).isZero();
+    }
+
+    private static UUID insertUser(JdbcTemplate jdbc) {
+        UUID userId = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)",
+                userId,
+                userId + "@trace-regression.local",
+                "{noop}test",
+                "USER");
+        return userId;
     }
 
     private static void insertDefinition(JdbcTemplate jdbc, UUID id, UUID userId, String name, Instant now) {

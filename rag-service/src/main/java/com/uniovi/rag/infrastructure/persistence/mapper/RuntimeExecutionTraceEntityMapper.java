@@ -20,7 +20,7 @@ import java.util.UUID;
 @Component
 public class RuntimeExecutionTraceEntityMapper {
 
-    public static final int TRACE_SCHEMA_VERSION = 1;
+    public static final int TRACE_SCHEMA_VERSION = 2;
 
     static final int MAX_STAGE_DETAIL_CHARS = 512;
     static final int MAX_STAGE_COUNT = 200;
@@ -42,6 +42,9 @@ public class RuntimeExecutionTraceEntityMapper {
             String correlationId,
             ExecutionTrace trace
     ) {
+        if (userId == null) {
+            throw new IllegalArgumentException("userId is required");
+        }
         RuntimeExecutionTraceEntity e = RuntimeExecutionTraceEntity.newForInsert();
         e.setUserId(userId);
         e.setProjectId(projectId);

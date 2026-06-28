@@ -1,11 +1,13 @@
 package com.uniovi.rag.infrastructure.observability;
 
+import com.uniovi.rag.application.service.evaluation.async.LabJobPayloadKeys;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -71,6 +73,27 @@ class AsyncTaskObservabilityTest {
                 .containsEntry("rag.task_type", AsyncTaskType.CHAT_MESSAGE.name())
                 .containsEntry("rag.subsystem", "product");
         assertThat(attrs).doesNotContainKeys("rag.user_id", "rag.project_id");
+    }
+
+    @Test
+    void spanAttributes_includesEvaluationRunIdWhenPresent() {
+        UUID taskId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+
+        AsyncTaskEntity task = mock(AsyncTaskEntity.class);
+        when(task.getId()).thenReturn(taskId);
+        when(task.getTaskType()).thenReturn(AsyncTaskType.EVAL_RAG);
+        when(task.getUser()).thenReturn(null);
+        when(task.getProject()).thenReturn(null);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString());
+        when(task.getRequestPayload()).thenReturn(payload);
+
+        Map<String, String> attrs = AsyncTaskObservability.spanAttributes(task);
+        assertThat(attrs)
+                .containsEntry("rag.evaluation_run_id", runId.toString())
+                .containsEntry("runId", runId.toString())
+                .containsEntry("rag.subsystem", "lab");
     }
 }
 

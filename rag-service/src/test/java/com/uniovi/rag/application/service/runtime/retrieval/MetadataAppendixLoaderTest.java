@@ -40,7 +40,7 @@ class MetadataAppendixLoaderTest {
         ExecutionContext ctx = mock(ExecutionContext.class);
         when(ctx.projectId()).thenReturn(null);
         when(ctx.knowledgeSnapshotSelection())
-                .thenReturn(new KnowledgeSnapshotSelection(List.of(UUID.randomUUID()), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+                .thenReturn(new KnowledgeSnapshotSelection(List.of(UUID.randomUUID()), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
 
         String out =
                 loader.loadAppendix(
@@ -74,7 +74,7 @@ class MetadataAppendixLoaderTest {
         ExecutionContext ctx = mock(ExecutionContext.class);
         when(ctx.projectId()).thenReturn(projectId);
         when(ctx.knowledgeSnapshotSelection())
-                .thenReturn(new KnowledgeSnapshotSelection(List.of(snap), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+                .thenReturn(new KnowledgeSnapshotSelection(List.of(snap), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
 
         RetrievalCandidate bad =
                 new RetrievalCandidate("x", "t", Map.of("document_id", "not-a-uuid"), 0, 0, 1, 0, snap, 0);
@@ -86,6 +86,30 @@ class MetadataAppendixLoaderTest {
     }
 
     @Test
+    void loadAppendix_formatsActaMetadataWithDistinctPrefix() {
+        MetadataAppendixLoader loader = new MetadataAppendixLoader(namedJdbc);
+        UUID projectId = UUID.randomUUID();
+        UUID snap = UUID.randomUUID();
+        UUID docId = UUID.randomUUID();
+        ExecutionContext ctx = mock(ExecutionContext.class);
+        when(ctx.projectId()).thenReturn(projectId);
+        when(ctx.knowledgeSnapshotSelection())
+                .thenReturn(new KnowledgeSnapshotSelection(List.of(snap), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+
+        when(namedJdbc.query(anyString(), any(MapSqlParameterSource.class), ArgumentMatchers.<RowMapper<String>>any()))
+                .thenReturn(List.of("{\"president\":\"Juan Pérez\",\"date_iso\":\"2025-02-24\"}"));
+
+        String out =
+                loader.loadAppendix(
+                        ctx,
+                        mock(QueryPlan.class),
+                        List.of(candidate(snap, docId.toString())));
+
+        assertThat(out).startsWith("[acta-metadata] ");
+        assertThat(out).contains("Juan Pérez");
+    }
+
+    @Test
     void loadAppendix_queriesAndFormatsPayloads() {
         MetadataAppendixLoader loader = new MetadataAppendixLoader(namedJdbc);
         UUID projectId = UUID.randomUUID();
@@ -94,7 +118,7 @@ class MetadataAppendixLoaderTest {
         ExecutionContext ctx = mock(ExecutionContext.class);
         when(ctx.projectId()).thenReturn(projectId);
         when(ctx.knowledgeSnapshotSelection())
-                .thenReturn(new KnowledgeSnapshotSelection(List.of(snap), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+                .thenReturn(new KnowledgeSnapshotSelection(List.of(snap), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
 
         when(namedJdbc.query(anyString(), any(MapSqlParameterSource.class), ArgumentMatchers.<RowMapper<String>>any()))
                 .thenReturn(List.of("{\"k\":1}", "   ", "{\"k\":2}"));

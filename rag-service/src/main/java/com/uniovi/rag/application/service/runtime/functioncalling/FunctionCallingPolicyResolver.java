@@ -6,9 +6,7 @@ import com.uniovi.rag.domain.runtime.query.QueryPlan;
 
 import java.util.Optional;
 
-/**
- * Builds FC tool exposure when §10.11 items 1–5 already passed.
- */
+/** Builds function-calling tool exposure when preset and query preconditions are satisfied. */
 public interface FunctionCallingPolicyResolver {
 
     Optional<FunctionCallingDecision> resolve(ExecutionContext ctx, QueryPlan plan);

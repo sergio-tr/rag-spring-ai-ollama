@@ -66,6 +66,7 @@ public class ApiErrorController implements ErrorController {
                         message,
                         path != null ? path : request.getRequestURI(),
                         request.getHeader("X-Request-Id"),
+                        null,
                         null));
     }
 }

@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import Config
 from app.container import ServiceContainer
+from app.http_middleware import RejectUpgradeRequestsMiddleware
 from app.models.api_errors import ErrorDetail
 from app.routes import router
 from app.telemetry import setup_telemetry
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     config = Config()
     container = ServiceContainer(config)
     app = FastAPI(title="Classifier Service (RAG Query Classifier)", lifespan=lifespan)
+    app.add_middleware(RejectUpgradeRequestsMiddleware)
     app.state.container = container
     app.include_router(router)
     setup_telemetry(app)

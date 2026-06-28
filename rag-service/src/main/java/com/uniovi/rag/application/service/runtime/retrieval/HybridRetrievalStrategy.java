@@ -1,7 +1,9 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
+import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
+import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalTelemetry;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -27,5 +29,9 @@ public class HybridRetrievalStrategy {
 
     public List<RetrievalCandidate> sparse(RetrievalRequest req) {
         return sparseRetrievalStrategy.retrieve(req);
+    }
+
+    public SparseRetrievalOutcome sparseWithOutcome(RetrievalRequest req, QueryPlan plan) {
+        return sparseRetrievalStrategy.retrieve(req, plan);
     }
 }

@@ -35,6 +35,7 @@ public class RestAccessDeniedHandler implements AccessDeniedHandler {
                         "Forbidden",
                         request.getRequestURI(),
                         request.getHeader("X-Request-Id"),
+                        null,
                         null));
     }
 }

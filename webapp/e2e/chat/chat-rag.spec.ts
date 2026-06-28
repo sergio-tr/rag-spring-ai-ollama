@@ -1,15 +1,25 @@
 import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
-import { createAndActivateProject, loginAsSeedUser, sendChatMessage } from "../support/helpers";
+import {
+  authHeadersFromPage,
+  createAndActivateProject,
+  createNewChatConversation,
+  expandChatConfigurationRuntimeSection,
+  expandChatMessageMetadata,
+  loginAsSeedUser,
+  openChatConfigurationPanel,
+  productApiUrl,
+  sendChatMessage,
+  waitForDocumentReadyByName,
+} from "../support/helpers";
 
 /**
  * E2E-05: ingest a doc, then one chat turn.
  *
- * Keep @fullstack stable and fast: only require that the stub assistant reply is produced.
- * UI explainability panels (pipeline/sources) are allowed to evolve without breaking CI smoke.
+ * Demo-grade fullstack check: upload + READY document, chat turn, sources, runtime config, and trace/explainability UI.
  */
 test.describe("Chat RAG", () => {
-  test("E2E-05 send message completes with stub answer pipeline and sources @fullstack", async ({
+  test("E2E-05 upload, basic/advanced preset chat, sources, runtime and trace @fullstack @critical", async ({
     page,
   }) => {
     // Default Playwright test timeout is 30s; this flow waits up to 120s for READY indexing and 120s for the stub reply.
@@ -27,22 +37,91 @@ test.describe("Chat RAG", () => {
       mimeType: "text/plain",
       buffer: Buffer.from("SOURCE_MARKER_E2E_05 retrieval smoke content.\n"),
     });
-    await expect.poll(
-      async () => {
-        const row = page.locator("tbody tr").filter({ hasText: "e2e-sources.txt" });
-        if ((await row.count()) === 0) return false;
-        return (await row.getByText("READY", { exact: true }).count()) > 0;
-      },
-      { timeout: 120_000 },
-    ).toBe(true);
+    await waitForDocumentReadyByName(page, "e2e-sources.txt", 120_000);
 
-    await page.getByRole("link", { name: /^chat$/i }).click();
+    const projectId = new URL(page.url()).searchParams.get("projectId");
+    expect(projectId, `Expected projectId after document upload, got ${page.url()}`).toBeTruthy();
+    await page.goto(`/en/chat?projectId=${projectId}`, { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/en\/chat/);
+    const conversationId = await createNewChatConversation(page);
 
-    await page.getByTestId("chat-new-conversation").click();
+    await expect(page.getByTestId("chat-config-trigger")).toBeEnabled({ timeout: 30_000 });
+    const panel = await openChatConfigurationPanel(page);
+    const presetSelect = panel.getByTestId("chat-preset-select");
+    await expect(presetSelect).toBeVisible({ timeout: 15_000 });
+    expect(await presetSelect.locator("option:not([disabled])").count()).toBeGreaterThan(0);
+    await expandChatConfigurationRuntimeSection(panel);
+    await expect(panel.getByTestId("chat-runtime-toggle-similarityThreshold")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(panel.getByTestId("chat-config-runtime-refresh-effective")).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const optionValues = await presetSelect.locator("option").evaluateAll((options) =>
+      options
+        .map((o) => ({
+          value: (o as HTMLOptionElement).value,
+          text: (o.textContent ?? "").trim(),
+          disabled: (o as HTMLOptionElement).disabled,
+        }))
+        .filter((o) => o.value && !o.disabled),
+    );
+    const advanced = optionValues.find((o) => /P9|P10|P11|P12|P13|P14|advanced|avanzad/i.test(o.text));
+    if (advanced) {
+      await presetSelect.selectOption(advanced.value);
+      await expect(presetSelect).toHaveValue(advanced.value);
+    }
+    await page.keyboard.press("Escape").catch(() => undefined);
+
     await sendChatMessage(page, "What is in my project documents?");
 
     await expect(page.getByText(/could not send message/i)).toHaveCount(0);
+    await expect(page.getByText(/No sources were returned/i)).toHaveCount(0);
+    await expect(page.getByText(/No sources available for this answer/i)).toHaveCount(0);
+
     await expect(page.getByText(/E2E stub reply/i)).toBeVisible({ timeout: 120_000 });
+
+    const urlConversationId = new URL(page.url()).searchParams.get("conversationId");
+    const resolvedConversationId = urlConversationId ?? conversationId;
+    expect(
+      resolvedConversationId,
+      `Expected conversationId after send, got ${page.url()}`,
+    ).toBeTruthy();
+    const headers = await authHeadersFromPage(page);
+    const messagesRes = await page.request.get(
+      productApiUrl(`/conversations/${resolvedConversationId}/messages`),
+      {
+      headers,
+    },
+    );
+    expect(messagesRes.status(), await messagesRes.text()).toBe(200);
+    const messages = (await messagesRes.json()) as Array<{
+      role: string;
+      content: string;
+      sources?: unknown[];
+      pipelineSteps?: unknown[];
+      traceId?: string | null;
+    }>;
+    const assistant = [...messages].reverse().find((m) => m.role === "ASSISTANT");
+    expect(assistant, "assistant message should be persisted").toBeTruthy();
+    expect(assistant?.content ?? "").toContain("E2E stub reply");
+    expect(Array.isArray(assistant?.sources) && assistant.sources.length > 0).toBe(true);
+    expect(Array.isArray(assistant?.pipelineSteps) && assistant.pipelineSteps.length > 0).toBe(true);
+
+    await expect(page.getByTestId("chat-message-metadata-toggle")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("chat-sources")).not.toBeVisible();
+    await expandChatMessageMetadata(page);
+    await expect(page.getByTestId("chat-sources")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("chat-answer")).toContainText(/E2E stub reply/i);
+
+    await page.getByRole("button", { name: /open activity and tips|activity|actividad/i }).click();
+    await expect(page.getByTestId("trace-history-list")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/message_submitted|assistant_processing_started|assistant_response_received/i).first())
+      .toBeVisible({ timeout: 15_000 });
+    const telemetry = page.getByTestId("explain-runtime-telemetry");
+    if (await telemetry.isVisible().catch(() => false)) {
+      await expect(telemetry).toContainText(/\w+/);
+    }
   });
 });

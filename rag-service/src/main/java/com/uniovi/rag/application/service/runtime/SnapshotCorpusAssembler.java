@@ -35,21 +35,21 @@ public class SnapshotCorpusAssembler {
         if (snapshotIds.isEmpty()) {
             throw new IllegalStateException("SnapshotCorpusAssembler requires non-empty orderedSnapshotIds");
         }
-        RagExecutionContext legacy = RagExecutionContextHolder.get();
-        if (legacy == null || legacy.resolvedConfig() == null) {
+        RagExecutionContext holder = RagExecutionContextHolder.get();
+        if (holder == null || holder.resolvedConfig() == null) {
             throw new IllegalStateException("RagExecutionContextHolder must be set for corpus assembly");
         }
-        if (!legacy.restrictsByProject()) {
+        if (!holder.restrictsByProject()) {
             return "";
         }
         UUID projectId;
         try {
-            projectId = UUID.fromString(legacy.projectId().trim());
+            projectId = UUID.fromString(holder.projectId().trim());
         } catch (Exception e) {
             return "";
         }
-        int maxChars = Math.max(1024, legacy.resolvedConfig().naiveFullCorpusMaxChars());
-        List<String> contents = fetchContents(projectId, legacy, snapshotIds);
+        int maxChars = Math.max(1024, holder.resolvedConfig().naiveFullCorpusMaxChars());
+        List<String> contents = fetchContents(projectId, holder, snapshotIds);
         if (contents.isEmpty()) {
             return "";
         }
@@ -78,13 +78,13 @@ public class SnapshotCorpusAssembler {
         assertSnapshotFilter(snapshotIds);
         MapSqlParameterSource p = new MapSqlParameterSource();
         p.addValue("projectId", projectId);
-        p.addValue("snapshotIds", toStringList(snapshotIds));
+        p.addValue("snapshotIds", snapshotIds.stream().map(UUID::toString).toList());
         if (ctx.documentFilterIsAll()) {
             return namedJdbc.query(
                     """
                     SELECT content FROM vector_store
                     WHERE project_id = :projectId
-                      AND (metadata->>'indexSnapshotId')::uuid IN (:snapshotIds)
+                      AND metadata->>'indexSnapshotId' IN (:snapshotIds)
                     ORDER BY COALESCE(chunk_index, 0), id
                     """,
                     p,
@@ -104,7 +104,7 @@ public class SnapshotCorpusAssembler {
                 """
                 SELECT content FROM vector_store
                 WHERE project_id = :projectId
-                  AND (metadata->>'indexSnapshotId')::uuid IN (:snapshotIds)
+                  AND metadata->>'indexSnapshotId' IN (:snapshotIds)
                   AND metadata->>'document_id' IN (:docIds)
                 ORDER BY COALESCE(chunk_index, 0), id
                 """,
@@ -118,7 +118,4 @@ public class SnapshotCorpusAssembler {
         }
     }
 
-    private static List<String> toStringList(List<UUID> uuids) {
-        return uuids.stream().map(UUID::toString).toList();
-    }
 }

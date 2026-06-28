@@ -49,6 +49,14 @@ vi.mock("@/features/projects/lib/open-project-in-chat", () => ({
   fetchLatestConversationId: fetchLatestConversationIdMock,
 }));
 
+vi.mock("@/features/chat/hooks/use-chat-presets-catalog", () => ({
+  useChatPresetsCatalog: () => ({
+    data: { productPresets: [], experimentalPresets: [] },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 vi.mock("@/features/chat/hooks/use-conversations", () => ({
   useConversations: (projectId?: string) => {
     if (!projectId) {
@@ -199,8 +207,10 @@ describe("ProjectGrid", () => {
       </QueryClientProvider>,
     );
     await user.click(screen.getByRole("button", { name: /start first chat/i }));
-    expect(activateMocks.mutateAsync).toHaveBeenCalled();
+    const dlg = await screen.findByRole("dialog");
+    await user.click(within(dlg).getByRole("button", { name: /^create conversation$/i }));
     expect(convMocks.createMutateAsync).toHaveBeenCalled();
+    expect(activateMocks.mutateAsync).toHaveBeenCalled();
     expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p1&conversationId=c-created");
   });
 

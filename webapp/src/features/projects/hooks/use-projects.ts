@@ -3,12 +3,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import { activeProjectFromSummary, useAppStore } from "@/store/app.store";
+import {
+  type CreateProjectOutcome,
+  reconcileProjectAfterPostFailure,
+} from "@/features/projects/lib/project-create-reconciliation";
 import type {
   ActivateProjectResponse,
   CreateProjectBody,
   ProjectListResponse,
   ProjectSummary,
 } from "@/types/api";
+
+export type { CreateProjectOutcome };
 
 const projectsKey = ["projects"] as const;
 
@@ -50,22 +56,56 @@ export function useCreateProject() {
   const setActiveProject = useAppStore((s) => s.setActiveProject);
 
   return useMutation({
-    mutationFn: async (body: CreateProjectBody) => {
-      const created = await apiFetch<ProjectSummary>(apiProductPath("/projects"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      await apiFetch<ActivateProjectResponse>(apiProductPath(`/projects/${created.id}/activate`), {
-        method: "PUT",
-      });
-      return created;
+    mutationFn: async (body: CreateProjectBody): Promise<CreateProjectOutcome> => {
+      let created: ProjectSummary;
+      let reconciledFromList = false;
+
+      try {
+        created = await apiFetch<ProjectSummary>(apiProductPath("/projects"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      } catch (postErr) {
+        const reconciled = await reconcileProjectAfterPostFailure(body, postErr);
+        if (!reconciled) {
+          throw postErr;
+        }
+        created = reconciled;
+        reconciledFromList = true;
+      }
+
+      if (!created?.id?.trim()) {
+        throw new ApiError(500, "Create project response missing id");
+      }
+
+      let activateFailed = false;
+      try {
+        await apiFetch<ActivateProjectResponse>(apiProductPath(`/projects/${created.id}/activate`), {
+          method: "PUT",
+        });
+      } catch (activateErr) {
+        // POST succeeded — never surface activate/refetch issues as "could not create project".
+        activateFailed = true;
+        if (activateErr instanceof ApiError && activateErr.status === 401) {
+          useAppStore.getState().setActiveProject(null);
+        }
+      }
+
+      return { project: created, activateFailed, reconciledFromList };
     },
-    onSuccess: (created) => {
-      setActiveProject(activeProjectFromSummary(created));
+    onSuccess: (outcome) => {
+      const created = outcome.project;
+      if (!outcome.activateFailed) {
+        setActiveProject(activeProjectFromSummary(created));
+      }
       prependCreatedProjectToProjectListCaches(queryClient, created);
-      void queryClient.invalidateQueries({ queryKey: projectsKey });
-      void queryClient.invalidateQueries({ queryKey: ["config", "project", created.id] });
+      void queryClient.invalidateQueries({ queryKey: projectsKey }).catch(() => {
+        /* Refetch failure must not undo a successful create. */
+      });
+      void queryClient.invalidateQueries({ queryKey: ["config", "project", created.id] }).catch(() => {
+        /* Same — config refresh is best-effort after create. */
+      });
     },
     onError: (err) => {
       if (err instanceof ApiError && err.status === 401) {

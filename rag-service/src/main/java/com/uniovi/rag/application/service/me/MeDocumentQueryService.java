@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.me;
 
+import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
@@ -18,9 +19,12 @@ import java.util.UUID;
 public class MeDocumentQueryService {
 
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
+    private final BinaryStoragePort binaryStoragePort;
 
-    public MeDocumentQueryService(KnowledgeDocumentRepository knowledgeDocumentRepository) {
+    public MeDocumentQueryService(
+            KnowledgeDocumentRepository knowledgeDocumentRepository, BinaryStoragePort binaryStoragePort) {
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
+        this.binaryStoragePort = binaryStoragePort;
     }
 
     @Transactional(readOnly = true)
@@ -48,7 +52,10 @@ public class MeDocumentQueryService {
         if (d.getCurrentIndexSnapshot() != null) {
             sig = d.getCurrentIndexSnapshot().getSignatureHash();
         }
-        boolean storagePresent = d.getStorageUri() != null && !d.getStorageUri().isBlank();
+        boolean storagePresent =
+                d.getStorageUri() != null
+                        && !d.getStorageUri().isBlank()
+                        && binaryStoragePort.isReadableNonEmpty(d.getStorageUri());
         return new UserDocumentRowDto(
                 d.getId(),
                 d.getProject().getId(),

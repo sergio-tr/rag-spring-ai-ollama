@@ -43,12 +43,12 @@ public class ApiEarlyExceptionResolver implements HandlerExceptionResolver {
         }
 
         if (ex instanceof HttpRequestMethodNotSupportedException) {
-            write(response, new ApiErrorResponse(Instant.now(), 405, "METHOD_NOT_ALLOWED", "Method not allowed", path, requestId(request), null));
+            write(response, new ApiErrorResponse(Instant.now(), 405, "METHOD_NOT_ALLOWED", "Method not allowed", path, requestId(request), null, null));
             return new ModelAndView();
         }
 
         if (ex instanceof HttpMediaTypeNotSupportedException) {
-            write(response, new ApiErrorResponse(Instant.now(), 415, "UNSUPPORTED_MEDIA_TYPE", "Unsupported media type", path, requestId(request), null));
+            write(response, new ApiErrorResponse(Instant.now(), 415, "UNSUPPORTED_MEDIA_TYPE", "Unsupported media type", path, requestId(request), null, null));
             return new ModelAndView();
         }
 

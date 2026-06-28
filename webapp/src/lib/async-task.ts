@@ -92,3 +92,11 @@ export async function pollLabJob(
     options,
   );
 }
+
+/** One-shot status for Lab job recovery (backend resume hydration). */
+export async function fetchLabJobStatusOnce(
+  jobId: string,
+  options?: { signal?: AbortSignal },
+): Promise<AsyncTaskStatusDto> {
+  return apiFetch<AsyncTaskStatusDto>(apiProductPath(`/lab/jobs/${jobId}`), { signal: options?.signal });
+}

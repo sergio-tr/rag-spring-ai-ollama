@@ -116,6 +116,31 @@ public class ConversationMemoryStrategy {
                     stages);
         }
 
+        Optional<String> deterministicExpand =
+                ConversationFollowUpResolver.expand(eligible, ctx.userQuery());
+        if (deterministicExpand.isPresent() && !deterministicExpand.get().isBlank()) {
+            stages.add(
+                    new ExecutionStageTrace(
+                            "memory_follow_up_expand",
+                            0L,
+                            ExecutionStageOutcome.SUCCESS,
+                            "status=DETERMINISTIC"));
+            stages.add(
+                    new ExecutionStageTrace(
+                            "memory_finalize_planning_input",
+                            0L,
+                            ExecutionStageOutcome.SUCCESS,
+                            "final_source=deterministic_follow_up"));
+            return new ConversationMemoryExecutionResult(
+                    ConversationMemoryOutcome.MEMORY_APPLIED,
+                    Optional.of(slice),
+                    false,
+                    false,
+                    false,
+                    deterministicExpand.get(),
+                    stages);
+        }
+
         boolean condensationAttempted = decision.attemptCondensation();
         String condensed = "";
         boolean used = false;
@@ -154,11 +179,12 @@ public class ConversationMemoryStrategy {
             terminal = ConversationMemoryOutcome.CONDENSE_FAILED_FALLBACK;
         }
 
+        String finalSource = used ? "final_source=condensed" : "final_source=fallback_pre_memory";
         stages.add(new ExecutionStageTrace(
                 "memory_finalize_planning_input",
                 0L,
                 ExecutionStageOutcome.SUCCESS,
-                used ? "final_source=condensed" : "final_source=fallback_pre_memory"));
+                finalSource));
 
         return new ConversationMemoryExecutionResult(
                 terminal,

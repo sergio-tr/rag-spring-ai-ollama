@@ -1,24 +1,28 @@
 package com.uniovi.rag.configuration;
 
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.embedding.EmbeddingModel;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
+import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.infrastructure.vector.ProviderAwareEmbeddingModelFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import com.uniovi.rag.service.extraction.DefaultDocumentContentExtractor;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.postretrieval.DefaultPostRetrievalProcessor;
-import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
+import com.uniovi.rag.application.service.runtime.document.extraction.DefaultDocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.retrieval.post.DefaultPostRetrievalProcessor;
+import com.uniovi.rag.application.service.runtime.retrieval.post.PostRetrievalProcessor;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedContextRetriever;
 import com.uniovi.rag.infrastructure.observability.TracedDocumentContentExtractor;
 import com.uniovi.rag.infrastructure.observability.TracedPostRetrievalProcessor;
-import com.uniovi.rag.service.retriever.BasicContextRetriever;
-import com.uniovi.rag.service.retriever.ContextRetriever;
-import com.uniovi.rag.service.retriever.FilteredContextRetriever;
-import com.uniovi.rag.service.retriever.MinuteDocumentContextRetriever;
+import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
+import com.uniovi.rag.application.service.runtime.retrieval.BasicContextRetriever;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.retrieval.FilteredContextRetriever;
+import com.uniovi.rag.application.service.runtime.retrieval.MinuteDocumentContextRetriever;
+import com.uniovi.rag.application.service.runtime.retrieval.ProviderAwareContextRetriever;
 
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,8 +31,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 public class RagRetrievalConfiguration {
 
     @Bean
-    public PgVectorStore pgVectorStore(JdbcTemplate jdbcTemplate, EmbeddingModel embeddingModel) {
-        return PgVectorStore.builder(jdbcTemplate, embeddingModel).build();
+    public PgVectorStore pgVectorStore(
+            JdbcTemplate jdbcTemplate,
+            ProviderAwareEmbeddingModelFactory embeddingModelFactory,
+            LlmProperties llmProperties) {
+        String modelId =
+                llmProperties.getEffectiveDefaultEmbeddingProvider() == LlmProvider.OPENAI_COMPATIBLE
+                        ? llmProperties.getOpenAiCompatible().getDefaultEmbeddingModel()
+                        : llmProperties.getOllama().getDefaultEmbeddingModel();
+        return PgVectorStore.builder(jdbcTemplate, embeddingModelFactory.forModel(modelId)).build();
     }
 
     @Bean
@@ -59,6 +70,7 @@ public class RagRetrievalConfiguration {
         PgVectorStore vectorStore,
         ChatClient chatClient,
         RagImplementationProperties implProps,
+        EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService,
         @Value("${spring.ai.ollama.top-k:80}") int topK,
         @Value("${spring.ai.ollama.similarity-threshold:0.25}") double similarityThreshold,
         @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled,
@@ -76,6 +88,7 @@ public class RagRetrievalConfiguration {
             default:
                 retriever = new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
         }
+        retriever = new ProviderAwareContextRetriever(retriever, embeddingIndexCompatibilityService);
         if (observability != null) {
             return new TracedContextRetriever(retriever, observability);
         }

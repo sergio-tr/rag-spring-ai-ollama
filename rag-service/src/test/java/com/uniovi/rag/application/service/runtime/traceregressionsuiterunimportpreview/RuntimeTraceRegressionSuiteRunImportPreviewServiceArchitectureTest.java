@@ -16,8 +16,8 @@ import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.RuntimeTraceRegressionSuiteRunImportService;
-import com.uniovi.rag.service.query.ProcessQueryService;
-import com.uniovi.rag.service.query.SimpleProcessQueryService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
 import jakarta.persistence.EntityManager;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -54,9 +54,8 @@ class RuntimeTraceRegressionSuiteRunImportPreviewServiceArchitectureTest {
                     "RuntimeTraceRegressionSuiteDefinitionImportController",
                     "RuntimeTraceRegressionSuiteDefinitionImportPreviewController",
                     "RagExecutionOrchestrator",
-                    "ProcessQueryService",
-                    "SimpleProcessQueryService",
-                    "RuntimeTraceQueryService",
+                    "RuntimeQueryExecutionService",
+                                        "RuntimeTraceQueryService",
                     "RuntimeTraceReplayService",
                     "RuntimeTraceReplayComparisonService",
                     "RuntimeTraceReplayBatchService",
@@ -189,16 +188,16 @@ class RuntimeTraceRegressionSuiteRunImportPreviewServiceArchitectureTest {
                     .areAssignableTo(RagExecutionOrchestrator.class);
 
     @ArchTest
-    static final ArchRule previewServiceDoesNotDependOnProcessQueryServices =
+    static final ArchRule previewServiceDoesNotDependOnRuntimeQueryExecutionServices =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceRegressionSuiteRunImportPreviewService")
                     .should()
                     .dependOnClassesThat()
-                    .areAssignableTo(ProcessQueryService.class)
+                    .areAssignableTo(RuntimeQueryExecutionService.class)
                     .orShould()
                     .dependOnClassesThat()
-                    .areAssignableTo(SimpleProcessQueryService.class);
+                    .areAssignableTo(RuntimeQueryExecutionService.class);
 
     @ArchTest
     static final ArchRule previewServiceDoesNotUseAsyncOrExecutors =

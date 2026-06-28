@@ -6,7 +6,7 @@ import com.uniovi.rag.interfaces.rest.dto.PatchProjectRequest;
 import com.uniovi.rag.interfaces.rest.dto.ProjectListResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.ProjectSummaryDto;
 import com.uniovi.rag.security.RagPrincipal;
-import com.uniovi.rag.service.project.ProjectService;
+import com.uniovi.rag.application.service.project.ProjectService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

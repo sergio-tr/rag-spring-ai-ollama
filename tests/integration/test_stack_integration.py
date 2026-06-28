@@ -11,9 +11,13 @@ Observability (Jaeger, Prometheus, OTEL collector, Grafana):
   - INTEGRATION_CHECK_OBS=1: fail if the observability stack is not reachable (CI with obs).
   - INTEGRATION_CHECK_OBS=0: skip all observability tests.
 
+Classifier (CI split):
+  - PR job ``integration``: Spring only — classifier tests **skip** when :8000 is down (INTEGRATION_STRICT still applies to backend/auth).
+  - Job ``integration_classifier_required``: sets INTEGRATION_REQUIRE_CLASSIFIER=1 and starts uvicorn — classifier connectivity failures **fail** the run.
+
 API path drift (aligned with Spring `rag.api.*`):
   - INTEGRATION_RAG_PRODUCT_BASE_PATH (default `/api/v5`) for JWT product tests.
-  - INTEGRATION_LOGIN_EMAIL / INTEGRATION_LOGIN_PASSWORD — seed user for `POST /api/auth/login` flows
+  - INTEGRATION_LOGIN_EMAIL / INTEGRATION_LOGIN_PASSWORD — seed user for `POST {product}/auth/login` flows
     (default matches Flyway V16: dev@local.test / dev).
   - INTEGRATION_ADMIN_EMAIL / INTEGRATION_ADMIN_PASSWORD — optional; enables admin API **200** tests when an
     ADMIN user exists (profile e2e: admin@e2e.local / e2e via E2eAdminUserSeeder).
@@ -24,8 +28,8 @@ Usage:
   pytest tests/integration -v
 
 Lab async jobs (api-map §7.4):
-  - After HTTP **202** from `POST {product}/lab/...` (no `sync=true`), the body includes `jobId` and paths for
-    **polling** `GET {product}/lab/jobs/{jobId}` or **SSE** `GET {product}/lab/jobs/{jobId}/events`.
+  - Canonical runs use `POST {product}/lab/benchmarks/{kind}/runs` (JSON body with `datasetId`), **202** with `asyncTaskId` +
+    `evaluationRunId`, then **polling** `GET {product}/lab/jobs/{asyncTaskId}` or SSE `.../events`.
   - Prefer polling in integration tests (simple assert on JSON); SSE is optional and stream-based.
 """
 
@@ -34,6 +38,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import httpx
 import pytest
@@ -68,11 +73,25 @@ def integration_require_classifier_model() -> bool:
     return _truthy_env("INTEGRATION_REQUIRE_CLASSIFIER_MODEL")
 
 
-def _skip_if_unreachable(exc: Exception) -> None:
-    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
-        if integration_strict():
-            pytest.fail(f"Service unreachable (strict mode): {exc}")
-        pytest.skip(f"Service unreachable: {exc}")
+def _skip_if_unreachable(exc: Exception, *, service: str = "backend") -> None:
+    """
+    Map connectivity errors to skip (optional stack) or fail (strict CI).
+
+    Classifier tests skip when the service is down unless INTEGRATION_REQUIRE_CLASSIFIER=1
+    (integration_classifier_required job). Backend/product tests still honor INTEGRATION_STRICT.
+    """
+    if not isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+        return
+    if service == "classifier":
+        if integration_require_classifier():
+            pytest.fail(
+                "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
+                f"{exc}"
+            )
+        pytest.skip(f"classifier-service unreachable: {exc}")
+    if integration_strict():
+        pytest.fail(f"Service unreachable (strict mode): {exc}")
+    pytest.skip(f"Service unreachable: {exc}")
 
 
 def _jaeger_service_names(http_client: httpx.Client, jaeger_base: str) -> list[str]:
@@ -148,8 +167,9 @@ def _login_access_token(
     email: str,
     password: str,
 ) -> str | None:
+    product_api_base = os.environ.get("INTEGRATION_RAG_PRODUCT_BASE_PATH", "/api/v5").rstrip("/") or "/api/v5"
     r = http_client.post(
-        f"{backend_base}/api/auth/login",
+        f"{backend_base}{product_api_base}/auth/login",
         json={"email": email, "password": password},
         headers={"Content-Type": "application/json"},
         timeout=30.0,
@@ -164,17 +184,137 @@ def _login_access_token(
     return str(token) if token else None
 
 
+# Plain-text acta bytes (must be extractable; empty PDFs fail ingestion). Shipped under rag-service test resources.
+_LAB_CORPUS_FIXTURE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "rag-service"
+    / "src"
+    / "test"
+    / "resources"
+    / "docs"
+    / "bootstrap-acta.txt"
+)
+_LAB_CORPUS_FIXTURE_BYTES = """\
+ACTA — 24 de febrero de 2025
+
+Fecha: 24 de febrero de 2025.
+Presidente: Juan Pérez García.
+Secretaria: Laura Martínez.
+
+Orden del día:
+1) Aprobación del acta anterior.
+2) Presupuesto.
+3) Mantenimiento del ascensor.
+
+Acuerdos:
+- Se aprueba el presupuesto anual.
+""".encode("utf-8")
+
+
+def _lab_corpus_fixture_bytes() -> bytes:
+    if _LAB_CORPUS_FIXTURE_PATH.is_file():
+        return _LAB_CORPUS_FIXTURE_PATH.read_bytes()
+    return _LAB_CORPUS_FIXTURE_BYTES
+
+
+def _lab_auth_headers(token: str, *, json_body: bool = True) -> dict[str, str]:
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    if json_body:
+        headers["Content-Type"] = "application/json"
+    return headers
+
+
+def _lab_create_evaluation_corpus_with_document(
+    http_client: httpx.Client,
+    backend_base: str,
+    product_api_base: str,
+    token: str,
+    *,
+    corpus_name: str,
+) -> str:
+    """
+    Create a Lab evaluation corpus and attach one document (required for RAG_PRESET_END_TO_END runs).
+    """
+    headers = _lab_auth_headers(token)
+    create = http_client.post(
+        f"{backend_base}{product_api_base}/lab/evaluation-corpora",
+        headers=headers,
+        json={"name": corpus_name},
+        timeout=60.0,
+    )
+    assert create.status_code in (200, 201), create.text
+    corpus_body = _assert_json_response_not_html(create)
+    corpus_id = corpus_body.get("id")
+    assert corpus_id, corpus_body
+
+    upload_headers = _lab_auth_headers(token, json_body=False)
+    upload = http_client.post(
+        f"{backend_base}{product_api_base}/lab/evaluation-corpora/{corpus_id}/documents",
+        headers=upload_headers,
+        files={"file": ("bootstrap-acta.txt", _lab_corpus_fixture_bytes(), "text/plain")},
+        timeout=120.0,
+    )
+    assert upload.status_code == 200, upload.text
+    upload_body = _assert_json_response_not_html(upload)
+    corpus_body = upload_body.get("corpus") if isinstance(upload_body.get("corpus"), dict) else upload_body
+    assert (corpus_body.get("documentCount") or 0) >= 1, upload_body
+    _lab_wait_evaluation_corpus_ready(
+        http_client, backend_base, product_api_base, token, str(corpus_id)
+    )
+    return str(corpus_id)
+
+
+def _lab_wait_evaluation_corpus_ready(
+    http_client: httpx.Client,
+    backend_base: str,
+    product_api_base: str,
+    token: str,
+    corpus_id: str,
+    *,
+    deadline_s: float = 90.0,
+    interval_s: float = 2.0,
+) -> None:
+    """Poll GET evaluation corpus until at least one document is READY (RAG_PRESET_END_TO_END gate)."""
+    headers = _lab_auth_headers(token)
+    url = f"{backend_base}{product_api_base}/lab/evaluation-corpora/{corpus_id}"
+    last_body: dict | None = None
+
+    def ready() -> bool:
+        nonlocal last_body
+        try:
+            r = http_client.get(url, headers=headers, timeout=30.0)
+        except (httpx.ConnectError, httpx.ConnectTimeout):
+            return False
+        if r.status_code != 200:
+            return False
+        last_body = _assert_json_response_not_html(r)
+        ready_count = last_body.get("readyCount") or 0
+        if ready_count >= 1:
+            docs = last_body.get("documents") or []
+            if any(
+                isinstance(d, dict)
+                and d.get("status") == "READY"
+                and d.get("storagePresent") is True
+                for d in docs
+            ):
+                return True
+            # readyCount can disagree with per-document status when persistence context is stale
+        if (last_body.get("failedCount") or 0) >= 1:
+            pytest.fail(f"evaluation corpus document processing failed: {last_body}")
+        return False
+
+    if not _poll_until(ready, deadline_s, interval_s):
+        pytest.fail(
+            f"evaluation corpus {corpus_id} has no READY documents after {deadline_s}s: {last_body}"
+        )
+
+
 class TestClassifierService:
     def test_models_returns_json_list(self, http_client: httpx.Client, classifier_base: str) -> None:
         try:
             r = http_client.get(f"{classifier_base}/models")
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-            if integration_require_classifier():
-                pytest.fail(
-                    "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
-                    f"{classifier_base} ({e})"
-                )
-            _skip_if_unreachable(e)
+            _skip_if_unreachable(e, service="classifier")
             raise
         assert r.status_code == 200, r.text
         data = r.json()
@@ -190,12 +330,7 @@ class TestClassifierService:
                 headers={"Content-Type": "application/json"},
             )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-            if integration_require_classifier():
-                pytest.fail(
-                    "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
-                    f"{classifier_base} ({e})"
-                )
-            _skip_if_unreachable(e)
+            _skip_if_unreachable(e, service="classifier")
             raise
         assert r.status_code == 400, r.text
 
@@ -203,12 +338,7 @@ class TestClassifierService:
         try:
             r = http_client.get(f"{classifier_base}/health")
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-            if integration_require_classifier():
-                pytest.fail(
-                    "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
-                    f"{classifier_base} ({e})"
-                )
-            _skip_if_unreachable(e)
+            _skip_if_unreachable(e, service="classifier")
             raise
         assert r.status_code == 200, r.text
         data = r.json()
@@ -218,12 +348,7 @@ class TestClassifierService:
         try:
             h = http_client.get(f"{classifier_base}/health")
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-            if integration_require_classifier():
-                pytest.fail(
-                    "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
-                    f"{classifier_base} ({e})"
-                )
-            _skip_if_unreachable(e)
+            _skip_if_unreachable(e, service="classifier")
             raise
         assert h.status_code == 200
         if h.json().get("model") != "loaded":
@@ -242,7 +367,7 @@ class TestClassifierService:
                 headers={"Content-Type": "application/json"},
             )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-            _skip_if_unreachable(e)
+            _skip_if_unreachable(e, service="classifier")
             raise
         assert r.status_code == 200, r.text
         data = r.json()
@@ -259,7 +384,10 @@ class TestBackend:
         if r.status_code == 404:
             pytest.skip("actuator/info not exposed (management.endpoints)")
         assert r.status_code == 200, r.text
-        assert r.headers.get("content-type", "").startswith("application/json")
+        content_type = r.headers.get("content-type", "")
+        assert content_type.startswith("application/json") or content_type.startswith(
+            "application/vnd.spring-boot.actuator"
+        ), content_type
 
     def test_actuator_health_up(self, http_client: httpx.Client, backend_base: str) -> None:
         try:
@@ -292,7 +420,7 @@ class TestBackend:
         integration_seed_credentials: tuple[str, str],
     ) -> None:
         """
-        Authenticated product smoke (replacement for legacy query smoke).
+        Authenticated product smoke (replacement for removed query smoke).
 
         Contract:
           - Must be authenticated (JWT).
@@ -324,18 +452,19 @@ class TestBackend:
 
 
 class TestBackendAuthApi:
-    """POST /api/auth/* validation and negative paths (permitAll in security chain)."""
+    """POST product auth validation and negative paths (permitAll in security chain)."""
 
     def test_login_wrong_password_401(
         self,
         http_client: httpx.Client,
         backend_base: str,
         integration_seed_credentials: tuple[str, str],
+        product_api_base: str,
     ) -> None:
         email, _ = integration_seed_credentials
         try:
             r = http_client.post(
-                f"{backend_base}/api/auth/login",
+                f"{backend_base}{product_api_base}/auth/login",
                 json={"email": email, "password": "definitely-wrong-password-for-integration"},
                 headers={"Content-Type": "application/json"},
                 timeout=30.0,
@@ -345,10 +474,12 @@ class TestBackendAuthApi:
             raise
         assert r.status_code == 401, r.text
 
-    def test_login_unknown_user_401(self, http_client: httpx.Client, backend_base: str) -> None:
+    def test_login_unknown_user_401(
+        self, http_client: httpx.Client, backend_base: str, product_api_base: str
+    ) -> None:
         try:
             r = http_client.post(
-                f"{backend_base}/api/auth/login",
+                f"{backend_base}{product_api_base}/auth/login",
                 json={"email": "no-such-user-for-integration@local.invalid", "password": "irrelevant-pass-12345"},
                 headers={"Content-Type": "application/json"},
                 timeout=30.0,
@@ -358,10 +489,12 @@ class TestBackendAuthApi:
             raise
         assert r.status_code == 401, r.text
 
-    def test_login_invalid_email_400(self, http_client: httpx.Client, backend_base: str) -> None:
+    def test_login_invalid_email_400(
+        self, http_client: httpx.Client, backend_base: str, product_api_base: str
+    ) -> None:
         try:
             r = http_client.post(
-                f"{backend_base}/api/auth/login",
+                f"{backend_base}{product_api_base}/auth/login",
                 json={"email": "not-an-email", "password": "somepassword"},
                 headers={"Content-Type": "application/json"},
                 timeout=30.0,
@@ -371,10 +504,12 @@ class TestBackendAuthApi:
             raise
         assert r.status_code == 400, r.text
 
-    def test_refresh_invalid_token_401(self, http_client: httpx.Client, backend_base: str) -> None:
+    def test_refresh_invalid_token_401(
+        self, http_client: httpx.Client, backend_base: str, product_api_base: str
+    ) -> None:
         try:
             r = http_client.post(
-                f"{backend_base}/api/auth/refresh",
+                f"{backend_base}{product_api_base}/auth/refresh",
                 json={"refreshToken": "invalid-token-not-a-jwt"},
                 headers={"Content-Type": "application/json"},
                 timeout=30.0,
@@ -389,16 +524,17 @@ class TestBackendAuthApi:
         http_client: httpx.Client,
         backend_base: str,
         integration_seed_credentials: tuple[str, str],
+        product_api_base: str,
     ) -> None:
         email, _ = integration_seed_credentials
         try:
             r = http_client.post(
-                f"{backend_base}/api/auth/register",
-                json={
-                    "name": "Integration Duplicate",
-                    "email": email,
-                    "password": "longenough1",
-                },
+                f"{backend_base}{product_api_base}/auth/register",
+                json=_integration_register_payload(
+                    name="Integration Duplicate",
+                    email=email,
+                    password="longenough1",
+                ),
                 headers={"Content-Type": "application/json"},
                 timeout=30.0,
             )
@@ -408,16 +544,210 @@ class TestBackendAuthApi:
         assert r.status_code == 409, r.text
 
 
+def _integration_legal_versions() -> tuple[str, str]:
+    privacy = os.environ.get(
+        "INTEGRATION_LEGAL_PRIVACY_VERSION",
+        os.environ.get("RAG_AUTH_LEGAL_PRIVACY_POLICY_VERSION", "2026-06"),
+    ).strip()
+    terms = os.environ.get(
+        "INTEGRATION_LEGAL_TERMS_VERSION",
+        os.environ.get("RAG_AUTH_LEGAL_TERMS_VERSION", "2026-06"),
+    ).strip()
+    return privacy, terms
+
+
+def _integration_register_payload(
+    *,
+    name: str,
+    email: str,
+    password: str,
+    locale: str = "en",
+) -> dict[str, object]:
+    privacy_version, terms_version = _integration_legal_versions()
+    return {
+        "name": name,
+        "email": email,
+        "password": password,
+        "locale": locale,
+        "acceptedPrivacyPolicy": True,
+        "acceptedTerms": True,
+        "privacyPolicyVersion": privacy_version,
+        "termsVersion": terms_version,
+    }
+
+
+def _unique_integration_email() -> str:
+    stamp = int(time.time() * 1000)
+    return f"m2-auth-{stamp}@integration.local"
+
+
+def _assert_email_confirmation_enabled(register_response: httpx.Response) -> None:
+    if register_response.status_code == 200:
+        try:
+            body = register_response.json()
+        except ValueError:
+            body = {}
+        if body.get("status") == "REGISTERED":
+            pytest.fail(
+                "Email confirmation must be enabled on the integration backend "
+                "(RAG_AUTH_EMAIL_CONFIRMATION_ENABLED=true, e2e profile). "
+                f"Got: {register_response.status_code} {register_response.text[:300]}"
+            )
+
+
+def _admin_access_token(http_client: httpx.Client, backend_base: str, product_api_base: str) -> str:
+    admin_email = os.environ.get("INTEGRATION_ADMIN_EMAIL", "admin@e2e.local").strip()
+    admin_password = os.environ.get("INTEGRATION_ADMIN_PASSWORD", "e2e").strip()
+    token = _login_access_token(http_client, backend_base, admin_email, admin_password)
+    if not token:
+        pytest.skip(
+            f"Admin login failed for mail-outbox inspection ({admin_email}). "
+            "Set INTEGRATION_ADMIN_EMAIL/PASSWORD or run backend with e2e profile + mail outbox."
+        )
+    return token
+
+
+def _extract_confirm_token_from_outbox(
+    http_client: httpx.Client,
+    backend_base: str,
+    product_api_base: str,
+    admin_token: str,
+    recipient_email: str,
+) -> str:
+    import re
+
+    r = http_client.get(
+        f"{backend_base}{product_api_base}/admin/mail-outbox",
+        params={"limit": 20},
+        headers={"Authorization": f"Bearer {admin_token}", "Accept": "application/json"},
+        timeout=30.0,
+    )
+    assert r.status_code == 200, r.text
+    entries = r.json()
+    assert isinstance(entries, list), entries
+    normalized = recipient_email.strip().lower()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("purpose") != "EMAIL_CONFIRMATION":
+            continue
+        if str(entry.get("recipient", "")).strip().lower() != normalized:
+            continue
+        body_text = str(entry.get("bodyText", ""))
+        match = re.search(r"confirm-email\?token=([^&\s\"']+)", body_text)
+        if match:
+            from urllib.parse import unquote
+
+            return unquote(match.group(1))
+    pytest.fail(f"No EMAIL_CONFIRMATION outbox row with token link for {recipient_email}")
+
+
+class TestBackendAuthEmailConfirmation:
+    """M2: register → pending → login blocked → confirm → login OK (requires e2e auth flags)."""
+
+    def test_register_returns_pending_status(
+        self, http_client: httpx.Client, backend_base: str, product_api_base: str
+    ) -> None:
+        email = _unique_integration_email()
+        try:
+            r = http_client.post(
+                f"{backend_base}{product_api_base}/auth/register",
+                json=_integration_register_payload(
+                    name="M2 Pending",
+                    email=email,
+                    password="Password123!",
+                ),
+                headers={"Content-Type": "application/json"},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        _assert_email_confirmation_enabled(r)
+        assert r.status_code == 202, r.text
+        body = r.json()
+        assert body.get("status") == "PENDING_EMAIL_VERIFICATION"
+        assert body.get("login") is None
+
+    def test_login_unverified_returns_403_email_not_verified(
+        self, http_client: httpx.Client, backend_base: str, product_api_base: str
+    ) -> None:
+        email = _unique_integration_email()
+        password = "Password123!"
+        try:
+            reg = http_client.post(
+                f"{backend_base}{product_api_base}/auth/register",
+                json=_integration_register_payload(
+                    name="M2 Blocked Login",
+                    email=email,
+                    password=password,
+                ),
+                headers={"Content-Type": "application/json"},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        _assert_email_confirmation_enabled(reg)
+        login = http_client.post(
+            f"{backend_base}{product_api_base}/auth/login",
+            json={"email": email, "password": password},
+            headers={"Content-Type": "application/json"},
+            timeout=30.0,
+        )
+        assert login.status_code == 403, login.text
+        try:
+            payload = login.json()
+        except ValueError:
+            payload = {}
+        assert payload.get("code") == "EMAIL_NOT_VERIFIED"
+
+    def test_confirm_email_via_outbox_then_login_ok(
+        self, http_client: httpx.Client, backend_base: str, product_api_base: str
+    ) -> None:
+        email = _unique_integration_email()
+        password = "Password123!"
+        try:
+            reg = http_client.post(
+                f"{backend_base}{product_api_base}/auth/register",
+                json=_integration_register_payload(
+                    name="M2 Confirm Cycle",
+                    email=email,
+                    password=password,
+                ),
+                headers={"Content-Type": "application/json"},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        _assert_email_confirmation_enabled(reg)
+        admin_token = _admin_access_token(http_client, backend_base, product_api_base)
+        raw_token = _extract_confirm_token_from_outbox(
+            http_client, backend_base, product_api_base, admin_token, email
+        )
+        confirm = http_client.post(
+            f"{backend_base}{product_api_base}/auth/confirm-email",
+            json={"token": raw_token},
+            headers={"Content-Type": "application/json"},
+            timeout=30.0,
+        )
+        assert confirm.status_code == 200, confirm.text
+        token = _login_access_token(http_client, backend_base, email, password)
+        assert token, "login must return accessToken after email confirmation"
+
+
 class TestBackendAdminApi:
-    """GET /api/admin/* requires ROLE_ADMIN (see SecurityConfiguration)."""
+    """GET product admin routes requires ROLE_ADMIN (see SecurityConfiguration)."""
 
     def test_admin_health_unauthenticated_requires_auth(
         self,
         http_client: httpx.Client,
         backend_base: str,
+        product_api_base: str,
     ) -> None:
         try:
-            r = http_client.get(f"{backend_base}/api/admin/health")
+            r = http_client.get(f"{backend_base}{product_api_base}/admin/health")
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _skip_if_unreachable(e)
             raise
@@ -427,6 +757,7 @@ class TestBackendAdminApi:
         self,
         http_client: httpx.Client,
         backend_base: str,
+        product_api_base: str,
         integration_seed_credentials: tuple[str, str],
     ) -> None:
         email, password = integration_seed_credentials
@@ -436,10 +767,10 @@ class TestBackendAdminApi:
             _skip_if_unreachable(e)
             raise
         if not token:
-            pytest.skip("USER login failed; cannot assert 403 on /api/admin (check INTEGRATION_LOGIN_*).")
+            pytest.skip("USER login failed; cannot assert 403 on product admin routes (check INTEGRATION_LOGIN_*).")
         try:
             r = http_client.get(
-                f"{backend_base}/api/admin/health",
+                f"{backend_base}{product_api_base}/admin/health",
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=30.0,
             )
@@ -448,10 +779,11 @@ class TestBackendAdminApi:
             raise
         assert r.status_code == 403, r.text
 
-    def test_admin_allowlist_forbidden_for_user_jwt(
+    def test_admin_models_forbidden_for_user_jwt(
         self,
         http_client: httpx.Client,
         backend_base: str,
+        product_api_base: str,
         integration_seed_credentials: tuple[str, str],
     ) -> None:
         email, password = integration_seed_credentials
@@ -461,10 +793,10 @@ class TestBackendAdminApi:
             _skip_if_unreachable(e)
             raise
         if not token:
-            pytest.skip("USER login failed; cannot assert 403 on /api/admin (check INTEGRATION_LOGIN_*).")
+            pytest.skip("USER login failed; cannot assert 403 on product admin routes (check INTEGRATION_LOGIN_*).")
         try:
             r = http_client.get(
-                f"{backend_base}/api/admin/allowlist",
+                f"{backend_base}{product_api_base}/admin/models",
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=30.0,
             )
@@ -473,10 +805,11 @@ class TestBackendAdminApi:
             raise
         assert r.status_code == 403, r.text
 
-    def test_admin_health_and_allowlist_ok_for_admin_jwt(
+    def test_admin_health_and_models_ok_for_admin_jwt(
         self,
         http_client: httpx.Client,
         backend_base: str,
+        product_api_base: str,
         integration_admin_credentials: tuple[str, str] | None,
     ) -> None:
         if integration_admin_credentials is None:
@@ -496,8 +829,8 @@ class TestBackendAdminApi:
             )
         headers = {"Authorization": f"Bearer {token}"}
         try:
-            h = http_client.get(f"{backend_base}/api/admin/health", headers=headers, timeout=30.0)
-            lst = http_client.get(f"{backend_base}/api/admin/allowlist", headers=headers, timeout=30.0)
+            h = http_client.get(f"{backend_base}{product_api_base}/admin/health", headers=headers, timeout=30.0)
+            lst = http_client.get(f"{backend_base}{product_api_base}/admin/models", headers=headers, timeout=30.0)
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _skip_if_unreachable(e)
             raise
@@ -670,11 +1003,11 @@ class TestBackendOpenApi:
         assert doc.get("openapi") is not None or doc.get("swagger") is not None
         paths = doc.get("paths") or {}
         assert isinstance(paths, dict)
-        # Spot-check: product, auth, admin prefixes appear in paths
+        # Spot-check: product auth and admin prefixes appear in paths.
         path_keys = " ".join(paths.keys())
         assert product_api_base in path_keys or "/api/v5" in path_keys
-        assert "/api/auth/login" in path_keys
-        assert "/api/admin/health" in path_keys
+        assert f"{product_api_base}/auth/login" in path_keys
+        assert f"{product_api_base}/admin/health" in path_keys
 
 
 class TestBackendLabJobs:
@@ -703,7 +1036,7 @@ class TestBackendLabJobs:
         product_api_base: str,
         integration_seed_credentials: tuple[str, str],
     ) -> None:
-        """datasets.enabled must reflect benchmark catalog question count (see LabController#status)."""
+        """datasets.enabled reflects reference workbook readiness (see LabController#status)."""
         email, password = integration_seed_credentials
         try:
             token = _login_access_token(http_client, backend_base, email, password)
@@ -722,31 +1055,60 @@ class TestBackendLabJobs:
         body = _assert_json_response_not_html(r)
         datasets = body.get("datasets") or {}
         assert isinstance(datasets.get("enabled"), bool)
-        assert isinstance(datasets.get("questionCount"), int)
+        assert isinstance(datasets.get("datasetKindsReady"), bool)
+        assert isinstance(body.get("countsByDatasetKind"), dict)
         assert body.get("evaluations") is not None
         assert body.get("classifier") is not None
         assert isinstance(body.get("message"), str)
 
-    def test_lab_eval_rag_async_returns_202_and_pollable_job(
+    def test_lab_benchmark_rag_preset_async_returns_202_and_pollable_job(
         self,
         http_client: httpx.Client,
         backend_base: str,
         product_api_base: str,
-        integration_seed_credentials: tuple[str, str],
+        integration_admin_credentials: tuple[str, str] | None,
     ) -> None:
-        email, password = integration_seed_credentials
+        """
+        Canonical RAG lab run: typed evaluation_dataset (Flyway V42 reference UUID), ADMIN-only SYSTEM_DATASET.
+
+        CI sets INTEGRATION_ADMIN_* with profile e2e; local runs skip without admin env.
+        """
+        if integration_admin_credentials is None:
+            pytest.skip(
+                "Needs ROLE_ADMIN + seeded reference dataset (set INTEGRATION_ADMIN_EMAIL / "
+                "INTEGRATION_ADMIN_PASSWORD; e2e profile: admin@e2e.local / e2e)."
+            )
+        a_email, a_password = integration_admin_credentials
         try:
-            token = _login_access_token(http_client, backend_base, email, password)
+            token = _login_access_token(http_client, backend_base, a_email, a_password)
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _skip_if_unreachable(e)
             raise
         if not token:
-            pytest.skip("Login did not return a token (seed user missing or wrong INTEGRATION_LOGIN_*).")
-        headers = {"Authorization": f"Bearer {token}"}
+            pytest.skip("Admin login did not return a token (check INTEGRATION_ADMIN_* / e2e seeder).")
+        headers = _lab_auth_headers(token)
+        # V42__seed_reference_evaluation_dataset.sql — REFERENCE_BUNDLE, SYSTEM_DATASET (ADMIN scope).
+        reference_dataset_id = "00000000-0000-7000-8000-000000000001"
+        try:
+            corpus_id = _lab_create_evaluation_corpus_with_document(
+                http_client,
+                backend_base,
+                product_api_base,
+                token,
+                corpus_name="pytest-rag-preset-corpus",
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
         try:
             post = http_client.post(
-                f"{backend_base}{product_api_base}/lab/evaluations/rag",
+                f"{backend_base}{product_api_base}/lab/benchmarks/RAG_PRESET_END_TO_END/runs",
                 headers=headers,
+                json={
+                    "datasetId": reference_dataset_id,
+                    "corpusId": corpus_id,
+                    "experimentalPresetCodes": ["P0"],
+                },
                 timeout=120.0,
             )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
@@ -754,13 +1116,14 @@ class TestBackendLabJobs:
             raise
         assert post.status_code == 202, post.text
         body = post.json()
-        job_id = body.get("jobId")
-        assert job_id is not None and len(str(job_id)) > 0
+        task_id = body.get("asyncTaskId")
+        assert task_id is not None and len(str(task_id)) > 0
+        assert body.get("evaluationRunId") is not None
         assert body.get("status") == "ACCEPTED"
         try:
             st = http_client.get(
-                f"{backend_base}{product_api_base}/lab/jobs/{job_id}",
-                headers=headers,
+                f"{backend_base}{product_api_base}/lab/jobs/{task_id}",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
                 timeout=30.0,
             )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
@@ -768,7 +1131,7 @@ class TestBackendLabJobs:
             raise
         assert st.status_code == 200, st.text
         job = st.json()
-        assert str(job.get("id")) == str(job_id)
+        assert str(job.get("id")) == str(task_id)
         assert job.get("status") in (
             "QUEUED",
             "RUNNING",
@@ -776,12 +1139,217 @@ class TestBackendLabJobs:
             "FAILED",
         ), job
 
+    def test_lab_evaluation_corpus_create_and_rag_without_project_id(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_admin_credentials: tuple[str, str] | None,
+    ) -> None:
+        """LAB closure: evaluation corpus is independent of projectId on benchmark start."""
+        if integration_admin_credentials is None:
+            pytest.skip("Needs INTEGRATION_ADMIN_* (e2e profile).")
+        a_email, a_password = integration_admin_credentials
+        token = _login_access_token(http_client, backend_base, a_email, a_password)
+        if not token:
+            pytest.skip("Admin login did not return a token.")
+        headers = _lab_auth_headers(token)
+        try:
+            corpus_id = _lab_create_evaluation_corpus_with_document(
+                http_client,
+                backend_base,
+                product_api_base,
+                token,
+                corpus_name="pytest-closure-corpus",
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+
+        reference_dataset_id = "00000000-0000-7000-8000-000000000001"
+        try:
+            post = http_client.post(
+                f"{backend_base}{product_api_base}/lab/benchmarks/RAG_PRESET_END_TO_END/runs",
+                headers=headers,
+                json={
+                    "datasetId": reference_dataset_id,
+                    "corpusId": corpus_id,
+                    "experimentalPresetCodes": ["P0"],
+                },
+                timeout=120.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if post.status_code == 422:
+            pytest.skip(f"Dataset/corpus gate rejected run (expected in minimal corpus): {post.text[:300]}")
+        assert post.status_code == 202, post.text
+        body = post.json()
+        assert body.get("asyncTaskId")
+        assert body.get("evaluationRunId")
+
+    def test_lab_jobs_active_list_authenticated(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        email, password = integration_seed_credentials
+        token = _login_access_token(http_client, backend_base, email, password)
+        if not token:
+            pytest.skip("User login did not return a token.")
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        try:
+            r = http_client.get(
+                f"{backend_base}{product_api_base}/lab/jobs/active",
+                headers=headers,
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert isinstance(body, list)
+
+    def test_lab_evaluation_corpus_readiness_no_documents(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        """M3: empty corpus exposes primaryBlocker NO_DOCUMENTS and runnable=false."""
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("Login did not return a token.")
+        headers = _lab_auth_headers(token)
+        try:
+            create = http_client.post(
+                f"{backend_base}{product_api_base}/lab/evaluation-corpora",
+                headers=headers,
+                json={"name": "pytest-readiness-empty"},
+                timeout=60.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert create.status_code in (200, 201), create.text
+        corpus_id = _assert_json_response_not_html(create).get("id")
+        assert corpus_id
+
+        try:
+            readiness = http_client.get(
+                f"{backend_base}{product_api_base}/lab/evaluation-corpora/{corpus_id}/readiness",
+                headers=headers,
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert readiness.status_code == 200, readiness.text
+        body = _assert_json_response_not_html(readiness)
+        assert body.get("primaryBlocker") == "NO_DOCUMENTS"
+        assert body.get("runnable") is False
+
+    def test_lab_evaluation_corpus_readiness_runnable_after_upload(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        """M3: corpus with READY documents is runnable (snapshot may still need reindex)."""
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("Login did not return a token.")
+        try:
+            corpus_id = _lab_create_evaluation_corpus_with_document(
+                http_client,
+                backend_base,
+                product_api_base,
+                token,
+                corpus_name="pytest-readiness-ready",
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        headers = _lab_auth_headers(token)
+        try:
+            readiness = http_client.get(
+                f"{backend_base}{product_api_base}/lab/evaluation-corpora/{corpus_id}/readiness",
+                headers=headers,
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert readiness.status_code == 200, readiness.text
+        body = _assert_json_response_not_html(readiness)
+        assert body.get("runnable") is True
+        assert body.get("primaryBlocker") in (None, "")
+        # Document-centric flow: missing index is informational, not a run blocker.
+        snapshot_blocker = body.get("snapshotBlocker")
+        if body.get("activeSnapshotId") in (None, ""):
+            assert snapshot_blocker in (
+                "INDEX_PREPARATION_REQUIRED",
+                "REINDEX_REQUIRED",
+                "NO_ACTIVE_SNAPSHOT",
+                None,
+            ), body
+
+    def test_lab_evaluation_corpus_missing_returns_kb_not_found_code(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        """M3: stale corpus id returns machine code KB_NOT_FOUND, not generic NOT_FOUND."""
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("Login did not return a token.")
+        missing_id = "00000000-0000-7000-8000-000000009999"
+        headers = _lab_auth_headers(token)
+        try:
+            r = http_client.get(
+                f"{backend_base}{product_api_base}/lab/evaluation-corpora/{missing_id}",
+                headers=headers,
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 404, r.text
+        body = _assert_json_response_not_html(r)
+        assert body.get("code") == "KB_NOT_FOUND"
+
 
 class TestCrossService:
     def test_classifier_then_backend_query(self, http_client: httpx.Client, classifier_base: str, backend_base: str) -> None:
         """Smoke: both services reachable in sequence (no strict queryType equality)."""
         try:
             h = http_client.get(f"{classifier_base}/health")
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e, service="classifier")
+            raise
+        try:
             b = http_client.get(f"{backend_base}/actuator/health")
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _skip_if_unreachable(e)

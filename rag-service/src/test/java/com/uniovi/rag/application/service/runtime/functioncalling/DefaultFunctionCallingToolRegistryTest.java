@@ -4,7 +4,6 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 
-import java.util.EnumSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -14,7 +13,14 @@ class DefaultFunctionCallingToolRegistryTest {
     @Test
     void whitelist_hasFiveKinds() {
         DefaultFunctionCallingToolRegistry reg = new DefaultFunctionCallingToolRegistry();
-        List<ToolCallback> cbs = reg.callbacksFor(EnumSet.allOf(DeterministicToolKind.class));
+        List<ToolCallback> cbs =
+                reg.callbacksFor(
+                        List.of(
+                                DeterministicToolKind.COUNT_DOCUMENTS_TOOL,
+                                DeterministicToolKind.FIND_PARAGRAPH_TOOL,
+                                DeterministicToolKind.GET_FIELD_TOOL,
+                                DeterministicToolKind.BOOLEAN_QUERY_TOOL,
+                                DeterministicToolKind.COUNT_AND_EXPLAIN_TOOL));
         assertEquals(5, cbs.size());
     }
 

@@ -62,6 +62,100 @@ class DefaultDeterministicToolResolverTest {
     }
 
     @Test
+    void fdCe02_exactAttendeeListing_notSuppressedByAmbiguity() {
+        RagConfig rag = baseRag(true, false);
+        String q =
+                "¿En qué reuniones hubo exactamente 21 asistentes y qué se decidió en esa reunión?";
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1,
+                        q,
+                        q,
+                        q,
+                        q,
+                        "COUNT_AND_EXPLAIN",
+                        Optional.of(QueryType.COUNT_AND_EXPLAIN),
+                        ClassifierStatus.OK,
+                        QueryIntent.COUNT,
+                        Map.of("explain", "true"),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled(q, "test"),
+                        ExpectedAnswerShape.PARAGRAPH,
+                        new AmbiguityAssessment(
+                                AmbiguityStatus.MISSING_INFORMATION,
+                                List.of("Missing acta/meeting date"),
+                                List.of("time_reference")),
+                        "cid",
+                        "cls",
+                        List.of());
+        var d = resolver.resolve(ctx(rag), plan);
+        assertThat(d.outcome()).isNotEqualTo(DeterministicToolOutcome.SUPPRESSED_BY_AMBIGUITY);
+    }
+
+    @Test
+    void suppressedByAmbiguity_undatedParticipantCountWithConflictingCues() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1,
+                        "¿Cuántos participantes asistieron?",
+                        "¿Cuántos participantes asistieron?",
+                        "¿Cuántos participantes asistieron?",
+                        "¿Cuántos participantes asistieron?",
+                        "COUNT_DOCUMENTS",
+                        Optional.of(QueryType.COUNT_DOCUMENTS),
+                        ClassifierStatus.OK,
+                        QueryIntent.COUNT,
+                        Map.of("field", "attendeesCount"),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        rewriteWithAction("EXTRACT_FIELD"),
+                        ExpectedAnswerShape.SCALAR_COUNT,
+                        new AmbiguityAssessment(
+                                AmbiguityStatus.MISSING_INFORMATION,
+                                List.of("Missing acta/meeting date"),
+                                List.of("time_reference")),
+                        "cid",
+                        "cls",
+                        List.of());
+        var d = resolver.resolve(ctx(rag), plan);
+        assertThat(d.outcome()).isEqualTo(DeterministicToolOutcome.SUPPRESSED_BY_AMBIGUITY);
+        assertThat(d.selected()).isFalse();
+    }
+
+    @Test
+    void structuredGetField_selectsTool_whenAmbiguityConflictingButClassifierAuthoritative() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1,
+                        "dime los participantes del acta del 25 de febrero de 2026",
+                        "dime los participantes del acta del 25 de febrero de 2026",
+                        "dime los participantes del acta del 25 de febrero de 2026",
+                        "dime los participantes del acta del 25 de febrero de 2026",
+                        "GET_FIELD",
+                        Optional.of(QueryType.GET_FIELD),
+                        ClassifierStatus.OK,
+                        QueryIntent.EXTRACT_FIELD,
+                        Map.of("field", "attendees"),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled("q", "test"),
+                        ExpectedAnswerShape.FIELD_VALUE,
+                        new AmbiguityAssessment(AmbiguityStatus.CONFLICTING_CUES, List.of("CONFLICT"), List.of()),
+                        "cid",
+                        "cls",
+                        List.of());
+        var d = resolver.resolve(ctx(rag), plan);
+        assertThat(d.outcome()).isEqualTo(DeterministicToolOutcome.SELECTED);
+        assertThat(d.selectedToolKind()).contains(DeterministicToolKind.GET_FIELD_TOOL);
+    }
+
+    @Test
     void selectsCountDocuments() {
         RagConfig rag = baseRag(true, false);
         QueryPlan plan = minimalPlan(QueryIntent.COUNT, ExpectedAnswerShape.SCALAR_COUNT, AmbiguityStatus.SUFFICIENT);
@@ -83,6 +177,183 @@ class DefaultDeterministicToolResolverTest {
         assertThat(d.outcome()).isEqualTo(DeterministicToolOutcome.NOT_APPLICABLE);
         assertThat(d.selected()).isFalse();
         assertThat(d.reasons().toString()).contains("tool_ambiguous_match");
+    }
+
+    @Test
+    void nonApplicableClassifierQueryType_blocksCountHeuristic() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P6_QU_CORE_V1,
+                        "raw",
+                        "raw",
+                        "norm",
+                        "rewritten",
+                        "lbl",
+                        Optional.of(QueryType.GET_DURATION),
+                        ClassifierStatus.OK,
+                        QueryIntent.COUNT,
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled("norm", ""),
+                        ExpectedAnswerShape.SCALAR_COUNT,
+                        AmbiguityAssessment.sufficient(),
+                        "cid",
+                        "",
+                        List.of());
+        var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+        assertThat(d.selected()).isFalse();
+        assertThat(d.outcome()).isEqualTo(DeterministicToolOutcome.NOT_APPLICABLE);
+    }
+
+    @Test
+    void invalidOutput_suppressesWhenNoShapeEvidence() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                planWithStatus(
+                        QueryIntent.UNKNOWN,
+                        ExpectedAnswerShape.UNKNOWN,
+                        AmbiguityStatus.SUFFICIENT,
+                        Optional.of(QueryType.COUNT_DOCUMENTS),
+                        ClassifierStatus.INVALID_OUTPUT);
+        var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+        assertThat(d.selected()).isFalse();
+        assertThat(d.normalizedInputs().get("routeSuppressedByClassifier")).isEqualTo("false");
+    }
+
+    @Test
+    void lowConfidence_strongCountShape_selectsTool() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                planWithStatus(
+                        QueryIntent.COUNT,
+                        ExpectedAnswerShape.SCALAR_COUNT,
+                        AmbiguityStatus.SUFFICIENT,
+                        Optional.empty(),
+                        ClassifierStatus.LOW_CONFIDENCE);
+        var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+        assertThat(d.selected()).isTrue();
+        assertThat(d.selectedToolKind()).contains(DeterministicToolKind.COUNT_DOCUMENTS_TOOL);
+        assertThat(d.normalizedInputs().get("deterministicEvidenceLevel")).isEqualTo("STRONG");
+        assertThat(d.normalizedInputs().get("routeSuppressedByClassifier")).isEqualTo("false");
+    }
+
+    @Test
+    void invalidOutput_strongCountShape_selectsTool() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                planWithStatus(
+                        QueryIntent.COUNT,
+                        ExpectedAnswerShape.SCALAR_COUNT,
+                        AmbiguityStatus.SUFFICIENT,
+                        Optional.empty(),
+                        ClassifierStatus.INVALID_OUTPUT);
+        var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+        assertThat(d.selected()).isTrue();
+        assertThat(d.selectedToolKind()).contains(DeterministicToolKind.COUNT_DOCUMENTS_TOOL);
+    }
+
+    @Test
+    void lowConfidence_unsupportedSummarizeShape_doesNotSelectTool() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                planWithStatus(
+                        QueryIntent.SUMMARIZE,
+                        ExpectedAnswerShape.SUMMARY,
+                        AmbiguityStatus.SUFFICIENT,
+                        Optional.empty(),
+                        ClassifierStatus.LOW_CONFIDENCE);
+        var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+        assertThat(d.selected()).isFalse();
+        assertThat(d.suppressionReason()).contains(DefaultDeterministicToolResolver.REASON_UNSUPPORTED_QUERY_TYPE);
+    }
+
+    @Test
+    void oracleEnabled_selectsFromExpectedQueryType() throws Exception {
+        RagConfig rag = baseRag(true, false);
+        DeterministicToolBenchmarkContext.setRoutingOracleEnabled(true);
+        try (AutoCloseable ignored = DeterministicToolBenchmarkContext.openItem("COUNT_DOCUMENTS")) {
+            QueryPlan plan =
+                    planWithStatus(
+                            QueryIntent.UNKNOWN,
+                            ExpectedAnswerShape.UNKNOWN,
+                            AmbiguityStatus.SUFFICIENT,
+                            Optional.empty(),
+                            ClassifierStatus.LOW_CONFIDENCE);
+            var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+            assertThat(d.selected()).isTrue();
+            assertThat(d.selectedToolKind()).contains(DeterministicToolKind.COUNT_DOCUMENTS_TOOL);
+            assertThat(d.normalizedInputs().get("routingOracleUsed")).isEqualTo("true");
+            assertThat(d.normalizedInputs().get("deterministicEvidenceLevel")).isEqualTo("ORACLE");
+        } finally {
+            DeterministicToolBenchmarkContext.clearRunScope();
+        }
+    }
+
+    @Test
+    void oracleDisabled_ignoresExpectedQueryType() throws Exception {
+        RagConfig rag = baseRag(true, false);
+        try (AutoCloseable ignored = DeterministicToolBenchmarkContext.openItem("COUNT_DOCUMENTS")) {
+            QueryPlan plan =
+                    planWithStatus(
+                            QueryIntent.UNKNOWN,
+                            ExpectedAnswerShape.UNKNOWN,
+                            AmbiguityStatus.SUFFICIENT,
+                            Optional.empty(),
+                            ClassifierStatus.LOW_CONFIDENCE);
+            var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+            assertThat(d.selected()).isFalse();
+            assertThat(d.normalizedInputs().get("routingOracleUsed")).isEqualTo("false");
+        } finally {
+            DeterministicToolBenchmarkContext.clearRunScope();
+        }
+    }
+
+    @Test
+    void unavailable_allowsStrongUnambiguousHeuristic() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                planWithStatus(
+                        QueryIntent.COUNT,
+                        ExpectedAnswerShape.SCALAR_COUNT,
+                        AmbiguityStatus.SUFFICIENT,
+                        Optional.empty(),
+                        ClassifierStatus.UNAVAILABLE);
+        var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+        assertThat(d.selected()).isTrue();
+        assertThat(d.selectedToolKind()).contains(DeterministicToolKind.COUNT_DOCUMENTS_TOOL);
+        assertThat(d.normalizedInputs().get("heuristicRouteUsed")).isEqualTo("true");
+    }
+
+    @Test
+    void selectsGetDuration_whenAmbiguityConflictingButClassifierAuthoritative() {
+        RagConfig rag = baseRag(true, false);
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P6_QU_CORE_V1,
+                        "¿Cuál fue la duración de la reunión del 25/02/2026?",
+                        "¿Cuál fue la duración de la reunión del 25/02/2026?",
+                        "norm",
+                        "rewritten",
+                        "GET_DURATION",
+                        Optional.of(QueryType.GET_DURATION),
+                        ClassifierStatus.OK,
+                        QueryIntent.FIND,
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled("norm", ""),
+                        ExpectedAnswerShape.PARAGRAPH,
+                        new AmbiguityAssessment(AmbiguityStatus.CONFLICTING_CUES, List.of("CONFLICT"), List.of()),
+                        "cid",
+                        "",
+                        List.of());
+        var d = resolver.resolve(ctx(rag), plan);
+        assertThat(d.outcome()).isEqualTo(DeterministicToolOutcome.SELECTED);
+        assertThat(d.selectedToolKind()).contains(DeterministicToolKind.GET_DURATION_TOOL);
     }
 
     @Test
@@ -168,6 +439,7 @@ class DefaultDeterministicToolResolverTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 "q",
                 "q",
                 Optional.empty(),
@@ -202,6 +474,15 @@ class DefaultDeterministicToolResolverTest {
             ExpectedAnswerShape shape,
             AmbiguityStatus amb,
             Optional<QueryType> classifierQt) {
+        return planWithStatus(intent, shape, amb, classifierQt, ClassifierStatus.OK);
+    }
+
+    private static QueryPlan planWithStatus(
+            QueryIntent intent,
+            ExpectedAnswerShape shape,
+            AmbiguityStatus amb,
+            Optional<QueryType> classifierQt,
+            ClassifierStatus status) {
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,
                 "raw",
@@ -210,7 +491,7 @@ class DefaultDeterministicToolResolverTest {
                 "rewritten",
                 "lbl",
                 classifierQt,
-                ClassifierStatus.OK,
+                status,
                 intent,
                 Map.of(),
                 List.of(),
@@ -221,6 +502,19 @@ class DefaultDeterministicToolResolverTest {
                 new AmbiguityAssessment(amb, List.of(), List.of()),
                 "cid",
                 "",
+                List.of());
+    }
+
+    private static StructuredRewriteResult rewriteWithAction(String action) {
+        return new StructuredRewriteResult(
+                "q",
+                true,
+                List.of(),
+                StructuredRewriteResult.STRATEGY_STRUCTURED_V1,
+                List.of(),
+                List.of(),
+                Optional.of(action),
+                Map.of(),
                 List.of());
     }
 }

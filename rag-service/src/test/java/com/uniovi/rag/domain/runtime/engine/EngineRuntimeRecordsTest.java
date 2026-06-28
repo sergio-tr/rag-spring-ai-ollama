@@ -38,6 +38,7 @@ class EngineRuntimeRecordsTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 "",
                 "",
                 Optional.empty(),
@@ -72,7 +73,7 @@ class EngineRuntimeRecordsTest {
                         null,
                         null,
                         "q",
-                        RuntimeOperationKind.LEGACY_HTTP,
+                        RuntimeOperationKind.STATELESS_HTTP,
                         resolved,
                         "sys",
                         KnowledgeSnapshotSelection.empty(),
@@ -80,6 +81,7 @@ class EngineRuntimeRecordsTest {
                         null,
                         "c1",
                         List.of("d1"),
+                        null,
                         null,
                         null,
                         null,
@@ -121,7 +123,7 @@ class EngineRuntimeRecordsTest {
     }
 
     @Test
-    void executionContext_legacyConstructor_defaultsRoutingFields() {
+    void executionContext_minimalConstructor_defaultsRoutingFields() {
         ResolvedRuntimeConfig resolved = mock(ResolvedRuntimeConfig.class);
         UUID cid = UUID.randomUUID();
         ExecutionContext ctx =
@@ -233,7 +235,16 @@ class EngineRuntimeRecordsTest {
                         false,
                         "",
                         false,
-                        false);
+                        false,
+                        "",
+                        "",
+                "",
+                0,
+                List.of(),
+                "",
+                0,
+                false,
+                "");
 
         assertThat(t.usedResolvedConfigSnapshotId()).isEmpty();
         assertThat(t.usedConfigHash()).isEmpty();
@@ -260,7 +271,7 @@ class EngineRuntimeRecordsTest {
         UUID a = UUID.randomUUID();
         KnowledgeSnapshotSelection k2 =
                 new KnowledgeSnapshotSelection(
-                        List.of(a), null, Optional.of(UUID.randomUUID()), null, null);
+                        List.of(a), null, Optional.of(UUID.randomUUID()), null, null, null);
         assertThat(k2.orderedSnapshotIds()).containsExactly(a);
         assertThat(k2.projectSnapshotSignatureHash()).isEmpty();
     }
@@ -300,7 +311,14 @@ class EngineRuntimeRecordsTest {
                                         1,
                                         0,
                                         0,
-                                        0)),
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        false,
+                                        List.of(),
+                                        List.of(),
+                                        Optional.empty(), 0, 0, false, 0)),
                         List.of());
         assertThat(r.retrievalDiagnostics()).isPresent();
     }
@@ -333,6 +351,7 @@ class EngineRuntimeRecordsTest {
                         base.chatModelOverride(),
                         base.queryPlan(),
                         base.advisorPackedContextSet(),
+                        base.structuredAnswerPlan(),
                         base.preMemoryPlanningInputText(),
                         base.effectivePlanningInputText(),
                         base.memorySlice(),

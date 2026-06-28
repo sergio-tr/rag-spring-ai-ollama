@@ -1,7 +1,12 @@
 package com.uniovi.rag.infrastructure.classifier;
 
 import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.domain.runtime.RagExecutionContext;
+import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
 import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -14,6 +19,7 @@ import org.springframework.web.client.RestClientException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
@@ -62,6 +68,68 @@ class ClassifierServiceClientTest {
     }
 
     @Test
+    void classifyUsesClassifierModelIdFromExecutionContext() {
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        RagConfig cfg = RagConfig.fromFeatureConfiguration(
+                new RagFeatureConfiguration(), 10, 0.7, "llm", "emb", "project-classifier", "SIMPLE");
+        RagExecutionContextHolder.set(
+                new RagExecutionContext("conv", "user", "project", cfg, List.of(RagExecutionContext.ALL_DOCUMENTS), "t"));
+        try {
+            server.expect(requestTo(base + "/classify"))
+                    .andExpect(method(HttpMethod.POST))
+                    .andExpect(content().json("{\"query\":\"How many documents?\",\"modelId\":\"project-classifier\"}"))
+                    .andRespond(withSuccess("{\"queryType\": \"COUNT_DOCUMENTS\"}", MediaType.APPLICATION_JSON));
+
+            QueryType result = classifier.classify("How many documents?");
+
+            server.verify();
+            assertEquals(QueryType.COUNT_DOCUMENTS, result);
+        } finally {
+            RagExecutionContextHolder.clear();
+        }
+    }
+
+    @Test
+    void classifyWithExplicitModelIdOverridesExecutionContext() {
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        RagConfig cfg = RagConfig.fromFeatureConfiguration(
+                new RagFeatureConfiguration(), 10, 0.7, "llm", "emb", "context-classifier", "SIMPLE");
+        RagExecutionContextHolder.set(
+                new RagExecutionContext("conv", "user", "project", cfg, List.of(RagExecutionContext.ALL_DOCUMENTS), "t"));
+        try {
+            server.expect(requestTo(base + "/classify"))
+                    .andExpect(method(HttpMethod.POST))
+                    .andExpect(content().json("{\"query\":\"How many documents?\",\"modelId\":\"explicit-classifier\"}"))
+                    .andRespond(withSuccess("{\"queryType\": \"COUNT_DOCUMENTS\"}", MediaType.APPLICATION_JSON));
+
+            QueryType result = classifier.classify("How many documents?", "explicit-classifier");
+
+            server.verify();
+            assertEquals(QueryType.COUNT_DOCUMENTS, result);
+        } finally {
+            RagExecutionContextHolder.clear();
+        }
+    }
+
+    @Test
+    void classifyInference_returnsConfidenceAndLabelSetHash_whenPresent() {
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        server.expect(requestTo(base + "/classify"))
+                .andRespond(
+                        withSuccess(
+                                "{\"queryType\":\"COUNT_DOCUMENTS\",\"confidence\":0.91,\"labelSetHash\":\"hash1\",\"topPredictions\":[{\"queryType\":\"COUNT_DOCUMENTS\",\"confidence\":0.91}]}",
+                                MediaType.APPLICATION_JSON));
+
+        ClassifierInferenceResponse response = classifier.classifyInference("How many?", "default");
+
+        server.verify();
+        assertEquals("COUNT_DOCUMENTS", response.queryType());
+        assertEquals(0.91, response.confidence());
+        assertEquals("hash1", response.labelSetHash());
+        assertEquals(1, response.topPredictions().size());
+    }
+
+    @Test
     void classifyWithText_returnsString_whenServiceReturns200() {
         String base = ClassifierClientTestSupport.defaultBaseUrl();
         server.expect(requestTo(base + "/classify"))
@@ -74,10 +142,25 @@ class ClassifierServiceClientTest {
     }
 
     @Test
-    void classify_returnsNull_whenServiceReturns5xx() {
+    void classify_throws_whenServiceReturns5xx() {
         String base = ClassifierClientTestSupport.defaultBaseUrl();
         server.expect(requestTo(base + "/classify"))
                 .andRespond(withServerError());
+
+        assertThrows(ClassifierCallException.class, () -> classifier.classify("any query"));
+
+        server.verify();
+    }
+
+    @Test
+    void classify_returnsNull_whenServiceReturns503InvalidClassifierOutput() {
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        server.expect(requestTo(base + "/classify"))
+                .andRespond(
+                        withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+                                .body(
+                                        "{\"code\":\"CLASSIFICATION_ERROR\",\"message\":\"Invalid classifier output: unknown label\"}")
+                                .contentType(MediaType.APPLICATION_JSON));
 
         QueryType result = classifier.classify("any query");
 
@@ -98,22 +181,53 @@ class ClassifierServiceClientTest {
     }
 
     @Test
-    void classify_returnsNull_whenServiceReturnsNon2xx() {
+    void classify_throws_whenServiceReturnsNon2xx() {
         String base = ClassifierClientTestSupport.defaultBaseUrl();
         server.expect(requestTo(base + "/classify"))
                 .andRespond(withStatus(HttpStatus.BAD_REQUEST));
 
-        QueryType result = classifier.classify("any query");
+        assertThrows(ClassifierCallException.class, () -> classifier.classify("any query"));
 
         server.verify();
-        assertNull(result);
     }
 
     @Test
-    void classifyWithText_returnsNull_whenRestTemplateThrowsRestClientException_timeout() {
+    void classify_throwsUnavailable_whenUvicornProtocolRejection400() {
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        server.expect(requestTo(base + "/classify"))
+                .andRespond(
+                        withStatus(HttpStatus.BAD_REQUEST)
+                                .body("Invalid HTTP request received.")
+                                .contentType(MediaType.TEXT_PLAIN));
+
+        ClassifierCallException ex =
+                assertThrows(ClassifierCallException.class, () -> classifier.classify("any query"));
+        assertEquals(ClassifierCallException.Kind.UNAVAILABLE, ex.kind());
+        server.verify();
+    }
+
+    @Test
+    void classify_throwsInvalidRequest_whenStructuredValidation400() {
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        server.expect(requestTo(base + "/classify"))
+                .andRespond(
+                        withStatus(HttpStatus.BAD_REQUEST)
+                                .body(
+                                        "{\"success\":false,\"error\":{\"code\":\"VALIDATION_ERROR\",\"message\":\"empty\"}}")
+                                .contentType(MediaType.APPLICATION_JSON));
+
+        ClassifierCallException ex =
+                assertThrows(ClassifierCallException.class, () -> classifier.classify("any query"));
+        assertEquals(ClassifierCallException.Kind.INVALID_REQUEST, ex.kind());
+        server.verify();
+    }
+
+    @Test
+    void classifyWithText_throwsTimeout_whenRestTemplateThrowsRestClientException_timeout() {
         RestTemplate throwingRestTemplate = mock(RestTemplate.class);
-        when(throwingRestTemplate.postForEntity(
+        when(throwingRestTemplate.exchange(
                 Mockito.anyString(),
+                Mockito.eq(HttpMethod.POST),
                 Mockito.any(),
                 Mockito.eq(ClassifyResponseDto.class)))
                 .thenThrow(new RestClientException("timeout"));
@@ -126,7 +240,7 @@ class ClassifierServiceClientTest {
                 throwingRestTemplate
         );
 
-        assertNull(c.classifyWithText("any query"));
+        assertThrows(ClassifierCallException.class, () -> c.classifyWithText("any query"));
     }
 
     @Test

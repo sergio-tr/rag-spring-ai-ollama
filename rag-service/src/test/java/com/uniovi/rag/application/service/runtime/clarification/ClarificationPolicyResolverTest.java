@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.config.runtime.ConfigProvenance;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.config.validation.CompatibilityResult;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
@@ -96,6 +97,96 @@ class ClarificationPolicyResolverTest {
     }
 
     @Test
+    void resolve_notNeeded_forConflictingCues() {
+        ExecutionContext ctx = ctxBase("hi", false, false, false, Optional.empty());
+        QueryPlan plan = plan(AmbiguityStatus.CONFLICTING_CUES, List.of());
+        ClarificationDecision d = resolver.resolve(ctx, plan);
+        assertThat(d.ask()).isFalse();
+        assertThat(d.terminalOutcome()).isEqualTo(ClarificationOutcome.NOT_NEEDED);
+    }
+
+    @Test
+    void resolve_cl01_ambiguousParticipantCount_asksForDate() {
+        ExecutionContext ctx = ctxBase("¿Cuántos participantes asistieron?", false, false, false, Optional.empty());
+        QueryPlan plan =
+                plan(
+                        AmbiguityStatus.MISSING_INFORMATION,
+                        List.of("Meeting date", "time_reference"));
+        ClarificationDecision d = resolver.resolve(ctx, plan);
+        assertThat(d.ask()).isTrue();
+        assertThat(d.terminalOutcome()).isEqualTo(ClarificationOutcome.ASKED_CLARIFICATION);
+        assertThat(d.questionIfAsking().questionKind()).isEqualTo(ClarificationQuestionKind.MISSING_DATE);
+    }
+
+    @Test
+    void resolve_notNeeded_forFdFl03CompoundMonthTopicFilter() {
+        ExecutionContext ctx = ctxBase("hi", false, false, false, Optional.empty());
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P11_QU_CLARIFICATION_CORE_V1,
+                        "raw",
+                        "raw",
+                        "¿Qué reuniones celebradas en agosto hablaron sobre videovigilancia y tuvieron más de 18 asistentes?",
+                        "rw",
+                        "lbl",
+                        Optional.empty(),
+                        ClassifierStatus.OK,
+                        QueryIntent.UNKNOWN,
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled("norm", ""),
+                        ExpectedAnswerShape.UNKNOWN,
+                        new AmbiguityAssessment(
+                                AmbiguityStatus.MISSING_INFORMATION,
+                                List.of(),
+                                List.of("time_reference")),
+                        "c",
+                        "",
+                        List.of());
+        ClarificationDecision d = resolver.resolve(ctx, plan);
+        assertThat(d.ask()).isFalse();
+        assertThat(d.terminalOutcome()).isEqualTo(ClarificationOutcome.NOT_NEEDED);
+        assertThat(d.policyTraceNote()).contains("compound_month_topic_attendee_filter");
+    }
+
+    @Test
+    void resolve_notNeeded_forFdCe02ExactAttendeeListing() {
+        ExecutionContext ctx = ctxBase("hi", false, false, false, Optional.empty());
+        String q =
+                "¿En qué reuniones hubo exactamente 21 asistentes y qué se decidió en esa reunión?";
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P11_QU_CLARIFICATION_CORE_V1,
+                        "raw",
+                        "raw",
+                        q,
+                        "rw",
+                        "lbl",
+                        Optional.of(QueryType.COUNT_AND_EXPLAIN),
+                        ClassifierStatus.OK,
+                        QueryIntent.UNKNOWN,
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled("norm", ""),
+                        ExpectedAnswerShape.UNKNOWN,
+                        new AmbiguityAssessment(
+                                AmbiguityStatus.MISSING_INFORMATION,
+                                List.of(),
+                                List.of("time_reference")),
+                        "c",
+                        "",
+                        List.of());
+        ClarificationDecision d = resolver.resolve(ctx, plan);
+        assertThat(d.ask()).isFalse();
+        assertThat(d.terminalOutcome()).isEqualTo(ClarificationOutcome.NOT_NEEDED);
+        assertThat(d.policyTraceNote()).contains("corpus_wide_exact_attendee_count_listing");
+    }
+
+    @Test
     void selectKind_conflictStatus_selectsConflictingCuesKind() {
         QueryPlan plan = plan(AmbiguityStatus.CONFLICTING_CUES, List.of());
         assertThat(resolver.selectKind(plan))
@@ -133,6 +224,7 @@ class ClarificationPolicyResolverTest {
                 Optional.empty(),
                 "c",
                 List.of("all"),
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),

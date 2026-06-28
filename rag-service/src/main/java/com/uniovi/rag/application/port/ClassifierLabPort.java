@@ -3,6 +3,7 @@ package com.uniovi.rag.application.port;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -27,6 +28,12 @@ public interface ClassifierLabPort {
             String modelId, boolean includeImages, byte[] datasetContent, String datasetFilename);
 
     Map<String, Object> classify(String query, String modelId);
+
+    /**
+     * Lists available inference model tags from classifier-service ({@code GET /models}).
+     * Includes the built-in {@code default} model.
+     */
+    List<Map<String, Object>> listModels();
 
     boolean isConfigured();
 }

@@ -38,7 +38,7 @@ class RetrievalPolicyResolverTest {
         RagConfig resolved = RagConfig.applyJsonOverrides(
                 base, OM.readTree("{\"postRetrievalEnabled\": true, \"useAdvisor\": true}"));
 
-        RagExecutionContextHolder.set(RagExecutionContext.forLegacyPipeline(resolved, "t1"));
+        RagExecutionContextHolder.set(RagExecutionContext.forUnscopedExecution(resolved, "t1"));
 
         assertFalse(RetrievalPolicyResolver.allowQuestionAnswerAdvisor(global, true, false));
     }

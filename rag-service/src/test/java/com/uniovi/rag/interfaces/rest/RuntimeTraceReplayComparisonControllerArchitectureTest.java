@@ -18,7 +18,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 class RuntimeTraceReplayComparisonControllerArchitectureTest {
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnTraceQueryService =
+    static final ArchRule controllerDoesNotDependOnTraceQueryExecutionService =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceReplayComparisonController")

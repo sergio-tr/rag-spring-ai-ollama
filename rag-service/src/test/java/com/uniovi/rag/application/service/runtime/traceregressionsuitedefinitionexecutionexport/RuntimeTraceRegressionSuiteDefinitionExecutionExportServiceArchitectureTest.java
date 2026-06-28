@@ -17,8 +17,8 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition
 import com.uniovi.rag.application.service.runtime.tracereplay.RuntimeTraceReplayService;
 import com.uniovi.rag.application.service.runtime.tracereplaybatchexport.RuntimeTraceReplayBatchExportService;
 import com.uniovi.rag.application.service.runtime.tracereplayexport.RuntimeTraceReplayExportService;
-import com.uniovi.rag.service.query.ProcessQueryService;
-import com.uniovi.rag.service.query.SimpleProcessQueryService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.repository.Repository;
@@ -73,7 +73,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportServiceArchitectureTes
                     .areAssignableTo(RuntimeTraceReplayService.class);
 
     @ArchTest
-    static final ArchRule exportServiceDoesNotDependOnTraceQueryService =
+    static final ArchRule exportServiceDoesNotDependOnTraceQueryExecutionService =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceRegressionSuiteDefinitionExecutionExportService")
@@ -136,16 +136,16 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportServiceArchitectureTes
                     .areAssignableTo(RagExecutionOrchestrator.class);
 
     @ArchTest
-    static final ArchRule exportServiceDoesNotDependOnProcessQueryServices =
+    static final ArchRule exportServiceDoesNotDependOnRuntimeQueryExecutionServices =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceRegressionSuiteDefinitionExecutionExportService")
                     .should()
                     .dependOnClassesThat()
-                    .areAssignableTo(ProcessQueryService.class)
+                    .areAssignableTo(RuntimeQueryExecutionService.class)
                     .orShould()
                     .dependOnClassesThat()
-                    .areAssignableTo(SimpleProcessQueryService.class);
+                    .areAssignableTo(RuntimeQueryExecutionService.class);
 
     @ArchTest
     static final ArchRule exportServiceDoesNotUseAsyncOrExecutors =

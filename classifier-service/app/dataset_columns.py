@@ -7,7 +7,7 @@ import pandas as pd
 
 def normalize_excel_classification_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Ensure a 'Question' text column exists. Maps legacy/Spanish 'Pregunta' to 'Question'.
+    Ensure a 'Question' text column exists. Maps Spanish 'Pregunta' to 'Question'.
     QueryType must remain as-is.
     """
     out = df.copy()

@@ -1,5 +1,7 @@
 package com.uniovi.rag.infrastructure.health;
 
+import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import com.uniovi.rag.infrastructure.llm.ollama.OllamaTagsParser;
 import com.uniovi.rag.infrastructure.llm.ollama.OllamaUrlUtils;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +24,7 @@ import java.util.Set;
 public class OllamaHealthIndicator implements HealthIndicator {
 
     private final RagHealthProperties healthProperties;
+    private final LlmProperties llmProperties;
     private final String baseUrl;
     private final String chatModel;
     private final String embeddingModel;
@@ -29,10 +32,12 @@ public class OllamaHealthIndicator implements HealthIndicator {
 
     public OllamaHealthIndicator(
             RagHealthProperties healthProperties,
+            LlmProperties llmProperties,
             @Value("${spring.ai.ollama.base-url:http://localhost:11434}") String baseUrl,
             @Value("${spring.ai.ollama.chat.model:gemma3:4b}") String chatModel,
-            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large}") String embeddingModel) {
+            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large:latest}") String embeddingModel) {
         this.healthProperties = healthProperties;
+        this.llmProperties = llmProperties;
         this.baseUrl = OllamaUrlUtils.stripTrailingSlash(baseUrl);
         this.chatModel = chatModel;
         this.embeddingModel = embeddingModel;
@@ -47,6 +52,12 @@ public class OllamaHealthIndicator implements HealthIndicator {
             return Health.up()
                     .withDetail("check", "skipped")
                     .withDetail("reason", "rag.health.ollama-enabled=false")
+                    .build();
+        }
+        if (!requiresOllamaHealthCheck()) {
+            return Health.up()
+                    .withDetail("check", "skipped")
+                    .withDetail("reason", "effective stack does not use OLLAMA_NATIVE")
                     .build();
         }
 
@@ -99,6 +110,11 @@ public class OllamaHealthIndicator implements HealthIndicator {
                     .withDetail("url", tagsUrl)
                     .build();
         }
+    }
+
+    private boolean requiresOllamaHealthCheck() {
+        return llmProperties.getEffectiveDefaultChatProvider() == LlmProvider.OLLAMA_NATIVE
+                || llmProperties.getEffectiveDefaultEmbeddingProvider() == LlmProvider.OLLAMA_NATIVE;
     }
 
 }

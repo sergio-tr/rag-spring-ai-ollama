@@ -8,9 +8,7 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import java.util.Iterator;
 import java.util.Set;
 
-/**
- * Strict JSON argument validation for FC (§10.9).
- */
+/** Strict JSON argument validation for function-calling tool invocations. */
 public final class FcToolArgumentParser {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -37,8 +35,13 @@ public final class FcToolArgumentParser {
         ObjectNode obj = (ObjectNode) root;
         String rewritten = plan.rewrittenQueryText().trim();
         return switch (kind) {
-            case COUNT_DOCUMENTS_TOOL, FIND_PARAGRAPH_TOOL, BOOLEAN_QUERY_TOOL, COUNT_AND_EXPLAIN_TOOL -> parseSingleQuery(
-                    obj, rewritten);
+            case COUNT_DOCUMENTS_TOOL,
+                    FIND_PARAGRAPH_TOOL,
+                    BOOLEAN_QUERY_TOOL,
+                    COUNT_AND_EXPLAIN_TOOL,
+                    GET_DURATION_TOOL,
+                    FILTER_AND_LIST_TOOL,
+                    SUMMARIZE_MEETING_TOOL -> parseSingleQuery(obj, rewritten);
             case GET_FIELD_TOOL -> parseGetField(obj, rewritten, plan);
         };
     }

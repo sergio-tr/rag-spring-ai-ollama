@@ -9,10 +9,24 @@ public record RetrievedContextSet(
         Optional<RetrievalFusionMode> fusionModeUsed,
         int denseInputCount,
         int sparseInputCount,
-        int fusedCount) {
+        int fusedCount,
+        int denseOnlyCount,
+        int sparseOnlyCount,
+        int bothCount,
+        String candidateOriginsSummary) {
 
     public RetrievedContextSet {
         candidates = List.copyOf(Objects.requireNonNull(candidates, "candidates"));
         fusionModeUsed = Objects.requireNonNullElseGet(fusionModeUsed, Optional::empty);
+        candidateOriginsSummary = candidateOriginsSummary == null ? "" : candidateOriginsSummary;
+    }
+
+    public RetrievedContextSet(
+            List<RetrievalCandidate> candidates,
+            Optional<RetrievalFusionMode> fusionModeUsed,
+            int denseInputCount,
+            int sparseInputCount,
+            int fusedCount) {
+        this(candidates, fusionModeUsed, denseInputCount, sparseInputCount, fusedCount, 0, 0, 0, "");
     }
 }

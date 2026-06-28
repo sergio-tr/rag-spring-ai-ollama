@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.runtime.query;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
@@ -28,9 +29,12 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final ChatClient chatClient;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
 
-    public DefaultStructuredQueryRewriter(ChatClient chatClient) {
+    public DefaultStructuredQueryRewriter(
+            ChatClient chatClient, ChatGenerationModelSelector chatGenerationModelSelector) {
         this.chatClient = chatClient;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
     }
 
     @Override
@@ -67,15 +71,9 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
                 .user(userPrompt);
 
         // Fixed low-temperature to reduce variance (when supported by the client/model).
-        spec = spec.options(OllamaOptions.builder().temperature(0.0).build());
-
-        var chatModelOverride = ctx.chatModelOverride();
-        if (chatModelOverride.isPresent()) {
-            String m = chatModelOverride.get().trim();
-            if (!m.isBlank()) {
-                spec = spec.options(OllamaOptions.builder().model(m).temperature(0.0).build());
-            }
-        }
+        OllamaOptions.Builder opt = OllamaOptions.builder().temperature(0.0);
+        chatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(opt::model);
+        spec = spec.options(opt.build());
         String out = spec.call().content();
         return out == null ? "" : out.trim();
     }
@@ -276,7 +274,7 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
             return Map.of();
         }
         Map<String, String> out = new HashMap<>();
-        v.fields().forEachRemaining(e -> {
+        v.properties().forEach(e -> {
             if (e.getKey() == null || e.getKey().isBlank()) return;
             JsonNode val = e.getValue();
             if (val != null && val.isTextual()) {

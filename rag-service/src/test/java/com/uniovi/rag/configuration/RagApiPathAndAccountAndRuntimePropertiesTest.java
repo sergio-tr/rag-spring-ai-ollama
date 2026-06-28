@@ -34,10 +34,10 @@ class RagApiPathAndAccountAndRuntimePropertiesTest {
     void ragRuntimePropertiesDefaultsAndMutation() {
         RagRuntimeProperties p = new RagRuntimeProperties();
         assertTrue(p.getWorkflowSchemaVersion().startsWith("1."));
-        p.setLegacyAdvisorWithPostRetrieval(true);
+        p.setAdvisorWithPostRetrieval(true);
         p.setMemoryMaxTurns(5);
         p.setMemoryMaxChars(100);
-        assertTrue(p.isLegacyAdvisorWithPostRetrieval());
+        assertTrue(p.isAdvisorWithPostRetrieval());
         assertEquals(5, p.getMemoryMaxTurns());
         assertEquals(100, p.getMemoryMaxChars());
     }

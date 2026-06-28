@@ -16,8 +16,8 @@ import com.tngtech.archunit.lang.SimpleConditionEvent;
 import com.uniovi.rag.application.arch.DefinitionZipServiceP58ArchAssertions;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
-import com.uniovi.rag.service.query.ProcessQueryService;
-import com.uniovi.rag.service.query.SimpleProcessQueryService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.repository.Repository;
@@ -43,7 +43,7 @@ class RuntimeTraceRegressionSuiteDefinitionExportServiceArchitectureTest {
      *   exportPackageDoesNotDependOnInfrastructurePersistence
      *   exportServiceDoesNotDependOnFd28Types
      *   exportServiceDoesNotDependOnOrchestrator
-     *   exportServiceDoesNotDependOnProcessQueryServices
+     *   exportServiceDoesNotDependOnRuntimeQueryExecutionServices
      *   exportServiceDoesNotDependOnRepositories
      *   exportServiceDoesNotUseAsyncOrExecutors
      *   exportServicePublicConstructorInjectsOnlyDefinitionService
@@ -76,9 +76,8 @@ class RuntimeTraceRegressionSuiteDefinitionExportServiceArchitectureTest {
                     "RuntimeTraceReplayBatchService",
                     "RuntimeTraceQueryService",
                     "RagExecutionOrchestrator",
-                    "ProcessQueryService",
-                    "SimpleProcessQueryService",
-                    "TaskExecutor",
+                    "RuntimeQueryExecutionService",
+                                        "TaskExecutor",
                     "AsyncTaskExecutor",
                     "ThreadPoolTaskExecutor");
 
@@ -146,16 +145,16 @@ class RuntimeTraceRegressionSuiteDefinitionExportServiceArchitectureTest {
                     .areAssignableTo(RagExecutionOrchestrator.class);
 
     @ArchTest
-    static final ArchRule exportServiceDoesNotDependOnProcessQueryServices =
+    static final ArchRule exportServiceDoesNotDependOnRuntimeQueryExecutionServices =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceRegressionSuiteDefinitionExportService")
                     .should()
                     .dependOnClassesThat()
-                    .areAssignableTo(ProcessQueryService.class)
+                    .areAssignableTo(RuntimeQueryExecutionService.class)
                     .orShould()
                     .dependOnClassesThat()
-                    .areAssignableTo(SimpleProcessQueryService.class);
+                    .areAssignableTo(RuntimeQueryExecutionService.class);
 
     @ArchTest
     static final ArchRule exportServiceDoesNotUseAsyncOrExecutors =

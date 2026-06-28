@@ -6,7 +6,7 @@ import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingExecutionRes
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 
 /**
- * Single FC runtime entrypoint (§9.1). Returns a full result so the orchestrator can record trace for every
+ * Function-calling runtime entrypoint. Returns a full result so the orchestrator can record trace for every
  * terminal outcome; {@link FunctionCallingExecutionResult#shortCircuited()} is true only for {@code EXECUTED_SUCCESS}.
  */
 public interface FunctionCallingStrategy {

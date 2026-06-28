@@ -15,6 +15,11 @@ services:
     networks:
       - private
 
+  # Must share `private` with postgres; default network cannot resolve the `postgres` hostname.
+  postgres-collation-bootstrap:
+    networks:
+      - private
+
   classifier-service:
     ports: []
     networks:
@@ -24,6 +29,9 @@ services:
     ports: []
     networks:
       - public
+    environment:
+      # Allow BFF auth cookies over HTTP reverse-proxy (Playwright fullstack on :80).
+      E2E_ALLOW_INSECURE_COOKIES: ${E2E_ALLOW_INSECURE_COOKIES:-true}
     depends_on:
       backend:
         condition: service_started
@@ -47,7 +55,10 @@ services:
       BACKEND_INTERNAL_PORT: ${SERVER_PORT:-9000}
       WEBAPP_HOST: webapp
       WEBAPP_INTERNAL_PORT: ${WEBAPP_CONTAINER_PORT:-3000}
-      REVERSE_PROXY_ENFORCE_HTTPS: ${REVERSE_PROXY_ENFORCE_HTTPS:-1}
+      # Local/demo default keeps HTTP reachable for smoke checks and screenshots.
+      # Set REVERSE_PROXY_ENFORCE_HTTPS=1 when TLS redirect is required.
+      REVERSE_PROXY_ENFORCE_HTTPS: ${REVERSE_PROXY_ENFORCE_HTTPS:-0}
+      REVERSE_PROXY_HTTPS_PORT_SUFFIX: ":${REVERSE_PROXY_HTTPS_PORT:-8443}"
       API_PROXY_CONNECT_TIMEOUT: ${API_PROXY_CONNECT_TIMEOUT:-10s}
       API_PROXY_SEND_TIMEOUT: ${API_PROXY_SEND_TIMEOUT:-180s}
       API_PROXY_READ_TIMEOUT: ${API_PROXY_READ_TIMEOUT:-180s}

@@ -1,8 +1,8 @@
 package com.uniovi.rag.tool.metadata;
 
 import com.uniovi.rag.domain.model.QueryType;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
@@ -15,6 +15,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
 class MetadataGetDurationToolTest {
@@ -43,5 +44,18 @@ class MetadataGetDurationToolTest {
         assertNotNull(result);
         assertNotNull(result.result());
         assertEquals("MetadataGetDurationTool", result.source());
+    }
+
+    @Test
+    void fdGd02_futureSpecificDate_returnsMeetingNotExistsMessage() {
+        ToolResult result =
+                tool.execute(
+                        ToolExecutionContext.of(
+                                "¿Cuánto duró la reunión del 25 de agosto de 2028?", QueryType.GET_DURATION, null));
+        assertNotNull(result);
+        assertNotNull(result.result());
+        assertTrue(
+                result.result().toLowerCase().contains("no existe la reunión del 25 de agosto de 2028"),
+                () -> "unexpected: " + result.result());
     }
 }

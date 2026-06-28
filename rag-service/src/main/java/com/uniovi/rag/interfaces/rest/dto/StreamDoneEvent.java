@@ -11,7 +11,7 @@ public record StreamDoneEvent(
         String queryType,
         boolean usedTool,
         String toolUsed,
-        List<Map<String, Object>> sources,
+        List<ChatSourceDto> sources,
         List<Map<String, Object>> pipelineSteps
 ) {
 }

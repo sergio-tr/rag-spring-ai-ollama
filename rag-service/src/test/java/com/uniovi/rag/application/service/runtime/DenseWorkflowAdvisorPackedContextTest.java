@@ -29,6 +29,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.Answers;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import org.springframework.ai.chat.client.ChatClient;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -45,10 +47,8 @@ class DenseWorkflowAdvisorPackedContextTest {
     @Test
     void document_dense_skips_retrieval_pipeline_when_advisor_packed_context_present() {
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
-        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
-
-        DocumentDenseRagWorkflow wf = new DocumentDenseRagWorkflow(chatClient, pipeline, null);
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
+        DocumentDenseRagWorkflow wf = new DocumentDenseRagWorkflow(llmChatInvoker, pipeline, null);
 
         QueryPlan qp = minimalPlan("raw", "rewritten");
         PackedContextSet packed =
@@ -64,10 +64,8 @@ class DenseWorkflowAdvisorPackedContextTest {
     @Test
     void chunk_dense_skips_retrieval_pipeline_when_advisor_packed_context_present() {
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
-        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
-
-        ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(chatClient, pipeline, null);
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
+        ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(llmChatInvoker, pipeline, null);
 
         QueryPlan qp = minimalPlan("raw", "rewritten");
         PackedContextSet packed =
@@ -167,6 +165,7 @@ class DenseWorkflowAdvisorPackedContextTest {
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
+                        Optional.empty(),
                         Optional.empty()),
                 Optional.empty(),
                 Optional.empty(),
@@ -175,6 +174,7 @@ class DenseWorkflowAdvisorPackedContextTest {
                 Optional.empty(),
                 Optional.of(plan),
                 Optional.of(packed),
+                Optional.empty(),
                 plan.rawUserQuery(),
                 plan.rawUserQuery(),
                 Optional.empty(),

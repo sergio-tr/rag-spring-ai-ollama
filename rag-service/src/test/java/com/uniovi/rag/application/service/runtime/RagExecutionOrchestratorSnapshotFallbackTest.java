@@ -1,4 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
@@ -8,7 +10,10 @@ import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallin
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
+import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.DeterministicToolRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
@@ -20,6 +25,11 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.ObjectProvider;
+
+import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.FunctionCallingRoutingStrategy;
 
 /** Covers chat snapshot degradation ({@link RagExecutionOrchestrator#selectExecutableWorkflow}). */
 class RagExecutionOrchestratorSnapshotFallbackTest {
@@ -54,7 +64,13 @@ class RagExecutionOrchestratorSnapshotFallbackTest {
                         clarificationPolicy,
                         clarificationStrategy,
                         routingStrategy,
-                        judgeStrategy);
+                        MonotonicRouteSafetyTestSupport.deterministicToolRoutingStrategy(),
+                        mock(FunctionCallingRoutingStrategy.class),
+                        mock(AdvisorRoutingStrategy.class),
+                        judgeStrategy,
+                        mock(StructuredAnswerPlanService.class),
+                        mock(AnswerVerificationService.class),
+                        mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
         return new OrchestratorHarness(orchestrator, direct);
     }
 
@@ -79,7 +95,7 @@ class RagExecutionOrchestratorSnapshotFallbackTest {
         UUID sid = UUID.randomUUID();
         KnowledgeSnapshotSelection sel =
                 new KnowledgeSnapshotSelection(
-                        List.of(sid), Optional.of(sid), Optional.empty(), Optional.of("ph"), Optional.empty());
+                        List.of(sid), Optional.of(sid), Optional.empty(), Optional.of("ph"), Optional.empty(), Optional.empty());
         ExecutionContext ctx = mock(ExecutionContext.class);
         when(ctx.knowledgeSnapshotSelection()).thenReturn(sel);
 

@@ -9,6 +9,8 @@ import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.MeetingMinutesToolRawResult;
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
+import com.uniovi.rag.application.service.runtime.FunctionCallingTelemetrySupport;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
 import com.uniovi.rag.application.service.runtime.tool.MeetingMinutesToolExecutionCore;
 import org.springframework.ai.chat.client.ChatClient;
@@ -37,30 +39,33 @@ public class FunctionCallingExecutor {
     private final FunctionCallingToolRegistry toolRegistry;
     private final MeetingMinutesToolExecutionCore meetingMinutesToolExecutionCore;
     private final FunctionCallingResultMapper resultMapper;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
 
     public FunctionCallingExecutor(
             ChatClient chatClient,
             FunctionCallingToolRegistry toolRegistry,
             MeetingMinutesToolExecutionCore meetingMinutesToolExecutionCore,
-            FunctionCallingResultMapper resultMapper) {
+            FunctionCallingResultMapper resultMapper,
+            ChatGenerationModelSelector chatGenerationModelSelector) {
         this.chatClient = chatClient;
         this.toolRegistry = toolRegistry;
         this.meetingMinutesToolExecutionCore = meetingMinutesToolExecutionCore;
         this.resultMapper = resultMapper;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
     }
 
+    @SuppressWarnings("deprecation")
     public FunctionCallingExecutionResult run(ExecutionContext ctx, QueryPlan plan, FunctionCallingDecision decision) {
         List<ExecutionStageTrace> stages = new ArrayList<>();
+        stages.add(FunctionCallingTelemetrySupport.nativeProposalStage(true, "", ""));
         String msgBase = "outcome=pending";
         try {
             String firstUser = FunctionCallingPrompts.buildFirstRoundUserMessage(plan);
             List<ToolCallback> callbacks = toolRegistry.callbacksFor(decision.exposedToolKinds());
-            List<FunctionCallback> asFunctions = new ArrayList<>(callbacks);
+            List<FunctionCallback> toolCallbacks = new ArrayList<>(callbacks);
             OllamaOptions.Builder optBuilder =
-                    OllamaOptions.builder().internalToolExecutionEnabled(false).toolCallbacks(asFunctions);
-            ctx.chatModelOverride()
-                    .filter(m -> m != null && !m.isBlank())
-                    .ifPresent(optBuilder::model);
+                    OllamaOptions.builder().internalToolExecutionEnabled(false).toolCallbacks(toolCallbacks);
+            chatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(optBuilder::model);
 
             ChatResponse response1 =
                     chatClient
@@ -111,6 +116,9 @@ public class FunctionCallingExecutor {
                         stages,
                         List.of("unknown_tool_name"));
             }
+            stages.add(
+                    FunctionCallingTelemetrySupport.nativeProposalStage(
+                            true, tc.name(), kind.name()));
             Set<DeterministicToolKind> allowed =
                     decision.exposedToolKinds().stream().collect(Collectors.toSet());
             if (!allowed.contains(kind)) {
@@ -123,9 +131,9 @@ public class FunctionCallingExecutor {
                         stages,
                         List.of("tool_not_exposed"));
             }
-            try {
-                FcToolArgumentParser.parseOrThrow(tc.arguments(), kind, plan);
-            } catch (IllegalArgumentException e) {
+            FunctionCallSchemaValidator.ValidationWithRepairResult validation =
+                    FunctionCallSchemaValidator.validateWithOptionalRepair(tc.arguments(), kind, plan);
+            if (!validation.valid()) {
                 stages.add(fcResultMapStage(FunctionCallingOutcome.INVALID_MODEL_OUTPUT));
                 return terminalOutcome(
                         FunctionCallingOutcome.INVALID_MODEL_OUTPUT,
@@ -133,7 +141,7 @@ public class FunctionCallingExecutor {
                         Map.of(),
                         Optional.empty(),
                         stages,
-                        List.of("bad_args:" + e.getMessage()));
+                        List.of("bad_args:" + validation.validationError()));
             }
 
             MeetingMinutesToolRawResult raw = meetingMinutesToolExecutionCore.execute(kind, ctx, plan);
@@ -173,15 +181,15 @@ public class FunctionCallingExecutor {
             }
 
             String followUpUser = FunctionCallingPrompts.buildFollowUpUserMessage(plan, payload);
-            var followSpec = chatClient.prompt().system(ctx.effectiveSystemPrompt()).user(followUpUser);
-            var chatModelOverride = ctx.chatModelOverride();
-            if (chatModelOverride.isPresent() && !chatModelOverride.get().isBlank()) {
-                followSpec =
-                        followSpec.options(
-                                OllamaOptions.builder().model(chatModelOverride.get().trim()).build());
-            }
-
-            ChatResponse response2 = followSpec.call().chatResponse();
+            var followBuilder = chatClient.prompt().system(ctx.effectiveSystemPrompt()).user(followUpUser);
+            Optional<String> followModel = chatGenerationModelSelector.effectiveChatModelId(ctx);
+            ChatResponse response2 =
+                    followModel.isPresent()
+                            ? followBuilder
+                                    .options(OllamaOptions.builder().model(followModel.get()).build())
+                                    .call()
+                                    .chatResponse()
+                            : followBuilder.call().chatResponse();
             stages.add(new ExecutionStageTrace(
                     "function_calling_model",
                     0L,
@@ -213,7 +221,10 @@ public class FunctionCallingExecutor {
                     payload,
                     List.of("fc_success"),
                     true,
-                    stages);
+                    stages,
+                    Optional.empty(),
+                    false,
+                    true);
         } catch (RuntimeException e) {
             stages.add(fcResultMapStage(FunctionCallingOutcome.EXECUTED_FAILED_INFRA));
             return terminalOutcome(
@@ -249,6 +260,9 @@ public class FunctionCallingExecutor {
                 normalizedPayload,
                 notes,
                 false,
-                stages);
+                stages,
+                Optional.empty(),
+                false,
+                true);
     }
 }

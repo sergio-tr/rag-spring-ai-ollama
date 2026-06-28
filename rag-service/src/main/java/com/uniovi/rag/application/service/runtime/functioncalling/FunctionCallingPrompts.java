@@ -8,9 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * FC user message text for the first tool-enabled round and the follow-up round (§10.5, §10.6a).
- */
+/** User message text for the tool-enabled round and the follow-up synthesis round. */
 public final class FunctionCallingPrompts {
 
     private static final ObjectMapper COMPACT_JSON = new ObjectMapper();

@@ -51,7 +51,7 @@ public class MetadataAppendixLoader {
         List<String> payloads =
                 namedJdbc.query(
                         """
-                        SELECT da.payload_jsonb::text
+                        SELECT CAST(da.payload_jsonb AS TEXT)
                         FROM document_artifact da
                         JOIN project_documents kd ON kd.id = da.document_id
                         WHERE da.artifact_type = CAST(:artifactType AS VARCHAR)
@@ -66,8 +66,18 @@ public class MetadataAppendixLoader {
         }
         return payloads.stream()
                 .filter(s -> s != null && !s.isBlank())
-                .map(s -> "[metadata] " + s)
+                .map(MetadataAppendixLoader::formatMetadataAppendixLine)
                 .collect(Collectors.joining("\n"));
+    }
+
+    private static String formatMetadataAppendixLine(String json) {
+        if (json == null || json.isBlank()) {
+            return "";
+        }
+        if (json.contains("\"president\"") || json.contains("\"date_iso\"")) {
+            return "[acta-metadata] " + json;
+        }
+        return "[metadata] " + json;
     }
 
     private static UUID parseProjectDocumentUuid(Map<String, Object> meta) {

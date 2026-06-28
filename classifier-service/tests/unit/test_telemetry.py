@@ -121,6 +121,34 @@ def test_run_traced_exception_records_error():
     span.end.assert_called_once()
 
 
+def test_classification_service_span_attrs_use_query_length_not_raw_query():
+    from unittest.mock import patch
+
+    from app.models.classification_result import ClassificationResult
+    from app.services.classification_service import ClassificationService
+
+    engine = MagicMock()
+    engine._loader.is_loaded.return_value = True
+    engine.predict_detailed.return_value = ClassificationResult(
+        query_type="COUNT_DOCUMENTS", confidence=0.95
+    )
+    service = ClassificationService(engine)
+    captured_attrs: dict = {}
+
+    def capture_run_traced(_name, fn, input_attrs=None, output_attr=None, output_value_fn=None):
+        if input_attrs:
+            captured_attrs.update(input_attrs)
+        return fn()
+
+    with patch("app.services.classification_service.ClassificationService.run_traced", side_effect=capture_run_traced):
+        result = service.classify("sensitive user question", "m1")
+
+    assert result.query_type == "COUNT_DOCUMENTS"
+    assert "query" not in captured_attrs
+    assert captured_attrs.get("queryLength") == str(len("sensitive user question"))
+    assert captured_attrs.get("modelId") == "m1"
+
+
 def test_record_classifier_call_with_counter_add_failure():
     counter = MagicMock()
     counter.add.side_effect = RuntimeError("no export")

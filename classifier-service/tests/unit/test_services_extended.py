@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.evaluation.result import EvaluationResult
+from app.models.training_result import TrainingResult
 from app.exceptions import (
     ClassificationError,
     EvaluationError,
@@ -15,38 +16,39 @@ from app.exceptions import (
     TrainingError,
     ValidationError,
 )
-from app.models.training_result import TrainingResult
+from app.models.classification_result import ClassificationResult
 from app.services.classification_service import ClassificationService
 from app.services.evaluation_service import EvaluationService
 from app.services.training_service import TrainingService
 
 
-def test_classification_runtime_error_maps_to_classification_error():
+def _loaded_engine(**predict_side_effect):
     engine = MagicMock()
     engine._loader = MagicMock()
     engine._loader.is_loaded.return_value = True
-    engine.predict.side_effect = RuntimeError("tf failed")
-    svc = ClassificationService(engine)
+    if predict_side_effect:
+        engine.predict_detailed.side_effect = predict_side_effect["side_effect"]
+    else:
+        engine.predict_detailed.return_value = ClassificationResult(
+            query_type="COUNT_DOCUMENTS", confidence=0.9
+        )
+    return engine
+
+
+def test_classification_runtime_error_maps_to_classification_error():
+    svc = ClassificationService(_loaded_engine(side_effect=RuntimeError("tf failed")))
     with pytest.raises(ClassificationError, match="not available"):
         svc.classify("hello")
 
 
 def test_classification_generic_exception_maps_to_classification_error():
-    engine = MagicMock()
-    engine._loader = MagicMock()
-    engine._loader.is_loaded.return_value = True
-    engine.predict.side_effect = OSError("boom")
-    svc = ClassificationService(engine)
+    svc = ClassificationService(_loaded_engine(side_effect=OSError("boom")))
     with pytest.raises(ClassificationError, match="failed"):
         svc.classify("hello")
 
 
 def test_classification_file_not_found_in_impl():
-    engine = MagicMock()
-    engine._loader = MagicMock()
-    engine._loader.is_loaded.return_value = True
-    engine.predict.side_effect = FileNotFoundError()
-    svc = ClassificationService(engine)
+    svc = ClassificationService(_loaded_engine(side_effect=FileNotFoundError()))
     with pytest.raises(ModelNotFoundError):
         svc.classify("hello")
 
@@ -65,6 +67,45 @@ def test_evaluation_service_success():
         r = svc.evaluate(model_id="m1", eval_dataset_path=str(fake_path), include_images=False)
     assert r.model_id == "m1"
     pipeline.evaluate.assert_called_once()
+
+
+def test_evaluation_service_uses_default_dataset_when_upload_absent(tmp_path):
+    default_dataset = tmp_path / "evaluation_dataset.xlsx"
+    default_dataset.write_bytes(b"placeholder")
+    config = MagicMock()
+    config.get_default_model_id.return_value = "default"
+    config.get_default_eval_dataset_path.return_value = str(default_dataset)
+    pipeline = MagicMock()
+    pipeline.evaluate.return_value = EvaluationResult(
+        model_id="default",
+        classification_report={"accuracy": 1.0},
+        confusion_matrix=[[1]],
+        class_names=["A"],
+    )
+
+    svc = EvaluationService(config=config, pipeline=pipeline)
+    result = svc.evaluate(include_images=False)
+
+    assert result.model_id == "default"
+    pipeline.evaluate.assert_called_once_with(
+        model_id="default",
+        eval_dataset_path=str(default_dataset),
+        include_images=False,
+    )
+
+
+def test_evaluation_service_missing_default_dataset_error_is_clear(tmp_path):
+    missing_dataset = tmp_path / "missing" / "evaluation_dataset.xlsx"
+    config = MagicMock()
+    config.get_default_model_id.return_value = "default"
+    config.get_default_eval_dataset_path.return_value = str(missing_dataset)
+    svc = EvaluationService(config=config, pipeline=MagicMock())
+
+    with pytest.raises(EvaluationError) as err:
+        svc.evaluate()
+
+    assert "Evaluation dataset not found" in str(err.value)
+    assert "Upload a file" in str(err.value)
 
 
 def test_evaluation_model_not_found():

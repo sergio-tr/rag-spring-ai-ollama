@@ -1,5 +1,7 @@
 package com.uniovi.rag.application.service.runtime.judge;
 
+import com.uniovi.rag.application.service.runtime.DeterministicToolTerminalAnswerGuard;
+import com.uniovi.rag.application.service.runtime.advisor.AnswerQualityAdvisor;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.judge.JudgeCandidateSource;
@@ -12,26 +14,32 @@ import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import org.springframework.stereotype.Service;
 
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class JudgeStrategy {
 
     private static final String STAGE_JUDGE_FINALIZE = "judge_finalize";
+    private static final String STAGE_ANSWER_QUALITY = "answer_quality_advisor";
 
     private final JudgePolicyResolver policyResolver;
     private final JudgeEvaluator evaluator;
     private final JudgeRetryExecutor retryExecutor;
+    private final AnswerQualityAdvisor answerQualityAdvisor;
 
     public JudgeStrategy(
             JudgePolicyResolver policyResolver,
             JudgeEvaluator evaluator,
-            JudgeRetryExecutor retryExecutor
+            JudgeRetryExecutor retryExecutor,
+            AnswerQualityAdvisor answerQualityAdvisor
     ) {
         this.policyResolver = policyResolver;
         this.evaluator = evaluator;
         this.retryExecutor = retryExecutor;
+        this.answerQualityAdvisor = answerQualityAdvisor;
     }
 
     public JudgeExecutionResult execute(
@@ -40,7 +48,8 @@ public class JudgeStrategy {
             AdaptiveRouteKind routeKind,
             String workflowName,
             JudgeCandidateSource candidateSource,
-            String candidateAnswerText
+            String candidateAnswerText,
+            Optional<DeterministicToolKind> toolKind
     ) {
         List<ExecutionStageTrace> stages = new ArrayList<>();
 
@@ -64,7 +73,109 @@ public class JudgeStrategy {
                     List.copyOf(stages));
         }
 
-        JudgeEvaluation eval = evaluator.evaluate(plan.rewrittenQueryText(), candidateAnswerText, decision.retryAllowed());
+        if (DeterministicToolTerminalAnswerGuard.shouldPreserveDeterministicToolAnswer(
+                plan, candidateSource, candidateAnswerText)) {
+            stages.add(
+                    new ExecutionStageTrace(
+                            STAGE_JUDGE_FINALIZE,
+                            0L,
+                            ExecutionStageOutcome.SUCCESS,
+                            "outcome=ACCEPTED_DETERMINISTIC_TOOL_PRESERVED"));
+            return new JudgeExecutionResult(
+                    true,
+                    JudgeOutcome.ACCEPTED,
+                    false,
+                    false,
+                    false,
+                    candidateAnswerText,
+                    false,
+                    List.copyOf(stages));
+        }
+
+        AnswerQualityAdvisor.AnswerQualityAssessment quality =
+                answerQualityAdvisor.assess(
+                        ctx,
+                        plan,
+                        candidateAnswerText,
+                        candidateSource,
+                        toolKind);
+        stages.add(
+                new ExecutionStageTrace(
+                        STAGE_ANSWER_QUALITY,
+                        0L,
+                        ExecutionStageOutcome.SUCCESS,
+                        "acceptable="
+                                + quality.acceptable()
+                                + " preserve="
+                                + quality.preserveWithoutLlmJudge()
+                                + " reasons="
+                                + String.join(",", quality.reasons())));
+
+        if (quality.preserveWithoutLlmJudge()) {
+            stages.add(
+                    new ExecutionStageTrace(
+                            STAGE_JUDGE_FINALIZE, 0L, ExecutionStageOutcome.SUCCESS, "outcome=ACCEPTED_TOOL_PRESERVED"));
+            return new JudgeExecutionResult(
+                    true,
+                    JudgeOutcome.ACCEPTED,
+                    false,
+                    false,
+                    false,
+                    candidateAnswerText,
+                    false,
+                    List.copyOf(stages));
+        }
+
+        if (!quality.acceptable()) {
+            JudgeOutcome rejected =
+                    decision.retryAllowed() ? JudgeOutcome.RETRY_REQUESTED : JudgeOutcome.REJECTED_NO_RETRY;
+            if (rejected == JudgeOutcome.RETRY_REQUESTED) {
+                JudgeRetryExecutor.RetryResult retry =
+                        retryExecutor.retry(plan.rewrittenQueryText(), candidateAnswerText, String.join("; ", quality.reasons()));
+                stages.addAll(retry.stageTraces());
+                if (retry.success()) {
+                    stages.add(
+                            new ExecutionStageTrace(
+                                    STAGE_JUDGE_FINALIZE, 0L, ExecutionStageOutcome.SUCCESS, "outcome=RETRY_SUCCEEDED"));
+                    return new JudgeExecutionResult(
+                            true,
+                            JudgeOutcome.RETRY_SUCCEEDED,
+                            true,
+                            true,
+                            true,
+                            retry.answerText(),
+                            true,
+                            List.copyOf(stages));
+                }
+                stages.add(
+                        new ExecutionStageTrace(STAGE_JUDGE_FINALIZE, 0L, ExecutionStageOutcome.SUCCESS, "outcome=RETRY_FAILED"));
+                return new JudgeExecutionResult(
+                        true,
+                        JudgeOutcome.RETRY_FAILED,
+                        true,
+                        true,
+                        false,
+                        candidateAnswerText,
+                        false,
+                        List.copyOf(stages));
+            }
+            stages.add(
+                    new ExecutionStageTrace(STAGE_JUDGE_FINALIZE, 0L, ExecutionStageOutcome.SUCCESS, "outcome=REJECTED_NO_RETRY"));
+            return new JudgeExecutionResult(
+                    true,
+                    JudgeOutcome.REJECTED_NO_RETRY,
+                    false,
+                    false,
+                    false,
+                    candidateAnswerText,
+                    false,
+                    List.copyOf(stages));
+        }
+
+        String contextText = AnswerQualityAdvisor.resolveContextText(ctx);
+        JudgeEvaluation eval =
+                evaluator.evaluate(
+                        plan.rewrittenQueryText(), candidateAnswerText, contextText, decision.retryAllowed());
         stages.addAll(eval.stageTraces());
 
         if (eval.outcome() == JudgeOutcome.FAILED_SAFE) {

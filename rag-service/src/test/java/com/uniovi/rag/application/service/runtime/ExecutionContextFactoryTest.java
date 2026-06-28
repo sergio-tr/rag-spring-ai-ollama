@@ -19,11 +19,20 @@ import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
-import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.application.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
@@ -49,14 +59,35 @@ class ExecutionContextFactoryTest {
     @Mock private ModelCatalogPort modelCatalogPort;
     @Mock private ClarificationStateResolver clarificationStateResolver;
     @Mock private ConversationMemoryStrategy conversationMemoryStrategy;
+    @Mock private ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     @Mock private ResolvedRuntimeConfig resolvedRuntimeConfig;
     @Mock private QueryPlan queryPlan;
     @Mock private PackedContextSet packedContextSet;
 
     private ExecutionContextFactory factory;
 
+    @AfterEach
+    void clearBenchmarkContext() {
+        LabBenchmarkExecutionContext.clear();
+        OrchestrationLlmConfigScope.clear();
+    }
+
     @BeforeEach
     void setUp() {
+        lenient()
+                .when(resolvedLlmConfigResolver.resolveForOrchestratedExecute(any(), any(), any(), any(), any()))
+                .thenReturn(
+                        ResolvedLlmConfig.uniform(
+                                LlmProvider.OLLAMA_NATIVE,
+                                "http://localhost:11434",
+                                "gemma3:4b",
+                                "mxbai-embed-large:latest",
+                                null,
+                                null,
+                                0.1,
+                                60_000,
+                                null,
+                                Map.of()));
         factory =
                 new ExecutionContextFactory(
                         runtimeConfigResolutionService,
@@ -65,6 +96,7 @@ class ExecutionContextFactoryTest {
                         modelCatalogPort,
                         clarificationStateResolver,
                         conversationMemoryStrategy,
+                        resolvedLlmConfigResolver,
                         null);
     }
 
@@ -128,7 +160,7 @@ class ExecutionContextFactoryTest {
         when(runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         any(), any(), any(), anyString()))
                 .thenReturn(resolvedRuntimeConfig);
-        when(knowledgeRuntimeSnapshotSelector.select(projectId, conversationId))
+        when(knowledgeRuntimeSnapshotSelector.select(eq(projectId), eq(conversationId), any()))
                 .thenReturn(KnowledgeSnapshotSelection.empty());
         when(chatScopedRagConfigResolver.mergedConversationConfigAsJson(conversationId))
                 .thenReturn(null);
@@ -158,7 +190,7 @@ class ExecutionContextFactoryTest {
     }
 
     @Test
-    void buildForLegacyHttp_usesAllDocumentsFilter() {
+    void buildForHttpQuery_usesAllDocumentsFilter() {
         RagConfig rag =
                 new RagConfig(
                         false,
@@ -190,7 +222,11 @@ class ExecutionContextFactoryTest {
         when(runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         isNull(), isNull(), isNull(), anyString()))
                 .thenReturn(resolvedRuntimeConfig);
-        when(knowledgeRuntimeSnapshotSelector.select(null, null))
+        lenient()
+                .when(knowledgeRuntimeSnapshotSelector.select(any(), any(), any()))
+                .thenReturn(KnowledgeSnapshotSelection.empty());
+        lenient()
+                .when(knowledgeRuntimeSnapshotSelector.select(any(), isNull()))
                 .thenReturn(KnowledgeSnapshotSelection.empty());
         when(clarificationStateResolver.bootstrap(null, "q"))
                 .thenReturn(new ClarificationBootstrap("q", false, false, false));
@@ -205,8 +241,105 @@ class ExecutionContextFactoryTest {
                                 "q",
                                 List.of()));
 
-        ExecutionContext ctx = factory.buildForLegacyHttp("q", null);
+        ExecutionContext ctx = factory.buildForHttpQuery("q", null);
         assertThat(ctx.documentFilter()).containsExactly(RagExecutionContext.ALL_DOCUMENTS);
+    }
+
+    @Test
+    void buildForHttpQuery_passes_benchmark_terminal_override_when_present() throws Exception {
+        RagConfig rag =
+                new RagConfig(
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        5,
+                        0.5,
+                        "m",
+                        "e",
+                        "c",
+                        "SIMPLE",
+                        false,
+                        RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                        RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                        MaterializationStrategy.CHUNK_LEVEL);
+        when(resolvedRuntimeConfig.toRagConfig()).thenReturn(rag);
+        when(resolvedRuntimeConfig.effectiveSystemPrompt()).thenReturn("sys");
+        ObjectNode terminal = JsonNodeFactory.instance.objectNode();
+        terminal.put("useRetrieval", false);
+        try (AutoCloseable ignored = LabBenchmarkExecutionContext.open(terminal)) {
+            when(runtimeConfigResolutionService.resolveForOrchestratedExecute(
+                            isNull(), isNull(), eq(terminal), anyString()))
+                    .thenReturn(resolvedRuntimeConfig);
+            lenient()
+                    .when(knowledgeRuntimeSnapshotSelector.select(any(), any(), any()))
+                    .thenReturn(KnowledgeSnapshotSelection.empty());
+            lenient()
+                    .when(knowledgeRuntimeSnapshotSelector.select(any(), isNull()))
+                    .thenReturn(KnowledgeSnapshotSelection.empty());
+            when(clarificationStateResolver.bootstrap(null, "q"))
+                    .thenReturn(new ClarificationBootstrap("q", false, false, false));
+            when(conversationMemoryStrategy.execute(any(ExecutionContext.class), anyString()))
+                    .thenReturn(
+                            new ConversationMemoryExecutionResult(
+                                    ConversationMemoryOutcome.NO_CONVERSATION_SCOPE,
+                                    Optional.empty(),
+                                    false,
+                                    false,
+                                    false,
+                                    "q",
+                                    List.of()));
+
+            factory.buildForHttpQuery("q", null);
+        }
+    }
+
+    @Test
+    void buildForHttpQuery_labContext_forces_explicit_snapshot_ids_over_active_selection() throws Exception {
+        RagConfig rag =
+                RagConfig.fromFeatureConfiguration(
+                        new RagFeatureConfiguration(), 5, 0.5, "m", "e", "c", "SIMPLE");
+        when(resolvedRuntimeConfig.toRagConfig()).thenReturn(rag);
+        when(resolvedRuntimeConfig.effectiveSystemPrompt()).thenReturn("sys");
+        when(clarificationStateResolver.bootstrap(null, "q"))
+                .thenReturn(new ClarificationBootstrap("q", false, false, false));
+        when(conversationMemoryStrategy.execute(any(ExecutionContext.class), anyString()))
+                .thenReturn(
+                        new ConversationMemoryExecutionResult(
+                                ConversationMemoryOutcome.NO_CONVERSATION_SCOPE,
+                                Optional.empty(),
+                                false,
+                                false,
+                                false,
+                                "q",
+                                List.of()));
+
+        UUID projectId = UUID.randomUUID();
+        UUID s1 = UUID.randomUUID();
+        when(knowledgeRuntimeSnapshotSelector.selectExplicit(projectId, List.of(s1)))
+                .thenReturn(new KnowledgeSnapshotSelection(List.of(s1), Optional.of(s1), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+
+        when(runtimeConfigResolutionService.resolveForOrchestratedExecute(
+                        isNull(), eq(projectId), isNull(), anyString()))
+                .thenReturn(resolvedRuntimeConfig);
+
+        try (AutoCloseable ignored =
+                LabBenchmarkExecutionContext.openLab(
+                        null, UUID.randomUUID(), projectId, List.of(s1), "HYBRID_METADATA", "P8", true)) {
+            ExecutionContext ctx = factory.buildForHttpQuery("q", null);
+            assertThat(ctx.projectId()).isEqualTo(projectId);
+            assertThat(ctx.knowledgeSnapshotSelection().orderedSnapshotIds()).containsExactly(s1);
+        }
     }
 
     @Test
@@ -248,6 +381,7 @@ class ExecutionContextFactoryTest {
                 Optional.empty(),
                 "corr",
                 List.of(),
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),

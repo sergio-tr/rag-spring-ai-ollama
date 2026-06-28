@@ -9,3 +9,13 @@ export function fixtureFilesDir(): string {
 export function sampleTextFilePath(): string {
   return path.join(fixtureFilesDir(), "sample.txt");
 }
+
+/** ACTA fixture for LAB knowledge-base manager closure tests. */
+export function actaKnowledgeBaseFilePath(): string {
+  return path.join(fixtureFilesDir(), "acta-24-02-2025.txt");
+}
+
+/** Optional bootstrap acta shipped with rag-service test resources (reference workbook grounding). */
+export function ragClasspathBootstrapActaFilePath(): string {
+  return path.join(process.cwd(), "..", "rag-service", "src", "test", "resources", "docs", "bootstrap-acta.txt");
+}

@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.query;
 
+import com.uniovi.rag.testsupport.llm.ChatGenerationModelSelectorTestSupport;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
@@ -103,7 +104,8 @@ class DefaultStructuredQueryRewriterTest {
     @Test
     void disabled_returnsIdentityDisabled() {
         ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
-        DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(chatClient);
+        DefaultStructuredQueryRewriter rewriter =
+                new DefaultStructuredQueryRewriter(chatClient, ChatGenerationModelSelectorTestSupport.permissiveMock());
         NormalizedQuery nq = new NormalizedQuery("raw", "hello", List.of());
         EntityExtractionResult entities =
                 new EntityExtractionResult(List.of(), List.of(), List.of(), List.of(), List.of(),
@@ -120,7 +122,8 @@ class DefaultStructuredQueryRewriterTest {
         ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content())
                 .thenReturn("not json");
-        DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(chatClient);
+        DefaultStructuredQueryRewriter rewriter =
+                new DefaultStructuredQueryRewriter(chatClient, ChatGenerationModelSelectorTestSupport.permissiveMock());
         NormalizedQuery nq = new NormalizedQuery("raw", "hello", List.of());
         EntityExtractionResult entities =
                 new EntityExtractionResult(List.of(), List.of(), List.of(), List.of(), List.of(),
@@ -140,7 +143,8 @@ class DefaultStructuredQueryRewriterTest {
                 """;
         when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content())
                 .thenReturn(rewriteJson);
-        DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(chatClient);
+        DefaultStructuredQueryRewriter rewriter =
+                new DefaultStructuredQueryRewriter(chatClient, ChatGenerationModelSelectorTestSupport.permissiveMock());
 
         NormalizedQuery nq = new NormalizedQuery("raw", "meeting on 2026-02-25", List.of());
         EntityExtractionResult entities =

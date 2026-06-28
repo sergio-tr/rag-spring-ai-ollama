@@ -28,10 +28,31 @@ public final class ClassifierInferenceMetricsDecorator implements QueryClassifie
     }
 
     @Override
+    public QueryType classify(String query, String modelId) {
+        QueryType t = delegate.classify(query, modelId);
+        recordCall(t != null);
+        return t;
+    }
+
+    @Override
     public String classifyWithText(String query) {
         String raw = delegate.classifyWithText(query);
         recordCall(raw != null && !raw.isBlank());
         return raw;
+    }
+
+    @Override
+    public String classifyWithText(String query, String modelId) {
+        String raw = delegate.classifyWithText(query, modelId);
+        recordCall(raw != null && !raw.isBlank());
+        return raw;
+    }
+
+    @Override
+    public ClassifierInferenceResponse classifyInference(String query, String modelId) {
+        ClassifierInferenceResponse response = delegate.classifyInference(query, modelId);
+        recordCall(response != null && response.queryType() != null && !response.queryType().isBlank());
+        return response;
     }
 
     private void recordCall(boolean success) {

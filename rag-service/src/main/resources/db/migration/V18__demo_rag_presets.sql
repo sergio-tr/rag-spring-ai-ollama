@@ -1,4 +1,4 @@
--- System RAG presets for demo / thesis: reproducible "worst", "naive full corpus", and "best" configurations.
+-- System RAG presets for demo / product: reproducible "worst", "naive full corpus", and "best" configurations.
 
 INSERT INTO rag_preset (id, owner_id, name, description, tags, values, is_system, created_at, updated_at)
 SELECT 'cafe0001-0001-4001-8001-000000000001'::uuid,

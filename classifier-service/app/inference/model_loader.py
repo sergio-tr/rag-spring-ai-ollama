@@ -8,6 +8,7 @@ import tensorflow as tf
 
 from app.base import Loggable
 from app.config import Config
+from app.query_type_contract import validate_loaded_labels
 from app.registry.model_registry import ModelRegistry
 
 
@@ -53,19 +54,18 @@ class ModelLoader(Loggable):
         return model, class_names
 
     def _read_labels_file(self, labels_path: str) -> list[str]:
-        """
-        Reads labels for StringLookup/TextVectorization.
-        """
+        """Reads labels and validates each entry against the Java QueryType contract."""
         try:
             with open(labels_path, "r", encoding="utf-8-sig") as f:
-                return [line.strip() for line in f.readlines() if line.strip()]
+                lines = [line.strip() for line in f.readlines() if line.strip() and not line.strip().startswith("#")]
         except UnicodeDecodeError:
             with open(labels_path, "r", encoding="utf-8", errors="replace") as f:
-                return [line.strip() for line in f.readlines() if line.strip()]
+                lines = [line.strip() for line in f.readlines() if line.strip() and not line.strip().startswith("#")]
+        return validate_loaded_labels(lines)
 
     def _load_model_with_vocab_fix(self, model_path: str):
         """
-        Loads a .keras model, repairing legacy TextVectorization vocabulary assets when needed.
+        Loads a .keras model, repairing older TextVectorization vocabulary assets when needed.
 
         Some historical models were saved with latin-1 encoded vocab files inside the .keras zip.
         Keras expects UTF-8 and will fail at load time with a UnicodeDecodeError wrapped in ValueError.

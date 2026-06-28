@@ -16,8 +16,8 @@ import com.uniovi.rag.application.service.runtime.tracereplay.RuntimeTraceReplay
 import com.uniovi.rag.application.service.runtime.tracereplaybatchexport.RuntimeTraceReplayBatchExportService;
 import com.uniovi.rag.application.service.runtime.tracereplayexport.RuntimeTraceReplayExportService;
 import com.uniovi.rag.application.service.runtime.tracequery.RuntimeTraceQueryService;
-import com.uniovi.rag.service.query.ProcessQueryService;
-import com.uniovi.rag.service.query.SimpleProcessQueryService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
 import jakarta.persistence.EntityManager;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -78,7 +78,7 @@ class RuntimeTraceRegressionSuiteDefinitionServiceArchitectureTest {
                     .areAssignableTo(RuntimeTraceReplayService.class);
 
     @ArchTest
-    static final ArchRule definitionServiceDoesNotUseTraceQueryService =
+    static final ArchRule definitionServiceDoesNotUseTraceQueryExecutionService =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceRegressionSuiteDefinitionService")
@@ -96,22 +96,13 @@ class RuntimeTraceRegressionSuiteDefinitionServiceArchitectureTest {
                     .areAssignableTo(RagExecutionOrchestrator.class);
 
     @ArchTest
-    static final ArchRule definitionServiceDoesNotUseProcessQueryService =
+    static final ArchRule definitionServiceDoesNotUseRuntimeQueryExecutionService =
             noClasses()
                     .that()
                     .haveSimpleName("RuntimeTraceRegressionSuiteDefinitionService")
                     .should()
                     .dependOnClassesThat()
-                    .areAssignableTo(ProcessQueryService.class);
-
-    @ArchTest
-    static final ArchRule definitionServiceDoesNotUseSimpleProcessQueryService =
-            noClasses()
-                    .that()
-                    .haveSimpleName("RuntimeTraceRegressionSuiteDefinitionService")
-                    .should()
-                    .dependOnClassesThat()
-                    .areAssignableTo(SimpleProcessQueryService.class);
+                    .areAssignableTo(RuntimeQueryExecutionService.class);
 
     @ArchTest
     static final ArchRule definitionServiceDoesNotUseRuntimeTraceExportService =

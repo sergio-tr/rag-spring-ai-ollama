@@ -1,4 +1,4 @@
-/** Default sidebar width when no persisted value exists (matches legacy Tailwind w-[260px]). */
+/** Default sidebar width when no persisted value exists (matches default Tailwind w-[260px]). */
 export const DEFAULT_SIDEBAR_WIDTH_PX = 260;
 
 /** Minimum expanded sidebar width (readable labels + controls). */

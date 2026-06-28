@@ -15,7 +15,7 @@ import java.util.Map;
  * SHA-256 over canonical JSON of {@link ResolvedRuntimeConfig} for {@code resolved_config_snapshot.config_hash}.
  * Key order is fixed for stable hashes. The digest includes at minimum: resolved core ({@code RagConfig} value map),
  * {@code CapabilitySet}, compatibility result, {@code SystemPromptLayers}, effective system prompt, provenance,
- * reindex impact, and legacy projection. Do not remove fields from {@link #toOrderedMap} in a way that narrows the
+ * reindex impact, and config projection. Do not remove fields from {@link #toOrderedMap} in a way that narrows the
  * fingerprint without a major version bump of snapshot schema.
  */
 public final class ResolvedRuntimeConfigHasher {
@@ -70,8 +70,8 @@ public final class ResolvedRuntimeConfigHasher {
                 "reindexImpact",
                 r.reindexImpact() != null ? CANONICAL_JSON.convertValue(r.reindexImpact(), Map.class) : Map.of());
         m.put(
-                "legacyProjection",
-                r.legacyProjection() != null ? r.legacyProjection().toValueMap() : Map.of());
+                "configProjection",
+                r.configProjection() != null ? r.configProjection().toValueMap() : Map.of());
         return m;
     }
 }

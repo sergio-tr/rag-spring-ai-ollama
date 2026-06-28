@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Non-fatal heuristic warnings carried over from legacy validation (classifier, expansion/retrieval).
+ * Non-fatal heuristic warnings carried over from prior validation (classifier, expansion/retrieval).
  */
 public record HeuristicCombinationRule(String ruleId) implements CompatibilityRule {
 

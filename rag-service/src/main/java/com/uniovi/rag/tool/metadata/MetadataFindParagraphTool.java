@@ -2,8 +2,8 @@ package com.uniovi.rag.tool.metadata;
 
 import com.uniovi.rag.domain.model.Cluster;
 import com.uniovi.rag.domain.model.ParagraphResult;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
 import com.uniovi.rag.domain.model.Minute;
@@ -14,6 +14,7 @@ import org.springframework.ai.document.Document;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.Optional;
 
 import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
@@ -47,6 +48,16 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         ToolResult missing = notFoundIfEmptyDocuments(query, docs, "find paragraph");
         if (missing != null) {
             return missing;
+        }
+
+        Optional<ToolResult> topicAbsent = tryFindParagraphTopicAbsentExit(query, docs, ner);
+        if (topicAbsent.isPresent()) {
+            return topicAbsent.get();
+        }
+
+        Optional<ToolResult> deterministicTopic = tryDeterministicTopicParagraphExit(query, docs, ner);
+        if (deterministicTopic.isPresent()) {
+            return deterministicTopic.get();
         }
 
         // Step 2: Extract minutes in parallel

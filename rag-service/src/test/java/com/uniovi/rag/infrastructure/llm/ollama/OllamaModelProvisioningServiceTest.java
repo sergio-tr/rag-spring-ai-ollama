@@ -1,6 +1,8 @@
 package com.uniovi.rag.infrastructure.llm.ollama;
 
+import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.infrastructure.health.RagHealthProperties;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,21 +25,23 @@ class OllamaModelProvisioningServiceTest {
 
     private RagHealthProperties healthProperties;
     private RagOllamaProperties ollamaProperties;
+    private LlmProperties llmProperties;
 
     @BeforeEach
     void initProps() {
         healthProperties = new RagHealthProperties();
         ollamaProperties = new RagOllamaProperties();
+        llmProperties = new LlmProperties();
     }
 
     private OllamaModelProvisioningService newService() {
         return new OllamaModelProvisioningService(
                 healthProperties,
                 ollamaProperties,
+                llmProperties,
                 ollamaApiClient,
                 "chat-m",
-                "embed-m"
-        );
+                "embed-m");
     }
 
     private void invokeInit(OllamaModelProvisioningService svc) throws Exception {
@@ -74,12 +78,43 @@ class OllamaModelProvisioningServiceTest {
     @Test
     void ensureConfiguredModels_pullsMissing() throws Exception {
         OllamaModelProvisioningService svc = newService();
-        // Mutable set: production code mutates "installed" after each pull (same reference as listModelNames()).
         when(ollamaApiClient.listModelNames()).thenReturn(new HashSet<>());
         lenient().doAnswer(inv -> null).when(ollamaApiClient).pullModel(anyString(), anyLong());
         svc.ensureConfiguredModelsAtStartup();
         assertEquals(OllamaModelProvisioningService.State.READY, svc.getState());
         verify(ollamaApiClient, times(2)).pullModel(anyString(), eq(ollamaProperties.getPullReadTimeoutMs()));
+    }
+
+    @Test
+    void provisioningDoesNotCheckOllamaWhenDefaultProviderIsOpenAiCompatible() throws Exception {
+        llmProperties.setDefaultProvider(LlmProvider.OPENAI_COMPATIBLE);
+        OllamaModelProvisioningService svc = newService();
+        svc.ensureConfiguredModelsAtStartup();
+        assertEquals(OllamaModelProvisioningService.State.READY, svc.getState());
+        verify(ollamaApiClient, never()).listModelNames();
+        verify(ollamaApiClient, never()).pullModel(anyString(), anyLong());
+    }
+
+    @Test
+    void ensureConfiguredModels_openAiCompatible_skipsAllProvisioning() throws Exception {
+        llmProperties.setDefaultProvider(LlmProvider.OPENAI_COMPATIBLE);
+        OllamaModelProvisioningService svc = newService();
+        svc.ensureConfiguredModelsAtStartup();
+        assertEquals(OllamaModelProvisioningService.State.READY, svc.getState());
+        verify(ollamaApiClient, never()).pullModel(anyString(), anyLong());
+    }
+
+    @Test
+    void ensureConfiguredModels_hybrid_pullsOnlyEmbedding() throws Exception {
+        llmProperties.setDefaultChatProvider(LlmProvider.OPENAI_COMPATIBLE);
+        llmProperties.setDefaultEmbeddingProvider(LlmProvider.OLLAMA_NATIVE);
+        OllamaModelProvisioningService svc = newService();
+        when(ollamaApiClient.listModelNames()).thenReturn(new HashSet<>());
+        lenient().doAnswer(inv -> null).when(ollamaApiClient).pullModel(anyString(), anyLong());
+        svc.ensureConfiguredModelsAtStartup();
+        assertEquals(OllamaModelProvisioningService.State.READY, svc.getState());
+        verify(ollamaApiClient, times(1)).pullModel(eq("embed-m"), eq(ollamaProperties.getPullReadTimeoutMs()));
+        verify(ollamaApiClient, never()).pullModel(eq("chat-m"), anyLong());
     }
 
     @Test
@@ -89,6 +124,15 @@ class OllamaModelProvisioningServiceTest {
         svc.ensureConfiguredModelsAtStartup();
         assertEquals(OllamaModelProvisioningService.State.FAILED, svc.getState());
         assertNotNull(svc.getLastError());
+    }
+
+    @Test
+    void ensureConfiguredModels_openAiConnectFailure_stillSkippedWhenNoOllamaProvider() throws Exception {
+        llmProperties.setDefaultProvider(LlmProvider.OPENAI_COMPATIBLE);
+        OllamaModelProvisioningService svc = newService();
+        svc.ensureConfiguredModelsAtStartup();
+        assertEquals(OllamaModelProvisioningService.State.READY, svc.getState());
+        verify(ollamaApiClient, never()).pullModel(anyString(), anyLong());
     }
 
     @Test

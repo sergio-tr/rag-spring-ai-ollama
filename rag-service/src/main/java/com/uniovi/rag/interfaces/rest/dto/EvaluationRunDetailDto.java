@@ -1,6 +1,7 @@
 package com.uniovi.rag.interfaces.rest.dto;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -23,4 +24,11 @@ public record EvaluationRunDetailDto(
         String classifierModelId,
         Map<String, Object> aggregatesJson,
         Instant createdAt,
-        Instant completedAt) {}
+        Instant completedAt,
+        UUID campaignId,
+        boolean campaignMode,
+        String presetKey,
+        String comparisonAxis,
+        int persistedItemCount,
+        int campaignPersistedItemCount,
+        List<CampaignChildRunSummaryDto> campaignChildRuns) {}

@@ -6,20 +6,9 @@ from app.inference.inference_engine import InferenceEngine
 from app.inference.model_loader import ModelLoader
 
 
-QUERY_TYPES_ALLOWED = {
-    "COUNT_DOCUMENTS",
-    "EXTRACT_ENTITIES",
-    "COUNT_AND_EXPLAIN",
-    "FIND_PARAGRAPH",
-    "DECISION_EXTRACTION",
-    "GET_DURATION",
-    "GET_FIELD",
-    "SUMMARIZE_TOPIC",
-    "SUMMARIZE_MEETING",
-    "BOOLEAN_QUERY",
-    "FILTER_AND_LIST",
-    "COMPARE",
-}
+from app.query_type_contract import JAVA_QUERY_TYPES
+
+QUERY_TYPES_ALLOWED = JAVA_QUERY_TYPES
 
 
 def _reset_config_singleton():
@@ -76,7 +65,7 @@ def test_inference_engine_predict_maps_argmax_to_label():
     expected = "SUMMARIZE_MEETING"
 
     class DummyModel:
-        def predict(self, _x):
+        def predict(self, _x, **kwargs):
             # argmax -> index 1
             return np.array([[0.1, 0.9, 0.05]], dtype=float)
 
@@ -96,7 +85,7 @@ def test_inference_engine_predict_loads_model_when_not_loaded():
     _reset_config_singleton()
 
     class DummyModel:
-        def predict(self, _x):
+        def predict(self, _x, **kwargs):
             return np.array([[0.9, 0.1]], dtype=float)
 
     loader = mock.MagicMock()

@@ -28,6 +28,22 @@ def pipeline_mocks():
     return loader, model
 
 
+def test_canonical_class_order_used_in_confusion_matrix(tmp_path, pipeline_mocks):
+    loader, model = pipeline_mocks
+    loader.get_class_names.return_value = ["BOOLEAN_QUERY", "COUNT_DOCUMENTS"]
+    model.predict.return_value = np.array([[0.2, 0.8], [0.9, 0.1]])
+    excel = tmp_path / "eval-order.xlsx"
+    df = pd.DataFrame(
+        {"Question": ["q1", "q2"], "QueryType": ["BOOLEAN_QUERY", "COUNT_DOCUMENTS"]}
+    )
+    df.to_excel(excel, index=False)
+
+    ep = EvaluationPipeline(config=Config(), loader=loader, registry=MagicMock())
+    result = ep.evaluate("m1", str(excel), include_images=False)
+
+    assert result.class_names == ["COUNT_DOCUMENTS", "BOOLEAN_QUERY"]
+
+
 def test_evaluate_happy_path_includes_images(tmp_path, pipeline_mocks):
     loader, model = pipeline_mocks
     excel = tmp_path / "eval.xlsx"
@@ -42,6 +58,21 @@ def test_evaluate_happy_path_includes_images(tmp_path, pipeline_mocks):
     assert result.classification_report_image_bytes is not None
     assert result.confusion_matrix_image_bytes is not None
     assert len(result.confusion_matrix) == 2
+    model.predict.assert_called_once()
+
+
+def test_evaluate_accepts_spanish_pregunta_column(tmp_path, pipeline_mocks):
+    loader, model = pipeline_mocks
+    model.predict.return_value = np.array([[0.2, 0.8], [0.9, 0.1]])
+    excel = tmp_path / "eval-es.xlsx"
+    df = pd.DataFrame({"Pregunta": ["q1", "q2"], "QueryType": ["B", "A"]})
+    df.to_excel(excel, index=False)
+
+    ep = EvaluationPipeline(config=Config(), loader=loader, registry=MagicMock())
+    result = ep.evaluate("m1", str(excel), include_images=False)
+
+    assert result.model_id == "m1"
+    assert result.class_names == ["A", "B"]
     model.predict.assert_called_once()
 
 

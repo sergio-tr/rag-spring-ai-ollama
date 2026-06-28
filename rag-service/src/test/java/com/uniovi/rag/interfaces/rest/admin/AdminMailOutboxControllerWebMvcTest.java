@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Sort;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -29,7 +30,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc(addFilters = false)
 @Import(AdminMailOutboxController.class)
 @ActiveProfiles("dev")
+@TestPropertySource(properties = "rag.api.product-base-path=/api/v5")
 class AdminMailOutboxControllerWebMvcTest {
+
+    private static final String ADMIN_MAIL_OUTBOX = "/api/v5/admin/mail-outbox";
 
     @Autowired
     private MockMvc mockMvc;
@@ -43,7 +47,7 @@ class AdminMailOutboxControllerWebMvcTest {
         MailOutboxEntity second = outboxEntity("b@x.com", Instant.parse("2025-01-02T00:00:00Z"));
         when(mailOutboxRepository.findAll(any(Sort.class))).thenReturn(List.of(first, second));
 
-        mockMvc.perform(get("/api/admin/mail-outbox"))
+        mockMvc.perform(get(ADMIN_MAIL_OUTBOX))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].recipient").value("a@x.com"))
@@ -60,7 +64,7 @@ class AdminMailOutboxControllerWebMvcTest {
         }
         when(mailOutboxRepository.findAll(any(Sort.class))).thenReturn(many);
 
-        mockMvc.perform(get("/api/admin/mail-outbox").param("limit", "2"))
+        mockMvc.perform(get("/api/v5/admin/mail-outbox").param("limit", "2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2));
     }
@@ -71,7 +75,7 @@ class AdminMailOutboxControllerWebMvcTest {
         MailOutboxEntity b = outboxEntity("second@x.com", Instant.now());
         when(mailOutboxRepository.findAll(any(Sort.class))).thenReturn(List.of(a, b));
 
-        mockMvc.perform(get("/api/admin/mail-outbox").param("limit", "0"))
+        mockMvc.perform(get("/api/v5/admin/mail-outbox").param("limit", "0"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1));
     }

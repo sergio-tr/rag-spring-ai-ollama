@@ -1,7 +1,7 @@
 package com.uniovi.rag.application.service.runtime.tool;
 
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
-import com.uniovi.rag.service.query.ResponseValidator;
+import com.uniovi.rag.application.service.runtime.validation.ResponseValidator;
 import com.uniovi.rag.tool.ToolResult;
 import org.springframework.stereotype.Component;
 

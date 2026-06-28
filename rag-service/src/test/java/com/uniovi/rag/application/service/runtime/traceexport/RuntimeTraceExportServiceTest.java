@@ -30,7 +30,7 @@ import static org.mockito.Mockito.*;
 class RuntimeTraceExportServiceTest {
 
     @Test
-    void exportSingleTraceByMessageId_resolvesMostRecentThroughQueryService() {
+    void exportSingleTraceByMessageId_resolvesMostRecentThroughQueryExecutionService() {
         RuntimeTraceQueryService query = mock(RuntimeTraceQueryService.class);
         Clock clock = Clock.fixed(Instant.parse("2026-04-10T12:00:00Z"), ZoneOffset.UTC);
         RuntimeTraceExportService svc =

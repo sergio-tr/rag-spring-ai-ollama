@@ -16,9 +16,22 @@ public interface QueryClassifierAdapter {
             Optional<QueryType> classifierQueryType,
             ClassifierStatus classifierStatus,
             String classifierModelIdUsed,
-            String note) {
+            String note,
+            Optional<Double> classifierConfidence,
+            Optional<String> classifierLabelSetHash) {
         public ClassifierOutcome {
             Objects.requireNonNull(classifierQueryType, "classifierQueryType");
+            classifierConfidence = Objects.requireNonNullElseGet(classifierConfidence, Optional::empty);
+            classifierLabelSetHash = Objects.requireNonNullElseGet(classifierLabelSetHash, Optional::empty);
+        }
+
+        public ClassifierOutcome(
+                String classifierLabel,
+                Optional<QueryType> classifierQueryType,
+                ClassifierStatus classifierStatus,
+                String classifierModelIdUsed,
+                String note) {
+            this(classifierLabel, classifierQueryType, classifierStatus, classifierModelIdUsed, note, Optional.empty(), Optional.empty());
         }
     }
 }

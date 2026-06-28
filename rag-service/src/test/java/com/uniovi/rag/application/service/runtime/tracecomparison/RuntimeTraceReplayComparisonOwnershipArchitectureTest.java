@@ -66,8 +66,8 @@ class RuntimeTraceReplayComparisonOwnershipArchitectureTest {
                     .resideInAnyPackage("..tracecomparison..")
                     .should()
                     .dependOnClassesThat()
-                    .resideInAnyPackage("com.uniovi.rag.service.query..")
-                    .because("P19 must not invoke ProcessQueryService / SimpleProcessQueryService");
+                    .resideInAnyPackage("com.uniovi.rag.application.service.query..")
+                    .because("P19 must not invoke RuntimeQueryExecutionService / RuntimeQueryExecutionService");
 
     @ArchTest
     static final ArchRule noRestControllersInP19Package =

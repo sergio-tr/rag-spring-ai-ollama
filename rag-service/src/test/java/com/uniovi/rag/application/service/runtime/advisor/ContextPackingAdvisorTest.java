@@ -70,7 +70,14 @@ class ContextPackingAdvisorTest {
                                 1,
                                 1,
                                 1,
-                                1),
+                                1,
+                                1,
+                                0,
+                                0,
+                                false,
+                                List.of(),
+                                List.of(),
+                                Optional.empty(), 0, 0, false, 0),
                         List.of(),
                         List.of());
         PackedContextSet packed =
@@ -131,6 +138,7 @@ class ContextPackingAdvisorTest {
                 Optional.empty(),
                 "c",
                 List.of("all"),
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),

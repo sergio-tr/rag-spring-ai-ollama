@@ -1,12 +1,12 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.domain.runtime.reasoning.StructuredAnswerPlan;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.lang.Nullable;
 
 import java.util.concurrent.TimeUnit;
@@ -16,11 +16,11 @@ import java.util.concurrent.TimeUnit;
  */
 public abstract class AbstractExecutionWorkflow implements ExecutionWorkflow {
 
-    protected final ChatClient chatClient;
+    protected final RagLlmChatInvoker llmChatInvoker;
     private final ObservabilitySupport observability;
 
-    protected AbstractExecutionWorkflow(ChatClient chatClient, @Nullable ObservabilitySupport observability) {
-        this.chatClient = chatClient;
+    protected AbstractExecutionWorkflow(RagLlmChatInvoker llmChatInvoker, @Nullable ObservabilitySupport observability) {
+        this.llmChatInvoker = llmChatInvoker;
         this.observability = observability;
     }
 
@@ -34,20 +34,7 @@ public abstract class AbstractExecutionWorkflow implements ExecutionWorkflow {
     }
 
     private String invokeChatUnscoped(ExecutionContext ctx, String systemPrompt, String userMessage) {
-        var spec = chatClient.prompt();
-        if (systemPrompt != null && !systemPrompt.isBlank()) {
-            spec = spec.system(systemPrompt);
-        }
-        spec = spec.user(userMessage);
-        var chatModelOverride = ctx.chatModelOverride();
-        if (chatModelOverride.isPresent()) {
-            String m = chatModelOverride.get().trim();
-            if (!m.isBlank()) {
-                spec = spec.options(OllamaOptions.builder().model(m).build());
-            }
-        }
-        String out = spec.call().content();
-        return out != null ? out : "";
+        return llmChatInvoker.invoke(ctx, systemPrompt, userMessage);
     }
 
     protected static String canonicalGenerationQuery(ExecutionContext ctx) {
@@ -58,6 +45,18 @@ public abstract class AbstractExecutionWorkflow implements ExecutionWorkflow {
             throw new IllegalStateException("rewrittenQueryText must be non-blank");
         }
         return q;
+    }
+
+    protected static String answerPlanBlock(ExecutionContext ctx) {
+        if (ctx == null) {
+            return null;
+        }
+        StructuredAnswerPlan plan = ctx.structuredAnswerPlan().orElse(null);
+        if (plan == null) {
+            return null;
+        }
+        String block = plan.toPromptBlock(800);
+        return block != null && !block.isBlank() ? block : null;
     }
 
     protected static ExecutionStageTrace stage(

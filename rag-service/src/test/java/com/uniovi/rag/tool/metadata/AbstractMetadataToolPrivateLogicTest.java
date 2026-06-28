@@ -1,8 +1,8 @@
 package com.uniovi.rag.tool.metadata;
 
 import com.uniovi.rag.domain.model.Minute;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import java.lang.reflect.Method;
 import java.time.LocalTime;
@@ -154,11 +154,10 @@ class AbstractMetadataToolPrivateLogicTest {
         assertThat(datesMatchFlexibly.invoke(tool, "2024-01-15", "2024-02-01")).isIn(true, false);
 
         Method preFilter =
-                AbstractMetadataTool.class.getDeclaredMethod("preFilterMinutesFast", List.class, JSONObject.class);
+                AbstractMetadataTool.class.getDeclaredMethod("preFilterMinutesFast", List.class, List.class);
         preFilter.setAccessible(true);
-        JSONObject ner = new JSONObject().put("entities", new JSONObject().put("filters", new JSONObject().put("date", List.of("2024-01-15"))));
         @SuppressWarnings("unchecked")
-        List<Minute> out = (List<Minute>) preFilter.invoke(tool, List.of(m), ner);
+        List<Minute> out = (List<Minute>) preFilter.invoke(tool, List.of(m), List.of("2024-01-15"));
         assertThat(out).hasSize(1);
     }
 

@@ -24,14 +24,14 @@ All code comments are in English.
 | GET | `/health` | Service status; includes whether default model is loaded. |
 | GET | `/models` | List available models (default first, then trained). |
 | POST | `/classify` | Body `{"query": "...", "modelId": "default"}` (modelId optional). Returns `{"queryType": "COUNT_DOCUMENTS"}` etc. All JSON in **camelCase**. |
-| POST | `/train` | Multipart: Excel (Question, QueryType) + `model_name` (tag), optional `labels` (JSON array) or `labels_file` (.txt). Optional `epochs`, `batch_size`. Response: `modelId`, `name`, `metrics` (camelCase). |
-| POST | `/evaluate` | Query params `modelId`, `includeImages`; optional file. Returns `modelId`, `metrics` (classificationReport, accuracy, macroAvg, confusionMatrix, classNames), optional base64 images (camelCase). |
+| POST | `/train` | Multipart: Excel (Question, QueryType) + `model_name` (tag), optional `labels` (JSON array) or `labels_file` (.txt). Optional `epochs`, `batch_size`, optional `owner_id` (stored in `metadata.json` when `MODELS_DIR` is shared). Response: `modelId`, `name`, `metrics` (camelCase). |
+| POST | `/evaluate` | Query params `modelId`, `includeImages`; optional evaluation Excel upload. If no file is uploaded, uses `{DATA_DIR}/evaluation_dataset.xlsx`. Returns `modelId`, `metrics` (classificationReport, accuracy, macroAvg, confusionMatrix, classNames), optional base64 images (camelCase). |
 | GET | `/evaluate/{model_id}/report.png` | Classification report heatmap PNG for the model (path segment = model id). |
 | GET | `/evaluate/{model_id}/confusion.png` | Confusion matrix heatmap PNG for the model. |
 
 - **Use classifier by tag:** send `modelId` in `POST /classify` (query param or body); use **camelCase** in all request/response JSON for interoperability with Java/JavaScript.
 - **Train with fixed labels:** send `labels` as a JSON string array (e.g. `["COUNT_DOCUMENTS","SUMMARIZE_MEETING"]`) or upload a `labels_file` (one label per line, like `query_type_labels.txt`). Class order is preserved.
-- **Evaluation:** `POST /evaluate` returns full metrics (classification_report, accuracy, macro_avg, confusion_matrix, class_names) and optionally `classificationReportImageBase64` and `confusionMatrixImageBase64` for the webapp (display or download). The GET image endpoints return the PNGs directly for use in `<img src="...">` or download links.
+- **Evaluation:** `POST /evaluate` returns full metrics (classification_report, accuracy, macro_avg, confusion_matrix, class_names) and optionally `classificationReportImageBase64` and `confusionMatrixImageBase64` for the webapp (display or download). Upload an Excel file to override the default dataset; otherwise the service reads `{DATA_DIR}/evaluation_dataset.xlsx` and returns a structured 400 `EVALUATION_ERROR` if it is missing. The GET image endpoints return the PNGs directly for use in `<img src="...">` or download links.
 
 Error responses use a consistent shape: `{"code": "...", "message": "...", "details": {...}}` (optional).
 
@@ -39,8 +39,8 @@ Error responses use a consistent shape: `{"code": "...", "message": "...", "deta
 
 Default datasets are under `data/`:
 
-- `basic_dataset_qa_clasificacion.xlsx` — training dataset (Question, QueryType).
-- `evaluation_dataset.xlsx` — evaluation dataset.
+- `basic_dataset_qa_clasificacion.xlsx` — training dataset (`Pregunta`/`Question`, `QueryType`).
+- `evaluation_dataset.xlsx` — default evaluation dataset used by `/evaluate` when no file is uploaded (`Pregunta`/`Question`, `QueryType`).
 
 These were moved from `rag-service/src/main/resources/python/` and are the single source of truth here.
 

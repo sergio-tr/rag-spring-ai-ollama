@@ -19,8 +19,8 @@ public final class UserEntityFactory {
         u.setPasswordHash(passwordHash);
         u.setRole(UserRole.USER);
         u.setCreatedAt(Instant.now());
-        u.setEmailVerified(true);
-        u.setEmailVerifiedAt(Instant.now());
+        u.setEmailVerified(false);
+        u.setEmailVerifiedAt(null);
         return u;
     }
 

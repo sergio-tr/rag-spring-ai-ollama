@@ -53,6 +53,17 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    private UUID insertUser() {
+        UUID userId = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)",
+                userId,
+                userId + "@trace-regression.local",
+                "{noop}test",
+                "USER");
+        return userId;
+    }
+
     private static RuntimeTraceRegressionSuiteResult oneBatchEntry() {
         var entry =
                 new RuntimeTraceRegressionSuiteBatchReturnedEntryResult(
@@ -70,7 +81,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void t5_adHoc_roundTrip() {
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         UUID id =
                 runPersistenceService.createRun(
                         userId, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
@@ -84,7 +95,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void t6_savedDefinition_roundTrip() {
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         UUID defId = UUID.randomUUID();
         UUID id =
                 runPersistenceService.createRun(
@@ -99,7 +110,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void t7_loadWrongUser_empty() {
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         UUID other = UUID.randomUUID();
         UUID id =
                 runPersistenceService.createRun(
@@ -109,7 +120,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void t8_listSummaries_newerFirst() throws Exception {
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         UUID older =
                 runPersistenceService.createRun(
                         userId, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
@@ -123,7 +134,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void t9_deleteRun_cascadesEntries() {
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         UUID id =
                 runPersistenceService.createRun(
                         userId, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
@@ -144,7 +155,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void t11_mixedBatchReturnedAndExecutionFailed() {
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         var batch =
                 new RuntimeTraceRegressionSuiteBatchReturnedEntryResult(
                         0,
@@ -179,7 +190,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
     @Test
     void t13_invalidAdHocWithDefinitionId_constraint() {
         UUID id = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         Instant now = Instant.parse("2026-03-01T00:00:00Z");
         Timestamp ts = Timestamp.from(now);
         assertThatThrownBy(
@@ -209,7 +220,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
     @Test
     void t14_executionFailedWithBatchOutcome_constraint() {
         UUID runId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         Instant now = Instant.parse("2026-03-02T00:00:00Z");
         Timestamp ts = Timestamp.from(now);
         jdbcTemplate.update(
@@ -258,7 +269,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void t15_listTieBreakOrderByIdAsc() {
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         Instant same = Instant.parse("2026-04-01T12:00:00Z");
         Timestamp ts = Timestamp.from(same);
         UUID idA =
@@ -303,7 +314,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void p48_t7_delete_removes_run_then_load_empty() {
-        UUID userA = UUID.randomUUID();
+        UUID userA = insertUser();
         UUID runId =
                 runPersistenceService.createRun(
                         userA, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
@@ -318,8 +329,8 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void p48_t9_wrong_user_delete_false_entries_unchanged() {
-        UUID userA = UUID.randomUUID();
-        UUID userB = UUID.randomUUID();
+        UUID userA = insertUser();
+        UUID userB = insertUser();
         UUID runId =
                 runPersistenceService.createRun(
                         userA, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
@@ -341,7 +352,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void p48_t10_delete_removes_run_and_cascade_entries() {
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         UUID runId =
                 runPersistenceService.createRun(
                         userId, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
@@ -366,7 +377,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void p48_t11_delete_first_second_still_loadable() {
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         UUID run1 =
                 runPersistenceService.createRun(
                         userId, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
@@ -379,7 +390,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void p48_t12_delete_first_preserves_second_entry_count() {
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         UUID run1 =
                 runPersistenceService.createRun(
                         userId, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
@@ -403,8 +414,8 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void p48_t13_wrong_user_delete_row_still_owned_by_user_a() {
-        UUID userA = UUID.randomUUID();
-        UUID userB = UUID.randomUUID();
+        UUID userA = insertUser();
+        UUID userB = insertUser();
         UUID runId =
                 runPersistenceService.createRun(
                         userA, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
@@ -420,7 +431,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void p51_t9_deleteForDefinition_removes_saved_run_then_load_empty() {
-        UUID userA = UUID.randomUUID();
+        UUID userA = insertUser();
         UUID defId = UUID.randomUUID();
         UUID runId =
                 runPersistenceService.createRun(
@@ -434,7 +445,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void p51_t10_wrong_definition_delete_false_run_still_present() {
-        UUID userA = UUID.randomUUID();
+        UUID userA = insertUser();
         UUID defId = UUID.randomUUID();
         UUID otherDefId = UUID.randomUUID();
         UUID runId =
@@ -449,7 +460,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void p51_t11_ad_hoc_delete_with_definition_id_false_row_remains() {
-        UUID userA = UUID.randomUUID();
+        UUID userA = insertUser();
         UUID someDefId = UUID.randomUUID();
         UUID adhocRunId =
                 runPersistenceService.createRun(
@@ -468,7 +479,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void p51_t13_deleteForDefinition_cascades_entries() {
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         UUID defId = UUID.randomUUID();
         UUID runId =
                 runPersistenceService.createRun(
@@ -497,7 +508,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
 
     @Test
     void p51_t14_global_delete_still_works_after_p51() {
-        UUID userId = UUID.randomUUID();
+        UUID userId = insertUser();
         UUID defId = UUID.randomUUID();
         UUID runId =
                 runPersistenceService.createRun(

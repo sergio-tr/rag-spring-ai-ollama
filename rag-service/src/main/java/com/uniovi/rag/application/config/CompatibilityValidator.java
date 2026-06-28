@@ -4,7 +4,7 @@ import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.rules.CompatibilityRule;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.config.validation.CompatibilityResult;
-import com.uniovi.rag.domain.config.validation.LegacyCompatibilityValidatorBridge;
+import com.uniovi.rag.domain.config.validation.CompatibilityValidatorBridge;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -22,6 +22,6 @@ public class CompatibilityValidator {
     }
 
     public CompatibilityResult validate(CapabilitySet capabilitySet, RagConfig ragConfig) {
-        return LegacyCompatibilityValidatorBridge.evaluate(rules, capabilitySet, ragConfig);
+        return CompatibilityValidatorBridge.evaluate(rules, capabilitySet, ragConfig);
     }
 }

@@ -101,7 +101,16 @@ class RuntimeExecutionTraceEntityMapperTest {
                 base.clarificationAttempted(),
                 base.clarificationOutcome(),
                 base.clarificationPendingStateConsumed(),
-                base.clarificationQuestionAsked());
+                base.clarificationQuestionAsked(),
+                base.originalQuery(),
+                base.retrievalQuery(),
+                base.packedContextPreview(),
+                base.sourceCount(),
+                base.retrievedDocumentNames(),
+                base.answerGroundingPolicy(),
+                base.promptContextCharCount(),
+                base.abstentionTriggered(),
+                base.abstentionReason());
     }
 }
 

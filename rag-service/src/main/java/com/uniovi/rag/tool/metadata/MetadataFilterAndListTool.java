@@ -3,12 +3,14 @@ package com.uniovi.rag.tool.metadata;
 import com.uniovi.rag.domain.model.Cluster;
 import com.uniovi.rag.domain.model.FilterResult;
 import com.uniovi.rag.domain.model.Minute;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
+import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
+import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
@@ -36,31 +38,74 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         JSONObject ner = ctx.nerEntities();
         
         log().info("Executing filter and list query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+
+        Optional<ToolResult> futureExit = exitWhenFutureOrUnavailableDate(query, ner, getClass());
+        if (futureExit.isPresent()) {
+            return futureExit.get();
+        }
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
-        List<Document> docs = retrieveDocumentsWithFallback(
-            query, 
-            new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"},
-            ner
-        );
+        List<Document> docs =
+                isCompoundCorpusFilterQuery(query)
+                        ? retrieveCorpusDocumentsWithFallback(
+                                query,
+                                new String[] {
+                                    "date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"
+                                })
+                        : retrieveDocumentsWithFallback(
+                                query,
+                                new String[] {
+                                    "date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"
+                                },
+                                ner);
         
         ToolResult missing = notFoundIfEmptyDocuments(query, docs, "filter and list");
         if (missing != null) {
             return missing;
         }
 
-        // Step 2: Extract minutes in parallel
-        List<Minute> minutes = extractMinutesInParallel(docs);
+        Map<String, String> evidenceByKey = buildMeetingEvidenceTextByKey(docs);
+        boolean compoundMonthTopicAttendee = isCompoundMonthTopicAttendeeFilterQuery(query);
+        boolean topicAndPersonFilter = detectTopicAndPersonFilter(query);
+
+        // Step 2: Extract minutes in parallel (one canonical meeting per acta)
+        List<Minute> minutes;
+        if (compoundMonthTopicAttendee || topicAndPersonFilter) {
+            minutes =
+                    extractMeetingShellsForTopicMatch(
+                            mergeChunksWithRichestMetadata(collectInScopeCorpusRows(docs)));
+        } else {
+            minutes = canonicalizeMeetingsFromDocuments(docs);
+        }
         missing = notFoundIfEmptyMinutes(query, minutes, "filter and list");
         if (missing != null) {
             return missing;
         }
 
-        // Step 3: Filter relevant minutes based on NER or query relevance
-        List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, "filter and list");
-        if (missing != null) {
-            return missing;
+        StartTimeQuery startTimeListQuery = detectStartTimeListQuery(query, ner);
+        if (startTimeListQuery != null) {
+            log().info(
+                    "Start-time list query detected for '{}', filtering {} unique actas at {}",
+                    query,
+                    minutes.size(),
+                    startTimeListQuery.targetTime());
+            return listMeetingsStartingAtTime(query, minutes, startTimeListQuery.targetTime());
+        }
+
+        // Step 3: Filter relevant minutes (FD-FL-03 compound filter scans all actas before month/topic/attendee narrowing)
+        List<Minute> relevantMinutes;
+        if (compoundMonthTopicAttendee || topicAndPersonFilter) {
+            log().info(
+                    "Compound corpus filter for '{}': skipping relevance pre-filter on {} actas",
+                    query,
+                    minutes.size());
+            relevantMinutes = minutes;
+        } else {
+            relevantMinutes = filterRelevantMinutes(query, minutes, ner);
+            missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, "filter and list");
+            if (missing != null) {
+                return missing;
+            }
         }
         
         // Step 3.5: Filter by attendee name when query asks "when/where did [person] attend" (e.g. Alejandro Torres Rojas)
@@ -101,7 +146,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         // Step 3.6c: Filter by topic when query mentions a topic (e.g. August + video surveillance + >18 attendees → only ACTA 6 §4)
         String topicForFilter = extractTopicFromQuery(query, ner);
         if (topicForFilter != null && !topicForFilter.isBlank() && !requiresTopicAndPersonFilter(query)) {
-            List<Minute> byTopic = filterMinutesByTopicOnly(relevantMinutes, topicForFilter);
+            List<Minute> byTopic = filterMinutesByTopicOnly(relevantMinutes, topicForFilter, evidenceByKey);
             log().info("Filtered {} minutes by topic '{}', {} remaining", relevantMinutes.size(), topicForFilter, byTopic.size());
             relevantMinutes = byTopic;
         }
@@ -109,22 +154,13 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         // Step 3.7: Additional filtering by topic + person if query requires it (AND logic)
         // Do NOT apply when query is only "when/where did [person] attend" (e.g. Alejandro Torres) — would zero out valid results
         if (requiresTopicAndPersonFilter(query) && !isAttendeeListQuery(query)) {
-            List<Minute> topicPersonFiltered = filterMinutesByTopicAndPerson(query, relevantMinutes, ner);
-            log().info("Filtered {} minutes by topic + person (AND logic), {} remaining (applied filter even if empty)", 
-                      relevantMinutes.size(), topicPersonFiltered.size());
-            if (topicPersonFiltered.isEmpty()) {
-                // Fallback: return actas that match topic only (useful when president name or topic wording differs from metadata)
-                String topic = extractTopicFromQuery(query, ner);
-                List<Minute> byTopicOnly = topic != null ? filterMinutesByTopicOnly(relevantMinutes, topic) : Collections.emptyList();
-                if (!byTopicOnly.isEmpty()) {
-                    relevantMinutes = byTopicOnly;
-                    log().info("Topic+person yielded 0; using topic-only fallback with {} actas for topic '{}'", byTopicOnly.size(), topic);
-                } else {
-                    relevantMinutes = topicPersonFiltered;
-                }
-            } else {
-                relevantMinutes = topicPersonFiltered;
-            }
+            List<Minute> topicPersonFiltered =
+                    filterMinutesByTopicAndPerson(query, relevantMinutes, ner, evidenceByKey);
+            log().info(
+                    "Filtered {} minutes by topic + person (AND logic), {} remaining (applied filter even if empty)",
+                    relevantMinutes.size(),
+                    topicPersonFiltered.size());
+            relevantMinutes = topicPersonFiltered;
         }
 
         // When topic+person filter (and fallback) yielded 0 results, return explicit message with criteria (item 33)
@@ -134,6 +170,19 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             String msg = generateNoDataMessageForTopicAndPresident(query, topic, person);
             log().info("Topic+person and fallback yielded 0; returning explicit no-data message for topic '{}' and person '{}'", topic, person);
             return ToolResult.from(formatResponse(msg, query), getClass());
+        }
+
+        Optional<String> deterministicAnswer =
+                tryFormatDeterministicFilterListAnswer(query, relevantMinutes, ner);
+        if (deterministicAnswer.isPresent()) {
+            return ToolResult.from(formatResponse(deterministicAnswer.get(), query), getClass());
+        }
+
+        if (compoundMonthTopicAttendee) {
+            String negative =
+                    StructuredMinuteMetadataSupport.formatCompoundMonthTopicAttendeeNoMatchAnswer(query, topicForFilter);
+            log().info("Compound month/topic/attendee filter: no deterministic match; returning fixed negative");
+            return ToolResult.from(formatResponse(negative, query), getClass());
         }
 
         // Step 4: Generate summaries in parallel (metadata-first, LLM fallback)
@@ -218,6 +267,13 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         }
         if (minute.agenda() != null && !minute.agenda().isEmpty()) {
             parts.add("Agenda: " + minute.agenda().toString());
+        }
+        if (parts.isEmpty() && minute.date() != null && !minute.date().isBlank()) {
+            parts.add("Acta del " + minute.date());
+        }
+        String source = StructuredMinuteMetadataSupport.formatSourceReference(minute);
+        if (!source.isBlank()) {
+            parts.add("Fuente: " + source);
         }
         return String.join(" | ", parts).trim();
     }
@@ -324,8 +380,8 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         try {
             String response = getLLMResponseCached(prompt);
             
-            if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateEnhancedFilterAnswer, using fallback");
+            if (isUnusableLlmText(response)) {
+                log().warn("Empty or unusable response from LLM in generateEnhancedFilterAnswer, using fallback");
                 return generateFallbackFilterAnswer(query, results);
             }
             
@@ -375,16 +431,34 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
                     .call()
                     .content();
             
-            if (response != null && !response.trim().isEmpty()) {
+            if (!isUnusableLlmText(response)) {
                 return response.trim();
             }
         } catch (Exception e) {
             log().warn("Error generating fallback filter answer with LLM", e);
         }
         
-        // Ultimate fallback
-        return String.format("Found %d relevant meetings:%n%s",
-                          results.size(), resultsText);
+        // Ultimate fallback: deterministic metadata list with source references
+        return results.stream()
+                .map(
+                        r -> {
+                            String date = r.getDate() != null ? r.getDate() : "fecha desconocida";
+                            String source =
+                                    r.getMinuteId() != null && !r.getMinuteId().isBlank()
+                                            ? " (" + r.getMinuteId() + ")"
+                                            : "";
+                            String summary = r.getSummary() != null ? r.getSummary() : "";
+                            return "- " + date + source + ": " + summary;
+                        })
+                .collect(Collectors.joining("\n"));
+    }
+
+    private static boolean isUnusableLlmText(String response) {
+        if (response == null || response.isBlank()) {
+            return true;
+        }
+        String trimmed = response.trim();
+        return "NONE".equalsIgnoreCase(trimmed) || "N/A".equalsIgnoreCase(trimmed);
     }
 
     /**
@@ -493,7 +567,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     private Integer extractMinAttendeesFromQuery(String query) {
         if (query == null) return null;
         Pattern p = Pattern.compile(
-                "(?:más de|más que)\\s+(\\d+)\\s+asistentes",
+                "(?:más de|mas de|more than)\\s+(\\d+)\\s+asistentes",
                 Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ);
         Matcher m = p.matcher(query);
         if (m.find()) {
@@ -549,7 +623,8 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
      * Filters minutes by topic AND person (both conditions must be met — AND logic).
      * Example: attendees at meetings that discussed a topic and were chaired by a named person.
      */
-    private List<Minute> filterMinutesByTopicAndPerson(String query, List<Minute> minutes, JSONObject ner) {
+    private List<Minute> filterMinutesByTopicAndPerson(
+            String query, List<Minute> minutes, JSONObject ner, Map<String, String> evidenceByKey) {
         if (minutes.isEmpty() || query == null) {
             return minutes;
         }
@@ -609,7 +684,8 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
                                                 topicTerms,
                                                 normalizedPersonName,
                                                 filterByPresident,
-                                                filterBySecretary))
+                                                filterBySecretary,
+                                                evidenceByKey))
                         .collect(Collectors.toList());
         
         log().info("Topic+person filtering result: {} minutes passed (out of {}). Topic: '{}', Person: '{}'", 
@@ -625,10 +701,14 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             List<String> topicTerms,
             String normalizedPersonName,
             boolean filterByPresident,
-            boolean filterBySecretary) {
-        if (!minuteTopicMatchesTerms(minute, topicTerms)) {
+            boolean filterBySecretary,
+            Map<String, String> evidenceByKey) {
+        boolean topicMatches =
+                minuteMentionsTopicEvidence(minute, topicLabel, evidenceByKey)
+                        || minuteTopicMatchesTerms(minute, topicTerms);
+        if (!topicMatches) {
             log().debug(
-                    "Minute {} filtered out: topic '{}' not found in topics/decisions/summary",
+                    "Minute {} filtered out: topic '{}' not found in corpus evidence or metadata",
                     minute.id(),
                     topicLabel);
             return false;
@@ -730,28 +810,14 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
      * Filters minutes to those that mention the given topic (in topics, decisions, summary, or agenda).
      * Uses synonyms for common topics (e.g. video surveillance → surveillance, cameras). §4 August + video surveillance + >18 attendees → ACTA 6 only.
      */
-    private List<Minute> filterMinutesByTopicOnly(List<Minute> minutes, String topic) {
-        if (minutes.isEmpty() || topic == null || topic.isBlank()) return minutes;
-        String topicNorm = normalizePersonName(topic);
-        List<String> terms = new ArrayList<>();
-        terms.add(topicNorm);
-        if (topicNorm.contains("videovigilancia") || topicNorm.contains("vigilancia")) {
-            terms.add("videovigilancia"); terms.add("vigilancia"); terms.add("camaras"); terms.add("cámaras");
+    private List<Minute> filterMinutesByTopicOnly(
+            List<Minute> minutes, String topic, Map<String, String> evidenceByKey) {
+        if (minutes.isEmpty() || topic == null || topic.isBlank()) {
+            return minutes;
         }
-        if (topicNorm.contains("calefaccion") || topicNorm.contains("calefacción")) {
-            terms.add("calefaccion"); terms.add("calefacción");
-        }
-        List<Minute> out = minutes.stream()
-                .filter(m -> {
-                    String ts = (m.topics() != null ? String.join(" ", m.topics()) : "") + " "
-                            + (m.decisions() != null ? String.join(" ", m.decisions()) : "") + " "
-                            + (m.summary() != null ? m.summary() : "") + " "
-                            + (m.agenda() != null ? m.agenda().values().stream().filter(Objects::nonNull).reduce("", (a, b) -> a + " " + b) : "");
-                    String combined = normalizePersonName(ts);
-                    return terms.stream().anyMatch(combined::contains);
-                })
+        return minutes.stream()
+                .filter(m -> minuteMentionsTopicEvidence(m, topic, evidenceByKey))
                 .toList();
-        return out;
     }
 
     /**
@@ -767,6 +833,33 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             return String.format("No se ha encontrado ninguna reunión en la que se hablara de %s y que además fuera presidida por %s.", t, p);
         }
         return String.format("No meeting was found that discussed %s and was chaired by %s.", t, p);
+    }
+
+    private boolean isCompoundCorpusFilterQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        return isCompoundMonthTopicAttendeeFilterQuery(query)
+                || extractRequestedMonthFromQuery(query) != null
+                || detectTopicAndPersonFilter(query)
+                || (q.contains("agosto") && q.contains("videovigilancia"));
+    }
+
+    private boolean isCompoundMonthTopicAttendeeFilterQuery(String query) {
+        return query != null
+                && ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(
+                        query.toLowerCase(Locale.ROOT));
+    }
+
+    private Optional<String> tryFormatDeterministicFilterListAnswer(
+            String query, List<Minute> minutes, JSONObject ner) {
+        if (minutes == null || minutes.isEmpty()) {
+            return Optional.empty();
+        }
+        String topic = extractTopicFromQuery(query, ner);
+        return StructuredMinuteMetadataSupport.formatDeterministicFilterListAnswer(
+                query, minutes, topic, detectTopicAndPersonFilter(query));
     }
 
 }

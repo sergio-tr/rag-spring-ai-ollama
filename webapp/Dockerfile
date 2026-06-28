@@ -1,9 +1,9 @@
-FROM node:22-alpine AS deps
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json ./
 RUN npm install --no-audit --no-fund
 
-FROM node:22-alpine AS build
+FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -25,7 +25,7 @@ ENV NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME=$NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME
 ENV NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME=$NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME
 RUN npm run build
 
-FROM node:22-alpine AS runtime
+FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 # Overridden at runtime by docker-compose (WEBAPP_CONTAINER_PORT / PORT).
@@ -38,7 +38,7 @@ COPY --from=build /app/next.config.ts ./next.config.ts
 
 EXPOSE 3000
 HEALTHCHECK --interval=20s --timeout=5s --start-period=30s --retries=6 \
-  CMD sh -c "wget -qO- http://127.0.0.1:$$PORT/ >/dev/null 2>&1 || exit 1"
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '3000') + '/en/login').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 # PORT and listen host must match docker-compose port mapping and nginx WEBAPP_INTERNAL_PORT.
 CMD ["sh", "-c", "exec npm run start -- -p \"${PORT:-3000}\" -H 0.0.0.0"]

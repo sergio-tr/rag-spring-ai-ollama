@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from typing import Any
 
 import httpx
 import pytest
+
+_COLLECTED_COUNT = 0
+_PASSED_NODEIDS: set[str] = set()
+_FAILED_NODEIDS: set[str] = set()
+_SKIPPED_REASONS: dict[str, str] = {}
+_STRICT_GUARD_FAILURE = ""
 
 
 def _url(name: str, default: str) -> str:
@@ -15,6 +22,122 @@ def _url(name: str, default: str) -> str:
 
 def _truthy_env(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _integration_strict_enabled() -> bool:
+    return _truthy_env("INTEGRATION_STRICT") or _truthy_env("INTEGRATION_FAIL_ON_UNREACHABLE")
+
+
+def _integration_classifier_required() -> bool:
+    return _truthy_env("INTEGRATION_REQUIRE_CLASSIFIER")
+
+
+def _integration_classifier_model_required() -> bool:
+    return _truthy_env("INTEGRATION_REQUIRE_CLASSIFIER_MODEL")
+
+
+def _classifier_skip_requires_failure(nodeid: str, reason: str) -> bool:
+    text = f"{nodeid}\n{reason}".lower()
+    if "testobservabilitystack" in text or "observability tests" in text:
+        return False
+    if "classifier" not in text:
+        return False
+    model_not_loaded = "model not loaded" in text or "model != loaded" in text
+    if model_not_loaded and not _integration_classifier_model_required():
+        return False
+    return True
+
+
+def _auth_skip_requires_failure(reason: str) -> bool:
+    text = reason.lower()
+    return (
+        "login failed" in text
+        or "login did not return a token" in text
+        or "seed user missing" in text
+        or "wrong integration_login" in text
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    global _COLLECTED_COUNT, _STRICT_GUARD_FAILURE
+    del config
+    _COLLECTED_COUNT = 0
+    _STRICT_GUARD_FAILURE = ""
+    _PASSED_NODEIDS.clear()
+    _FAILED_NODEIDS.clear()
+    _SKIPPED_REASONS.clear()
+
+
+def pytest_collection_finish(session: pytest.Session) -> None:
+    global _COLLECTED_COUNT
+    _COLLECTED_COUNT = len(session.items)
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    if report.outcome == "passed" and report.when == "call":
+        _PASSED_NODEIDS.add(report.nodeid)
+    elif report.outcome == "failed":
+        _FAILED_NODEIDS.add(report.nodeid)
+    elif report.outcome == "skipped":
+        _SKIPPED_REASONS[report.nodeid] = str(report.longrepr)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    global _STRICT_GUARD_FAILURE
+    del exitstatus
+    if not _integration_strict_enabled():
+        return
+
+    collected = _COLLECTED_COUNT
+    passed = _PASSED_NODEIDS
+    failed = _FAILED_NODEIDS
+    skipped = _SKIPPED_REASONS
+
+    if collected <= 0:
+        _STRICT_GUARD_FAILURE = "strict integration guard failed: pytest collected zero tests."
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        return
+
+    if len(skipped) >= collected and not passed and not failed:
+        _STRICT_GUARD_FAILURE = (
+            f"strict integration guard failed: all collected tests were skipped ({collected}/{collected})."
+        )
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        return
+
+    if _integration_classifier_required():
+        classifier_skips = {
+            nodeid: reason
+            for nodeid, reason in skipped.items()
+            if _classifier_skip_requires_failure(nodeid, reason)
+        }
+        if classifier_skips:
+            first_nodeid, first_reason = next(iter(classifier_skips.items()))
+            _STRICT_GUARD_FAILURE = (
+                "strict integration guard failed: classifier is required but a classifier-related test "
+                f"was skipped ({first_nodeid}: {first_reason})."
+            )
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+            return
+
+    auth_skips = {
+        nodeid: reason
+        for nodeid, reason in skipped.items()
+        if _auth_skip_requires_failure(reason)
+    }
+    if auth_skips:
+        first_nodeid, first_reason = next(iter(auth_skips.items()))
+        _STRICT_GUARD_FAILURE = (
+            "strict integration guard failed: authenticated product coverage was skipped "
+            f"({first_nodeid}: {first_reason})."
+        )
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    if _STRICT_GUARD_FAILURE:
+        terminalreporter.section("strict integration guard")
+        terminalreporter.write_line(_STRICT_GUARD_FAILURE)
 
 
 def observability_reachable(http_client: httpx.Client, obs_urls: dict[str, str]) -> bool:
@@ -63,8 +186,8 @@ def product_api_base() -> str:
 def integration_seed_credentials() -> tuple[str, str]:
     """Email/password for stack integration JWT flows (V16 seed or CI user)."""
     email = os.environ.get("INTEGRATION_LOGIN_EMAIL", "dev@local.test").strip()
-    password = os.environ.get("INTEGRATION_LOGIN_PASSWORD", "dev")
-    return (email, password)
+    login_secret = os.environ.get("INTEGRATION_LOGIN_PASSWORD", "dev")
+    return (email, login_secret)
 
 
 @pytest.fixture(scope="session")
@@ -76,13 +199,18 @@ def integration_admin_credentials() -> tuple[str, str] | None:
     email = os.environ.get("INTEGRATION_ADMIN_EMAIL", "").strip()
     if not email:
         return None
-    password = os.environ.get("INTEGRATION_ADMIN_PASSWORD", "e2e").strip()
-    return (email, password)
+    admin_secret = os.environ.get("INTEGRATION_ADMIN_PASSWORD", "e2e").strip()
+    return (email, admin_secret)
 
 
 @pytest.fixture(scope="session")
 def http_client() -> httpx.Client:
-    return httpx.Client(timeout=httpx.Timeout(120.0, connect=5.0))
+    verify = os.environ.get("INTEGRATION_HTTPX_VERIFY", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+    return httpx.Client(timeout=httpx.Timeout(120.0, connect=5.0), verify=verify)
 
 
 @pytest.fixture(scope="session")
@@ -133,7 +261,7 @@ def require_obs_stack(obs_context: dict[str, Any], obs_urls: dict[str, str]) -> 
 
 
 @pytest.fixture(scope="session")
-def tc_postgres_container() -> object:
+def tc_postgres_container() -> Generator[object, None, None]:
     """
     Optional local Postgres (Testcontainers) with init SQL aligned with Java Testcontainers.
 

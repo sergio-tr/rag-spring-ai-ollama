@@ -30,6 +30,8 @@ public record RagConfig(
         boolean adaptiveRoutingEnabled,
         /** P14: post-answer judge stage (runtime-owned, default off). */
         boolean judgeEnabled,
+        /** When true, orchestrator may route to deterministic tools before the retrieval workflow (Lab preset lane). */
+        boolean deterministicToolRoutingEnabled,
         int topK,
         double similarityThreshold,
         String llmModel,
@@ -44,6 +46,15 @@ public record RagConfig(
         int naiveFullCorpusMaxChars,
         /** Max characters for extractive curated retrieval context (advanced pipeline). */
         int advancedRetrievalMaxContextChars,
+        /**
+         * Lab P0 routing: when {@link #naiveFullCorpusInPromptEnabled()} is true without retrieval, select the direct
+         * corpus-grounded workflow instead of the naive full-corpus baseline workflow name/metrics path.
+         */
+        boolean corpusGroundedDirectWorkflow,
+        /** When function calling is enabled, backend may propose tool calls from query shape without native provider tool calls. */
+        boolean functionCallingBackendProposalEnabled,
+        /** When true, native provider tool-call protocol may run (optional; default off for local models). */
+        boolean functionCallingNativeProviderEnabled,
         MaterializationStrategy materializationStrategy
 ) {
 
@@ -51,6 +62,65 @@ public record RagConfig(
     public static final int DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS = 24_000;
 
     private static final String JSON_MATERIALIZATION_STRATEGY = "materializationStrategy";
+
+    /**
+     * Convenience constructor for positional call sites (defaults {@code corpusGroundedDirectWorkflow=false}).
+     */
+    public RagConfig(
+            boolean expansionEnabled,
+            boolean nerEnabled,
+            boolean toolsEnabled,
+            boolean metadataEnabled,
+            boolean reasoningEnabled,
+            boolean rankerEnabled,
+            boolean postRetrievalEnabled,
+            boolean functionCallingEnabled,
+            boolean useRetrieval,
+            boolean useAdvisor,
+            boolean clarificationEnabled,
+            boolean memoryEnabled,
+            boolean adaptiveRoutingEnabled,
+            boolean judgeEnabled,
+            int topK,
+            double similarityThreshold,
+            String llmModel,
+            String embeddingModel,
+            String classifierModelId,
+            String reasoningStrategy,
+            boolean naiveFullCorpusInPromptEnabled,
+            int naiveFullCorpusMaxChars,
+            int advancedRetrievalMaxContextChars,
+            MaterializationStrategy materializationStrategy) {
+        this(
+                expansionEnabled,
+                nerEnabled,
+                toolsEnabled,
+                metadataEnabled,
+                reasoningEnabled,
+                rankerEnabled,
+                postRetrievalEnabled,
+                functionCallingEnabled,
+                useRetrieval,
+                useAdvisor,
+                clarificationEnabled,
+                memoryEnabled,
+                adaptiveRoutingEnabled,
+                judgeEnabled,
+                false,
+                topK,
+                similarityThreshold,
+                llmModel,
+                embeddingModel,
+                classifierModelId,
+                reasoningStrategy,
+                naiveFullCorpusInPromptEnabled,
+                naiveFullCorpusMaxChars,
+                advancedRetrievalMaxContextChars,
+                false,
+                functionCallingEnabled,
+                false,
+                materializationStrategy);
+    }
 
     /**
      * Backwards-compatible constructor for call sites that predate P13.
@@ -95,6 +165,7 @@ public record RagConfig(
                 memoryEnabled,
                 false,
                 false,
+                false,
                 topK,
                 similarityThreshold,
                 llmModel,
@@ -104,6 +175,9 @@ public record RagConfig(
                 naiveFullCorpusInPromptEnabled,
                 naiveFullCorpusMaxChars,
                 advancedRetrievalMaxContextChars,
+                false,
+                functionCallingEnabled,
+                false,
                 materializationStrategy);
     }
 
@@ -151,6 +225,7 @@ public record RagConfig(
                 memoryEnabled,
                 adaptiveRoutingEnabled,
                 false,
+                false,
                 topK,
                 similarityThreshold,
                 llmModel,
@@ -160,6 +235,70 @@ public record RagConfig(
                 naiveFullCorpusInPromptEnabled,
                 naiveFullCorpusMaxChars,
                 advancedRetrievalMaxContextChars,
+                false,
+                functionCallingEnabled,
+                false,
+                materializationStrategy);
+    }
+
+    /**
+     * Backwards-compatible constructor for call sites with deterministic tool routing and corpus-grounded flag.
+     */
+    public RagConfig(
+            boolean expansionEnabled,
+            boolean nerEnabled,
+            boolean toolsEnabled,
+            boolean metadataEnabled,
+            boolean reasoningEnabled,
+            boolean rankerEnabled,
+            boolean postRetrievalEnabled,
+            boolean functionCallingEnabled,
+            boolean useRetrieval,
+            boolean useAdvisor,
+            boolean clarificationEnabled,
+            boolean memoryEnabled,
+            boolean adaptiveRoutingEnabled,
+            boolean judgeEnabled,
+            boolean deterministicToolRoutingEnabled,
+            int topK,
+            double similarityThreshold,
+            String llmModel,
+            String embeddingModel,
+            String classifierModelId,
+            String reasoningStrategy,
+            boolean naiveFullCorpusInPromptEnabled,
+            int naiveFullCorpusMaxChars,
+            int advancedRetrievalMaxContextChars,
+            boolean corpusGroundedDirectWorkflow,
+            MaterializationStrategy materializationStrategy) {
+        this(
+                expansionEnabled,
+                nerEnabled,
+                toolsEnabled,
+                metadataEnabled,
+                reasoningEnabled,
+                rankerEnabled,
+                postRetrievalEnabled,
+                functionCallingEnabled,
+                useRetrieval,
+                useAdvisor,
+                clarificationEnabled,
+                memoryEnabled,
+                adaptiveRoutingEnabled,
+                judgeEnabled,
+                deterministicToolRoutingEnabled,
+                topK,
+                similarityThreshold,
+                llmModel,
+                embeddingModel,
+                classifierModelId,
+                reasoningStrategy,
+                naiveFullCorpusInPromptEnabled,
+                naiveFullCorpusMaxChars,
+                advancedRetrievalMaxContextChars,
+                corpusGroundedDirectWorkflow,
+                functionCallingEnabled,
+                false,
                 materializationStrategy);
     }
 
@@ -186,6 +325,7 @@ public record RagConfig(
                 features.isMemoryEnabled(),
                 features.isAdaptiveRoutingEnabled(),
                 features.isJudgeEnabled(),
+                features.isDeterministicToolRoutingEnabled(),
                 topK,
                 similarityThreshold,
                 llmModel,
@@ -195,6 +335,9 @@ public record RagConfig(
                 false,
                 DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
                 DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                false,
+                features.isFunctionCallingEnabled(),
+                false,
                 MaterializationStrategy.CHUNK_LEVEL
         );
     }
@@ -226,6 +369,7 @@ public record RagConfig(
                 readBool(json, "memoryEnabled", base.memoryEnabled),
                 readBool(json, "adaptiveRoutingEnabled", base.adaptiveRoutingEnabled),
                 readBool(json, "judgeEnabled", base.judgeEnabled),
+                readBool(json, "deterministicToolRoutingEnabled", base.deterministicToolRoutingEnabled),
                 readInt(json, "topK", base.topK),
                 readDouble(json, "similarityThreshold", base.similarityThreshold),
                 readText(json, "llmModel", base.llmModel),
@@ -235,6 +379,15 @@ public record RagConfig(
                 readBool(json, "naiveFullCorpusInPromptEnabled", base.naiveFullCorpusInPromptEnabled),
                 maxChars,
                 advMax,
+                readBool(json, "corpusGroundedDirectWorkflow", base.corpusGroundedDirectWorkflow),
+                readBool(
+                        json,
+                        "functionCallingBackendProposalEnabled",
+                        base.functionCallingBackendProposalEnabled()),
+                readBool(
+                        json,
+                        "functionCallingNativeProviderEnabled",
+                        base.functionCallingNativeProviderEnabled()),
                 readMaterializationStrategy(json, base.materializationStrategy)
         );
     }
@@ -287,6 +440,7 @@ public record RagConfig(
         m.put("memoryEnabled", memoryEnabled);
         m.put("adaptiveRoutingEnabled", adaptiveRoutingEnabled);
         m.put("judgeEnabled", judgeEnabled);
+        m.put("deterministicToolRoutingEnabled", deterministicToolRoutingEnabled);
         m.put("topK", topK);
         m.put("similarityThreshold", similarityThreshold);
         m.put("llmModel", llmModel);
@@ -296,6 +450,9 @@ public record RagConfig(
         m.put("naiveFullCorpusInPromptEnabled", naiveFullCorpusInPromptEnabled);
         m.put("naiveFullCorpusMaxChars", naiveFullCorpusMaxChars);
         m.put("advancedRetrievalMaxContextChars", advancedRetrievalMaxContextChars);
+        m.put("corpusGroundedDirectWorkflow", corpusGroundedDirectWorkflow);
+        m.put("functionCallingBackendProposalEnabled", functionCallingBackendProposalEnabled);
+        m.put("functionCallingNativeProviderEnabled", functionCallingNativeProviderEnabled);
         m.put(JSON_MATERIALIZATION_STRATEGY, materializationStrategy.name());
         return m;
     }

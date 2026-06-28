@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.clarification;
 
+import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationQuestion;
@@ -40,6 +41,16 @@ public class ClarificationPolicyResolver {
                     false, ClarificationOutcome.DISABLED_BY_CONFIG, null, "disable_reason=" + d);
         }
 
+        if (isCompoundMonthTopicAttendeeFilterQuery(plan)) {
+            return new ClarificationDecision(
+                    false, ClarificationOutcome.NOT_NEEDED, null, "compound_month_topic_attendee_filter");
+        }
+
+        if (isCorpusWideExactAttendeeCountListingQuery(plan)) {
+            return new ClarificationDecision(
+                    false, ClarificationOutcome.NOT_NEEDED, null, "corpus_wide_exact_attendee_count_listing");
+        }
+
         AmbiguityStatus status = plan.ambiguityAssessment().status();
         if (!ambiguityRequiresClarification(status)) {
             if (ctx.pendingClarificationLoadedForTrace()) {
@@ -68,7 +79,8 @@ public class ClarificationPolicyResolver {
 
     private static boolean ambiguityRequiresClarification(AmbiguityStatus status) {
         return switch (status) {
-            case AMBIGUOUS, MISSING_INFORMATION, CONFLICTING_CUES -> true;
+            case AMBIGUOUS, MISSING_INFORMATION -> true;
+            case CONFLICTING_CUES -> false;
             case SUFFICIENT, UNKNOWN -> false;
         };
     }
@@ -118,6 +130,36 @@ public class ClarificationPolicyResolver {
     private static boolean containsAnySubstring(String fieldLower, String... needles) {
         for (String n : needles) {
             if (fieldLower.contains(n)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isCorpusWideExactAttendeeCountListingQuery(QueryPlan plan) {
+        if (plan == null) {
+            return false;
+        }
+        for (String candidate :
+                List.of(plan.normalizedQueryText(), plan.rewrittenQueryText(), plan.rawUserQuery())) {
+            if (candidate != null
+                    && ActaFieldAnchorHeuristics.isCorpusWideExactAttendeeCountListing(
+                            candidate.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isCompoundMonthTopicAttendeeFilterQuery(QueryPlan plan) {
+        if (plan == null) {
+            return false;
+        }
+        for (String candidate :
+                List.of(plan.normalizedQueryText(), plan.rewrittenQueryText(), plan.rawUserQuery())) {
+            if (candidate != null
+                    && ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(
+                            candidate.toLowerCase(Locale.ROOT))) {
                 return true;
             }
         }

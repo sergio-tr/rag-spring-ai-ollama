@@ -47,7 +47,8 @@ describe("use-projects hooks", () => {
       .mockResolvedValueOnce({ id: "p1", name: "A", docCount: 0, convCount: 0, updatedAt: "" })
       .mockResolvedValueOnce({ activeProjectId: "p1" });
     const { result } = renderHook(() => useCreateProject(), { wrapper: wrapper(qc) });
-    await result.current.mutateAsync({ name: "A" });
+    const outcome = await result.current.mutateAsync({ name: "A" });
+    expect(outcome.project.id).toBe("p1");
     expect(useAppStore.getState().activeProject?.id).toBe("p1");
   });
 
