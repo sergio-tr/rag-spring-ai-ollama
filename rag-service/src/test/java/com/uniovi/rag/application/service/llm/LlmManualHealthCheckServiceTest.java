@@ -91,7 +91,7 @@ class LlmManualHealthCheckServiceTest {
     }
 
     private static ResolvedLlmConfig ollamaConfig() {
-        return new ResolvedLlmConfig(
+        return ResolvedLlmConfig.uniform(
                 LlmProvider.OLLAMA_NATIVE,
                 "http://localhost:11434",
                 "gemma3:4b",
@@ -105,7 +105,7 @@ class LlmManualHealthCheckServiceTest {
     }
 
     private static ResolvedLlmConfig openAiConfig() {
-        return new ResolvedLlmConfig(
+        return ResolvedLlmConfig.uniform(
                 LlmProvider.OPENAI_COMPATIBLE,
                 "http://litellm:4000",
                 "gpt-4o",

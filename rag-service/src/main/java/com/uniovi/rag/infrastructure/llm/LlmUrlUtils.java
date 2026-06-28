@@ -19,4 +19,8 @@ public final class LlmUrlUtils {
     public static String openAiChatCompletionsUrl(String baseUrl) {
         return stripTrailingSlash(baseUrl) + "/v1/chat/completions";
     }
+
+    public static String openAiEmbeddingsUrl(String baseUrl) {
+        return stripTrailingSlash(baseUrl) + "/v1/embeddings";
+    }
 }

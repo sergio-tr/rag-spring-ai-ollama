@@ -17,6 +17,79 @@ import org.springframework.http.HttpStatus;
 class LlmExceptionTranslatorTest {
 
     @Test
+    void unavailableConfiguredModelMapsToClearErrorCode() {
+        LlmConfigurationException source =
+                LlmConfigurationException.invalidField(
+                        LlmProvider.OPENAI_COMPATIBLE,
+                        "catalog",
+                        "unavailable-model",
+                        null,
+                        "Model 'unavailable-model' is not available in the catalog");
+
+        LlmProviderException translated =
+                LlmExceptionTranslator.translate(source, openAiConfig(), "chat", "unavailable-model");
+
+        assertInstanceOf(LlmConfigurationException.class, translated);
+        assertEquals(ErrorCode.LLM_MISCONFIGURED, translated.errorCode());
+    }
+
+    @Test
+    void unconfiguredModelMapsToClearErrorCode() {
+        LlmConfigurationException source =
+                LlmConfigurationException.invalidField(
+                        LlmProvider.OPENAI_COMPATIBLE,
+                        "catalog",
+                        "unknown-model",
+                        null,
+                        "Model 'unknown-model' is not registered for provider OPENAI_COMPATIBLE");
+
+        LlmProviderException translated =
+                LlmExceptionTranslator.translate(source, openAiConfig(), "chat", "unknown-model");
+
+        assertEquals(ErrorCode.LLM_MISCONFIGURED, translated.errorCode());
+        assertTrue(translated.publicMessage().contains("unknown-model"));
+    }
+
+    @Test
+    void incompatibleEmbeddingModelMapsToClearErrorCode() {
+        LlmConfigurationException source =
+                LlmConfigurationException.invalidField(
+                        LlmProvider.OPENAI_COMPATIBLE,
+                        "embedding",
+                        "gpt-oss:20b",
+                        null,
+                        "Model 'gpt-oss:20b' is not registered for provider OPENAI_COMPATIBLE with capability EMBEDDING");
+
+        LlmProviderException translated =
+                LlmExceptionTranslator.translate(source, openAiConfig(), "embedding", "gpt-oss:20b");
+
+        assertEquals(ErrorCode.LLM_MISCONFIGURED, translated.errorCode());
+        assertTrue(translated.publicMessage().contains("EMBEDDING"));
+    }
+
+    @Test
+    void missingApiKeyEnvMapsToLlmMisconfigured() {
+        translate_missingApiKey_mapsToConfigurationException();
+    }
+
+    @Test
+    void invalidLiteLlmModelMapsToInvalidModel() {
+        LlmConfigurationException source =
+                LlmConfigurationException.invalidField(
+                        LlmProvider.OPENAI_COMPATIBLE,
+                        "catalog",
+                        "gemma3:4b",
+                        "http://litellm:4000",
+                        "Model 'gemma3:4b' is registered for OLLAMA_NATIVE only");
+
+        LlmProviderException translated =
+                LlmExceptionTranslator.translate(source, openAiConfig(), "chat", "gemma3:4b");
+
+        assertEquals(ErrorCode.LLM_MISCONFIGURED, translated.errorCode());
+        assertTrue(translated.publicMessage().contains("gemma3:4b"));
+    }
+
+    @Test
     void translate_missingApiKey_mapsToConfigurationException() {
         ResolvedLlmConfig config = openAiConfig();
         OpenAiCompatibleLlmException source =
@@ -97,7 +170,7 @@ class LlmExceptionTranslatorTest {
     }
 
     private static ResolvedLlmConfig openAiConfig() {
-        return new ResolvedLlmConfig(
+        return ResolvedLlmConfig.uniform(
                 LlmProvider.OPENAI_COMPATIBLE,
                 "http://litellm:4000",
                 "gpt-4o",

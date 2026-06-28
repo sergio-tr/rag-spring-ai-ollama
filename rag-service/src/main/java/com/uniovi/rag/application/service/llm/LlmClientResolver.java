@@ -1,7 +1,6 @@
 package com.uniovi.rag.application.service.llm;
 
 import com.uniovi.rag.application.exception.llm.LlmConfigurationException;
-import com.uniovi.rag.application.exception.llm.UnsupportedEmbeddingProviderException;
 import com.uniovi.rag.application.port.llm.LlmChatClient;
 import com.uniovi.rag.application.port.llm.LlmClientRegistryPort;
 import com.uniovi.rag.application.port.llm.LlmEmbeddingClient;
@@ -29,9 +28,9 @@ public class LlmClientResolver {
 
     public LlmChatClient resolveChatClient(ResolvedLlmConfig config) {
         Objects.requireNonNull(config, "config");
-        LlmProvider provider = requireKnownProvider(config);
+        LlmProvider provider = requireChatProvider(config);
         validateCommon(config, "chat");
-        logSafeResolution("chat", config);
+        logSafeChatResolution(config);
 
         return switch (provider) {
             case OLLAMA_NATIVE -> {
@@ -47,26 +46,40 @@ public class LlmClientResolver {
 
     public LlmEmbeddingClient resolveEmbeddingClient(ResolvedLlmConfig config) {
         Objects.requireNonNull(config, "config");
-        LlmProvider provider = requireKnownProvider(config);
+        LlmProvider provider = requireEmbeddingProvider(config);
         validateCommon(config, "embedding");
-        logSafeResolution("embedding", config);
+        logSafeEmbeddingResolution(config);
 
         return switch (provider) {
             case OLLAMA_NATIVE -> {
                 validateOllamaNative(config, "embedding");
                 yield clientRegistry.ollamaNativeEmbeddingClient();
             }
-            case OPENAI_COMPATIBLE ->
-                    throw new UnsupportedEmbeddingProviderException(
-                            LlmProvider.OPENAI_COMPATIBLE, config.chatModel(), config.baseUrl());
+            case OPENAI_COMPATIBLE -> {
+                validateOpenAiCompatible(config, "embedding");
+                yield clientRegistry.createOpenAiCompatibleEmbeddingClient(config);
+            }
         };
     }
 
-    private static LlmProvider requireKnownProvider(ResolvedLlmConfig config) {
-        LlmProvider provider = config.provider();
+    private static LlmProvider requireChatProvider(ResolvedLlmConfig config) {
+        LlmProvider provider = config.chatProvider();
         if (provider == null) {
             throw LlmConfigurationException.invalidField(
-                    null, "resolve", config.chatModel(), config.baseUrl(), "LLM provider is not set in resolved configuration");
+                    null, "resolve", config.chatModel(), config.baseUrl(), "LLM chat provider is not set in resolved configuration");
+        }
+        return provider;
+    }
+
+    private static LlmProvider requireEmbeddingProvider(ResolvedLlmConfig config) {
+        LlmProvider provider = config.embeddingProvider();
+        if (provider == null) {
+            throw LlmConfigurationException.invalidField(
+                    null,
+                    "resolve",
+                    config.embeddingModel(),
+                    config.baseUrl(),
+                    "LLM embedding provider is not set in resolved configuration");
         }
         return provider;
     }
@@ -76,7 +89,7 @@ public class LlmClientResolver {
             config.validate();
         } catch (IllegalStateException e) {
             throw LlmConfigurationException.invalidField(
-                    config.provider(), operation, config.chatModel(), config.baseUrl(), e.getMessage());
+                    config.chatProvider(), operation, config.chatModel(), config.baseUrl(), e.getMessage());
         }
     }
 
@@ -89,7 +102,7 @@ public class LlmClientResolver {
                     config.baseUrl(),
                     "Ollama native LLM requires a non-blank llmBaseUrl");
         }
-        if (config.chatModel() == null || config.chatModel().isBlank()) {
+        if ("chat".equals(operation) && (config.chatModel() == null || config.chatModel().isBlank())) {
             throw LlmConfigurationException.invalidField(
                     LlmProvider.OLLAMA_NATIVE,
                     operation,
@@ -97,11 +110,11 @@ public class LlmClientResolver {
                     config.baseUrl(),
                     "Ollama native LLM requires a non-blank llmModel");
         }
-        if (config.embeddingModel() == null || config.embeddingModel().isBlank()) {
+        if ("embedding".equals(operation) && (config.embeddingModel() == null || config.embeddingModel().isBlank())) {
             throw LlmConfigurationException.invalidField(
                     LlmProvider.OLLAMA_NATIVE,
                     operation,
-                    config.chatModel(),
+                    config.embeddingModel(),
                     config.baseUrl(),
                     "Ollama native LLM requires a non-blank embeddingModel");
         }
@@ -116,13 +129,21 @@ public class LlmClientResolver {
                     config.baseUrl(),
                     "OpenAI-compatible LLM requires a non-blank llmBaseUrl");
         }
-        if (config.chatModel() == null || config.chatModel().isBlank()) {
+        if ("chat".equals(operation) && (config.chatModel() == null || config.chatModel().isBlank())) {
             throw LlmConfigurationException.invalidField(
                     LlmProvider.OPENAI_COMPATIBLE,
                     operation,
                     config.chatModel(),
                     config.baseUrl(),
                     "OpenAI-compatible LLM requires a non-blank llmModel");
+        }
+        if ("embedding".equals(operation) && (config.embeddingModel() == null || config.embeddingModel().isBlank())) {
+            throw LlmConfigurationException.invalidField(
+                    LlmProvider.OPENAI_COMPATIBLE,
+                    operation,
+                    config.embeddingModel(),
+                    config.baseUrl(),
+                    "OpenAI-compatible LLM requires a non-blank embeddingModel");
         }
         try {
             config.requireApiKeyEnvResolvable();
@@ -145,12 +166,19 @@ public class LlmClientResolver {
         }
     }
 
-    private static void logSafeResolution(String kind, ResolvedLlmConfig config) {
+    private static void logSafeChatResolution(ResolvedLlmConfig config) {
         log.info(
-                "Resolved LLM {} client: provider={}, model={}, baseUrl={}",
-                kind,
-                config.provider(),
+                "Resolved LLM chat client: provider={}, model={}, baseUrl={}",
+                config.chatProvider(),
                 config.chatModel(),
+                config.baseUrl());
+    }
+
+    private static void logSafeEmbeddingResolution(ResolvedLlmConfig config) {
+        log.info(
+                "Resolved LLM embedding client: provider={}, model={}, baseUrl={}",
+                config.embeddingProvider(),
+                config.embeddingModel(),
                 config.baseUrl());
     }
 }

@@ -16,4 +16,9 @@ public interface LlmClientRegistryPort {
      * Builds an OpenAI-compatible chat client bound to the given resolved configuration (per-user endpoint, env ref).
      */
     LlmChatClient createOpenAiCompatibleChatClient(ResolvedLlmConfig config);
+
+    /**
+     * Builds an OpenAI-compatible embedding client bound to the given resolved configuration.
+     */
+    LlmEmbeddingClient createOpenAiCompatibleEmbeddingClient(ResolvedLlmConfig config);
 }

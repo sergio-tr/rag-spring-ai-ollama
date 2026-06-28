@@ -1,7 +1,9 @@
 package com.uniovi.rag.interfaces.rest.support;
 
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.infrastructure.health.RagHealthProperties;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import com.uniovi.rag.infrastructure.llm.ollama.OllamaApiClient;
 import com.uniovi.rag.infrastructure.llm.ollama.OllamaModelProvisioningService;
 import org.springframework.stereotype.Service;
@@ -9,26 +11,24 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 
 /**
- * Checks connectivity to Ollama ({@code GET /api/tags}) and that required models exist
- * (embedding + chat, with optional chat model override from the lab). If models are missing and
- * {@code rag.ollama.auto-pull-enabled=true}, delegates to {@link OllamaModelProvisioningService}
- * to run {@code POST /api/pull} against {@code spring.ai.ollama.base-url}
- * (Docker container or remote host).
- * <p>
- * Failure detection from exception messages remains in {@link ConnectivityFailureDetector}.
+ * Checks connectivity to Ollama ({@code GET /api/tags}) and that required models exist when the effective
+ * chat or embedding provider is {@link LlmProvider#OLLAMA_NATIVE}.
  */
 @Service
 public class OllamaConnectivityChecker {
 
     private final RagHealthProperties healthProperties;
+    private final LlmProperties llmProperties;
     private final OllamaApiClient ollamaApiClient;
     private final OllamaModelProvisioningService provisioningService;
 
     public OllamaConnectivityChecker(
             RagHealthProperties healthProperties,
+            LlmProperties llmProperties,
             OllamaApiClient ollamaApiClient,
             OllamaModelProvisioningService provisioningService) {
         this.healthProperties = healthProperties;
+        this.llmProperties = llmProperties;
         this.ollamaApiClient = ollamaApiClient;
         this.provisioningService = provisioningService;
     }
@@ -51,18 +51,25 @@ public class OllamaConnectivityChecker {
     }
 
     /**
-     * Call at the start of the query pipeline: ping + ensure/pull embedding and chat models.
-     *
-     * @param chatModelOverride chat model for this request (lab); {@code null} uses Spring AI default
+     * Call at the start of the query pipeline: ping + ensure/pull Ollama models when required.
      */
     public void prepareForQuery(String chatModelOverride) {
-        prepareForQuery(chatModelOverride, true);
+        prepareForQuery(chatModelOverride, true, true);
     }
 
     /**
-     * @param includeChatModel when {@code false}, only the embedding model is required (OpenAI-compatible chat + Ollama retrieval).
+     * @param requireOllamaChat when {@code true} and chat provider is Ollama, ensures chat model exists
+     * @param requireOllamaEmbedding when {@code true} and embedding provider is Ollama, ensures embedding model exists
      */
-    public void prepareForQuery(String chatModelOverride, boolean includeChatModel) {
+    public void prepareForQuery(String chatModelOverride, boolean requireOllamaChat, boolean requireOllamaEmbedding) {
+        boolean needChat =
+                requireOllamaChat && llmProperties.getEffectiveDefaultChatProvider() == LlmProvider.OLLAMA_NATIVE;
+        boolean needEmbedding =
+                requireOllamaEmbedding
+                        && llmProperties.getEffectiveDefaultEmbeddingProvider() == LlmProvider.OLLAMA_NATIVE;
+        if (!needChat && !needEmbedding) {
+            return;
+        }
         if (!healthProperties.isOllamaEnabled()) {
             return;
         }
@@ -77,10 +84,20 @@ public class OllamaConnectivityChecker {
             Thread.currentThread().interrupt();
             throw RagServiceException.llmUnavailable(e);
         }
-        if (includeChatModel) {
+        if (needChat && needEmbedding) {
             provisioningService.ensureChatAndEmbeddingModelsPresent(chatModelOverride);
-        } else {
+        } else if (needEmbedding) {
             provisioningService.ensureEmbeddingModelPresent();
+        } else {
+            provisioningService.ensureChatModelPresent(chatModelOverride);
         }
+    }
+
+    public boolean requiresOllamaChatForDefaults() {
+        return llmProperties.getEffectiveDefaultChatProvider() == LlmProvider.OLLAMA_NATIVE;
+    }
+
+    public boolean requiresOllamaEmbeddingForDefaults() {
+        return llmProperties.getEffectiveDefaultEmbeddingProvider() == LlmProvider.OLLAMA_NATIVE;
     }
 }

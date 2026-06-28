@@ -14,17 +14,20 @@ class DefaultLlmClientRegistry implements LlmClientRegistryPort {
     private final OllamaNativeLlmChatClient ollamaChatClient;
     private final OllamaNativeLlmEmbeddingClient ollamaEmbeddingClient;
     private final OpenAiCompatibleApiKeyResolver apiKeyResolver;
-    private final OpenAiCompatibleChatCompletionsHttpClient httpClient;
+    private final OpenAiCompatibleChatCompletionsHttpClient chatHttpClient;
+    private final OpenAiCompatibleEmbeddingsHttpClient embeddingsHttpClient;
 
     DefaultLlmClientRegistry(
             OllamaNativeLlmChatClient ollamaChatClient,
             OllamaNativeLlmEmbeddingClient ollamaEmbeddingClient,
             OpenAiCompatibleApiKeyResolver apiKeyResolver,
-            OpenAiCompatibleChatCompletionsHttpClient httpClient) {
+            OpenAiCompatibleChatCompletionsHttpClient chatHttpClient,
+            OpenAiCompatibleEmbeddingsHttpClient embeddingsHttpClient) {
         this.ollamaChatClient = ollamaChatClient;
         this.ollamaEmbeddingClient = ollamaEmbeddingClient;
         this.apiKeyResolver = apiKeyResolver;
-        this.httpClient = httpClient;
+        this.chatHttpClient = chatHttpClient;
+        this.embeddingsHttpClient = embeddingsHttpClient;
     }
 
     @Override
@@ -39,6 +42,11 @@ class DefaultLlmClientRegistry implements LlmClientRegistryPort {
 
     @Override
     public LlmChatClient createOpenAiCompatibleChatClient(ResolvedLlmConfig config) {
-        return new ResolvedConfigOpenAiCompatibleLlmChatClient(config, apiKeyResolver, httpClient);
+        return new ResolvedConfigOpenAiCompatibleLlmChatClient(config, apiKeyResolver, chatHttpClient);
+    }
+
+    @Override
+    public LlmEmbeddingClient createOpenAiCompatibleEmbeddingClient(ResolvedLlmConfig config) {
+        return new ResolvedConfigOpenAiCompatibleLlmEmbeddingClient(config, apiKeyResolver, embeddingsHttpClient);
     }
 }

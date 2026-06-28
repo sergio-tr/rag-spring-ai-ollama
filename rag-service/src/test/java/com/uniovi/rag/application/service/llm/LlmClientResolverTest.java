@@ -1,7 +1,6 @@
 package com.uniovi.rag.application.service.llm;
 
 import com.uniovi.rag.application.exception.llm.LlmConfigurationException;
-import com.uniovi.rag.application.exception.llm.UnsupportedEmbeddingProviderException;
 import com.uniovi.rag.application.port.llm.LlmChatClient;
 import com.uniovi.rag.application.port.llm.LlmClientRegistryPort;
 import com.uniovi.rag.application.port.llm.LlmEmbeddingClient;
@@ -19,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -58,7 +58,7 @@ class LlmClientResolverTest {
     @Test
     void resolveChatClient_openAiCompatible_createsConfigBoundClient() {
         ResolvedLlmConfig config =
-                new ResolvedLlmConfig(
+                ResolvedLlmConfig.uniform(
                         LlmProvider.OPENAI_COMPATIBLE,
                         "http://litellm:4000",
                         "gpt-4o",
@@ -80,7 +80,7 @@ class LlmClientResolverTest {
     @Test
     void resolveChatClient_openAiCompatibleMissingEnvVar_throwsClearError() {
         ResolvedLlmConfig config =
-                new ResolvedLlmConfig(
+                ResolvedLlmConfig.uniform(
                         LlmProvider.OPENAI_COMPATIBLE,
                         "http://litellm:4000",
                         "gpt-4o",
@@ -101,7 +101,7 @@ class LlmClientResolverTest {
     @Test
     void resolveChatClient_ollamaMissingBaseUrl_throwsClearError() {
         ResolvedLlmConfig config =
-                new ResolvedLlmConfig(
+                ResolvedLlmConfig.uniform(
                         LlmProvider.OLLAMA_NATIVE,
                         "  ",
                         "gemma3:4b",
@@ -134,9 +134,9 @@ class LlmClientResolverTest {
     }
 
     @Test
-    void resolveEmbeddingClient_openAiCompatible_notYetSupported() {
+    void resolveEmbeddingClient_openAiCompatible_createsConfigBoundClient() {
         ResolvedLlmConfig config =
-                new ResolvedLlmConfig(
+                ResolvedLlmConfig.uniform(
                         LlmProvider.OPENAI_COMPATIBLE,
                         "http://litellm:4000",
                         "gpt-4o",
@@ -147,10 +147,13 @@ class LlmClientResolverTest {
                         30_000,
                         null,
                         Map.of());
+        LlmEmbeddingClient openAiEmbeddingClient = org.mockito.Mockito.mock(LlmEmbeddingClient.class);
+        when(clientRegistry.createOpenAiCompatibleEmbeddingClient(same(config))).thenReturn(openAiEmbeddingClient);
 
-        UnsupportedEmbeddingProviderException ex =
-                assertThrows(UnsupportedEmbeddingProviderException.class, () -> resolver.resolveEmbeddingClient(config));
-        assertTrue(ex.publicMessage().contains("embedding"));
+        LlmEmbeddingClient client = resolver.resolveEmbeddingClient(config);
+
+        assertSame(openAiEmbeddingClient, client);
+        verify(clientRegistry, never()).ollamaNativeEmbeddingClient();
     }
 
     @Test
@@ -165,7 +168,7 @@ class LlmClientResolverTest {
     }
 
     private static ResolvedLlmConfig ollamaConfig(String baseUrl, String chatModel) {
-        return new ResolvedLlmConfig(
+        return ResolvedLlmConfig.uniform(
                 LlmProvider.OLLAMA_NATIVE,
                 baseUrl,
                 chatModel,

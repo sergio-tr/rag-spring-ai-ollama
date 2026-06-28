@@ -1,6 +1,9 @@
 package com.uniovi.rag.application.exception.llm;
 
 import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import java.util.Locale;
+import java.util.Objects;
 import org.slf4j.Logger;
 
 /**
@@ -9,6 +12,45 @@ import org.slf4j.Logger;
 public final class LlmSafeOperationLogger {
 
     private LlmSafeOperationLogger() {}
+
+    /**
+     * Single-line summary of {@link ResolvedLlmConfig} for startup and pre-RAG verification. Logs provider, model, and
+     * baseUrl only — never {@code apiKeyEnv}, {@code secretName}, Bearer tokens, or resolved secret values.
+     */
+    public static void logResolvedConfig(Logger log, ResolvedLlmConfig config) {
+        Objects.requireNonNull(log, "log");
+        Objects.requireNonNull(config, "config");
+        log.info(formatResolvedConfigSummary(config));
+    }
+
+    public static String formatResolvedConfigSummary(ResolvedLlmConfig config) {
+        Objects.requireNonNull(config, "config");
+        return "Resolved LLM config: chatProvider="
+                + config.chatProvider()
+                + " chatModel="
+                + sanitizeLogValue(config.chatModel())
+                + " embeddingProvider="
+                + config.embeddingProvider()
+                + " embeddingModel="
+                + sanitizeLogValue(config.embeddingModel())
+                + " baseUrl="
+                + sanitizeLogValue(config.baseUrl());
+    }
+
+    static String sanitizeLogValue(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String trimmed = value.trim();
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if (lower.contains("bearer") || lower.startsWith("authorization:")) {
+            return "[redacted]";
+        }
+        if (trimmed.regionMatches(true, 0, "sk-", 0, 3)) {
+            return "[redacted]";
+        }
+        return trimmed;
+    }
 
     public static void logStarted(Logger log, String operation, LlmProvider provider, String model, String baseUrl) {
         log.info(
