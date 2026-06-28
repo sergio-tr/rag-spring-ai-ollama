@@ -176,6 +176,7 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.evaluation.preset.LabIndexSnapshotCompatibilityService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.preset.LabPresetRunPlanService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.preset.TypedRagPresetBenchmarkOrchestrator", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.knowledge.DocumentIngestionWatchdog", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.knowledge.KnowledgeBuildProjectionMapper", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.knowledge.KnowledgeConfigurationIntegrationService", // ARCH-DEBT-KNOWLEDGE
