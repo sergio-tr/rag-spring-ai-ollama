@@ -7,10 +7,13 @@ import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.Embedding;
+import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.stereotype.Service;
@@ -45,12 +48,12 @@ public class ProviderAwareEmbeddingService {
         ResolvedLlmConfig config = resolveEffectiveConfig();
         LlmEmbeddingClient client = clientResolver.resolveEmbeddingClient(config);
         String effectiveModelId = effectiveEmbeddingModelId(modelId);
-        return client.embed(new LlmEmbeddingRequest(effectiveModelId, texts, null, java.util.Map.of()));
+        return client.embed(new LlmEmbeddingRequest(effectiveModelId, texts, null, Map.of()));
     }
 
     public EmbeddingResponse embedToSpringResponse(String modelId, List<String> texts) {
         LlmEmbeddingResponse response = embed(modelId, texts);
-        List<Embedding> embeddings = new java.util.ArrayList<>();
+        List<Embedding> embeddings = new ArrayList<>();
         for (int i = 0; i < response.embeddings().size(); i++) {
             embeddings.add(new Embedding(response.embeddings().get(i), i));
         }
@@ -92,8 +95,8 @@ public class ProviderAwareEmbeddingService {
         return value.trim();
     }
 
-    /** Spring AI {@link org.springframework.ai.embedding.EmbeddingModel} adapter for a fixed model id. */
-    public org.springframework.ai.embedding.EmbeddingModel embeddingModelFor(String modelId) {
+    /** Spring AI {@link EmbeddingModel} adapter for a fixed model id. */
+    public EmbeddingModel embeddingModelFor(String modelId) {
         String effectiveModelId = modelId != null ? modelId.trim() : "";
         if (effectiveModelId.isBlank()) {
             throw new IllegalArgumentException("modelId must not be blank");
@@ -101,7 +104,7 @@ public class ProviderAwareEmbeddingService {
         return new ProviderBoundEmbeddingModel(effectiveModelId, this);
     }
 
-    private static final class ProviderBoundEmbeddingModel implements org.springframework.ai.embedding.EmbeddingModel {
+    private static final class ProviderBoundEmbeddingModel implements EmbeddingModel {
 
         private final String modelId;
         private final ProviderAwareEmbeddingService embeddingService;

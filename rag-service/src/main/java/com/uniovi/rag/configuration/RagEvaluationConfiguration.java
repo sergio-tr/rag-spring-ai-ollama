@@ -1,5 +1,6 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
@@ -51,7 +52,7 @@ public class RagEvaluationConfiguration {
         ExecutionContextFactory executionContextFactory,
         RagExecutionOrchestrator ragExecutionOrchestrator,
         RuntimeTracePersistenceService runtimeTracePersistenceService,
-        com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector chatGenerationModelSelector,
+        ChatGenerationModelSelector chatGenerationModelSelector,
         @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled
     ) {
         EvaluationServiceFactory.Settings settings =
