@@ -68,6 +68,7 @@ public final class SafeTestSecretsApplicationContextInitializer
                 map.put("spring.datasource.url", pg.getJdbcUrl());
                 map.put("spring.datasource.username", pg.getUsername());
                 map.put("spring.datasource.password", pg.getPassword());
+                map.put("spring.flyway.clean-disabled", "false");
                 map.put("spring.flyway.clean-on-validation-error", "true");
             } catch (Throwable t) {
                 // Docker not available (common for @WebMvcTest on laptops) or Testcontainers failure — same JDBC
@@ -86,6 +87,8 @@ public final class SafeTestSecretsApplicationContextInitializer
                 "jdbc:postgresql://localhost:5432/vectordb"));
         map.put("spring.datasource.username", firstNonBlankEnv("SPRING_DATASOURCE_USERNAME", "postgres"));
         map.put("spring.datasource.password", firstNonBlankEnv("SPRING_DATASOURCE_PASSWORD", "postgres"));
+        map.put("spring.flyway.clean-disabled", "false");
+        map.put("spring.flyway.clean-on-validation-error", "true");
     }
 
     private static boolean useTestcontainersPostgres() {
