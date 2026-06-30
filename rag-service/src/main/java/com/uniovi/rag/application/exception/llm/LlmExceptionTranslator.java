@@ -1,6 +1,5 @@
 package com.uniovi.rag.application.exception.llm;
 
-import com.uniovi.rag.application.service.llm.LlmClientResolutionException;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.infrastructure.llm.openaicompat.OpenAiCompatibleLlmException;
@@ -19,8 +18,8 @@ public final class LlmExceptionTranslator {
         if (throwable instanceof LlmProviderException providerException) {
             return providerException;
         }
-        if (throwable instanceof LlmClientResolutionException resolutionException) {
-            return toConfiguration(resolutionException, config, operation, model);
+        if (throwable instanceof LlmConfigurationException configurationException) {
+            return toConfiguration(configurationException, config, operation, model);
         }
         if (throwable instanceof OpenAiCompatibleLlmException openAiException) {
             return fromOpenAiCompatible(openAiException, config, operation, model);
@@ -37,7 +36,7 @@ public final class LlmExceptionTranslator {
     }
 
     private static LlmConfigurationException toConfiguration(
-            LlmClientResolutionException ex, ResolvedLlmConfig config, String operation, String model) {
+            LlmConfigurationException ex, ResolvedLlmConfig config, String operation, String model) {
         LlmProvider provider = config != null ? config.provider() : null;
         String baseUrl = config != null ? config.baseUrl() : null;
         return new LlmConfigurationException(
