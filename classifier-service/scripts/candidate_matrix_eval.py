@@ -291,7 +291,7 @@ def main() -> int:
     p.add_argument(
         "--output-json",
         type=Path,
-        default=_ROOT.parent / ".cursor/evidence/classifier-retrain-failure-analysis-20250629/candidate_matrix_results.json",
+        default=_ROOT.parent / "docs/evidence/classifier-retrain-failure-analysis-20250629/candidate_matrix_results.json",
     )
     args = p.parse_args()
 

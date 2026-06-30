@@ -3,26 +3,26 @@
   "generatedAt": "2026-06-29T21:02:39.903378+00:00",
   "before": {
     "train": {
-      "path": "/home/sergio/rag-spring-ai-ollama/classifier-service/data/basic_dataset_qa_clasificacion.xlsx",
+      "path": "classifier-service/data/basic_dataset_qa_clasificacion.xlsx",
       "sha256": "ce7bc69886b1a81f3d7a1d43f9489fec61456262c8114058ef09f06df99aaddd",
       "rows": 46
     },
     "eval": {
-      "path": "/home/sergio/rag-spring-ai-ollama/classifier-service/data/evaluation_dataset.xlsx",
+      "path": "classifier-service/data/evaluation_dataset.xlsx",
       "sha256": "4b525f4341cf57fb6275e709555dd6030318e516ade60abef420cee4f97b5b3d",
       "rows": 60
     }
   },
   "after": {
     "train": {
-      "path": "/home/sergio/rag-spring-ai-ollama/classifier-service/data/basic_dataset_qa_clasificacion.xlsx",
-      "cleanCopy": "/home/sergio/rag-spring-ai-ollama/classifier-service/data/basic_dataset_qa_clasificacion_clean.xlsx",
+      "path": "classifier-service/data/basic_dataset_qa_clasificacion.xlsx",
+      "cleanCopy": "classifier-service/data/basic_dataset_qa_clasificacion_clean.xlsx",
       "sha256": "c599544a929836256da0189e3843661a2da27c9302ea11789b9a833023fb2a4d",
       "rows": 46
     },
     "eval": {
-      "path": "/home/sergio/rag-spring-ai-ollama/classifier-service/data/evaluation_dataset.xlsx",
-      "cleanCopy": "/home/sergio/rag-spring-ai-ollama/classifier-service/data/evaluation_dataset_clean.xlsx",
+      "path": "classifier-service/data/evaluation_dataset.xlsx",
+      "cleanCopy": "classifier-service/data/evaluation_dataset_clean.xlsx",
       "sha256": "4b525f4341cf57fb6275e709555dd6030318e516ade60abef420cee4f97b5b3d",
       "rows": 60
     }
