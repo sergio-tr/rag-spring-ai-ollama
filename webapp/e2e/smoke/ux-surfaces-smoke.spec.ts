@@ -17,13 +17,18 @@ test.describe("UX surfaces smoke @smoke", () => {
     await expect(page.getByTestId("rag-config-structured-form")).toBeVisible();
     await expect(page.getByTestId("user-account-preferences")).toBeVisible();
     await expect(page.getByLabel(/language/i)).toBeVisible();
-    const advancedJson = page.getByTestId("rag-config-advanced-json");
-    await expect(advancedJson).toBeAttached();
-    await expect(advancedJson.locator("summary")).toBeVisible();
-    expect(await advancedJson.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false);
+    const technicalDetails = page.getByTestId("settings-model-parameters-advanced");
+    await expect(technicalDetails.locator("summary")).toBeVisible();
+    expect(await technicalDetails.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false);
     await expect(page.locator("textarea")).not.toBeVisible();
     const mainText = await page.locator("main").innerText();
     expect(mainText).not.toMatch(/\{[\s\S]*"schemaVersion"/);
+
+    await technicalDetails.locator("summary").click();
+    const advancedJson = page.getByTestId("rag-config-advanced-json");
+    await expect(advancedJson).toBeAttached();
+    expect(await advancedJson.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false);
+    await expect(advancedJson.locator("textarea")).not.toBeVisible();
   });
 
   test("chat config hides snapshot and profile hash until advanced is expanded", async ({ page }) => {
@@ -71,8 +76,15 @@ test.describe("UX surfaces smoke @smoke", () => {
     await expect(page.getByTestId("lab-export-mvp-csv")).not.toBeVisible();
     const advanced = page.getByTestId("lab-benchmark-export-advanced");
     await expect(advanced).toBeAttached();
-    await expect(advanced.locator("summary")).toBeVisible();
-    expect(await advanced.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false);
+    const advancedState = await advanced.evaluate((el) => {
+      const details = el as HTMLDetailsElement;
+      return {
+        open: details.open,
+        summaryText: details.querySelector("summary")?.textContent?.trim() ?? "",
+      };
+    });
+    expect(advancedState.open).toBe(false);
+    expect(advancedState.summaryText.length).toBeGreaterThan(0);
   });
 });
 

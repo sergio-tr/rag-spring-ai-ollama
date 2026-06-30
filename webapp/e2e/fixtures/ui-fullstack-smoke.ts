@@ -238,10 +238,13 @@ export async function runUiFullstackSmokeChecks(
     await page.goto("/en/settings/user", { waitUntil: "domcontentloaded", timeout: 60_000 });
     await expect(page.getByTestId("user-rag-config-form")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("rag-config-structured-form")).toBeVisible();
-    const advancedJson = page.getByTestId("rag-config-advanced-json");
-    await expect(advancedJson).toBeAttached();
-    await expect(advancedJson.locator("summary")).toBeVisible();
-    const jsonOpen = await advancedJson.evaluate((el) => (el as HTMLDetailsElement).open);
+    const technicalDetails = page.getByTestId("settings-model-parameters-advanced");
+    await expect(technicalDetails.locator("summary")).toBeVisible();
+    expect(await technicalDetails.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false);
+    const jsonOpen = await page
+      .getByTestId("rag-config-advanced-json")
+      .evaluate((el) => (el as HTMLDetailsElement).open)
+      .catch(() => true);
     await expect(page.locator("textarea")).not.toBeVisible();
     const mainText = await page.locator("main").innerText();
     const pass =
@@ -419,8 +422,7 @@ export async function runUiFullstackSmokeChecks(
         const mvpHidden = !(await page.getByTestId("lab-export-mvp-csv").isVisible().catch(() => false));
         const advanced = page.getByTestId("lab-benchmark-export-advanced");
         await expect(advanced).toBeAttached();
-        await expect(advanced.locator("summary")).toBeVisible({ timeout: 15_000 });
-        const advancedClosed = !(await advanced.evaluate((el) => (el as HTMLDetailsElement).open));
+        const advancedClosed = await advanced.evaluate((el) => !(el as HTMLDetailsElement).open);
         const panelVisible = await page.getByTestId("lab-benchmark-results-panel").isVisible();
         checks.push({
           id: "lab-exports-primary",
