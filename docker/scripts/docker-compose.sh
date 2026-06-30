@@ -240,6 +240,7 @@ if [ "$MODE" = dev ]; then
   CLASSIFIER_CUDA_BASE_IMAGE=nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04
   if [ "$WITH_CLASSIFIER_GPU" = true ] && [ "$WITH_NVIDIA" = true ]; then
     export CLASSIFIER_PYTHON_BASE_IMAGE="$CLASSIFIER_CUDA_BASE_IMAGE"
+    export CLASSIFIER_INSTALL_GPU_EXTRAS=1
   fi
 
   COMPOSE_FILES=(-f "docker-compose.yml")
@@ -482,6 +483,7 @@ fi
 CLASSIFIER_CUDA_BASE_IMAGE=nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04
 if [ "$WITH_CLASSIFIER_GPU" = true ] && [ "$WITH_NVIDIA" = true ]; then
   export CLASSIFIER_PYTHON_BASE_IMAGE="$CLASSIFIER_CUDA_BASE_IMAGE"
+  export CLASSIFIER_INSTALL_GPU_EXTRAS=1
 fi
 
 COMPOSE_FILES=(-f "docker-compose.yml")
