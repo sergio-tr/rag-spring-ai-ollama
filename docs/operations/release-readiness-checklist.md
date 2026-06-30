@@ -48,7 +48,7 @@
 | # | Criterion | Evidence |
 | --- | ----------- | ---------- |
 | D1 | **`deploy.yml`** pre-deploy **gate** passes: **[`ci.yml`](../../.github/workflows/ci.yml)** completed **successfully** for the **same** `head_sha` as the deploy run. | Deploy job log shows “Gate OK” for `CI`. |
-| D2 | **Secrets** documented (names and purpose only — no values): `VM_HOST`, `VM_USER`, `VM_SSH_KEY`, `VM_DEPLOY_DIR`, `GHCR_TOKEN`. | [deploy-workflow-audit.md](deploy-workflow-audit.md). |
+| D2 | **Deploy configuration** documented (names only — no values): `DEPLOY_DIR`, `DEPLOY_HEALTH_URL`; server `.env` files per [`.env.example`](../../.env.example). | [deploy-workflow-audit.md](deploy-workflow-audit.md). |
 | D3 | Target VM can **pull images** (`docker login` + `compose pull`) and **apply** `docker-compose.yml` + `compose.prod.yml`. | Runbook section “Verify after deploy”. |
 
 ## Operations documentation
