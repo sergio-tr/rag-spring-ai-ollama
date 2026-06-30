@@ -34,15 +34,18 @@ def test_model_loader_loads_default_model_and_labels_and_caches(monkeypatch, tmp
 
     load_calls = {"count": 0, "paths": []}
 
-    # Mock de TensorFlow dentro del módulo para evitar dependencias/formato real.
+    # Mock TensorFlow via require_tensorflow (lazy import; no module-level tf).
     import app.inference.model_loader as model_loader_mod
+
+    mock_tf = mock.MagicMock()
 
     def _fake_load_model(path):
         load_calls["count"] += 1
         load_calls["paths"].append(path)
         return object()
 
-    monkeypatch.setattr(model_loader_mod.tf.keras.models, "load_model", _fake_load_model)
+    monkeypatch.setattr(model_loader_mod, "require_tensorflow", lambda: mock_tf)
+    monkeypatch.setattr(mock_tf.keras.models, "load_model", _fake_load_model)
 
     loader = ModelLoader(config=Config())
     loaded = loader.load_by_id("default")

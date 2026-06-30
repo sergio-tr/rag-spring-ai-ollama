@@ -1,5 +1,7 @@
 import zipfile
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from app.config import Config
@@ -42,6 +44,7 @@ def test_load_model_with_vocab_fix_repairs_latin1_vocab_and_retries(monkeypatch,
 
     import app.inference.model_loader as model_loader_mod
 
+    mock_tf = MagicMock()
     calls = {"count": 0}
 
     def _fake_load_model(_path):
@@ -50,7 +53,8 @@ def test_load_model_with_vocab_fix_repairs_latin1_vocab_and_retries(monkeypatch,
             raise ValueError("utf-8 codec can't decode bytes in TextVectorization")
         return object()
 
-    monkeypatch.setattr(model_loader_mod.tf.keras.models, "load_model", _fake_load_model)
+    monkeypatch.setattr(model_loader_mod, "require_tensorflow", lambda: mock_tf)
+    monkeypatch.setattr(mock_tf.keras.models, "load_model", _fake_load_model)
 
     loader = ModelLoader(config=Config())
     loaded = loader.load_by_id("default")
@@ -83,10 +87,13 @@ def test_load_model_with_vocab_fix_does_not_swallow_unrelated_value_error(monkey
 
     import app.inference.model_loader as model_loader_mod
 
+    mock_tf = MagicMock()
+
     def _fake_load_model(_path):
         raise ValueError("some other keras error")
 
-    monkeypatch.setattr(model_loader_mod.tf.keras.models, "load_model", _fake_load_model)
+    monkeypatch.setattr(model_loader_mod, "require_tensorflow", lambda: mock_tf)
+    monkeypatch.setattr(mock_tf.keras.models, "load_model", _fake_load_model)
 
     loader = ModelLoader(config=Config())
     with pytest.raises(ValueError, match="some other keras error"):

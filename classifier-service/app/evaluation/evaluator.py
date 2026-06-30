@@ -6,7 +6,6 @@ import io
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -19,6 +18,7 @@ from app.evaluation.result import EvaluationResult
 from app.inference.model_loader import ModelLoader
 from app.query_type_contract import canonical_class_order
 from app.registry.model_registry import ModelRegistry
+from app.tensorflow_support import require_tensorflow
 
 
 class EvaluationPipeline(Loggable):
@@ -82,6 +82,7 @@ class EvaluationPipeline(Loggable):
                 label = str(clf_classes[best_local])
                 y_pred[i] = class_to_canon.get(label, canon_idx[model_class_names[0]])
         else:
+            tf = require_tensorflow()
             y_pred_probs = loaded.artifact.predict(tf.constant([str(x) for x in X]), verbose=0)
             y_pred_model_idx = np.argmax(y_pred_probs, axis=1)
             y_pred = np.array([canon_idx[model_class_names[int(i)]] for i in y_pred_model_idx])

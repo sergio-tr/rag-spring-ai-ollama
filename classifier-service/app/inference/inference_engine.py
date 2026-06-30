@@ -3,7 +3,6 @@ Inference engine: runs prediction for a query using a loaded Keras or sklearn mo
 No HTTP; depends on ModelLoader and Config for default model id.
 """
 import numpy as np
-import tensorflow as tf
 
 from app.base import Loggable
 from app.config import Config
@@ -11,6 +10,7 @@ from app.inference.model_loader import ModelLoader
 from app.inference.sklearn_predict import predict_proba
 from app.models.classification_result import ClassificationResult, TopPrediction
 from app.query_type_contract import label_set_hash
+from app.tensorflow_support import require_tensorflow
 
 
 class InferenceEngine(Loggable):
@@ -44,6 +44,7 @@ class InferenceEngine(Loggable):
                     aligned[idx] = float(probs[i])
             probs = aligned
         else:
+            tf = require_tensorflow()
             probs = loaded.artifact.predict(tf.constant([query]), verbose=0)[0]
         idx = int(np.argmax(probs))
         confidence = float(probs[idx])

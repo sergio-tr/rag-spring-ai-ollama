@@ -45,6 +45,7 @@ def test_train_happy_path_mocked_tf(models_dir, tmp_path, monkeypatch):
     def fake_split(X_arr, y_arr, **kwargs):
         return X_arr[:8], X_arr[8:], y_arr[:8], y_arr[8:]
 
+    mock_tf = MagicMock()
     mock_vec = MagicMock()
     mock_tv = MagicMock(return_value=mock_vec)
     mock_model = MagicMock()
@@ -55,8 +56,9 @@ def test_train_happy_path_mocked_tf(models_dir, tmp_path, monkeypatch):
     )
 
     monkeypatch.setattr(trainer_mod, "train_test_split", fake_split)
-    monkeypatch.setattr(trainer_mod.tf.keras.layers, "TextVectorization", mock_tv)
-    monkeypatch.setattr(trainer_mod.tf.keras, "Sequential", MagicMock(return_value=mock_model))
+    monkeypatch.setattr(trainer_mod, "require_tensorflow", lambda: mock_tf)
+    monkeypatch.setattr(mock_tf.keras.layers, "TextVectorization", mock_tv)
+    monkeypatch.setattr(mock_tf.keras, "Sequential", MagicMock(return_value=mock_model))
 
     registry = MagicMock()
     registry.create_new_model_id.return_value = "trainid01"
@@ -82,6 +84,7 @@ def test_train_metadata_contains_owner_id_when_provided(models_dir, tmp_path, mo
     def fake_split(X_arr, y_arr, **kwargs):
         return X_arr[:8], X_arr[8:], y_arr[:8], y_arr[8:]
 
+    mock_tf = MagicMock()
     mock_vec = MagicMock()
     mock_tv = MagicMock(return_value=mock_vec)
     mock_model = MagicMock()
@@ -92,8 +95,9 @@ def test_train_metadata_contains_owner_id_when_provided(models_dir, tmp_path, mo
     )
 
     monkeypatch.setattr(trainer_mod, "train_test_split", fake_split)
-    monkeypatch.setattr(trainer_mod.tf.keras.layers, "TextVectorization", mock_tv)
-    monkeypatch.setattr(trainer_mod.tf.keras, "Sequential", MagicMock(return_value=mock_model))
+    monkeypatch.setattr(trainer_mod, "require_tensorflow", lambda: mock_tf)
+    monkeypatch.setattr(mock_tf.keras.layers, "TextVectorization", mock_tv)
+    monkeypatch.setattr(mock_tf.keras, "Sequential", MagicMock(return_value=mock_model))
 
     registry = MagicMock()
     registry.create_new_model_id.return_value = "own01"
@@ -117,9 +121,11 @@ def test_train_stratify_falls_back_when_value_error(models_dir, tmp_path, monkey
             raise ValueError("stratify failed")
         return X_arr[:2], X_arr[2:], y_arr[:2], y_arr[2:]
 
+    mock_tf = MagicMock()
     mock_vec = MagicMock()
     monkeypatch.setattr(trainer_mod, "train_test_split", fake_split)
-    monkeypatch.setattr(trainer_mod.tf.keras.layers, "TextVectorization", MagicMock(return_value=mock_vec))
+    monkeypatch.setattr(trainer_mod, "require_tensorflow", lambda: mock_tf)
+    monkeypatch.setattr(mock_tf.keras.layers, "TextVectorization", MagicMock(return_value=mock_vec))
     mock_model = MagicMock()
     mock_model.fit = MagicMock()
     mock_model.save = MagicMock()
@@ -127,7 +133,7 @@ def test_train_stratify_falls_back_when_value_error(models_dir, tmp_path, monkey
     mock_model.predict = MagicMock(
         return_value=np.array([[0.5, 0.5], [0.5, 0.5]])
     )
-    monkeypatch.setattr(trainer_mod.tf.keras, "Sequential", MagicMock(return_value=mock_model))
+    monkeypatch.setattr(mock_tf.keras, "Sequential", MagicMock(return_value=mock_model))
 
     registry = MagicMock()
     registry.create_new_model_id.return_value = "idstrat"

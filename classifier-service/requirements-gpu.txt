@@ -1,0 +1,3 @@
+# Optional GPU stack for Keras train/infer. Installed only when INSTALL_GPU_EXTRAS=1 (see Dockerfile).
+# Adds ~6–8 GiB via pip CUDA wheels on top of nvidia/cuda base — do not install for sklearn-only runtime.
+tensorflow[and-cuda]==2.20.0

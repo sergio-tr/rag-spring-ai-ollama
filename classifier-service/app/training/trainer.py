@@ -7,7 +7,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
@@ -16,6 +15,7 @@ from app.config import Config
 from app.dataset_columns import normalize_excel_classification_columns
 from app.query_type_contract import JAVA_QUERY_TYPES, LEGACY_TRAINING_LABEL_MAP, validate_query_type_label
 from app.registry.model_registry import ModelRegistry
+from app.tensorflow_support import require_tensorflow
 
 MODEL_FILENAME = "model.keras"
 LABELS_FILENAME = "labels.txt"
@@ -50,6 +50,7 @@ class TrainingPipeline(Loggable):
         Saves model, labels and metadata under output_dir or MODELS_DIR/{new_id}/.
         Returns dict with model_id, name, paths, metrics.
         """
+        tf = require_tensorflow()
         df = normalize_excel_classification_columns(pd.read_excel(dataset_path))
         if "Question" not in df.columns or "QueryType" not in df.columns:
             raise ValueError("Dataset must have columns 'Question' and 'QueryType'")

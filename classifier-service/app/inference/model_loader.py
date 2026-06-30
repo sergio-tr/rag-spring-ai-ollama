@@ -9,13 +9,13 @@ import zipfile
 from pathlib import Path
 
 import joblib
-import tensorflow as tf
 
 from app.base import Loggable
 from app.config import Config
 from app.inference.loaded_model import LoadedModel, ModelType
 from app.query_type_contract import validate_loaded_labels
 from app.registry.model_registry import ModelRegistry
+from app.tensorflow_support import require_tensorflow
 
 KERAS_FILENAME = "model.keras"
 SKLEARN_FILENAME = "model.joblib"
@@ -119,6 +119,7 @@ class ModelLoader(Loggable):
         Some historical models were saved with latin-1 encoded vocab files inside the .keras zip.
         Keras expects UTF-8 and will fail at load time with a UnicodeDecodeError wrapped in ValueError.
         """
+        tf = require_tensorflow()
         try:
             return tf.keras.models.load_model(model_path)
         except ValueError as e:

@@ -1,0 +1,6 @@
+# Local dev + CI pytest (CPU TensorFlow for Keras unit tests; much smaller than [and-cuda]).
+-r requirements-runtime.txt
+tensorflow==2.20.0
+pytest>=9.0.3
+httpx>=0.25.0
+pytest-cov>=4.1.0

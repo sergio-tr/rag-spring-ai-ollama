@@ -27,11 +27,14 @@ def test_load_by_id_from_registry(monkeypatch, tmp_path):
 
     loaded = []
 
+    mock_tf = MagicMock()
+
     def fake_load_model(path):
         loaded.append(path)
         return object()
 
-    monkeypatch.setattr(ml_mod.tf.keras.models, "load_model", fake_load_model)
+    monkeypatch.setattr(ml_mod, "require_tensorflow", lambda: mock_tf)
+    monkeypatch.setattr(mock_tf.keras.models, "load_model", fake_load_model)
 
     loader = ModelLoader(config=Config())
     loaded_model = loader.load_by_id(mid)
@@ -52,7 +55,9 @@ def test_load_by_id_cache_hit_skips_disk(monkeypatch, tmp_path):
     (d / MODEL_FILENAME).write_bytes(b"k")
     (d / LABELS_FILENAME).write_text("COUNT_DOCUMENTS\n")
 
-    monkeypatch.setattr(ml_mod.tf.keras.models, "load_model", lambda p: MagicMock(name="model"))
+    mock_tf = MagicMock()
+    monkeypatch.setattr(ml_mod, "require_tensorflow", lambda: mock_tf)
+    monkeypatch.setattr(mock_tf.keras.models, "load_model", lambda p: MagicMock(name="model"))
 
     loader = ModelLoader(config=Config())
     loader.load_by_id(mid)
