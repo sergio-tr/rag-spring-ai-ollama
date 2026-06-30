@@ -19,6 +19,7 @@ import {
   findKeysRejectedBySanitizer,
   partitionPresetImportValues,
 } from "@/features/settings/lib/preset-values";
+import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { RagPresetDto } from "@/types/api";
@@ -187,7 +188,7 @@ export function PresetsSettingsPanel() {
                 className="bg-muted/40 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
               >
                 <div className="min-w-0 flex-1">
-                  <span className="font-medium">{p.name}</span>
+                  <span className="font-medium">{toProductPresetDisplayName(p.name)}</span>
                   {p.system ? (
                     <span className="text-muted-foreground ml-2">({t("presetsSystem")})</span>
                   ) : null}

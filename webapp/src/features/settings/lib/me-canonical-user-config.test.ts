@@ -54,15 +54,27 @@ describe("me-canonical-user-config", () => {
   });
 
   describe("personalization", () => {
-    it("defaults theme when unsupported", () => {
-      expect(personalizationFormDefaults({ theme: "dark" })).toEqual({ theme: "dark" });
-      expect(personalizationFormDefaults({ theme: "fancy" })).toEqual({ theme: "system" });
+    it("defaults theme when unsupported and reads global persona", () => {
+      expect(personalizationFormDefaults({ theme: "dark" })).toEqual({
+        theme: "dark",
+        globalPersonaPrompt: "",
+      });
+      expect(personalizationFormDefaults({ theme: "fancy", globalPersonaPrompt: "Be concise" })).toEqual({
+        theme: "system",
+        globalPersonaPrompt: "Be concise",
+      });
     });
 
-    it("merges structured theme while preserving extras", () => {
+    it("merges structured theme and persona while preserving extras", () => {
       expect(
-        buildPersonalizationPutPayload({ accent: "blue", theme: "light" }, { theme: "dark" }),
-      ).toEqual({ accent: "blue", theme: "dark" });
+        buildPersonalizationPutPayload(
+          { accent: "blue", theme: "light" },
+          { theme: "dark", globalPersonaPrompt: "  helpful  " },
+        ),
+      ).toEqual({ accent: "blue", theme: "dark", globalPersonaPrompt: "helpful" });
+      expect(
+        buildPersonalizationPutPayload({ theme: "light" }, { theme: "dark", globalPersonaPrompt: "   " }),
+      ).toEqual({ theme: "dark", globalPersonaPrompt: null });
     });
 
     it("detects unsupported stored theme", () => {
@@ -73,6 +85,7 @@ describe("me-canonical-user-config", () => {
     it("validates theme enum", () => {
       expect(personalizationFormSchema.safeParse({ theme: "system" }).success).toBe(true);
       expect(personalizationFormSchema.safeParse({ theme: "fancy" }).success).toBe(false);
+      expect(personalizationFormSchema.safeParse({ theme: "system", globalPersonaPrompt: "x".repeat(50_001) }).success).toBe(false);
     });
   });
 });

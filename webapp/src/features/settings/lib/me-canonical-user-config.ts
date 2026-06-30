@@ -7,7 +7,7 @@ import { routing } from "@/i18n/routing";
  * All other keys are treated as "extra": shallow-copied into PUT payloads unchanged (unknown-key preservation).
  */
 export const ME_PREFERENCES_STRUCTURED_KEYS = ["locale"] as const;
-export const ME_PERSONALIZATION_STRUCTURED_KEYS = ["theme"] as const;
+export const ME_PERSONALIZATION_STRUCTURED_KEYS = ["theme", "globalPersonaPrompt"] as const;
 
 /** Must stay aligned with `routing.locales` (structured preference locale values only). */
 const STRUCTURED_LOCALES = routing.locales as unknown as readonly [AppLocale, ...AppLocale[]];
@@ -18,6 +18,7 @@ export const preferencesFormSchema = z.object({
 
 export const personalizationFormSchema = z.object({
   theme: z.enum(["light", "dark", "system"]),
+  globalPersonaPrompt: z.string().max(50_000).optional(),
 });
 
 export type PreferencesFormValues = z.infer<typeof preferencesFormSchema>;
@@ -31,8 +32,11 @@ export function preferencesFormDefaults(stored: Record<string, unknown>): Prefer
 
 export function personalizationFormDefaults(stored: Record<string, unknown>): PersonalizationFormValues {
   const raw = stored.theme;
-  if (raw === "light" || raw === "dark" || raw === "system") return { theme: raw };
-  return { theme: "system" };
+  const theme = raw === "light" || raw === "dark" || raw === "system" ? raw : "system";
+  const personaRaw = stored.globalPersonaPrompt;
+  const globalPersonaPrompt =
+    typeof personaRaw === "string" ? personaRaw : personaRaw == null ? "" : String(personaRaw);
+  return { theme, globalPersonaPrompt };
 }
 
 export function isStoredPreferenceLocaleUnsupported(stored: Record<string, unknown>): boolean {
@@ -60,5 +64,10 @@ export function buildPersonalizationPutPayload(
   stored: Record<string, unknown>,
   values: PersonalizationFormValues,
 ): Record<string, unknown> {
-  return { ...stored, theme: values.theme };
+  const trimmed = values.globalPersonaPrompt?.trim() ?? "";
+  return {
+    ...stored,
+    theme: values.theme,
+    globalPersonaPrompt: trimmed.length > 0 ? trimmed : null,
+  };
 }

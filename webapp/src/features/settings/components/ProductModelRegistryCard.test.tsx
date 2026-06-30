@@ -7,6 +7,7 @@ import * as apiClient from "@/lib/api-client";
 import { ProductModelRegistryCard } from "./ProductModelRegistryCard";
 import { createTestQueryClient } from "@/test-utils/query-client";
 import { IntlTestProvider } from "@/test-utils/intl";
+import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
 
 vi.mock("@/lib/api-client", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@/lib/api-client")>();
@@ -26,7 +27,16 @@ vi.mock("@/lib/async-task", () => ({
   })),
 }));
 
+vi.mock("@/features/chat/hooks/use-me-selectable-llm-models", () => ({
+  useMeSelectableLlmModels: vi.fn(() => ({
+    data: { effectiveProvider: "OLLAMA_NATIVE", models: [] },
+    isLoading: false,
+    isError: false,
+  })),
+}));
+
 const apiFetch = vi.mocked(apiClient.apiFetch);
+const useMeSelectableLlmModelsMock = vi.mocked(useMeSelectableLlmModels);
 
 const missingLlm = {
   modelId: "mistral:7b",
@@ -68,6 +78,11 @@ describe("ProductModelRegistryCard", () => {
   beforeEach(() => {
     apiFetch.mockReset();
     qc.clear();
+    useMeSelectableLlmModelsMock.mockReturnValue({
+      data: { effectiveProvider: "OLLAMA_NATIVE", models: [] },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useMeSelectableLlmModels>);
   });
 
   it("renders LLM and embedding sections when registry loads", async () => {
@@ -81,29 +96,41 @@ describe("ProductModelRegistryCard", () => {
     expect(screen.getByRole("heading", { name: /^Embedding models$/i })).toBeInTheDocument();
   });
 
-  it("shows ollama outage and embedding compatibility errors", async () => {
+  it("shows neutral server unreachable when Ollama provider is active but registry is down", async () => {
     apiFetch.mockResolvedValue(
       registryResponse({
         ollamaReachable: false,
         ollamaErrorMessage: "connection refused",
-        embeddingModels: [
-          {
-            modelId: "bad-embed",
-            modelType: "EMBEDDING",
-            status: "ERROR",
-            detail: "dimension mismatch",
-            embeddingCompatible: false,
-          },
-        ],
       }),
     );
 
     render(<ProductModelRegistryCard />, { wrapper: Wrapper });
 
-    expect(await screen.findByText(/Ollama is unreachable/i)).toBeInTheDocument();
+    expect(await screen.findByTestId("model-registry-server-unreachable")).toHaveTextContent(
+      /model server is not reachable/i,
+    );
+    expect(screen.queryByText(/Ollama is unreachable/i)).not.toBeInTheDocument();
     expect(screen.getByText(/connection refused/i)).toBeInTheDocument();
-    expect(screen.getByText("bad-embed")).toBeInTheDocument();
-    expect(screen.getAllByText(/dimension mismatch/i).length).toBeGreaterThan(0);
+  });
+
+  it("hides Ollama-specific unreachable banner when effective provider is OpenAI-compatible", async () => {
+    useMeSelectableLlmModelsMock.mockReturnValue({
+      data: { effectiveProvider: "OPENAI_COMPATIBLE", models: [] },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useMeSelectableLlmModels>);
+    apiFetch.mockResolvedValue(
+      registryResponse({
+        ollamaReachable: false,
+        ollamaErrorMessage: "connection refused",
+      }),
+    );
+
+    render(<ProductModelRegistryCard />, { wrapper: Wrapper });
+
+    await screen.findByText("mistral:7b");
+    expect(screen.queryByTestId("model-registry-server-unreachable")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ollama is unreachable/i)).not.toBeInTheDocument();
   });
 
   it("verifies a model through the user-safe check endpoint", async () => {
