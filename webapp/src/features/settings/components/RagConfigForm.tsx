@@ -30,7 +30,6 @@ import {
   usePutUserRagConfig,
   useUserRagConfigQuery,
 } from "@/features/settings/hooks/use-rag-config";
-import { useModelRegistryQuery } from "@/features/settings/hooks/use-model-registry";
 import { buildConfigValuesSchema, type ConfigFormValues } from "@/features/settings/lib/build-config-zod";
 import { labelConfigField } from "@/features/settings/lib/config-field-copy";
 import { buildPersonalizationPutPayload } from "@/features/settings/lib/me-canonical-user-config";
@@ -47,6 +46,8 @@ import {
 } from "@/features/settings/lib/provider-aware-llm-parameters";
 import { ADVANCED_TECHNICAL_DETAILS_TITLE } from "@/lib/product-provider-labels";
 import { AssistantInstructionsEditor } from "@/features/settings/components/AssistantInstructionsEditor";
+import { InternalPromptConfigurationSection } from "@/features/settings/components/InternalPromptConfigurationSection";
+import { TaskLlmSettingsSection } from "@/features/settings/components/TaskLlmSettingsSection";
 import { ConfigSchemaFieldRows } from "@/features/settings/components/config-schema-field-rows";
 import { EffectiveModelParametersPreview } from "@/features/settings/components/EffectiveModelParametersPreview";
 import { ProviderAwareModelParameters } from "@/features/settings/components/ProviderAwareModelParameters";
@@ -57,6 +58,7 @@ import { UserAccountPreferencesSection } from "@/features/settings/components/Us
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import type { MePersonalizationResponse } from "@/types/api";
 
+import { toConfigModelOptions, selectableCatalogModelIds } from "@/lib/product-model-catalog";
 import { productProviderLabel, productProviderLabelsFromSettings } from "@/lib/product-provider-labels";
 
 type Mode = "user" | "project";
@@ -79,7 +81,7 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   const userQ = useUserRagConfigQuery();
   const projectQ = useProjectRagConfigQuery(mode === "project" ? projectId : undefined);
   const selectableModelsQ = useMeSelectableLlmModels("CHAT");
-  const modelRegistryQ = useModelRegistryQuery();
+  const selectableEmbeddingQ = useMeSelectableLlmModels("EMBEDDING");
 
   const configData = mode === "user" ? userQ.data : projectQ.data;
   const configLoading = mode === "user" ? userQ.isLoading : projectQ.isLoading;
@@ -202,32 +204,19 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
   const llmModelOptions = useMemo(
-    () =>
-      (selectableModelsQ.data?.models ?? []).map((model) => ({
-        value: model.modelName,
-        label: model.displayName?.trim() ? model.displayName : model.modelName,
-        disabled: !model.selectable,
-      })),
+    () => toConfigModelOptions(selectableModelsQ.data?.models ?? []),
     [selectableModelsQ.data?.models],
   );
 
   const embeddingModelOptions = useMemo(
-    () =>
-      (modelRegistryQ.data?.embeddingModels ?? []).map((model) => ({
-        value: model.modelId,
-        label: model.modelId,
-        disabled: model.status !== "AVAILABLE",
-      })),
-    [modelRegistryQ.data?.embeddingModels],
+    () => toConfigModelOptions(selectableEmbeddingQ.data?.models ?? []),
+    [selectableEmbeddingQ.data?.models],
   );
 
-  const llmCatalogIds = useMemo(
-    () => llmModelOptions.map((option) => option.value),
-    [llmModelOptions],
-  );
+  const llmCatalogIds = useMemo(() => selectableCatalogModelIds(selectableModelsQ.data?.models ?? []), [selectableModelsQ.data?.models]);
   const embeddingCatalogIds = useMemo(
-    () => embeddingModelOptions.map((option) => option.value),
-    [embeddingModelOptions],
+    () => selectableCatalogModelIds(selectableEmbeddingQ.data?.models ?? []),
+    [selectableEmbeddingQ.data?.models],
   );
 
   const selectedLlmModel = typeof form.watch("llmModel") === "string" ? String(form.watch("llmModel")) : "";
@@ -395,6 +384,19 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
                   personaLoading={personaLoading}
                   projectPromptLoading={mode === "project" && projectDetailQ.isLoading}
                 />
+                <InternalPromptConfigurationSection
+                  configValues={workingConfig}
+                  onChange={setWorkingConfig}
+                />
+              </section>
+
+              <section className="flex flex-col gap-4 border-t pt-4" data-testid="task-llm-settings-section">
+                <details className="rounded-md border bg-muted/20 p-3 text-sm">
+                  <summary className="cursor-pointer font-medium">{t("taskLlmSettingsSummary")}</summary>
+                  <div className="mt-3">
+                    <TaskLlmSettingsSection configValues={workingConfig} onChange={setWorkingConfig} />
+                  </div>
+                </details>
               </section>
 
               <section className="flex flex-col gap-4 border-t pt-4" data-testid="assistant-behavior-section">

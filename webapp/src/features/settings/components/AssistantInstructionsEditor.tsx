@@ -142,8 +142,6 @@ export function AssistantInstructionsEditor({
           ))}
         </div>
       </details>
-
-      <p className="text-muted-foreground text-[11px] leading-relaxed">{t("instructionsOutOfScopeNote")}</p>
     </div>
   );
 }

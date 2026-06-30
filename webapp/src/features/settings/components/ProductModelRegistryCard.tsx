@@ -167,7 +167,9 @@ export function ProductModelRegistryCard() {
                 {t("modelRegistrySectionLlm")}
               </h3>
               <div>
-                {data.llmModels.map((row) => (
+                {data.llmModels
+                  .filter((row) => row.status === "AVAILABLE")
+                  .map((row) => (
                   <ModelRow
                     key={row.modelId}
                     row={row}
@@ -187,7 +189,9 @@ export function ProductModelRegistryCard() {
                 {t("modelRegistrySectionEmbedding")}
               </h3>
               <div>
-                {data.embeddingModels.map((row) => (
+                {data.embeddingModels
+                  .filter((row) => row.status === "AVAILABLE")
+                  .map((row) => (
                   <ModelRow
                     key={row.modelId}
                     row={row}

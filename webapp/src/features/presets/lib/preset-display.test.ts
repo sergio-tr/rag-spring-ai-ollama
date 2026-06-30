@@ -50,14 +50,14 @@ describe("preset-display", () => {
     expect(formatChatPresetTechnicalTitle(p, chatT)).toContain("P4");
   });
 
-  it("lab may show P-codes", () => {
+  it("lab secondary label uses functional name only", () => {
     const p = preset({
       code: "P14",
-      label: "Memory flow",
+      label: "P14",
       protocolStageIndex: 14,
       mapsToRuntimeCapabilities: { runtimeFeatureFlags: { memoryEnabled: true } },
     });
-    expect(formatLabExperimentalPresetLabel(p, labT)).toBe("P14 — Memory-enabled preset");
+    expect(formatLabExperimentalPresetLabel(p, labT)).toBe("Conversation memory");
   });
 
   it("presets sorted by rank", () => {
@@ -72,7 +72,7 @@ describe("preset-display", () => {
   it("P15 copy synchronized", () => {
     const p = preset({ code: "P15", label: "P15", protocolStageIndex: 15, description: "" });
     expect(resolvePresetDisplayName(p, chatT)).toBe(PRESET_P15_DISPLAY_NAME);
-    expect(formatLabExperimentalPresetLabel(p, chatT)).toBe(`P15 — ${PRESET_P15_DISPLAY_NAME}`);
+    expect(formatLabExperimentalPresetLabel(p, chatT)).toBe(PRESET_P15_DISPLAY_NAME);
     expect(formatChatPresetTechnicalTitle(p, chatT)).toContain(PRESET_P15_DESCRIPTION);
   });
 });

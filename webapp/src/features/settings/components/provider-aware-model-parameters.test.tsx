@@ -37,7 +37,7 @@ function ParametersHarness(props: Readonly<{ provider: "OPENAI_COMPATIBLE" | "OL
         <summary>Advanced technical details</summary>
         <ProviderUnsupportedParametersPanel
           provider={props.provider}
-          config={{ llmAdditionalParameters: { presencePenalty: 0.1 } }}
+          config={{ llmAdditionalParameters: { topK: 40 } }}
         />
       </details>
     </>
@@ -45,7 +45,7 @@ function ParametersHarness(props: Readonly<{ provider: "OPENAI_COMPATIBLE" | "OL
 }
 
 describe("provider-aware model parameters UI", () => {
-  it("renders only temperature for configured model provider", () => {
+  it("renders OpenAI-compatible applied parameters including top_p", () => {
     render(
       <IntlTestProvider locale="en">
         <ParametersHarness provider="OPENAI_COMPATIBLE" />
@@ -53,7 +53,7 @@ describe("provider-aware model parameters UI", () => {
     );
     expect(screen.getByTestId("provider-aware-model-parameters")).toBeInTheDocument();
     expect(screen.getByTestId("model-param-field-temperature")).toBeInTheDocument();
-    expect(screen.queryByTestId("model-param-field-top_p")).not.toBeInTheDocument();
+    expect(screen.getByTestId("model-param-field-top_p")).toBeInTheDocument();
     expect(screen.getByTestId("effective-model-parameters-preview")).toHaveTextContent("Temperature");
     expect(screen.getByTestId("model-param-effective-temperature")).toHaveTextContent("0.7");
   });
@@ -72,7 +72,7 @@ describe("provider-aware model parameters UI", () => {
     const wrap = screen.getByTestId("advanced-wrap");
     await user.click(within(wrap).getByText(/Advanced technical details/i));
     expect(screen.getByTestId("provider-unsupported-model-parameters")).toBeInTheDocument();
-    expect(screen.getByTestId("model-param-unsupported-top_p")).toBeInTheDocument();
+    expect(screen.getByTestId("model-param-unsupported-top_k")).toBeInTheDocument();
   });
 
   it("renders ollama-applied parameters for local model provider", () => {

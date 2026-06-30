@@ -38,11 +38,11 @@ vi.mock("@/features/chat/hooks/use-me-selectable-llm-models", () => ({
 const apiFetch = vi.mocked(apiClient.apiFetch);
 const useMeSelectableLlmModelsMock = vi.mocked(useMeSelectableLlmModels);
 
-const missingLlm = {
-  modelId: "mistral:7b",
+const availableLlm = {
+  modelId: "qwen:latest",
   modelType: "LLM",
-  status: "MISSING",
-  detail: "Model not installed locally in Ollama",
+  status: "AVAILABLE",
+  detail: null,
   embeddingCompatible: null,
 } as const;
 
@@ -58,7 +58,7 @@ function registryResponse(overrides: Partial<Awaited<ReturnType<typeof apiFetch>
   return {
     ollamaReachable: true,
     ollamaErrorMessage: null,
-    llmModels: [missingLlm],
+    llmModels: [availableLlm],
     embeddingModels: [availableEmbedding],
     ...overrides,
   };
@@ -85,14 +85,28 @@ describe("ProductModelRegistryCard", () => {
     } as ReturnType<typeof useMeSelectableLlmModels>);
   });
 
-  it("renders LLM and embedding sections when registry loads", async () => {
-    apiFetch.mockResolvedValue(registryResponse());
+  it("renders only available configured models in recommended sections", async () => {
+    apiFetch.mockResolvedValue(
+      registryResponse({
+        llmModels: [
+          availableLlm,
+          {
+            modelId: "mistral:7b",
+            modelType: "LLM",
+            status: "MISSING",
+            detail: "Model not installed locally in Ollama",
+            embeddingCompatible: null,
+          },
+        ],
+      }),
+    );
 
     render(<ProductModelRegistryCard />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText("mistral:7b")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("qwen:latest")).toBeInTheDocument());
     expect(screen.getByText("nomic-embed-text")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /LLM models/i })).toBeInTheDocument();
+    expect(screen.queryByText("mistral:7b")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Chat models/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /^Embedding models$/i })).toBeInTheDocument();
   });
 
@@ -128,7 +142,7 @@ describe("ProductModelRegistryCard", () => {
 
     render(<ProductModelRegistryCard />, { wrapper: Wrapper });
 
-    await screen.findByText("mistral:7b");
+    await screen.findByText("qwen:latest");
     expect(screen.queryByTestId("model-registry-server-unreachable")).not.toBeInTheDocument();
     expect(screen.queryByText(/Ollama is unreachable/i)).not.toBeInTheDocument();
   });
@@ -139,7 +153,7 @@ describe("ProductModelRegistryCard", () => {
 
     render(<ProductModelRegistryCard />, { wrapper: Wrapper });
 
-    await screen.findByText("mistral:7b");
+    await screen.findByText("qwen:latest");
     await user.click(screen.getAllByRole("button", { name: /Verify/i })[0]);
 
     await waitFor(() =>
@@ -147,44 +161,19 @@ describe("ProductModelRegistryCard", () => {
         expect.stringContaining("/model-registry/check"),
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ modelId: "mistral:7b", probeEmbedding: true }),
+          body: JSON.stringify({ modelId: "qwen:latest", probeEmbedding: true }),
         }),
       ),
     );
   });
 
-  it("queues pull for missing models and disables pull for available models", async () => {
-    const user = userEvent.setup();
-    apiFetch.mockImplementation(async (path) => {
-      const url = String(path);
-      if (url.includes("/model-registry/pull")) {
-        return {
-          jobId: "pull-job",
-          status: "RUNNING",
-          pollPath: "/lab/jobs/pull-job",
-          streamPath: "/lab/jobs/pull-job/events",
-        };
-      }
-      return registryResponse();
-    });
+  it("disables pull for available recommended models", async () => {
+    apiFetch.mockResolvedValue(registryResponse());
 
     render(<ProductModelRegistryCard />, { wrapper: Wrapper });
 
-    await screen.findByText("mistral:7b");
+    await screen.findByText("qwen:latest");
     const pullButtons = screen.getAllByRole("button", { name: /Pull/i });
-    expect(pullButtons[0]).toBeEnabled();
-    expect(pullButtons[1]).toBeDisabled();
-
-    await user.click(pullButtons[0]);
-
-    await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/model-registry/pull"),
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({ modelId: "mistral:7b" }),
-        }),
-      ),
-    );
+    expect(pullButtons.every((button) => button.hasAttribute("disabled"))).toBe(true);
   });
 });

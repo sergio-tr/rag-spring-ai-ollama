@@ -20,7 +20,11 @@ export const SANITIZED_RAG_CONFIG_KEYS = [
   "classifierModelId",
   "reasoningStrategy",
   "naiveFullCorpusInPromptEnabled",
-  "naiveFullCorpusMaxChars",
+  "llmSystemPrompt",
+  "llmTemperature",
+  "llmAdditionalParameters",
+  "promptOverrides",
+  "taskLlmOverrides",
 ] as const;
 
 export type SanitizedRagConfigKey = (typeof SANITIZED_RAG_CONFIG_KEYS)[number];

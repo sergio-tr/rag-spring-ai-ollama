@@ -83,25 +83,17 @@ vi.mock("@/features/settings/hooks/use-rag-config", () => ({
 }));
 
 vi.mock("@/features/chat/hooks/use-me-selectable-llm-models", () => ({
-  useMeSelectableLlmModels: () => ({
+  useMeSelectableLlmModels: (capability: string) => ({
     data: {
       effectiveProvider: "OPENAI_COMPATIBLE",
-      models: [
-        { modelName: "qwen:latest", displayName: "Qwen", selectable: true },
-        { modelName: "missing-model", displayName: "Missing", selectable: false },
-      ],
-    },
-    isLoading: false,
-    isError: false,
-  }),
-}));
-
-vi.mock("@/features/settings/hooks/use-model-registry", () => ({
-  useModelRegistryQuery: () => ({
-    data: {
-      ollamaReachable: true,
-      embeddingModels: [{ modelId: "nomic-embed-text", modelType: "EMBEDDING", status: "AVAILABLE" }],
-      llmModels: [],
+      capability,
+      models:
+        capability === "EMBEDDING"
+          ? [{ modelName: "nomic-embed-text", displayName: "nomic-embed-text", selectable: true }]
+          : [
+              { modelName: "qwen:latest", displayName: "Qwen", selectable: true },
+              { modelName: "missing-model", displayName: "Missing", selectable: false },
+            ],
     },
     isLoading: false,
     isError: false,
@@ -110,6 +102,15 @@ vi.mock("@/features/settings/hooks/use-model-registry", () => ({
 
 vi.mock("@/features/settings/components/UserAccountPreferencesSection", () => ({
   UserAccountPreferencesSection: () => <div data-testid="user-account-preferences" />,
+}));
+
+vi.mock("@/features/settings/components/InternalPromptConfigurationSection", () => ({
+  InternalPromptConfigurationSection: () => <div data-testid="internal-prompt-config" />,
+}));
+
+vi.mock("@/features/settings/components/TaskLlmSettingsSection", () => ({
+  TaskLlmSettingsSection: () => <div data-testid="task-llm-settings" />,
+  TASK_LLM_OVERRIDES_KEY: "taskLlmOverrides",
 }));
 
 import { RagConfigForm } from "./RagConfigForm";

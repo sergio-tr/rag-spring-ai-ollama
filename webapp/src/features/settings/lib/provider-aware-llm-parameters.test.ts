@@ -5,12 +5,23 @@ import {
 } from "./provider-aware-llm-parameters";
 
 describe("provider-aware-llm-parameters", () => {
-  it("exposes only temperature for configured model provider", () => {
+  it("exposes OpenAI-compatible applied parameters aligned with chat mapper", () => {
     const applied = appliedModelParameters("OPENAI_COMPATIBLE");
-    expect(applied.map((p) => p.id)).toEqual(["temperature"]);
+    expect(applied.map((p) => p.id)).toEqual(
+      expect.arrayContaining([
+        "temperature",
+        "top_p",
+        "seed",
+        "max_tokens",
+        "presence_penalty",
+        "frequency_penalty",
+        "response_format",
+        "stop",
+      ]),
+    );
     const unsupported = unsupportedModelParameters("OPENAI_COMPATIBLE");
-    expect(unsupported.some((p) => p.id === "top_p")).toBe(true);
-    expect(unsupported.some((p) => p.id === "presence_penalty")).toBe(true);
+    expect(unsupported.some((p) => p.id === "top_k")).toBe(true);
+    expect(unsupported.some((p) => p.id === "num_ctx")).toBe(true);
   });
 
   it("exposes ollama-applied parameters for local model provider", () => {

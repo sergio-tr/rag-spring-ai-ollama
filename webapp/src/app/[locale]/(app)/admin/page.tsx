@@ -144,9 +144,20 @@ export default function AdminHomePage() {
           <CardDescription>{t("catalogDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
-          {catalogQ.isError ? (
+          {catalogQ.isLoading ? (
+            <p className="text-muted-foreground text-sm">{t("catalogLoading")}</p>
+          ) : null}
+          {catalogQ.isError && !catalogQ.isLoading ? (
             <p className="text-destructive text-sm" role="alert">
               {t("catalogLoadError")}
+              <Button
+                type="button"
+                variant="link"
+                className="ml-2 h-auto p-0"
+                onClick={() => void catalogQ.refetch()}
+              >
+                {t("catalogRetry")}
+              </Button>
             </p>
           ) : null}
           {rowErr ? (

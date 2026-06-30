@@ -1,4 +1,11 @@
 import type { ExperimentalPresetCatalogItemDto } from "@/types/api";
+import {
+  productPresetDescription,
+  productPresetLabel,
+  type PresetCopyFn,
+} from "@/lib/product-preset-labels";
+
+export type { PresetCopyFn };
 
 export type PresetDisplayModel = {
   internalCode: string;
@@ -12,21 +19,10 @@ export type PresetDisplayModel = {
   isSelectableInLab: boolean;
 };
 
-export type PresetCopyFn = (key: string) => string;
-
 /** Canonical P15 copy aligned with `V64__experimental_preset_p15_integrated_single_turn.sql`. */
 export const PRESET_P15_DISPLAY_NAME = "Integrated single-turn composition";
 export const PRESET_P15_DESCRIPTION =
   "Hybrid retrieval, backend function calling, and adaptive route composition.";
-
-const PRESET_BUILTIN_DISPLAY: Record<string, string> = {
-  P14: "Memory-enabled preset",
-  P15: PRESET_P15_DISPLAY_NAME,
-};
-
-const PRESET_BUILTIN_DESCRIPTION: Record<string, string> = {
-  P15: PRESET_P15_DESCRIPTION,
-};
 
 export function presetRank(p: Pick<ExperimentalPresetCatalogItemDto, "code" | "protocolStageIndex">): number {
   if (typeof p.protocolStageIndex === "number" && Number.isFinite(p.protocolStageIndex)) {
@@ -56,30 +52,12 @@ export function isPresetMemoryEnabled(p: ExperimentalPresetCatalogItemDto): bool
   return p.code === "P14" || p.requiredCapabilities.some((c) => c.toUpperCase().includes("MEMORY"));
 }
 
-function isResolvedI18n(key: string, translated: string): boolean {
-  if (!translated.trim()) return false;
-  if (translated === key) return false;
-  if (translated.includes(`Chat.${key}`) || translated.includes(`Lab.${key}`)) return false;
-  return true;
-}
-
 export function resolvePresetDisplayName(
   p: ExperimentalPresetCatalogItemDto,
   t?: PresetCopyFn,
 ): string {
-  if (t) {
-    const i18nKey = `presetDisplay.${p.code}`;
-    const translated = t(i18nKey);
-    if (isResolvedI18n(i18nKey, translated)) {
-      return translated.trim();
-    }
-  }
-
   const code = p.code.trim();
   const label = (p.label ?? "").trim();
-  if (PRESET_BUILTIN_DISPLAY[code]) {
-    return PRESET_BUILTIN_DISPLAY[code];
-  }
   if (label && label !== code) {
     const stripped = label.replace(new RegExp(`^${code}\\s*[—–-]?\\s*`, "i"), "").trim();
     if (stripped && stripped !== code && !/^P\d+(_|$|\s)/i.test(stripped)) {
@@ -89,22 +67,15 @@ export function resolvePresetDisplayName(
       return label;
     }
   }
-  return label || code;
+  return productPresetLabel(code, t);
 }
 
 export function resolvePresetShortDescription(
   p: ExperimentalPresetCatalogItemDto,
   t?: PresetCopyFn,
 ): string {
-  if (t) {
-    const i18nKey = `presetDisplay.${p.code}Description`;
-    const translated = t(i18nKey);
-    if (isResolvedI18n(i18nKey, translated)) {
-      return translated.trim();
-    }
-  }
-  const builtin = PRESET_BUILTIN_DESCRIPTION[p.code];
-  if (builtin) return builtin;
+  const fromCatalog = productPresetDescription(p.code, t);
+  if (fromCatalog) return fromCatalog;
   const desc = (p.description ?? "").trim();
   if (!desc) return "";
   if (desc.length <= 96) return desc;
@@ -148,12 +119,12 @@ export function formatChatPresetTechnicalTitle(
   return parts.join(" · ");
 }
 
-/** Lab surfaces — researchers see protocol codes. */
+/** Lab checkbox primary label — functional name only (code lives in secondary chip / tooltip). */
 export function formatLabExperimentalPresetLabel(
   p: ExperimentalPresetCatalogItemDto,
   t?: PresetCopyFn,
 ): string {
-  return `${p.code} — ${resolvePresetDisplayName(p, t)}`;
+  return resolvePresetDisplayName(p, t);
 }
 
 export type ChatExperimentalPresetOptionInput = Readonly<{

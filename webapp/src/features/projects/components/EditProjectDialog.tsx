@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { usePatchProject } from "@/features/projects/hooks/use-projects";
 import { cn } from "@/lib/utils";
 import type { ProjectSummary } from "@/types/api";
+import Link from "next/link";
 
 const PROJECT_ICONS = [
   "folder",
@@ -159,6 +160,12 @@ export function EditProjectDialog({ project }: EditProjectDialogProps) {
               {form.formState.errors.colorHex.message}
             </p>
           )}
+          <p className="text-muted-foreground text-xs">
+            {t("editModelConfigHint")}{" "}
+            <Link href="/settings/project" className="text-primary underline-offset-4 hover:underline">
+              {t("editModelConfigAction")}
+            </Link>
+          </p>
           {patch.isError && (
             <p className="text-destructive text-sm" role="alert">
               {t("editError")}

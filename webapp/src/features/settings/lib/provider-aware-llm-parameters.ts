@@ -19,8 +19,7 @@ export type ModelParameterDef = Readonly<{
 }>;
 
 /**
- * Provider parameter catalog aligned with OpenAiCompatibleChatMapper (temperature only)
- * and OllamaLlmOptionsMapper (temperature + additionalParameters).
+ * Provider parameter catalog aligned with OpenAiCompatibleChatMapper and OllamaLlmOptionsMapper.
  */
 export const MODEL_PARAMETER_CATALOG: readonly ModelParameterDef[] = [
   {
@@ -41,7 +40,7 @@ export const MODEL_PARAMETER_CATALOG: readonly ModelParameterDef[] = [
     type: "number",
     min: 0,
     max: 1,
-    applied: { OPENAI_COMPATIBLE: false, OLLAMA_NATIVE: true },
+    applied: { OPENAI_COMPATIBLE: true, OLLAMA_NATIVE: true },
   },
   {
     id: "top_k",
@@ -89,7 +88,7 @@ export const MODEL_PARAMETER_CATALOG: readonly ModelParameterDef[] = [
     storage: "additional",
     labelKey: "modelParamSeed",
     type: "integer",
-    applied: { OPENAI_COMPATIBLE: false, OLLAMA_NATIVE: true },
+    applied: { OPENAI_COMPATIBLE: true, OLLAMA_NATIVE: true },
   },
   {
     id: "max_tokens",
@@ -98,7 +97,7 @@ export const MODEL_PARAMETER_CATALOG: readonly ModelParameterDef[] = [
     labelKey: "modelParamMaxTokens",
     type: "integer",
     min: 1,
-    applied: { OPENAI_COMPATIBLE: false, OLLAMA_NATIVE: false },
+    applied: { OPENAI_COMPATIBLE: true, OLLAMA_NATIVE: false },
   },
   {
     id: "presence_penalty",
@@ -106,7 +105,7 @@ export const MODEL_PARAMETER_CATALOG: readonly ModelParameterDef[] = [
     storage: "additional",
     labelKey: "modelParamPresencePenalty",
     type: "number",
-    applied: { OPENAI_COMPATIBLE: false, OLLAMA_NATIVE: false },
+    applied: { OPENAI_COMPATIBLE: true, OLLAMA_NATIVE: false },
   },
   {
     id: "frequency_penalty",
@@ -114,7 +113,7 @@ export const MODEL_PARAMETER_CATALOG: readonly ModelParameterDef[] = [
     storage: "additional",
     labelKey: "modelParamFrequencyPenalty",
     type: "number",
-    applied: { OPENAI_COMPATIBLE: false, OLLAMA_NATIVE: false },
+    applied: { OPENAI_COMPATIBLE: true, OLLAMA_NATIVE: false },
   },
   {
     id: "response_format",
@@ -122,7 +121,7 @@ export const MODEL_PARAMETER_CATALOG: readonly ModelParameterDef[] = [
     storage: "additional",
     labelKey: "modelParamResponseFormat",
     type: "number",
-    applied: { OPENAI_COMPATIBLE: false, OLLAMA_NATIVE: false },
+    applied: { OPENAI_COMPATIBLE: true, OLLAMA_NATIVE: false },
   },
   {
     id: "stop",
@@ -130,7 +129,7 @@ export const MODEL_PARAMETER_CATALOG: readonly ModelParameterDef[] = [
     storage: "additional",
     labelKey: "modelParamStop",
     type: "number",
-    applied: { OPENAI_COMPATIBLE: false, OLLAMA_NATIVE: false },
+    applied: { OPENAI_COMPATIBLE: true, OLLAMA_NATIVE: false },
   },
 ] as const;
 

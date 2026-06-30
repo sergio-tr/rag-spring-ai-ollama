@@ -30,6 +30,30 @@ vi.mock("@/features/projects/hooks/use-projects", () => ({
   }),
 }));
 
+vi.mock("@/features/chat/hooks/use-me-selectable-llm-models", () => ({
+  useMeSelectableLlmModels: (capability: string) => ({
+    data: {
+      effectiveProvider: "OPENAI_COMPATIBLE",
+      models:
+        capability === "CHAT"
+          ? [{ modelName: "hf-chat:latest", displayName: "hf-chat:latest", selectable: true }]
+          : [{ modelName: "hf-embed:latest", displayName: "hf-embed:latest", selectable: true }],
+    },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
+const apiMock = vi.hoisted(() => ({
+  apiFetch: vi.fn().mockResolvedValue({}),
+  apiProductPath: (p: string) => p,
+}));
+
+vi.mock("@/lib/api-client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api-client")>("@/lib/api-client");
+  return { ...actual, apiFetch: apiMock.apiFetch, apiProductPath: apiMock.apiProductPath };
+});
+
 function renderDialog() {
   const qc = createTestQueryClient();
   return render(
@@ -44,6 +68,7 @@ function renderDialog() {
 describe("NewProjectDialog", () => {
   beforeEach(() => {
     createHook.mutateAsync.mockClear();
+    apiMock.apiFetch.mockClear();
     createHook.isError = false;
     createHook.isPending = false;
   });
@@ -62,6 +87,24 @@ describe("NewProjectDialog", () => {
             materializationStrategy: "CHUNK_LEVEL",
             metadataEnabled: false,
           }),
+        }),
+      ),
+    );
+  });
+
+  it("puts project rag config when chat model is selected", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await user.click(screen.getByRole("button", { name: /^New project$/i }));
+    await user.type(screen.getByLabelText(/^Name$/i), "With model");
+    await user.selectOptions(screen.getByTestId("project-create-chat-model"), "hf-chat:latest");
+    await user.click(screen.getByRole("button", { name: /^Create$/i }));
+    await vi.waitFor(() =>
+      expect(apiMock.apiFetch).toHaveBeenCalledWith(
+        "/config/project/p1",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ llmModel: "hf-chat:latest" }),
         }),
       ),
     );
