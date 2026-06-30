@@ -6,6 +6,7 @@ import com.uniovi.rag.application.port.llm.LlmEmbeddingResponse;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.llm.ProviderAwareEmbeddingService;
+import com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
@@ -89,8 +90,11 @@ public class RagE2eAiStubConfiguration {
     @Bean
     @Primary
     public ProviderAwareEmbeddingService e2eProviderAwareEmbeddingService(
-            LlmClientResolver llmClientResolver, ResolvedLlmConfigResolver resolvedLlmConfigResolver) {
-        return new ProviderAwareEmbeddingService(llmClientResolver, resolvedLlmConfigResolver) {
+            LlmClientResolver llmClientResolver,
+            ResolvedLlmConfigResolver resolvedLlmConfigResolver,
+            EmbeddingModelCatalogResolver embeddingModelCatalogResolver) {
+        return new ProviderAwareEmbeddingService(
+                llmClientResolver, resolvedLlmConfigResolver, embeddingModelCatalogResolver) {
             @Override
             public ResolvedLlmConfig resolveEffectiveConfig() {
                 return OrchestrationLlmConfigScope.current().orElse(E2E_LLM_CONFIG);

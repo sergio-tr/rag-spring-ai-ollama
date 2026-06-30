@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -49,14 +50,17 @@ class RagE2eAiStubConfigurationTest {
     void e2eProviderAwareEmbeddingServiceSupportsKnowledgeIngestCompatibility() {
         RagE2eAiStubConfiguration cfg = new RagE2eAiStubConfiguration();
         ProviderAwareEmbeddingService embeddingService =
-                cfg.e2eProviderAwareEmbeddingService(null, null);
+                cfg.e2eProviderAwareEmbeddingService(
+                        null,
+                        null,
+                        Mockito.mock(com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver.class));
 
         Map<String, Object> profile = new LinkedHashMap<>();
         profile.put(IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY, RagE2eAiStubConfiguration.E2E_EMBEDDING_MODEL_ID);
         profile.put(IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY, LlmProvider.OLLAMA_NATIVE.name());
 
         EmbeddingIndexCompatibilityService compatibility =
-                new EmbeddingIndexCompatibilityService(embeddingService, null, null);
+                new EmbeddingIndexCompatibilityService(embeddingService, null, null, org.mockito.Mockito.mock(com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver.class));
         Map<String, Object> enriched = compatibility.enrichIndexProfile(profile);
 
         assertEquals(LlmProvider.OLLAMA_NATIVE.name(), enriched.get(IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY));
