@@ -357,48 +357,54 @@ public class KnowledgePipelineOrchestrator {
                         snapshotIndexProfileJsonb(profile),
                         profile.profileHash());
 
-        probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
+        try {
+            probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
 
-        previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
-        deleteVectorsForScopeDocs(scopeDocs);
+            previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
+            deleteVectorsForScopeDocs(scopeDocs);
 
-        MaterializationStrategy strategy = profile.materializationStrategy();
-        int chunkMaxChars = profile.chunkMaxChars();
-        int embedMaxChars = indexingEmbeddingGuard.effectiveEmbedMaxChars(chunkMaxChars);
-        log.debug(
-                "Knowledge ingest embed caps projectId={} profileChunkMax={} embedMax={}",
-                projectId,
-                chunkMaxChars,
-                embedMaxChars);
-        for (KnowledgeDocumentEntity doc : scopeDocs) {
-            try {
-                knowledgeIndexingService.processDocument(
-                        new KnowledgeDocumentIndexingRequest(
-                                doc,
-                                doc.getId().equals(projectDocumentId) ? tempFile : null,
-                                originalFilename,
-                                contentType,
-                                building,
-                                indexSigHex,
-                                strategy,
-                                chunkMaxChars));
-            } catch (IOException e) {
-                throw new IllegalStateException("Document indexing failed: " + e.getMessage(), e);
+            MaterializationStrategy strategy = profile.materializationStrategy();
+            int chunkMaxChars = profile.chunkMaxChars();
+            int embedMaxChars = indexingEmbeddingGuard.effectiveEmbedMaxChars(chunkMaxChars);
+            log.debug(
+                    "Knowledge ingest embed caps projectId={} profileChunkMax={} embedMax={}",
+                    projectId,
+                    chunkMaxChars,
+                    embedMaxChars);
+            for (KnowledgeDocumentEntity doc : scopeDocs) {
+                try {
+                    knowledgeIndexingService.processDocument(
+                            new KnowledgeDocumentIndexingRequest(
+                                    doc,
+                                    doc.getId().equals(projectDocumentId) ? tempFile : null,
+                                    originalFilename,
+                                    contentType,
+                                    building,
+                                    indexSigHex,
+                                    strategy,
+                                    chunkMaxChars));
+                } catch (IOException e) {
+                    throw new IllegalStateException("Document indexing failed: " + e.getMessage(), e);
+                }
             }
+
+            knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
+
+            KnowledgeDocumentEntity rowDone = knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
+            rowDone.setStatus(ProjectDocumentStatus.READY);
+            rowDone.setChunkCount(knowledgeIndexingService.computeChunkCountForDoc(rowDone.getId()));
+            rowDone.setErrorMessage(null);
+            rowDone.setReindexedAt(Instant.now());
+            knowledgeDocumentRepository.save(rowDone);
+            log.info(
+                    "Knowledge pipeline completed for project document {} (snapshot {})",
+                    projectDocumentId,
+                    building.getId());
+        } catch (Exception e) {
+            knowledgeSnapshotService.deleteVectorsForSnapshotId(building.getId());
+            knowledgeSnapshotService.failSnapshotById(building.getId());
+            throw e;
         }
-
-        knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
-
-        KnowledgeDocumentEntity rowDone = knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
-        rowDone.setStatus(ProjectDocumentStatus.READY);
-        rowDone.setChunkCount(knowledgeIndexingService.computeChunkCountForDoc(rowDone.getId()));
-        rowDone.setErrorMessage(null);
-        rowDone.setReindexedAt(Instant.now());
-        knowledgeDocumentRepository.save(rowDone);
-        log.info(
-                "Knowledge pipeline completed for project document {} (snapshot {})",
-                projectDocumentId,
-                building.getId());
     }
 
     private void ingestStoredTx(
@@ -452,39 +458,45 @@ public class KnowledgePipelineOrchestrator {
                         snapshotIndexProfileJsonb(profile),
                         profile.profileHash());
 
-        probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
+        try {
+            probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
 
-        previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
-        deleteVectorsForScopeDocs(scopeDocs);
+            previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
+            deleteVectorsForScopeDocs(scopeDocs);
 
-        MaterializationStrategy strategy = profile.materializationStrategy();
-        int chunkMaxChars = profile.chunkMaxChars();
-        String ct = row.getMimeType() != null ? row.getMimeType() : "application/octet-stream";
-        for (KnowledgeDocumentEntity doc : scopeDocs) {
-            try {
-                knowledgeIndexingService.processDocument(
-                        new KnowledgeDocumentIndexingRequest(
-                                doc,
-                                null,
-                                doc.getFileName(),
-                                ct,
-                                building,
-                                indexSigHex,
-                                strategy,
-                                chunkMaxChars));
-            } catch (IOException e) {
-                throw new IllegalStateException("Document indexing failed: " + e.getMessage(), e);
+            MaterializationStrategy strategy = profile.materializationStrategy();
+            int chunkMaxChars = profile.chunkMaxChars();
+            String ct = row.getMimeType() != null ? row.getMimeType() : "application/octet-stream";
+            for (KnowledgeDocumentEntity doc : scopeDocs) {
+                try {
+                    knowledgeIndexingService.processDocument(
+                            new KnowledgeDocumentIndexingRequest(
+                                    doc,
+                                    null,
+                                    doc.getFileName(),
+                                    ct,
+                                    building,
+                                    indexSigHex,
+                                    strategy,
+                                    chunkMaxChars));
+                } catch (IOException e) {
+                    throw new IllegalStateException("Document indexing failed: " + e.getMessage(), e);
+                }
             }
+
+            knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
+
+            KnowledgeDocumentEntity rowDone = knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
+            rowDone.setStatus(ProjectDocumentStatus.READY);
+            rowDone.setChunkCount(knowledgeIndexingService.computeChunkCountForDoc(rowDone.getId()));
+            rowDone.setErrorMessage(null);
+            rowDone.setReindexedAt(Instant.now());
+            knowledgeDocumentRepository.save(rowDone);
+        } catch (Exception e) {
+            knowledgeSnapshotService.deleteVectorsForSnapshotId(building.getId());
+            knowledgeSnapshotService.failSnapshotById(building.getId());
+            throw e;
         }
-
-        knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
-
-        KnowledgeDocumentEntity rowDone = knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
-        rowDone.setStatus(ProjectDocumentStatus.READY);
-        rowDone.setChunkCount(knowledgeIndexingService.computeChunkCountForDoc(rowDone.getId()));
-        rowDone.setErrorMessage(null);
-        rowDone.setReindexedAt(Instant.now());
-        knowledgeDocumentRepository.save(rowDone);
     }
 
     private void persistBinaryAndUpdateRow(

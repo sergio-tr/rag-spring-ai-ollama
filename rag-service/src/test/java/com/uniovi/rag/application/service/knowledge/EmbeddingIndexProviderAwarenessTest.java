@@ -16,6 +16,7 @@ import com.uniovi.rag.application.port.llm.LlmEmbeddingRequest;
 import com.uniovi.rag.application.port.llm.LlmEmbeddingResponse;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
+import com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver;
 import com.uniovi.rag.application.service.llm.ProviderAwareEmbeddingService;
 import com.uniovi.rag.application.service.runtime.retrieval.DenseRetrievalStrategy;
 import com.uniovi.rag.configuration.RagVectorProperties;
@@ -61,6 +62,7 @@ class EmbeddingIndexProviderAwarenessTest {
     @Mock private RagVectorProperties ragVectorProperties;
 
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
+    @Mock private EmbeddingModelCatalogResolver embeddingModelCatalogResolver;
 
     private EmbeddingIndexCompatibilityService compatibilityService;
     private LlmClientResolver llmClientResolver;
@@ -68,11 +70,18 @@ class EmbeddingIndexProviderAwarenessTest {
 
     @BeforeEach
     void setUp() {
+        lenient()
+                .when(embeddingModelCatalogResolver.resolve(any(), any()))
+                .thenAnswer(inv -> String.valueOf(inv.getArgument(1)).trim());
         compatibilityService =
                 new EmbeddingIndexCompatibilityService(
-                        providerAwareEmbeddingService, snapshotRepository, knowledgeSnapshotService);
+                        providerAwareEmbeddingService,
+                        snapshotRepository,
+                        knowledgeSnapshotService,
+                        embeddingModelCatalogResolver);
         llmClientResolver = new LlmClientResolver(clientRegistry);
-        realEmbeddingService = new ProviderAwareEmbeddingService(llmClientResolver, configResolver);
+        realEmbeddingService =
+                new ProviderAwareEmbeddingService(llmClientResolver, configResolver, embeddingModelCatalogResolver);
         lenient().when(ragVectorProperties.requireSnapshotEmbeddingModelId()).thenReturn(true);
     }
 

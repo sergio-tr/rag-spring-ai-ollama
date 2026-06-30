@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.knowledge;
 
 import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
+import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
@@ -49,10 +50,11 @@ class KnowledgeIngestionServiceTest {
             ProjectDocumentIngestionService ingestion,
             ProjectAccessService access,
             ResolvedConfigSnapshotApplicationService resolved,
+            ResolvedLlmConfigResolver llmConfigResolver,
             EntityManager entityManager) {
         BinaryStoragePort storage = mock(BinaryStoragePort.class);
         return new KnowledgeIngestionService(
-                orchestrator, repo, ingestion, access, resolved, entityManager, storage);
+                orchestrator, repo, ingestion, access, resolved, llmConfigResolver, entityManager, storage);
     }
 
     @Test
@@ -65,7 +67,7 @@ class KnowledgeIngestionServiceTest {
 
         EntityManager entityManager = mock(EntityManager.class);
         KnowledgeIngestionService sut =
-                newSut(orchestrator, repo, ingestion, access, resolved, entityManager);
+                newSut(orchestrator, repo, ingestion, access, resolved, mock(ResolvedLlmConfigResolver.class), entityManager);
 
         UUID docId = UUID.randomUUID();
         when(repo.findById(docId)).thenReturn(Optional.empty());
@@ -85,7 +87,7 @@ class KnowledgeIngestionServiceTest {
 
         EntityManager entityManager = mock(EntityManager.class);
         KnowledgeIngestionService sut =
-                newSut(orchestrator, repo, ingestion, access, resolved, entityManager);
+                newSut(orchestrator, repo, ingestion, access, resolved, mock(ResolvedLlmConfigResolver.class), entityManager);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -118,7 +120,7 @@ class KnowledgeIngestionServiceTest {
 
         EntityManager entityManager = mock(EntityManager.class);
         KnowledgeIngestionService sut =
-                newSut(orchestrator, repo, ingestion, access, resolved, entityManager);
+                newSut(orchestrator, repo, ingestion, access, resolved, mock(ResolvedLlmConfigResolver.class), entityManager);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -151,7 +153,7 @@ class KnowledgeIngestionServiceTest {
         EntityManager entityManager = mock(EntityManager.class);
 
         KnowledgeIngestionService sut =
-                newSut(orchestrator, repo, ingestion, access, resolved, entityManager);
+                newSut(orchestrator, repo, ingestion, access, resolved, mock(ResolvedLlmConfigResolver.class), entityManager);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -211,7 +213,7 @@ class KnowledgeIngestionServiceTest {
 
         EntityManager entityManager = mock(EntityManager.class);
         KnowledgeIngestionService sut =
-                newSut(orchestrator, repo, ingestion, access, resolved, entityManager);
+                newSut(orchestrator, repo, ingestion, access, resolved, mock(ResolvedLlmConfigResolver.class), entityManager);
 
         UUID docId = UUID.randomUUID();
         sut.deleteVectorChunksForDocument(docId);
@@ -229,7 +231,7 @@ class KnowledgeIngestionServiceTest {
 
         EntityManager entityManager = mock(EntityManager.class);
         KnowledgeIngestionService sut =
-                newSut(orchestrator, repo, ingestion, access, resolved, entityManager);
+                newSut(orchestrator, repo, ingestion, access, resolved, mock(ResolvedLlmConfigResolver.class), entityManager);
 
         MultipartFile file = mock(MultipartFile.class);
         when(file.isEmpty()).thenReturn(true);
@@ -250,7 +252,7 @@ class KnowledgeIngestionServiceTest {
 
         EntityManager entityManager = mock(EntityManager.class);
         KnowledgeIngestionService sut =
-                newSut(orchestrator, repo, ingestion, access, resolved, entityManager);
+                newSut(orchestrator, repo, ingestion, access, resolved, mock(ResolvedLlmConfigResolver.class), entityManager);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -315,7 +317,7 @@ class KnowledgeIngestionServiceTest {
 
         EntityManager entityManager = mock(EntityManager.class);
         KnowledgeIngestionService sut =
-                newSut(orchestrator, repo, ingestion, access, resolved, entityManager);
+                newSut(orchestrator, repo, ingestion, access, resolved, mock(ResolvedLlmConfigResolver.class), entityManager);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -345,7 +347,7 @@ class KnowledgeIngestionServiceTest {
         EntityManager entityManager = mock(EntityManager.class);
 
         KnowledgeIngestionService sut =
-                newSut(orchestrator, repo, ingestion, access, resolved, entityManager);
+                newSut(orchestrator, repo, ingestion, access, resolved, mock(ResolvedLlmConfigResolver.class), entityManager);
 
         UUID docId = UUID.randomUUID();
         KnowledgeDocumentEntity stuck = mock(KnowledgeDocumentEntity.class);
@@ -384,7 +386,7 @@ class KnowledgeIngestionServiceTest {
         EntityManager entityManager = mock(EntityManager.class);
 
         KnowledgeIngestionService sut =
-                newSut(orchestrator, repo, ingestion, access, resolved, entityManager);
+                newSut(orchestrator, repo, ingestion, access, resolved, mock(ResolvedLlmConfigResolver.class), entityManager);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();

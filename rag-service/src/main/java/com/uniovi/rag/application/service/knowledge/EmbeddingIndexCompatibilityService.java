@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.knowledge;
 
 import com.uniovi.rag.application.service.llm.ProviderAwareEmbeddingService;
+import com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
@@ -31,34 +32,61 @@ public class EmbeddingIndexCompatibilityService {
     private final ProviderAwareEmbeddingService embeddingService;
     private final KnowledgeIndexSnapshotRepository snapshotRepository;
     private final KnowledgeSnapshotService knowledgeSnapshotService;
+    private final EmbeddingModelCatalogResolver embeddingModelCatalogResolver;
 
     public EmbeddingIndexCompatibilityService(
             ProviderAwareEmbeddingService embeddingService,
             KnowledgeIndexSnapshotRepository snapshotRepository,
-            KnowledgeSnapshotService knowledgeSnapshotService) {
+            KnowledgeSnapshotService knowledgeSnapshotService,
+            EmbeddingModelCatalogResolver embeddingModelCatalogResolver) {
         this.embeddingService = embeddingService;
         this.snapshotRepository = snapshotRepository;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
+        this.embeddingModelCatalogResolver = embeddingModelCatalogResolver;
     }
 
     public ResolvedLlmConfig effectiveEmbeddingConfig() {
         return embeddingService.resolveEffectiveConfig();
     }
 
-    /** Stamps provider/model from effective runtime config into snapshot profile JSON (no DB schema change). */
+    /**
+     * Stamps provider/model from effective runtime embedding resolution (same path as {@link #isProfileCompatible}).
+     * For {@link LlmProvider#OPENAI_COMPATIBLE}, legacy Ollama ids in project profiles are replaced with the
+     * configured catalog embedding model.
+     */
     public Map<String, Object> enrichIndexProfile(Map<String, Object> baseProfile) {
         ResolvedLlmConfig effective = effectiveEmbeddingConfig();
         Map<String, Object> enriched = new LinkedHashMap<>(baseProfile != null ? baseProfile : Map.of());
-        String legacyModelId = IndexProfileJsonSupport.readEmbeddingModelId(enriched).orElse(null);
+        String explicitModel = IndexProfileJsonSupport.readEmbeddingModelId(enriched).orElse(null);
         enriched.put(
                 IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY,
-                embeddingService.effectiveEmbeddingModelId(legacyModelId));
+                embeddingService.effectiveEmbeddingModelId(explicitModel));
         enriched.put(IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY, effective.embeddingProvider().name());
         return enriched;
     }
 
     public void assertIndexingCompatible(Map<String, Object> indexProfileJsonb) {
         assertProfileCompatible(indexProfileJsonb, effectiveEmbeddingConfig());
+    }
+
+    /**
+     * Lab evaluation corpus snapshots may target alternate embedding models (Gate 2 matrix). Provider must match;
+     * model id is taken from the snapshot profile without requiring deployment default equality.
+     */
+    public void assertIndexingCompatibleForEvaluationSnapshot(Map<String, Object> indexProfileJsonb) {
+        if (indexProfileJsonb == null || indexProfileJsonb.isEmpty()) {
+            assertIndexingCompatible(indexProfileJsonb);
+            return;
+        }
+        ResolvedLlmConfig effective = effectiveEmbeddingConfig();
+        LlmProvider indexProvider = IndexProfileJsonSupport.resolveEmbeddingProviderOrLegacyDefault(indexProfileJsonb);
+        if (indexProvider != effective.embeddingProvider()) {
+            throw incompatibleIndex(effective);
+        }
+        String model = IndexProfileJsonSupport.readEmbeddingModelId(indexProfileJsonb).orElse(null);
+        if (model == null || model.isBlank()) {
+            assertIndexingCompatible(indexProfileJsonb);
+        }
     }
 
     /**
@@ -150,14 +178,14 @@ public class EmbeddingIndexCompatibilityService {
         if (indexProvider != effective.embeddingProvider()) {
             return false;
         }
-        return IndexProfileJsonSupport.readEmbeddingModelId(indexProfileJsonb)
-                .filter(
-                        model ->
-                                IndexProfileJsonSupport.normalizeEmbeddingKey(model)
-                                        .equals(
-                                                IndexProfileJsonSupport.normalizeEmbeddingKey(
-                                                        effective.embeddingModel())))
-                .isPresent();
+        String profileModel = IndexProfileJsonSupport.readEmbeddingModelId(indexProfileJsonb).orElse(null);
+        if (profileModel == null || profileModel.isBlank()) {
+            return false;
+        }
+        String resolvedProfileModel = embeddingService.effectiveEmbeddingModelId(profileModel);
+        String resolvedEffectiveModel = embeddingService.effectiveEmbeddingModelId(null);
+        return IndexProfileJsonSupport.normalizeEmbeddingKey(resolvedProfileModel)
+                .equals(IndexProfileJsonSupport.normalizeEmbeddingKey(resolvedEffectiveModel));
     }
 
     public static ResponseStatusException incompatibleIndex(ResolvedLlmConfig effective) {

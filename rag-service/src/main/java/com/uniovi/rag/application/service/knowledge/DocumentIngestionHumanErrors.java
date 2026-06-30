@@ -8,6 +8,8 @@ public final class DocumentIngestionHumanErrors {
     public static final String UNSUPPORTED_FILE = "Unsupported file type for knowledge ingestion.";
     public static final String PARSE_ERROR = "Could not parse document content.";
     public static final String EMBEDDING_ERROR = "Embedding step failed for this document.";
+    public static final String INCOMPATIBLE_INDEX_ERROR =
+            "No compatible vector index for the selected embedding model. Reindex the project or align the embedding model with the configured catalog.";
     public static final String INDEX_ERROR = "Indexing step failed for this document.";
     public static final String DUPLICATE = "Duplicate document (same content or name and size).";
     public static final String EMPTY_FILE = "File is empty.";
@@ -31,6 +33,9 @@ public final class DocumentIngestionHumanErrors {
         }
         if (upper.contains("PARSE") || upper.contains("COULD NOT PARSE")) {
             return PARSE_ERROR;
+        }
+        if (upper.contains("NO COMPATIBLE VECTOR INDEX") || upper.contains("FAILED_INCOMPATIBLE_INDEX")) {
+            return INCOMPATIBLE_INDEX_ERROR;
         }
         if (upper.contains("EMBED") || upper.contains("CONTEXT LIMIT")) {
             return EMBEDDING_ERROR;
