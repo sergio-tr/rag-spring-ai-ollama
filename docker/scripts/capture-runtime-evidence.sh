@@ -11,7 +11,7 @@ WITH_LOGS=false
 WITH_INFRA=false
 WITH_MAIL=false
 WITH_OLLAMA=false
-OUT_DIR="${ROOT_DIR}/.cursor/context/evidence/docker/agent-run-$(date -u +%Y%m%dT%H%M%SZ)"
+OUT_DIR="${ROOT_DIR}/docs/evidence/docker/agent-run-$(date -u +%Y%m%dT%H%M%SZ)"
 
 while [ $# -gt 0 ]; do
   case "$1" in

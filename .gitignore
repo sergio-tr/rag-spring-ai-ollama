@@ -123,5 +123,8 @@ logs/
 !.yarn/versions
 # Environment variables
 !**/.env.example
+# Local evaluation evidence exports (answerability queues, observability captures)
+exports/evaluation-evidence/
+
 # Mermaid CLI raster exports (sources remain *.mmd)
 !/docs/coverage/
