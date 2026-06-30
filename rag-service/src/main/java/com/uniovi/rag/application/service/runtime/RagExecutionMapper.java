@@ -16,7 +16,7 @@ public final class RagExecutionMapper {
     public static QueryResponse toQueryResponse(RagExecutionResult result) {
         QueryType qt = result.resolvedQueryType();
         Map<String, Object> telemetry = new LinkedHashMap<>(ChatExecutionTelemetryMapper.fromTrace(result.executionTrace()));
-        List<Map<String, Object>> sources = result.responseSources();
+        List<Map<String, Object>> sources = ResponseSourcesBackfill.resolve(result);
         ChatExecutionTelemetryMapper.enrichRetrievedIdentifiersFromSources(telemetry, sources);
         ConversationMemoryAnchorMetadata.enrichGroundedAnchor(telemetry, sources);
         if (result.usedTool()) {
@@ -24,10 +24,10 @@ public final class RagExecutionMapper {
                     result.answerText(),
                     result.toolUsedLabel() != null ? result.toolUsedLabel() : "tool",
                     qt,
-                    ChatSourceMapper.fromPersistedMaps(result.responseSources()),
+                    ChatSourceMapper.fromPersistedMaps(sources),
                     telemetry);
         }
         return QueryResponse.fromLLMWithSources(
-                result.answerText(), qt, ChatSourceMapper.fromPersistedMaps(result.responseSources()), telemetry);
+                result.answerText(), qt, ChatSourceMapper.fromPersistedMaps(sources), telemetry);
     }
 }

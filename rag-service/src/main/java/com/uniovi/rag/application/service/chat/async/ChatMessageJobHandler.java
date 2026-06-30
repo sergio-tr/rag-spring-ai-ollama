@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.chat.async;
 
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.application.service.chat.ChatRetrievalSourceContributor;
 import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
 import com.uniovi.rag.application.result.chat.ChatSource;
 import com.uniovi.rag.application.result.chat.QueryResponse;
@@ -38,16 +39,19 @@ public class ChatMessageJobHandler implements LabJobHandler {
     private final RuntimeQueryExecutionService runtimeQueryExecutionService;
     private final ChatJobCancellationRegistry cancellationRegistry;
     private final ChatMessageWorkService chatMessageWorkService;
+    private final ChatRetrievalSourceContributor chatRetrievalSourceContributor;
     private final ObjectProvider<RuntimeObservability> runtimeObservability;
 
     public ChatMessageJobHandler(
             RuntimeQueryExecutionService runtimeQueryExecutionService,
             ChatJobCancellationRegistry cancellationRegistry,
             ChatMessageWorkService chatMessageWorkService,
+            ChatRetrievalSourceContributor chatRetrievalSourceContributor,
             ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.runtimeQueryExecutionService = runtimeQueryExecutionService;
         this.cancellationRegistry = cancellationRegistry;
         this.chatMessageWorkService = chatMessageWorkService;
+        this.chatRetrievalSourceContributor = chatRetrievalSourceContributor;
         this.runtimeObservability = runtimeObservability;
     }
 
@@ -102,8 +106,14 @@ public class ChatMessageJobHandler implements LabJobHandler {
                 return;
             }
             QueryResponse qr =
-                    runtimeQueryExecutionService.generateResponseForChat(
-                            userContent, llmModel, userId, projectId, conversationId, docFilter, userMessageId);
+                    enrichSourcesIfMissing(
+                            runtimeQueryExecutionService.generateResponseForChat(
+                                    userContent, llmModel, userId, projectId, conversationId, docFilter, userMessageId),
+                            userId,
+                            projectId,
+                            conversationId,
+                            docFilter,
+                            userContent);
             String answer = qr.getAnswer() != null ? qr.getAnswer() : "";
             StringBuilder accumulated = new StringBuilder();
             for (String part : ChatStreamChunks.chunkForStream(answer)) {
@@ -183,6 +193,34 @@ public class ChatMessageJobHandler implements LabJobHandler {
                 answer.length());
         persistAssistantSuccess(taskId, conversationId, assistantId, mutation, qr, answer, llmModel, start);
         return true;
+    }
+
+  /** When the main pipeline omits sources (e.g. deterministic tool route), attach scoped retrieval evidence. */
+    private QueryResponse enrichSourcesIfMissing(
+            QueryResponse qr,
+            UUID userId,
+            UUID projectId,
+            UUID conversationId,
+            List<String> docFilter,
+            String userContent) {
+        if (qr == null || (qr.getSources() != null && !qr.getSources().isEmpty())) {
+            return qr;
+        }
+        if (userContent == null || userContent.isBlank()) {
+            return qr;
+        }
+        List<Map<String, Object>> backfill =
+                chatRetrievalSourceContributor.buildSources(userId, projectId, conversationId, docFilter, userContent);
+        if (backfill.isEmpty()) {
+            return qr;
+        }
+        List<ChatSource> sources = ChatSourceMapper.fromPersistedMaps(backfill);
+        if (qr.isUsedTool()) {
+            return QueryResponse.fromToolWithSources(
+                    qr.getAnswer(), qr.getToolUsed(), qr.getQueryType(), sources, qr.getChatTelemetry());
+        }
+        return QueryResponse.fromLLMWithSources(
+                qr.getAnswer(), qr.getQueryType(), sources, qr.getChatTelemetry());
     }
 
     private void persistAssistantSuccess(
