@@ -51,6 +51,7 @@ class MetadataCountDocumentsToolTest {
         extractor = mock(DocumentContentExtractor.class);
         MetadataLlmResponseCacheService llmCache = mock(MetadataLlmResponseCacheService.class);
         when(llmCache.getCachedResponse(anyString())).thenReturn("");
+        when(llmCache.getCachedResponse(anyString(), anyString())).thenReturn("NONE");
         tool = new MetadataCountDocumentsTool(chatClient, retriever, extractor, llmCache);
 
         MetadataMinuteDocumentService metadataService =

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
+import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,6 +29,7 @@ class CanonicalMeetingDedupeTest {
         DocumentContentExtractor extractor = mock(DocumentContentExtractor.class);
         MetadataLlmResponseCacheService llmCache = mock(MetadataLlmResponseCacheService.class);
         when(llmCache.getCachedResponse(anyString())).thenReturn("");
+        when(llmCache.getCachedResponse(anyString(), anyString())).thenReturn("NONE");
         tool = new MetadataCountDocumentsTool(chatClient, retriever, extractor, llmCache);
     }
 
@@ -104,6 +106,72 @@ class CanonicalMeetingDedupeTest {
                         doc("s1", Map.of("filename", "ACTA 1.pdf", "indexSnapshotId", stale)));
 
         assertThat(tool.resolveDominantActiveSnapshotIds(docs)).containsExactly(active);
+    }
+
+    @Test
+    void resolveDominantActiveSnapshotIds_prefersSnapshotCoveringMoreActasOverChunkCount() {
+        String active = "snap-active-five-actas";
+        String stale = "snap-stale-many-chunks";
+        List<Document> docs = new java.util.ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            docs.add(
+                    doc(
+                            "active-" + i,
+                            Map.of(
+                                    "filename",
+                                    "ACTA " + i + ".pdf",
+                                    "indexSnapshotId",
+                                    active,
+                                    "projectDocumentId",
+                                    "pdoc-" + i)));
+        }
+        for (int i = 0; i < 12; i++) {
+            docs.add(
+                    doc(
+                            "stale-chunk-" + i,
+                            Map.of(
+                                    "filename",
+                                    "ACTA 1.pdf",
+                                    "indexSnapshotId",
+                                    stale,
+                                    "projectDocumentId",
+                                    "pdoc-stale-1",
+                                    "chunkIndex",
+                                    i)));
+        }
+
+        assertThat(tool.resolveDominantActiveSnapshotIds(docs)).containsExactly(active);
+    }
+
+    @Test
+    void isTopicActaListQuery_matchesRewrittenListarActasQuery() {
+        assertThat(
+                        StructuredMinuteMetadataSupport.isTopicActaListQuery(
+                                "listar las actas que mencionan problemas del ascensor"))
+                .isTrue();
+    }
+
+    @Test
+    void resolveDominantActiveSnapshotIds_usesExecutionSnapshotWhenBound() {
+        String stale = "snap-stale-many-chunks";
+        try {
+            RagSnapshotContextHolder.set(List.of(java.util.UUID.fromString("4ec7f3a7-e0ba-4729-ad5e-a17102058d84")));
+            List<Document> docs =
+                    List.of(
+                            doc(
+                                    "stale-chunk",
+                                    Map.of(
+                                            "filename",
+                                            "ACTA 1.pdf",
+                                            "indexSnapshotId",
+                                            stale,
+                                            "projectDocumentId",
+                                            "pdoc-stale")));
+            assertThat(tool.resolveDominantActiveSnapshotIds(docs))
+                    .containsExactly("4ec7f3a7-e0ba-4729-ad5e-a17102058d84");
+        } finally {
+            RagSnapshotContextHolder.clear();
+        }
     }
 
     @Test

@@ -67,10 +67,11 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         Map<String, String> evidenceByKey = buildMeetingEvidenceTextByKey(docs);
         boolean compoundMonthTopicAttendee = isCompoundMonthTopicAttendeeFilterQuery(query);
         boolean topicAndPersonFilter = detectTopicAndPersonFilter(query);
+        boolean topicActaListQuery = StructuredMinuteMetadataSupport.isTopicActaListQuery(query);
 
         // Step 2: Extract minutes in parallel (one canonical meeting per acta)
         List<Minute> minutes;
-        if (compoundMonthTopicAttendee || topicAndPersonFilter) {
+        if (compoundMonthTopicAttendee || topicAndPersonFilter || topicActaListQuery) {
             minutes =
                     extractMeetingShellsForTopicMatch(
                             mergeChunksWithRichestMetadata(collectInScopeCorpusRows(docs)));
@@ -92,9 +93,19 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             return listMeetingsStartingAtTime(query, minutes, startTimeListQuery.targetTime());
         }
 
+        EndTimeAfterQuery endTimeAfterQuery = detectEndTimeAfterListQuery(query, ner);
+        if (endTimeAfterQuery != null) {
+            log().info(
+                    "End-time-after list query detected for '{}', filtering {} unique actas after {}",
+                    query,
+                    minutes.size(),
+                    endTimeAfterQuery.thresholdTime());
+            return listMeetingsEndingAfterTime(query, minutes, endTimeAfterQuery.thresholdTime());
+        }
+
         // Step 3: Filter relevant minutes (FD-FL-03 compound filter scans all actas before month/topic/attendee narrowing)
         List<Minute> relevantMinutes;
-        if (compoundMonthTopicAttendee || topicAndPersonFilter) {
+        if (compoundMonthTopicAttendee || topicAndPersonFilter || topicActaListQuery) {
             log().info(
                     "Compound corpus filter for '{}': skipping relevance pre-filter on {} actas",
                     query,
@@ -425,11 +436,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             """, query != null ? query : "", results.size(), resultsText);
         
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
+            String response = getLLMResponseCached("metadata-filter-and-list", prompt).strip();
             
             if (!isUnusableLlmText(response)) {
                 return response.trim();
@@ -842,6 +849,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         String q = query.toLowerCase(Locale.ROOT);
         return isCompoundMonthTopicAttendeeFilterQuery(query)
                 || StructuredMinuteMetadataSupport.isTopicMinuteDatesListQuery(query)
+                || StructuredMinuteMetadataSupport.isTopicActaListQuery(query)
                 || extractRequestedMonthFromQuery(query) != null
                 || detectTopicAndPersonFilter(query)
                 || (q.contains("agosto") && q.contains("videovigilancia"));

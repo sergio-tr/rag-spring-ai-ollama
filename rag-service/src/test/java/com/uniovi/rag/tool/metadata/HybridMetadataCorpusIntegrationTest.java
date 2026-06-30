@@ -32,6 +32,7 @@ class HybridMetadataCorpusIntegrationTest {
         DocumentContentExtractor extractor = mock(DocumentContentExtractor.class);
         MetadataLlmResponseCacheService cache = mock(MetadataLlmResponseCacheService.class);
         when(cache.getCachedResponse(anyString())).thenReturn("");
+        when(cache.getCachedResponse(anyString(), anyString())).thenReturn("NONE");
         tool = new MetadataCountDocumentsTool(chatClient, retriever, extractor, cache);
     }
 
@@ -61,6 +62,7 @@ class HybridMetadataCorpusIntegrationTest {
         DocumentContentExtractor extractor = mock(DocumentContentExtractor.class);
         MetadataLlmResponseCacheService cache = mock(MetadataLlmResponseCacheService.class);
         when(cache.getCachedResponse(anyString())).thenReturn("");
+        when(cache.getCachedResponse(anyString(), anyString())).thenReturn("NONE");
         MetadataCountDocumentsTool countTool =
                 new MetadataCountDocumentsTool(
                         ChatClientTestSupport.mockForUserPromptChain(), retriever, extractor, cache);

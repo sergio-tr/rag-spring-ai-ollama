@@ -35,6 +35,7 @@ class MetadataSummarizeMeetingToolTest {
         when(retriever.retrieveWithMetadataFilters(anyString(), any(JSONObject.class))).thenReturn(List.of());
         MetadataLlmResponseCacheService llmCache = mock(MetadataLlmResponseCacheService.class);
         when(llmCache.getCachedResponse(anyString())).thenReturn("");
+        when(llmCache.getCachedResponse(anyString(), anyString())).thenReturn("NONE");
         tool = new MetadataSummarizeMeetingTool(chatClient, retriever, extractor, llmCache);
     }
 

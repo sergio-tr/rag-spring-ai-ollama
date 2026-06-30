@@ -438,13 +438,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             """, query);
         
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip()
-                    .toLowerCase();
+            String response = getLLMResponseCached("metadata-field-normalization", prompt).toLowerCase();
             return mapLlmResponseToComparisonField(response);
         } catch (Exception e) {
             log().warn("Error inferring comparison field with LLM: {}", e.getMessage());
