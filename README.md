@@ -178,58 +178,12 @@ Production credentials must always come from environment / `.env` files, not fro
 
 **SonarCloud:** quality gate, CI setup, and hotspot policy are documented in the [SonarCloud](#sonarcloud-quality-gate-and-static-analysis) section above (extended notes may exist only in a local `docs/` copy).
 
-## Production deployment
-
-The system is deployed inside the **University of Oviedo** network. External access may require **VPN** or on-campus connectivity.
-
-| Role | Host |
-| --- | --- |
-| Application server (Docker Compose + self-hosted runner) | `156.35.95.27` |
-| Model-serving server (LiteLLM → Ollama) | `156.35.160.78` |
-
-**Architecture:** A **self-hosted GitHub Actions runner** on the application server checks out the repository locally and runs Docker Compose. GitHub does **not** open inbound SSH to the university machine; the runner maintains **outbound HTTPS** to GitHub.
-
-**Model serving:** The backend consumes **LiteLLM** only through an **OpenAI-compatible API** on the model-serving server. **Ollama** runs behind LiteLLM and is **not** called directly by the production backend (`OPENAI_COMPATIBLE` provider).
-
-**Email:** Production uses real **SMTP** delivery via `support.rag@gmail.es`. **Mailpit** is development-only.
-
-**Authentication:** **Google OAuth** in production (backend-owned flow).
-
-**Legal:** Privacy Policy and Terms of Use are available at `{FRONTEND_PUBLIC_URL}/en/privacy-policy` and `{FRONTEND_PUBLIC_URL}/en/terms` (replace with the deployed URL).
-
-**Observability:** Enabled in production deploy (`--obs --obs-private`); Grafana/Jaeger/Prometheus are internal to the Docker network.
-
-### URLs and workflows
-
-| Item | Value |
-| --- | --- |
-| Production application URL | TODO — set after DNS/TLS |
-| Backend API URL | TODO — same-origin via reverse proxy when applicable |
-| Privacy Policy | `{FRONTEND_PUBLIC_URL}/en/privacy-policy` |
-| Terms of Use | `{FRONTEND_PUBLIC_URL}/en/terms` |
-| GitHub Pages documentation | [https://sergio-tr.github.io/rag-spring-ai-ollama/](https://sergio-tr.github.io/rag-spring-ai-ollama/) |
-| Deploy workflow | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) (`push` to `main` or manual) |
-| Documentation workflow | [`.github/workflows/docs-pages.yml`](.github/workflows/docs-pages.yml) |
-| Runner check workflow | [`.github/workflows/self-hosted-runner-check.yml`](.github/workflows/self-hosted-runner-check.yml) |
-
-**Repository settings:** Configure GitHub **Variables** `DEPLOY_DIR` and `DEPLOY_HEALTH_URL`. Enable **Pages → Source → GitHub Actions**. Prefer **branch protection** on `main` requiring CI before merge (deploy relies on validated `main`).
-
-**Server command (operator):**
-
-```bash
-./docker/scripts/up.sh prod --server --obs --obs-private --no-env-prompt
-```
-
-**Environment template:** [`.env.example`](.env.example) (index) and per-component `.env.example` files. Copy to `.env` on the server; never commit secrets.
-
-**Detail:** [docs/operations/runbook-docker-vm.md](docs/operations/runbook-docker-vm.md), [docs/operations/deploy-workflow-audit.md](docs/operations/deploy-workflow-audit.md), [docker/README.md](docker/README.md).
-
 ## Tech stack
 
 **Backend**: Spring Boot · Spring AI · Java · Maven · Flyway · JaCoCo  
 **Classifier**: FastAPI · TensorFlow/Keras · Python 3.11 · pytest-cov  
 **Database**: PostgreSQL + pgvector  
-**LLM runtime**: LiteLLM (production, OpenAI-compatible) · Ollama (development / behind LiteLLM on model server)  
+**LLM runtime**: Ollama (local, GPU-optional)  
 **Observability**: OpenTelemetry · Jaeger · Prometheus · Grafana · Loki  
 **Infrastructure**: Docker · Docker Compose · Nginx  
 **CI/CD**: GitHub Actions · SonarCloud · GHCR  
