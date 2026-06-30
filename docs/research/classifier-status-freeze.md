@@ -2,7 +2,7 @@
 
 **Effective:** 2026-06-29  
 **Gate:** Classifier Retrain and Failure Analysis (`classifier-retrain-failure-analysis-20250629`) — **CONDITIONAL_PASS**  
-**Evidence:** `.cursor/evidence/classifier-status-freeze-20250629/`
+**Evidence:** evaluation evidence package `classifier-status-freeze-20250629` (JSON/CSV exports; internal agent capture may use a local working directory).
 
 ---
 

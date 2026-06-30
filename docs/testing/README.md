@@ -20,7 +20,7 @@
 
 - **Unit and service tests** live with each module (`rag-service`, `classifier-service`, `webapp`).
 - **Stack HTTP integration** (`tests/integration/`) validates **contracts and multi-service behaviour** without a browser; run in CI via [`integration.yml`](../../.github/workflows/integration.yml).
-- **E2E (browser)** is **Playwright** under `webapp/e2e/` (domain folders + `fixtures/` / `support/`; see [`webapp/e2e/README.md`](../../webapp/e2e/README.md)).
+- **E2E (browser)** is **Playwright** under `webapp/e2e/` (domain folders + `fixtures/` / `support/`; see [`webapp/e2e/README.md`](../../webapp/e2e/README.md)). **PR critical path** (`@fullstack` + `@critical`): [e2e-critical-taxonomy.md](e2e-critical-taxonomy.md).
 - **Naming:** “integration” in **Java** means Spring slice/JDBC tests inside `rag-service`; “**stack integration**” means **pytest + httpx** in `tests/integration/`.
 
 ## Testing matrix (what runs where)

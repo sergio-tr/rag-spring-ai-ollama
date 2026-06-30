@@ -28,7 +28,7 @@
 
 ---
 
-RAG (Retrieval-Augmented Generation) system built with **Spring Boot**, **Spring AI**, **Ollama**, and **PostgreSQL + pgvector**. Includes a trainable query-type classifier exposed as an HTTP microservice (FastAPI + TensorFlow).
+RAG (Retrieval-Augmented Generation) system built with **Spring Boot**, **Spring AI**, **LiteLLM** (configured API catalog), and **PostgreSQL + pgvector**. Includes a trainable query-type classifier exposed as an HTTP microservice (FastAPI; default **scikit-learn** model, optional Keras training path).
 
 **Documentation:** global architecture, domain, and governance live in **[`docs/README.md`](docs/README.md)** (policy layers and non-canonical areas: [`docs/development/documentation-governance-strategy.md`](docs/development/documentation-governance-strategy.md)). Per-module setup and commands live in each folder’s **README** (see table below).
 
@@ -227,7 +227,7 @@ The system is deployed inside the **University of Oviedo** network. External acc
 ## Tech stack
 
 **Backend**: Spring Boot · Spring AI · Java · Maven · Flyway · JaCoCo  
-**Classifier**: FastAPI · TensorFlow/Keras · Python 3.11 · pytest-cov  
+**Classifier**: FastAPI · scikit-learn (default) / TensorFlow-Keras (training path) · Python 3.11 · pytest-cov  
 **Database**: PostgreSQL + pgvector  
 **LLM runtime**: LiteLLM (production, OpenAI-compatible) · Ollama (development / behind LiteLLM on model server)  
 **Observability**: OpenTelemetry · Jaeger · Prometheus · Grafana · Loki  
