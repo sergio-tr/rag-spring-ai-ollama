@@ -13,7 +13,7 @@ const uxExperimentalPresets = [
   {
     productPresetId: "exp-preset-p0",
     code: "P0",
-    label: "Corpus text only",
+    label: "Indexed text answers",
     description: "Baseline without retrieval",
     family: "RAG",
     supported: true,

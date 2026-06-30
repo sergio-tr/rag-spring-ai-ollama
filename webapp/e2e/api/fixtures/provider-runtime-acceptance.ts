@@ -18,6 +18,12 @@ export const PROVIDER_EVIDENCE_DIR = path.resolve(
   ".cursor/evidence/sprint-s4-fullstack-runtime-closure-20260628/06_provider_runtime_acceptance",
 );
 
+export const PHASE_C_LIVE_SMOKE_EVIDENCE_DIR = path.resolve(
+  process.cwd(),
+  "..",
+  ".cursor/evidence/phase-c-gateway-parity-live-smoke-20260628",
+);
+
 export type ReadinessRagProvider = {
   status: string;
   details?: {
@@ -95,6 +101,42 @@ export function analyzeOpenAiCompatibleLogs(logs: string): {
     .filter((l) => /operation=chat provider=OPENAI_COMPATIBLE/i.test(l)).length;
   const embedHints = logs.split("\n").filter((l) => /embeddingProvider=OPENAI_COMPATIBLE/i.test(l)).length;
   return { chatOpenAiOps, embedHints, ollamaPortHits, v1ChatHits, v1EmbedHits, apiTagsHits };
+}
+
+/** Count DEBUG secondary LLM operations in backend logs (e.g. query-rewrite, conversation-condense). */
+export function countSecondaryOps(logs: string, operation: string): number {
+  const op = operation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`operation=${op}\\b`, "i");
+  return logs.split("\n").filter((l) => pattern.test(l)).length;
+}
+
+export function countSecondaryOpsOpenAi(logs: string, operation: string): number {
+  const op = operation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`operation=${op}.*provider=OPENAI_COMPATIBLE`, "i");
+  return logs.split("\n").filter((l) => pattern.test(l)).length;
+}
+
+export function forbiddenProviderPatterns(logs: string): Record<string, number> {
+  const llmLines = logs
+    .split("\n")
+    .filter((l) => /LLM operation|Secondary LLM|openAiChat|openAiEmbeddings|\/v1\//i.test(l));
+  const secondaryLines = logs
+    .split("\n")
+    .filter((l) => /Secondary LLM|operation=query-rewrite|operation=conversation-condense/i.test(l));
+  const scan = (lines: string[]) => ({
+    ollamaPort11434: lines.filter((l) => /:11434/.test(l)).length,
+    ollamaOptions: lines.filter((l) => /OllamaOptions/i.test(l)).length,
+    providerMismatch: lines.filter((l) => /provider mismatch/i.test(l)).length,
+    malformedApiKey: lines.filter((l) => /Malformed API Key/i.test(l)).length,
+    fallbackToOllama: lines.filter((l) => /fallback to Ollama/i.test(l)).length,
+  });
+  const allLines = logs.split("\n");
+  const allScan = scan(allLines);
+  return {
+    ...allScan,
+    secondaryLlmScoped: scan(secondaryLines).ollamaPort11434,
+    llmWindowScoped: scan(llmLines).ollamaPort11434,
+  };
 }
 
 export function runProviderUnitTests(): { summary: string; checks: ProviderCheck[] } {

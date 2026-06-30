@@ -233,3 +233,174 @@ export const EIGHT_CASE_ACCEPTANCE_TURNS: TurnDefinition[] = MULTITURN_SUITE_TUR
   ...turn,
   query: EIGHT_CASE_USER_QUERIES[idx] ?? turn.query,
 }));
+
+/** RAG Correctness Critical Suite — mandatory acceptance cases (RAG-CRIT-001..012). */
+export type RagCritCaseDefinition = TurnDefinition & {
+  caseId: string;
+  /** When set, run in the same conversation immediately after the referenced case. */
+  followsCaseId?: string;
+  /** Optional patterns the answer must not match. */
+  forbiddenMatchers?: RegExp[];
+};
+
+export const RAG_CRIT_CRITICAL_TURNS: RagCritCaseDefinition[] = [
+  {
+    caseId: "RAG-CRIT-001",
+    id: 1,
+    query: "¿Cuáles fueron los puntos del día?",
+    language: "es",
+    requiresSources: false,
+    allowClarification: true,
+    contentMatchers: [
+      /¿|podrías|puedes|especifica|qué acta|qué fecha|cuál acta|indica la fecha|fecha de la reunión|necesito.*fecha|varias|múltiples|diferentes actas|orden del día|encontraron.*actas|actas con las fechas|fechas:|\d{2}\/\d{2}\/\d{4}|lectura.*aprobación|aprobación del acta/i,
+    ],
+    forbiddenMatchers: [/radiación solar/i],
+  },
+  {
+    caseId: "RAG-CRIT-002",
+    id: 2,
+    query: "¿Cuáles fueron los puntos del día del acta del 25 de febrero de 2026?",
+    language: "es",
+    requiresSources: true,
+    allowClarification: false,
+    contentMatchers: [
+      /25.*02.*2026|febrero.*2026/i,
+      /convivencia|calefacción|calefaccion|reparaciones|ruegos|lectura|orden del día|orden del dia/i,
+    ],
+  },
+  {
+    caseId: "RAG-CRIT-003",
+    id: 3,
+    query: "dime las fechas de las actas que terminaron más tarde de las 8:30",
+    language: "es",
+    requiresSources: false,
+    allowClarification: false,
+    contentMatchers: [/20:30|más tarde|mas tarde/i],
+  },
+  {
+    caseId: "RAG-CRIT-004",
+    id: 4,
+    query: "dime las actas donde se comentan problemas del ascensor",
+    language: "es",
+    requiresSources: false,
+    allowClarification: false,
+    contentMatchers: [/ascensor/i, /ACTA\s*1|24.*02.*2025/i],
+  },
+  {
+    caseId: "RAG-CRIT-005",
+    id: 5,
+    query: "tell me the dates of the minutes where elevator issues are commented",
+    language: "en",
+    requiresSources: false,
+    allowClarification: false,
+    contentMatchers: [/elevator|ascensor/i, /\d{4}|february|august|febrero|agosto/i],
+  },
+  {
+    caseId: "RAG-CRIT-006",
+    id: 6,
+    query: "en cuántas actas aparece Rosa Aguilar Fernández",
+    language: "es",
+    requiresSources: false,
+    allowClarification: false,
+    contentMatchers: [/Rosa\s+Aguilar/i, /(?:en\s+)?(?:una|un|\d+|dos|tres|cuatro|cinco)\s+actas?/i],
+  },
+  {
+    caseId: "RAG-CRIT-007",
+    id: 7,
+    query: "¿Quién fue el presidente del acta del 24 de febrero de 2025?",
+    language: "es",
+    requiresSources: true,
+    allowClarification: false,
+    contentMatchers: [/Juan\s+Pérez\s+Gutiérrez/i],
+  },
+  {
+    caseId: "RAG-CRIT-008",
+    id: 8,
+    query: "¿Y la secretaria?",
+    language: "es",
+    requiresSources: true,
+    allowClarification: false,
+    followsCaseId: "RAG-CRIT-007",
+    contentMatchers: [/Rosa\s+Aguilar\s+Fernández/i],
+  },
+  {
+    caseId: "RAG-CRIT-009",
+    id: 9,
+    query: "¿Se habló de radiación solar?",
+    language: "es",
+    requiresSources: false,
+    allowClarification: false,
+    contentMatchers: [/no|sin evidencia|no se encontr|no consta|no hay|ningún|ninguna/i],
+    forbiddenMatchers: [/sí,?\s+se habló.*radiación solar/i],
+  },
+  {
+    caseId: "RAG-CRIT-010",
+    id: 10,
+    query: "Resume el acta del 25 de febrero de 2026.",
+    language: "es",
+    requiresSources: true,
+    allowClarification: false,
+    contentMatchers: [/25.*02.*2026|febrero.*2026/i, /17|diecisiete|asistent|19[:\s]?00|20[:\s]?30/i],
+    forbiddenMatchers: [/25 de agosto de 2026/i],
+  },
+  {
+    caseId: "RAG-CRIT-011",
+    id: 11,
+    query: "Número de actas registradas en el año 2028.",
+    language: "es",
+    requiresSources: false,
+    allowClarification: false,
+    contentMatchers: [/2028/i, /no exist|no hay|no se encontr|ninguna|ningún|cero|0 actas/i],
+    forbiddenMatchers: [/Se encontraron 2028 actas/i],
+  },
+  {
+    caseId: "RAG-CRIT-012",
+    id: 12,
+    query: "¿Quiénes fueron los asistentes del acta del 24 de febrero de 2025?",
+    language: "es",
+    requiresSources: true,
+    allowClarification: false,
+    contentMatchers: [/asistent|particip|20|veinte/i],
+  },
+];
+
+/** Principal source filenames must not duplicate in chat `sources[]`. */
+export function assertNoDuplicateSourceFilenames(sources: unknown[]): boolean {
+  if (!Array.isArray(sources) || sources.length <= 1) {
+    return true;
+  }
+  const names: string[] = [];
+  for (const row of sources) {
+    if (!row || typeof row !== "object") continue;
+    const rec = row as Record<string, unknown>;
+    const name = String(rec.filename ?? rec.fileName ?? rec.documentId ?? "").trim().toLowerCase();
+    if (!name) continue;
+    if (names.includes(name)) return false;
+    names.push(name);
+  }
+  return true;
+}
+
+export function assertRagCritTurnQuality(
+  turn: RagCritCaseDefinition,
+  assistant: MessageDto | undefined,
+  jobStatus: string,
+): GlobalAssertResult {
+  const base = assertGlobalTurnQuality(turn, assistant, jobStatus);
+  const answer = (assistant?.content ?? "").trim();
+  for (const re of turn.forbiddenMatchers ?? []) {
+    expect(answer, `${turn.caseId} forbidden ${re}`).not.toMatch(re);
+  }
+  if (turn.caseId === "RAG-CRIT-003") {
+    const dateHits = ["25/02/2025", "25/08/2025", "25/08/2026"].filter((d) => answer.includes(d));
+    expect(dateHits.length, `${turn.caseId} expected ≥2 end-after-20:30 dates`).toBeGreaterThanOrEqual(2);
+  }
+  if (turn.caseId === "RAG-CRIT-012") {
+    const sources = Array.isArray(assistant?.sources) ? assistant!.sources! : [];
+    expect(
+      assertNoDuplicateSourceFilenames(sources),
+      `${turn.caseId} duplicate source filenames`,
+    ).toBe(true);
+  }
+  return base;
+}
