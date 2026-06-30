@@ -771,13 +771,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
                 """, query, keyword, context.toString(), KEYWORD_VIGILANCIA);
             
             try {
-                String result = chatClient
-                        .prompt()
-                        .user(prompt)
-                        .call()
-                        .content()
-                        .strip()
-                        .toUpperCase();
+                String result = getLLMResponseCached("metadata-boolean-evidence", prompt).toUpperCase();
                 
                 // Validate response (YES/NO)
                 boolean isValid = result.contains("YES");

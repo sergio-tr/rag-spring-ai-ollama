@@ -4,6 +4,7 @@ import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.application.service.knowledge.document.DocumentService;
 import com.uniovi.rag.application.service.runtime.execution.QueryExecutionService;
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor;
 import org.springframework.ai.chat.client.ChatClient;
 
 import java.util.Map;
@@ -20,8 +21,16 @@ public final class ReferenceBundleMinuteEvaluationService extends AbstractMinute
             ChatClient chatClient,
             DocumentService documentService,
             QueryExecutionService queryService,
-            boolean cleanBeforeLoad) {
-        super(featureConfig, implementationProperties, chatClient, documentService, queryService, cleanBeforeLoad);
+            boolean cleanBeforeLoad,
+            EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor) {
+        super(
+                featureConfig,
+                implementationProperties,
+                chatClient,
+                documentService,
+                queryService,
+                cleanBeforeLoad,
+                evaluationJudgeLlmExecutor);
     }
 
 }

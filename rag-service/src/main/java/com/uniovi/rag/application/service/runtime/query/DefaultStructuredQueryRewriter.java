@@ -2,8 +2,10 @@ package com.uniovi.rag.application.service.runtime.query;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
+import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.domain.model.QueryType;
-import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
@@ -19,8 +21,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -28,10 +28,13 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final ChatClient chatClient;
+    private final ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
+    private final ConfigurablePromptResolver promptResolver;
 
-    public DefaultStructuredQueryRewriter(ChatClient chatClient) {
-        this.chatClient = chatClient;
+    public DefaultStructuredQueryRewriter(
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor, ConfigurablePromptResolver promptResolver) {
+        this.secondaryLlmExecutor = secondaryLlmExecutor;
+        this.promptResolver = promptResolver;
     }
 
     @Override
@@ -49,7 +52,7 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
         }
 
         try {
-            String prompt = buildPrompt(normalized, classifierLabel, classifierQueryType, classifierStatus, entities);
+            String prompt = buildPrompt(ctx, normalized, classifierLabel, classifierQueryType, classifierStatus, entities);
             String response = invokeRewriteModel(ctx, prompt);
             StructuredRewriteResult parsed = parse(response, normalized.normalizedText());
             return validateOrFallback(parsed, normalized, entities);
@@ -59,23 +62,18 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
     }
 
     private String invokeRewriteModel(ExecutionContext ctx, String userPrompt) {
-        var spec = chatClient.prompt()
-                .system("""
-                        You are a deterministic query rewriter.
-                        Return ONLY a JSON object. No markdown. No extra text.
-                        The response must start with { and end with }.
-                        """)
-                .user(userPrompt);
-
-        // Fixed low-temperature to reduce variance (when supported by the client/model).
-        OllamaOptions.Builder opt = OllamaOptions.builder().temperature(0.0);
-        ChatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(opt::model);
-        spec = spec.options(opt.build());
-        String out = spec.call().content();
-        return out == null ? "" : out.trim();
+        String system =
+                promptResolver.resolveSystem(ConfigurablePromptGroup.QUERY_REWRITE, ctx.userId(), ctx.projectId());
+        return secondaryLlmExecutor.complete(
+                ctx,
+                "query-rewrite",
+                system,
+                userPrompt,
+                ProviderAwareSecondaryLlmExecutor.SECONDARY_TASK_DEFAULT_TEMPERATURE);
     }
 
-    private static String buildPrompt(
+    private String buildPrompt(
+            ExecutionContext ctx,
             NormalizedQuery normalized,
             String classifierLabel,
             Optional<QueryType> classifierQueryType,
@@ -89,37 +87,9 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
         String topics = String.join(", ", entities.topics());
         String orgs = String.join(", ", entities.organizations());
 
-        return """
-                Rewrite the query in a constrained way.
-
-                INPUTS:
-                - normalizedText: "%s"
-                - classifierStatus: "%s"
-                - classifierLabel: "%s"
-                - classifierQueryType: "%s"
-                - extractedEntities:
-                  - dates: [%s]
-                  - people: [%s]
-                  - locations: [%s]
-                  - topics: [%s]
-                  - organizations: [%s]
-
-                OUTPUT JSON SCHEMA (all keys required; use empty lists/maps when absent):
-                {
-                  "rewrittenQueryText": "string",
-                  "targetEntities": ["string"],
-                  "targetAttributes": ["string"],
-                  "targetAction": "COUNT|LIST|FIND|EXPLAIN|SUMMARIZE|COMPARE|EXTRACT_FIELD|BOOLEAN_CHECK|UNKNOWN|null",
-                  "slotFilling": {"key":"value"},
-                  "constraints": ["string"]
-                }
-
-                CONSTRAINTS:
-                - rewrittenQueryText MUST preserve any temporal constraints and must not drop named entities present in inputs
-                - rewrittenQueryText MUST NOT introduce new named entities not present in inputs
-                - rewrittenQueryText MUST NOT exceed 1.5x input length and MUST NOT exceed input length + 300
-                - Do not invent missing constraints. If uncertain, leave fields empty and keep rewrittenQueryText close to input.
-                """.formatted(
+        String template =
+                promptResolver.resolve(ConfigurablePromptGroup.QUERY_REWRITE, ctx.userId(), ctx.projectId());
+        return template.formatted(
                 escape(normalized.normalizedText()),
                 classifierStatus,
                 escape(classifierLabel),

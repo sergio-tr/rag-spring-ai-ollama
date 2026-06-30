@@ -6,6 +6,7 @@ import com.uniovi.rag.infrastructure.web.SimpleMultipartFile;
 import com.uniovi.rag.application.service.knowledge.document.DocumentService;
 import com.uniovi.rag.application.service.runtime.execution.QueryExecutionService;
 
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.multipart.MultipartFile;
@@ -15,6 +16,25 @@ import java.io.FileInputStream;
 import java.io.IOException;
 
 public abstract class AbstractMinuteEvaluationService extends AbstractEvaluationService {
+
+    protected AbstractMinuteEvaluationService(
+        RagFeatureConfiguration featureConfig,
+        RagImplementationProperties implementationProperties,
+        ChatClient chatClient,
+        DocumentService documentService,
+        QueryExecutionService queryService,
+        boolean cleanBeforeLoad,
+        EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor
+    ) {
+        super(
+                featureConfig,
+                implementationProperties,
+                chatClient,
+                documentService,
+                queryService,
+                cleanBeforeLoad,
+                evaluationJudgeLlmExecutor);
+    }
 
     protected AbstractMinuteEvaluationService(
         RagFeatureConfiguration featureConfig,

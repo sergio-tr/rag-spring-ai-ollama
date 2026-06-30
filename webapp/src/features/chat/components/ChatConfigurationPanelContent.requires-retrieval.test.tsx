@@ -121,7 +121,9 @@ describe("ChatConfigurationPanelContent retrieval dependency", () => {
         setLlmModelChoice: vi.fn(),
         classifierModelChoice: "",
         setClassifierModelChoice: vi.fn(),
-        modelsCatalog: undefined,
+        selectableLlmModels: [],
+        selectableLlmModelsLoading: false,
+        selectableLlmModelsEffectiveProvider: undefined,
         modelsError: false,
         modelsErrorMessage: "",
         presetSelectValue: "",
@@ -162,9 +164,9 @@ describe("ChatConfigurationPanelContent retrieval dependency", () => {
       </QueryClientProvider>,
     );
 
-    await user.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    await user.click(screen.getByTestId("chat-config-edit-button"));
 
-    const ranker = screen.getByRole("checkbox", { name: /ranker/i });
+    const ranker = screen.getByTestId("chat-runtime-toggle-rankerEnabled");
     expect(ranker).toBeDisabled();
     const rankerRow = ranker.closest(".flex.flex-col");
     expect(rankerRow).not.toBeNull();

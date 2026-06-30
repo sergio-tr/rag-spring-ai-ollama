@@ -51,6 +51,7 @@ class MetadataFindParagraphToolTest {
         extractor = mock(DocumentContentExtractor.class);
         MetadataLlmResponseCacheService llmCache = mock(MetadataLlmResponseCacheService.class);
         when(llmCache.getCachedResponse(anyString())).thenReturn("");
+        when(llmCache.getCachedResponse(anyString(), anyString())).thenReturn("NONE");
         tool = new MetadataFindParagraphTool(chatClient, retriever, extractor, llmCache);
 
         MetadataMinuteDocumentService metadataService =

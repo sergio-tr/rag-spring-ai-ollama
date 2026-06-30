@@ -1,7 +1,11 @@
 package com.uniovi.rag.interfaces.rest.support;
 
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.application.exception.llm.LlmConfigurationException;
+import com.uniovi.rag.application.exception.llm.LlmRemoteFailures;
+import com.uniovi.rag.application.exception.llm.LlmTimeoutException;
 import com.uniovi.rag.domain.exception.ErrorCode;
+import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.interfaces.rest.support.dto.ApiErrorResponse;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.junit.jupiter.api.Test;
@@ -13,6 +17,62 @@ import java.net.ConnectException;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RagApiExceptionHandlerTest {
+
+    @Test
+    void handleLlmProvider_unauthorized_maps401AndEnvelope() {
+        RagApiExceptionHandler handler = new RagApiExceptionHandler();
+        var ex =
+                LlmRemoteFailures.unauthorized(
+                        LlmProvider.OPENAI_COMPATIBLE,
+                        "chat",
+                        "gpt-4o",
+                        "http://litellm:4000",
+                        401);
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRequestURI("/api/v5/conversations/x/messages");
+        var res = handler.handleLlmProvider(ex, req);
+        assertEquals(HttpStatus.UNAUTHORIZED, res.getStatusCode());
+        assertNotNull(res.getBody());
+        assertEquals(ErrorCode.LLM_UNAUTHORIZED.name(), res.getBody().code());
+        assertFalse(res.getBody().message().toLowerCase().contains("bearer"));
+        assertFalse(res.getBody().message().contains("sk-"));
+    }
+
+    @Test
+    void handleLlmProvider_timeout_maps504() {
+        RagApiExceptionHandler handler = new RagApiExceptionHandler();
+        var ex =
+                new LlmTimeoutException(
+                        LlmProvider.OPENAI_COMPATIBLE,
+                        "chat",
+                        "gpt-4o",
+                        "http://litellm:4000",
+                        30_000,
+                        null);
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRequestURI("/api/v5/conversations/x/messages");
+        var res = handler.handleLlmProvider(ex, req);
+        assertEquals(HttpStatus.GATEWAY_TIMEOUT, res.getStatusCode());
+        assertEquals(ErrorCode.LLM_TIMEOUT.name(), res.getBody().code());
+    }
+
+    @Test
+    void handleLlmProvider_configuration_maps422() {
+        RagApiExceptionHandler handler = new RagApiExceptionHandler();
+        var ex =
+                LlmConfigurationException.missingApiKeyEnv(
+                        LlmProvider.OPENAI_COMPATIBLE,
+                        "chat",
+                        "gpt-4o",
+                        "http://litellm:4000",
+                        "LITELLM_API_KEY");
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRequestURI("/api/v5/conversations/x/messages");
+        var res = handler.handleLlmProvider(ex, req);
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, res.getStatusCode());
+        assertEquals(ErrorCode.LLM_MISCONFIGURED.name(), res.getBody().code());
+        assertTrue(res.getBody().message().contains("LITELLM_API_KEY"));
+    }
 
     @Test
     void handleRagService_mapsToStatusAndEnvelope() {

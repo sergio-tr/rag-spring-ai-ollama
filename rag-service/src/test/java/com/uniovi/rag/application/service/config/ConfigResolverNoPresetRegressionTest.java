@@ -5,6 +5,7 @@ import com.uniovi.rag.application.port.ConfigurationSourcePort;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagReasoningProperties;
 import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -33,7 +34,7 @@ class ConfigResolverNoPresetRegressionTest {
         when(port.loadPresetProfileCompositionSources(any(), any())).thenReturn(Optional.empty());
 
         ConfigResolver resolver =
-                new ConfigResolver(featureConfig, reasoning, port, MAPPER, 10, 0.7, "chat-m", "embed-m");
+                new ConfigResolver(featureConfig, reasoning, port, MAPPER, new LlmProperties(), 10, 0.7);
 
         UUID user = UUID.randomUUID();
         UUID project = UUID.randomUUID();

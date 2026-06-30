@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.knowledge.KnowledgeBuildProjectionMapper;
 import com.uniovi.rag.domain.config.runtime.ResolvedConfigSnapshot;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
+import com.uniovi.rag.infrastructure.config.PromptBundleFingerprint;
 import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
 import com.uniovi.rag.interfaces.rest.dto.ResolvedConfigSnapshotResponse;
 import java.time.Instant;
@@ -123,7 +124,7 @@ public class ResolvedConfigSnapshotEntityMapper {
         ctx.messageId().ifPresent(e::setMessageId);
         ctx.jobId().ifPresent(e::setJobId);
         e.setProvenanceJsonb(
-                buildProvenanceJson(domainSnapshot, ctx.creatingUserId(), ctx.correlationId(), ctx.projectId()));
+                buildProvenanceJson(resolved, domainSnapshot, ctx.creatingUserId(), ctx.correlationId(), ctx.projectId()));
         return e;
     }
 
@@ -145,6 +146,7 @@ public class ResolvedConfigSnapshotEntityMapper {
     }
 
     private Map<String, Object> buildProvenanceJson(
+            ResolvedRuntimeConfig resolved,
             ResolvedConfigSnapshot domainSnapshot,
             UUID creatingUserId,
             Optional<String> correlationId,
@@ -155,6 +157,14 @@ public class ResolvedConfigSnapshotEntityMapper {
             if (fromDomain != null) {
                 prov.putAll(fromDomain);
             }
+        }
+        if (resolved != null) {
+            prov.putAll(
+                    PromptBundleFingerprint.computeForRuntime(
+                                    resolved.systemPromptLayers(),
+                                    resolved.effectiveSystemPrompt(),
+                                    null)
+                            .toProvenanceMap());
         }
         prov.put(PROVENANCE_SCHEMA_VERSION, SNAPSHOT_SCHEMA_VERSION);
         prov.put(PROVENANCE_CREATING_USER_ID, creatingUserId.toString());

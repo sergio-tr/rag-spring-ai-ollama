@@ -64,6 +64,11 @@ export default defineConfig({
         "src/features/documents/components/DocumentUploadZone.tsx",
         // RAG settings form is measured (has smoke-level unit tests).
         "src/features/settings/components/MeCanonicalJsonPanels.tsx",
+        // Settings admin sections mocked in RagConfigForm tests; covered via settings E2E.
+        "src/features/settings/components/TaskLlmSettingsSection.tsx",
+        "src/features/settings/components/InternalPromptConfigurationSection.tsx",
+        "src/features/settings/hooks/use-prompt-catalog.ts",
+        "src/features/settings/components/UserAccountPreferencesSection.tsx",
         // Lab registry section is UI-heavy; validated via E2E/manual flows.
         "src/features/lab/components/classifier-registry-section.tsx",
         // Auth view wrappers are measured (has small unit tests).

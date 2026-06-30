@@ -52,6 +52,7 @@ import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
+import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorDecision;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorExecutionResult;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorOutcome;
@@ -189,8 +190,37 @@ public class RagExecutionOrchestrator {
                         ExecutionStageOutcome.SUCCESS,
                         "qu_status=OK message=QueryUnderstandingPipeline completed"));
 
-        ClarificationDecision clarificationDecision = clarificationPolicyResolver.resolve(withPlan, plan);
         List<ExecutionStageTrace> clarifyAfterQu = new ArrayList<>();
+
+        if (conversationRecallGuard.shouldShortCircuit(withPlan)) {
+            ClarificationDecision guardSkipped =
+                    new ClarificationDecision(
+                            false, ClarificationOutcome.NOT_NEEDED, null, "recall_guard_before_clarification");
+            clarifyAfterQu.add(RagExecutionTraceSupport.clarificationPolicyStage(guardSkipped));
+            return finishConversationRecallShortCircuit(
+                    withPlan,
+                    clarifyBeforeQu,
+                    memoryBeforeQu,
+                    quStages,
+                    clarifyAfterQu,
+                    guardSkipped);
+        }
+
+        if (conversationRecallGuard.shouldShortCircuitAmbiguousActaQuery(withPlan)) {
+            ClarificationDecision guardSkipped =
+                    new ClarificationDecision(
+                            false, ClarificationOutcome.NOT_NEEDED, null, "ambiguous_acta_guard_before_clarification");
+            clarifyAfterQu.add(RagExecutionTraceSupport.clarificationPolicyStage(guardSkipped));
+            return finishAmbiguousActaShortCircuit(
+                    withPlan,
+                    clarifyBeforeQu,
+                    memoryBeforeQu,
+                    quStages,
+                    clarifyAfterQu,
+                    guardSkipped);
+        }
+
+        ClarificationDecision clarificationDecision = clarificationPolicyResolver.resolve(withPlan, plan);
         clarifyAfterQu.add(RagExecutionTraceSupport.clarificationPolicyStage(clarificationDecision));
 
         if (clarificationDecision.ask()) {
@@ -209,26 +239,6 @@ public class RagExecutionOrchestrator {
 
         if (clarificationDecision.terminalOutcome() == ClarificationOutcome.RESOLVED_FROM_PENDING) {
             clarificationStrategy.clearAfterResolved(withPlan.conversationId());
-        }
-
-        if (conversationRecallGuard.shouldShortCircuit(withPlan)) {
-            return finishConversationRecallShortCircuit(
-                    withPlan,
-                    clarifyBeforeQu,
-                    memoryBeforeQu,
-                    quStages,
-                    clarifyAfterQu,
-                    clarificationDecision);
-        }
-
-        if (conversationRecallGuard.shouldShortCircuitAmbiguousActaQuery(withPlan)) {
-            return finishAmbiguousActaShortCircuit(
-                    withPlan,
-                    clarifyBeforeQu,
-                    memoryBeforeQu,
-                    quStages,
-                    clarifyAfterQu,
-                    clarificationDecision);
         }
 
         RoutingSnapshot routing = resolveRoutingSnapshot(withPlan, plan);
@@ -959,6 +969,7 @@ public class RagExecutionOrchestrator {
                 selectExecutableWorkflow(effectiveCtx, workflowSelector.select(effectiveCtx));
         String wname = workflow.workflowName();
         RagExecutionContextHolder.set(toRagExecutionContextHolder(effectiveCtx));
+        RagSnapshotContextHolder.set(effectiveCtx.knowledgeSnapshotSelection().orderedSnapshotIds());
         try {
             RuntimeObservability obs = runtimeObservability != null ? runtimeObservability.getIfAvailable() : null;
             final int promptChars =
@@ -1028,6 +1039,7 @@ public class RagExecutionOrchestrator {
                     new ExecutionOutcome(judgedPartial, trace));
         } finally {
             RagExecutionContextHolder.clear();
+            RagSnapshotContextHolder.clear();
         }
     }
 
@@ -1390,13 +1402,7 @@ public class RagExecutionOrchestrator {
     }
 
     private static RagExecutionContext toRagExecutionContextHolder(ExecutionContext ctx) {
-        return new RagExecutionContext(
-                ctx.conversationId() != null ? ctx.conversationId().toString() : null,
-                ctx.userId() != null ? ctx.userId().toString() : null,
-                ctx.projectId() != null ? ctx.projectId().toString() : null,
-                ctx.resolved().toRagConfig(),
-                ctx.documentFilter(),
-                ctx.correlationId());
+        return RagExecutionContext.fromEngineContext(ctx);
     }
 
     private ExecutionOutcome executeIntegratedAdaptiveRoute(

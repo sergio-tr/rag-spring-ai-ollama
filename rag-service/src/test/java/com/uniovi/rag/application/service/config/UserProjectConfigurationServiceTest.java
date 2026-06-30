@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.config;
 
+import com.uniovi.rag.application.config.PromptTemplateValidator;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.RagConfigurationLevel;
 import com.uniovi.rag.domain.runtime.RagConfig;
@@ -44,6 +45,9 @@ class UserProjectConfigurationServiceTest {
 
     @Mock
     private ProjectAccessService projectAccessService;
+
+    @Mock
+    private PromptTemplateValidator promptTemplateValidator;
 
     @InjectMocks
     private UserProjectConfigurationService service;

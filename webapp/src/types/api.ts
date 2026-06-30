@@ -534,7 +534,7 @@ export type ExperimentalPresetCatalogItemDto = {
   requiresSnapshot?: boolean;
   requiresProjectDocuments?: boolean;
   singleTurnBenchmarkSelectable?: boolean;
-  /** P0=0 … P14=14 */
+  /** P0=0 … P15=15 */
   protocolStageIndex?: number;
   parentPresetCode?: string | null;
   /** Canonical terminal runtime JSON (Lab + Chat overlay). */
@@ -813,7 +813,81 @@ export type SelectableModelDto = {
   lastCheckedAt: string | null;
 };
 
-/** GET `{product}/model-registry` — curated demo LLM/embedding targets + Ollama presence (no allowlist writes). */
+/** GET `{product}/me/llm/selectable-models` — user-scoped chat models from properties catalog. */
+export type LlmCatalogRuntimeStatus =
+  | "UNKNOWN"
+  | "CONFIGURED"
+  | "NOT_PROBED"
+  | "AVAILABLE"
+  | "UNAVAILABLE"
+  | "PROBE_FAILED";
+
+export type LlmProvider = "OLLAMA_NATIVE" | "OPENAI_COMPATIBLE";
+
+export type MeSelectableLlmModelDto = {
+  modelName: string;
+  displayName: string;
+  selectable: boolean;
+  disabledReason: string | null;
+  disabledReasonCode: string | null;
+  usableAsDefault: boolean;
+  runtimeStatus: LlmCatalogRuntimeStatus;
+};
+
+export type MeSelectableLlmModelsResponse = {
+  effectiveProvider: LlmProvider;
+  capability: "CHAT" | "EMBEDDING";
+  models: MeSelectableLlmModelDto[];
+};
+
+/** GET `{product}/llm/catalog` — properties-backed model catalog with optional runtime status. */
+export type LlmCatalogSource =
+  | "PROPERTIES"
+  | "CONFIGURED_CATALOG"
+  | "LITELLM_CONFIGURED"
+  | "OLLAMA_LIVE"
+  | "UNKNOWN";
+
+export type LlmModelCapability = "CHAT" | "EMBEDDING";
+
+export type LlmCatalogModelDto = {
+  provider: LlmProvider;
+  modelName: string;
+  displayName?: string | null;
+  capability: LlmModelCapability;
+  configured?: boolean;
+  available: boolean;
+  selectableByUser: boolean;
+  usableAsDefault: boolean;
+  runtimeStatus: LlmCatalogRuntimeStatus;
+  runtimeDetail: string | null;
+  embeddingDimensions: number | null;
+  compatibleWithCurrentVectorStore: boolean | null;
+  source: LlmCatalogSource;
+};
+
+export type LlmCatalogResponse = {
+  models: LlmCatalogModelDto[];
+};
+
+/** GET `{product}/lab/evaluation-models` — Lab evaluation model picker from properties catalog. */
+export type LabEvaluationModelDto = {
+  modelName: string;
+  evalSelectable: boolean;
+  blockedReason: string | null;
+  blockedReasonCode: string | null;
+  runtimeStatus: LlmCatalogRuntimeStatus;
+  embeddingDimensions: number | null;
+  compatibleWithCurrentVectorStore: boolean | null;
+  usableAsDefault: boolean;
+};
+
+export type LabEvaluationModelsResponse = {
+  effectiveProvider: LlmProvider;
+  capability: LlmModelCapability;
+  models: LabEvaluationModelDto[];
+  hasCompatibleEmbeddingModels: boolean;
+};
 export type ModelRegistryAvailabilityStatus = "AVAILABLE" | "MISSING" | "ERROR";
 
 export type ModelRegistryItemDto = {

@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.testsupport.config.TestConfigurablePromptResolver;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -17,6 +18,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import org.springframework.ai.chat.client.ChatClient;
 
 import com.uniovi.rag.configuration.RagRuntimeProperties;
@@ -30,21 +33,26 @@ class FullCorpusWorkflowGroundingTest {
 
     @Test
     void documentaryQuestionWithoutContext_returnsControlledInsufficientMessage() {
-        ChatClient client = ChatClientTestSupport.clientWithUserPromptReturning("LLM should not answer this");
+        RagLlmChatInvoker invoker = RagLlmChatInvokerTestSupport.stubContent("LLM should not answer this");
         SnapshotCorpusAssembler assembler = mock(SnapshotCorpusAssembler.class);
         when(assembler.assembleFullCorpusText(any())).thenReturn("");
-        FullCorpusWorkflow workflow = new FullCorpusWorkflow(client, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), null);
+        FullCorpusWorkflow workflow =
+                new FullCorpusWorkflow(invoker, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         var out = workflow.execute(ctxWithQuery("¿Cuántas actas mencionan el ascensor?"));
-        assertThat(out.answerText()).isEqualTo(RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES);
+        assertThat(out.answerText())
+                .isIn(
+                        RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES,
+                        RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_EN);
     }
 
     @Test
     void documentaryQuestionWithContext_allowsNormalLlmAnswer() {
-        ChatClient client = ChatClientTestSupport.clientWithUserPromptReturning("Hay una acta que lo menciona.");
+        RagLlmChatInvoker invoker = RagLlmChatInvokerTestSupport.stubContent("Hay una acta que lo menciona.");
         SnapshotCorpusAssembler assembler = mock(SnapshotCorpusAssembler.class);
         when(assembler.assembleFullCorpusText(any())).thenReturn("ACTA 1: ... ascensor ...");
-        FullCorpusWorkflow workflow = new FullCorpusWorkflow(client, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), null);
+        FullCorpusWorkflow workflow =
+                new FullCorpusWorkflow(invoker, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         var out = workflow.execute(ctxWithQuery("¿Cuántas actas mencionan el ascensor?"));
         assertThat(out.answerText()).isEqualTo("Hay una acta que lo menciona.");
@@ -52,10 +60,11 @@ class FullCorpusWorkflowGroundingTest {
 
     @Test
     void generalQuestionWithoutCorpus_skipsLlm_andReturnsInsufficientDocumentMessage() {
-        ChatClient client = ChatClientTestSupport.clientWithUserPromptReturning("Buenos dias");
+        RagLlmChatInvoker invoker = RagLlmChatInvokerTestSupport.stubContent("Buenos dias");
         SnapshotCorpusAssembler assembler = mock(SnapshotCorpusAssembler.class);
         when(assembler.assembleFullCorpusText(any())).thenReturn("");
-        FullCorpusWorkflow workflow = new FullCorpusWorkflow(client, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), null);
+        FullCorpusWorkflow workflow =
+                new FullCorpusWorkflow(invoker, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         var out = workflow.execute(ctxWithQuery("buenos dias"));
         assertThat(out.answerText())

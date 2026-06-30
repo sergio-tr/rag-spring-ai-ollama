@@ -163,11 +163,12 @@ class AbstractMetadataToolPrivateLogicTest {
 
     private static AbstractMetadataTool tool() {
         ChatClient chatClient = ChatClientTestSupport.mockForUserPromptChain();
-        ChatClientTestSupport.stubUserPromptReturns(chatClient, "NO");
         ContextRetriever retriever = mock(ContextRetriever.class);
         DocumentContentExtractor extractor = mock(DocumentContentExtractor.class);
         MetadataLlmResponseCacheService llmCache = mock(MetadataLlmResponseCacheService.class);
         when(llmCache.getCachedResponse(ArgumentMatchers.anyString())).thenReturn("");
+        when(llmCache.getCachedResponse(ArgumentMatchers.anyString(), ArgumentMatchers.anyString()))
+                .thenReturn("NO");
         return new MetadataCountDocumentsTool(chatClient, retriever, extractor, llmCache);
     }
 }

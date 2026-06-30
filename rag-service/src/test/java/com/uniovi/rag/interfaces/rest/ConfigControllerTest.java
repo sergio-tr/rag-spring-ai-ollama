@@ -2,7 +2,9 @@ package com.uniovi.rag.interfaces.rest;
 
 
 import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
+import com.uniovi.rag.application.config.ConfigurablePromptCatalogService;
 import com.uniovi.rag.application.config.ConfigurationSchemaProvider;
+import com.uniovi.rag.application.config.TaskLlmCatalogService;
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
@@ -38,11 +40,19 @@ class ConfigControllerTest {
     @MockitoBean
     private ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
 
+    @MockitoBean
+    private ConfigurablePromptCatalogService configurablePromptCatalogService;
+
+    @MockitoBean
+    private TaskLlmCatalogService taskLlmCatalogService;
+
     @Test
     void schema_returnsVersionAndFields() throws Exception {
         mockMvc.perform(get(path("/config/schema")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(1))
-                .andExpect(jsonPath("$.fields[0].key").exists());
+                .andExpect(jsonPath("$.fields[0].key").value("llmSystemPrompt"))
+                .andExpect(jsonPath("$.fields[0].type").value("text"))
+                .andExpect(jsonPath("$.fields[0].max").value(50_000));
     }
 }

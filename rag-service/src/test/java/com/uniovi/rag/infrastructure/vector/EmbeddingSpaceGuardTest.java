@@ -24,7 +24,42 @@ import static org.mockito.Mockito.when;
 class EmbeddingSpaceGuardTest {
 
     @Mock
-    private OllamaEmbeddingModelFactory embeddingModelFactory;
+    private ProviderAwareEmbeddingModelFactory embeddingModelFactory;
+
+    @Test
+    void embeddingGuardRejects4096VectorFor1024Store() {
+        assertFitsPhysicalVectorColumnReturning_throwsWhenModelOutputWidthDiffersFromStore();
+    }
+
+    @Test
+    void embeddingGuardAccepts1024VectorFor1024Store() {
+        assertFitsPhysicalVectorColumnReturning_returnsWidthWhenModelMatchesStore();
+    }
+
+    @Test
+    void embeddingGuardDoesNotProbeOllamaWhenProviderIsOpenAiCompatible() {
+        when(embeddingModelFactory.forModel("qwen3-embedding:8b")).thenReturn(new FixedWidthEmbeddingModel(1024));
+        RagVectorProperties props = new RagVectorProperties(1024, true);
+        EmbeddingSpaceGuard guard = new EmbeddingSpaceGuard(embeddingModelFactory, props);
+        assertThat(guard.assertFitsPhysicalVectorColumnReturning("qwen3-embedding:8b")).isEqualTo(1024);
+    }
+
+    @Test
+    void embeddingGuardReportsModelProviderExpectedAndActualDimensions() {
+        when(embeddingModelFactory.forModel("wide-model")).thenReturn(new FixedWidthEmbeddingModel(4096));
+        RagVectorProperties props = new RagVectorProperties(1024, true);
+        EmbeddingSpaceGuard guard = new EmbeddingSpaceGuard(embeddingModelFactory, props);
+
+        assertThatThrownBy(() -> guard.assertFitsPhysicalVectorColumnReturning("wide-model"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex -> {
+                            ResponseStatusException r = (ResponseStatusException) ex;
+                            assertThat(r.getReason()).contains("4096");
+                            assertThat(r.getReason()).contains("1024");
+                            assertThat(r.getReason()).contains("EMBEDDING_DIMENSION_MISMATCH");
+                        });
+    }
 
     @Test
     void assertFitsPhysicalVectorColumnReturning_throwsWhenModelOutputWidthDiffersFromStore() {

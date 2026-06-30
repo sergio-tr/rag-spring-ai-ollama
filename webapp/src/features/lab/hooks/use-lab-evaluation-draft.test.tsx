@@ -35,7 +35,7 @@ function validation(overrides: Partial<UseLabEvaluationDraftValidationInput> = {
     allDatasetRows: [],
     datasetsFetched: true,
     availableLlmModelIds: ["llama3.1"],
-    availableEmbeddingModelIds: ["mxbai-embed-large"],
+    availableEmbeddingModelIds: ["nomic-embed-text"],
     catalogPresetCodes: ["P0", "P1"],
     presetsCatalogReady: true,
     ...overrides,
@@ -56,7 +56,7 @@ describe("useLabEvaluationDraft", () => {
         explicitDraftClear: false,
         llmModelId: "llama3.1",
         llmModelIds: [],
-        embeddingModelId: "mxbai-embed-large",
+        embeddingModelId: "nomic-embed-text",
         embeddingModelIds: [],
         embeddingDownstreamRag: false,
         selectedExperimentalPresetCodes: ["P0", "P1"],
@@ -77,7 +77,7 @@ describe("useLabEvaluationDraft", () => {
     );
 
     expect(result.current.draft.datasetId).toBe("ds-1");
-    expect(result.current.draft.embeddingModelId).toBe("mxbai-embed-large");
+    expect(result.current.draft.embeddingModelId).toBe("nomic-embed-text");
     expect(result.current.draft.selectedExperimentalPresetCodes).toEqual(["P0", "P1"]);
     expect(result.current.draft.followMode).toBe("sse");
     expect(result.current.warnings.presetsUnknown).toEqual([]);
@@ -126,12 +126,12 @@ describe("useLabEvaluationDraft", () => {
     act(() => {
       result.current.resetToRecommended({
         datasetId: "ds-known",
-        embeddingModelId: "mxbai-embed-large",
+        embeddingModelId: "nomic-embed-text",
         selectedExperimentalPresetCodes: ["P0"],
       });
     });
     expect(result.current.draft.explicitDraftClear).toBe(false);
-    expect(result.current.draft.embeddingModelId).toBe("mxbai-embed-large");
+    expect(result.current.draft.embeddingModelId).toBe("nomic-embed-text");
     expect(result.current.warnings.embeddingModelInvalid).toBe(false);
   });
 });

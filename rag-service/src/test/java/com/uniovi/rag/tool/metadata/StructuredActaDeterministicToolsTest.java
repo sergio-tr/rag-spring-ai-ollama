@@ -69,6 +69,7 @@ class StructuredActaDeterministicToolsTest {
         extractor = mock(DocumentContentExtractor.class);
         llmCache = mock(MetadataLlmResponseCacheService.class);
         when(llmCache.getCachedResponse(anyString())).thenReturn("");
+        when(llmCache.getCachedResponse(anyString(), anyString())).thenReturn("");
         when(retriever.retrieve(anyString())).thenAnswer(inv -> allDocs());
         when(retriever.retrieveWithMetadataFilters(anyString(), any(JSONObject.class)))
                 .thenAnswer(inv -> allDocs());

@@ -2,13 +2,14 @@
 
 Query-type classification service for the RAG backend. It exposes an HTTP API used by the RAG service to classify user questions (e.g. `COUNT_DOCUMENTS`, `SUMMARIZE_MEETING`).
 
-**Target architecture (frozen model):** [Classifier System](../docs/architecture/target-architecture.md).
+**Target architecture (frozen model):** [Classifier System](../docs/architecture/target-architecture.md).  
+**Default model status:** [Classifier status freeze](../docs/research/classifier-status-freeze.md) (sklearn C3 default).
 
 ## Architecture
 
 - **Domain models** (`app/models/`): `ClassificationResult`, `ModelMetadata`, `TrainingResult`, `ErrorDetail` — value objects for responses and errors.
 - **Exceptions** (`app/exceptions.py`): `ValidationError` (400), `ModelNotFoundError` (404), `ClassificationError` (503), `TrainingError` (500).
-- **Inference** (`app/inference/`): `ModelLoader` (loads and caches Keras model + labels), `InferenceEngine` (runs prediction).
+- **Inference** (`app/inference/`): `ModelLoader` (loads and caches sklearn or Keras model + labels per `metadata.json`), `InferenceEngine` (runs prediction).
 - **Registry** (`app/registry/`): `ModelRegistry` (list models, resolve paths, register trained models).
 - **Training** (`app/training/`): `TrainingPipeline` (Excel → train → save → register).
 - **Evaluation** (`app/evaluation/`): `EvaluationPipeline` (metrics + classification report and confusion matrix PNGs), `EvaluationResult`.
@@ -48,7 +49,7 @@ These were moved from `rag-service/src/main/resources/python/` and are the singl
 
 ```bash
 pip install -r requirements.txt
-# Ensure models/default/model.keras and models/default/labels.txt exist
+# Ensure models/default/model.joblib (sklearn default) or model.keras and models/default/labels.txt exist
 uvicorn uvicorn_entry:app --host 0.0.0.0 --port 8000
 ```
 
@@ -69,7 +70,7 @@ The RAG backend is configured via `RAG_CLASSIFIER_SERVICE_URL` (default `http://
 | `MODELS_DIR` | models | Directory for default and trained models. |
 | `DATA_DIR` | data | Directory for default datasets. |
 | `DEFAULT_MODEL_ID` | default | Model id used when none is specified. |
-| `MODEL_PATH` | `{MODELS_DIR}/default/model.keras` | Default model file. |
+| `MODEL_PATH` | `{MODELS_DIR}/default/model.joblib` | Default model file (sklearn `model.joblib` or Keras `model.keras`; see `metadata.json`). |
 | `LABELS_PATH` | `{MODELS_DIR}/default/labels.txt` | Default labels file. |
 
 ## Tests

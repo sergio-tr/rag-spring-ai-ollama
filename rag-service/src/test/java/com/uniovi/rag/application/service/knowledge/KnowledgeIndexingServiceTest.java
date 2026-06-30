@@ -4,6 +4,7 @@ import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.domain.knowledge.DocumentArtifactType;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.infrastructure.persistence.DocumentArtifactRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.DocumentArtifactEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
@@ -17,6 +18,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -60,6 +62,23 @@ class KnowledgeIndexingServiceTest {
         return mock(JdbcTemplate.class, answer);
     }
 
+    private static EmbeddingIndexCompatibilityService noopCompatibilityService() {
+        EmbeddingIndexCompatibilityService svc = mock(EmbeddingIndexCompatibilityService.class);
+        lenient().doNothing().when(svc).assertIndexingCompatible(any());
+        lenient()
+                .when(svc.enrichIndexProfile(any()))
+                .thenAnswer(
+                        inv -> {
+                            Map<String, Object> base = inv.getArgument(0);
+                            Map<String, Object> enriched = new LinkedHashMap<>(base != null ? base : Map.of());
+                            enriched.putIfAbsent(IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY, "mxbai-embed-large");
+                            enriched.putIfAbsent(
+                                    IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY, LlmProvider.OLLAMA_NATIVE.name());
+                            return enriched;
+                        });
+        return svc;
+    }
+
     private static KnowledgeIndexingService sutWithRegistry(
             PgVectorStore vectorStore,
             JdbcTemplate jdbcTemplate,
@@ -76,7 +95,8 @@ class KnowledgeIndexingServiceTest {
                 storagePort,
                 artifactRepo,
                 defaultEmbeddingGuard(),
-                metadataMinuteDocumentService);
+                metadataMinuteDocumentService,
+                noopCompatibilityService());
     }
 
     private static MetadataMinuteDocumentService metadataServiceReturningEmpty() {
@@ -542,7 +562,7 @@ class KnowledgeIndexingServiceTest {
         PgVectorStoreRegistry reg = mock(PgVectorStoreRegistry.class);
         when(reg.forEmbeddingModelId(anyString())).thenReturn(vectorStore);
         KnowledgeIndexingService sut = new KnowledgeIndexingService(
-                reg, jdbcTemplate, ingestionService, storagePort, artifactRepo, guard, metadataServiceReturningEmpty());
+                reg, jdbcTemplate, ingestionService, storagePort, artifactRepo, guard, metadataServiceReturningEmpty(), noopCompatibilityService());
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -592,7 +612,7 @@ class KnowledgeIndexingServiceTest {
         PgVectorStoreRegistry reg = mock(PgVectorStoreRegistry.class);
         when(reg.forEmbeddingModelId(anyString())).thenReturn(vectorStore);
         KnowledgeIndexingService sut = new KnowledgeIndexingService(
-                reg, jdbcTemplate, ingestionService, storagePort, artifactRepo, guard, metadataServiceReturningEmpty());
+                reg, jdbcTemplate, ingestionService, storagePort, artifactRepo, guard, metadataServiceReturningEmpty(), noopCompatibilityService());
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);

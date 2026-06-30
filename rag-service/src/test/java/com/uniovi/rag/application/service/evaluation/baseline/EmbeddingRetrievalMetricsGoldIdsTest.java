@@ -35,6 +35,13 @@ class EmbeddingRetrievalMetricsGoldIdsTest {
     }
 
     @Test
+    void ndcgAt5_isOne_whenFirstRetrievedMatchesGold() {
+        List<String> retrieved = List.of("GOLD", "OTHER");
+        Set<String> gold = Set.of("GOLD");
+        assertThat(EmbeddingRetrievalMetrics.ndcgAtNByIds(retrieved, gold, 5)).isEqualTo(1.0);
+    }
+
+    @Test
     void emptyGoldOrRetrieved_yieldsZeros() {
         assertThat(EmbeddingRetrievalMetrics.recallAtKByIds(List.of(), Set.of("A"))).isEqualTo(0.0);
         assertThat(EmbeddingRetrievalMetrics.recallAtKByIds(List.of("A"), Set.of())).isEqualTo(0.0);

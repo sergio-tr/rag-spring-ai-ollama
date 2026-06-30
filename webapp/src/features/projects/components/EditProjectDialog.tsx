@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { usePatchProject } from "@/features/projects/hooks/use-projects";
 import { cn } from "@/lib/utils";
 import type { ProjectSummary } from "@/types/api";
+import Link from "next/link";
 
 const PROJECT_ICONS = [
   "folder",
@@ -36,6 +37,7 @@ const PROJECT_ICONS = [
 const schema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().max(4000).optional(),
+  projectPrompt: z.string().max(50_000).optional(),
   colorHex: z
     .string()
     .optional()
@@ -51,6 +53,7 @@ type EditProjectDialogProps = {
 
 export function EditProjectDialog({ project }: EditProjectDialogProps) {
   const t = useTranslations("Projects");
+  const tSettings = useTranslations("Settings");
   const [open, setOpen] = useState(false);
   const patch = usePatchProject();
 
@@ -59,6 +62,7 @@ export function EditProjectDialog({ project }: EditProjectDialogProps) {
     defaultValues: {
       name: project.name,
       description: project.description ?? "",
+      projectPrompt: project.projectPrompt ?? "",
       colorHex: project.colorHex ?? "#6b7280",
       iconKey: project.iconKey ?? "",
     },
@@ -68,10 +72,11 @@ export function EditProjectDialog({ project }: EditProjectDialogProps) {
     form.reset({
       name: project.name,
       description: project.description ?? "",
+      projectPrompt: project.projectPrompt ?? "",
       colorHex: project.colorHex ?? "#6b7280",
       iconKey: project.iconKey ?? "",
     });
-  }, [project.id, project.name, project.description, project.colorHex, project.iconKey, form]);
+  }, [project.id, project.name, project.description, project.projectPrompt, project.colorHex, project.iconKey, form]);
 
   async function onSubmit(values: FormValues) {
     try {
@@ -79,6 +84,7 @@ export function EditProjectDialog({ project }: EditProjectDialogProps) {
         id: project.id,
         name: values.name,
         description: values.description || null,
+        projectPrompt: values.projectPrompt?.trim() || null,
         colorHex: values.colorHex || undefined,
         iconKey: values.iconKey?.trim() || undefined,
       });
@@ -112,6 +118,17 @@ export function EditProjectDialog({ project }: EditProjectDialogProps) {
             <Label htmlFor={`edit-proj-desc-${project.id}`}>{t("description")}</Label>
             <Input id={`edit-proj-desc-${project.id}`} {...form.register("description")} />
           </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor={`edit-proj-prompt-${project.id}`}>{tSettings("projectPromptLabel")}</Label>
+            <p className="text-muted-foreground text-xs">{tSettings("projectPromptHint")}</p>
+            <textarea
+              id={`edit-proj-prompt-${project.id}`}
+              data-testid="edit-project-prompt"
+              className="border-input bg-background min-h-24 w-full rounded-md border px-3 py-2 text-sm"
+              maxLength={50_000}
+              {...form.register("projectPrompt")}
+            />
+          </div>
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor={`edit-proj-color-${project.id}`}>{t("projectColor")}</Label>
@@ -143,6 +160,12 @@ export function EditProjectDialog({ project }: EditProjectDialogProps) {
               {form.formState.errors.colorHex.message}
             </p>
           )}
+          <p className="text-muted-foreground text-xs">
+            {t("editModelConfigHint")}{" "}
+            <Link href="/settings/project" className="text-primary underline-offset-4 hover:underline">
+              {t("editModelConfigAction")}
+            </Link>
+          </p>
           {patch.isError && (
             <p className="text-destructive text-sm" role="alert">
               {t("editError")}

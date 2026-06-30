@@ -1,33 +1,52 @@
 package com.uniovi.rag.application.service.runtime.judge;
 
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
+import com.uniovi.rag.application.config.ConfigurablePromptRuntimeSupport;
+import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.application.service.runtime.RuntimePromptBudgeter;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.judge.JudgeEvaluation;
 import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
 public class JudgeEvaluator {
 
-    private final ChatClient chatClient;
+    public static final String OPERATION_RUNTIME_JUDGE = "runtime-judge";
+
+    private final ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
     private final RuntimePromptBudgeter promptBudgeter;
+    private final ConfigurablePromptResolver promptResolver;
 
-    public JudgeEvaluator(ChatClient chatClient, RuntimePromptBudgeter promptBudgeter) {
-        this.chatClient = chatClient;
+    public JudgeEvaluator(
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor,
+            RuntimePromptBudgeter promptBudgeter,
+            ConfigurablePromptResolver promptResolver) {
+        this.secondaryLlmExecutor = secondaryLlmExecutor;
         this.promptBudgeter = promptBudgeter;
-    }
-
-    public JudgeEvaluation evaluate(String queryText, String candidateAnswerText, boolean retryAllowed) {
-        return evaluate(queryText, candidateAnswerText, "", retryAllowed);
+        this.promptResolver = promptResolver;
     }
 
     public JudgeEvaluation evaluate(
-            String queryText, String candidateAnswerText, String contextText, boolean retryAllowed) {
+            ExecutionContext ctx, String queryText, String candidateAnswerText, boolean retryAllowed) {
+        return evaluate(ctx, queryText, candidateAnswerText, "", retryAllowed);
+    }
+
+    public JudgeEvaluation evaluate(
+            ExecutionContext ctx,
+            String queryText,
+            String candidateAnswerText,
+            String contextText,
+            boolean retryAllowed) {
+        Objects.requireNonNull(ctx, "ctx");
         long startNanos = System.nanoTime();
         try {
             RuntimePromptBudgeter.BudgetResult budget =
@@ -42,8 +61,15 @@ public class JudgeEvaluator {
                                     "judge_context", contextText, 6_000, "default_judge_max_context_chars");
             String prompt =
                     buildPrompt(
-                            queryText, budget.textUsed(), contextBudget.textUsed(), retryAllowed);
-            String raw = chatClient.prompt().user(prompt).call().content();
+                            ctx, queryText, budget.textUsed(), contextBudget.textUsed(), retryAllowed);
+            String raw =
+                    secondaryLlmExecutor.complete(
+                            ctx,
+                            OPERATION_RUNTIME_JUDGE,
+                            null,
+                            prompt,
+                            ProviderAwareSecondaryLlmExecutor.SECONDARY_TASK_DEFAULT_TEMPERATURE);
+            ResolvedLlmConfig config = secondaryLlmExecutor.effectiveConfig(ctx);
             JudgeOutcome o = parseOutcome(raw, retryAllowed);
             String feedback = extractFeedback(raw);
             return new JudgeEvaluation(
@@ -60,7 +86,13 @@ public class JudgeEvaluator {
                                             + " truncated="
                                             + budget.truncated()
                                             + " contextChars="
-                                            + contextBudget.originalChars())));
+                                            + contextBudget.originalChars()
+                                            + " operation="
+                                            + OPERATION_RUNTIME_JUDGE
+                                            + " provider="
+                                            + config.chatProvider()
+                                            + " model="
+                                            + config.chatModel())));
         } catch (Exception e) {
             return new JudgeEvaluation(
                     JudgeOutcome.FAILED_SAFE,
@@ -75,44 +107,20 @@ public class JudgeEvaluator {
         }
     }
 
-    private static String buildPrompt(
-            String queryText, String candidateAnswerText, String contextText, boolean retryAllowed) {
-        String retryLine = retryAllowed
-                ? "If the answer is not acceptable, output RETRY_REQUESTED."
-                : "If the answer is not acceptable, output REJECTED_NO_RETRY.";
+    private String buildPrompt(
+            ExecutionContext ctx,
+            String queryText,
+            String candidateAnswerText,
+            String contextText,
+            boolean retryAllowed) {
+        String retryLine = ConfigurablePromptRuntimeSupport.retryPolicyLine(promptResolver, ctx, retryAllowed);
         String contextBlock =
                 contextText == null || contextText.isBlank()
-                        ? "(No retrieved context supplied.)"
+                        ? RuntimeJudgePromptSources.EMPTY_CONTEXT_PLACEHOLDER
                         : contextText;
-        return """
-                You are a post-answer judge for a RAG assistant.
-
-                Question:
-                %s
-
-                Retrieved context (verify support only; do not invent facts beyond this):
-                %s
-
-                Candidate answer:
-                %s
-
-                Decide one label:
-                - ACCEPTED
-                - REJECTED_NO_RETRY
-                - RETRY_REQUESTED
-
-                Rules:
-                - Output exactly one label on the first line.
-                - %s
-                - If the answer is acceptable and supported by the retrieved context, output ACCEPTED.
-                - Reject incomplete participant lists, unsupported positive claims, and wrong dates.
-                - Do not reject validated deterministic tool/metadata answers that directly answer the question.
-                - Do not replace a correct answer with "no consta" or hedging disclaimers.
-                - If the answer contains unsupported claims or is clearly incorrect, use REJECTED or RETRY; never hallucinate missing facts.
-                - Prefer ACCEPTED when the answer is grounded in context, even if brief.
-
-                Optionally include feedback after the first line starting with "FEEDBACK:".
-                """.formatted(
+        String template =
+                promptResolver.resolve(ConfigurablePromptGroup.RUNTIME_JUDGE, ctx.userId(), ctx.projectId());
+        return template.formatted(
                 queryText == null ? "" : queryText,
                 contextBlock,
                 candidateAnswerText == null ? "" : candidateAnswerText,
@@ -151,4 +159,3 @@ public class JudgeEvaluator {
         return (System.nanoTime() - startNanos) / 1_000_000L;
     }
 }
-

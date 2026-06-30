@@ -35,6 +35,7 @@ def test_load_model_with_vocab_fix_repairs_latin1_vocab_and_retries(monkeypatch,
     # Write a .keras zip with latin-1 bytes that are invalid utf-8.
     _write_keras_zip(model_path, "áéíóú\n".encode("latin-1"))
     labels_path.write_text("COUNT_DOCUMENTS\n")
+    (default_dir / "metadata.json").write_text('{"modelType":"keras"}', encoding="utf-8")
 
     monkeypatch.setenv("MODELS_DIR", str(models_dir))
     monkeypatch.setenv("DEFAULT_MODEL_ID", "default")
@@ -52,10 +53,10 @@ def test_load_model_with_vocab_fix_repairs_latin1_vocab_and_retries(monkeypatch,
     monkeypatch.setattr(model_loader_mod.tf.keras.models, "load_model", _fake_load_model)
 
     loader = ModelLoader(config=Config())
-    model, class_names = loader.load_by_id("default")
+    loaded = loader.load_by_id("default")
 
-    assert model is not None
-    assert class_names == ["COUNT_DOCUMENTS"]
+    assert loaded.artifact is not None
+    assert loaded.class_names == ["COUNT_DOCUMENTS"]
     assert calls["count"] == 2  # initial failure + retry after vocab fix
 
     # Confirm vocab files are now utf-8 decodable.
@@ -75,6 +76,7 @@ def test_load_model_with_vocab_fix_does_not_swallow_unrelated_value_error(monkey
     labels_path = default_dir / "labels.txt"
     _write_keras_zip(model_path, b"ok\n")
     labels_path.write_text("COUNT_DOCUMENTS\n")
+    (default_dir / "metadata.json").write_text('{"modelType":"keras"}', encoding="utf-8")
 
     monkeypatch.setenv("MODELS_DIR", str(models_dir))
     monkeypatch.setenv("DEFAULT_MODEL_ID", "default")

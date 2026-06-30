@@ -39,7 +39,7 @@ The workflow [`.github/workflows/integration.yml`](../../.github/workflows/integ
 - `INTEGRATION_CHECK_OBS=0` (no Jaeger/Prometheus/Grafana assertions in this job).
 - `INTEGRATION_BACKEND_URL=http://127.0.0.1:9000` and optional admin credentials for `TestBackendAdminApi`.
 
-**Classifier:** the standard integration job is backend-focused and may leave classifier checks optional. The classifier-required CI lane and the local closure lane set `INTEGRATION_STRICT=1` and `INTEGRATION_REQUIRE_CLASSIFIER=1`, so classifier reachability cannot become a skip-only false green. `INTEGRATION_REQUIRE_CLASSIFIER_MODEL=1` is the stricter mode that also requires `/health` to report a loaded Keras model before `/classify` assertions. The local closure lane defaults to that stricter mode; CI may keep it at `0` when it only wants classifier-service reachability.
+**Classifier:** the standard integration job is backend-focused and may leave classifier checks optional. The classifier-required CI lane and the local closure lane set `INTEGRATION_STRICT=1` and `INTEGRATION_REQUIRE_CLASSIFIER=1`, so classifier reachability cannot become a skip-only false green. `INTEGRATION_REQUIRE_CLASSIFIER_MODEL=1` is the stricter mode that also requires `/health` to report a loaded default model (sklearn or Keras per `metadata.json`) before `/classify` assertions. The local closure lane defaults to that stricter mode; CI may keep it at `0` when it only wants classifier-service reachability.
 
 **Observability:** for `TestObservabilityStack`, use a local stack with `compose.obs.yml` and `INTEGRATION_CHECK_OBS=1` (or `auto`).
 

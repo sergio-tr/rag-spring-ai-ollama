@@ -21,7 +21,7 @@ import {
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.cursor/evidence/p0-lab-rag-runtime-closure/rag-no-skips",
+  "../../../docs/evidence/p0-lab-rag-runtime-closure/rag-no-skips",
 );
 
 function appendEvidenceLog(testInfo: import("@playwright/test").TestInfo, line: string): void {

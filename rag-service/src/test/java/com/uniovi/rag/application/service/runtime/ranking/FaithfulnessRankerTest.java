@@ -4,7 +4,7 @@ import com.uniovi.rag.application.result.query.CandidateResponse;
 import com.uniovi.rag.domain.model.RankerResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 
 import java.util.List;
 
@@ -14,13 +14,13 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 class FaithfulnessRankerTest {
 
-    private ChatClient chatClient;
+    private ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
     private FaithfulnessRanker ranker;
 
     @BeforeEach
     void setUp() {
-        chatClient = mock(ChatClient.class);
-        ranker = new FaithfulnessRanker(chatClient);
+        secondaryLlmExecutor = mock(ProviderAwareSecondaryLlmExecutor.class);
+        ranker = new FaithfulnessRanker(secondaryLlmExecutor);
     }
 
     @Test
@@ -37,6 +37,6 @@ class FaithfulnessRankerTest {
         assertEquals("only one", result.chosenText());
         assertEquals(0, result.chosenIndex());
         assertEquals(List.of(1.0), result.scoresPerCandidate());
-        verifyNoInteractions(chatClient);
+        verifyNoInteractions(secondaryLlmExecutor);
     }
 }

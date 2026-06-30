@@ -146,4 +146,17 @@ describe("buildConfigValuesSchema", () => {
     expect(schema.safeParse({ fallback: "abc" }).success).toBe(true);
     expect(schema.safeParse({ fallback: 123 }).success).toBe(false);
   });
+
+  it("applies max length for text fields and treats empty string as undefined", () => {
+    const fields: ConfigSchemaField[] = [
+      { key: "llmSystemPrompt", type: "text", max: 10, userEditable: true },
+    ];
+    const schema = buildConfigValuesSchema(fields);
+    expect(schema.safeParse({ llmSystemPrompt: "short" }).success).toBe(true);
+    expect(schema.safeParse({ llmSystemPrompt: "" }).success).toBe(true);
+    if (schema.safeParse({ llmSystemPrompt: "" }).success) {
+      expect(schema.safeParse({ llmSystemPrompt: "" }).data?.llmSystemPrompt).toBeUndefined();
+    }
+    expect(schema.safeParse({ llmSystemPrompt: "x".repeat(11) }).success).toBe(false);
+  });
 });

@@ -5,7 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ConfigurationSourcePort;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagReasoningProperties;
+import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.infrastructure.llm.LlmOpenAiCompatibleDefaults;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +38,7 @@ class ConfigResolverTest {
     private final RagFeatureConfiguration featureConfig = new RagFeatureConfiguration();
     private final RagReasoningProperties reasoningProperties = new RagReasoningProperties();
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final LlmProperties llmProperties = new LlmProperties();
 
     private ConfigResolver resolver;
 
@@ -46,16 +51,20 @@ class ConfigResolverTest {
         featureConfig.setNerEnabled(false);
         featureConfig.setToolsEnabled(true);
         reasoningProperties.setStrategy("SIMPLE");
+        llmProperties.setDefaultProvider(LlmProvider.OPENAI_COMPATIBLE);
+        LlmOpenAiCompatibleDefaults openAi = llmProperties.getOpenAiCompatible();
+        openAi.setDefaultChatModel("gpt-oss:20b");
+        openAi.setDefaultEmbeddingModel("hf.co/mixedbread-ai/mxbai-embed-large-v1:latest");
+        llmProperties.getOllama().setDefaultChatModel("gemma3:4b");
+        llmProperties.getOllama().setDefaultEmbeddingModel("mxbai-embed-large:latest");
         resolver = new ConfigResolver(
                 featureConfig,
                 reasoningProperties,
                 configurationSource,
                 objectMapper,
+                llmProperties,
                 10,
-                0.7,
-                "base-chat",
-                "base-embed"
-        );
+                0.7);
     }
 
     @Test
@@ -135,7 +144,8 @@ class ConfigResolverTest {
         RagConfig out = resolver.resolve(userId, null, null);
 
         assertEquals(10, out.topK());
-        assertEquals("base-chat", out.llmModel());
+        assertEquals("gpt-oss:20b", out.llmModel());
+        assertEquals("hf.co/mixedbread-ai/mxbai-embed-large-v1:latest", out.embeddingModel());
         assertFalse(out.nerEnabled());
     }
 }

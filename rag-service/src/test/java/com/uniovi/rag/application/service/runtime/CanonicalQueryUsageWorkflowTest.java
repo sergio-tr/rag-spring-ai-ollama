@@ -26,6 +26,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.Answers;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import org.springframework.ai.chat.client.ChatClient;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -186,11 +188,8 @@ class CanonicalQueryUsageWorkflowTest {
                         List.of());
         when(pipeline.retrieve(any(), any(), anyString())).thenReturn(curated);
 
-        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("ANS");
-
-        ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(chatClient, pipeline, null);
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
+        ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(llmChatInvoker, pipeline, null);
 
         QueryPlan qp = plan("raw user query", "rewritten query");
         ExecutionContext ctx = ctxWithPlan(qp);

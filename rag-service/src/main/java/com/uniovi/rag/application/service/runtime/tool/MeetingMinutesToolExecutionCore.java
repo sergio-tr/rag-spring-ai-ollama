@@ -1,6 +1,9 @@
 package com.uniovi.rag.application.service.runtime.tool;
 
 import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.domain.runtime.RagExecutionContext;
+import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
+import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.configuration.RagToolsConfiguration;
@@ -34,12 +37,30 @@ public class MeetingMinutesToolExecutionCore {
         }
         ToolExecutionContext tex =
                 ToolExecutionContext.of(plan.rewrittenQueryText(), queryType, QueryPlanEntitySupport.nerFromPlan(plan));
+        bindRuntimeContext(ctx);
         try {
             ToolResult raw = tool.execute(tex);
             return MeetingMinutesToolRawResult.ok(kind, raw);
         } catch (RuntimeException e) {
             return MeetingMinutesToolRawResult.runtimeFailure(
                     kind, e.getClass().getSimpleName() + ": " + e.getMessage());
+        } finally {
+            clearRuntimeContext();
         }
+    }
+
+    private static void bindRuntimeContext(ExecutionContext ctx) {
+        RagExecutionContext holder = RagExecutionContext.fromEngineContext(ctx);
+        if (holder != null) {
+            RagExecutionContextHolder.set(holder);
+        }
+        if (ctx != null && ctx.knowledgeSnapshotSelection() != null) {
+            RagSnapshotContextHolder.set(ctx.knowledgeSnapshotSelection().orderedSnapshotIds());
+        }
+    }
+
+    private static void clearRuntimeContext() {
+        RagExecutionContextHolder.clear();
+        RagSnapshotContextHolder.clear();
     }
 }

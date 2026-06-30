@@ -47,6 +47,7 @@ class MetadataBooleanQueryToolTest {
         extractor = mock(DocumentContentExtractor.class);
         MetadataLlmResponseCacheService llmCache = mock(MetadataLlmResponseCacheService.class);
         when(llmCache.getCachedResponse(anyString())).thenReturn("");
+        when(llmCache.getCachedResponse(anyString(), anyString())).thenReturn("NONE");
         tool = new MetadataBooleanQueryTool(chatClient, retriever, extractor, llmCache);
 
         MetadataMinuteDocumentService metadataService =

@@ -7,6 +7,7 @@ import * as apiClient from "@/lib/api-client";
 import { ProductModelRegistryCard } from "./ProductModelRegistryCard";
 import { createTestQueryClient } from "@/test-utils/query-client";
 import { IntlTestProvider } from "@/test-utils/intl";
+import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
 
 vi.mock("@/lib/api-client", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@/lib/api-client")>();
@@ -26,13 +27,22 @@ vi.mock("@/lib/async-task", () => ({
   })),
 }));
 
-const apiFetch = vi.mocked(apiClient.apiFetch);
+vi.mock("@/features/chat/hooks/use-me-selectable-llm-models", () => ({
+  useMeSelectableLlmModels: vi.fn(() => ({
+    data: { effectiveProvider: "OLLAMA_NATIVE", models: [] },
+    isLoading: false,
+    isError: false,
+  })),
+}));
 
-const missingLlm = {
-  modelId: "mistral:7b",
+const apiFetch = vi.mocked(apiClient.apiFetch);
+const useMeSelectableLlmModelsMock = vi.mocked(useMeSelectableLlmModels);
+
+const availableLlm = {
+  modelId: "qwen:latest",
   modelType: "LLM",
-  status: "MISSING",
-  detail: "Model not installed locally in Ollama",
+  status: "AVAILABLE",
+  detail: null,
   embeddingCompatible: null,
 } as const;
 
@@ -48,7 +58,7 @@ function registryResponse(overrides: Partial<Awaited<ReturnType<typeof apiFetch>
   return {
     ollamaReachable: true,
     ollamaErrorMessage: null,
-    llmModels: [missingLlm],
+    llmModels: [availableLlm],
     embeddingModels: [availableEmbedding],
     ...overrides,
   };
@@ -68,31 +78,24 @@ describe("ProductModelRegistryCard", () => {
   beforeEach(() => {
     apiFetch.mockReset();
     qc.clear();
+    useMeSelectableLlmModelsMock.mockReturnValue({
+      data: { effectiveProvider: "OLLAMA_NATIVE", models: [] },
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useMeSelectableLlmModels>);
   });
 
-  it("renders LLM and embedding sections when registry loads", async () => {
-    apiFetch.mockResolvedValue(registryResponse());
-
-    render(<ProductModelRegistryCard />, { wrapper: Wrapper });
-
-    await waitFor(() => expect(screen.getByText("mistral:7b")).toBeInTheDocument());
-    expect(screen.getByText("nomic-embed-text")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /LLM models/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /^Embedding models$/i })).toBeInTheDocument();
-  });
-
-  it("shows ollama outage and embedding compatibility errors", async () => {
+  it("renders only available configured models in recommended sections", async () => {
     apiFetch.mockResolvedValue(
       registryResponse({
-        ollamaReachable: false,
-        ollamaErrorMessage: "connection refused",
-        embeddingModels: [
+        llmModels: [
+          availableLlm,
           {
-            modelId: "bad-embed",
-            modelType: "EMBEDDING",
-            status: "ERROR",
-            detail: "dimension mismatch",
-            embeddingCompatible: false,
+            modelId: "mistral:7b",
+            modelType: "LLM",
+            status: "MISSING",
+            detail: "Model not installed locally in Ollama",
+            embeddingCompatible: null,
           },
         ],
       }),
@@ -100,10 +103,48 @@ describe("ProductModelRegistryCard", () => {
 
     render(<ProductModelRegistryCard />, { wrapper: Wrapper });
 
-    expect(await screen.findByText(/Ollama is unreachable/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("qwen:latest")).toBeInTheDocument());
+    expect(screen.getByText("nomic-embed-text")).toBeInTheDocument();
+    expect(screen.queryByText("mistral:7b")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Chat models/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^Embedding models$/i })).toBeInTheDocument();
+  });
+
+  it("shows neutral server unreachable when Ollama provider is active but registry is down", async () => {
+    apiFetch.mockResolvedValue(
+      registryResponse({
+        ollamaReachable: false,
+        ollamaErrorMessage: "connection refused",
+      }),
+    );
+
+    render(<ProductModelRegistryCard />, { wrapper: Wrapper });
+
+    expect(await screen.findByTestId("model-registry-server-unreachable")).toHaveTextContent(
+      /model server is not reachable/i,
+    );
+    expect(screen.queryByText(/Ollama is unreachable/i)).not.toBeInTheDocument();
     expect(screen.getByText(/connection refused/i)).toBeInTheDocument();
-    expect(screen.getByText("bad-embed")).toBeInTheDocument();
-    expect(screen.getAllByText(/dimension mismatch/i).length).toBeGreaterThan(0);
+  });
+
+  it("hides Ollama-specific unreachable banner when effective provider is OpenAI-compatible", async () => {
+    useMeSelectableLlmModelsMock.mockReturnValue({
+      data: { effectiveProvider: "OPENAI_COMPATIBLE", models: [] },
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useMeSelectableLlmModels>);
+    apiFetch.mockResolvedValue(
+      registryResponse({
+        ollamaReachable: false,
+        ollamaErrorMessage: "connection refused",
+      }),
+    );
+
+    render(<ProductModelRegistryCard />, { wrapper: Wrapper });
+
+    await screen.findByText("qwen:latest");
+    expect(screen.queryByTestId("model-registry-server-unreachable")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ollama is unreachable/i)).not.toBeInTheDocument();
   });
 
   it("verifies a model through the user-safe check endpoint", async () => {
@@ -112,7 +153,7 @@ describe("ProductModelRegistryCard", () => {
 
     render(<ProductModelRegistryCard />, { wrapper: Wrapper });
 
-    await screen.findByText("mistral:7b");
+    await screen.findByText("qwen:latest");
     await user.click(screen.getAllByRole("button", { name: /Verify/i })[0]);
 
     await waitFor(() =>
@@ -120,44 +161,19 @@ describe("ProductModelRegistryCard", () => {
         expect.stringContaining("/model-registry/check"),
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ modelId: "mistral:7b", probeEmbedding: true }),
+          body: JSON.stringify({ modelId: "qwen:latest", probeEmbedding: true }),
         }),
       ),
     );
   });
 
-  it("queues pull for missing models and disables pull for available models", async () => {
-    const user = userEvent.setup();
-    apiFetch.mockImplementation(async (path) => {
-      const url = String(path);
-      if (url.includes("/model-registry/pull")) {
-        return {
-          jobId: "pull-job",
-          status: "RUNNING",
-          pollPath: "/lab/jobs/pull-job",
-          streamPath: "/lab/jobs/pull-job/events",
-        };
-      }
-      return registryResponse();
-    });
+  it("disables pull for available recommended models", async () => {
+    apiFetch.mockResolvedValue(registryResponse());
 
     render(<ProductModelRegistryCard />, { wrapper: Wrapper });
 
-    await screen.findByText("mistral:7b");
+    await screen.findByText("qwen:latest");
     const pullButtons = screen.getAllByRole("button", { name: /Pull/i });
-    expect(pullButtons[0]).toBeEnabled();
-    expect(pullButtons[1]).toBeDisabled();
-
-    await user.click(pullButtons[0]);
-
-    await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/model-registry/pull"),
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({ modelId: "mistral:7b" }),
-        }),
-      ),
-    );
+    expect(pullButtons.every((button) => button.hasAttribute("disabled"))).toBe(true);
   });
 });

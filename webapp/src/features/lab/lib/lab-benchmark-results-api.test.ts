@@ -3,8 +3,11 @@ import { apiDownloadBlob, apiFetch } from "@/lib/api-client";
 import {
   downloadCampaignExport,
   downloadCampaignMvpItemsJson,
+  downloadEvaluationFullBundle,
+  downloadEvaluationSummaryCsv,
   downloadMvpExport,
   fetchCampaignComparison,
+  fetchEvaluationResultsJson,
   fetchLabCampaignRuns,
   fetchLabEvaluationRun,
   fetchMvpItemsBundle,
@@ -49,6 +52,31 @@ describe("lab-benchmark-results-api", () => {
     const encoded = encodeURIComponent("campaign/with spaces");
     expect(vi.mocked(apiFetch).mock.calls[0][0]).toContain(`/lab/campaigns/${encoded}/runs`);
     expect(vi.mocked(apiFetch).mock.calls[1][0]).toContain(`/lab/campaigns/${encoded}/comparison`);
+  });
+
+  it("fetchEvaluationResultsJson uses v1 results path", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce({ exportSchemaVersion: "1", results: [] });
+    await fetchEvaluationResultsJson("r-v1");
+    expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining("/export/v1/results.json"));
+  });
+
+  it("downloadEvaluationSummaryCsv and full bundle use v1 export paths", async () => {
+    vi.mocked(apiDownloadBlob).mockResolvedValueOnce(new Blob(["h"]));
+    vi.mocked(apiDownloadBlob).mockResolvedValueOnce(new Blob(["zip"]));
+    await downloadEvaluationSummaryCsv("r-v1");
+    await downloadEvaluationFullBundle("r-v1");
+    expect(vi.mocked(apiDownloadBlob).mock.calls[0][0]).toContain("/export/v1/summary.csv");
+    expect(vi.mocked(apiDownloadBlob).mock.calls[1][0]).toContain("/export/v1/full-bundle.zip");
+  });
+
+  it("downloadMvpExport downloads results.json via v1 path", async () => {
+    vi.mocked(apiDownloadBlob).mockResolvedValueOnce(new Blob(["{}"]));
+    await downloadMvpExport("rid", "results.json");
+    expect(apiDownloadBlob).toHaveBeenCalledWith(expect.stringContaining("/export/v1/results.json"));
+    expect(experimentalApi.triggerBrowserBlobDownload).toHaveBeenCalledWith(
+      expect.any(Blob),
+      "lab-run-rid-results.json",
+    );
   });
 
   it("fetchMvpRollupsJson and fetchMvpItemsBundle use export paths", async () => {

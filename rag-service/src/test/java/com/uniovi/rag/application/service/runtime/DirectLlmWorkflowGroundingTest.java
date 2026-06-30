@@ -11,14 +11,17 @@ import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
-import com.uniovi.rag.testsupport.ChatClientTestSupport;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
+import com.uniovi.rag.testsupport.config.TestConfigurablePromptResolver;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -26,8 +29,8 @@ class DirectLlmWorkflowGroundingTest {
 
     @Test
     void documentBoundQuestion_whenRetrievalRequired_returnsControlledMessage_andSkipsLlm() {
-        ChatClient client = ChatClientTestSupport.clientWithUserPromptReturning("LLM should not answer this");
-        DirectLlmWorkflow workflow = new DirectLlmWorkflow(client, null);
+        RagLlmChatInvoker invoker = RagLlmChatInvokerTestSupport.stubContent("LLM should not answer this");
+        DirectLlmWorkflow workflow = new DirectLlmWorkflow(invoker, TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         var out =
                 workflow.execute(ctxWithQuery("¿Quién presidió las actas donde se menciona el ascensor?", true));
@@ -38,8 +41,8 @@ class DirectLlmWorkflowGroundingTest {
 
     @Test
     void generalQuestion_allowsNormalLlmAnswer() {
-        ChatClient client = ChatClientTestSupport.clientWithUserPromptReturning("Buenos días");
-        DirectLlmWorkflow workflow = new DirectLlmWorkflow(client, null);
+        RagLlmChatInvoker invoker = RagLlmChatInvokerTestSupport.stubContent("Buenos días");
+        DirectLlmWorkflow workflow = new DirectLlmWorkflow(invoker, TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         var out = workflow.execute(ctxWithQuery("buenos dias", true));
         assertThat(out.answerText()).isEqualTo("Buenos días");
@@ -47,8 +50,8 @@ class DirectLlmWorkflowGroundingTest {
 
     @Test
     void documentBoundQuestion_whenRetrievalDisabled_usesDirectBaselineLlm() {
-        ChatClient client = ChatClientTestSupport.clientWithUserPromptReturning("baseline ok");
-        DirectLlmWorkflow workflow = new DirectLlmWorkflow(client, null);
+        RagLlmChatInvoker invoker = RagLlmChatInvokerTestSupport.stubContent("baseline ok");
+        DirectLlmWorkflow workflow = new DirectLlmWorkflow(invoker, TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         var out =
                 workflow.execute(ctxWithQuery("¿Quién presidió las actas donde se menciona el ascensor?", false));
@@ -64,23 +67,20 @@ class DirectLlmWorkflowGroundingTest {
         when(ctx.queryPlan()).thenReturn(Optional.of(qp));
         when(ctx.effectiveSystemPrompt()).thenReturn("");
         when(ctx.chatModelOverride()).thenReturn(Optional.empty());
-
-        RagFeatureConfiguration fc = new RagFeatureConfiguration();
-        fc.setUseRetrieval(useRetrieval);
-        RagConfig rag = RagConfig.fromFeatureConfiguration(fc, 10, 0.7, "l", "e", "c", "SIMPLE");
+        RagFeatureConfiguration features = new RagFeatureConfiguration();
+        features.setUseRetrieval(useRetrieval);
+        RagConfig rag = RagConfig.fromFeatureConfiguration(features, 10, 0.7, "l", "e", "c", "SIMPLE");
         ResolvedRuntimeConfig resolved =
                 new ResolvedRuntimeConfig(
                         rag,
                         CapabilitySet.fromRagConfig(rag),
                         CompatibilityResult.ok(),
                         ReindexImpact.none(),
-                        SystemPromptLayers.empty(),
+                        new SystemPromptLayers("", "", "", ""),
                         "",
                         new ConfigProvenance(null, null, null, List.of(), null, null),
-                        null);
+                        rag);
         when(ctx.resolved()).thenReturn(resolved);
-        when(ctx.userQuery()).thenReturn(query);
-        when(ctx.conversationId()).thenReturn(UUID.randomUUID());
         return ctx;
     }
 }

@@ -24,5 +24,8 @@ public final class BenchmarkResultRowKeys {
 
     public static final String EMBEDDING_MODEL_ID = "embedding_model_id";
 
+    public static final String JUDGE_STATUS = "judge_status";
+    public static final String JUDGE_FAILURE_REASON = "judge_failure_reason";
+
     private BenchmarkResultRowKeys() {}
 }

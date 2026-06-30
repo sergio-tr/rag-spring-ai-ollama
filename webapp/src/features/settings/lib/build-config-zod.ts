@@ -23,7 +23,7 @@ function toFiniteNumber(v: unknown): number | undefined {
   return undefined;
 }
 
-function normalizeFieldType(fieldType: unknown): "integer" | "number" | "boolean" | "string" {
+function normalizeFieldType(fieldType: unknown): "integer" | "number" | "boolean" | "string" | "text" {
   if (typeof fieldType !== "string") return "string";
   const normalized = fieldType.trim().toLowerCase();
   switch (normalized) {
@@ -38,8 +38,8 @@ function normalizeFieldType(fieldType: unknown): "integer" | "number" | "boolean
     case "boolean":
     case "bool":
       return "boolean";
-    case "string":
-      return "string";
+    case "text":
+      return "text";
     default:
       return "string";
   }
@@ -72,10 +72,15 @@ export function buildConfigValuesSchema(fields: ConfigSchemaField[]) {
       case "boolean":
         shape[f.key] = z.boolean().optional();
         break;
+      case "text":
       case "string":
-      default:
-        shape[f.key] = z.string().optional();
+      default: {
+        const maxLen = toFiniteNumber(f.max);
+        let s = z.string();
+        if (maxLen !== undefined) s = s.max(maxLen);
+        shape[f.key] = z.union([s, z.literal("")]).optional().transform((v) => (v === "" ? undefined : v));
         break;
+      }
     }
   }
   return z.object(shape);

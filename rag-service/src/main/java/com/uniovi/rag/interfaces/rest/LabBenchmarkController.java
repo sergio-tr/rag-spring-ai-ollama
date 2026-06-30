@@ -15,6 +15,7 @@ import com.uniovi.rag.interfaces.rest.dto.LatestLabRunRecoveryDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationRunDetailDto;
 import com.uniovi.rag.interfaces.rest.dto.MetricsCompareRequestDto;
 import com.uniovi.rag.security.RagPrincipal;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -256,6 +257,35 @@ public class LabBenchmarkController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
                 .body(csv);
+    }
+
+    /** Export v1: canonical {@code results.json}. */
+    @GetMapping(value = "/runs/{runId}/export/v1/results.json", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Map<String, Object> exportV1ResultsJson(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID runId) {
+        return labEvaluationRunService.exportResultsJsonV1(requireUserId(principal), runId);
+    }
+
+    /** Export v1: {@code summary.csv} (≤20 columns). */
+    @GetMapping(value = "/runs/{runId}/export/v1/summary.csv", produces = "text/csv;charset=UTF-8")
+    public ResponseEntity<String> exportV1SummaryCsv(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID runId) {
+        String csv = labEvaluationRunService.exportSummaryCsvV1(requireUserId(principal), runId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"run-" + runId + "-summary.csv\"")
+                .body(csv);
+    }
+
+    /** Export v1: optional {@code full-bundle.zip} (v1 + legacy MVP artifacts). */
+    @GetMapping(value = "/runs/{runId}/export/v1/full-bundle.zip", produces = "application/zip")
+    public ResponseEntity<byte[]> exportV1FullBundleZip(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID runId) {
+        byte[] zip = labEvaluationRunService.exportFullBundleZipV1(requireUserId(principal), runId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/zip"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"run-" + runId + "-full-bundle.zip\"")
+                .body(zip);
     }
 
     private BenchmarkJobAcceptedDto toAcceptedDto(BenchmarkJobAccepted accepted) {

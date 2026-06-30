@@ -1,0 +1,79 @@
+[
+  {
+    "removed_normalized": "¿cuántas actas mencionan el ascensor?",
+    "Question": "¿Cuántas reuniones de 2026 trataron el mantenimiento de la piscina?",
+    "Respuesta": "",
+    "QueryType": "COUNT_DOCUMENTS",
+    "rationale": "Count-documents phrasing; distinct date/topic from eval held-out set."
+  },
+  {
+    "removed_normalized": "¿quién fue la secretaria en la reunión del 25 de agosto de 2025?",
+    "Question": "¿Quién actuó como vocal en la reunión del 12 de diciembre de 2026?",
+    "Respuesta": "",
+    "QueryType": "GET_FIELD",
+    "rationale": "Field extraction (role); different meeting date than eval overlap."
+  },
+  {
+    "removed_normalized": "¿cuánto duró la reunión del 25 de agosto de 2028?",
+    "Question": "¿Cuánto duró la sesión ordinaria del 10 de enero de 2027?",
+    "Respuesta": "",
+    "QueryType": "GET_DURATION",
+    "rationale": "Duration query on a meeting date not present in eval."
+  },
+  {
+    "removed_normalized": "¿hubo más asistentes en la reunión de agosto o en la de febrero de 2025?",
+    "Question": "¿Hubo más menciones al ascensor en febrero o en agosto de 2026?",
+    "Respuesta": "",
+    "QueryType": "COMPARE",
+    "rationale": "Month comparison pattern; different dimension (mentions vs attendees)."
+  },
+  {
+    "removed_normalized": "¿se mencionó la seguridad en alguna reunión de 2026?",
+    "Question": "¿Figura en el acta del 15 de enero de 2024 alguna votación sobre obras?",
+    "Respuesta": "",
+    "QueryType": "BOOLEAN_QUERY",
+    "rationale": "Yes/no verification on acta content; distinct from eval security question."
+  },
+  {
+    "removed_normalized": "¿qué decisiones se tomaron en la reunión del 25 de febrero de 2026?",
+    "Question": "¿Qué acuerdos constan en el acta del 12 de diciembre de 2026?",
+    "Respuesta": "",
+    "QueryType": "DECISION_EXTRACTION",
+    "rationale": "Decision extraction; replaces overlap while keeping class coverage in train."
+  },
+  {
+    "removed_normalized": "extrae las decisiones acordadas el 24 de febrero de 2025.",
+    "Question": "Indica las decisiones registradas en la reunión del 10 de enero de 2027.",
+    "Respuesta": "",
+    "QueryType": "DECISION_EXTRACTION",
+    "rationale": "Second train-only decision-extraction example after overlap removal."
+  },
+  {
+    "removed_normalized": "resume la reunión del 24 de febrero de 2025.",
+    "Question": "Sintetiza los temas tratados en la reunión del 12 de diciembre de 2026.",
+    "Respuesta": "",
+    "QueryType": "SUMMARIZE_MEETING",
+    "rationale": "Meeting summary; new date not in eval overlap set."
+  },
+  {
+    "removed_normalized": "dame un resumen de la reunión celebrada el 25 de agosto de 2026.",
+    "Question": "Resume brevemente la reunión celebrada el 10 de enero de 2027.",
+    "Respuesta": "",
+    "QueryType": "SUMMARIZE_MEETING",
+    "rationale": "Second train-only meeting-summary example."
+  },
+  {
+    "removed_normalized": "lista los asistentes de la reunión del 25 de agosto de 2026 en la que se trató el tema del ascensor.",
+    "Question": "Lista las reuniones de agosto de 2026 sobre climatización con más de 20 asistentes.",
+    "Respuesta": "",
+    "QueryType": "FILTER_AND_LIST",
+    "rationale": "Filter-and-list with attendance threshold; distinct entity focus."
+  },
+  {
+    "removed_normalized": "¿qué temas se discutieron en las reuniones celebradas en febrero que contaron con más de 15 asistentes?",
+    "Question": "Indica los asistentes de las actas de febrero de 2025 donde se debatió el presupuesto.",
+    "Respuesta": "",
+    "QueryType": "FILTER_AND_LIST",
+    "rationale": "Filter-and-list on budget topic; preserves class after overlap removal."
+  }
+]

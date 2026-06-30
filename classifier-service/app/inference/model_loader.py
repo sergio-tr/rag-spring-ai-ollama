@@ -1,15 +1,26 @@
 """
-Model loader: loads Keras model and labels by model_id, with in-memory cache.
+Model loader: loads Keras or sklearn models and labels by model_id, with in-memory cache.
 Resolves paths via config (default) or registry (trained models).
 """
-import zipfile
+from __future__ import annotations
 
+import json
+import zipfile
+from pathlib import Path
+
+import joblib
 import tensorflow as tf
 
 from app.base import Loggable
 from app.config import Config
+from app.inference.loaded_model import LoadedModel, ModelType
 from app.query_type_contract import validate_loaded_labels
 from app.registry.model_registry import ModelRegistry
+
+KERAS_FILENAME = "model.keras"
+SKLEARN_FILENAME = "model.joblib"
+METADATA_FILENAME = "metadata.json"
+LABELS_FILENAME = "labels.txt"
 
 
 class ModelLoader(Loggable):
@@ -18,40 +29,78 @@ class ModelLoader(Loggable):
     def __init__(self, config: Config | None = None, registry: ModelRegistry | None = None) -> None:
         self._config = config or Config()
         self._registry = registry or ModelRegistry(self._config)
-        self._cache: dict[str, tuple] = {}
+        self._cache: dict[str, LoadedModel] = {}
 
     def is_loaded(self, model_id: str) -> bool:
         """Returns True if the model for this id is in cache."""
         return model_id in self._cache
 
-    def load_by_id(self, model_id: str) -> tuple:
+    def load_by_id(self, model_id: str) -> LoadedModel:
         """
         Loads the model for the given id (default from config, others from registry).
-        Caches and returns (model, class_names). Raises FileNotFoundError if not found.
+        Caches and returns LoadedModel. Raises FileNotFoundError if not found.
         """
-        if model_id == self._config.DEFAULT_MODEL_TAG:
-            return self._load_default()
         if model_id in self._cache:
             return self._cache[model_id]
-        paths = self._registry.get_model_paths(model_id)
-        if not paths:
-            raise FileNotFoundError(f"Model '{model_id}' not found in registry")
-        model_path, labels_path = paths
-        model = self._load_model_with_vocab_fix(model_path)
-        class_names = self._read_labels_file(labels_path)
-        self._cache[model_id] = (model, class_names)
-        return model, class_names
+        if model_id == self._config.DEFAULT_MODEL_TAG:
+            loaded = self._load_default()
+        else:
+            paths = self._registry.get_model_paths(model_id)
+            if not paths:
+                raise FileNotFoundError(f"Model '{model_id}' not found in registry")
+            artifact_path, labels_path, model_type = paths
+            loaded = self._load_from_paths(artifact_path, labels_path, model_type)
+        self._cache[model_id] = loaded
+        return loaded
 
-    def _load_default(self) -> tuple:
-        """Loads the default model from config paths. Idempotent."""
-        if self._config.DEFAULT_MODEL_TAG in self._cache:
-            return self._cache[self._config.DEFAULT_MODEL_TAG]
+    def get_loaded_model(self, model_id: str) -> LoadedModel:
+        """Returns LoadedModel for model_id; loads it if not in cache."""
+        if model_id not in self._cache:
+            self.load_by_id(model_id)
+        return self._cache[model_id]
+
+    def get_model(self, model_id: str):
+        """Returns the underlying Keras model or sklearn Pipeline."""
+        return self.get_loaded_model(model_id).artifact
+
+    def get_class_names(self, model_id: str) -> list[str]:
+        """Returns the list of class labels for model_id; loads if not in cache."""
+        return list(self.get_loaded_model(model_id).class_names)
+
+    def get_model_type(self, model_id: str) -> ModelType:
+        return self.get_loaded_model(model_id).model_type
+
+    def _load_default(self) -> LoadedModel:
         model_path = self._config.get_default_model_path()
         labels_path = self._config.get_default_labels_path()
-        model = self._load_model_with_vocab_fix(model_path)
+        model_type = self._infer_model_type(Path(model_path).parent, Path(model_path))
+        return self._load_from_paths(model_path, labels_path, model_type)
+
+    def _load_from_paths(self, artifact_path: str, labels_path: str, model_type: ModelType) -> LoadedModel:
         class_names = self._read_labels_file(labels_path)
-        self._cache[self._config.DEFAULT_MODEL_TAG] = (model, class_names)
-        return model, class_names
+        if model_type == "sklearn":
+            artifact = joblib.load(artifact_path)
+            return LoadedModel(model_type="sklearn", artifact=artifact, class_names=class_names)
+        model = self._load_model_with_vocab_fix(artifact_path)
+        return LoadedModel(model_type="keras", artifact=model, class_names=class_names)
+
+    @staticmethod
+    def _infer_model_type(model_dir: Path, artifact_path: Path) -> ModelType:
+        meta_path = model_dir / METADATA_FILENAME
+        if meta_path.exists():
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                raw = str(meta.get("modelType", "")).strip().lower()
+                if raw == "sklearn":
+                    return "sklearn"
+                if raw == "keras":
+                    return "keras"
+            except (json.JSONDecodeError, OSError):
+                pass
+        if artifact_path.name == SKLEARN_FILENAME or artifact_path.suffix == ".joblib":
+            return "sklearn"
+        return "keras"
 
     def _read_labels_file(self, labels_path: str) -> list[str]:
         """Reads labels and validates each entry against the Java QueryType contract."""
@@ -100,7 +149,6 @@ class ModelLoader(Loggable):
                         continue
                     except UnicodeDecodeError:
                         fixed = raw.decode("latin-1").encode("utf-8")
-                        # Validate output is UTF-8 now.
                         fixed.decode("utf-8")
                         replacements[p] = fixed
                         changed = True
@@ -110,7 +158,6 @@ class ModelLoader(Loggable):
         if not changed:
             return False
 
-        # Rewrite zip in-place (atomic replace).
         tmp_path = f"{model_path}.tmp"
         with zipfile.ZipFile(model_path, "r") as zin, zipfile.ZipFile(tmp_path, "w") as zout:
             for info in zin.infolist():
@@ -129,15 +176,3 @@ class ModelLoader(Loggable):
 
         os.replace(tmp_path, model_path)
         return True
-
-    def get_model(self, model_id: str):
-        """Returns the Keras model for model_id; loads it if not in cache."""
-        if model_id not in self._cache:
-            self.load_by_id(model_id)
-        return self._cache[model_id][0]
-
-    def get_class_names(self, model_id: str) -> list[str]:
-        """Returns the list of class labels for model_id; loads if not in cache."""
-        if model_id not in self._cache:
-            self.load_by_id(model_id)
-        return self._cache[model_id][1]

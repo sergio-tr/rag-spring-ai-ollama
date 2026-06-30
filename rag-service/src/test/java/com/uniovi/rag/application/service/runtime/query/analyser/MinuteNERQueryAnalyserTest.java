@@ -1,27 +1,31 @@
 package com.uniovi.rag.application.service.runtime.query.analyser;
 
-import com.uniovi.rag.testsupport.ChatClientTestSupport;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
+
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
-
+@ExtendWith(MockitoExtension.class)
 class MinuteNERQueryAnalyserTest {
 
-    private ChatClient chatClient;
+    @Mock private ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
+
     private MinuteNERQueryAnalyser analyser;
 
     @BeforeEach
     void setUp() {
-        chatClient = ChatClientTestSupport.mockForUserPromptChain();
-        analyser = new MinuteNERQueryAnalyser(chatClient);
+        analyser = new MinuteNERQueryAnalyser(secondaryLlmExecutor);
     }
 
     @Test
@@ -37,7 +41,7 @@ class MinuteNERQueryAnalyserTest {
     }
 
     @Test
-    void analyse_whenChatClientNull_returnsFallback() {
+    void analyse_whenExecutorNull_returnsFallback() {
         MinuteNERQueryAnalyser a = new MinuteNERQueryAnalyser(null);
         JSONObject result = a.analyse("q");
         assertNotNull(result);
@@ -46,9 +50,8 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_withValidJsonFromLlm_returnsParsedObject() {
-        ChatClientTestSupport.stubSystemUserPromptReturns(
-                chatClient,
-                "{\"date\":[\"2025-01-15\"],\"answerType\":\"person\"}");
+        when(secondaryLlmExecutor.complete(eq("ner"), any(), any()))
+                .thenReturn("{\"date\":[\"2025-01-15\"],\"answerType\":\"person\"}");
 
         JSONObject result = analyser.analyse("¿Quién presidió el 15 de enero de 2025?");
 
@@ -58,7 +61,7 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_llmThrows_returnsFallback() {
-        when(chatClient.prompt().system(anyString())).thenThrow(new RuntimeException("error"));
+        when(secondaryLlmExecutor.complete(eq("ner"), any(), any())).thenThrow(new RuntimeException("error"));
 
         JSONObject result = analyser.analyse("query");
 
@@ -67,9 +70,9 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_normalizesExtractedEntitiesAndInfersContext() {
-        ChatClientTestSupport.stubSystemUserPromptReturns(
-                chatClient,
-                """
+        when(secondaryLlmExecutor.complete(eq("ner"), any(), any()))
+                .thenReturn(
+                        """
                 ```json
                 {
                   "date": ["25 de febrero de 2026", "última"],
@@ -97,7 +100,7 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_withNonJsonResponse_fallsBackAndKeepsDefaultShape() {
-        ChatClientTestSupport.stubSystemUserPromptReturns(chatClient, "No JSON available");
+        when(secondaryLlmExecutor.complete(eq("ner"), any(), any())).thenReturn("No JSON available");
 
         JSONObject result = analyser.analyse("Who attended in march?");
 
@@ -109,9 +112,9 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_extractsJsonSubstring_whenResponseHasNoiseAroundObject() {
-        ChatClientTestSupport.stubSystemUserPromptReturns(
-                chatClient,
-                """
+        when(secondaryLlmExecutor.complete(eq("ner"), any(), any()))
+                .thenReturn(
+                        """
                 Here you go:
                 {
                   "date": ["2025-02-01"],
@@ -128,9 +131,9 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_duplicateKeys_inResponse_usesJacksonFallback_lastValueWins() {
-        ChatClientTestSupport.stubSystemUserPromptReturns(
-                chatClient,
-                """
+        when(secondaryLlmExecutor.complete(eq("ner"), any(), any()))
+                .thenReturn(
+                        """
                 {
                   "answerType": "text",
                   "answerType": "person",
@@ -146,9 +149,9 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_validateAndNormalize_fillsMissingFields_and_coercesStringFields() {
-        ChatClientTestSupport.stubSystemUserPromptReturns(
-                chatClient,
-                """
+        when(secondaryLlmExecutor.complete(eq("ner"), any(), any()))
+                .thenReturn(
+                        """
                 {
                   "date": [],
                   "answerType": [],
@@ -169,9 +172,9 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_dateNormalization_supportsMultipleNumericFormats() {
-        ChatClientTestSupport.stubSystemUserPromptReturns(
-                chatClient,
-                """
+        when(secondaryLlmExecutor.complete(eq("ner"), any(), any()))
+                .thenReturn(
+                        """
                 {
                   "date": ["1/2/2026", "2026.02.03"],
                   "answerType": "date"

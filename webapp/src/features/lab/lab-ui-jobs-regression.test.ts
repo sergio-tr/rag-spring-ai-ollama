@@ -69,9 +69,9 @@ describe("LAB UI/Jobs regression (JOBS-UI, UX, MODEL, CORPUS)", () => {
     expect(src).toMatch(/selectedIds/);
   });
 
-  it("MODEL-DEFAULT-001: draft default embedding is mxbai-embed-large:latest", () => {
-    expect(defaultLabEvaluationDraft().embeddingModelId).toBe(LAB_DEFAULT_EMBEDDING_MODEL_ID);
-    expect(LAB_DEFAULT_EMBEDDING_MODEL_ID).toBe("mxbai-embed-large:latest");
+  it("MODEL-DEFAULT-001: draft default embedding is empty until catalog fills it", () => {
+    expect(defaultLabEvaluationDraft().embeddingModelId).toBe("");
+    expect(LAB_DEFAULT_EMBEDDING_MODEL_ID).toBe("");
   });
 
   it("CORPUS-UI-001: corpus panel supports multiple file upload", () => {
@@ -89,6 +89,9 @@ describe("LAB UI/Jobs regression (JOBS-UI, UX, MODEL, CORPUS)", () => {
       join(root, "src/features/lab/components/lab-evaluation-run-card.tsx"),
       "utf8",
     );
+    expect(src).toMatch(/useLabEvaluationModels/);
+    expect(src).not.toMatch(/useModelsByType/);
+    expect(src).not.toMatch(/embedding-campaign-preferred-models/);
     expect(src).toMatch(/followMode:\s*"sse"/);
     expect(src).not.toMatch(/followMode:\s*"poll"/);
     expect(src).not.toMatch(/Status poll:/i);

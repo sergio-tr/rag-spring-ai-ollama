@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-LOG_ROOT="${REPO_ROOT}/.cursor/context/evidence/tests/pre-pr-full-${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+LOG_ROOT="${REPO_ROOT}/docs/evidence/tests/pre-pr-full-${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 SUMMARY="${LOG_ROOT}/summary.md"
 RESULTS_TSV="${LOG_ROOT}/results.tsv"
 START_EPOCH="$(date +%s)"

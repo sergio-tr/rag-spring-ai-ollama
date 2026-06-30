@@ -1,4 +1,24 @@
 import { mapUserFacingErrorMessage, mapUserFacingErrorMessageEnglish } from "./user-facing-error-messages";
+import {
+  chatExperimentalPresetToDto,
+  formatChatPresetSelectLabel,
+  type ChatExperimentalPresetOptionInput,
+} from "@/features/presets/lib/preset-display";
+
+export type { ChatExperimentalPresetOptionInput };
+
+/** Select option label for Chat configuration experimental presets (no P-code primary label). */
+export function formatChatExperimentalPresetOptionLabel(
+  p: ChatExperimentalPresetOptionInput,
+  t: (key: string) => string,
+): string {
+  const base = formatChatPresetSelectLabel(chatExperimentalPresetToDto(p), t);
+  if (p.chatSelectable && p.supported) {
+    return base;
+  }
+  const hint = formatPresetSupportMessage(p.supportStatus, p.reasonIfUnsupported, t, "chatPresetNotSelectable");
+  return `${base} (${hint})`;
+}
 
 const BENCHMARK_KIND_I18N: Record<string, string> = {
   LLM_JUDGE_QA: "benchmarkKindLabel.llm",
@@ -55,30 +75,7 @@ export function formatPresetSupportMessage(
   return t(fallbackKey);
 }
 
-export type ChatExperimentalPresetOptionInput = Readonly<{
-  code: string;
-  label: string;
-  supported: boolean;
-  supportStatus: string | null;
-  reasonIfUnsupported: string | null;
-  requiresMultiTurn: boolean;
-  chatSelectable: boolean;
-}>;
-
-/** Select option label for Chat configuration experimental presets (no raw status enums). */
-export function formatChatExperimentalPresetOptionLabel(
-  p: ChatExperimentalPresetOptionInput,
-  t: (key: string) => string,
-): string {
-  const base = `${p.code} — ${p.label}`;
-  if (p.chatSelectable && p.supported) {
-    return base;
-  }
-  const hint = formatPresetSupportMessage(p.supportStatus, p.reasonIfUnsupported, t, "chatPresetNotSelectable");
-  return `${base} (${hint})`;
-}
-
-/** Humanize classifier fallback notes shown in chat trace (values, not field names). */
+/** Patterns that must not appear in primary (non-collapsed) product UI copy. */
 export function formatClassifierFallbackNote(
   raw: string | null | undefined,
   t: (key: string) => string,
@@ -105,7 +102,7 @@ export const FORBIDDEN_PRIMARY_UI_PATTERNS: RegExp[] = [
   /\bM9 experimental evidence\b/i,
   /\bM10\b|\bM11\b|\bM12\b|\bM9\b/i,
   /claim map/i,
-  /\.cursor/i,
+  /docs/i,
   /handoff/i,
   /\bTFG\b/i,
   /Jaeger verified/i,

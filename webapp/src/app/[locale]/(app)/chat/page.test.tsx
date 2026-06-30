@@ -408,6 +408,22 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
   if (method === "GET" && u.includes("/lab/classifier/models")) {
     return Promise.resolve([]);
   }
+  if (method === "GET" && u.includes("/me/llm/selectable-models")) {
+    return Promise.resolve({
+      effectiveProvider: "OLLAMA_NATIVE",
+      models: [
+        {
+          modelName: "llama",
+          displayName: "llama",
+          selectable: true,
+          disabledReason: null,
+          disabledReasonCode: null,
+          usableAsDefault: true,
+          runtimeStatus: "AVAILABLE",
+        },
+      ],
+    });
+  }
   if (method === "GET" && u.includes("/chat/presets/catalog")) {
     return Promise.resolve({
       productPresets: [...ragPresetsData],
@@ -1047,9 +1063,9 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
 
     await expandChatMessageMetadata(user);
-    expect(await screen.findByTestId("chat-trace")).toHaveTextContent(/Message trace/i);
+    expect(await screen.findByTestId("chat-trace")).toHaveTextContent(/Retrieval and grounding trace/i);
     expect(screen.queryByTestId("chat-trace-jaeger-not-run")).not.toBeInTheDocument();
-    expect(screen.getByTestId("chat-sources")).toHaveTextContent(/Sources \(1\)/i);
+    expect(screen.getByTestId("chat-sources")).toHaveTextContent(/Source documents \(1\)/i);
   });
 
   it("T-M5-FE-sources: renders filename, date, chunk, and date warning", async () => {
@@ -1108,7 +1124,7 @@ describe("ChatPage", () => {
 
     expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
     expect(screen.getByTestId("chat-answer")).toHaveTextContent("No exact acta");
-    expect(screen.getByTestId("chat-message-metadata-toggle")).toHaveTextContent(/More information/i);
+    expect(screen.getByTestId("chat-message-metadata-toggle")).toHaveTextContent(/Answer quality checks/i);
     expect(screen.getByTestId("chat-sources")).not.toBeVisible();
     await expandChatMessageMetadata(user);
     expect(screen.getByTestId("chat-sources")).toBeVisible();
@@ -1164,7 +1180,7 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
 
-    expect(await screen.findByTestId("chat-runtime-blocking-input-message")).toHaveTextContent(/requires a new compatible index snapshot/i);
+    expect(await screen.findByTestId("chat-runtime-blocking-input-message")).toHaveTextContent(/compatible search index/i);
     expect(screen.getByTestId("chat-message-composer")).toBeDisabled();
     expect(screen.getByTestId("chat-send-button")).toBeDisabled();
   });
@@ -1184,7 +1200,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
     const panel = await screen.findByTestId("chat-configuration-side-panel");
-    const modelSelect = within(panel).getByRole("combobox", { name: /^LLM model$/i });
+    const modelSelect = within(panel).getByRole("combobox", { name: /^Model$/i });
 
     await user.selectOptions(modelSelect, "llama");
 
@@ -1208,11 +1224,11 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
 
-    const presetSelect = screen.getByRole("combobox", { name: /^Preset$/i }) as HTMLSelectElement;
+    const presetSelect = screen.getByRole("combobox", { name: /^Configuration profile$/i }) as HTMLSelectElement;
     expect(presetSelect.value).toBe("cafe0001-0001-4001-8001-000000000014");
     const selected = Array.from(presetSelect.options).find((o) => o.selected);
-    expect(selected?.text ?? "").toContain("P4 — Chunk + metadata retrieval");
-    expect(selected?.text ?? "").not.toMatch(/Recommended/i);
+    expect(selected?.text ?? "").toContain("Chunk + metadata retrieval");
+    expect(selected?.text ?? "").not.toMatch(/^P4\b/);
   });
 
   it("selecting compatible experimental preset persists presetId via PATCH", async () => {
@@ -1221,7 +1237,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
 
-    const presetSelect = screen.getByRole("combobox", { name: /^Preset$/i }) as HTMLSelectElement;
+    const presetSelect = screen.getByRole("combobox", { name: /^Configuration profile$/i }) as HTMLSelectElement;
     await user.selectOptions(presetSelect, "cafe0001-0001-4001-8001-000000000014");
 
     const calls = patchConversationApiCalls();
@@ -1239,15 +1255,15 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
 
-    const presetSelect = screen.getByRole("combobox", { name: /^Preset$/i }) as HTMLSelectElement;
+    const presetSelect = screen.getByRole("combobox", { name: /^Configuration profile$/i }) as HTMLSelectElement;
     const optionTexts = Array.from(presetSelect.options)
       .map((o) => o.text)
       .filter(Boolean);
 
-    expect(optionTexts.some((t) => t.includes("P13 — Clarification loop"))).toBe(true);
-    expect(optionTexts.some((t) => t.includes("P14 — Memory flow"))).toBe(true);
+    expect(optionTexts.some((t) => t.includes("Clarification loop"))).toBe(true);
+    expect(optionTexts.some((t) => t.includes("Memory flow"))).toBe(true);
     for (const text of optionTexts) {
-      expect(text).not.toMatch(/REQUIRES_MULTI_TURN|FUTURE_MULTI_TURN|\[NOT_SUPPORTED/);
+      expect(text).not.toMatch(/REQUIRES_MULTI_TURN|FUTURE_MULTI_TURN|\[NOT_SUPPORTED|^P\d+\s*—/);
     }
   });
 
@@ -1262,8 +1278,8 @@ describe("ChatPage", () => {
     await user.click(screen.getByTestId("chat-config-runtime-collapsible"));
     await user.click(screen.getByTestId("chat-config-runtime-refresh-effective"));
     expect(screen.getByRole("checkbox", { name: /Use retrieval/i })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /Ranker/i })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /Post-retrieval/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Rerank retrieved passages/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Post-retrieval processing/i })).toBeChecked();
   });
 
   it("shows retrieval+metadata+advanced+FC+advisors+adaptive+judge when P12 is selected", async () => {
@@ -1278,9 +1294,9 @@ describe("ChatPage", () => {
     await user.click(screen.getByTestId("chat-config-runtime-refresh-effective"));
     expect(screen.getByRole("checkbox", { name: /Use retrieval/i })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: /Function calling/i })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /Advisor/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Retrieval advisor/i })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: /Adaptive routing/i })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /Judge/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Answer quality checks/i })).toBeChecked();
   });
 
   it("marks conversation as Custom after saving any runtime override, and clears on Clear", async () => {
@@ -1519,7 +1535,7 @@ describe("ChatPage", () => {
     await openChatConfigurationEdit(user);
     // Ignore unrelated initial effects (draft load, etc.).
     vi.mocked(apiFetch).mockClear();
-    const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
+    const presetSelect = await screen.findByRole("combobox", { name: /Configuration profile/i });
     // Selected preset is backend-authoritative; when user did not select a preset, the select value is empty.
     expect(presetSelect).toHaveValue("");
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
@@ -1536,7 +1552,7 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
-    const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
+    const presetSelect = await screen.findByRole("combobox", { name: /Configuration profile/i });
     expect(presetSelect).toHaveValue("pr1");
     expect(screen.getByRole("option", { name: /^P$/ })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
@@ -1548,12 +1564,12 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
-    const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
+    const presetSelect = await screen.findByRole("combobox", { name: /Configuration profile/i });
     expect(presetSelect).toBeDisabled();
     expect(screen.getAllByRole("status").some((n) => /No presets are available/i.test(n.textContent ?? ""))).toBe(true);
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
     // Experimental group still loads from unified catalog.
-    expect(screen.getByRole("option", { name: /^P4 — Chunk \+ metadata retrieval$/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Chunk \+ metadata retrieval/ })).toBeInTheDocument();
   });
 
   it("when conversation omits preset ids, shows Recommended Default (no local fallback)", async () => {
@@ -1570,7 +1586,7 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
-    const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
+    const presetSelect = await screen.findByRole("combobox", { name: /Configuration profile/i });
     await waitFor(() => expect(presetSelect).toHaveValue(""));
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
   });
@@ -1596,11 +1612,11 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
-    const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
+    const presetSelect = await screen.findByRole("combobox", { name: /Configuration profile/i });
     await user.selectOptions(presetSelect, "pr1");
-    expect(screen.getByRole("combobox", { name: /^LLM model$/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /^Model$/i })).toBeInTheDocument();
     const panel = screen.getByTestId("chat-configuration-side-panel");
-    expect(within(panel).getByRole("heading", { name: /Chat configuration/i })).toBeInTheDocument();
+    expect(within(panel).getByRole("heading", { name: /Assistant configuration/i })).toBeInTheDocument();
   });
 
   it("toggles the persistent right side panel with ⋮ on desktop", async () => {
@@ -1648,8 +1664,8 @@ describe("ChatPage", () => {
 
       expect(workspace).toHaveAttribute("data-chat-layout-mode", "split");
       expect(workspace).toContainElement(panel);
-      expect(readable.className).toMatch(/md:flex-1/);
-      expect(readable.className).not.toMatch(/md:max-w-\[min\(50%,48rem\)\]/);
+      expect(readable.className).toMatch(/md:flex-\[7\]/);
+      expect(readable.className).toMatch(/md:basis-\[70%\]/);
     });
 
     it("keeps the message thread inside the readable column, not inside the config panel", async () => {
@@ -1757,7 +1773,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByTestId("chat-config-trigger"));
     expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
     await user.click(screen.getByTestId("chat-config-edit-button"));
-    expect(await screen.findByRole("heading", { level: 3, name: "Document scope" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 3, name: "Assistant" })).toBeInTheDocument();
   });
 
   it("renders Chat actions sections with padded body and sticky footer", async () => {
@@ -1768,20 +1784,22 @@ describe("ChatPage", () => {
 
     const panel = screen.getByTestId("chat-configuration-side-panel");
     expect(panel).toBeInTheDocument();
-    expect(within(panel).getByRole("heading", { name: /Chat configuration/i })).toBeInTheDocument();
+    expect(within(panel).getByRole("heading", { name: /Assistant configuration/i })).toBeInTheDocument();
 
     expect(screen.queryByText(/Unavailable capabilities/i)).not.toBeInTheDocument();
 
-    // Edit mode exposes Document scope + Model & preset; index caps live under Technical details; runtime is Advanced options.
+    // Edit mode exposes Assistant, Models, Retrieval, and tools sections; index caps live under Advanced technical details.
     const headings = within(panel)
       .getAllByRole("heading", { level: 3 })
       .map((h) => h.textContent?.trim() ?? "");
     const idx = (s: string) => headings.findIndex((h) => h === s);
-    expect(idx("Document scope")).toBeGreaterThanOrEqual(0);
-    expect(idx("Model & preset")).toBeGreaterThanOrEqual(0);
-    expect(idx("Document scope")).toBeLessThan(idx("Model & preset"));
-    expect(idx("Advanced options")).toBeGreaterThan(idx("Model & preset"));
-    expect(within(panel).getByTestId("chat-config-technical-details")).toBeInTheDocument();
+    expect(idx("Assistant")).toBeGreaterThanOrEqual(0);
+    expect(idx("Models")).toBeGreaterThanOrEqual(0);
+    expect(idx("Assistant")).toBeLessThan(idx("Models"));
+    expect(idx("Retrieval")).toBeGreaterThanOrEqual(0);
+    expect(idx("Retrieval")).toBeGreaterThan(idx("Models"));
+    expect(within(panel).getByTestId("chat-config-runtime-collapsible")).toBeInTheDocument();
+    expect(within(panel).getByTestId("chat-config-advanced-technical")).toBeInTheDocument();
 
     // Padding sanity: inner body is padded.
     const body = panel.querySelector("div.min-h-0.flex-1.overflow-y-auto") as HTMLElement | null;
@@ -1793,14 +1811,14 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
 
     const toggle = screen.getByTestId("chat-config-runtime-collapsible");
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
   });
 
   it("delete chat button stays after move button (destructive at end)", async () => {

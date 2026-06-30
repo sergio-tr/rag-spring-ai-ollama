@@ -6,9 +6,12 @@ import {
   downloadCampaignExport,
   downloadCampaignItemsJson,
   downloadCampaignSummaryJson,
+  downloadEvaluationFullBundle,
+  downloadEvaluationSummaryCsv,
   downloadMvpExport,
   fetchCampaignComparison,
   fetchCampaignItemsBundle,
+  fetchEvaluationResultsJson,
   fetchLabCampaignRuns,
   fetchLabEvaluationRun,
   fetchMvpItemsBundle,
@@ -39,11 +42,14 @@ import { mapUserFacingErrorMessage } from "@/lib/user-facing-error-messages";
 import { formatBenchmarkKindLabel, sanitizeLabPrimarySurfaceCopy } from "@/lib/product-copy";
 import {
   countOutcomesFromItems,
+  readDerivedErrorClassFromItem,
   readGlobalOutcomeCounts,
   readMvpItems,
+  readRollupsFromResultsBundle,
   readAnswerableScoreFromComparisonRow,
   readOnExecutedSummary,
 } from "@/features/lab/lib/lab-benchmark-mvp-utils";
+import { TechnicalDetails } from "@/features/lab/components/compact-lab-ui";
 import { getSafeApiErrorMessage } from "@/lib/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -71,6 +77,7 @@ type ResultTableRow = {
   faithfulness: number | null;
   sourceSupport: number | null;
   dateCorrectness: number | null;
+  derivedErrorClass: string | null;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -218,7 +225,14 @@ function toResultTableRow(row: unknown, idx: number, t: (key: string) => string)
     faithfulness: numberOrNull(generation?.faithfulness),
     sourceSupport: numberOrNull(generation?.sourceSupport),
     dateCorrectness: numberOrNull(generation?.dateCorrectness),
+    derivedErrorClass: readDerivedErrorClassFromItem(item),
   };
+}
+
+function formatDerivedErrorClassLabel(errorClass: string, t: (key: string) => string): string {
+  const key = `benchmarkDerivedErrorClass.${errorClass}`;
+  const translated = t(key);
+  return translated !== key ? translated : errorClass.replaceAll("_", " ").toLowerCase();
 }
 
 function trendRows(
@@ -325,6 +339,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
   const campId = campaignId?.trim() ?? "";
   const [modelFilter, setModelFilter] = useState("ALL");
   const [presetFilter, setPresetFilter] = useState("ALL");
+  const [errorClassFilter, setErrorClassFilter] = useState("ALL");
   const [selectedComparisonKey, setSelectedComparisonKey] = useState<string | null>(null);
 
   const query = useQuery({
@@ -334,19 +349,23 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
       const run = await fetchLabEvaluationRun(runId);
       const effectiveCampaignId =
         campId || (typeof run.campaignId === "string" ? run.campaignId.trim() : "");
-      const [rollups, itemsBundle, campaignRuns, campaignComparison, campaignItemsBundle] = await Promise.all([
-        fetchMvpRollupsJson(runId),
-        fetchMvpItemsBundle(runId),
+      const [resultsBundle, rollupsLegacy, campaignRuns, campaignComparison, campaignItemsBundle] = await Promise.all([
+        fetchEvaluationResultsJson(runId).catch(() => fetchMvpItemsBundle(runId)),
+        fetchMvpRollupsJson(runId).catch(() => null),
         effectiveCampaignId ? fetchLabCampaignRuns(effectiveCampaignId) : Promise.resolve(null),
         effectiveCampaignId ? fetchCampaignComparison(effectiveCampaignId).catch(() => null) : Promise.resolve(null),
         effectiveCampaignId
           ? fetchCampaignItemsBundle(effectiveCampaignId).catch(() => null)
           : Promise.resolve(null),
       ]);
+      const rollups =
+        rollupsLegacy && Object.keys(rollupsLegacy).length > 0
+          ? rollupsLegacy
+          : readRollupsFromResultsBundle(resultsBundle);
       return {
         run,
         rollups,
-        itemsBundle,
+        itemsBundle: resultsBundle,
         campaignRuns,
         campaignComparison,
         campaignItemsBundle,
@@ -443,11 +462,16 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
         const sample = tableRows.find((row) => row.presetCode === code);
         return { key: code, label: sample?.presetLabel && sample.presetLabel !== "—" ? sample.presetLabel : code };
       });
+  const errorClassOptions = sortedUnique(
+    tableRows.map((row) => row.derivedErrorClass).filter((value): value is string => value != null && value.length > 0),
+  );
   const filteredRows = sortByCorrectnessDesc(
     tableRows.filter(
       (row) =>
         (modelFilter === "ALL" || row.modelId === modelFilter) &&
-        (presetFilter === "ALL" || row.presetCode === presetFilter),
+        (presetFilter === "ALL" || row.presetCode === presetFilter) &&
+        (errorClassFilter === "ALL" ||
+          (row.derivedErrorClass != null && row.derivedErrorClass === errorClassFilter)),
     ),
   );
   const executedRows = filteredRows.filter((row) => row.outcome === "EXECUTED");
@@ -529,83 +553,126 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             </p>
           ) : null}
         </div>
-        <div className="flex flex-wrap gap-2">
-          {effectiveCampaignId ? (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                data-testid="lab-export-campaign-items-json"
-                onClick={() => void downloadCampaignItemsJson(effectiveCampaignId)}
-              >
-                {t("benchmarkExportCampaignItemsJson")}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                data-testid="lab-export-campaign-summary-json"
-                onClick={() => void downloadCampaignSummaryJson(effectiveCampaignId)}
-              >
-                {t("benchmarkExportCampaignSummaryJson")}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                data-testid="lab-export-campaign-items-csv"
-                onClick={() => void downloadCampaignExport(effectiveCampaignId, "items.csv")}
-              >
-                {t("benchmarkExportCampaignItemsCsv")}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                data-testid="lab-export-campaign-summary-csv"
-                onClick={() => void downloadCampaignExport(effectiveCampaignId, "summary.csv")}
-              >
-                {t("benchmarkExportCampaignSummaryCsv")}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                data-testid="lab-export-campaign-bundle-json"
-                onClick={() => void downloadCampaignExport(effectiveCampaignId, "bundle.json")}
-              >
-                {t("benchmarkExportCampaignBundleJson")}
-              </Button>
-            </>
-          ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="lab-export-mvp-csv"
-            onClick={() => void downloadMvpExport(payload.run.id, "items.csv")}
+        <div className="flex flex-col items-end gap-2" data-testid="lab-benchmark-export-actions">
+          <div className="flex flex-wrap justify-end gap-2" data-testid="lab-benchmark-export-primary">
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              data-testid="lab-export-primary-json"
+              onClick={() => void downloadMvpExport(payload.run.id, "results.json")}
+            >
+              {t("benchmarkDownloadJson")}
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              data-testid="lab-export-primary-csv"
+              onClick={() => void downloadEvaluationSummaryCsv(payload.run.id)}
+            >
+              {t("benchmarkDownloadCsvSummary")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid="lab-export-v1-full-bundle"
+              onClick={() => void downloadEvaluationFullBundle(payload.run.id)}
+            >
+              {t("benchmarkDownloadFullBundle")}
+            </Button>
+          </div>
+          <TechnicalDetails
+            summary={t("benchmarkExportsAdvancedSummary")}
+            testId="lab-benchmark-export-advanced"
+            className="w-full max-w-xl rounded-md border bg-muted/20 p-3 text-xs"
           >
-            {t("benchmarkExportMvpCsv")}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="lab-export-mvp-items-json"
-            onClick={() => void downloadMvpExport(payload.run.id, "items.json")}
-          >
-            {t("benchmarkExportMvpItemsJson")}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="lab-export-mvp-rollups-json"
-            onClick={() => void downloadMvpExport(payload.run.id, "rollups.json")}
-          >
-            {t("benchmarkExportMvpRollupsJson")}
-          </Button>
+            <div className="flex flex-wrap gap-2">
+              {effectiveCampaignId ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="lab-export-campaign-items-json"
+                    onClick={() => void downloadCampaignItemsJson(effectiveCampaignId)}
+                  >
+                    {t("benchmarkExportCampaignItemsJson")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="lab-export-campaign-summary-json"
+                    onClick={() => void downloadCampaignSummaryJson(effectiveCampaignId)}
+                  >
+                    {t("benchmarkExportCampaignSummaryJson")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="lab-export-campaign-items-csv"
+                    onClick={() => void downloadCampaignExport(effectiveCampaignId, "items.csv")}
+                  >
+                    {t("benchmarkExportCampaignItemsCsv")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="lab-export-campaign-summary-csv"
+                    onClick={() => void downloadCampaignExport(effectiveCampaignId, "summary.csv")}
+                  >
+                    {t("benchmarkExportCampaignSummaryCsv")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="lab-export-campaign-bundle-json"
+                    onClick={() => void downloadCampaignExport(effectiveCampaignId, "bundle.json")}
+                  >
+                    {t("benchmarkExportCampaignBundleJson")}
+                  </Button>
+                </>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="lab-export-mvp-csv"
+                onClick={() => void downloadMvpExport(payload.run.id, "items.csv")}
+              >
+                {t("benchmarkExportMvpCsv")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="lab-export-mvp-items-json"
+                onClick={() => void downloadMvpExport(payload.run.id, "items.json")}
+              >
+                {t("benchmarkExportMvpItemsJson")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="lab-export-mvp-rollups-json"
+                onClick={() => void downloadMvpExport(payload.run.id, "rollups.json")}
+              >
+                {t("benchmarkExportMvpRollupsJson")}
+              </Button>
+            </div>
+            <details data-testid="lab-benchmark-raw-rollups-preview">
+              <summary className="cursor-pointer font-medium text-foreground">{t("benchmarkRawDataSummary")}</summary>
+              <pre className="text-muted-foreground mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md border bg-background/60 p-2 font-mono text-[10px]">
+                {JSON.stringify(payload.rollups, null, 2)}
+              </pre>
+            </details>
+          </TechnicalDetails>
         </div>
       </div>
 
@@ -657,7 +724,11 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
 
       {effectiveCampaignId && campaignComparisonRecord ? (
         comparisonRows.length >= 2 ? (
-        <div className="space-y-2" data-testid="lab-campaign-comparison-panel">
+        <div
+          className="space-y-2"
+          data-testid="lab-campaign-comparison-panel"
+          data-comparison-axis={comparisonAxis || undefined}
+        >
           <span className="text-muted-foreground text-xs font-medium">{t("benchmarkCampaignComparisonTitle")}</span>
           {campaignComparisonRecord ? (
             <p className="text-muted-foreground text-[11px]">
@@ -676,7 +747,15 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                   <th className="p-2 font-medium">{t("benchmarkColNotSupported")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColFailed")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColSkipped")}</th>
-                  <th className="p-2 font-medium">{t("benchmarkColAnswerableScore")}</th>
+                  <th
+                    className="bg-primary/5 p-2 font-semibold"
+                    title={t("benchmarkColAnswerableScoreTooltip")}
+                  >
+                    {t("benchmarkColAnswerableScore")}
+                  </th>
+                  <th className="p-2 font-medium" title={t("benchmarkColGlobalScoreTooltip")}>
+                    {t("benchmarkColGlobalScore")}
+                  </th>
                   <th className="p-2 font-medium">{t("benchmarkColExact")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColSemantic")}</th>
                   <th className="p-2 font-medium">{t("benchmarkColRecall")}</th>
@@ -724,7 +803,12 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                       <td className="p-2">{String(r.notSupported ?? "—")}</td>
                       <td className="p-2">{String(r.failed ?? "—")}</td>
                       <td className="p-2">{String(r.skipped ?? "—")}</td>
-                      <td className="p-2 font-mono">{formatComparisonScore(r.scoreAnswerable)}</td>
+                      <td className="bg-primary/5 p-2 font-mono font-semibold text-primary">
+                        {formatComparisonScore(r.scoreAnswerable)}
+                      </td>
+                      <td className="p-2 font-mono" title={t("benchmarkColGlobalScoreTooltip")}>
+                        {formatComparisonScore(r.scoreGlobal)}
+                      </td>
                       <td className="p-2 font-mono">{formatComparisonMetric(r.meanExactMatch)}</td>
                       <td className="p-2 font-mono">{formatComparisonMetric(r.meanSemanticScore)}</td>
                       <td className="p-2 font-mono">{formatComparisonMetric(r.meanRecallAt1)}</td>
@@ -818,7 +902,10 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
         </p>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-2" data-testid="lab-results-filters">
+      <div
+        className={`grid gap-3 ${errorClassOptions.length > 0 ? "md:grid-cols-2 lg:grid-cols-3" : "md:grid-cols-2"}`}
+        data-testid="lab-results-filters"
+      >
         <label className="space-y-1 text-xs">
           <span className="text-muted-foreground font-medium">{t("benchmarkFilterModel")}</span>
           <select
@@ -855,6 +942,24 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             ))}
           </select>
         </label>
+        {errorClassOptions.length > 0 ? (
+          <label className="space-y-1 text-xs">
+            <span className="text-muted-foreground font-medium">{t("benchmarkFilterErrorClass")}</span>
+            <select
+              className="bg-background w-full rounded-md border px-2 py-1"
+              data-testid="lab-results-filter-error-class"
+              value={errorClassFilter}
+              onChange={(event) => setErrorClassFilter(event.target.value)}
+            >
+              <option value="ALL">{t("benchmarkFilterAll")}</option>
+              {errorClassOptions.map((errorClass) => (
+                <option key={errorClass} value={errorClass}>
+                  {formatDerivedErrorClassLabel(errorClass, t)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
 
       {showTrendChart ? (

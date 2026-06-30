@@ -1,7 +1,7 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -13,11 +13,12 @@ import org.springframework.stereotype.Component;
 public class CorpusGroundedDirectWorkflow extends FullCorpusWorkflow {
 
     public CorpusGroundedDirectWorkflow(
-            ChatClient chatClient,
+            RagLlmChatInvoker llmChatInvoker,
             SnapshotCorpusAssembler snapshotCorpusAssembler,
             RuntimePromptBudgeter promptBudgeter,
+            RuntimeAnswerPromptResolver answerPromptResolver,
             @Autowired(required = false) ObservabilitySupport observability) {
-        super(chatClient, snapshotCorpusAssembler, promptBudgeter, observability);
+        super(llmChatInvoker, snapshotCorpusAssembler, promptBudgeter, answerPromptResolver, observability);
     }
 
     @Override

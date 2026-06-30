@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.testsupport.config.TestConfigurablePromptResolver;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline;
@@ -23,6 +24,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import org.springframework.ai.chat.client.ChatClient;
 
 import com.uniovi.rag.configuration.RagRuntimeProperties;
@@ -116,30 +119,32 @@ class WorkflowSelectorTest {
 
     @BeforeEach
     void setUp() {
-        ChatClient chatClient = mock(ChatClient.class);
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
         selector =
                 new WorkflowSelector(
-                        new DirectLlmWorkflow(chatClient, null),
+                        new DirectLlmWorkflow(llmChatInvoker, TestConfigurablePromptResolver.answerPromptResolver(), null),
                         new CorpusGroundedDirectWorkflow(
-                                chatClient,
+                                llmChatInvoker,
                                 mock(SnapshotCorpusAssembler.class),
                                 new RuntimePromptBudgeter(new RagRuntimeProperties()),
+                                TestConfigurablePromptResolver.answerPromptResolver(),
                                 null),
                         new FullCorpusWorkflow(
-                                chatClient,
+                                llmChatInvoker,
                                 mock(SnapshotCorpusAssembler.class),
                                 new RuntimePromptBudgeter(new RagRuntimeProperties()),
+                                TestConfigurablePromptResolver.answerPromptResolver(),
                                 null),
                         new DocumentDenseRagWorkflow(
-                                chatClient,
+                                llmChatInvoker,
                                 mock(AdvancedRetrievalPipeline.class),
                                 null),
                         new ChunkDenseRagWorkflow(
-                                chatClient,
+                                llmChatInvoker,
                                 mock(AdvancedRetrievalPipeline.class),
                                 null),
                         new ChunkDenseMetadataWorkflow(
-                                chatClient,
+                                llmChatInvoker,
                                 mock(AdvancedRetrievalPipeline.class),
                                 null));
     }

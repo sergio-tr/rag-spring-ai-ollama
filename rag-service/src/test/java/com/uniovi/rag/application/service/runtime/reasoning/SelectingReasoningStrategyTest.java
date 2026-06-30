@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.reasoning;
 
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagReasoningProperties;
 import com.uniovi.rag.domain.model.QueryType;
@@ -9,11 +10,9 @@ import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
 import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -26,8 +25,9 @@ class SelectingReasoningStrategyTest {
 
     @Test
     void runPreStep_whenConfigStrategyIsCot_delegatesToCotAndReturnsTrimmedThought() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().user(anyString()).call().content()).thenReturn("  thought  ");
+        ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor = mock(ProviderAwareSecondaryLlmExecutor.class);
+        when(secondaryLlmExecutor.complete(eq(COTReasoningStrategy.OPERATION_COT_PRE), isNull(), anyString()))
+                .thenReturn("  thought  ");
 
         RagReasoningProperties props = new RagReasoningProperties();
         props.setStrategy("SIMPLE");
@@ -35,7 +35,7 @@ class SelectingReasoningStrategyTest {
         RagExecutionContextHolder.set(
                 RagExecutionContext.forUnscopedExecution(configWithReasoningStrategy("COT"), "t"));
 
-        SelectingReasoningStrategy s = new SelectingReasoningStrategy(chatClient, props);
+        SelectingReasoningStrategy s = new SelectingReasoningStrategy(secondaryLlmExecutor, props);
         var out = s.runPreStep("q", QueryType.BOOLEAN_QUERY, new JSONObject(), "expanded");
 
         assertThat(out.thoughtOrPlan()).isEqualTo("thought");
@@ -43,8 +43,9 @@ class SelectingReasoningStrategyTest {
 
     @Test
     void runPostStep_whenDefaultPropertyPlanAndVerify_delegatesAndVerifiesYesNo() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().user(anyString()).call().content()).thenReturn("Yes");
+        ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor = mock(ProviderAwareSecondaryLlmExecutor.class);
+        when(secondaryLlmExecutor.complete(eq(PlanAndVerifyReasoningStrategy.OPERATION_PLAN_POST), isNull(), anyString()))
+                .thenReturn("Yes");
 
         RagReasoningProperties props = new RagReasoningProperties();
         props.setStrategy("PLAN_AND_VERIFY");
@@ -52,7 +53,7 @@ class SelectingReasoningStrategyTest {
         RagExecutionContextHolder.set(
                 RagExecutionContext.forUnscopedExecution(configWithReasoningStrategy(""), "t"));
 
-        SelectingReasoningStrategy s = new SelectingReasoningStrategy(chatClient, props);
+        SelectingReasoningStrategy s = new SelectingReasoningStrategy(secondaryLlmExecutor, props);
         var out = s.runPostStep("q", "ctx", "draft");
 
         assertThat(out).isNotNull();
@@ -62,12 +63,12 @@ class SelectingReasoningStrategyTest {
 
     @Test
     void runPreStep_whenNoConfigAndNoDefaultStrategy_returnsSimpleNoop() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor = mock(ProviderAwareSecondaryLlmExecutor.class);
 
         RagExecutionContextHolder.set(
                 RagExecutionContext.forUnscopedExecution(configWithReasoningStrategy("   "), "t"));
 
-        SelectingReasoningStrategy s = new SelectingReasoningStrategy(chatClient, null);
+        SelectingReasoningStrategy s = new SelectingReasoningStrategy(secondaryLlmExecutor, null);
         var out = s.runPreStep("q", null, null, "expanded");
 
         assertThat(out.thoughtOrPlan()).isEmpty();
@@ -79,4 +80,3 @@ class SelectingReasoningStrategyTest {
         return RagConfig.fromFeatureConfiguration(fc, 10, 0.7, "llm", "emb", "clf", strategy);
     }
 }
-

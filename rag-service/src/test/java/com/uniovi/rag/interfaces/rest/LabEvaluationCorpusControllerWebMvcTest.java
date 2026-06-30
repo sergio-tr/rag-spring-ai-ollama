@@ -16,9 +16,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusGoldAlignmentService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexPrepareResult;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunGroupKey;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusDocumentUploadItemDto;
@@ -64,6 +66,9 @@ class LabEvaluationCorpusControllerWebMvcTest {
 
     @MockitoBean
     private EvaluationCorpusIndexService evaluationCorpusIndexService;
+
+    @MockitoBean
+    private EvaluationCorpusGoldAlignmentService evaluationCorpusGoldAlignmentService;
 
     private UUID userId;
 
@@ -124,7 +129,7 @@ class LabEvaluationCorpusControllerWebMvcTest {
     @Test
     void prepareIndex_returnsReadiness() throws Exception {
         UUID corpusId = UUID.randomUUID();
-        when(evaluationCorpusIndexService.prepareIndex(userId, corpusId))
+        when(evaluationCorpusIndexService.prepareDefaultIndex(userId, corpusId))
                 .thenReturn(
                         EvaluationCorpusIndexPrepareResult.built(
                                 UUID.randomUUID(), UUID.randomUUID(), "hash", "profile"));
@@ -154,6 +159,46 @@ class LabEvaluationCorpusControllerWebMvcTest {
     }
 
     @Test
+    void prepareIndex_hybridPresetGroupKey_usesHybridProfile() throws Exception {
+        UUID corpusId = UUID.randomUUID();
+        UUID snapId = UUID.randomUUID();
+        when(evaluationCorpusIndexService.prepareForPresetRequirements(
+                        eq(userId),
+                        eq(corpusId),
+                        eq(LabPresetRunGroupKey.HYBRID_METADATA),
+                        any(),
+                        any(),
+                        eq(true)))
+                .thenReturn(
+                        EvaluationCorpusIndexPrepareResult.built(
+                                snapId, UUID.randomUUID(), "hash", "profile"));
+        when(evaluationCorpusReadinessService.getReadiness(userId, corpusId))
+                .thenReturn(
+                        new EvaluationCorpusReadinessDto(
+                                corpusId,
+                                UUID.randomUUID(),
+                                1,
+                                1,
+                                1,
+                                0,
+                                0,
+                                null,
+                                null,
+                                snapId,
+                                false,
+                                null,
+                                null,
+                                List.of(snapId),
+                                true));
+
+        mockMvc.perform(
+                        post(path("/lab/evaluation-corpora/") + corpusId + "/prepare-index")
+                                .param("presetGroupKey", "HYBRID_METADATA"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.activeSnapshotId").value(snapId.toString()));
+    }
+
+    @Test
     void prepareIndex_configSnapshotUnavailable_returns422WithReasonCode() throws Exception {
         UUID corpusId = UUID.randomUUID();
         doThrow(
@@ -161,7 +206,7 @@ class LabEvaluationCorpusControllerWebMvcTest {
                                 HttpStatus.UNPROCESSABLE_ENTITY,
                                 LabCorpusReasonCodes.RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE))
                 .when(evaluationCorpusIndexService)
-                .prepareIndex(userId, corpusId);
+                .prepareDefaultIndex(userId, corpusId);
 
         mockMvc.perform(post(path("/lab/evaluation-corpora/") + corpusId + "/prepare-index"))
                 .andExpect(status().isUnprocessableEntity())

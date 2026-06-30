@@ -2,6 +2,7 @@ package com.uniovi.rag.tool;
 
 import com.uniovi.rag.infrastructure.observability.Loggable;
 import com.uniovi.rag.domain.model.Minute;
+import com.uniovi.rag.util.NerDateFieldSupport;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
@@ -214,12 +215,11 @@ public class EnhancedNERHandler implements Loggable {
      */
     public List<String> extractNormalizedDates(JSONObject ner) {
         if (ner == null || !ner.has("date")) return Collections.emptyList();
-        
-        JSONArray dates = ner.getJSONArray("date");
+
+        List<String> dateStrings = NerDateFieldSupport.readDateStrings(ner);
         List<String> normalizedDates = new ArrayList<>();
-        
-        for (int i = 0; i < dates.length(); i++) {
-            String dateStr = dates.getString(i);
+
+        for (String dateStr : dateStrings) {
             String normalized = normalizeDate(dateStr);
             if (normalized != null) {
                 normalizedDates.add(normalized);

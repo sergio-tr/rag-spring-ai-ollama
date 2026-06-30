@@ -4,6 +4,7 @@ import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusInde
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexService;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
 import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess;
 import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
@@ -54,6 +55,7 @@ public class LabEvaluationSnapshotService {
     private final CorpusAvailabilityGate corpusAvailabilityGate;
     private final LabIndexSnapshotCompatibilityService indexSnapshotCompatibilityService;
     private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
+    private final KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess;
     private final EvaluationRunRepository evaluationRunRepository;
     private final ProjectRepository projectRepository;
     private final ObjectProvider<LabJobProgressTracker> labJobProgressTracker;
@@ -67,6 +69,7 @@ public class LabEvaluationSnapshotService {
             CorpusAvailabilityGate corpusAvailabilityGate,
             LabIndexSnapshotCompatibilityService indexSnapshotCompatibilityService,
             KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
+            KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess,
             EvaluationRunRepository evaluationRunRepository,
             ProjectRepository projectRepository,
             ObjectProvider<LabJobProgressTracker> labJobProgressTracker) {
@@ -78,6 +81,7 @@ public class LabEvaluationSnapshotService {
         this.corpusAvailabilityGate = corpusAvailabilityGate;
         this.indexSnapshotCompatibilityService = indexSnapshotCompatibilityService;
         this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
+        this.snapshotProfileAccess = snapshotProfileAccess;
         this.evaluationRunRepository = evaluationRunRepository;
         this.projectRepository = projectRepository;
         this.labJobProgressTracker = labJobProgressTracker;
@@ -214,11 +218,7 @@ public class LabEvaluationSnapshotService {
         if (snapshotId == null) {
             return IndexSnapshotCapabilities.fromIndexProfile(Map.of());
         }
-        return knowledgeIndexSnapshotRepository
-                .findById(snapshotId)
-                .map(KnowledgeIndexSnapshotEntity::getIndexProfileJsonb)
-                .map(IndexSnapshotCapabilities::fromIndexProfile)
-                .orElse(IndexSnapshotCapabilities.fromIndexProfile(Map.of()));
+        return IndexSnapshotCapabilities.fromIndexProfile(snapshotProfileAccess.loadProfileJsonb(snapshotId));
     }
 
     public String indexProfileHashForSnapshot(UUID snapshotId) {
@@ -489,7 +489,7 @@ public class LabEvaluationSnapshotService {
         return indexSnapshotCompatibilityService.profileCompatible(snapshot, requirements, embeddingModelIdOverride);
     }
 
-    private static ResolvedSnapshot resolvedFromPrepare(
+    private ResolvedSnapshot resolvedFromPrepare(
             EvaluationCorpusIndexPrepareResult prepared,
             KnowledgeIndexSnapshotEntity built,
             UUID corpusId) {
@@ -510,11 +510,11 @@ public class LabEvaluationSnapshotService {
                 corpusId);
     }
 
-    private static ResolvedSnapshot resolved(KnowledgeIndexSnapshotEntity snap, boolean preparedDuringRun) {
+    private ResolvedSnapshot resolved(KnowledgeIndexSnapshotEntity snap, boolean preparedDuringRun) {
         if (snap == null || snap.getId() == null) {
             return ResolvedSnapshot.missing();
         }
-        Map<String, Object> profile = snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
+        Map<String, Object> profile = snapshotProfileAccess.resolveProfileJsonb(snap);
         IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
         return new ResolvedSnapshot(
                 true,
@@ -527,11 +527,11 @@ public class LabEvaluationSnapshotService {
     }
 
     /** Active snapshot exists but does not satisfy preset index requirements (distinct from no snapshot). */
-    private static ResolvedSnapshot incompatible(KnowledgeIndexSnapshotEntity snap) {
+    private ResolvedSnapshot incompatible(KnowledgeIndexSnapshotEntity snap) {
         if (snap == null || snap.getId() == null) {
             return ResolvedSnapshot.missing();
         }
-        Map<String, Object> profile = snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
+        Map<String, Object> profile = snapshotProfileAccess.resolveProfileJsonb(snap);
         IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
         return new ResolvedSnapshot(
                 false,

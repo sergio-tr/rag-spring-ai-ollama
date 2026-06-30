@@ -24,7 +24,7 @@ import { authHeadersFromPage, productApiUrl } from "../support/helpers";
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.cursor/evidence/final-lab-rag-closure/llm",
+  "../../../docs/evidence/final-lab-rag-closure/llm",
 );
 const LOG_PATH = path.join(EVIDENCE_DIR, "e2e-llm-evidence.log");
 

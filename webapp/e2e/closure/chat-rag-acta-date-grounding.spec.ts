@@ -16,10 +16,10 @@ import {
   waitForDocumentReadyByName,
 } from "../support/helpers";
 
-const EVIDENCE_DIR = path.resolve(__dirname, "../../../.cursor/evidence/wave-3-current/chat-rag");
+const EVIDENCE_DIR = path.resolve(__dirname, "../../../.docs/evidence/wave-3-current/chat-rag");
 const M5_EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.cursor/context/evidence/m5-chat-rag-quality-grounding",
+  "../../../../docs/evidence/m5-chat-rag-quality-grounding",
 );
 
 test.describe("Closure Chat RAG acta date grounding @closure @fullstack @wave3", () => {

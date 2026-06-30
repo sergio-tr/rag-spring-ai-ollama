@@ -2,7 +2,7 @@
 
 **Última actualización:** Febrero 2025
 
-> **DOC_ONLY_HISTORICAL** — No usar como arquitectura ni gate actuales. Canon: `docs/architecture/`, `.cursor/context/architecture-final-validation/architecture-final-validation.md`.
+> **DOC_ONLY_HISTORICAL** — No usar como arquitectura ni gate actuales. Canon: `docs/architecture/` (incl. `target-architecture.md`, `rag-runtime-architecture.md`).
 
 > Nota de mantenimiento 2026-05: este análisis describe una superficie histórica del prototipo. Para evidencia final del producto, usar rutas product-scoped (`/api/v5/...`), Chat por conversaciones/jobs y LAB benchmarks/exportaciones. El antiguo `GET /query` no forma parte del producto final; solo como comparación histórica si se etiqueta explícitamente.
 

@@ -9,6 +9,81 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ClassifierOverridesTest {
 
     @Test
+    void englishElevatorCountMapsToCountDocuments() {
+        assertEquals(
+                QueryType.COUNT_DOCUMENTS,
+                ClassifierOverrides.apply(
+                        "How many meetings mention the elevator?",
+                        QueryType.SUMMARIZE_MEETING));
+    }
+
+    @Test
+    void englishPresidentLookupMapsToGetField() {
+        assertEquals(
+                QueryType.GET_FIELD,
+                ClassifierOverrides.apply("Who was the president?", QueryType.FIND_PARAGRAPH));
+    }
+
+    @Test
+    void englishElevatorDiscussedMapsToBooleanQuery() {
+        assertEquals(
+                QueryType.BOOLEAN_QUERY,
+                ClassifierOverrides.apply("Was the elevator discussed?", QueryType.SUMMARIZE_MEETING));
+    }
+
+    @Test
+    void spanishActaCountStillMapsToCountDocuments() {
+        assertEquals(
+                QueryType.COUNT_DOCUMENTS,
+                ClassifierOverrides.apply("¿Cuántas actas mencionan el ascensor?", QueryType.SUMMARIZE_MEETING));
+    }
+
+    @Test
+    void englishBudgetCountMapsToCountDocuments() {
+        assertEquals(
+                QueryType.COUNT_DOCUMENTS,
+                ClassifierOverrides.apply(
+                        "How many meetings discussed the budget in 2025?",
+                        QueryType.SUMMARIZE_MEETING));
+    }
+
+    @Test
+    void englishQuerySkipsSpanishActaListingOverride() {
+        assertEquals(
+                QueryType.SUMMARIZE_MEETING,
+                ClassifierOverrides.apply(
+                        "List the meetings that mention the elevator",
+                        QueryType.SUMMARIZE_MEETING));
+    }
+
+    @Test
+    void actaStartEndTimeMapsToGetField() {
+        assertEquals(
+                QueryType.GET_FIELD,
+                ClassifierOverrides.apply(
+                        "a qué hora empezó y a qué hora terminó esa acta? en el acta del 24 de febrero de 2025",
+                        QueryType.SUMMARIZE_MEETING));
+    }
+
+    @Test
+    void englishPersonLookupMapsToFindParagraph() {
+        assertEquals(
+                QueryType.FIND_PARAGRAPH,
+                ClassifierOverrides.apply(
+                        "what do you know about Luis Ramírez Ortega?",
+                        QueryType.COUNT_DOCUMENTS));
+    }
+
+    @Test
+    void secretaryFollowUpMapsToGetField() {
+        assertEquals(
+                QueryType.GET_FIELD,
+                ClassifierOverrides.apply(
+                        "y quién fue la secretaria? en el acta del 24 de febrero de 2025",
+                        QueryType.COUNT_DOCUMENTS));
+    }
+
+    @Test
     void presencePhrasesMapToBooleanQuery() {
         assertEquals(QueryType.BOOLEAN_QUERY, ClassifierOverrides.apply("confirma si aparece X", QueryType.SUMMARIZE_MEETING));
     }
@@ -217,5 +292,30 @@ class ClassifierOverridesTest {
                 ClassifierOverrides.apply(
                         "Verifica si se mencionó la limpieza en alguna reunión celebrada en 2026.",
                         QueryType.COUNT_DOCUMENTS));
+    }
+
+    @Test
+    void puntosDelDiaWithDateMapsToGetFieldAgenda() {
+        assertEquals(
+                QueryType.GET_FIELD,
+                ClassifierOverrides.apply(
+                        "¿Cuáles fueron los puntos del día del acta del 25 de febrero de 2026?",
+                        QueryType.GET_DURATION));
+    }
+
+    @Test
+    void undatedPuntosDelDiaMapsToGetField() {
+        assertEquals(
+                QueryType.GET_FIELD,
+                ClassifierOverrides.apply("¿Cuáles fueron los puntos del día?", QueryType.COUNT_DOCUMENTS));
+    }
+
+    @Test
+    void endTimeAfter830MapsToFilterAndList() {
+        assertEquals(
+                QueryType.FILTER_AND_LIST,
+                ClassifierOverrides.apply(
+                        "dime las fechas de las actas que terminaron más tarde de las 8:30",
+                        QueryType.SUMMARIZE_MEETING));
     }
 }

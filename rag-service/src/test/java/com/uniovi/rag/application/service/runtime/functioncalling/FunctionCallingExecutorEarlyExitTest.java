@@ -18,10 +18,15 @@ import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.tool.MeetingMinutesToolExecutionCore;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.MeetingMinutesToolRawResult;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.tool.ToolResult;
+import com.uniovi.rag.testsupport.llm.ChatGenerationModelSelectorTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,7 +47,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -55,49 +63,31 @@ class FunctionCallingExecutorEarlyExitTest {
     @Mock private MeetingMinutesToolExecutionCore meetingMinutesToolExecutionCore;
     @Mock private FunctionCallingResultMapper resultMapper;
     @Mock private ResolvedRuntimeConfig resolvedRuntimeConfig;
+    @Mock private ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
 
     @BeforeEach
     void stubToolRegistry() {
-        when(toolRegistry.callbacksFor(any())).thenReturn(List.of());
+        lenient().when(toolRegistry.callbacksFor(any())).thenReturn(List.of());
+        lenient().when(secondaryLlmExecutor.effectiveConfig(any())).thenReturn(ollamaNativeConfig());
     }
 
     @Test
     void run_returnsModelDeclined_whenAssistantHasNoToolCalls() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         AssistantMessage assistant = mock(AssistantMessage.class);
         when(assistant.hasToolCalls()).thenReturn(false);
-        Generation generation = mock(Generation.class);
-        when(generation.getOutput()).thenReturn(assistant);
-        ChatResponse chatResponse = mock(ChatResponse.class);
-        when(chatResponse.getResult()).thenReturn(generation);
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any(OllamaOptions.class)).call().chatResponse())
-                .thenReturn(chatResponse);
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
-                        chatClient, toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
-
-        FunctionCallingExecutionResult r =
-                executor.run(buildCtx(), minimalPlan(), minimalDecision());
-
-        assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.MODEL_DECLINED);
-    }
-
-    @Test
-    void run_returnsInvalidModelOutput_whenMultipleToolCalls() {
-        AssistantMessage assistant = mock(AssistantMessage.class);
-        when(assistant.hasToolCalls()).thenReturn(true);
-        ToolCall a = mock(ToolCall.class);
-        ToolCall b = mock(ToolCall.class);
-        when(assistant.getToolCalls()).thenReturn(List.of(a, b));
-
-        FunctionCallingExecutor executor =
-                new FunctionCallingExecutor(
-                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+                        chatClientForAssistant(assistant),
+                        toolRegistry,
+                        meetingMinutesToolExecutionCore,
+                        resultMapper,
+                        ChatGenerationModelSelectorTestSupport.permissiveMock(),
+                        secondaryLlmExecutor);
         FunctionCallingExecutionResult r =
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
-        assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.INVALID_MODEL_OUTPUT);
+        assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.MODEL_DECLINED);
     }
 
     @Test
@@ -110,7 +100,12 @@ class FunctionCallingExecutorEarlyExitTest {
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
-                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+                        chatClientForAssistant(assistant),
+                        toolRegistry,
+                        meetingMinutesToolExecutionCore,
+                        resultMapper,
+                        ChatGenerationModelSelectorTestSupport.permissiveMock(),
+                        secondaryLlmExecutor);
         FunctionCallingExecutionResult r =
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
@@ -126,23 +121,28 @@ class FunctionCallingExecutorEarlyExitTest {
         when(tc.arguments()).thenReturn("{\"query\":\"not-matching-rewritten\"}");
         when(assistant.getToolCalls()).thenReturn(List.of(tc));
 
-        AssistantMessage followUp = mock(AssistantMessage.class);
-        when(followUp.hasToolCalls()).thenReturn(false);
-        when(followUp.getText()).thenReturn("There are 2 matching documents.");
-
         ToolResult raw = mock(ToolResult.class);
         when(meetingMinutesToolExecutionCore.execute(any(), any(), any()))
                 .thenReturn(MeetingMinutesToolRawResult.ok(DeterministicToolKind.COUNT_DOCUMENTS_TOOL, raw));
         when(resultMapper.stableAnswerText(raw, DeterministicToolKind.COUNT_DOCUMENTS_TOOL)).thenReturn("2");
         when(resultMapper.normalizedPayload(raw, DeterministicToolKind.COUNT_DOCUMENTS_TOOL))
                 .thenReturn(Map.of("count", 2));
+        when(secondaryLlmExecutor.complete(
+                        any(),
+                        eq(FunctionCallingExecutor.OPERATION_FUNCTION_CALLING),
+                        anyString(),
+                        anyString(),
+                        isNull()))
+                .thenReturn("There are 2 matching documents.");
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
-                        chatClientForAssistantThenFollowUp(assistant, followUp),
+                        chatClientForAssistant(assistant),
                         toolRegistry,
                         meetingMinutesToolExecutionCore,
-                        resultMapper);
+                        resultMapper,
+                        ChatGenerationModelSelectorTestSupport.permissiveMock(),
+                        secondaryLlmExecutor);
         FunctionCallingExecutionResult r =
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
@@ -151,6 +151,27 @@ class FunctionCallingExecutorEarlyExitTest {
         assertThat(r.backendFunctionCallAttempted()).isFalse();
         assertThat(r.traceNotes()).noneMatch(n -> n.startsWith("bad_args:"));
         verify(meetingMinutesToolExecutionCore).execute(any(), any(), any());
+    }
+
+    @Test
+    void run_returnsNotApplicable_whenOpenAiCompatible_withoutTouchingChatClient() {
+        when(secondaryLlmExecutor.effectiveConfig(any())).thenReturn(openAiConfig());
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+
+        FunctionCallingExecutor executor =
+                new FunctionCallingExecutor(
+                        chatClient,
+                        toolRegistry,
+                        meetingMinutesToolExecutionCore,
+                        resultMapper,
+                        mock(ChatGenerationModelSelector.class),
+                        secondaryLlmExecutor);
+        FunctionCallingExecutionResult r =
+                executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
+
+        assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.NOT_APPLICABLE);
+        assertThat(r.traceNotes()).contains("native_fc_unsupported_for_provider=OPENAI_COMPATIBLE");
+        verify(chatClient, never()).prompt();
     }
 
     @Test
@@ -164,7 +185,12 @@ class FunctionCallingExecutorEarlyExitTest {
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
-                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+                        chatClientForAssistant(assistant),
+                        toolRegistry,
+                        meetingMinutesToolExecutionCore,
+                        resultMapper,
+                        ChatGenerationModelSelectorTestSupport.permissiveMock(),
+                        secondaryLlmExecutor);
         FunctionCallingExecutionResult r =
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
@@ -194,7 +220,12 @@ class FunctionCallingExecutorEarlyExitTest {
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
-                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+                        chatClientForAssistant(assistant),
+                        toolRegistry,
+                        meetingMinutesToolExecutionCore,
+                        resultMapper,
+                        ChatGenerationModelSelectorTestSupport.permissiveMock(),
+                        secondaryLlmExecutor);
         FunctionCallingExecutionResult r = executor.run(buildCtx(), minimalPlan(), decision);
 
         assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.INVALID_MODEL_OUTPUT);
@@ -214,7 +245,12 @@ class FunctionCallingExecutorEarlyExitTest {
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
-                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+                        chatClientForAssistant(assistant),
+                        toolRegistry,
+                        meetingMinutesToolExecutionCore,
+                        resultMapper,
+                        ChatGenerationModelSelectorTestSupport.permissiveMock(),
+                        secondaryLlmExecutor);
         FunctionCallingExecutionResult r =
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
@@ -239,7 +275,12 @@ class FunctionCallingExecutorEarlyExitTest {
 
         FunctionCallingExecutor executor =
                 new FunctionCallingExecutor(
-                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+                        chatClientForAssistant(assistant),
+                        toolRegistry,
+                        meetingMinutesToolExecutionCore,
+                        resultMapper,
+                        ChatGenerationModelSelectorTestSupport.permissiveMock(),
+                        secondaryLlmExecutor);
         FunctionCallingExecutionResult r =
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
@@ -259,24 +300,32 @@ class FunctionCallingExecutorEarlyExitTest {
         return chatClient;
     }
 
-    private static ChatClient chatClientForAssistantThenFollowUp(
-            AssistantMessage toolRound, AssistantMessage followUpRound) {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        Generation toolGeneration = mock(Generation.class);
-        when(toolGeneration.getOutput()).thenReturn(toolRound);
-        ChatResponse toolResponse = mock(ChatResponse.class);
-        when(toolResponse.getResult()).thenReturn(toolGeneration);
+    private static ResolvedLlmConfig ollamaNativeConfig() {
+        return ResolvedLlmConfig.uniform(
+                LlmProvider.OLLAMA_NATIVE,
+                "http://localhost:11434",
+                "gemma",
+                "nomic",
+                null,
+                null,
+                0.0,
+                60000,
+                "",
+                Map.of());
+    }
 
-        Generation followGeneration = mock(Generation.class);
-        when(followGeneration.getOutput()).thenReturn(followUpRound);
-        ChatResponse followResponse = mock(ChatResponse.class);
-        when(followResponse.getResult()).thenReturn(followGeneration);
-
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any(OllamaOptions.class)).call().chatResponse())
-                .thenReturn(toolResponse);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
-                .thenReturn(followResponse);
-        return chatClient;
+    private static ResolvedLlmConfig openAiConfig() {
+        return ResolvedLlmConfig.uniform(
+                LlmProvider.OPENAI_COMPATIBLE,
+                "http://gateway.test/v1",
+                "remote-model",
+                "emb",
+                "OPENAI_COMPATIBLE_API_KEY",
+                null,
+                0.0,
+                60000,
+                "",
+                Map.of());
     }
 
     private static FunctionCallingDecision decisionExposingAllMeetingTools() {

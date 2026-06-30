@@ -2,8 +2,9 @@
  * Shared E2E base URL resolution for stack preflight and Playwright fixtures.
  *
  * Contract (demo reverse-proxy):
- * - E2E_PUBLIC_BASE_URL / PLAYWRIGHT_BASE_URL → https://127.0.0.1:8444 (UI + /actuator/* at origin)
- * - API_BASE_URL → same origin when using proxy (product API at /api/v5/*)
+ * - PLAYWRIGHT_BASE_URL / E2E_PUBLIC_BASE_URL → https://127.0.0.1:8444 (UI + /actuator/* at origin)
+ * - E2E_PRODUCT_URL / API_BASE_URL → same origin when using proxy (product API at /api/v5/*)
+ * - RAG_API_PRODUCT_BASE_PATH / NEXT_PUBLIC_RAG_API_PREFIX → /api/v5
  * - E2E_BACKEND_HEALTH_URL → origin only (never …/api/v5); actuator is not under the product prefix
  */
 
@@ -15,6 +16,7 @@ function applyInsecureTlsForHttpsProxyFetch() {
     return;
   }
   const candidates = [
+    process.env.E2E_PRODUCT_URL,
     process.env.API_BASE_URL,
     process.env.PLAYWRIGHT_BASE_URL,
     process.env.E2E_PUBLIC_BASE_URL,
@@ -64,27 +66,72 @@ export function normalizeHealthBase(url) {
   return url.replace(/\/$/, "").replace(/\/api\/v5\/?$/i, "");
 }
 
+export function productBasePath() {
+  const raw =
+    process.env.RAG_API_PRODUCT_BASE_PATH ??
+    process.env.INTEGRATION_RAG_PRODUCT_BASE_PATH ??
+    process.env.NEXT_PUBLIC_RAG_API_PREFIX ??
+    "/api/v5";
+  const p = raw.replace(/\/$/, "");
+  return p || "/api/v5";
+}
+
 export function resolveE2eBases() {
   applyDemoProxyEnvDefaults();
+
+  const isCi = process.env.CI === "true" || process.env.CI === "1";
+  const configuredApi =
+    process.env.E2E_PRODUCT_URL ??
+    process.env.API_BASE_URL ??
+    process.env.INTEGRATION_BACKEND_URL;
+
+  const defaultPublicBase = "https://127.0.0.1:8444";
+  const provisionalPublic = (
+    process.env.E2E_PUBLIC_BASE_URL ??
+    process.env.PLAYWRIGHT_BASE_URL ??
+    defaultPublicBase
+  ).replace(/\/$/, "");
+
+  let apiBase = configuredApi;
+  if (!apiBase) {
+    apiBase = isReverseProxyOrigin(provisionalPublic) ? provisionalPublic : "http://127.0.0.1:9000";
+  }
+  apiBase = apiBase.replace(/\/$/, "");
 
   const publicBase = (
     process.env.E2E_PUBLIC_BASE_URL ??
     process.env.PLAYWRIGHT_BASE_URL ??
-    "http://127.0.0.1:3000"
+    (isCi && configuredApi ? apiBase : defaultPublicBase)
   ).replace(/\/$/, "");
 
-  let apiBase = process.env.API_BASE_URL ?? process.env.INTEGRATION_BACKEND_URL;
-  if (!apiBase) {
-    apiBase = isReverseProxyOrigin(publicBase) ? publicBase : "http://127.0.0.1:9000";
-  }
-  apiBase = apiBase.replace(/\/$/, "");
-
-  const healthBase = normalizeHealthBase(process.env.E2E_BACKEND_HEALTH_URL ?? publicBase);
+  const healthBase = normalizeHealthBase(process.env.E2E_BACKEND_HEALTH_URL ?? apiBase);
 
   const webBase = publicBase;
   const webHealthBase = (process.env.E2E_WEB_HEALTH_URL ?? webBase).replace(/\/$/, "");
 
   return { publicBase, apiBase, healthBase, webBase, webHealthBase };
+}
+
+/** True when a Next.js (or reverse-proxy) UI origin is configured for preflight. */
+export function shouldProbeWebLogin(bases) {
+  if (process.env.E2E_API_PREFLIGHT_SKIP_WEB === "1") {
+    return false;
+  }
+  if (process.env.E2E_WEB_HEALTH_URL === "") {
+    return false;
+  }
+  const isCi = process.env.CI === "true" || process.env.CI === "1";
+  const configuredApi =
+    process.env.E2E_PRODUCT_URL ?? process.env.API_BASE_URL ?? process.env.INTEGRATION_BACKEND_URL;
+  if (
+    isCi &&
+    configuredApi &&
+    !process.env.PLAYWRIGHT_BASE_URL &&
+    !process.env.E2E_PUBLIC_BASE_URL
+  ) {
+    return false;
+  }
+  return !isReverseProxyOrigin(bases.apiBase) || isReverseProxyOrigin(bases.publicBase);
 }
 
 export function actuatorHealthUrl(healthBase, suffix = "") {

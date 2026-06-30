@@ -24,8 +24,14 @@ export const ACTA_ACCEPTANCE_FIXTURES_DIR = path.join(
   "docs",
 );
 
-const ACTA_ACCEPTANCE_MINIMAL_FILES = ["ACTA 5.pdf"] as const;
-const ACTA_ACCEPTANCE_EXTENDED_FILES = ["ACTA 1.pdf", "ACTA 5.pdf", "ACTA 6.pdf"] as const;
+export const ACTA_ACCEPTANCE_MINIMAL_FILES = ["ACTA 5.pdf"] as const;
+export const ACTA_ACCEPTANCE_EXTENDED_FILES = [
+  "ACTA 1.pdf",
+  "ACTA 2.pdf",
+  "ACTA 3.pdf",
+  "ACTA 5.pdf",
+  "ACTA 6.pdf",
+] as const;
 
 export type LabJobAccepted = {
   jobId: string;

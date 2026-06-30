@@ -109,7 +109,7 @@ add_env_file "$ROOT_DIR/webapp/.env"
 
 init_evidence_dir() {
   if [ -z "$EVIDENCE_DIR" ]; then
-    EVIDENCE_DIR="$ROOT_DIR/.cursor/context/evidence/docker/demo-smoke-$(date -u +%Y%m%dT%H%M%SZ)"
+    EVIDENCE_DIR="$ROOT_DIR/docs/evidence/docker/demo-smoke-$(date -u +%Y%m%dT%H%M%SZ)"
   fi
   mkdir -p "$EVIDENCE_DIR/logs"
 }

@@ -9,6 +9,7 @@ import com.uniovi.rag.configuration.RagReasoningProperties;
 import com.uniovi.rag.domain.config.PresetProfilePayloadMerge;
 import com.uniovi.rag.domain.config.RagConfigurationMerge;
 import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -28,28 +29,25 @@ public class ConfigResolver implements RagConfigurationResolver {
     private final RagReasoningProperties reasoningProperties;
     private final ConfigurationSourcePort configurationSource;
     private final ObjectMapper objectMapper;
+    private final LlmProperties llmProperties;
     private final int topK;
     private final double similarityThreshold;
-    private final String chatModel;
-    private final String embeddingModel;
 
     public ConfigResolver(
             RagFeatureConfiguration featureConfig,
             RagReasoningProperties reasoningProperties,
             ConfigurationSourcePort configurationSource,
             ObjectMapper objectMapper,
+            LlmProperties llmProperties,
             @Value("${spring.ai.ollama.top-k:10}") int topK,
-            @Value("${spring.ai.ollama.similarity-threshold:0.7}") double similarityThreshold,
-            @Value("${spring.ai.ollama.chat.model:gemma3:4b}") String chatModel,
-            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large:latest}") String embeddingModel) {
+            @Value("${spring.ai.ollama.similarity-threshold:0.7}") double similarityThreshold) {
         this.featureConfig = featureConfig;
         this.reasoningProperties = reasoningProperties;
         this.configurationSource = configurationSource;
         this.objectMapper = objectMapper;
+        this.llmProperties = llmProperties;
         this.topK = topK;
         this.similarityThreshold = similarityThreshold;
-        this.chatModel = chatModel;
-        this.embeddingModel = embeddingModel;
     }
 
     /**
@@ -74,8 +72,8 @@ public class ConfigResolver implements RagConfigurationResolver {
                         featureConfig,
                         topK,
                         similarityThreshold,
-                        chatModel,
-                        embeddingModel,
+                        llmProperties.effectiveDefaultChatModel(),
+                        llmProperties.effectiveDefaultEmbeddingModel(),
                         "default",
                         reasoningProperties.getStrategy() != null ? reasoningProperties.getStrategy() : "SIMPLE");
 

@@ -1,7 +1,9 @@
 package com.uniovi.rag.application.service.runtime;
+import com.uniovi.rag.testsupport.config.TestConfigurablePromptResolver;
 import com.uniovi.rag.testsupport.ConversationRecallGuardTestSupport;
 import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicRouteSafetyTestSupport;
 
+import com.uniovi.rag.testsupport.llm.ChatGenerationModelSelectorTestSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationPolicyResolver;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStrategy;
@@ -50,12 +52,18 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -70,32 +78,37 @@ class RagExecutionOrchestratorReasoningTest {
 
     @Test
     void execute_whenReasoningEnabled_injectsAnswerPlanIntoPrompt_andAddsTraceStages() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().user(anyString()).call().content())
-                .thenReturn("""
-                        {
-                          "strategy":"SAFE_STRUCTURED_PLAN",
-                          "objective":"Summarize the acta if (and only if) exact evidence exists.",
-                          "expectedEvidence":["Exact date match"],
-                          "answerConstraints":["Use only context for document claims","If mismatch, say so"],
-                          "verificationChecklist":["Check exact date","No invented facts"],
-                          "safeSummary":"Verify exact evidence; avoid guessing."
-                        }
-                        """);
-        when(chatClient.prompt().user(anyString()).options(any()).call().content())
-                .thenReturn("""
-                        {
-                          "strategy":"SAFE_STRUCTURED_PLAN",
-                          "objective":"Summarize the acta if (and only if) exact evidence exists.",
-                          "expectedEvidence":["Exact date match"],
-                          "answerConstraints":["Use only context for document claims","If mismatch, say so"],
-                          "verificationChecklist":["Check exact date","No invented facts"],
-                          "safeSummary":"Verify exact evidence; avoid guessing."
-                        }
-                        """);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("final-answer");
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("final-answer");
-
+        ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor = mock(ProviderAwareSecondaryLlmExecutor.class);
+        when(secondaryLlmExecutor.complete(
+                        any(ExecutionContext.class),
+                        eq(StructuredAnswerPlanService.OPERATION_STRUCTURED_ANSWER_PLAN),
+                        isNull(),
+                        anyString(),
+                        eq(ProviderAwareSecondaryLlmExecutor.SECONDARY_TASK_DEFAULT_TEMPERATURE)))
+                .thenReturn(
+                        "{\"strategy\":\"SAFE_STRUCTURED_PLAN\",\"objective\":\"answer\",\"expectedEvidence\":[],"
+                                + "\"answerConstraints\":[],\"verificationChecklist\":[],\"safeSummary\":\"plan\"}");
+        when(secondaryLlmExecutor.complete(
+                        any(ExecutionContext.class),
+                        eq(AnswerVerificationService.OPERATION_ANSWER_QUALITY_CHECK),
+                        isNull(),
+                        anyString(),
+                        eq(ProviderAwareSecondaryLlmExecutor.SECONDARY_TASK_DEFAULT_TEMPERATURE)))
+                .thenReturn("YES");
+        when(secondaryLlmExecutor.effectiveConfig(any(ExecutionContext.class)))
+                .thenReturn(
+                        ResolvedLlmConfig.uniform(
+                                LlmProvider.OPENAI_COMPATIBLE,
+                                "http://litellm:4000",
+                                "test-model",
+                                "emb-model",
+                                "OPENAI_COMPATIBLE_API_KEY",
+                                null,
+                                0.0,
+                                60_000,
+                                null,
+                                Map.of()));
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("Final-answer");
         RagConfig rag =
                 new RagConfig(
                         false,
@@ -177,7 +190,7 @@ class RagExecutionOrchestratorReasoningTest {
                 });
 
         WorkflowSelector selector = mock(WorkflowSelector.class);
-        DirectLlmWorkflow direct = new DirectLlmWorkflow(chatClient, null);
+        DirectLlmWorkflow direct = new DirectLlmWorkflow(llmChatInvoker, TestConfigurablePromptResolver.answerPromptResolver(), null);
         when(selector.select(any())).thenReturn(direct);
 
         ClarificationPolicyResolver clarificationPolicyResolver = mock(ClarificationPolicyResolver.class);
@@ -223,8 +236,8 @@ class RagExecutionOrchestratorReasoningTest {
                         mock(FunctionCallingRoutingStrategy.class),
                         mock(AdvisorRoutingStrategy.class),
                         mock(JudgeStrategy.class),
-                        new StructuredAnswerPlanService(chatClient, new ObjectMapper()),
-                        new AnswerVerificationService(chatClient),
+                        new StructuredAnswerPlanService(secondaryLlmExecutor, new ObjectMapper()),
+                        new AnswerVerificationService(secondaryLlmExecutor),
                         mock(ObjectProvider.class), MonotonicRouteSafetyTestSupport.permissiveSafety(), mock(ObjectProvider.class), mock(ObjectProvider.class), ConversationRecallGuardTestSupport.neverShortCircuit());
 
         var out = orch.execute(base);
@@ -233,8 +246,11 @@ class RagExecutionOrchestratorReasoningTest {
         assertThat(out.executionTrace().stages()).anyMatch(s -> "reasoning_plan".equals(s.stageName()));
         assertThat(out.executionTrace().stages()).anyMatch(s -> "reasoning_verify".equals(s.stageName()));
 
-        verify(chatClient.prompt().system(anyString()))
-                .user(argThat((String m) -> m != null && m.contains("<AnswerPlan>")));
+        verify(llmChatInvoker)
+                .invoke(
+                        any(),
+                        anyString(),
+                        argThat((String m) -> m != null && m.contains("<AnswerPlan>")));
     }
 
     private static QueryPlan plan() {

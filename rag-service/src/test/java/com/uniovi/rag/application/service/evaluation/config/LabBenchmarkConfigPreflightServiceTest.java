@@ -2,18 +2,21 @@ package com.uniovi.rag.application.service.evaluation.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.llm.catalog.EvaluationModelCatalogService;
 import com.uniovi.rag.application.service.evaluation.preset.CorpusAvailabilityGate;
 import com.uniovi.rag.application.service.evaluation.preset.LabIndexSnapshotCompatibilityService;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess;
 import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
 import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileService;
@@ -51,13 +54,17 @@ class LabBenchmarkConfigPreflightServiceTest {
     @Mock private EvaluationCorpusApplicationService evaluationCorpusApplicationService;
     @Mock private ProjectIndexProfileService projectIndexProfileService;
     @Mock private LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
+    @Mock private EvaluationModelCatalogService evaluationModelCatalogService;
+    @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
+    @Mock private KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess;
 
     private LabBenchmarkConfigPreflightService service;
 
     @BeforeEach
     void setUp() {
         LabIndexSnapshotCompatibilityService indexSnapshotCompatibilityService =
-                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator);
+                new LabIndexSnapshotCompatibilityService(
+                        corpusAvailabilityGate, knowledgePipelineOrchestrator, snapshotProfileAccess);
         service =
                 new LabBenchmarkConfigPreflightService(
                         new RagFeatureConfiguration(),
@@ -67,13 +74,18 @@ class LabBenchmarkConfigPreflightServiceTest {
                         evaluationCorpusApplicationService,
                         projectIndexProfileService,
                         labIndexProfileOverrideFactory,
-                        corpusAvailabilityGate);
+                        corpusAvailabilityGate,
+                        evaluationModelCatalogService,
+                        knowledgeIndexSnapshotRepository,
+                        snapshotProfileAccess);
         lenient()
                 .when(corpusAvailabilityGate.evaluateForPreset(any(), any(), any(), any()))
                 .thenReturn(new CorpusAvailabilityGate.Result(true, 2, List.of(), 2, 10L, null, null));
         lenient()
                 .when(corpusAvailabilityGate.probeForPreset(any(), any(), any(), any()))
                 .thenReturn(Map.of("corpusAvailable", true, "vectorChunkRowCount", 10L));
+        lenient().doNothing().when(evaluationModelCatalogService).assertHasCompatibleEmbeddingWhenRequired(any());
+        lenient().doNothing().when(evaluationModelCatalogService).assertChatModelInCatalog(any(), any());
     }
 
     @Test
@@ -276,7 +288,6 @@ class LabBenchmarkConfigPreflightServiceTest {
         UUID snapshotId = UUID.randomUUID();
         KnowledgeIndexSnapshotEntity snap = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
         when(snap.getId()).thenReturn(snapshotId);
-        when(snap.getIndexProfileJsonb()).thenReturn(Map.of());
         when(snap.getSignatureHash()).thenReturn("sig-current");
         when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.of(snap));
         KnowledgeDocumentEntity doc = Mockito.mock(KnowledgeDocumentEntity.class);
@@ -393,11 +404,94 @@ class LabBenchmarkConfigPreflightServiceTest {
     }
 
     @Test
+    void ragAcceptsHybridPresetWithCompatibleSnapshotWithoutAutoReindex() {
+        UUID userId = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
+        UUID indexProjectId = UUID.randomUUID();
+        UUID snapshotId = UUID.randomUUID();
+        KnowledgeIndexSnapshotEntity snap = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
+        when(snap.getId()).thenReturn(snapshotId);
+        when(snap.getSignatureHash()).thenReturn("sig-current");
+        when(snapshotProfileAccess.resolveProfileJsonb(snap))
+                .thenReturn(
+                        Map.of(
+                                "materializationStrategy",
+                                "HYBRID",
+                                "supportsMetadata",
+                                true,
+                                "embeddingModelId",
+                                "mxbai-embed-large"));
+        when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.of(snap));
+        when(evaluationCorpusApplicationService.requireContext(userId, corpusId))
+                .thenReturn(
+                        new EvaluationCorpusApplicationService.EvaluationCorpusContext(
+                                corpusId,
+                                indexProjectId,
+                                List.of(UUID.randomUUID()),
+                                List.of(Mockito.mock(KnowledgeDocumentEntity.class))));
+        ProjectIndexProfile profile =
+                new ProjectIndexProfile(
+                        indexProjectId,
+                        MaterializationStrategy.HYBRID,
+                        true,
+                        "meta-v1",
+                        "mxbai-embed-large",
+                        400,
+                        10,
+                        ProjectIndexProfile.computeProfileHash(
+                                MaterializationStrategy.HYBRID, true, "meta-v1", "mxbai-embed-large", 400, 10),
+                        Instant.now(),
+                        Instant.now());
+        when(projectIndexProfileService.ensureDefault(indexProjectId)).thenReturn(profile);
+        when(labIndexProfileOverrideFactory.buildEffectiveProfile(any(), any(), any())).thenReturn(profile);
+        when(corpusAvailabilityGate.snapshotHasVectorRows(userId, corpusId, snapshotId)).thenReturn(true);
+        when(knowledgePipelineOrchestrator.computeSnapshotSignatureHex(any(), any(), any(), any()))
+                .thenReturn("sig-current");
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        UUID.randomUUID(),
+                        corpusId,
+                        null,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "n",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of("P8"),
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        false,
+                        null,
+                        false,
+                        true,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        null,
+                        null);
+        LabBenchmarkConfigPreflightResult result =
+                service.validateOrThrow(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req);
+        assertThat(result.passed()).isTrue();
+        assertThat(result.details()).containsEntry("activeSnapshotReuseEligible", true);
+    }
+
+    @Test
     void ragRejectsHybridPresetWithChunkOnlySnapshotWhenAutoReindexDisabled() {
         UUID corpusId = UUID.randomUUID();
         KnowledgeIndexSnapshotEntity snap = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
         when(snap.getId()).thenReturn(UUID.randomUUID());
-        when(snap.getIndexProfileJsonb()).thenReturn(Map.of("materializationStrategy", "CHUNK_LEVEL", "supportsMetadata", true));
+        when(snapshotProfileAccess.resolveProfileJsonb(snap))
+                .thenReturn(Map.of("materializationStrategy", "CHUNK_LEVEL", "supportsMetadata", true));
         when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.of(snap));
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -437,13 +531,12 @@ class LabBenchmarkConfigPreflightServiceTest {
 
     @Test
     void embeddingRejectsDimensionMismatchForAnySelectedModel() {
-        doNothing().when(embeddingSpaceGuard).assertFitsPhysicalVectorColumn(eq("mxbai-embed-large:latest"));
-        doThrow(
-                        new ResponseStatusException(
-                                HttpStatus.UNPROCESSABLE_ENTITY,
-                                "EMBEDDING_DIMENSION_MISMATCH: incompatible"))
-                .when(embeddingSpaceGuard)
-                .assertFitsPhysicalVectorColumn(eq("nomic-embed-text:latest"));
+        doNothing()
+                .when(evaluationModelCatalogService)
+                .assertEmbeddingCompatibleWithVectorStore(any(), eq("mxbai-embed-large:latest"));
+        doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, LabRuntimeConfigReasonCodes.EMBEDDING_DIMENSION_MISMATCH))
+                .when(evaluationModelCatalogService)
+                .assertEmbeddingCompatibleWithVectorStore(any(), eq("nomic-embed-text:latest"));
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         UUID.randomUUID(),
@@ -481,12 +574,9 @@ class LabBenchmarkConfigPreflightServiceTest {
 
     @Test
     void embeddingRejectsDimensionMismatch() {
-        doThrow(
-                        new ResponseStatusException(
-                                HttpStatus.UNPROCESSABLE_ENTITY,
-                                "EMBEDDING_DIMENSION_MISMATCH: incompatible"))
-                .when(embeddingSpaceGuard)
-                .assertFitsPhysicalVectorColumn(any());
+        doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, LabRuntimeConfigReasonCodes.EMBEDDING_DIMENSION_MISMATCH))
+                .when(evaluationModelCatalogService)
+                .assertEmbeddingCompatibleWithVectorStore(any(), any());
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         UUID.randomUUID(),
@@ -520,6 +610,67 @@ class LabBenchmarkConfigPreflightServiceTest {
                         ex ->
                                 assertThat(((ResponseStatusException) ex).getReason())
                                         .isEqualTo(LabRuntimeConfigReasonCodes.EMBEDDING_DIMENSION_MISMATCH));
+    }
+
+    @Test
+    void ragAcceptsConfiguredOpenAiCompatibleChatModel() {
+        UUID userId = UUID.randomUUID();
+        doNothing().when(evaluationModelCatalogService).assertChatModelInCatalog(userId, "gpt-oss:20b");
+        StartBenchmarkRunRequest req = ragRequestWithChatModel(List.of("P0"), "nomic-embed-text", "gpt-oss:20b");
+        LabBenchmarkConfigPreflightResult result =
+                service.validateOrThrow(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req);
+        assertThat(result.passed()).isTrue();
+        assertThat(result.details()).containsEntry("llmModelId", "gpt-oss:20b");
+    }
+
+    @Test
+    void ragBlocksChatModelNotInCatalog() {
+        UUID userId = UUID.randomUUID();
+        doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "LLM_MODEL_NOT_CONFIGURED"))
+                .when(evaluationModelCatalogService)
+                .assertChatModelInCatalog(userId, "missing-model");
+        StartBenchmarkRunRequest req =
+                ragRequestWithChatModel(List.of("P0"), "nomic-embed-text", "missing-model");
+        assertThatThrownBy(() -> service.validateOrThrow(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((ResponseStatusException) ex).getReason())
+                                        .isEqualTo("LLM_MODEL_NOT_CONFIGURED"));
+    }
+
+    private static StartBenchmarkRunRequest ragRequestWithChatModel(
+            List<String> presets, String embeddingModelId, String llmModelId) {
+        return new StartBenchmarkRunRequest(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                null,
+                EvaluationRunKind.PRODUCT_EXPLORATION,
+                "n",
+                null,
+                null,
+                null,
+                null,
+                presets,
+                llmModelId,
+                embeddingModelId,
+                List.of(),
+                List.of(),
+                false,
+                null,
+                true,
+                true,
+                true,
+                true,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                null,
+                null);
     }
 
     private static StartBenchmarkRunRequest ragRequest(List<String> presets, String embeddingModelId) {

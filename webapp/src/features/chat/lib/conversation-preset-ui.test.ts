@@ -173,7 +173,7 @@ describe("conversation-preset-ui", () => {
       "exp4",
       labels,
     );
-    expect(label).toBe("P4 — Chunk + metadata retrieval");
+    expect(label).toBe("Chunk + metadata retrieval");
   });
 
   it("resolveChatPresetLabel shows product preset labels and system suffix", () => {

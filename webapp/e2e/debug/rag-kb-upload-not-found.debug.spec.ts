@@ -5,7 +5,7 @@ import { gotoLabEvaluationPage, prepareLabE2eTest } from "../support/lab-helpers
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.cursor/evidence/p0-rag-kb-upload-not-found/trace",
+  "../../../docs/evidence/p0-rag-kb-upload-not-found/trace",
 );
 const DRAFT_KEY = "lab:evaluation-draft:v1:RAG_PRESET_END_TO_END";
 /** Deliberately non-existent corpus id to reproduce stale localStorage draft. */

@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -19,17 +19,17 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCreateProject } from "@/features/projects/hooks/use-projects";
+import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
+import { apiFetch, apiProductPath } from "@/lib/api-client";
+import { toConfigModelOptions } from "@/lib/product-model-catalog";
+import Link from "next/link";
 
-const schema = z.object({
-  name: z.string().min(1).max(120),
-  description: z.string().max(2000).optional(),
+const indexProfileSchema = z.object({
   materializationStrategy: z.enum(["CHUNK_LEVEL", "DOCUMENT_LEVEL", "HYBRID", "STRUCTURED_SEARCH"]).optional(),
   metadataEnabled: z.boolean().optional(),
   embeddingModelId: z.string().max(128).optional(),
   chunkMaxChars: z.number().int().min(50).max(5000).optional(),
 });
-
-type FormValues = z.infer<typeof schema>;
 
 type NewProjectDialogProps = {
   /** Optional extra classes for the dialog trigger button. */
@@ -48,11 +48,35 @@ export function NewProjectDialog({
   onOpenChange,
 }: Readonly<NewProjectDialogProps>) {
   const t = useTranslations("Projects");
+  const schema = useMemo(
+    () =>
+      z.object({
+        name: z.string().min(1, t("projectNameRequired")).max(120, t("projectNameTooLong")),
+        description: z.string().max(2000).optional(),
+        materializationStrategy: indexProfileSchema.shape.materializationStrategy,
+        metadataEnabled: z.boolean().optional(),
+        llmModelId: z.string().max(128).optional(),
+        embeddingModelId: z.string().max(128).optional(),
+        chunkMaxChars: z.number().int().min(50).max(5000).optional(),
+      }),
+    [t],
+  );
+  type FormValues = z.infer<typeof schema>;
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const controlled = controlledOpen !== undefined && onOpenChange !== undefined;
   const open = controlled ? controlledOpen : uncontrolledOpen;
   const setOpenState = controlled ? onOpenChange! : setUncontrolledOpen;
   const { mutateAsync, reset, isPending, isError } = useCreateProject();
+  const chatCatalogQ = useMeSelectableLlmModels("CHAT");
+  const embeddingCatalogQ = useMeSelectableLlmModels("EMBEDDING");
+  const chatOptions = useMemo(
+    () => toConfigModelOptions(chatCatalogQ.data?.models ?? []).filter((o) => !o.disabled),
+    [chatCatalogQ.data?.models],
+  );
+  const embeddingOptions = useMemo(
+    () => toConfigModelOptions(embeddingCatalogQ.data?.models ?? []).filter((o) => !o.disabled),
+    [embeddingCatalogQ.data?.models],
+  );
   const [createWarning, setCreateWarning] = useState<string | null>(null);
 
   function handleOpenChange(next: boolean) {
@@ -70,6 +94,7 @@ export function NewProjectDialog({
       description: "",
       materializationStrategy: "CHUNK_LEVEL",
       metadataEnabled: false,
+      llmModelId: "",
       embeddingModelId: "",
       chunkMaxChars: 400,
     },
@@ -90,6 +115,14 @@ export function NewProjectDialog({
           metadataProfile: null,
         },
       });
+      const llmModel = values.llmModelId?.trim();
+      if (llmModel) {
+        await apiFetch(apiProductPath(`/config/project/${outcome.project.id}`), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ llmModel }),
+        });
+      }
       if (outcome.activateFailed) {
         setCreateWarning(t("createActivateWarning"));
       } else if (outcome.reconciledFromList) {
@@ -153,10 +186,52 @@ export function NewProjectDialog({
                 <span>{t("metadataIndexLabel")}</span>
               </label>
               <div className="flex flex-col gap-1">
+                <Label htmlFor="proj-llm" className="text-xs">
+                  {t("chatModelLabel")}
+                </Label>
+                <select
+                  id="proj-llm"
+                  data-testid="project-create-chat-model"
+                  className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
+                  disabled={chatCatalogQ.isLoading}
+                  {...form.register("llmModelId")}
+                >
+                  <option value="">{t("chatModelDefaultOption")}</option>
+                  {chatOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {chatCatalogQ.isError ? (
+                  <p className="text-destructive text-xs" role="alert">
+                    {t("chatCatalogLoadError")}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex flex-col gap-1">
                 <Label htmlFor="proj-embed" className="text-xs">
                   {t("embeddingModelLabel")}
                 </Label>
-                <Input id="proj-embed" placeholder="mxbai-embed-large" {...form.register("embeddingModelId")} />
+                <select
+                  id="proj-embed"
+                  data-testid="project-create-embedding-model"
+                  className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
+                  disabled={embeddingCatalogQ.isLoading}
+                  {...form.register("embeddingModelId")}
+                >
+                  <option value="">{t("embeddingModelDefaultOption")}</option>
+                  {embeddingOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {embeddingCatalogQ.isError ? (
+                  <p className="text-destructive text-xs" role="alert">
+                    {t("embeddingCatalogLoadError")}
+                  </p>
+                ) : null}
               </div>
               <div className="flex flex-col gap-1">
                 <Label htmlFor="proj-chunk" className="text-xs">
@@ -166,6 +241,12 @@ export function NewProjectDialog({
               </div>
             </div>
           </div>
+          <p className="text-muted-foreground text-xs">
+            {t("configurePromptsAfterCreateHint")}{" "}
+            <Link href="/settings/project" className="text-primary underline-offset-4 hover:underline">
+              {t("configurePromptsAfterCreateAction")}
+            </Link>
+          </p>
           {isError ? (
             <p className="text-destructive text-sm" role="alert" data-testid="project-create-error">
               {t("createError")}

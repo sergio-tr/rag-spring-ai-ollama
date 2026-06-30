@@ -83,7 +83,7 @@ class JudgeStrategyTest {
                 .thenReturn(new JudgeDecision(JudgeMode.ENABLED, JudgeKind.POST_ANSWER_JUDGE, JudgeCandidateSource.WORKFLOW, true, true, List.of(), List.of()));
         when(qualityAdvisor.assess(any(), any(), anyString(), any(), any()))
                 .thenReturn(AnswerQualityAdvisor.AnswerQualityAssessment.accepted(false));
-        when(evaluator.evaluate(anyString(), anyString(), anyString(), anyBoolean()))
+        when(evaluator.evaluate(any(), anyString(), anyString(), anyString(), anyBoolean()))
                 .thenReturn(new JudgeEvaluation(JudgeOutcome.ACCEPTED, Optional.empty(), "", List.of()));
 
         JudgeExecutionResult out =
@@ -153,9 +153,9 @@ class JudgeStrategyTest {
                 .thenReturn(new JudgeDecision(JudgeMode.ENABLED, JudgeKind.POST_ANSWER_JUDGE, JudgeCandidateSource.WORKFLOW, true, true, List.of(), List.of()));
         when(qualityAdvisor.assess(any(), any(), anyString(), any(), any()))
                 .thenReturn(AnswerQualityAdvisor.AnswerQualityAssessment.accepted(false));
-        when(evaluator.evaluate(anyString(), anyString(), anyString(), anyBoolean()))
+        when(evaluator.evaluate(any(), anyString(), anyString(), anyString(), anyBoolean()))
                 .thenReturn(new JudgeEvaluation(JudgeOutcome.RETRY_REQUESTED, Optional.empty(), "fix", List.of()));
-        when(retry.retry(anyString(), anyString(), anyString()))
+        when(retry.retry(any(), anyString(), anyString(), anyString()))
                 .thenReturn(new JudgeRetryExecutor.RetryResult(true, "repaired", List.of(new ExecutionStageTrace("judge_retry_execute", 0L, ExecutionStageOutcome.SUCCESS, ""))));
 
         JudgeExecutionResult out =
@@ -186,9 +186,9 @@ class JudgeStrategyTest {
                 .thenReturn(new JudgeDecision(JudgeMode.ENABLED, JudgeKind.POST_ANSWER_JUDGE, JudgeCandidateSource.WORKFLOW, true, true, List.of(), List.of()));
         when(qualityAdvisor.assess(any(), any(), anyString(), any(), any()))
                 .thenReturn(AnswerQualityAdvisor.AnswerQualityAssessment.accepted(false));
-        when(evaluator.evaluate(anyString(), anyString(), anyString(), anyBoolean()))
+        when(evaluator.evaluate(any(), anyString(), anyString(), anyString(), anyBoolean()))
                 .thenReturn(new JudgeEvaluation(JudgeOutcome.RETRY_REQUESTED, Optional.empty(), "fix", List.of()));
-        when(retry.retry(anyString(), anyString(), anyString()))
+        when(retry.retry(any(), anyString(), anyString(), anyString()))
                 .thenReturn(new JudgeRetryExecutor.RetryResult(false, "", List.of()));
 
         JudgeExecutionResult out =
@@ -219,7 +219,7 @@ class JudgeStrategyTest {
                 .thenReturn(new JudgeDecision(JudgeMode.ENABLED, JudgeKind.POST_ANSWER_JUDGE, JudgeCandidateSource.WORKFLOW, true, true, List.of(), List.of()));
         when(qualityAdvisor.assess(any(), any(), anyString(), any(), any()))
                 .thenReturn(AnswerQualityAdvisor.AnswerQualityAssessment.accepted(false));
-        when(evaluator.evaluate(anyString(), anyString(), anyString(), anyBoolean()))
+        when(evaluator.evaluate(any(), anyString(), anyString(), anyString(), anyBoolean()))
                 .thenReturn(new JudgeEvaluation(JudgeOutcome.FAILED_SAFE, Optional.empty(), "", List.of()));
 
         JudgeExecutionResult out =

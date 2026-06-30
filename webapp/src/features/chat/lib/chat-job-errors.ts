@@ -1,5 +1,7 @@
 import type { AsyncTaskStatusDto } from "@/types/api";
 
+import type { LlmProviderKind } from "@/lib/user-facing-error-messages";
+
 /** Backend ErrorCode names surfaced on failed chat/lab jobs when present. */
 export const KNOWN_CHAT_JOB_FAILURE_CODES = [
   "CHAT_DOCUMENT_SCOPE_EMPTY",
@@ -47,9 +49,31 @@ export function normalizeChatFailureCode(code: string | null | undefined): Known
 export function chatFailureHintForCode(
   code: string | null | undefined,
   t: (key: string) => string,
+  provider?: LlmProviderKind | null,
 ): string | null {
   const normalized = normalizeChatFailureCode(code);
-  return normalized ? t(`chatJobFailure_${normalized}`) : null;
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === "LLM_UNAVAILABLE") {
+    const key =
+      provider === "OPENAI_COMPATIBLE"
+        ? "chatJobFailure_LLM_UNAVAILABLE_OPENAI"
+        : provider === "OLLAMA_NATIVE"
+          ? "chatJobFailure_LLM_UNAVAILABLE_OLLAMA"
+          : "chatJobFailure_LLM_UNAVAILABLE";
+    return t(key);
+  }
+  if (normalized === "MODEL_UNAVAILABLE") {
+    const key =
+      provider === "OPENAI_COMPATIBLE"
+        ? "chatJobFailure_MODEL_UNAVAILABLE_OPENAI"
+        : provider === "OLLAMA_NATIVE"
+          ? "chatJobFailure_MODEL_UNAVAILABLE_OLLAMA"
+          : "chatJobFailure_MODEL_UNAVAILABLE";
+    return t(key);
+  }
+  return t(`chatJobFailure_${normalized}`);
 }
 
 /** Prefer top-level DTO field; older payloads may stash the code only inside {@link AsyncTaskStatusDto.result}. */
@@ -69,9 +93,10 @@ export function resolveChatJobFailureUserHint(options: {
   task: AsyncTaskStatusDto;
   errorMessageSanitized: string;
   t: (key: string) => string;
+  provider?: LlmProviderKind | null;
 }): string {
   const code = resolveChatJobFailureCode(options.task);
-  const hint = chatFailureHintForCode(code, options.t);
+  const hint = chatFailureHintForCode(code, options.t, options.provider);
   if (hint) {
     return hint;
   }

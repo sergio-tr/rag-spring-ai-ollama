@@ -5,6 +5,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.MutablePropertySources;
+import org.springframework.core.env.Profiles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,6 +33,7 @@ public final class SafeTestSecretsApplicationContextInitializer
 
     private static final String JDBC_PROPERTY_SOURCE = "ragTestJdbcEnvironment";
     private static final String SECRETS_PROPERTY_SOURCE = "ragSafeTestSecretsOverride";
+    private static final String TEST_LLM_PROPERTY_SOURCE = "ragTestLlmEnvironment";
     private static final String USE_TC_ENV = "RAG_TEST_USE_TESTCONTAINERS_DATASOURCE";
     private static final int JDBC_LOGIN_TIMEOUT_SECONDS = 3;
     private static final int EXTERNAL_DB_WAIT_SECONDS = 60;
@@ -56,6 +58,18 @@ public final class SafeTestSecretsApplicationContextInitializer
             sources.addFirst(new MapPropertySource(SECRETS_PROPERTY_SOURCE, secrets));
         }
 
+        if (env.acceptsProfiles(Profiles.of("test"))) {
+            // Docker dev (.env) and CI org env often set RAG_LLM_DEFAULT_PROVIDER=OPENAI_COMPATIBLE while
+            // application-test.properties pins OLLAMA_NATIVE. Environment wins over profile files, which
+            // breaks pgVectorStore wiring when openai-compatible default-embedding-model is unset.
+            Map<String, Object> testLlm = new LinkedHashMap<>();
+            testLlm.put("rag.llm.default-provider", "OLLAMA_NATIVE");
+            testLlm.put("rag.llm.ollama.default-embedding-model", "mxbai-embed-large:latest");
+            testLlm.put("rag.llm.openai-compatible.default-embedding-model", "qwen3-embedding:8b");
+            testLlm.put("spring.ai.ollama.embedding.model", "mxbai-embed-large:latest");
+            sources.addFirst(new MapPropertySource(TEST_LLM_PROPERTY_SOURCE, testLlm));
+        }
+
         Map<String, Object> jdbc = jdbcPropertyMap();
         sources.addFirst(new MapPropertySource(JDBC_PROPERTY_SOURCE, jdbc));
     }
@@ -68,6 +82,8 @@ public final class SafeTestSecretsApplicationContextInitializer
                 map.put("spring.datasource.url", pg.getJdbcUrl());
                 map.put("spring.datasource.username", pg.getUsername());
                 map.put("spring.datasource.password", pg.getPassword());
+                map.put("spring.flyway.clean-disabled", "false");
+                map.put("spring.flyway.clean-on-validation-error", "true");
             } catch (Throwable t) {
                 // Docker not available (common for @WebMvcTest on laptops) or Testcontainers failure — same JDBC
                 // fallback as CI service Postgres / local defaults.
@@ -85,6 +101,8 @@ public final class SafeTestSecretsApplicationContextInitializer
                 "jdbc:postgresql://localhost:5432/vectordb"));
         map.put("spring.datasource.username", firstNonBlankEnv("SPRING_DATASOURCE_USERNAME", "postgres"));
         map.put("spring.datasource.password", firstNonBlankEnv("SPRING_DATASOURCE_PASSWORD", "postgres"));
+        map.put("spring.flyway.clean-disabled", "false");
+        map.put("spring.flyway.clean-on-validation-error", "true");
     }
 
     private static boolean useTestcontainersPostgres() {

@@ -2,7 +2,9 @@ package com.uniovi.rag.application.service.knowledge;
 
 import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.domain.knowledge.DocumentArtifactType;
+import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.application.service.runtime.language.QueryLanguagePolicy;
 import com.uniovi.rag.infrastructure.persistence.DocumentArtifactRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.DocumentArtifactEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
@@ -14,6 +16,8 @@ import com.uniovi.rag.application.service.knowledge.document.ByteArrayMultipartF
 import com.uniovi.rag.application.service.knowledge.document.KnowledgeChunkMetadataFactory;
 import com.uniovi.rag.application.service.knowledge.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.application.service.knowledge.document.ProjectDocumentIngestionService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationGoldChunkMetadataSupport;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationGoldCorpusFilenameSupport;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -53,6 +57,7 @@ public class KnowledgeIndexingService {
     private final DocumentArtifactRepository documentArtifactRepository;
     private final IndexingEmbeddingGuard indexingEmbeddingGuard;
     private final MetadataMinuteDocumentService metadataMinuteDocumentService;
+    private final EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService;
 
     public KnowledgeIndexingService(
             PgVectorStoreRegistry vectorStoreRegistry,
@@ -61,7 +66,8 @@ public class KnowledgeIndexingService {
             BinaryStoragePort binaryStoragePort,
             DocumentArtifactRepository documentArtifactRepository,
             IndexingEmbeddingGuard indexingEmbeddingGuard,
-            MetadataMinuteDocumentService metadataMinuteDocumentService) {
+            MetadataMinuteDocumentService metadataMinuteDocumentService,
+            EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService) {
         this.vectorStoreRegistry = vectorStoreRegistry;
         this.jdbcTemplate = jdbcTemplate;
         this.projectDocumentIngestionService = projectDocumentIngestionService;
@@ -69,6 +75,7 @@ public class KnowledgeIndexingService {
         this.documentArtifactRepository = documentArtifactRepository;
         this.indexingEmbeddingGuard = indexingEmbeddingGuard;
         this.metadataMinuteDocumentService = metadataMinuteDocumentService;
+        this.embeddingIndexCompatibilityService = embeddingIndexCompatibilityService;
     }
 
     /**
@@ -86,6 +93,11 @@ public class KnowledgeIndexingService {
         String ct = coalesce(doc.getMimeType(), req.contentType());
         String content = extractRequiredContent(bytes, name, ct);
 
+        Optional<EvaluationGoldCorpusFilenameSupport.Parsed> goldFilename =
+                EvaluationGoldCorpusFilenameSupport.parse(name);
+        MaterializationStrategy effectiveStrategy =
+                goldFilename.isPresent() ? MaterializationStrategy.DOCUMENT_LEVEL : strategy;
+
         Instant now = Instant.now();
         Map<String, Object> parsed = new LinkedHashMap<>();
         parsed.put(JSON_KEY_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION);
@@ -96,7 +108,7 @@ public class KnowledgeIndexingService {
         Optional<Map<String, Object>> structuredActa =
                 metadataMinuteDocumentService.tryExtractDeterministicMetadataForIndexing(
                         content, name, doc.getId().toString());
-        Map<String, Object> meta = buildMetadataPayload(strategy, content, name, structuredActa);
+        Map<String, Object> meta = buildMetadataPayload(effectiveStrategy, content, name, structuredActa);
         saveArtifact(doc, DocumentArtifactType.METADATA, meta, now);
 
         if (strategy == MaterializationStrategy.STRUCTURED_SEARCH) {
@@ -109,7 +121,7 @@ public class KnowledgeIndexingService {
 
         List<String> chunks;
         List<ActaSectionChunk> actaSections = List.of();
-        if (strategy == MaterializationStrategy.DOCUMENT_LEVEL) {
+        if (effectiveStrategy == MaterializationStrategy.DOCUMENT_LEVEL) {
             chunks = List.of(content);
         } else if (structuredActa.isPresent() && ActaSectionChunker.isActaContent(content)) {
             actaSections = ActaSectionChunker.chunk(content, effectiveChunkMaxChars);
@@ -118,7 +130,7 @@ public class KnowledgeIndexingService {
             chunks = projectDocumentIngestionService.splitContentIntoChunks(content, effectiveChunkMaxChars);
         }
 
-        if (strategy != MaterializationStrategy.DOCUMENT_LEVEL) {
+        if (effectiveStrategy != MaterializationStrategy.DOCUMENT_LEVEL) {
             Map<String, Object> chunkPayload = new LinkedHashMap<>();
             chunkPayload.put(JSON_KEY_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION);
             chunkPayload.put("chunkCount", chunks.size());
@@ -129,9 +141,9 @@ public class KnowledgeIndexingService {
         List<Document> vectorDocs = new ArrayList<>();
         String displayName = name != null ? name : UNKNOWN_FILENAME_LABEL;
         String contentHash = KnowledgeChunkMetadataFactory.contentHashId(name, content, doc.getId());
-        int totalVectors = computeTotalVectorCount(strategy, chunks);
+        int totalVectors = computeTotalVectorCount(effectiveStrategy, chunks);
 
-        if (strategy == MaterializationStrategy.DOCUMENT_LEVEL) {
+        if (effectiveStrategy == MaterializationStrategy.DOCUMENT_LEVEL) {
             IndexingEmbeddingGuard.SafeEmbedText safe =
                     indexingEmbeddingGuard.prepareForEmbedding(content, embedMaxChars);
             Map<String, Object> vm =
@@ -151,6 +163,10 @@ public class KnowledgeIndexingService {
             if (!actaSections.isEmpty()) {
                 KnowledgeChunkMetadataFactory.mergeSectionFields(vm, actaSections.getFirst(), structuredActa.orElse(null), displayName);
             }
+            goldFilename.ifPresent(
+                    gold ->
+                            EvaluationGoldChunkMetadataSupport.mergeGoldIds(
+                                    vm, gold.evaluationDocumentId(), gold.evaluationChunkId()));
             String embedText = withActaPrefix(safe.text(), structuredActa.orElse(null));
             vectorDocs.add(new Document(embedText, vm));
         } else {
@@ -164,12 +180,12 @@ public class KnowledgeIndexingService {
                                 doc.getProject().getId(),
                                 doc.getConversation() != null ? doc.getConversation().getId() : null,
                                 snapshot.getId(),
-                                indexSigHex,
-                                displayName,
-                                i,
-                                totalVectors,
-                                contentHash,
-                                safe.truncated());
+                            indexSigHex,
+                            displayName,
+                            i,
+                            totalVectors,
+                            contentHash,
+                            safe.truncated());
                 ActaSectionChunk section = i < actaSections.size() ? actaSections.get(i) : null;
                 if (section != null) {
                     KnowledgeChunkMetadataFactory.mergeSectionFields(
@@ -182,7 +198,7 @@ public class KnowledgeIndexingService {
             }
         }
 
-        if (strategy == MaterializationStrategy.HYBRID) {
+        if (effectiveStrategy == MaterializationStrategy.HYBRID) {
             IndexingEmbeddingGuard.SafeEmbedText safeDoc =
                     indexingEmbeddingGuard.prepareForEmbedding(content, embedMaxChars);
             Map<String, Object> vmDoc =
@@ -204,8 +220,17 @@ public class KnowledgeIndexingService {
         }
 
         if (!vectorDocs.isEmpty()) {
+            Map<String, Object> indexProfile = snapshot.getIndexProfileJsonb();
+            if (snapshot.getOwnerType() == KnowledgeSnapshotOwnerType.EVALUATION_CORPUS) {
+                embeddingIndexCompatibilityService.assertIndexingCompatibleForEvaluationSnapshot(indexProfile);
+            } else {
+                embeddingIndexCompatibilityService.assertIndexingCompatible(indexProfile);
+            }
+            for (Document vectorDoc : vectorDocs) {
+                stampEmbeddingIndexMetadata(vectorDoc.getMetadata(), indexProfile);
+            }
             String embeddingModelId =
-                    IndexProfileJsonSupport.readEmbeddingModelId(snapshot.getIndexProfileJsonb())
+                    IndexProfileJsonSupport.readEmbeddingModelId(indexProfile)
                             .orElseThrow(
                                     () -> new IllegalStateException(
                                             "embeddingModelId missing from knowledge_index_snapshot.index_profile_jsonb; cannot embed"));
@@ -436,6 +461,7 @@ public class KnowledgeIndexingService {
         meta.put(JSON_KEY_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION);
         meta.put("fileName", filename != null ? filename : "");
         meta.put("textLength", content.length());
+        meta.put("documentLanguage", QueryLanguagePolicy.documentLanguageTag(content, filename));
         if (strategy == MaterializationStrategy.STRUCTURED_SEARCH) {
             Map<String, Object> proj = new LinkedHashMap<>();
             proj.put(JSON_KEY_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION);
@@ -470,6 +496,17 @@ public class KnowledgeIndexingService {
             return chunkText;
         }
         return prefix + chunkText;
+    }
+
+    private void stampEmbeddingIndexMetadata(Map<String, Object> metadata, Map<String, Object> indexProfile) {
+        if (metadata == null || indexProfile == null) {
+            return;
+        }
+        metadata.put(
+                IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY,
+                IndexProfileJsonSupport.resolveEmbeddingProviderOrLegacyDefault(indexProfile).name());
+        IndexProfileJsonSupport.readEmbeddingModelId(indexProfile)
+                .ifPresent(model -> metadata.put(IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY, model));
     }
 
     private void saveArtifact(

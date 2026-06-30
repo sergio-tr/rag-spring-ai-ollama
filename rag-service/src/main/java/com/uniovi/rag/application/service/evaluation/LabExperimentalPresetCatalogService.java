@@ -78,8 +78,8 @@ public class LabExperimentalPresetCatalogService {
                             experimentalProductPresetId(code),
                             code.name(),
                             d != null ? d.family() : "UNSPECIFIED",
-                            d != null && !d.name().isBlank() ? d.name() : code.name(),
-                            d != null ? d.objective() : "",
+                            catalogLabel(d, code),
+                            catalogDescription(d, code),
                             new RuntimePresetIndexRequirementsDto(
                                     idxReq.requiredMaterialization() != null ? idxReq.requiredMaterialization().name() : null,
                                     idxReq.requiresMetadataSupport()),
@@ -101,8 +101,31 @@ public class LabExperimentalPresetCatalogService {
                             parentCode,
                             terminalJson));
         }
-        out.sort(Comparator.comparing(ExperimentalPresetCatalogItemDto::code));
+        out.sort(Comparator.comparingInt(ExperimentalPresetCatalogItemDto::protocolStageIndex));
         return out;
+    }
+
+    private static String catalogLabel(RagPresetDefinition d, RagExperimentalPresetCode code) {
+        if (d != null && !d.name().isBlank()) {
+            String name = d.name().trim();
+            if (!name.equals(code.name()) && !name.equals("P15_INTEGRATED_SINGLE_TURN")) {
+                return name;
+            }
+        }
+        if (code == RagExperimentalPresetCode.P15) {
+            return "Integrated single-turn composition";
+        }
+        return code.name();
+    }
+
+    private static String catalogDescription(RagPresetDefinition d, RagExperimentalPresetCode code) {
+        if (d != null && d.objective() != null && !d.objective().isBlank()) {
+            return d.objective();
+        }
+        if (code == RagExperimentalPresetCode.P15) {
+            return "Hybrid retrieval, backend function calling, and adaptive route composition.";
+        }
+        return "";
     }
 
     private static String supportStatus(

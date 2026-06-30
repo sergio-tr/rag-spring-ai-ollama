@@ -5,7 +5,9 @@ import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationBootstrap;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStateResolver;
+import com.uniovi.rag.application.service.runtime.memory.ConversationHistoryLoader;
 import com.uniovi.rag.application.service.runtime.memory.ConversationMemoryStrategy;
+import com.uniovi.rag.application.service.runtime.memory.ConversationFollowUpResolver;
 import com.uniovi.rag.domain.config.EffectiveModelPolicy;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.runtime.RagConfig;
@@ -16,6 +18,7 @@ import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryExecutionResult;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryTurn;
 import com.uniovi.rag.domain.runtime.reasoning.StructuredAnswerPlan;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
@@ -24,11 +27,17 @@ import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import com.uniovi.rag.application.service.runtime.config.MaterializationAwareSnapshotResolver;
 import com.uniovi.rag.application.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.exception.llm.LlmSafeOperationLogger;
+import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
 import io.micrometer.tracing.Tracer;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -40,6 +49,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ExecutionContextFactory {
 
+    private static final Logger log = LoggerFactory.getLogger(ExecutionContextFactory.class);
+
     private final RuntimeConfigResolutionService runtimeConfigResolutionService;
     private final KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector;
     private final ChatScopedRagConfigResolver chatScopedRagConfigResolver;
@@ -47,6 +58,8 @@ public class ExecutionContextFactory {
     private final Tracer tracer;
     private final ClarificationStateResolver clarificationStateResolver;
     private final ConversationMemoryStrategy conversationMemoryStrategy;
+    private final ConversationHistoryLoader conversationHistoryLoader;
+    private final ResolvedLlmConfigResolver resolvedLlmConfigResolver;
 
     public ExecutionContextFactory(
             RuntimeConfigResolutionService runtimeConfigResolutionService,
@@ -55,6 +68,8 @@ public class ExecutionContextFactory {
             ModelCatalogPort modelCatalogPort,
             ClarificationStateResolver clarificationStateResolver,
             ConversationMemoryStrategy conversationMemoryStrategy,
+            ConversationHistoryLoader conversationHistoryLoader,
+            ResolvedLlmConfigResolver resolvedLlmConfigResolver,
             @Autowired(required = false) Tracer tracer) {
         this.runtimeConfigResolutionService = runtimeConfigResolutionService;
         this.knowledgeRuntimeSnapshotSelector = knowledgeRuntimeSnapshotSelector;
@@ -62,6 +77,8 @@ public class ExecutionContextFactory {
         this.modelCatalogPort = modelCatalogPort;
         this.clarificationStateResolver = clarificationStateResolver;
         this.conversationMemoryStrategy = conversationMemoryStrategy;
+        this.conversationHistoryLoader = conversationHistoryLoader;
+        this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
         this.tracer = tracer;
     }
 
@@ -105,6 +122,7 @@ public class ExecutionContextFactory {
         KnowledgeSnapshotSelection snapshots =
                 knowledgeRuntimeSnapshotSelector.select(projectId, conversationId, indexRequirements);
         List<String> filter = copyDocumentFilter(documentFilter);
+        bindResolvedLlmConfig(userId, projectId, resolved, merged, model);
         return buildWithClarification(
                 userId,
                 projectId,
@@ -143,6 +161,7 @@ public class ExecutionContextFactory {
         } else {
             snapshots = knowledgeRuntimeSnapshotSelector.select(projectId, null);
         }
+        bindResolvedLlmConfig(null, projectId, resolved, benchmarkTerminal, model);
         return buildWithClarification(
                 null,
                 projectId,
@@ -184,6 +203,7 @@ public class ExecutionContextFactory {
                         presetId, resolved.toRagConfig());
         KnowledgeSnapshotSelection snapshots =
                 knowledgeRuntimeSnapshotSelector.select(projectId, conversationId, indexRequirements);
+        bindResolvedLlmConfig(userId, projectId, resolved, merged, model);
         return buildWithClarification(
                 userId,
                 projectId,
@@ -196,6 +216,25 @@ public class ExecutionContextFactory {
                 copyDocumentFilter(documentFilter),
                 model,
                 Optional.empty());
+    }
+
+    private void bindResolvedLlmConfig(
+            UUID userId,
+            UUID projectId,
+            ResolvedRuntimeConfig resolved,
+            JsonNode terminalConversationMergedOverride,
+            Optional<String> chatModelOverride) {
+        UUID presetId =
+                resolved != null
+                                && resolved.provenance() != null
+                                && resolved.provenance().presetId() != null
+                        ? resolved.provenance().presetId()
+                        : null;
+        ResolvedLlmConfig llm =
+                resolvedLlmConfigResolver.resolveForOrchestratedExecute(
+                        userId, projectId, presetId, terminalConversationMergedOverride, chatModelOverride);
+        LlmSafeOperationLogger.logResolvedConfig(log, llm);
+        OrchestrationLlmConfigScope.bind(llm);
     }
 
     private ExecutionContext buildWithClarification(
@@ -257,7 +296,11 @@ public class ExecutionContextFactory {
                 false,
                 List.of());
 
-        ConversationMemoryExecutionResult mem = conversationMemoryStrategy.execute(base, preMemory);
+        List<ConversationMemoryTurn> eligibleHistory = conversationHistoryLoader.loadEligibleHistory(base);
+        String planningSeed =
+                ConversationFollowUpResolver.expand(eligibleHistory, uq).orElse(preMemory);
+        ConversationMemoryExecutionResult mem =
+                conversationMemoryStrategy.executeWithEligibleHistory(base, planningSeed, eligibleHistory);
         boolean attempted =
                 mem.outcome() != ConversationMemoryOutcome.DISABLED_BY_CONFIG
                         && mem.outcome() != ConversationMemoryOutcome.NO_CONVERSATION_SCOPE;

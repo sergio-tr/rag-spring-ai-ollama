@@ -268,8 +268,9 @@ Options:
 Use the official local/demo stack above, then capture evidence without committing secrets:
 
 ```bash
-mkdir -p .cursor/context/evidence/docker-observability
-docker ps > .cursor/context/evidence/docker-observability/docker-ps.txt
+EVIDENCE_DIR="${EVIDENCE_DIR:-exports/evaluation-evidence/docker-observability}"
+mkdir -p "$EVIDENCE_DIR"
+docker ps > "$EVIDENCE_DIR/docker-ps.txt"
 docker compose -f docker/docker-compose.yml -f docker/compose.obs.yml -f docker/compose.prod.yml \
   --profile observability \
   --env-file db/.env \
@@ -277,12 +278,12 @@ docker compose -f docker/docker-compose.yml -f docker/compose.obs.yml -f docker/
   --env-file rag-service/.env \
   --env-file webapp/.env \
   --env-file observability/.env \
-  logs --no-color backend > .cursor/context/evidence/docker-observability/backend.log
-curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/health > .cursor/context/evidence/docker-observability/backend-health.json
-curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/prometheus > .cursor/context/evidence/docker-observability/backend-prometheus.txt
-curl -sf http://127.0.0.1:${PROMETHEUS_PORT:-9090}/-/healthy > .cursor/context/evidence/docker-observability/prometheus-health.txt
-curl -sf http://127.0.0.1:${GRAFANA_PORT:-3000}/api/health > .cursor/context/evidence/docker-observability/grafana-health.json
-curl -sf http://127.0.0.1:${JAEGER_UI_PORT:-16686}/ > .cursor/context/evidence/docker-observability/jaeger-root.html
+  logs --no-color backend > "$EVIDENCE_DIR/backend.log"
+curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/health > "$EVIDENCE_DIR/backend-health.json"
+curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/prometheus > "$EVIDENCE_DIR/backend-prometheus.txt"
+curl -sf http://127.0.0.1:${PROMETHEUS_PORT:-9090}/-/healthy > "$EVIDENCE_DIR/prometheus-health.txt"
+curl -sf http://127.0.0.1:${GRAFANA_PORT:-3000}/api/health > "$EVIDENCE_DIR/grafana-health.json"
+curl -sf http://127.0.0.1:${JAEGER_UI_PORT:-16686}/ > "$EVIDENCE_DIR/jaeger-root.html"
 ```
 
 For screenshots, open Grafana and Jaeger at the URLs printed by `up.sh prod --obs`. Generate at least one Chat or Lab request first, then capture the Grafana dashboard and the Jaeger trace detail. Record the trace ID shown in the UI or in backend logs. Do not store real passwords, JWTs, cookies, or OAuth secrets in evidence files.

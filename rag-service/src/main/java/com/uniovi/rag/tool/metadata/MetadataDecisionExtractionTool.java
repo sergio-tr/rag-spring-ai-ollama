@@ -558,11 +558,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             """, query != null ? query : "", decisions.size(), decisionsText);
         
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
+            String response = getLLMResponseCached("metadata-decision-extraction", prompt).strip();
             
             if (response != null && !response.trim().isEmpty()) {
                 return response.trim();

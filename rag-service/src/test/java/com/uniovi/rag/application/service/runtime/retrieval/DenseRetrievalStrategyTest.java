@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
+import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
 import com.uniovi.rag.application.service.knowledge.document.KnowledgeChunkMetadataFactory;
 import com.uniovi.rag.configuration.RagVectorProperties;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
@@ -34,7 +35,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -50,7 +53,16 @@ class DenseRetrievalStrategyTest {
     @Mock
     private RagVectorProperties ragVectorProperties;
 
+    @Mock
+    private EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService;
+
     private DenseRetrievalStrategy denseRetrievalStrategy;
+
+    private static EmbeddingIndexCompatibilityService permissiveCompatibility() {
+        EmbeddingIndexCompatibilityService svc = mock(EmbeddingIndexCompatibilityService.class);
+        lenient().doNothing().when(svc).assertRetrievalCompatible(any());
+        return svc;
+    }
 
     @BeforeEach
     void setUnscopedProjectContext() {
@@ -81,7 +93,9 @@ class DenseRetrievalStrategyTest {
         RagExecutionContextHolder.set(RagExecutionContext.forUnscopedExecution(rag, "t"));
         lenient().when(ragVectorProperties.requireSnapshotEmbeddingModelId()).thenReturn(false);
         lenient().when(vectorStoreRegistry.forEmbeddingModelId(anyString())).thenReturn(vectorStore);
-        denseRetrievalStrategy = new DenseRetrievalStrategy(vectorStoreRegistry, vectorStore, ragVectorProperties, 10, 0.7);
+        denseRetrievalStrategy =
+                new DenseRetrievalStrategy(
+                        vectorStoreRegistry, vectorStore, ragVectorProperties, permissiveCompatibility(), 10, 0.7);
     }
 
     @AfterEach
@@ -188,7 +202,9 @@ class DenseRetrievalStrategyTest {
                         RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
                         MaterializationStrategy.CHUNK_LEVEL);
         RagExecutionContextHolder.set(RagExecutionContext.forUnscopedExecution(rag, "t"));
-        denseRetrievalStrategy = new DenseRetrievalStrategy(vectorStoreRegistry, vectorStore, ragVectorProperties, 10, 0.7);
+        denseRetrievalStrategy =
+                new DenseRetrievalStrategy(
+                        vectorStoreRegistry, vectorStore, ragVectorProperties, permissiveCompatibility(), 10, 0.7);
 
         UUID sid = UUID.randomUUID();
         RetrievalRequest req = baseRequest(sid, 5);
@@ -208,7 +224,9 @@ class DenseRetrievalStrategyTest {
         RagConfig rag = baseRag();
         RagExecutionContextHolder.set(
                 new RagExecutionContext(null, null, projectKey.toString(), rag, List.of("all"), "trace"));
-        denseRetrievalStrategy = new DenseRetrievalStrategy(vectorStoreRegistry, vectorStore, ragVectorProperties, 10, 0.7);
+        denseRetrievalStrategy =
+                new DenseRetrievalStrategy(
+                        vectorStoreRegistry, vectorStore, ragVectorProperties, permissiveCompatibility(), 10, 0.7);
 
         UUID sid = UUID.randomUUID();
         RetrievalRequest req = baseRequest(sid, 10);
@@ -249,7 +267,9 @@ class DenseRetrievalStrategyTest {
         UUID projectKey = UUID.randomUUID();
         RagExecutionContextHolder.set(
                 new RagExecutionContext(null, null, projectKey.toString(), baseRag(), List.of("all"), "trace"));
-        denseRetrievalStrategy = new DenseRetrievalStrategy(vectorStoreRegistry, vectorStore, ragVectorProperties, 10, 0.7);
+        denseRetrievalStrategy =
+                new DenseRetrievalStrategy(
+                        vectorStoreRegistry, vectorStore, ragVectorProperties, permissiveCompatibility(), 10, 0.7);
 
         UUID sid = UUID.randomUUID();
         RetrievalRequest req = baseRequest(sid, 10);
@@ -282,7 +302,9 @@ class DenseRetrievalStrategyTest {
         RagConfig rag = baseRag();
         RagExecutionContextHolder.set(
                 new RagExecutionContext("conv-99", null, projectKey.toString(), rag, List.of("all"), "trace"));
-        denseRetrievalStrategy = new DenseRetrievalStrategy(vectorStoreRegistry, vectorStore, ragVectorProperties, 10, 0.7);
+        denseRetrievalStrategy =
+                new DenseRetrievalStrategy(
+                        vectorStoreRegistry, vectorStore, ragVectorProperties, permissiveCompatibility(), 10, 0.7);
 
         UUID sid = UUID.randomUUID();
         RetrievalRequest req = baseRequest(sid, 10);
@@ -329,7 +351,9 @@ class DenseRetrievalStrategyTest {
         RagExecutionContextHolder.set(
                 new RagExecutionContext(
                         null, null, projectKey.toString(), rag, List.of("keep-me", "noise"), "trace"));
-        denseRetrievalStrategy = new DenseRetrievalStrategy(vectorStoreRegistry, vectorStore, ragVectorProperties, 10, 0.7);
+        denseRetrievalStrategy =
+                new DenseRetrievalStrategy(
+                        vectorStoreRegistry, vectorStore, ragVectorProperties, permissiveCompatibility(), 10, 0.7);
 
         UUID sid = UUID.randomUUID();
         RetrievalRequest req = baseRequest(sid, 10);
