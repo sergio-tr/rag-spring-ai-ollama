@@ -1,9 +1,12 @@
 package com.uniovi.rag.application.service.evaluation.judge;
 
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
+import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
 import com.uniovi.rag.application.port.llm.LlmChatClient;
 import com.uniovi.rag.application.port.llm.LlmChatRequest;
 import com.uniovi.rag.application.port.llm.LlmChatResponse;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.config.llm.TaskLlmConfigResolver;
 import com.uniovi.rag.application.service.evaluation.LabBenchmarkDefaultModelResolver;
 import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
@@ -28,34 +31,55 @@ public class EvaluationJudgeLlmExecutor {
 
     private final LlmClientResolver llmClientResolver;
     private final ResolvedLlmConfigResolver configResolver;
+    private final TaskLlmConfigResolver taskLlmConfigResolver;
     private final LabBenchmarkDefaultModelResolver defaultModelResolver;
     private final EvaluationRunRepository evaluationRunRepository;
+    private final ConfigurablePromptResolver promptResolver;
     private final String configuredJudgeChatModel;
 
     public EvaluationJudgeLlmExecutor(
             LlmClientResolver llmClientResolver,
             ResolvedLlmConfigResolver configResolver,
+            TaskLlmConfigResolver taskLlmConfigResolver,
             LabBenchmarkDefaultModelResolver defaultModelResolver,
             EvaluationRunRepository evaluationRunRepository,
+            ConfigurablePromptResolver promptResolver,
             @Value("${rag.evaluation.judge.chat-model:}") String configuredJudgeChatModel) {
         this.llmClientResolver = llmClientResolver;
         this.configResolver = configResolver;
+        this.taskLlmConfigResolver = taskLlmConfigResolver;
         this.defaultModelResolver = defaultModelResolver;
         this.evaluationRunRepository = evaluationRunRepository;
+        this.promptResolver = promptResolver;
         this.configuredJudgeChatModel = blankToNull(configuredJudgeChatModel);
+    }
+
+    public String buildJudgeUserPrompt(String question, String correctAnswer, String generatedAnswer) {
+        UUID userId = resolveUserId();
+        String template = promptResolver.resolve(ConfigurablePromptGroup.EVALUATION_JUDGE, userId, null);
+        return template
+                .replace("{question}", question != null ? question : "")
+                .replace("{correctAnswer}", correctAnswer != null ? correctAnswer : "")
+                .replace("{generatedAnswer}", generatedAnswer != null ? generatedAnswer : "");
     }
 
     public String completeJudgeUserPrompt(String userPrompt) {
         UUID userId = resolveUserId();
-        ResolvedLlmConfig base = configResolver.resolve(userId, null, null);
-        String judgeModel = resolveJudgeModelId(userId);
-        ResolvedLlmConfig judgeConfig = withChatModel(base, judgeModel);
+        TaskLlmConfigResolver.SecondaryCallConfig call =
+                taskLlmConfigResolver.resolveSecondaryCall(userId, null, "evaluation-judge", null, null);
+        String judgeModel =
+                call.taskOverrideApplied() && call.effectiveModel() != null && !call.effectiveModel().isBlank()
+                        ? call.effectiveModel()
+                        : resolveJudgeModelId(userId);
+        ResolvedLlmConfig judgeConfig =
+                withChatModelAndSampling(call.effectiveConfig(), judgeModel, call.effectiveTemperature());
 
         log.info(
-                "Evaluation judge LLM call: provider={}, model={}, userId={}",
+                "Evaluation judge LLM call: provider={}, model={}, userId={}, taskOverride={}",
                 judgeConfig.chatProvider(),
                 judgeModel,
-                userId);
+                userId,
+                call.taskOverrideApplied());
 
         try {
             LlmChatClient client = llmClientResolver.resolveChatClient(judgeConfig);
@@ -101,6 +125,11 @@ public class EvaluationJudgeLlmExecutor {
     }
 
     private static ResolvedLlmConfig withChatModel(ResolvedLlmConfig base, String chatModel) {
+        return withChatModelAndSampling(base, chatModel, base.temperature());
+    }
+
+    private static ResolvedLlmConfig withChatModelAndSampling(
+            ResolvedLlmConfig base, String chatModel, Double temperature) {
         return new ResolvedLlmConfig(
                 base.chatProvider(),
                 base.embeddingProvider(),
@@ -109,7 +138,7 @@ public class EvaluationJudgeLlmExecutor {
                 base.embeddingModel(),
                 base.apiKeyEnv(),
                 base.secretName(),
-                base.temperature(),
+                temperature,
                 base.timeoutMs(),
                 base.systemPrompt(),
                 base.additionalParameters());

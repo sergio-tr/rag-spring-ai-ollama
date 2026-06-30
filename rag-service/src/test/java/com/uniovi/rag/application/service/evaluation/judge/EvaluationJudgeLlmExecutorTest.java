@@ -4,12 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
 import com.uniovi.rag.application.port.llm.LlmChatClient;
 import com.uniovi.rag.application.port.llm.LlmChatResponse;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.config.llm.TaskLlmConfigResolver;
 import com.uniovi.rag.application.service.evaluation.LabBenchmarkDefaultModelResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
@@ -35,9 +38,11 @@ class EvaluationJudgeLlmExecutorTest {
     private static final UUID USER_ID = UUID.fromString("00000000-0000-4000-8000-000000000099");
 
     @Mock private ResolvedLlmConfigResolver configResolver;
+    @Mock private TaskLlmConfigResolver taskLlmConfigResolver;
     @Mock private EvaluationRunRepository evaluationRunRepository;
     @Mock private LlmClientResolver llmClientResolver;
     @Mock private LlmChatClient openAiChatClient;
+    @Mock private ConfigurablePromptResolver promptResolver;
 
     private EvaluationJudgeLlmExecutor executor;
     private LlmProperties properties;
@@ -45,14 +50,20 @@ class EvaluationJudgeLlmExecutorTest {
     @BeforeEach
     void setUp() {
         properties = LlmModelCatalogTestSupport.openAiLiteLlmProperties();
-        when(configResolver.resolve(any(), eq(null), eq(null))).thenReturn(openAiConfig(properties));
+        lenient().when(configResolver.resolve(any(), eq(null), eq(null))).thenReturn(openAiConfig(properties));
+        ResolvedLlmConfig cfg = openAiConfig(properties);
+        lenient()
+                .when(taskLlmConfigResolver.resolveSecondaryCall(any(), eq(null), eq("evaluation-judge"), eq(null), eq(null)))
+                .thenReturn(new TaskLlmConfigResolver.SecondaryCallConfig(cfg, cfg.chatModel(), cfg.temperature(), false));
         LabBenchmarkDefaultModelResolver defaultModelResolver = new LabBenchmarkDefaultModelResolver(configResolver);
         executor =
                 new EvaluationJudgeLlmExecutor(
                         llmClientResolver,
                         configResolver,
+                        taskLlmConfigResolver,
                         defaultModelResolver,
                         evaluationRunRepository,
+                        promptResolver,
                         "");
     }
 

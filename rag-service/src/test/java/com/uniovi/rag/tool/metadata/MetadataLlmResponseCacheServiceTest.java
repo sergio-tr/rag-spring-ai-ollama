@@ -4,6 +4,7 @@ import com.uniovi.rag.application.port.llm.LlmChatClient;
 import com.uniovi.rag.application.port.llm.LlmChatRequest;
 import com.uniovi.rag.application.port.llm.LlmChatResponse;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.config.llm.TaskLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.domain.llm.LlmProvider;
@@ -19,6 +20,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -36,6 +39,9 @@ class MetadataLlmResponseCacheServiceTest {
     private ResolvedLlmConfigResolver resolvedLlmConfigResolver;
 
     @Mock
+    private TaskLlmConfigResolver taskLlmConfigResolver;
+
+    @Mock
     private LlmChatClient openAiChatClient;
 
     @Mock
@@ -45,7 +51,7 @@ class MetadataLlmResponseCacheServiceTest {
 
     @BeforeEach
     void setUp() {
-        svc = new MetadataLlmResponseCacheService(llmClientResolver, resolvedLlmConfigResolver);
+        svc = new MetadataLlmResponseCacheService(llmClientResolver, resolvedLlmConfigResolver, taskLlmConfigResolver);
     }
 
     @AfterEach
@@ -63,7 +69,7 @@ class MetadataLlmResponseCacheServiceTest {
     @Test
     void getCachedResponse_stripsNonEmptyResponse() {
         ResolvedLlmConfig config = openAiConfig();
-        when(resolvedLlmConfigResolver.resolve(null, null, null)).thenReturn(config);
+        stubMetadataSecondaryCall(config, false);
         when(llmClientResolver.resolveChatClient(config)).thenReturn(openAiChatClient);
         when(openAiChatClient.chat(any(LlmChatRequest.class))).thenReturn(LlmChatResponse.ofContent("  OK  "));
 
@@ -73,7 +79,7 @@ class MetadataLlmResponseCacheServiceTest {
     @Test
     void getCachedResponse_returnsEmpty_onIllegalArgumentException() {
         ResolvedLlmConfig config = openAiConfig();
-        when(resolvedLlmConfigResolver.resolve(null, null, null)).thenReturn(config);
+        stubMetadataSecondaryCall(config, false);
         when(llmClientResolver.resolveChatClient(config)).thenReturn(openAiChatClient);
         when(openAiChatClient.chat(any(LlmChatRequest.class))).thenThrow(new IllegalArgumentException("bad"));
 
@@ -83,7 +89,7 @@ class MetadataLlmResponseCacheServiceTest {
     @Test
     void metadataCacheUsesOpenAiCompatibleClientWhenRuntimeProviderIsOpenAiCompatible() {
         ResolvedLlmConfig config = openAiConfig();
-        OrchestrationLlmConfigScope.bind(config);
+        stubMetadataSecondaryCall(config, false);
         when(llmClientResolver.resolveChatClient(config)).thenReturn(openAiChatClient);
         when(openAiChatClient.chat(any(LlmChatRequest.class))).thenReturn(LlmChatResponse.ofContent("summary"));
         when(openAiChatClient.provider()).thenReturn(LlmProvider.OPENAI_COMPATIBLE);
@@ -105,7 +111,7 @@ class MetadataLlmResponseCacheServiceTest {
     @Test
     void metadataCacheDoesNotCallOllamaWhenProviderIsOpenAiCompatible() {
         ResolvedLlmConfig config = openAiConfig();
-        when(resolvedLlmConfigResolver.resolve(null, null, null)).thenReturn(config);
+        stubMetadataSecondaryCall(config, false);
         when(llmClientResolver.resolveChatClient(config)).thenReturn(openAiChatClient);
         when(openAiChatClient.chat(any(LlmChatRequest.class))).thenReturn(LlmChatResponse.ofContent("ok"));
 
@@ -119,7 +125,7 @@ class MetadataLlmResponseCacheServiceTest {
     @Test
     void metadataCacheUsesOllamaClientOnlyWhenProviderIsOllamaNative() {
         ResolvedLlmConfig config = ollamaConfig();
-        OrchestrationLlmConfigScope.bind(config);
+        stubMetadataSecondaryCall(config, false);
         when(llmClientResolver.resolveChatClient(config)).thenReturn(ollamaChatClient);
         when(ollamaChatClient.chat(any(LlmChatRequest.class))).thenReturn(LlmChatResponse.ofContent("ollama-ok"));
 
@@ -132,9 +138,74 @@ class MetadataLlmResponseCacheServiceTest {
     }
 
     @Test
+    void metadataCacheUsesTaskOverrideModelWhenConfigured() {
+        ResolvedLlmConfig overridden =
+                ResolvedLlmConfig.uniform(
+                        LlmProvider.OPENAI_COMPATIBLE,
+                        "http://litellm:4000",
+                        "task-override-model",
+                        "qwen3-embedding:8b",
+                        "OPENAI_COMPATIBLE_API_KEY",
+                        null,
+                        0.0,
+                        60_000,
+                        null,
+                        Map.of());
+        stubMetadataSecondaryCall("metadata-filter", overridden, true);
+        when(llmClientResolver.resolveChatClient(overridden)).thenReturn(openAiChatClient);
+        when(openAiChatClient.chat(any(LlmChatRequest.class))).thenReturn(LlmChatResponse.ofContent("ok"));
+
+        svc.getCachedResponse("metadata-filter", "prompt");
+
+        ArgumentCaptor<LlmChatRequest> captor = ArgumentCaptor.forClass(LlmChatRequest.class);
+        verify(openAiChatClient).chat(captor.capture());
+        assertThat(captor.getValue().model()).isEqualTo("task-override-model");
+        assertThat(captor.getValue().temperature()).isEqualTo(0.0);
+    }
+
+    @Test
+    void getCachedResponse_withOperation_delegatesToCachedPath() {
+        ResolvedLlmConfig config = openAiConfig();
+        stubMetadataSecondaryCall("metadata-filter-and-list", config, false);
+        when(llmClientResolver.resolveChatClient(config)).thenReturn(openAiChatClient);
+        when(openAiChatClient.chat(any(LlmChatRequest.class))).thenReturn(LlmChatResponse.ofContent("OK"));
+
+        assertThat(svc.getCachedResponse("metadata-filter-and-list", "prompt")).isEqualTo("OK");
+        verify(openAiChatClient).chat(any(LlmChatRequest.class));
+    }
+
+    @Test
+    void metadataYesNoFilterUsesOpenAiCompatibleClientWhenRuntimeProviderIsOpenAiCompatible() {
+        ResolvedLlmConfig config = openAiConfig();
+        stubMetadataSecondaryCall("metadata-yes-no-filter", config, false);
+        when(llmClientResolver.resolveChatClient(config)).thenReturn(openAiChatClient);
+        when(openAiChatClient.chat(any(LlmChatRequest.class))).thenReturn(LlmChatResponse.ofContent("YES"));
+
+        String out = svc.getCachedResponse("metadata-yes-no-filter", "interpret yes/no");
+
+        assertThat(out).isEqualTo("YES");
+        verify(llmClientResolver).resolveChatClient(same(config));
+        verify(openAiChatClient).chat(any(LlmChatRequest.class));
+        verify(ollamaChatClient, never()).chat(any());
+    }
+
+    @Test
+    void metadataTopicFilterMapsToMetadataReasoningTask() {
+        ResolvedLlmConfig config = openAiConfig();
+        stubMetadataSecondaryCall("metadata-topic-filter", config, false);
+        when(llmClientResolver.resolveChatClient(config)).thenReturn(openAiChatClient);
+        when(openAiChatClient.chat(any(LlmChatRequest.class))).thenReturn(LlmChatResponse.ofContent("NO"));
+
+        assertThat(svc.getCachedResponse("metadata-topic-filter", "topic filter prompt")).isEqualTo("NO");
+
+        verify(taskLlmConfigResolver, times(2))
+                .resolveSecondaryCall(isNull(), isNull(), eq("metadata-topic-filter"), isNull(), isNull());
+    }
+
+    @Test
     void metadataCacheFailureDoesNotFallbackToOtherProvider() {
         ResolvedLlmConfig config = openAiConfig();
-        when(resolvedLlmConfigResolver.resolve(null, null, null)).thenReturn(config);
+        stubMetadataSecondaryCall(config, false);
         when(llmClientResolver.resolveChatClient(config)).thenReturn(openAiChatClient);
         when(openAiChatClient.chat(any(LlmChatRequest.class)))
                 .thenThrow(new RuntimeException("connection refused"));
@@ -144,6 +215,17 @@ class MetadataLlmResponseCacheServiceTest {
         verify(llmClientResolver, times(3)).resolveChatClient(config);
         verify(openAiChatClient, times(3)).chat(any(LlmChatRequest.class));
         verify(ollamaChatClient, never()).chat(any());
+    }
+
+    private void stubMetadataSecondaryCall(ResolvedLlmConfig config, boolean taskOverrideApplied) {
+        stubMetadataSecondaryCall("metadata-reasoning", config, taskOverrideApplied);
+    }
+
+    private void stubMetadataSecondaryCall(String operation, ResolvedLlmConfig config, boolean taskOverrideApplied) {
+        when(taskLlmConfigResolver.resolveSecondaryCall(isNull(), isNull(), eq(operation), isNull(), isNull()))
+                .thenReturn(
+                        new TaskLlmConfigResolver.SecondaryCallConfig(
+                                config, config.chatModel(), config.temperature(), taskOverrideApplied));
     }
 
     private static ResolvedLlmConfig openAiConfig() {

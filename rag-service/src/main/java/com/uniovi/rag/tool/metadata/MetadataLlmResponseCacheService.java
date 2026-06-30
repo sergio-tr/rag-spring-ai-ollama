@@ -3,9 +3,13 @@ package com.uniovi.rag.tool.metadata;
 import com.uniovi.rag.application.port.llm.LlmChatClient;
 import com.uniovi.rag.application.port.llm.LlmChatRequest;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.config.llm.TaskLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import com.uniovi.rag.domain.runtime.RagExecutionContext;
+import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
@@ -23,11 +27,35 @@ public class MetadataLlmResponseCacheService {
 
     private final LlmClientResolver llmClientResolver;
     private final ResolvedLlmConfigResolver resolvedLlmConfigResolver;
+    private final TaskLlmConfigResolver taskLlmConfigResolver;
 
     public MetadataLlmResponseCacheService(
-            LlmClientResolver llmClientResolver, ResolvedLlmConfigResolver resolvedLlmConfigResolver) {
+            LlmClientResolver llmClientResolver,
+            ResolvedLlmConfigResolver resolvedLlmConfigResolver,
+            TaskLlmConfigResolver taskLlmConfigResolver) {
         this.llmClientResolver = llmClientResolver;
         this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
+        this.taskLlmConfigResolver = taskLlmConfigResolver;
+    }
+
+    /**
+     * Cached LLM response with operation-scoped diagnostics. Cache key remains prompt-only.
+     */
+    public String getCachedResponse(String operation, String prompt) {
+        if (prompt == null || prompt.trim().isEmpty()) {
+            log.warn("Empty prompt provided to getCachedResponse");
+            return "";
+        }
+        TaskLlmConfigResolver.SecondaryCallConfig call = resolveMetadataCall(operation);
+        log.debug(
+                "Secondary LLM call: operation={} provider={} model={} baseUrl={} temperature={} taskOverride={}",
+                operation,
+                call.effectiveConfig().chatProvider(),
+                call.effectiveModel(),
+                call.effectiveConfig().baseUrl(),
+                call.effectiveTemperature(),
+                call.taskOverrideApplied());
+        return getCachedResponseForOperation(operation, prompt);
     }
 
     /**
@@ -36,6 +64,10 @@ public class MetadataLlmResponseCacheService {
      */
     @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
     public String getCachedResponse(String prompt) {
+        return getCachedResponseForOperation("metadata-reasoning", prompt);
+    }
+
+    private String getCachedResponseForOperation(String operation, String prompt) {
         if (prompt == null || prompt.trim().isEmpty()) {
             log.warn("Empty prompt provided to getCachedResponse");
             return "";
@@ -47,7 +79,7 @@ public class MetadataLlmResponseCacheService {
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
             try {
                 sleepBeforeRetryIfNeeded(attempt);
-                String response = invokeLlm(prompt);
+                String response = invokeLlm(operation, prompt);
                 if (response != null && !response.trim().isEmpty()) {
                     return response.strip();
                 }
@@ -91,18 +123,32 @@ public class MetadataLlmResponseCacheService {
         }
     }
 
-    private String invokeLlm(String prompt) {
-        ResolvedLlmConfig config = resolveEffectiveConfig();
+    private String invokeLlm(String operation, String prompt) {
+        TaskLlmConfigResolver.SecondaryCallConfig call = resolveMetadataCall(operation);
+        ResolvedLlmConfig config = call.effectiveConfig();
         LlmChatClient client = llmClientResolver.resolveChatClient(config);
         LlmChatRequest request =
                 LlmChatRequest.of(
-                        config.chatModel(),
+                        call.effectiveModel(),
                         null,
                         prompt,
-                        config.temperature(),
+                        call.effectiveTemperature(),
                         config.timeoutMs(),
                         config.additionalParameters());
         return client.chat(request).content();
+    }
+
+    private TaskLlmConfigResolver.SecondaryCallConfig resolveMetadataCall(String operation) {
+        RagExecutionContext ctx = RagExecutionContextHolder.get();
+        UUID userId = null;
+        UUID projectId = null;
+        if (ctx != null && ctx.userId() != null && !ctx.userId().isBlank()) {
+            userId = UUID.fromString(ctx.userId());
+            if (ctx.projectId() != null && !ctx.projectId().isBlank()) {
+                projectId = UUID.fromString(ctx.projectId());
+            }
+        }
+        return taskLlmConfigResolver.resolveSecondaryCall(userId, projectId, operation, null, null);
     }
 
     private static void logLlmExceptionByKind(int attemptOneBased, Exception e) {

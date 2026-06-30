@@ -391,17 +391,13 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         String q = question != null ? question : "";
         String ca = correctAnswer != null ? correctAnswer : "";
         String gen = llmResponse != null ? llmResponse : "";
-        String prompt = EVALUATION_PROMPT_TEMPLATE.create(
-                Map.of(
-                        "question", q,
-                        "correctAnswer", ca,
-                        "generatedAnswer", gen
-                )
-        ).getContents();
-
         if (evaluationJudgeLlmExecutor != null) {
+            String prompt = evaluationJudgeLlmExecutor.buildJudgeUserPrompt(q, ca, gen);
             return evaluationJudgeLlmExecutor.completeJudgeUserPrompt(prompt);
         }
+        String prompt = EVALUATION_PROMPT_TEMPLATE.create(
+                        Map.of("question", q, "correctAnswer", ca, "generatedAnswer", gen))
+                .getContents();
         return chatClient
                 .prompt()
                 .user(prompt)
