@@ -182,6 +182,23 @@ class MetadataCountDocumentsToolTest {
     }
 
     @Test
+    void englishElevatorCount_returnsEnglishAnswerWithActaReferences() {
+        stubRetriever(allDocs());
+
+        ToolResult result =
+                tool.execute(
+                        ToolExecutionContext.of(
+                                "How many meetings mention the elevator?",
+                                QueryType.COUNT_DOCUMENTS,
+                                null));
+
+        String answer = result.result();
+        assertThat(answer).contains("ACTA 1.pdf", "ACTA 6.pdf", "meetings");
+        assertThat(answer.toLowerCase(Locale.ROOT)).contains("elevator");
+        assertThat(answer).doesNotContain("actas");
+    }
+
+    @Test
     void fdCd01_dedupeActa1PdfAndTxtAliasCountsOnce() {
         List<Document> docs = new ArrayList<>(allDocs());
         Map<String, Object> acta1Meta = new LinkedHashMap<>(actaById.get(ACTA1_ID));

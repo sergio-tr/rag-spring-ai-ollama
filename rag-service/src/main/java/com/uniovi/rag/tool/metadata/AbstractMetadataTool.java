@@ -1234,6 +1234,15 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     private static final Map<String, String> FIELD_SYNONYMS = Map.ofEntries(
         Map.entry("secretaria", METADATA_KEY_SECRETARY),
         Map.entry("secretario", METADATA_KEY_SECRETARY),
+        Map.entry("secretary", METADATA_KEY_SECRETARY),
+        Map.entry("meeting", METADATA_KEY_MINUTE),
+        Map.entry("minutes", METADATA_KEY_MINUTE),
+        Map.entry("minute", METADATA_KEY_MINUTE),
+        Map.entry("president", METADATA_KEY_PRESIDENT),
+        Map.entry("date", METADATA_KEY_DATE),
+        Map.entry("agenda", METADATA_KEY_AGENDA),
+        Map.entry("attendees", METADATA_KEY_ATTENDEES),
+        Map.entry("topics", METADATA_KEY_TOPICS),
         Map.entry("orden del día", METADATA_KEY_AGENDA),
         Map.entry("orden_del_dia", METADATA_KEY_AGENDA),
         Map.entry("order_of_day", METADATA_KEY_AGENDA),
@@ -2723,6 +2732,26 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             after = after.replaceFirst("^(el|la|los|las)\\s+", "").trim();
             if (!after.isEmpty() && after.length() < 80) {
                 log().info("Extracted topic from query (after 'mencionan'): {}", after);
+                return after;
+            }
+        }
+
+        if (queryLower.contains(" mention ")) {
+            int idx = queryLower.indexOf(" mention ");
+            String after = query.substring(idx + " mention ".length()).trim().replaceFirst("\\?+$", "").trim();
+            after = after.replaceFirst("^(the|a|an)\\s+", "").trim();
+            if (!after.isEmpty() && after.length() < 80) {
+                log().info("Extracted topic from query (after 'mention'): {}", after);
+                return after;
+            }
+        }
+
+        if (queryLower.contains("discussed")) {
+            int idx = queryLower.indexOf("discussed");
+            String after = query.substring(idx + "discussed".length()).trim().replaceFirst("\\?+$", "").trim();
+            after = after.replaceFirst("^(the|a|an)\\s+", "").trim();
+            if (!after.isEmpty() && after.length() < 80) {
+                log().info("Extracted topic from query (after 'discussed'): {}", after);
                 return after;
             }
         }

@@ -9,6 +9,54 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ClassifierOverridesTest {
 
     @Test
+    void englishElevatorCountMapsToCountDocuments() {
+        assertEquals(
+                QueryType.COUNT_DOCUMENTS,
+                ClassifierOverrides.apply(
+                        "How many meetings mention the elevator?",
+                        QueryType.SUMMARIZE_MEETING));
+    }
+
+    @Test
+    void englishPresidentLookupMapsToGetField() {
+        assertEquals(
+                QueryType.GET_FIELD,
+                ClassifierOverrides.apply("Who was the president?", QueryType.FIND_PARAGRAPH));
+    }
+
+    @Test
+    void englishElevatorDiscussedMapsToBooleanQuery() {
+        assertEquals(
+                QueryType.BOOLEAN_QUERY,
+                ClassifierOverrides.apply("Was the elevator discussed?", QueryType.SUMMARIZE_MEETING));
+    }
+
+    @Test
+    void spanishActaCountStillMapsToCountDocuments() {
+        assertEquals(
+                QueryType.COUNT_DOCUMENTS,
+                ClassifierOverrides.apply("¿Cuántas actas mencionan el ascensor?", QueryType.SUMMARIZE_MEETING));
+    }
+
+    @Test
+    void englishBudgetCountMapsToCountDocuments() {
+        assertEquals(
+                QueryType.COUNT_DOCUMENTS,
+                ClassifierOverrides.apply(
+                        "How many meetings discussed the budget in 2025?",
+                        QueryType.SUMMARIZE_MEETING));
+    }
+
+    @Test
+    void englishQuerySkipsSpanishActaListingOverride() {
+        assertEquals(
+                QueryType.SUMMARIZE_MEETING,
+                ClassifierOverrides.apply(
+                        "List the meetings that mention the elevator",
+                        QueryType.SUMMARIZE_MEETING));
+    }
+
+    @Test
     void actaStartEndTimeMapsToGetField() {
         assertEquals(
                 QueryType.GET_FIELD,

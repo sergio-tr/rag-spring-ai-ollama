@@ -10,6 +10,19 @@ import org.junit.jupiter.api.Test;
 class RuntimeAnswerPromptsPolicyFormattingTest {
 
     @Test
+    void ragUserTurn_injectsEnglishLanguageInstruction() {
+        String prompt =
+                RuntimeAnswerPrompts.ragUserTurn(
+                        "Who was the president?",
+                        "CTX",
+                        AnswerGroundingPolicy.DEFAULT_RETRIEVAL_GROUNDED,
+                        true,
+                        Optional.empty(),
+                        null);
+        assertThat(prompt).contains("Answer in the same language as the user's question (English).");
+    }
+
+    @Test
     void ragUserTurn_documentScoped_formatsWithoutIllegalPercent() {
         assertThatCode(
                         () ->

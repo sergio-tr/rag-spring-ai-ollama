@@ -446,7 +446,16 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         }
         if (containsAny(q, "inicio", "start time", "hora de inicio", "comienzo", "empez", "comenz")) return "startTime";
         if (containsAny(q, "fin", "final", "end time", "hora de cierre", "termin")) return FIELD_END_TIME;
-        if (containsAny(q, "presidente", FIELD_PRESIDENT, "quién presidió", "who presided")) return FIELD_PRESIDENT;
+        if (containsAny(
+                q,
+                "presidente",
+                FIELD_PRESIDENT,
+                "quién presidió",
+                "who presided",
+                "who was the president",
+                "who was president")) {
+            return FIELD_PRESIDENT;
+        }
         if (containsAny(q, LABEL_SECRETARIO, FIELD_SECRETARY, "secretaria", "quién fue la secretaria", "who was the secretary")) {
             log().debug("Classified as 'secretary' based on query: '{}'", query);
             return FIELD_SECRETARY;

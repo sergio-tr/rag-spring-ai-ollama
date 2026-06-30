@@ -1,5 +1,6 @@
 package com.uniovi.rag.tool.metadata;
 
+import com.uniovi.rag.application.service.runtime.language.QueryLanguagePolicy;
 import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
 import java.text.Normalizer;
@@ -911,13 +912,19 @@ public final class StructuredMinuteMetadataSupport {
         if (query == null || query.isBlank()) {
             return true;
         }
-        String q = query.toLowerCase(Locale.ROOT);
-        return q.contains("acta")
-                || q.contains("reunión")
-                || q.contains("reunion")
-                || q.contains("¿")
-                || q.contains("cuánt")
-                || q.contains("cuant");
+        return switch (QueryLanguagePolicy.detect(query)) {
+            case SPANISH -> true;
+            case ENGLISH -> false;
+            case OTHER -> {
+                String q = query.toLowerCase(Locale.ROOT);
+                yield q.contains("acta")
+                        || q.contains("reunión")
+                        || q.contains("reunion")
+                        || q.contains("¿")
+                        || q.contains("cuánt")
+                        || q.contains("cuant");
+            }
+        };
     }
 
   public enum PersonMeetingRole {

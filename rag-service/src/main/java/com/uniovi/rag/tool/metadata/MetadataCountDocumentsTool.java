@@ -420,11 +420,14 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                 q.contains("cuántas")
                         || q.contains("cuantas")
                         || q.contains("en cuántas")
-                        || q.contains("en cuantas");
+                        || q.contains("en cuantas")
+                        || q.contains("how many");
         boolean topicMention =
                 q.contains("se habló")
                         || q.contains("se hablo")
-                        || q.contains("mencion");
+                        || q.contains("mencion")
+                        || q.contains("mention")
+                        || q.contains("discuss");
         return countCue && topicMention;
     }
 

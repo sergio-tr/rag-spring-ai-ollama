@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
+import com.uniovi.rag.application.service.runtime.language.QueryLanguagePolicy;
 import com.uniovi.rag.domain.runtime.policy.AnswerGroundingPolicy;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import java.util.ArrayList;
@@ -354,7 +355,12 @@ public final class RuntimeAnswerPrompts {
             String sourceGroundingBlock) {
         String q = rawQuestion != null ? rawQuestion : "";
         String c0 = contextBlock != null ? contextBlock : "";
-        String planSection = planSectionWithGrounding(answerPlanBlock, sourceGroundingBlock);
+        String planSection =
+                planSectionWithGrounding(
+                        answerPlanBlock,
+                        sourceGroundingBlock,
+                        QueryLanguagePolicy.answerInQueryLanguageInstruction(
+                                QueryLanguagePolicy.detect(q)));
 
         if (!documentScopedQuestion) {
             String template =
@@ -386,19 +392,28 @@ public final class RuntimeAnswerPrompts {
         };
     }
 
-    private static String planSectionWithGrounding(String answerPlanBlock, String sourceGroundingBlock) {
+    private static String planSectionWithGrounding(
+            String answerPlanBlock, String sourceGroundingBlock, String languageInstruction) {
         String plan = answerPlanBlock != null && !answerPlanBlock.isBlank() ? answerPlanBlock.trim() : "";
         String grounding =
                 sourceGroundingBlock != null && !sourceGroundingBlock.isBlank()
                         ? sourceGroundingBlock.trim()
                         : "";
-        if (grounding.isBlank()) {
-            return plan.isBlank() ? "" : plan + "\n";
+        String language =
+                languageInstruction != null && !languageInstruction.isBlank()
+                        ? languageInstruction.trim()
+                        : "";
+        StringBuilder section = new StringBuilder();
+        if (!grounding.isBlank()) {
+            section.append(grounding).append('\n');
         }
-        if (plan.isBlank()) {
-            return grounding + "\n";
+        if (!language.isBlank()) {
+            section.append(language).append('\n');
         }
-        return grounding + "\n" + plan + "\n";
+        if (!plan.isBlank()) {
+            section.append(plan).append('\n');
+        }
+        return section.toString();
     }
 
     /**
@@ -443,7 +458,7 @@ public final class RuntimeAnswerPrompts {
     }
 
     public static String insufficientDocumentContextMessageFor(String rawQuestion) {
-        if (looksSpanish(rawQuestion)) {
+        if (QueryLanguagePolicy.looksSpanish(rawQuestion)) {
             return INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES;
         }
         return INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_EN;
@@ -530,27 +545,14 @@ public final class RuntimeAnswerPrompts {
     }
 
     public static String documentBoundRequiresRetrievalMessageFor(String rawQuestion) {
-        if (looksSpanish(rawQuestion)) {
+        if (QueryLanguagePolicy.looksSpanish(rawQuestion)) {
             return DOCUMENT_BOUND_REQUIRES_RETRIEVAL_MESSAGE_ES;
         }
         return DOCUMENT_BOUND_REQUIRES_RETRIEVAL_MESSAGE_EN;
     }
 
     private static boolean looksSpanish(String rawQuestion) {
-        if (rawQuestion == null) {
-            return true;
-        }
-        String q = rawQuestion.toLowerCase();
-        return q.contains("¿")
-                || q.contains("¡")
-                || q.contains("acta")
-                || q.contains("reunión")
-                || q.contains("reunion")
-                || q.contains("documento")
-                || q.contains("asistente")
-                || q.contains("presidente")
-                || q.contains("duración")
-                || q.contains("duracion");
+        return QueryLanguagePolicy.looksSpanish(rawQuestion);
     }
 
     private static List<CandidateDateEvidence> extractCandidateDateEvidence(List<RetrievalCandidate> candidates) {
