@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation;
 
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.execution.QueryExecutionService;
@@ -10,6 +11,8 @@ import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.application.service.knowledge.document.DocumentService;
 import com.uniovi.rag.application.service.knowledge.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.application.service.knowledge.document.SimpleDocumentService;
+import com.uniovi.rag.application.service.llm.LlmErrorComposer;
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
@@ -43,6 +46,9 @@ public class EvaluationServiceFactory {
     private final ExecutionContextFactory executionContextFactory;
     private final RagExecutionOrchestrator ragExecutionOrchestrator;
     private final RuntimeTracePersistenceService runtimeTracePersistenceService;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
+    private final EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor;
+    private final LlmErrorComposer llmErrorComposer;
     private final Settings settings;
 
     public EvaluationServiceFactory(
@@ -53,7 +59,10 @@ public class EvaluationServiceFactory {
             OllamaConnectivityChecker ollamaConnectivityChecker,
             ExecutionContextFactory executionContextFactory,
             RagExecutionOrchestrator ragExecutionOrchestrator,
-            RuntimeTracePersistenceService runtimeTracePersistenceService) {
+            RuntimeTracePersistenceService runtimeTracePersistenceService,
+            ChatGenerationModelSelector chatGenerationModelSelector,
+            EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor,
+            LlmErrorComposer llmErrorComposer) {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
         this.jdbcTemplate = jdbcTemplate;
@@ -62,6 +71,9 @@ public class EvaluationServiceFactory {
         this.executionContextFactory = executionContextFactory;
         this.ragExecutionOrchestrator = ragExecutionOrchestrator;
         this.runtimeTracePersistenceService = runtimeTracePersistenceService;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
+        this.evaluationJudgeLlmExecutor = evaluationJudgeLlmExecutor;
+        this.llmErrorComposer = llmErrorComposer;
     }
 
     private static Settings normalizeSettings(Settings in) {
@@ -108,9 +120,10 @@ public class EvaluationServiceFactory {
                 executionContextFactory,
                 ragExecutionOrchestrator,
                 runtimeTracePersistenceService,
-                chatClient,
                 ollamaConnectivityChecker,
-                null);
+                null,
+                chatGenerationModelSelector,
+                llmErrorComposer);
     }
 
     /** Creates a DocumentService with a custom configuration. */
@@ -127,6 +140,12 @@ public class EvaluationServiceFactory {
         DocumentService documentService = createDocumentService(featureConfig);
         QueryExecutionService queryService = createQueryService(implProps);
         return new ReferenceBundleMinuteEvaluationService(
-                featureConfig, implProps, chatClient, documentService, queryService, cleanBeforeLoad);
+                featureConfig,
+                implProps,
+                chatClient,
+                documentService,
+                queryService,
+                cleanBeforeLoad,
+                evaluationJudgeLlmExecutor);
     }
 }

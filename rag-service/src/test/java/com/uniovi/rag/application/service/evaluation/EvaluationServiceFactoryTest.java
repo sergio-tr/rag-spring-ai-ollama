@@ -1,5 +1,7 @@
 package com.uniovi.rag.application.service.evaluation;
 
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor;
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.execution.QueryExecutionService;
@@ -7,6 +9,7 @@ import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutio
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
+import com.uniovi.rag.application.service.llm.LlmErrorComposer;
 import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,6 +54,7 @@ class EvaluationServiceFactoryTest {
                         500,
                         200,
                         false);
+        ChatGenerationModelSelector chatGenerationModelSelector = mock(ChatGenerationModelSelector.class);
         factory =
                 new EvaluationServiceFactory(
                         chatClient,
@@ -60,7 +64,10 @@ class EvaluationServiceFactoryTest {
                         ollamaConnectivityChecker,
                         executionContextFactory,
                         ragExecutionOrchestrator,
-                        runtimeTracePersistenceService);
+                        runtimeTracePersistenceService,
+                        chatGenerationModelSelector,
+                        mock(EvaluationJudgeLlmExecutor.class),
+                        mock(LlmErrorComposer.class));
         implProps = new RagImplementationProperties();
     }
 

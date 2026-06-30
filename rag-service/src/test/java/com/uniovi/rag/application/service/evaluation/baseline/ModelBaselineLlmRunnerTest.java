@@ -41,6 +41,11 @@ class ModelBaselineLlmRunnerTest {
                         List.of(),
                         null,
                         false,
+                        null,
+                        null,
+                        null,
+                        Map.of(),
+                        Map.of(),
                         List.of());
         PromptProfileSnapshot prompts =
                 new PromptProfileSnapshot("pv", "b", "p", "", "", "", "SYS", "h");
@@ -79,6 +84,11 @@ class ModelBaselineLlmRunnerTest {
                         List.of(),
                         null,
                         false,
+                        null,
+                        null,
+                        null,
+                        Map.of(),
+                        Map.of(),
                         List.of());
         PromptProfileSnapshot prompts =
                 new PromptProfileSnapshot(

@@ -23,7 +23,7 @@ import com.uniovi.rag.application.service.evaluation.baseline.ModelBaselineLlmRu
 import com.uniovi.rag.application.service.evaluation.LabBenchmarkCompletionService;
 import com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor;
 import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
-import com.uniovi.rag.application.service.evaluation.baseline.OllamaModelCatalogClient;
+import com.uniovi.rag.application.service.evaluation.baseline.EvaluationModelAvailabilityGate;
 import java.util.function.BiConsumer;
 import java.util.List;
 import java.util.Map;
@@ -72,10 +72,15 @@ class EvalEmbeddingRetrievalJobHandlerTest {
                     List.of(),
                     null,
                     false,
+                    null,
+                    null,
+                    null,
+                    Map.of(),
+                    Map.of(),
                     List.of());
 
     private static final EmbeddingExperimentalSnapshot SAMPLE_EMB =
-            new EmbeddingExperimentalSnapshot("emb:test", null, null, null, null, null, "MODEL_DEFAULT", List.of());
+            new EmbeddingExperimentalSnapshot("emb:test", null, null, null, null, null, null, null, null, Map.of(), List.of());
 
     @Mock
     private PgVectorStore vectorStore;
@@ -105,7 +110,7 @@ class EvalEmbeddingRetrievalJobHandlerTest {
     private ModelBaselineLlmRunner modelBaselineLlmRunner;
 
     @Mock
-    private OllamaModelCatalogClient ollamaModelCatalogClient;
+    private EvaluationModelAvailabilityGate modelAvailabilityGate;
 
     @Mock
     private EvaluationRunRepository evaluationRunRepository;
@@ -150,7 +155,7 @@ class EvalEmbeddingRetrievalJobHandlerTest {
                 baselineRunSnapshotWriter,
                 experimentalSnapshotFactory,
                 modelBaselineLlmRunner,
-                ollamaModelCatalogClient,
+                modelAvailabilityGate,
                 evaluationRunRepository,
                 cancellationService,
                 labJobProgressTracker,
@@ -162,7 +167,8 @@ class EvalEmbeddingRetrievalJobHandlerTest {
     private void stubBaselineForCanonicalRun(UUID runId) {
         when(experimentalSnapshotFactory.buildLlmSnapshot(any())).thenReturn(SAMPLE_LLM);
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(any())).thenReturn(SAMPLE_EMB);
-        when(ollamaModelCatalogClient.isModelAvailable(anyString())).thenReturn(true);
+        when(modelAvailabilityGate.isEmbeddingModelAvailable(any(), anyString())).thenReturn(true);
+        lenient().when(modelAvailabilityGate.isChatModelAvailable(any(), anyString())).thenReturn(true);
         when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(anyString())).thenReturn(1024);
         when(vectorStoreRegistry.forEmbeddingModelId(anyString())).thenReturn(vectorStore);
         when(evaluationRunRepository.findById(runId)).thenReturn(Optional.empty());
@@ -363,14 +369,15 @@ class EvalEmbeddingRetrievalJobHandlerTest {
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(any()))
                 .thenReturn(
                         new EmbeddingExperimentalSnapshot(
-                                "nomic-embed-text", null, null, null, null, null, "MODEL_DEFAULT", List.of()));
+                                "nomic-embed-text", null, null, null, null, null, null, null, null, Map.of(), List.of()));
         when(evaluationRunRepository.findById(runId)).thenReturn(Optional.empty());
         when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning("nomic-embed-text"))
                 .thenThrow(
                         new ResponseStatusException(
                                 HttpStatus.UNPROCESSABLE_ENTITY,
                                 "EMBEDDING_DIMENSION_MISMATCH: model 'nomic-embed-text' outputs 768 dimensions but this deployment's vector_store.embedding column is fixed to 1024"));
-        when(ollamaModelCatalogClient.isModelAvailable(anyString())).thenReturn(true);
+        when(modelAvailabilityGate.isEmbeddingModelAvailable(any(), anyString())).thenReturn(true);
+        lenient().when(modelAvailabilityGate.isChatModelAvailable(any(), anyString())).thenReturn(true);
         EmbeddingRetrievalQuery q =
                 new EmbeddingRetrievalQuery(
                         "eq1",

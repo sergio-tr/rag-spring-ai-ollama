@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.llm.catalog.EvaluationModelCatalogService;
 import com.uniovi.rag.application.service.evaluation.preset.CorpusAvailabilityGate;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetBenchmarkGate;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
@@ -47,6 +48,7 @@ public class LabBenchmarkConfigPreflightService {
     private final ProjectIndexProfileService projectIndexProfileService;
     private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     private final CorpusAvailabilityGate corpusAvailabilityGate;
+    private final EvaluationModelCatalogService evaluationModelCatalogService;
 
     public LabBenchmarkConfigPreflightService(
             RagFeatureConfiguration ragFeatureConfiguration,
@@ -56,7 +58,8 @@ public class LabBenchmarkConfigPreflightService {
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
             ProjectIndexProfileService projectIndexProfileService,
             LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
-            CorpusAvailabilityGate corpusAvailabilityGate) {
+            CorpusAvailabilityGate corpusAvailabilityGate,
+            EvaluationModelCatalogService evaluationModelCatalogService) {
         this.ragFeatureConfiguration = ragFeatureConfiguration;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.embeddingSpaceGuard = embeddingSpaceGuard;
@@ -65,6 +68,7 @@ public class LabBenchmarkConfigPreflightService {
         this.projectIndexProfileService = projectIndexProfileService;
         this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
         this.corpusAvailabilityGate = corpusAvailabilityGate;
+        this.evaluationModelCatalogService = evaluationModelCatalogService;
     }
 
     /**
@@ -78,7 +82,7 @@ public class LabBenchmarkConfigPreflightService {
         }
         return switch (kind) {
             case RAG_PRESET_END_TO_END -> validateRag(userId, request);
-            case EMBEDDING_RETRIEVAL -> validateEmbedding(request);
+            case EMBEDDING_RETRIEVAL -> validateEmbedding(userId, request);
             default -> okSummary(List.of(), null, request.autoReindexEffective(), false, Map.of());
         };
     }
@@ -124,9 +128,22 @@ public class LabBenchmarkConfigPreflightService {
 
         validateP1CorpusSnapshotCompatibility(userId, request, presets, details);
 
+        boolean needsEmbedding = presets.stream().anyMatch(ExperimentalPresetCanonicalCatalog::embeddingRequired);
+        if (needsEmbedding) {
+            evaluationModelCatalogService.assertHasCompatibleEmbeddingWhenRequired(userId);
+        }
+
+        String llmModelId = request.llmModelId() != null && !request.llmModelId().isBlank()
+                ? request.llmModelId().trim()
+                : null;
+        if (llmModelId != null) {
+            evaluationModelCatalogService.assertChatModelInCatalog(userId, llmModelId);
+            details.put("llmModelId", llmModelId);
+        }
+
         String embeddingModelId = resolveEmbeddingModelId(request);
         if (embeddingModelId != null && presets.stream().anyMatch(ExperimentalPresetCanonicalCatalog::embeddingRequired)) {
-            assertEmbeddingDimension(embeddingModelId);
+            evaluationModelCatalogService.assertEmbeddingCompatibleWithVectorStore(userId, embeddingModelId);
             details.put("embeddingModelId", embeddingModelId);
         }
 
@@ -138,13 +155,14 @@ public class LabBenchmarkConfigPreflightService {
                 details);
     }
 
-    private LabBenchmarkConfigPreflightResult validateEmbedding(StartBenchmarkRunRequest request) {
+    private LabBenchmarkConfigPreflightResult validateEmbedding(UUID userId, StartBenchmarkRunRequest request) {
+        evaluationModelCatalogService.assertHasCompatibleEmbeddingWhenRequired(userId);
         List<String> embeddingModelIds = resolveEmbeddingModelIds(request);
         if (embeddingModelIds.isEmpty()) {
             return okSummary(List.of(), null, request.autoReindexEffective(), false, Map.of());
         }
         for (String embeddingModelId : embeddingModelIds) {
-            assertEmbeddingDimension(embeddingModelId);
+            evaluationModelCatalogService.assertEmbeddingCompatibleWithVectorStore(userId, embeddingModelId);
         }
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("embeddingModelIds", embeddingModelIds);

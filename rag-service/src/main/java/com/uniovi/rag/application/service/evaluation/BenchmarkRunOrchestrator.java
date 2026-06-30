@@ -174,6 +174,7 @@ public class BenchmarkRunOrchestrator {
             String roleName,
             BenchmarkKind kind,
             StartBenchmarkRunRequest request) {
+        request = coalesceSingleModelSelection(request);
         // Multi-model campaign (LLM baseline): create a campaign + multiple child runs, then enqueue each child.
         if (kind == BenchmarkKind.LLM_JUDGE_QA && wantsLlmCampaign(request)) {
             return startLlmCampaign(userId, roleName, kind, request);
@@ -842,11 +843,60 @@ public class BenchmarkRunOrchestrator {
     }
 
     private static boolean wantsLlmCampaign(StartBenchmarkRunRequest request) {
-        return (request.llmModelIds() != null && !request.llmModelIds().isEmpty()) || request.useWorkbookCandidatesEffective();
+        return (request.llmModelIds() != null && request.llmModelIds().size() >= 2)
+                || request.useWorkbookCandidatesEffective();
     }
 
     private static boolean wantsEmbeddingCampaign(StartBenchmarkRunRequest request) {
-        return (request.embeddingModelIds() != null && !request.embeddingModelIds().isEmpty()) || request.useWorkbookCandidatesEffective();
+        return (request.embeddingModelIds() != null && request.embeddingModelIds().size() >= 2)
+                || request.useWorkbookCandidatesEffective();
+    }
+
+    /** One selected model runs as a single benchmark, not a comparison campaign. */
+    private static StartBenchmarkRunRequest coalesceSingleModelSelection(StartBenchmarkRunRequest request) {
+        String llmModelId = request.llmModelId();
+        String embeddingModelId = request.embeddingModelId();
+        List<String> llmModelIds = request.llmModelIds();
+        List<String> embeddingModelIds = request.embeddingModelIds();
+        boolean coalesceLlm =
+                (llmModelId == null || llmModelId.isBlank()) && llmModelIds != null && llmModelIds.size() == 1;
+        boolean coalesceEmb =
+                (embeddingModelId == null || embeddingModelId.isBlank())
+                        && embeddingModelIds != null
+                        && embeddingModelIds.size() == 1;
+        if (!coalesceLlm && !coalesceEmb) {
+            return request;
+        }
+        return new StartBenchmarkRunRequest(
+                request.datasetId(),
+                request.corpusId(),
+                request.projectId(),
+                request.runKind(),
+                request.name(),
+                request.resolvedConfigSnapshotId(),
+                request.indexSnapshotId(),
+                request.presetId(),
+                request.embeddingDownstreamRag(),
+                request.experimentalPresetCodes(),
+                coalesceLlm ? llmModelIds.getFirst() : llmModelId,
+                coalesceEmb ? embeddingModelIds.getFirst() : embeddingModelId,
+                coalesceLlm ? List.of() : llmModelIds,
+                coalesceEmb ? List.of() : embeddingModelIds,
+                request.useWorkbookCandidates(),
+                request.campaignName(),
+                request.autoReindex(),
+                request.allowActiveSnapshotMutation(),
+                request.reuseCompatibleActiveSnapshot(),
+                request.failOnReindexFailure(),
+                request.bootstrapCorpusFromClasspathDocs(),
+                request.classpathDocsLocation(),
+                request.bootstrapCorpusScope(),
+                request.bootstrapSkipExisting(),
+                request.bootstrapFailOnDocumentError(),
+                request.indexSnapshotIds(),
+                request.datasetQuestionIds(),
+                request.goldSubsetManifestId(),
+                request.routingQueryTypeOracleEnabled());
     }
 
     private static boolean wantsRagPresetCampaign(StartBenchmarkRunRequest request) {
@@ -1082,12 +1132,13 @@ public class BenchmarkRunOrchestrator {
             }
             run.setAggregatesJson(Map.copyOf(agg));
         }
-        String llmModelId = labBenchmarkDefaultModelResolver.resolveLlmModelId(request.llmModelId());
+        UUID userId = run.getUser() != null ? run.getUser().getId() : null;
+        String llmModelId = labBenchmarkDefaultModelResolver.resolveLlmModelId(userId, request.llmModelId());
         if (llmModelId != null) {
             run.setLlmModelId(llmModelId);
         }
         String embeddingModelId =
-                labBenchmarkDefaultModelResolver.resolveEmbeddingModelId(request.embeddingModelId());
+                labBenchmarkDefaultModelResolver.resolveEmbeddingModelId(userId, request.embeddingModelId());
         if (embeddingModelId != null) {
             run.setEmbeddingModelId(embeddingModelId);
         }

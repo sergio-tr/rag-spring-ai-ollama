@@ -32,6 +32,7 @@ import com.uniovi.rag.application.service.evaluation.EvaluationService;
 import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
 import com.uniovi.rag.application.service.evaluation.EvaluationTestFixtures;
 import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
+import com.uniovi.rag.application.service.evaluation.baseline.BaselineRunSnapshotWriter;
 import com.uniovi.rag.application.service.evaluation.baseline.ExperimentalSnapshotFactory;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.springframework.beans.factory.ObjectProvider;
@@ -57,6 +58,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.eq;
@@ -69,6 +71,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     @Mock private EvaluationService evaluationService;
     @Mock private EvaluationRunRepository evaluationRunRepository;
     @Mock private ProjectRepository projectRepository;
+    @Mock private BaselineRunSnapshotWriter baselineRunSnapshotWriter;
+    @Mock private com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     @Mock private ExperimentalSnapshotFactory experimentalSnapshotFactory;
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
     @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
@@ -110,11 +114,11 @@ class TypedRagPresetBenchmarkOrchestratorTest {
 
     private static LlmExperimentalSnapshot llmSnap() {
         return new LlmExperimentalSnapshot(
-                "lm", 0.2, 0.9, 5, null, 1.05, 8192, 512, null, 42, List.of(), null, false, List.of());
+                "lm", 0.2, 0.9, 5, null, 1.05, 8192, 512, null, 42, List.of(), null, false, null, null, null, Map.of(), Map.of(), List.of());
     }
 
     private static EmbeddingExperimentalSnapshot embSnap() {
-        return new EmbeddingExperimentalSnapshot("emb", null, null, null, null, null, null, List.of());
+        return new EmbeddingExperimentalSnapshot("emb", null, null, null, null, null, null, null, null, Map.of(), List.of());
     }
 
     private TypedRagPresetBenchmarkOrchestrator orchestrator() {
@@ -141,6 +145,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 evaluationService,
                 evaluationRunRepository,
                 experimentalSnapshotFactory,
+                baselineRunSnapshotWriter,
+                resolvedLlmConfigResolver,
                 labEvaluationSnapshotService,
                 new LabPresetRunPlanService(labEvaluationSnapshotService),
                 corpusAvailabilityGate,
@@ -203,6 +209,58 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         assertThat(outRows.get(0).get(BenchmarkResultRowKeys.LLM_MODEL_ID)).isEqualTo("lm");
         assertThat(outRows.get(0).get(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID)).isEqualTo("emb");
         verify(evaluationRunRepository).findByIdFetchDatasetAndCorpus(runId);
+    }
+
+    @Test
+    void runPresetBenchmark_persistsExperimentalSnapshotsFromFactory() {
+        UUID runId = UUID.randomUUID();
+        when(evaluationRunRepository.findByIdFetchDatasetAndCorpus(runId)).thenReturn(Optional.empty());
+        LlmExperimentalSnapshot llm =
+                new LlmExperimentalSnapshot(
+                        "lm",
+                        0.2,
+                        0.9,
+                        5,
+                        null,
+                        null,
+                        8192,
+                        null,
+                        null,
+                        42,
+                        List.of(),
+                        null,
+                        false,
+                        "OPENAI_COMPATIBLE",
+                        "OPENAI_COMPATIBLE",
+                        30_000,
+                        Map.of("seed", 42),
+                        Map.of("chatProvider", "RESOLVED_CONFIG"),
+                        List.of("topK"));
+        when(experimentalSnapshotFactory.buildLlmSnapshot(null)).thenReturn(llm);
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(null)).thenReturn(embSnap());
+
+        RagPresetQuestion q = sampleQuestion();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        Map<String, Object> row = new HashMap<>();
+        row.put("question", q.question());
+        rows.add(row);
+        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.eq(List.of(q)),
+                        ArgumentMatchers.any()))
+                .thenReturn(EvaluationTestFixtures.ragBatchFromRowMaps(rows));
+
+        orchestrator()
+                .runPresetBenchmark(
+                        runId,
+                        new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()),
+                        new RagFeatureConfiguration(),
+                        new RagImplementationProperties(),
+                        null,
+                        null);
+
+        verify(baselineRunSnapshotWriter).writeSnapshots(eq(runId), eq(llm), any(), any());
     }
 
     @Test

@@ -36,6 +36,8 @@ import com.uniovi.rag.application.service.runtime.RuntimePromptBudgeter;
 import com.uniovi.rag.application.service.runtime.SnapshotCorpusAssembler;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import org.springframework.ai.chat.client.ChatClient;
 
 class P0P1BaselineContractTest {
@@ -131,22 +133,22 @@ class P0P1BaselineContractTest {
     }
 
     private static WorkflowSelector workflowSelector() {
-        ChatClient chatClient = mock(ChatClient.class);
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
         return new WorkflowSelector(
-                new DirectLlmWorkflow(chatClient, null),
+                new DirectLlmWorkflow(llmChatInvoker, null),
                 new CorpusGroundedDirectWorkflow(
-                        chatClient,
+                        llmChatInvoker,
                         mock(SnapshotCorpusAssembler.class),
                         new RuntimePromptBudgeter(new RagRuntimeProperties()),
                         null),
                 new FullCorpusWorkflow(
-                        chatClient,
+                        llmChatInvoker,
                         mock(SnapshotCorpusAssembler.class),
                         new RuntimePromptBudgeter(new RagRuntimeProperties()),
                         null),
-                new DocumentDenseRagWorkflow(chatClient, mock(AdvancedRetrievalPipeline.class), null),
-                new ChunkDenseRagWorkflow(chatClient, mock(AdvancedRetrievalPipeline.class), null),
-                new ChunkDenseMetadataWorkflow(chatClient, mock(AdvancedRetrievalPipeline.class), null));
+                new DocumentDenseRagWorkflow(llmChatInvoker, mock(AdvancedRetrievalPipeline.class), null),
+                new ChunkDenseRagWorkflow(llmChatInvoker, mock(AdvancedRetrievalPipeline.class), null),
+                new ChunkDenseMetadataWorkflow(llmChatInvoker, mock(AdvancedRetrievalPipeline.class), null));
     }
 
     private static ExecutionContext ctx(RagConfig rag) {

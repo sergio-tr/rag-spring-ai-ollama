@@ -8,6 +8,7 @@ import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkEvaluationProtocol;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
 import com.uniovi.rag.domain.evaluation.snapshot.EmbeddingExperimentalSnapshot;
+import com.uniovi.rag.domain.evaluation.snapshot.ExperimentalSnapshotFieldSource;
 import com.uniovi.rag.domain.evaluation.snapshot.LlmExperimentalSnapshot;
 import com.uniovi.rag.domain.evaluation.snapshot.PromptProfileSnapshot;
 import com.uniovi.rag.domain.model.QueryType;
@@ -31,7 +32,7 @@ import com.uniovi.rag.application.service.evaluation.baseline.BaselineRunSnapsho
 import com.uniovi.rag.application.service.evaluation.baseline.EmbeddingRetrievalMetrics;
 import com.uniovi.rag.application.service.evaluation.baseline.ExperimentalSnapshotFactory;
 import com.uniovi.rag.application.service.evaluation.baseline.ModelBaselineLlmRunner;
-import com.uniovi.rag.application.service.evaluation.baseline.OllamaModelCatalogClient;
+import com.uniovi.rag.application.service.evaluation.baseline.EvaluationModelAvailabilityGate;
 import com.uniovi.rag.application.service.evaluation.baseline.PromptProfileSnapshotFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
@@ -65,7 +66,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
     private final BaselineRunSnapshotWriter baselineRunSnapshotWriter;
     private final ExperimentalSnapshotFactory experimentalSnapshotFactory;
     private final ModelBaselineLlmRunner modelBaselineLlmRunner;
-    private final OllamaModelCatalogClient ollamaModelCatalogClient;
+    private final EvaluationModelAvailabilityGate modelAvailabilityGate;
     private final EvaluationRunRepository evaluationRunRepository;
     private final int topK;
     private final AsyncTaskCancellationService cancellationService;
@@ -82,7 +83,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             BaselineRunSnapshotWriter baselineRunSnapshotWriter,
             ExperimentalSnapshotFactory experimentalSnapshotFactory,
             ModelBaselineLlmRunner modelBaselineLlmRunner,
-            OllamaModelCatalogClient ollamaModelCatalogClient,
+            EvaluationModelAvailabilityGate modelAvailabilityGate,
             EvaluationRunRepository evaluationRunRepository,
             AsyncTaskCancellationService cancellationService,
             LabJobProgressTracker labJobProgressTracker,
@@ -97,7 +98,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
         this.baselineRunSnapshotWriter = baselineRunSnapshotWriter;
         this.experimentalSnapshotFactory = experimentalSnapshotFactory;
         this.modelBaselineLlmRunner = modelBaselineLlmRunner;
-        this.ollamaModelCatalogClient = ollamaModelCatalogClient;
+        this.modelAvailabilityGate = modelAvailabilityGate;
         this.evaluationRunRepository = evaluationRunRepository;
         this.cancellationService = cancellationService;
         this.labJobProgressTracker = labJobProgressTracker;
@@ -156,22 +157,19 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             var llmSnap = experimentalSnapshotFactory.buildLlmSnapshot(runOrNull);
             var embSnap = experimentalSnapshotFactory.buildEmbeddingSnapshot(runOrNull);
             EmbeddingCompatibility embeddingCompatibility = resolveEmbeddingCompatibility(embSnap.model());
-            embSnap = new EmbeddingExperimentalSnapshot(
-                    embSnap.model(),
-                    embeddingCompatibility.dimension(),
-                    embSnap.normalize(),
-                    embSnap.queryPrefix(),
-                    embSnap.passagePrefix(),
-                    embSnap.batchSize(),
-                    embSnap.truncateStrategy(),
-                    embSnap.unsupportedFields());
+            if (embeddingCompatibility.dimension() != null) {
+                embSnap = embSnap.withDimension(
+                        embeddingCompatibility.dimension(), ExperimentalSnapshotFieldSource.INDEX_COMPATIBILITY);
+            }
             PromptProfileSnapshot prompts = PromptProfileSnapshotFactory.baselineLabProfile();
             baselineRunSnapshotWriter.writeSnapshots(evaluationRunId, llmSnap, embSnap, prompts);
 
             boolean downstream = runOrNull != null && runOrNull.isEmbeddingDownstreamRag();
-            boolean embeddingCatalogOk = ollamaModelCatalogClient.isModelAvailable(embSnap.model());
+            UUID runUserId = runOrNull != null && runOrNull.getUser() != null ? runOrNull.getUser().getId() : null;
+            boolean embeddingCatalogOk =
+                    modelAvailabilityGate.isEmbeddingModelAvailable(runUserId, embSnap.model());
             boolean downstreamLlmOk =
-                    !downstream || ollamaModelCatalogClient.isModelAvailable(llmSnap.model());
+                    !downstream || modelAvailabilityGate.isChatModelAvailable(runUserId, llmSnap.model());
             EmbeddingBenchmarkContext ctx =
                     new EmbeddingBenchmarkContext(
                             downstream,

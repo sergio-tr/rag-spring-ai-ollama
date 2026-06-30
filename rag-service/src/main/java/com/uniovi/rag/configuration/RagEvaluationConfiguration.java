@@ -1,10 +1,12 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedEvaluationService;
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.service.knowledge.document.DocumentService;
 import com.uniovi.rag.application.service.evaluation.ReferenceBundleMinuteEvaluationService;
@@ -51,7 +53,10 @@ public class RagEvaluationConfiguration {
         ExecutionContextFactory executionContextFactory,
         RagExecutionOrchestrator ragExecutionOrchestrator,
         RuntimeTracePersistenceService runtimeTracePersistenceService,
-        @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled
+        ChatGenerationModelSelector chatGenerationModelSelector,
+        @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled,
+        com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor,
+        com.uniovi.rag.application.service.llm.LlmErrorComposer llmErrorComposer
     ) {
         EvaluationServiceFactory.Settings settings =
                 new EvaluationServiceFactory.Settings(
@@ -76,7 +81,10 @@ public class RagEvaluationConfiguration {
                 ollamaConnectivityChecker,
                 executionContextFactory,
                 ragExecutionOrchestrator,
-                runtimeTracePersistenceService);
+                runtimeTracePersistenceService,
+                chatGenerationModelSelector,
+                evaluationJudgeLlmExecutor,
+                llmErrorComposer);
     }
 
     @Bean
@@ -87,6 +95,7 @@ public class RagEvaluationConfiguration {
         DocumentService documentService,
         QueryExecutionService queryService,
         EvaluationServiceFactory evaluationServiceFactory,
+        com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor,
         @Value("${evaluation.clean-before-load:true}") boolean cleanBeforeLoad,
         @Autowired(required = false) ObservabilitySupport observability
     ) {
@@ -97,7 +106,8 @@ public class RagEvaluationConfiguration {
                         chatClient,
                         documentService,
                         queryService,
-                        cleanBeforeLoad);
+                        cleanBeforeLoad,
+                        evaluationJudgeLlmExecutor);
         service.setEvaluationServiceFactory(evaluationServiceFactory);
         if (observability != null) {
             return new TracedEvaluationService(service, observability);

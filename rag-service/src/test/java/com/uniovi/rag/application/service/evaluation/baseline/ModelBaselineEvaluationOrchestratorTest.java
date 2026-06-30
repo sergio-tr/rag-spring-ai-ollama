@@ -47,7 +47,7 @@ class ModelBaselineEvaluationOrchestratorTest {
     private ModelBaselineLlmRunner modelBaselineLlmRunner;
 
     @Mock
-    private OllamaModelCatalogClient ollamaModelCatalogClient;
+    private EvaluationModelAvailabilityGate modelAvailabilityGate;
 
     @Mock
     private EvaluationService evaluationService;
@@ -73,11 +73,16 @@ class ModelBaselineEvaluationOrchestratorTest {
                         List.of(),
                         null,
                         false,
+                        null,
+                        null,
+                        null,
+                        Map.of(),
+                        Map.of(),
                         List.of());
         when(experimentalSnapshotFactory.buildLlmSnapshot(run)).thenReturn(llm);
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(run))
-                .thenReturn(new EmbeddingExperimentalSnapshot("e", null, null, null, null, null, "MODEL_DEFAULT", List.of()));
-        when(ollamaModelCatalogClient.isModelAvailable("missing:m")).thenReturn(false);
+                .thenReturn(new EmbeddingExperimentalSnapshot("e", null, null, null, null, null, null, null, null, Map.of(), List.of()));
+        when(modelAvailabilityGate.isChatModelAvailable(null, "missing:m")).thenReturn(false);
         when(evaluationService.summarizeJudgeResults(any())).thenReturn(EvaluationTestFixtures.emptySummary());
 
         ModelBaselineEvaluationOrchestrator orch =
@@ -86,7 +91,7 @@ class ModelBaselineEvaluationOrchestratorTest {
                         experimentalSnapshotFactory,
                         baselineRunSnapshotWriter,
                         modelBaselineLlmRunner,
-                        ollamaModelCatalogClient,
+                        modelAvailabilityGate,
                         evaluationService);
 
         LlmReaderQuestion q =
@@ -135,11 +140,16 @@ class ModelBaselineEvaluationOrchestratorTest {
                         List.of(),
                         null,
                         false,
+                        null,
+                        null,
+                        null,
+                        Map.of(),
+                        Map.of(),
                         List.of());
         when(experimentalSnapshotFactory.buildLlmSnapshot(run)).thenReturn(llm);
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(run))
-                .thenReturn(new EmbeddingExperimentalSnapshot("e", null, null, null, null, null, "MODEL_DEFAULT", List.of()));
-        when(ollamaModelCatalogClient.isModelAvailable("gemma:4b")).thenReturn(true);
+                .thenReturn(new EmbeddingExperimentalSnapshot("e", null, null, null, null, null, null, null, null, Map.of(), List.of()));
+        when(modelAvailabilityGate.isChatModelAvailable(null, "gemma:4b")).thenReturn(true);
         when(modelBaselineLlmRunner.generateAnswer(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn("model says");
         when(evaluationService.judgeQaAnswer(eq("Q"), eq("gold"), eq("model says")))
@@ -152,7 +162,7 @@ class ModelBaselineEvaluationOrchestratorTest {
                         experimentalSnapshotFactory,
                         baselineRunSnapshotWriter,
                         modelBaselineLlmRunner,
-                        ollamaModelCatalogClient,
+                        modelAvailabilityGate,
                         evaluationService);
 
         LlmReaderQuestion q =

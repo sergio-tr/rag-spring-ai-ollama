@@ -16,7 +16,8 @@ import com.uniovi.rag.application.result.evaluation.EvaluationSummary;
 import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResult;
 import com.uniovi.rag.application.result.evaluation.LlmJudgeItemResult;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
-import com.uniovi.rag.application.service.evaluation.EvaluationSummaryBuilder;
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeException;
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeExecutionScope;
 import com.uniovi.rag.application.service.async.LabJobCancelledException;
 import org.springframework.stereotype.Service;
 
@@ -43,7 +44,7 @@ public class ModelBaselineEvaluationOrchestrator {
     private final ExperimentalSnapshotFactory experimentalSnapshotFactory;
     private final BaselineRunSnapshotWriter baselineRunSnapshotWriter;
     private final ModelBaselineLlmRunner modelBaselineLlmRunner;
-    private final OllamaModelCatalogClient ollamaModelCatalogClient;
+    private final EvaluationModelAvailabilityGate modelAvailabilityGate;
     private final EvaluationService evaluationService;
 
     public ModelBaselineEvaluationOrchestrator(
@@ -51,13 +52,13 @@ public class ModelBaselineEvaluationOrchestrator {
             ExperimentalSnapshotFactory experimentalSnapshotFactory,
             BaselineRunSnapshotWriter baselineRunSnapshotWriter,
             ModelBaselineLlmRunner modelBaselineLlmRunner,
-            OllamaModelCatalogClient ollamaModelCatalogClient,
+            EvaluationModelAvailabilityGate modelAvailabilityGate,
             EvaluationService evaluationService) {
         this.evaluationRunRepository = evaluationRunRepository;
         this.experimentalSnapshotFactory = experimentalSnapshotFactory;
         this.baselineRunSnapshotWriter = baselineRunSnapshotWriter;
         this.modelBaselineLlmRunner = modelBaselineLlmRunner;
-        this.ollamaModelCatalogClient = ollamaModelCatalogClient;
+        this.modelAvailabilityGate = modelAvailabilityGate;
         this.evaluationService = evaluationService;
     }
 
@@ -83,7 +84,8 @@ public class ModelBaselineEvaluationOrchestrator {
             baselineRunSnapshotWriter.writeSnapshots(evaluationRunId, llmSnap, embSnap, prompts);
         }
 
-        boolean llmAvailable = ollamaModelCatalogClient.isModelAvailable(llmSnap.model());
+        UUID runUserId = run != null && run.getUser() != null ? run.getUser().getId() : null;
+        boolean llmAvailable = modelAvailabilityGate.isChatModelAvailable(runUserId, llmSnap.model());
         Map<String, String> corpusById = CorpusDocumentLookup.indexByDocumentId(bundle.corpusDocuments());
 
         List<LlmJudgeItemResult> rows = new ArrayList<>();
@@ -92,6 +94,9 @@ public class ModelBaselineEvaluationOrchestrator {
         int idx = 0;
         boolean cancelled = false;
         String cancelReason = null;
+        UUID judgeUserId = run != null && run.getUser() != null ? run.getUser().getId() : null;
+        AutoCloseable judgeScope = EvaluationJudgeExecutionScope.open(judgeUserId, null);
+        try {
         for (LlmReaderQuestion q : questions) {
             try {
                 if (cancellationCheck != null) {
@@ -117,7 +122,7 @@ public class ModelBaselineEvaluationOrchestrator {
             baselineMetrics.put("llm_model", llmSnap.model());
 
             if (!llmAvailable) {
-                baselineMetrics.put("reason", "ollama_model_not_listed_or_daemon_unreachable");
+                baselineMetrics.put("reason", "model_not_available_for_effective_provider");
                 baselineMetrics.put("reasonCode", MODEL_UNAVAILABLE);
                 rows.add(
                         LlmJudgeItemResult.builder()
@@ -175,7 +180,8 @@ public class ModelBaselineEvaluationOrchestrator {
                                 oracleContext,
                                 fullDoc,
                                 truncation);
-                rowBuilder.generatedAnswer(generated != null ? generated : "");
+                generated = generated != null ? generated : "";
+                rowBuilder.generatedAnswer(generated);
                 try {
                     if (cancellationCheck != null) {
                         cancellationCheck.run();
@@ -188,6 +194,13 @@ public class ModelBaselineEvaluationOrchestrator {
                 String judge = evaluationService.judgeQaAnswer(q.question(), gold, generated);
                 rowBuilder.llmEvaluation(judge != null ? judge : "");
                 rowBuilder.latencyMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
+            } catch (EvaluationJudgeException ex) {
+                rowBuilder
+                        .llmEvaluation("")
+                        .itemOutcome(BenchmarkItemOutcome.FAILED)
+                        .errorCode(ex.errorCode())
+                        .errorMessage(ex.getMessage())
+                        .latencyMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
             } catch (RuntimeException ex) {
                 rowBuilder
                         .generatedAnswer("")
@@ -205,6 +218,9 @@ public class ModelBaselineEvaluationOrchestrator {
                 break;
             }
         }
+        } finally {
+            closeQuietly(judgeScope);
+        }
 
         EvaluationSummary summary = evaluationService.summarizeJudgeResults(rows);
         if (cancelled) {
@@ -219,5 +235,16 @@ public class ModelBaselineEvaluationOrchestrator {
                 Map.of("baseline_phase5", true, "protocol_driver", "ModelBaselineEvaluationOrchestrator"),
                 rows,
                 summary);
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable == null) {
+            return;
+        }
+        try {
+            closeable.close();
+        } catch (Exception ignored) {
+            // scope cleanup must not mask benchmark results
+        }
     }
 }
