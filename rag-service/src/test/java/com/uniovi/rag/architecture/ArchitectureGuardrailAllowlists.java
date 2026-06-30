@@ -5,7 +5,7 @@ import java.util.Set;
 
 /**
  * Explicit, class-scoped architecture debt allowlists for ArchUnit guardrails (Agent A6).
- * Each entry must map to a board debt id in {@code .cursor/context/architecture-refactor-board.md} section ARCH-DEBT-*.
+ * Each entry must map to a tracked debt id in {@code docs/backend/refactoring-governance.md} (ARCH-DEBT-*).
  * Remove a class when the violation is fixed; do not add package-wide wildcards.
  */
 public final class ArchitectureGuardrailAllowlists {
