@@ -43,6 +43,8 @@ class ConfigControllerTest {
         mockMvc.perform(get(path("/config/schema")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(1))
-                .andExpect(jsonPath("$.fields[0].key").exists());
+                .andExpect(jsonPath("$.fields[0].key").value("llmSystemPrompt"))
+                .andExpect(jsonPath("$.fields[0].type").value("text"))
+                .andExpect(jsonPath("$.fields[0].max").value(50_000));
     }
 }

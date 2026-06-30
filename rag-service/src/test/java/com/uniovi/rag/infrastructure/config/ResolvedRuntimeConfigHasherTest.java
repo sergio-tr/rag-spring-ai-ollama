@@ -48,4 +48,36 @@ class ResolvedRuntimeConfigHasherTest {
                         core);
         assertThat(ResolvedRuntimeConfigHasher.sha256Hex(a)).isEqualTo(ResolvedRuntimeConfigHasher.sha256Hex(b));
     }
+
+    @Test
+    void sha256Hex_changesWhenSystemPromptLayersChange() {
+        RagFeatureConfiguration features = new RagFeatureConfiguration();
+        RagReasoningProperties reasoning = new RagReasoningProperties();
+        RagConfig core =
+                RagConfig.fromFeatureConfiguration(
+                        features, 10, 0.7, "m1", "emb1", "default", reasoning.getStrategy() != null ? reasoning.getStrategy() : "SIMPLE");
+        ConfigProvenance prov = new ConfigProvenance(null, null, null, List.of(), null, null);
+        ResolvedRuntimeConfig withoutLayers =
+                new ResolvedRuntimeConfig(
+                        core,
+                        CapabilitySet.fromRagConfig(core),
+                        CompatibilityResult.ok(),
+                        ReindexImpact.none(),
+                        SystemPromptLayers.empty(),
+                        "",
+                        prov,
+                        core);
+        ResolvedRuntimeConfig withLayers =
+                new ResolvedRuntimeConfig(
+                        core,
+                        CapabilitySet.fromRagConfig(core),
+                        CompatibilityResult.ok(),
+                        ReindexImpact.none(),
+                        new SystemPromptLayers("base-layer", "", "", ""),
+                        "base-layer",
+                        prov,
+                        core);
+        assertThat(ResolvedRuntimeConfigHasher.sha256Hex(withoutLayers))
+                .isNotEqualTo(ResolvedRuntimeConfigHasher.sha256Hex(withLayers));
+    }
 }

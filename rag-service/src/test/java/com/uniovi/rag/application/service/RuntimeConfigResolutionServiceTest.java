@@ -8,6 +8,7 @@ import com.uniovi.rag.domain.config.runtime.ConfigProfileType;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
+import com.uniovi.rag.infrastructure.config.PromptBundleFingerprint;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -18,6 +19,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -102,5 +104,12 @@ class RuntimeConfigResolutionServiceTest {
         when(configResolverService.preview(input)).thenReturn(resolved);
 
         assertSame(resolved, service.preview(input));
+    }
+
+    @Test
+    void frozenPromptBundle_availableForConfigTraceability() {
+        PromptBundleFingerprint.Result bundle = PromptBundleFingerprint.computeFrozen();
+        assertThat(bundle.bundleHashSha256()).isNotBlank();
+        assertThat(bundle.includedGroups()).isNotEmpty();
     }
 }
