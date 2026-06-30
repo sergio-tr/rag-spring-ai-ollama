@@ -10,6 +10,7 @@ import pytest
 
 from app.config import Config
 from app.evaluation.evaluator import EvaluationPipeline
+from app.inference.loaded_model import LoadedModel
 
 
 def _reset_config():
@@ -25,12 +26,22 @@ def pipeline_mocks():
     model = MagicMock()
     model.predict.return_value = np.array([[0.2, 0.8], [0.9, 0.1]])
     loader.get_model.return_value = model
+    loader.get_loaded_model.return_value = LoadedModel(
+        model_type="keras",
+        artifact=model,
+        class_names=["A", "B"],
+    )
     return loader, model
 
 
 def test_canonical_class_order_used_in_confusion_matrix(tmp_path, pipeline_mocks):
     loader, model = pipeline_mocks
     loader.get_class_names.return_value = ["BOOLEAN_QUERY", "COUNT_DOCUMENTS"]
+    loader.get_loaded_model.return_value = LoadedModel(
+        model_type="keras",
+        artifact=model,
+        class_names=["BOOLEAN_QUERY", "COUNT_DOCUMENTS"],
+    )
     model.predict.return_value = np.array([[0.2, 0.8], [0.9, 0.1]])
     excel = tmp_path / "eval-order.xlsx"
     df = pd.DataFrame(

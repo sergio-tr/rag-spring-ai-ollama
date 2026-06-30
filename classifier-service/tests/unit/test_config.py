@@ -70,15 +70,14 @@ def test_get_default_model_id_from_env():
     del os.environ["DEFAULT_MODEL_ID"]
 
 
-def test_get_default_model_path_uses_models_dir():
+def test_get_default_model_path_uses_models_dir(tmp_path, monkeypatch):
     if "MODEL_PATH" in os.environ:
         del os.environ["MODEL_PATH"]
-    if "MODELS_DIR" in os.environ:
-        del os.environ["MODELS_DIR"]
+    monkeypatch.setenv("MODELS_DIR", str(tmp_path / "empty-models"))
     Config._instance = None
     c = Config()
     path = c.get_default_model_path()
-    assert "models" in path
+    assert "empty-models" in path
     assert "default" in path
     assert path.endswith("model.keras")
 

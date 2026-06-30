@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-06-29T21:02:42.357437+00:00",
+  "generatedAt": "2026-06-29T22:05:18.508470+00:00",
   "classifierBaseUrl": "http://localhost:8000",
   "modelId": "default",
   "questionsCount": 15,
   "classifications": {
     "¿Cuántas actas hay?": {
-      "queryType": "COUNT_DOCUMENTS",
+      "queryType": "COUNT_AND_EXPLAIN",
       "status": 200
     },
     "¿En qué secciones se menciona la palabra \"universidad\"?": {
@@ -13,11 +13,11 @@
       "status": 200
     },
     "¿Qué actas tratan el tema de la \"luz\"?": {
-      "queryType": "COUNT_DOCUMENTS",
+      "queryType": "COUNT_AND_EXPLAIN",
       "status": 200
     },
     "¿Cuántas actas mencionan la palabra \"reglamento\" y cuáles son?": {
-      "queryType": "COUNT_DOCUMENTS",
+      "queryType": "COUNT_AND_EXPLAIN",
       "status": 200
     },
     "Extrae las entidades más mencionadas en las actas.": {
@@ -25,7 +25,7 @@
       "status": 200
     },
     "¿Hay actas que contengan la palabra \"examen\"?": {
-      "queryType": "COUNT_DOCUMENTS",
+      "queryType": "COUNT_AND_EXPLAIN",
       "status": 200
     },
     "¿Cómo se explica el proceso en las actas más recientes?": {
@@ -37,11 +37,11 @@
       "status": 200
     },
     "¿Cuánto duró la reunión sobre \"innovación\"?": {
-      "queryType": "COUNT_DOCUMENTS",
+      "queryType": "COUNT_AND_EXPLAIN",
       "status": 200
     },
     "¿Cuál es el campo principal de una acta que hable de \"titulaciones\"?": {
-      "queryType": "COUNT_DOCUMENTS",
+      "queryType": "COUNT_AND_EXPLAIN",
       "status": 200
     },
     "Resume el tema principal sobre \"derechos\".": {
@@ -49,11 +49,11 @@
       "status": 200
     },
     "Resume la reunión celebrada el \"1 de diciembre\".": {
-      "queryType": "COUNT_DOCUMENTS",
+      "queryType": "COUNT_AND_EXPLAIN",
       "status": 200
     },
     "¿Las actas mencionan \"becas\"?": {
-      "queryType": "COUNT_DOCUMENTS",
+      "queryType": "COUNT_AND_EXPLAIN",
       "status": 200
     },
     "Filtra y lista actas que mencionan \"docencia\" y sus fechas.": {
@@ -73,9 +73,9 @@
       "metrics": {
         "classificationReport": {
           "COUNT_DOCUMENTS": {
-            "precision": 0.8,
-            "recall": 0.8,
-            "f1-score": 0.8,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1-score": 0.0,
             "support": 5.0
           },
           "EXTRACT_ENTITIES": {
@@ -85,9 +85,9 @@
             "support": 5.0
           },
           "COUNT_AND_EXPLAIN": {
-            "precision": 0.2777777777777778,
+            "precision": 0.08333333333333333,
             "recall": 1.0,
-            "f1-score": 0.43478260869565216,
+            "f1-score": 0.15384615384615385,
             "support": 5.0
           },
           "FIND_PARAGRAPH": {
@@ -103,15 +103,15 @@
             "support": 5.0
           },
           "GET_DURATION": {
-            "precision": 0.25,
-            "recall": 1.0,
-            "f1-score": 0.4,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1-score": 0.0,
             "support": 5.0
           },
           "GET_FIELD": {
-            "precision": 0.6,
-            "recall": 0.6,
-            "f1-score": 0.6,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1-score": 0.0,
             "support": 5.0
           },
           "SUMMARIZE_TOPIC": {
@@ -127,49 +127,49 @@
             "support": 5.0
           },
           "BOOLEAN_QUERY": {
-            "precision": 0.6666666666666666,
-            "recall": 0.4,
-            "f1-score": 0.5,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1-score": 0.0,
             "support": 5.0
           },
           "FILTER_AND_LIST": {
-            "precision": 1.0,
-            "recall": 0.8,
-            "f1-score": 0.8888888888888888,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1-score": 0.0,
             "support": 5.0
           },
           "COMPARE": {
-            "precision": 0.8,
-            "recall": 0.8,
-            "f1-score": 0.8,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1-score": 0.0,
             "support": 5.0
           },
-          "accuracy": 0.45,
+          "accuracy": 0.08333333333333333,
           "macro avg": {
-            "precision": 0.36620370370370375,
-            "recall": 0.45,
-            "f1-score": 0.36863929146537844,
+            "precision": 0.006944444444444444,
+            "recall": 0.08333333333333333,
+            "f1-score": 0.012820512820512822,
             "support": 60.0
           },
           "weighted avg": {
-            "precision": 0.3662037037037037,
-            "recall": 0.45,
-            "f1-score": 0.3686392914653785,
+            "precision": 0.006944444444444444,
+            "recall": 0.08333333333333333,
+            "f1-score": 0.012820512820512822,
             "support": 60.0
           }
         },
-        "accuracy": 0.45,
+        "accuracy": 0.08333333333333333,
         "macroAvg": {
-          "precision": 0.36620370370370375,
-          "recall": 0.45,
-          "f1-score": 0.36863929146537844,
+          "precision": 0.006944444444444444,
+          "recall": 0.08333333333333333,
+          "f1-score": 0.012820512820512822,
           "support": 60.0
         },
         "confusionMatrix": [
           [
-            4,
             0,
-            1,
+            0,
+            5,
             0,
             0,
             0,
@@ -183,10 +183,10 @@
           [
             0,
             0,
-            1,
+            5,
             0,
             0,
-            4,
+            0,
             0,
             0,
             0,
@@ -225,39 +225,11 @@
           [
             0,
             0,
-            0,
-            0,
-            0,
-            3,
-            2,
-            0,
-            0,
-            0,
-            0,
-            0
-          ],
-          [
-            0,
-            0,
-            0,
-            0,
-            0,
             5,
             0,
             0,
             0,
             0,
-            0,
-            0
-          ],
-          [
-            0,
-            0,
-            0,
-            0,
-            0,
-            2,
-            3,
             0,
             0,
             0,
@@ -281,7 +253,18 @@
           [
             0,
             0,
+            5,
             0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
             0,
             0,
             5,
@@ -290,39 +273,15 @@
             0,
             0,
             0,
-            0
-          ],
-          [
-            1,
             0,
             0,
             0,
-            0,
-            1,
-            0,
-            0,
-            0,
-            2,
-            0,
-            1
-          ],
-          [
-            0,
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            4,
             0
           ],
           [
             0,
             0,
+            5,
             0,
             0,
             0,
@@ -330,9 +289,50 @@
             0,
             0,
             0,
-            1,
             0,
-            4
+            0
+          ],
+          [
+            0,
+            0,
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
           ]
         ],
         "classNames": [

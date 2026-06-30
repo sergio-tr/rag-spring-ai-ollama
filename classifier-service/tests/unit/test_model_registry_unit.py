@@ -30,9 +30,13 @@ def test_list_models_default_only_when_empty(models_root):
     assert models[0]["id"] == "default"
 
 
-def test_get_model_paths_default_returns_none(models_root):
+def test_get_model_paths_default_returns_config_paths(models_root):
     reg = ModelRegistry(Config())
-    assert reg.get_model_paths("default") is None
+    paths = reg.get_model_paths("default")
+    assert paths is not None
+    artifact, labels, model_type = paths
+    assert labels.endswith("labels.txt")
+    assert model_type in ("keras", "sklearn")
 
 
 def test_get_model_paths_missing_model(models_root):
@@ -49,9 +53,10 @@ def test_get_model_paths_returns_tuple_when_files_exist(models_root):
     reg = ModelRegistry(Config())
     paths = reg.get_model_paths(mid)
     assert paths is not None
-    mp, lp = paths
+    mp, lp, model_type = paths
     assert Path(mp).name == MODEL_FILENAME
     assert Path(lp).name == LABELS_FILENAME
+    assert model_type == "keras"
 
 
 def test_list_models_includes_registered_sorted_by_created_at(models_root):

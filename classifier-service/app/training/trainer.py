@@ -41,6 +41,7 @@ class TrainingPipeline(Loggable):
         sequence_length: int = 40,
         early_stopping_patience: int = 5,
         owner_id: str | None = None,
+        class_weight: bool = False,
     ) -> dict:
         """
         Trains a classifier from an Excel file with columns Question and QueryType
@@ -113,6 +114,18 @@ class TrainingPipeline(Loggable):
             restore_best_weights=True,
         )
 
+        fit_kwargs: dict = {}
+        if class_weight:
+            from sklearn.utils.class_weight import compute_class_weight
+
+            y_train_idx = np.argmax(y_train, axis=1)
+            weights = compute_class_weight(
+                class_weight="balanced",
+                classes=np.arange(len(class_names)),
+                y=y_train_idx,
+            )
+            fit_kwargs["class_weight"] = {i: float(w) for i, w in enumerate(weights)}
+
         model.fit(
             x_train, y_train,
             epochs=epochs,
@@ -120,6 +133,7 @@ class TrainingPipeline(Loggable):
             validation_data=(x_val, y_val),
             callbacks=[early_stop],
             verbose=0,
+            **fit_kwargs,
         )
 
         model_id = self._registry.create_new_model_id()

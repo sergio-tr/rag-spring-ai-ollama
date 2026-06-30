@@ -3,6 +3,7 @@ from unittest import mock
 
 from app.config import Config
 from app.inference.inference_engine import InferenceEngine
+from app.inference.loaded_model import LoadedModel
 from app.inference.model_loader import ModelLoader
 
 
@@ -26,6 +27,7 @@ def test_model_loader_loads_default_model_and_labels_and_caches(monkeypatch, tmp
     # Archivos dummy: no se valida formato real porque mockeamos load_model.
     (default_dir / "model.keras").write_bytes(b"dummy-model")
     (default_dir / "labels.txt").write_text("\n".join(["COUNT_DOCUMENTS", "SUMMARIZE_MEETING"]) + "\n")
+    (default_dir / "metadata.json").write_text('{"modelType":"keras"}', encoding="utf-8")
 
     monkeypatch.setenv("MODELS_DIR", str(models_dir))
     monkeypatch.setenv("DEFAULT_MODEL_ID", "default")
@@ -43,18 +45,17 @@ def test_model_loader_loads_default_model_and_labels_and_caches(monkeypatch, tmp
     monkeypatch.setattr(model_loader_mod.tf.keras.models, "load_model", _fake_load_model)
 
     loader = ModelLoader(config=Config())
-    model, class_names = loader.load_by_id("default")
+    loaded = loader.load_by_id("default")
 
     assert loader.is_loaded("default") is True
-    assert class_names == ["COUNT_DOCUMENTS", "SUMMARIZE_MEETING"]
+    assert loaded.class_names == ["COUNT_DOCUMENTS", "SUMMARIZE_MEETING"]
     assert load_calls["count"] == 1
     assert len(load_calls["paths"]) == 1
     assert str(default_dir / "model.keras") in load_calls["paths"][0]
 
-    # Segunda llamada debe usar caché (no vuelve a cargar).
-    model2, class_names2 = loader.load_by_id("default")
-    assert model2 is model
-    assert class_names2 == class_names
+    loaded2 = loader.load_by_id("default")
+    assert loaded2 is loaded
+    assert loaded2.class_names == loaded.class_names
     assert load_calls["count"] == 1
 
 
@@ -71,7 +72,12 @@ def test_inference_engine_predict_maps_argmax_to_label():
 
     loader = mock.MagicMock()
     loader.is_loaded.return_value = True
-    loader.get_model.return_value = DummyModel()
+    loader.get_loaded_model.return_value = LoadedModel(
+        model_type="keras",
+        artifact=DummyModel(),
+        class_names=labels,
+    )
+    loader.get_model.return_value = loader.get_loaded_model.return_value.artifact
     loader.get_class_names.return_value = labels
 
     engine = InferenceEngine(loader=loader, config=Config())
@@ -90,12 +96,18 @@ def test_inference_engine_predict_loads_model_when_not_loaded():
 
     loader = mock.MagicMock()
     loader.is_loaded.return_value = False
-    loader.get_model.return_value = DummyModel()
-    loader.get_class_names.return_value = ["COUNT_DOCUMENTS", "SUMMARIZE_MEETING"]
+    loaded = LoadedModel(
+        model_type="keras",
+        artifact=DummyModel(),
+        class_names=["COUNT_DOCUMENTS", "SUMMARIZE_MEETING"],
+    )
+    loader.get_loaded_model.return_value = loaded
+    loader.get_model.return_value = loaded.artifact
+    loader.get_class_names.return_value = loaded.class_names
 
     engine = InferenceEngine(loader=loader, config=Config())
     out = engine.predict("q", model_id="default")
 
     assert out == "COUNT_DOCUMENTS"
-    loader.load_by_id.assert_called_once_with("default")
+    loader.get_loaded_model.assert_called()
 
