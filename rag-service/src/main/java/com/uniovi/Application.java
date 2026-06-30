@@ -9,6 +9,7 @@ import com.uniovi.rag.configuration.RagRankerProperties;
 import com.uniovi.rag.configuration.RagReasoningProperties;
 import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.infrastructure.health.RagHealthProperties;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import com.uniovi.rag.infrastructure.llm.ollama.RagOllamaProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -44,6 +45,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
     RagFeatureConfiguration.class,
     RagImplementationProperties.class,
     RagHealthProperties.class,
+    LlmProperties.class,
     RagOllamaProperties.class,
     RagRuntimeProperties.class
 })
