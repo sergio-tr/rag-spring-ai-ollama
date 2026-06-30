@@ -151,7 +151,16 @@ public enum ConfigurablePromptGroup {
             List.of("{question}", "{correctAnswer}", "{generatedAnswer}"),
             List.of(),
             false,
-            true);
+            true),
+    FUNCTION_CALLING_USER_ASSEMBLY(
+            "function_calling_user_assembly",
+            "Function calling user assembly",
+            "Programmatic user-turn assembly for tool-enabled rounds (query plan + structured context). "
+                    + "Not user-editable; listed for catalog alignment only.",
+            List.of(),
+            List.of(),
+            false,
+            false);
 
     private final String id;
     private final String componentLabel;
@@ -239,6 +248,8 @@ public enum ConfigurablePromptGroup {
             case METADATA_GET_FIELD -> MetadataConfigurablePromptSources.GET_FIELD;
             case METADATA_SUMMARIZE_MEETING -> MetadataMinuteDocumentService.SYSTEM_PROMPT_SUMMARY;
             case EVALUATION_JUDGE -> EvaluationJudgePromptSources.defaultTemplate();
+            case FUNCTION_CALLING_USER_ASSEMBLY ->
+                    "Assembled at runtime from the query plan (see FunctionCallingPrompts).";
         };
     }
 

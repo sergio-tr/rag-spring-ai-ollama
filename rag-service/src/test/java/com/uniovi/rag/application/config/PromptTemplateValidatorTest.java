@@ -21,8 +21,29 @@ class PromptTemplateValidatorTest {
   void rejectsMissingRequiredVariables() {
     assertThatThrownBy(
             () -> validator.validateContent(ConfigurablePromptGroup.QUERY_REWRITE, "no placeholders here"))
-        .isInstanceOf(IllegalArgumentException.class)
+        .isInstanceOf(PromptTemplateValidationException.class)
         .hasMessageContaining("missing required variables");
+  }
+
+  @Test
+  void rejectsInvalidPlaceholder() {
+    String template = ConfigurablePromptGroup.EVALUATION_JUDGE.defaultContent() + " {badToken}";
+    assertThatThrownBy(() -> validator.validateContent(ConfigurablePromptGroup.EVALUATION_JUDGE, template))
+        .isInstanceOf(PromptTemplateValidationException.class)
+        .satisfies(
+            ex -> {
+              PromptTemplateValidationException p = (PromptTemplateValidationException) ex;
+              assertThat(p.field()).contains("evaluation_judge");
+              assertThat(p.invalidPlaceholder()).isEqualTo("{badToken}");
+              assertThat(p.allowedPlaceholders()).contains("{question}");
+            });
+  }
+
+  @Test
+  void rejectsSimilarityThresholdOutOfRange() {
+    assertThatThrownBy(() -> validator.validateOverrides(Map.of("similarityThreshold", 1.5)))
+        .isInstanceOf(PromptTemplateValidationException.class)
+        .hasMessageContaining("between 0 and 1");
   }
 
   @Test

@@ -90,6 +90,13 @@ class PromptRuntimeWiringTest {
                 .contains("REJECTED_NO_RETRY");
     }
 
+    @Test
+    void functionCallingUserAssembly_isCatalogReadOnly() {
+        assertThat(ConfigurablePromptGroup.FUNCTION_CALLING_USER_ASSEMBLY.runtimeEditable()).isFalse();
+        assertThat(ConfigurablePromptGroup.FUNCTION_CALLING_USER_ASSEMBLY.defaultContent())
+                .contains("FunctionCallingPrompts");
+    }
+
     private static ExecutionContext executionContext() {
         ExecutionContext ctx = org.mockito.Mockito.mock(ExecutionContext.class);
         when(ctx.userId()).thenReturn(USER);
