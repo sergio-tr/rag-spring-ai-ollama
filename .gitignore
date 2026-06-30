@@ -106,6 +106,7 @@ next-env.d.ts
 ### Custom  ###
 enhancement/
 logs/
+.tmp/
 
 ### Exceptions ###
 # Java

@@ -74,9 +74,11 @@ services:
       # Ollama URL: same rag-service/.env keys as production backend (host.docker.internal, ollama:11434, etc.).
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       SPRING_AI_OLLAMA_BASE_URL: ${SPRING_AI_OLLAMA_BASE_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}
+      RAG_STORAGE_ROOT: ${RAG_STORAGE_ROOT:-/var/lib/rag/storage}
     volumes:
       - ../rag-service:/app
       - rag_m2_cache:/root/.m2
+      - rag_binary_storage:${RAG_STORAGE_ROOT:-/var/lib/rag/storage}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
