@@ -24,14 +24,14 @@ import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
-import com.uniovi.rag.testsupport.ChatClientTestSupport;
+import com.uniovi.rag.application.service.llm.LlmErrorComposer;
+import com.uniovi.rag.testsupport.llm.ChatGenerationModelSelectorTestSupport;
 import java.net.ConnectException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.client.ResourceAccessException;
 
@@ -45,7 +45,7 @@ class RuntimeQueryExecutionServiceTest {
     private ExecutionContextFactory executionContextFactory;
     private RagExecutionOrchestrator ragExecutionOrchestrator;
     private RuntimeTracePersistenceService runtimeTracePersistenceService;
-    private ChatClient chatClient;
+    private LlmErrorComposer llmErrorComposer;
     private OllamaConnectivityChecker ollamaConnectivityChecker;
     private KnowledgeDocumentRepository knowledgeDocumentRepository;
     private RuntimeQueryExecutionService service;
@@ -55,7 +55,8 @@ class RuntimeQueryExecutionServiceTest {
         executionContextFactory = mock(ExecutionContextFactory.class);
         ragExecutionOrchestrator = mock(RagExecutionOrchestrator.class);
         runtimeTracePersistenceService = mock(RuntimeTracePersistenceService.class);
-        chatClient = ChatClientTestSupport.clientWithUserPromptReturning("error-llm-message");
+        llmErrorComposer = mock(LlmErrorComposer.class);
+        when(llmErrorComposer.composeApologyForQueryFailure(any(), any())).thenReturn("error-llm-message");
         ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
         knowledgeDocumentRepository = mock(KnowledgeDocumentRepository.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
@@ -70,9 +71,10 @@ class RuntimeQueryExecutionServiceTest {
                         executionContextFactory,
                         ragExecutionOrchestrator,
                         runtimeTracePersistenceService,
-                        chatClient,
                         ollamaConnectivityChecker,
                         knowledgeDocumentRepository,
+                        ChatGenerationModelSelectorTestSupport.permissiveMock(),
+                        llmErrorComposer,
                         selfProvider,
                         runtimeObservability);
         when(selfProvider.getIfAvailable()).thenReturn(service);
@@ -265,9 +267,10 @@ class RuntimeQueryExecutionServiceTest {
                         executionContextFactory,
                         ragExecutionOrchestrator,
                         runtimeTracePersistenceService,
-                        chatClient,
                         ollamaConnectivityChecker,
                         knowledgeDocumentRepository,
+                        ChatGenerationModelSelectorTestSupport.permissiveMock(),
+                        llmErrorComposer,
                         provider,
                         runtimeObservability));
         when(provider.getIfAvailable()).thenReturn(self);

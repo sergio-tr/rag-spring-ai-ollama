@@ -209,6 +209,25 @@ public final class RuntimeAnswerPrompts {
     private RuntimeAnswerPrompts() {
     }
 
+    /** Stable material for prompt bundle fingerprinting (template skeletons only). */
+    public static String fingerprintMaterial() {
+        return String.join(
+                "\n---\n",
+                INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES,
+                INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_EN,
+                DOCUMENT_BOUND_REQUIRES_RETRIEVAL_MESSAGE_ES,
+                DOCUMENT_BOUND_REQUIRES_RETRIEVAL_MESSAGE_EN,
+                GENERAL_TEMPLATE,
+                DEFAULT_RETRIEVAL_TEMPLATE,
+                NEGATIVE_EVIDENCE_TEMPLATE,
+                NUMERIC_OR_DATE_TEMPLATE,
+                ENTITY_OR_TOPIC_TEMPLATE,
+                ATTEMPT_DOCUMENT_TEMPLATE,
+                STRICT_DOCUMENT_TEMPLATE,
+                NEGATIVE_DOCUMENT_TEMPLATE,
+                DIRECT_BASELINE_USER_TEMPLATE);
+    }
+
     public static String ragUserTurn(String rawQuestion, String contextBlock) {
         return ragUserTurn(rawQuestion, contextBlock, AnswerGroundingPolicy.ATTEMPT_WITH_CONTEXT, false, Optional.empty(), null);
     }

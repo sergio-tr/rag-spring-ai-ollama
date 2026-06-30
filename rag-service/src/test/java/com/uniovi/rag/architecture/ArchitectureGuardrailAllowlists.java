@@ -53,6 +53,8 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.knowledge.ProjectIndexProfileApplicationService", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.knowledge.ProjectKnowledgeApplicationService", // ARCH-DEBT-KNOWLEDGE
+            "com.uniovi.rag.application.service.llm.catalog.LlmCatalogApiService", // ARCH-DEBT-ADMIN-MODEL
+            "com.uniovi.rag.application.service.llm.catalog.MeSelectableLlmModelsService", // ARCH-DEBT-ADMIN-MODEL
             "com.uniovi.rag.application.service.me.MeDocumentQueryService", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.me.MeSummaryApplicationService", // ARCH-DEBT-ME
             "com.uniovi.rag.application.service.me.UserMePersonalizationService", // ARCH-DEBT-ME
@@ -176,6 +178,7 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.evaluation.preset.LabIndexSnapshotCompatibilityService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.preset.LabPresetRunPlanService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.preset.TypedRagPresetBenchmarkOrchestrator", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.knowledge.DocumentIngestionWatchdog", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.knowledge.KnowledgeBuildProjectionMapper", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.knowledge.KnowledgeConfigurationIntegrationService", // ARCH-DEBT-KNOWLEDGE

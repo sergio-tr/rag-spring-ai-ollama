@@ -2,7 +2,15 @@ package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.application.port.ClassifierLabPort;
 import com.uniovi.rag.application.port.ClassifierTrainBytesCommand;
+import com.uniovi.rag.application.port.llm.LlmEmbeddingResponse;
+import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.llm.LlmClientResolver;
+import com.uniovi.rag.application.service.llm.ProviderAwareEmbeddingService;
+import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.infrastructure.vector.OllamaEmbeddingModelFactory;
+import com.uniovi.rag.infrastructure.vector.ProviderAwareEmbeddingModelFactory;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -38,9 +46,23 @@ import java.util.Map;
 public class RagE2eAiStubConfiguration {
 
     static final int E2E_EMBEDDING_DIMENSIONS = 1024;
+    static final String E2E_EMBEDDING_MODEL_ID = "mxbai-embed-large:latest";
     private static final String MODEL_ID_KEY = "modelId";
     private static final String ACCURACY_KEY = "accuracy";
     private static final String DEFAULT_CLASSIFIER_MODEL_ID = "default";
+
+    private static final ResolvedLlmConfig E2E_LLM_CONFIG =
+            ResolvedLlmConfig.uniform(
+                    LlmProvider.OLLAMA_NATIVE,
+                    "http://127.0.0.1:1",
+                    "e2e-stub-chat",
+                    E2E_EMBEDDING_MODEL_ID,
+                    null,
+                    null,
+                    0.1,
+                    60_000,
+                    null,
+                    Map.of());
 
     @Bean
     @Primary
@@ -52,6 +74,47 @@ public class RagE2eAiStubConfiguration {
     @Primary
     public ChatModel e2eChatModel() {
         return new E2eStubChatModel();
+    }
+
+    @Bean
+    @Primary
+    public ProviderAwareEmbeddingModelFactory e2eProviderAwareEmbeddingModelFactory() {
+        return new E2eProviderAwareEmbeddingModelFactory();
+    }
+
+    /**
+     * In-memory embeddings + fixed {@link ResolvedLlmConfig} for knowledge ingest compatibility checks
+     * ({@link com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService}) without LiteLLM/Ollama HTTP.
+     */
+    @Bean
+    @Primary
+    public ProviderAwareEmbeddingService e2eProviderAwareEmbeddingService(
+            LlmClientResolver llmClientResolver, ResolvedLlmConfigResolver resolvedLlmConfigResolver) {
+        return new ProviderAwareEmbeddingService(llmClientResolver, resolvedLlmConfigResolver) {
+            @Override
+            public ResolvedLlmConfig resolveEffectiveConfig() {
+                return OrchestrationLlmConfigScope.current().orElse(E2E_LLM_CONFIG);
+            }
+
+            @Override
+            public String effectiveEmbeddingModelId(String requestedModelId) {
+                // Canonical model for index-profile enrichment + compatibility checks in CI (no LiteLLM/Ollama HTTP).
+                return E2E_EMBEDDING_MODEL_ID;
+            }
+
+            @Override
+            public LlmEmbeddingResponse embed(String modelId, List<String> texts) {
+                if (texts == null || texts.isEmpty()) {
+                    throw new IllegalArgumentException("texts must not be empty");
+                }
+                String effectiveModelId = effectiveEmbeddingModelId(modelId);
+                List<float[]> vectors = new ArrayList<>(texts.size());
+                for (int i = 0; i < texts.size(); i++) {
+                    vectors.add(E2eStubEmbeddingModel.copyVector());
+                }
+                return new LlmEmbeddingResponse(effectiveModelId, vectors, Map.of());
+            }
+        };
     }
 
     @Bean
@@ -71,8 +134,13 @@ public class RagE2eAiStubConfiguration {
         private final float[] vector;
 
         E2eStubEmbeddingModel() {
-            vector = new float[E2E_EMBEDDING_DIMENSIONS];
-            Arrays.fill(vector, 0.01f);
+            vector = copyVector();
+        }
+
+        private static float[] copyVector() {
+            float[] out = new float[E2E_EMBEDDING_DIMENSIONS];
+            Arrays.fill(out, 0.01f);
+            return out;
         }
 
         @Override
@@ -80,26 +148,26 @@ public class RagE2eAiStubConfiguration {
             List<Embedding> embeddings = new ArrayList<>();
             List<String> instructions = request.getInstructions();
             for (int i = 0; i < instructions.size(); i++) {
-                embeddings.add(new Embedding(Arrays.copyOf(vector, vector.length), i));
+                embeddings.add(new Embedding(copyVector(), i));
             }
             return new EmbeddingResponse(embeddings);
         }
 
         @Override
         public float[] embed(Document document) {
-            return Arrays.copyOf(vector, vector.length);
+            return copyVector();
         }
 
         @Override
         public float[] embed(String text) {
-            return Arrays.copyOf(vector, vector.length);
+            return copyVector();
         }
 
         @Override
         public List<float[]> embed(List<String> texts) {
             List<float[]> out = new ArrayList<>(texts.size());
             for (int i = 0; i < texts.size(); i++) {
-                out.add(Arrays.copyOf(vector, vector.length));
+                out.add(copyVector());
             }
             return out;
         }
@@ -117,6 +185,26 @@ public class RagE2eAiStubConfiguration {
         @Override
         public ChatResponse call(Prompt prompt) {
             return new ChatResponse(List.of(new Generation(new AssistantMessage(E2E_REPLY))));
+        }
+    }
+
+    static final class E2eProviderAwareEmbeddingModelFactory extends ProviderAwareEmbeddingModelFactory {
+
+        E2eProviderAwareEmbeddingModelFactory() {
+            super(null);
+        }
+
+        @Override
+        public String effectiveModelId(String requestedModelId) {
+            return E2E_EMBEDDING_MODEL_ID;
+        }
+
+        @Override
+        public EmbeddingModel forModel(String modelId) {
+            if (modelId == null || modelId.isBlank()) {
+                throw new IllegalArgumentException(MODEL_ID_KEY);
+            }
+            return new E2eStubEmbeddingModel();
         }
     }
 

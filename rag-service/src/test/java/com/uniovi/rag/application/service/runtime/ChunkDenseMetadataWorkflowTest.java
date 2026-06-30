@@ -29,6 +29,8 @@ import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
 import org.junit.jupiter.api.Test;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import org.springframework.ai.chat.client.ChatClient;
 
 import java.util.List;
@@ -55,26 +57,20 @@ class ChunkDenseMetadataWorkflowTest {
 
     @Test
     void execute_whenAdvisorPackedContextPresent_skipsAdvancedRetrieval() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("answer");
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("answer");
-
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
-        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(chatClient, pipeline, null);
+        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(llmChatInvoker, pipeline, null);
 
         ExecutionContext ctx = minimalCtx(Optional.of(new PackedContextSet(List.of(), "s", 0, 0, List.of(), "CTX")));
         RagExecutionResult out = wf.execute(ctx);
 
-        assertThat(out.answerText()).isEqualTo("answer");
+        assertThat(out.answerText()).isEqualTo("ANS");
         verify(pipeline, never()).retrieve(any(), any(), anyString());
     }
 
     @Test
     void execute_whenNoAdvisorPackedContext_usesAdvancedRetrievalPromptContext() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("answer2");
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("answer2");
-
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
                 .thenReturn(
@@ -103,21 +99,18 @@ class ChunkDenseMetadataWorkflowTest {
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 
-        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(chatClient, pipeline, null);
+        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(llmChatInvoker, pipeline, null);
 
         ExecutionContext ctx = minimalCtx(Optional.empty());
         RagExecutionResult out = wf.execute(ctx);
 
-        assertThat(out.answerText()).isEqualTo("answer2");
+        assertThat(out.answerText()).isEqualTo("ANS");
         verify(pipeline).retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow"));
     }
 
     @Test
     void T_M5_BE_emptyContext_docBoundQuestionWithoutEvidence_abstains() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("should_not_be_used");
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("should_not_be_used");
-
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
                 .thenReturn(
@@ -146,7 +139,7 @@ class ChunkDenseMetadataWorkflowTest {
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 
-        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(chatClient, pipeline, null);
+        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(llmChatInvoker, pipeline, null);
 
         ExecutionContext ctx = minimalCtx(Optional.empty(), "hazme un resumen del acta del 25 de febrero de 2025");
         RagExecutionResult out = wf.execute(ctx);
@@ -156,8 +149,8 @@ class ChunkDenseMetadataWorkflowTest {
 
     @Test
     void execute_question25Feb2026_withOnly2025Source_abstainsWithoutCallingLlm() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        clearInvocations(chatClient);
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
+        clearInvocations(llmChatInvoker);
 
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
@@ -189,7 +182,7 @@ class ChunkDenseMetadataWorkflowTest {
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 
-        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(chatClient, pipeline, null);
+        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(llmChatInvoker, pipeline, null);
         ExecutionContext ctx =
                 minimalCtx(Optional.empty(), "¿Quién fue el presidente del acta del 25/02/2026?");
         RagExecutionResult out = wf.execute(ctx);
@@ -201,15 +194,12 @@ class ChunkDenseMetadataWorkflowTest {
         assertThat(out.workflowStageTraces())
                 .anyMatch(s -> "date_grounding_answer_policy".equals(s.stageName())
                         && s.message().contains("dateMismatchDetected=true"));
-        verify(chatClient, never()).prompt();
+        verify(llmChatInvoker, never()).invoke(any(), anyString(), anyString());
     }
 
     @Test
     void execute_whenDocBoundDateMismatch_abstainsWithoutCallingLlm() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("llm_summary");
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("llm_summary");
-        clearInvocations(chatClient);
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");        clearInvocations(llmChatInvoker);
 
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
@@ -241,7 +231,7 @@ class ChunkDenseMetadataWorkflowTest {
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 
-        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(chatClient, pipeline, null);
+        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(llmChatInvoker, pipeline, null);
 
         ExecutionContext ctx = minimalCtx(Optional.empty(), "hazme un resumen del acta del 25 de febrero de 2025");
         RagExecutionResult out = wf.execute(ctx);
@@ -256,15 +246,12 @@ class ChunkDenseMetadataWorkflowTest {
                 .anyMatch(s -> "runtime_answer_meta".equals(s.stageName())
                         && s.message().contains("abstention=true")
                         && s.message().contains("no_exact_date_source"));
-        verify(chatClient, never()).prompt();
+        verify(llmChatInvoker, never()).invoke(any(), anyString(), anyString());
     }
 
     @Test
     void execute_whenPromptEmptyButCandidatesPresent_callsLlmUsingFallbackContext() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("from_fallback");
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content()).thenReturn("from_fallback");
-
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("from_fallback");
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
                 .thenReturn(
@@ -293,21 +280,19 @@ class ChunkDenseMetadataWorkflowTest {
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 
-        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(chatClient, pipeline, null);
+        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(llmChatInvoker, pipeline, null);
 
         ExecutionContext ctx = minimalCtx(Optional.empty(), "hazme un resumen del acta del 25 de febrero de 2026");
         RagExecutionResult out = wf.execute(ctx);
 
         assertThat(out.answerText()).isEqualTo("from_fallback");
-        verify(chatClient, atLeastOnce()).prompt();
+        verify(llmChatInvoker, atLeastOnce()).invoke(any(), anyString(), anyString());
     }
 
     @Test
     void T_M5_BE_antiFalseNegative_exactDateMatch_callsLlmWithSources_notNoActaMessage() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("El presidente fue Juan Pérez García.");
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content())
-                .thenReturn("El presidente fue Juan Pérez García.");
+        RagLlmChatInvoker llmChatInvoker = mock(RagLlmChatInvoker.class);
+        when(llmChatInvoker.invoke(any(), anyString(), anyString())).thenReturn("El presidente fue Juan Pérez García.");
 
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
@@ -341,7 +326,7 @@ class ChunkDenseMetadataWorkflowTest {
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 
-        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(chatClient, pipeline, null);
+        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(llmChatInvoker, pipeline, null);
 
         ExecutionContext ctx =
                 minimalCtx(
@@ -362,13 +347,13 @@ class ChunkDenseMetadataWorkflowTest {
                         s -> "runtime_answer_meta".equals(s.stageName())
                                 && s.message().contains("abstention=false")
                                 && s.message().contains("documentBound=true"));
-        verify(chatClient, atLeastOnce()).prompt();
+        verify(llmChatInvoker, atLeastOnce()).invoke(any(), anyString(), anyString());
     }
 
     @Test
     void T_M5_BE_dateMismatch_acta15Mar2099_abstainsWithoutLlm() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        clearInvocations(chatClient);
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
+        clearInvocations(llmChatInvoker);
 
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
         when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
@@ -402,7 +387,7 @@ class ChunkDenseMetadataWorkflowTest {
                                 List.of(),
                                 List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
 
-        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(chatClient, pipeline, null);
+        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(llmChatInvoker, pipeline, null);
         ExecutionContext ctx =
                 minimalCtx(Optional.empty(), "¿Quién presidió el acta del 15 de marzo de 2099?");
         RagExecutionResult out = wf.execute(ctx);
@@ -412,7 +397,7 @@ class ChunkDenseMetadataWorkflowTest {
                 .anyMatch(
                         s -> "date_grounding_answer_policy".equals(s.stageName())
                                 && s.message().contains("dateMismatchDetected=true"));
-        verify(chatClient, never()).prompt();
+        verify(llmChatInvoker, never()).invoke(any(), anyString(), anyString());
     }
 
     private static RetrievalCandidate dummyCandidate() {

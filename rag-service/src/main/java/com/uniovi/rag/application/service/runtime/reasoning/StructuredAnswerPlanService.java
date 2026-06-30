@@ -56,10 +56,15 @@ public class StructuredAnswerPlanService {
 
     private final ChatClient chatClient;
     private final ObjectMapper objectMapper;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
 
-    public StructuredAnswerPlanService(ChatClient chatClient, ObjectMapper objectMapper) {
+    public StructuredAnswerPlanService(
+            ChatClient chatClient,
+            ObjectMapper objectMapper,
+            ChatGenerationModelSelector chatGenerationModelSelector) {
         this.chatClient = chatClient;
         this.objectMapper = objectMapper;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
     }
 
     public PlanResult plan(ExecutionContext ctx, QueryPlan plan) {
@@ -72,7 +77,7 @@ public class StructuredAnswerPlanService {
 
             var spec = chatClient.prompt().user(prompt);
             if (ctx != null) {
-                ChatGenerationModelSelector.effectiveChatModelId(ctx)
+                chatGenerationModelSelector.effectiveChatModelId(ctx)
                         .ifPresent(m -> spec.options(OllamaOptions.builder().model(m).build()));
             }
             String raw = spec.call().content();

@@ -7,7 +7,7 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.policy.AnswerGroundingPolicy;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
-import org.springframework.ai.chat.client.ChatClient;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -19,8 +19,8 @@ import java.util.Optional;
 public class DirectLlmWorkflow extends AbstractExecutionWorkflow {
 
     public DirectLlmWorkflow(
-            ChatClient chatClient, @Autowired(required = false) ObservabilitySupport observability) {
-        super(chatClient, observability);
+            RagLlmChatInvoker llmChatInvoker, @Autowired(required = false) ObservabilitySupport observability) {
+        super(llmChatInvoker, observability);
     }
 
     @Override

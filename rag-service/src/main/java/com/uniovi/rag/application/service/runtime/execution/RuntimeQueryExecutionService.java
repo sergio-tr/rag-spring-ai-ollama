@@ -2,7 +2,12 @@ package com.uniovi.rag.application.service.runtime.execution;
 
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.result.chat.QueryResponse;
+import com.uniovi.rag.application.exception.llm.LlmProviderException;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
+import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import com.uniovi.rag.infrastructure.llm.openaicompat.OpenAiCompatibleLlmException;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionMapper;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
@@ -14,7 +19,8 @@ import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.interfaces.rest.support.ConnectivityFailureDetector;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
-import org.springframework.ai.chat.client.ChatClient;
+import com.uniovi.rag.application.service.llm.LlmErrorComposer;
+import com.uniovi.rag.application.service.llm.LlmFallbackErrorComposer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -42,26 +48,29 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
     private final ExecutionContextFactory executionContextFactory;
     private final RagExecutionOrchestrator ragExecutionOrchestrator;
     private final RuntimeTracePersistenceService runtimeTracePersistenceService;
-    private final ChatClient chatClient;
     private final OllamaConnectivityChecker ollamaConnectivityChecker;
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final ObjectProvider<RuntimeQueryExecutionService> selfProvider;
     private final ObjectProvider<RuntimeObservability> runtimeObservability;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
+    private final LlmErrorComposer llmErrorComposer;
 
     public RuntimeQueryExecutionService(
             ExecutionContextFactory executionContextFactory,
             RagExecutionOrchestrator ragExecutionOrchestrator,
             RuntimeTracePersistenceService runtimeTracePersistenceService,
-            ChatClient chatClient,
             OllamaConnectivityChecker ollamaConnectivityChecker,
-            KnowledgeDocumentRepository knowledgeDocumentRepository) {
+            KnowledgeDocumentRepository knowledgeDocumentRepository,
+            ChatGenerationModelSelector chatGenerationModelSelector,
+            LlmErrorComposer llmErrorComposer) {
         this(
                 executionContextFactory,
                 ragExecutionOrchestrator,
                 runtimeTracePersistenceService,
-                chatClient,
                 ollamaConnectivityChecker,
                 knowledgeDocumentRepository,
+                chatGenerationModelSelector,
+                llmErrorComposer,
                 null,
                 null);
     }
@@ -71,17 +80,19 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
             ExecutionContextFactory executionContextFactory,
             RagExecutionOrchestrator ragExecutionOrchestrator,
             RuntimeTracePersistenceService runtimeTracePersistenceService,
-            ChatClient chatClient,
             OllamaConnectivityChecker ollamaConnectivityChecker,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
+            ChatGenerationModelSelector chatGenerationModelSelector,
+            LlmErrorComposer llmErrorComposer,
             ObjectProvider<RuntimeQueryExecutionService> selfProvider,
             ObjectProvider<RuntimeObservability> runtimeObservability) {
         this.executionContextFactory = executionContextFactory;
         this.ragExecutionOrchestrator = ragExecutionOrchestrator;
         this.runtimeTracePersistenceService = runtimeTracePersistenceService;
-        this.chatClient = chatClient;
         this.ollamaConnectivityChecker = ollamaConnectivityChecker;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
+        this.llmErrorComposer = llmErrorComposer;
         this.runtimeObservability = runtimeObservability;
         this.selfProvider =
                 selfProvider != null
@@ -112,9 +123,14 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
                 String errorResponse = generateErrorResponse("", new IllegalArgumentException(ERR_EMPTY_QUERY));
                 return QueryResponse.fromLLM(errorResponse);
             }
-            ollamaConnectivityChecker.prepareForQuery(chatModel);
-            return executeOrchestrated(executionContextFactory.buildForHttpQuery(query, chatModel));
-        } catch (RagServiceException | ResponseStatusException e) {
+            ExecutionContext ctx = executionContextFactory.buildForHttpQuery(query, chatModel);
+            try {
+                prepareOllamaForContext(ctx);
+                return executeOrchestrated(ctx);
+            } finally {
+                OrchestrationLlmConfigScope.clear();
+            }
+        } catch (RagServiceException | ResponseStatusException | LlmProviderException | OpenAiCompatibleLlmException e) {
             throw e;
         } catch (Exception e) {
             return handleUnexpected(query, e);
@@ -162,14 +178,17 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
                             documentFilter,
                             chatModel,
                             Optional.ofNullable(userMessageId));
-            ollamaConnectivityChecker.prepareForQuery(
-                    ChatGenerationModelSelector.effectiveChatModelId(ctx).orElse(null));
-            RuntimeObservability obs = runtimeObservability != null ? runtimeObservability.getIfAvailable() : null;
-            if (obs != null) {
-                return obs.chatGenerate(ctx, () -> executeOrchestrated(ctx));
+            try {
+                prepareOllamaForContext(ctx);
+                RuntimeObservability obs = runtimeObservability != null ? runtimeObservability.getIfAvailable() : null;
+                if (obs != null) {
+                    return obs.chatGenerate(ctx, () -> executeOrchestrated(ctx));
+                }
+                return executeOrchestrated(ctx);
+            } finally {
+                OrchestrationLlmConfigScope.clear();
             }
-            return executeOrchestrated(ctx);
-        } catch (RagServiceException | ResponseStatusException e) {
+        } catch (RagServiceException | ResponseStatusException | LlmProviderException | OpenAiCompatibleLlmException e) {
             throw e;
         } catch (Exception e) {
             return handleUnexpected(query, e);
@@ -252,6 +271,29 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
         return RagExecutionMapper.toQueryResponse(result);
     }
 
+    private void prepareOllamaForContext(ExecutionContext ctx) {
+        String chatModel = chatGenerationModelSelector.effectiveChatModelId(ctx).orElse(null);
+        boolean requireOllamaChat =
+                OrchestrationLlmConfigScope.current()
+                        .map(ResolvedLlmConfig::requiresOllamaNativeChat)
+                        .orElseGet(
+                                () ->
+                                        ollamaConnectivityChecker.requiresOllamaChatForDefaults());
+        boolean requireOllamaEmbedding =
+                OrchestrationLlmConfigScope.current()
+                        .map(ResolvedLlmConfig::requiresOllamaNativeEmbedding)
+                        .orElseGet(
+                                () ->
+                                        ollamaConnectivityChecker.requiresOllamaEmbeddingForDefaults());
+        ollamaConnectivityChecker.prepareForQuery(chatModel, requireOllamaChat, requireOllamaEmbedding);
+    }
+
+    private String generateErrorResponse(String query, Exception e) {
+        return llmErrorComposer != null
+                ? llmErrorComposer.composeApologyForQueryFailure(query, e)
+                : LlmFallbackErrorComposer.genericApology();
+    }
+
     private QueryResponse handleUnexpected(String query, Exception e) {
         if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
             log().warn("Inference backend unreachable: {}", e.getMessage());
@@ -267,55 +309,10 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
         }
         log().error("Unexpected error processing query: {}", query, e);
         log().error(LOG_STACK_TRACE, e);
-        String errorResponse = generateErrorResponse(query, e);
+        String errorResponse =
+                llmErrorComposer != null
+                        ? llmErrorComposer.composeApologyForQueryFailure(query, e)
+                        : LlmFallbackErrorComposer.genericApology();
         return QueryResponse.fromLLM(errorResponse);
-    }
-
-    private String generateErrorResponse(String query, Throwable cause) {
-        if (cause != null && ConnectivityFailureDetector.isConnectivityFailure(cause)) {
-            return "The AI inference service is unavailable. Please try again once Ollama is running and reachable.";
-        }
-        if (cause != null && ConnectivityFailureDetector.isOllamaModelMissingFailure(cause)) {
-            return "A required Ollama model is not installed. Pull the chat and embedding models on the Ollama host "
-                    + "(ollama pull …) or wait for automatic pull at startup.";
-        }
-
-        String prompt = String.format(
-                """
-                The user asked (in any language): "%s"
-
-                An error occurred while processing this query.
-
-                Respond with a short message in the EXACT SAME LANGUAGE as the question,
-                apologizing for the error and asking the user to try again.
-                Be concise and polite.
-                Do not repeat the question.
-                """,
-                query != null ? query : "");
-
-        try {
-            String response =
-                    chatClient
-                            .prompt()
-                            .user(prompt)
-                            .call()
-                            .content();
-
-            if (response != null && !response.trim().isEmpty()) {
-                return response.trim();
-            }
-        } catch (Exception e) {
-            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
-                log().warn("Skipping LLM error message: inference backend unreachable");
-                return "The AI inference service is unavailable. Please try again once Ollama is running and reachable.";
-            }
-            if (ConnectivityFailureDetector.isOllamaModelMissingFailure(e)) {
-                log().warn("Skipping LLM error message: Ollama model not installed");
-                return "A required Ollama model is not installed. Pull the chat and embedding models on the Ollama host.";
-            }
-            log().warn("Error generating error response with LLM", e);
-        }
-
-        return "I'm sorry, an error occurred while processing your query. Please try again.";
     }
 }

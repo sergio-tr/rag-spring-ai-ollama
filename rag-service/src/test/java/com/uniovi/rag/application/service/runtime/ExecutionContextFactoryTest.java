@@ -4,6 +4,7 @@ import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationBootstrap;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStateResolver;
+import com.uniovi.rag.application.service.runtime.memory.ConversationHistoryLoader;
 import com.uniovi.rag.application.service.runtime.memory.ConversationMemoryStrategy;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
@@ -20,10 +21,15 @@ import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.application.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -54,6 +60,8 @@ class ExecutionContextFactoryTest {
     @Mock private ModelCatalogPort modelCatalogPort;
     @Mock private ClarificationStateResolver clarificationStateResolver;
     @Mock private ConversationMemoryStrategy conversationMemoryStrategy;
+    @Mock private ConversationHistoryLoader conversationHistoryLoader;
+    @Mock private ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     @Mock private ResolvedRuntimeConfig resolvedRuntimeConfig;
     @Mock private QueryPlan queryPlan;
     @Mock private PackedContextSet packedContextSet;
@@ -63,10 +71,26 @@ class ExecutionContextFactoryTest {
     @AfterEach
     void clearBenchmarkContext() {
         LabBenchmarkExecutionContext.clear();
+        OrchestrationLlmConfigScope.clear();
     }
 
     @BeforeEach
     void setUp() {
+        lenient()
+                .when(resolvedLlmConfigResolver.resolveForOrchestratedExecute(any(), any(), any(), any(), any()))
+                .thenReturn(
+                        ResolvedLlmConfig.uniform(
+                                LlmProvider.OLLAMA_NATIVE,
+                                "http://localhost:11434",
+                                "gemma3:4b",
+                                "mxbai-embed-large:latest",
+                                null,
+                                null,
+                                0.1,
+                                60_000,
+                                null,
+                                Map.of()));
+        lenient().when(conversationHistoryLoader.loadEligibleHistory(any())).thenReturn(List.of());
         factory =
                 new ExecutionContextFactory(
                         runtimeConfigResolutionService,
@@ -75,6 +99,8 @@ class ExecutionContextFactoryTest {
                         modelCatalogPort,
                         clarificationStateResolver,
                         conversationMemoryStrategy,
+                        conversationHistoryLoader,
+                        resolvedLlmConfigResolver,
                         null);
     }
 
@@ -144,7 +170,7 @@ class ExecutionContextFactoryTest {
                 .thenReturn(null);
         when(clarificationStateResolver.bootstrap(conversationId, "hello"))
                 .thenReturn(new ClarificationBootstrap("hello", false, false, false));
-        when(conversationMemoryStrategy.execute(any(ExecutionContext.class), anyString()))
+        when(conversationMemoryStrategy.executeWithEligibleHistory(any(ExecutionContext.class), anyString(), any()))
                 .thenReturn(
                         new ConversationMemoryExecutionResult(
                                 ConversationMemoryOutcome.DISABLED_BY_CONFIG,
@@ -208,7 +234,7 @@ class ExecutionContextFactoryTest {
                 .thenReturn(KnowledgeSnapshotSelection.empty());
         when(clarificationStateResolver.bootstrap(null, "q"))
                 .thenReturn(new ClarificationBootstrap("q", false, false, false));
-        when(conversationMemoryStrategy.execute(any(ExecutionContext.class), anyString()))
+        when(conversationMemoryStrategy.executeWithEligibleHistory(any(ExecutionContext.class), anyString(), any()))
                 .thenReturn(
                         new ConversationMemoryExecutionResult(
                                 ConversationMemoryOutcome.NO_CONVERSATION_SCOPE,
@@ -267,7 +293,7 @@ class ExecutionContextFactoryTest {
                     .thenReturn(KnowledgeSnapshotSelection.empty());
             when(clarificationStateResolver.bootstrap(null, "q"))
                     .thenReturn(new ClarificationBootstrap("q", false, false, false));
-            when(conversationMemoryStrategy.execute(any(ExecutionContext.class), anyString()))
+            when(conversationMemoryStrategy.executeWithEligibleHistory(any(ExecutionContext.class), anyString(), any()))
                     .thenReturn(
                             new ConversationMemoryExecutionResult(
                                     ConversationMemoryOutcome.NO_CONVERSATION_SCOPE,
@@ -291,7 +317,7 @@ class ExecutionContextFactoryTest {
         when(resolvedRuntimeConfig.effectiveSystemPrompt()).thenReturn("sys");
         when(clarificationStateResolver.bootstrap(null, "q"))
                 .thenReturn(new ClarificationBootstrap("q", false, false, false));
-        when(conversationMemoryStrategy.execute(any(ExecutionContext.class), anyString()))
+        when(conversationMemoryStrategy.executeWithEligibleHistory(any(ExecutionContext.class), anyString(), any()))
                 .thenReturn(
                         new ConversationMemoryExecutionResult(
                                 ConversationMemoryOutcome.NO_CONVERSATION_SCOPE,

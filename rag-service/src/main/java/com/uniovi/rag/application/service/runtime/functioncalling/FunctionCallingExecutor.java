@@ -39,16 +39,19 @@ public class FunctionCallingExecutor {
     private final FunctionCallingToolRegistry toolRegistry;
     private final MeetingMinutesToolExecutionCore meetingMinutesToolExecutionCore;
     private final FunctionCallingResultMapper resultMapper;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
 
     public FunctionCallingExecutor(
             ChatClient chatClient,
             FunctionCallingToolRegistry toolRegistry,
             MeetingMinutesToolExecutionCore meetingMinutesToolExecutionCore,
-            FunctionCallingResultMapper resultMapper) {
+            FunctionCallingResultMapper resultMapper,
+            ChatGenerationModelSelector chatGenerationModelSelector) {
         this.chatClient = chatClient;
         this.toolRegistry = toolRegistry;
         this.meetingMinutesToolExecutionCore = meetingMinutesToolExecutionCore;
         this.resultMapper = resultMapper;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
     }
 
     @SuppressWarnings("deprecation")
@@ -62,7 +65,7 @@ public class FunctionCallingExecutor {
             List<FunctionCallback> toolCallbacks = new ArrayList<>(callbacks);
             OllamaOptions.Builder optBuilder =
                     OllamaOptions.builder().internalToolExecutionEnabled(false).toolCallbacks(toolCallbacks);
-            ChatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(optBuilder::model);
+            chatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(optBuilder::model);
 
             ChatResponse response1 =
                     chatClient
@@ -179,7 +182,7 @@ public class FunctionCallingExecutor {
 
             String followUpUser = FunctionCallingPrompts.buildFollowUpUserMessage(plan, payload);
             var followBuilder = chatClient.prompt().system(ctx.effectiveSystemPrompt()).user(followUpUser);
-            Optional<String> followModel = ChatGenerationModelSelector.effectiveChatModelId(ctx);
+            Optional<String> followModel = chatGenerationModelSelector.effectiveChatModelId(ctx);
             ChatResponse response2 =
                     followModel.isPresent()
                             ? followBuilder

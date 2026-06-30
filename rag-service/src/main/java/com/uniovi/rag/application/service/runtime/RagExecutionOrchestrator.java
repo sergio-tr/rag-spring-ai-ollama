@@ -189,8 +189,37 @@ public class RagExecutionOrchestrator {
                         ExecutionStageOutcome.SUCCESS,
                         "qu_status=OK message=QueryUnderstandingPipeline completed"));
 
-        ClarificationDecision clarificationDecision = clarificationPolicyResolver.resolve(withPlan, plan);
         List<ExecutionStageTrace> clarifyAfterQu = new ArrayList<>();
+
+        if (conversationRecallGuard.shouldShortCircuit(withPlan)) {
+            ClarificationDecision guardSkipped =
+                    new ClarificationDecision(
+                            false, ClarificationOutcome.NOT_NEEDED, null, "recall_guard_before_clarification");
+            clarifyAfterQu.add(RagExecutionTraceSupport.clarificationPolicyStage(guardSkipped));
+            return finishConversationRecallShortCircuit(
+                    withPlan,
+                    clarifyBeforeQu,
+                    memoryBeforeQu,
+                    quStages,
+                    clarifyAfterQu,
+                    guardSkipped);
+        }
+
+        if (conversationRecallGuard.shouldShortCircuitAmbiguousActaQuery(withPlan)) {
+            ClarificationDecision guardSkipped =
+                    new ClarificationDecision(
+                            false, ClarificationOutcome.NOT_NEEDED, null, "ambiguous_acta_guard_before_clarification");
+            clarifyAfterQu.add(RagExecutionTraceSupport.clarificationPolicyStage(guardSkipped));
+            return finishAmbiguousActaShortCircuit(
+                    withPlan,
+                    clarifyBeforeQu,
+                    memoryBeforeQu,
+                    quStages,
+                    clarifyAfterQu,
+                    guardSkipped);
+        }
+
+        ClarificationDecision clarificationDecision = clarificationPolicyResolver.resolve(withPlan, plan);
         clarifyAfterQu.add(RagExecutionTraceSupport.clarificationPolicyStage(clarificationDecision));
 
         if (clarificationDecision.ask()) {
@@ -209,26 +238,6 @@ public class RagExecutionOrchestrator {
 
         if (clarificationDecision.terminalOutcome() == ClarificationOutcome.RESOLVED_FROM_PENDING) {
             clarificationStrategy.clearAfterResolved(withPlan.conversationId());
-        }
-
-        if (conversationRecallGuard.shouldShortCircuit(withPlan)) {
-            return finishConversationRecallShortCircuit(
-                    withPlan,
-                    clarifyBeforeQu,
-                    memoryBeforeQu,
-                    quStages,
-                    clarifyAfterQu,
-                    clarificationDecision);
-        }
-
-        if (conversationRecallGuard.shouldShortCircuitAmbiguousActaQuery(withPlan)) {
-            return finishAmbiguousActaShortCircuit(
-                    withPlan,
-                    clarifyBeforeQu,
-                    memoryBeforeQu,
-                    quStages,
-                    clarifyAfterQu,
-                    clarificationDecision);
         }
 
         RoutingSnapshot routing = resolveRoutingSnapshot(withPlan, plan);

@@ -15,6 +15,19 @@ class LlmResponseValidatorServiceTest {
     }
 
     @Test
+    void isAcceptableFinalUserAnswer_rejectsMetadataStub() {
+        assertFalse(validator.isAcceptableFinalUserAnswer("Found 6 relevant meeting minutes."));
+        assertFalse(validator.isAcceptableFinalUserAnswer("More information"));
+    }
+
+    @Test
+    void isAcceptableFinalUserAnswer_acceptsSubstantiveAnswer() {
+        assertTrue(
+                validator.isAcceptableFinalUserAnswer(
+                        "Found 2 relevant meeting minutes: ACTA_1.pdf and ACTA_2.pdf mention the topic."));
+    }
+
+    @Test
     void isValidResponse_null_returnsFalse() {
         assertFalse(validator.isValidResponse(null, "ctx"));
     }

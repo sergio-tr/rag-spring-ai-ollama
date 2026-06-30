@@ -10,6 +10,7 @@ import com.uniovi.rag.infrastructure.observability.TracedResponseRanker;
 import com.uniovi.rag.infrastructure.observability.TracedResponseValidator;
 import com.uniovi.rag.application.service.runtime.query.guard.QueryDateExtractor;
 import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.application.service.runtime.query.expand.QueryExpander;
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
@@ -70,7 +71,7 @@ class RagQueryConfigurationObservabilityWiringTest {
 
         RagImplementationProperties implProps = new RagImplementationProperties();
         implProps.setAnalyserImpl("no-op");
-        QueryAnalyser analyser = config.queryAnalyser(mock(ChatClient.class), implProps, observability);
+        QueryAnalyser analyser = config.queryAnalyser(mock(ProviderAwareSecondaryLlmExecutor.class), implProps, observability);
         assertInstanceOf(TracedQueryAnalyser.class, analyser);
 
         var retriever = mock(ContextRetriever.class);

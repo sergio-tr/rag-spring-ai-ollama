@@ -1,5 +1,6 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
@@ -17,6 +18,8 @@ import com.uniovi.rag.infrastructure.observability.TracedReasoningStrategy;
 import com.uniovi.rag.infrastructure.observability.TracedResponseRanker;
 import com.uniovi.rag.infrastructure.observability.TracedResponseValidator;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
+import com.uniovi.rag.application.service.llm.LlmErrorComposer;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.application.service.runtime.query.analyser.MinuteNERQueryAnalyser;
 import com.uniovi.rag.application.service.runtime.query.analyser.NERQueryEnricher;
 import com.uniovi.rag.application.service.runtime.query.analyser.NoOpQueryAnalyser;
@@ -191,7 +194,7 @@ public class RagQueryConfiguration {
 
     @Bean
     public QueryAnalyser queryAnalyser(
-            @Nullable ChatClient chatClient,
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor,
             RagImplementationProperties implProps,
             @Autowired(required = false) ObservabilitySupport observability
     ) {
@@ -199,11 +202,10 @@ public class RagQueryConfiguration {
         QueryAnalyser raw;
         if ("no-op".equals(impl)) {
             raw = new NoOpQueryAnalyser();
-        } else if (chatClient == null) {
-            // Degrade gracefully when Spring AI chat client is not configured.
+        } else if (secondaryLlmExecutor == null) {
             raw = new NoOpQueryAnalyser();
         } else {
-            raw = new MinuteNERQueryAnalyser(chatClient);
+            raw = new MinuteNERQueryAnalyser(secondaryLlmExecutor);
         }
         if (observability != null) {
             return new TracedQueryAnalyser(raw, observability);
@@ -259,21 +261,23 @@ public class RagQueryConfiguration {
 
     @Bean
     public QueryExecutionService queryService(
-            ChatClient chatClient,
             OllamaConnectivityChecker ollamaConnectivityChecker,
             ExecutionContextFactory executionContextFactory,
             RagExecutionOrchestrator ragExecutionOrchestrator,
             RuntimeTracePersistenceService runtimeTracePersistenceService,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
+            ChatGenerationModelSelector chatGenerationModelSelector,
+            LlmErrorComposer llmErrorComposer,
             @Autowired(required = false) ObservabilitySupport observability) {
         QueryExecutionService raw =
                 new RuntimeQueryExecutionService(
                         executionContextFactory,
                         ragExecutionOrchestrator,
                         runtimeTracePersistenceService,
-                        chatClient,
                         ollamaConnectivityChecker,
-                        knowledgeDocumentRepository);
+                        knowledgeDocumentRepository,
+                        chatGenerationModelSelector,
+                        llmErrorComposer);
         if (observability != null) {
             return new TracedQueryService(raw, observability);
         }

@@ -1,6 +1,7 @@
 package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.infrastructure.classifier.ClassifierInferenceMetricsDecorator;
@@ -9,6 +10,8 @@ import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedQueryService;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
+import com.uniovi.rag.application.service.llm.LlmErrorComposer;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.application.service.runtime.query.analyser.MinuteNERQueryAnalyser;
 import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
 import com.uniovi.rag.application.service.runtime.query.expand.MinuteDocumentStructureExpander;
@@ -140,7 +143,7 @@ class RagQueryConfigurationTest {
         RagQueryConfiguration config = new RagQueryConfiguration();
         RagImplementationProperties impl = new RagImplementationProperties();
         impl.setAnalyserImpl(null);
-        QueryAnalyser analyser = config.queryAnalyser(mock(ChatClient.class), impl, null);
+        QueryAnalyser analyser = config.queryAnalyser(mock(ProviderAwareSecondaryLlmExecutor.class), impl, null);
         assertInstanceOf(MinuteNERQueryAnalyser.class, analyser);
     }
 
@@ -173,12 +176,13 @@ class RagQueryConfigurationTest {
         RagQueryConfiguration config = new RagQueryConfiguration();
         QueryExecutionService qs =
                 config.queryService(
-                        mock(ChatClient.class),
                         mock(OllamaConnectivityChecker.class),
                         mock(ExecutionContextFactory.class),
                         mock(RagExecutionOrchestrator.class),
                         mock(RuntimeTracePersistenceService.class),
                         mock(KnowledgeDocumentRepository.class),
+                        mock(ChatGenerationModelSelector.class),
+                        mock(LlmErrorComposer.class),
                         null);
         assertInstanceOf(RuntimeQueryExecutionService.class, qs);
     }
@@ -189,12 +193,13 @@ class RagQueryConfigurationTest {
         ObservabilitySupport obs = new ObservabilitySupport(new SimpleTracer(), new SimpleMeterRegistry());
         QueryExecutionService qs =
                 config.queryService(
-                        mock(ChatClient.class),
                         mock(OllamaConnectivityChecker.class),
                         mock(ExecutionContextFactory.class),
                         mock(RagExecutionOrchestrator.class),
                         mock(RuntimeTracePersistenceService.class),
                         mock(KnowledgeDocumentRepository.class),
+                        mock(ChatGenerationModelSelector.class),
+                        mock(LlmErrorComposer.class),
                         obs);
         assertInstanceOf(TracedQueryService.class, qs);
     }

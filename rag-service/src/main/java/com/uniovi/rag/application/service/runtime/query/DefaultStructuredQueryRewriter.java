@@ -29,9 +29,12 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final ChatClient chatClient;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
 
-    public DefaultStructuredQueryRewriter(ChatClient chatClient) {
+    public DefaultStructuredQueryRewriter(
+            ChatClient chatClient, ChatGenerationModelSelector chatGenerationModelSelector) {
         this.chatClient = chatClient;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
     }
 
     @Override
@@ -60,16 +63,12 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
 
     private String invokeRewriteModel(ExecutionContext ctx, String userPrompt) {
         var spec = chatClient.prompt()
-                .system("""
-                        You are a deterministic query rewriter.
-                        Return ONLY a JSON object. No markdown. No extra text.
-                        The response must start with { and end with }.
-                        """)
+                .system(QueryRewritePromptSources.SYSTEM_PROMPT)
                 .user(userPrompt);
 
         // Fixed low-temperature to reduce variance (when supported by the client/model).
         OllamaOptions.Builder opt = OllamaOptions.builder().temperature(0.0);
-        ChatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(opt::model);
+        chatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(opt::model);
         spec = spec.options(opt.build());
         String out = spec.call().content();
         return out == null ? "" : out.trim();
@@ -89,37 +88,7 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
         String topics = String.join(", ", entities.topics());
         String orgs = String.join(", ", entities.organizations());
 
-        return """
-                Rewrite the query in a constrained way.
-
-                INPUTS:
-                - normalizedText: "%s"
-                - classifierStatus: "%s"
-                - classifierLabel: "%s"
-                - classifierQueryType: "%s"
-                - extractedEntities:
-                  - dates: [%s]
-                  - people: [%s]
-                  - locations: [%s]
-                  - topics: [%s]
-                  - organizations: [%s]
-
-                OUTPUT JSON SCHEMA (all keys required; use empty lists/maps when absent):
-                {
-                  "rewrittenQueryText": "string",
-                  "targetEntities": ["string"],
-                  "targetAttributes": ["string"],
-                  "targetAction": "COUNT|LIST|FIND|EXPLAIN|SUMMARIZE|COMPARE|EXTRACT_FIELD|BOOLEAN_CHECK|UNKNOWN|null",
-                  "slotFilling": {"key":"value"},
-                  "constraints": ["string"]
-                }
-
-                CONSTRAINTS:
-                - rewrittenQueryText MUST preserve any temporal constraints and must not drop named entities present in inputs
-                - rewrittenQueryText MUST NOT introduce new named entities not present in inputs
-                - rewrittenQueryText MUST NOT exceed 1.5x input length and MUST NOT exceed input length + 300
-                - Do not invent missing constraints. If uncertain, leave fields empty and keep rewrittenQueryText close to input.
-                """.formatted(
+        return QueryRewritePromptSources.USER_PROMPT_TEMPLATE.formatted(
                 escape(normalized.normalizedText()),
                 classifierStatus,
                 escape(classifierLabel),
