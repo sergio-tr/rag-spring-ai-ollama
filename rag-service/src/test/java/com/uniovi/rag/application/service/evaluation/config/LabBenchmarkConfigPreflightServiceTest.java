@@ -14,7 +14,9 @@ import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusAppl
 import com.uniovi.rag.application.service.llm.catalog.EvaluationModelCatalogService;
 import com.uniovi.rag.application.service.evaluation.preset.CorpusAvailabilityGate;
 import com.uniovi.rag.application.service.evaluation.preset.LabIndexSnapshotCompatibilityService;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess;
 import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
 import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileService;
@@ -53,13 +55,16 @@ class LabBenchmarkConfigPreflightServiceTest {
     @Mock private ProjectIndexProfileService projectIndexProfileService;
     @Mock private LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     @Mock private EvaluationModelCatalogService evaluationModelCatalogService;
+    @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
+    @Mock private KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess;
 
     private LabBenchmarkConfigPreflightService service;
 
     @BeforeEach
     void setUp() {
         LabIndexSnapshotCompatibilityService indexSnapshotCompatibilityService =
-                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator);
+                new LabIndexSnapshotCompatibilityService(
+                        corpusAvailabilityGate, knowledgePipelineOrchestrator, snapshotProfileAccess);
         service =
                 new LabBenchmarkConfigPreflightService(
                         new RagFeatureConfiguration(),
@@ -70,7 +75,9 @@ class LabBenchmarkConfigPreflightServiceTest {
                         projectIndexProfileService,
                         labIndexProfileOverrideFactory,
                         corpusAvailabilityGate,
-                        evaluationModelCatalogService);
+                        evaluationModelCatalogService,
+                        knowledgeIndexSnapshotRepository,
+                        snapshotProfileAccess);
         lenient()
                 .when(corpusAvailabilityGate.evaluateForPreset(any(), any(), any(), any()))
                 .thenReturn(new CorpusAvailabilityGate.Result(true, 2, List.of(), 2, 10L, null, null));
@@ -281,7 +288,6 @@ class LabBenchmarkConfigPreflightServiceTest {
         UUID snapshotId = UUID.randomUUID();
         KnowledgeIndexSnapshotEntity snap = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
         when(snap.getId()).thenReturn(snapshotId);
-        when(snap.getIndexProfileJsonb()).thenReturn(Map.of());
         when(snap.getSignatureHash()).thenReturn("sig-current");
         when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.of(snap));
         KnowledgeDocumentEntity doc = Mockito.mock(KnowledgeDocumentEntity.class);
@@ -398,11 +404,94 @@ class LabBenchmarkConfigPreflightServiceTest {
     }
 
     @Test
+    void ragAcceptsHybridPresetWithCompatibleSnapshotWithoutAutoReindex() {
+        UUID userId = UUID.randomUUID();
+        UUID corpusId = UUID.randomUUID();
+        UUID indexProjectId = UUID.randomUUID();
+        UUID snapshotId = UUID.randomUUID();
+        KnowledgeIndexSnapshotEntity snap = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
+        when(snap.getId()).thenReturn(snapshotId);
+        when(snap.getSignatureHash()).thenReturn("sig-current");
+        when(snapshotProfileAccess.resolveProfileJsonb(snap))
+                .thenReturn(
+                        Map.of(
+                                "materializationStrategy",
+                                "HYBRID",
+                                "supportsMetadata",
+                                true,
+                                "embeddingModelId",
+                                "mxbai-embed-large"));
+        when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.of(snap));
+        when(evaluationCorpusApplicationService.requireContext(userId, corpusId))
+                .thenReturn(
+                        new EvaluationCorpusApplicationService.EvaluationCorpusContext(
+                                corpusId,
+                                indexProjectId,
+                                List.of(UUID.randomUUID()),
+                                List.of(Mockito.mock(KnowledgeDocumentEntity.class))));
+        ProjectIndexProfile profile =
+                new ProjectIndexProfile(
+                        indexProjectId,
+                        MaterializationStrategy.HYBRID,
+                        true,
+                        "meta-v1",
+                        "mxbai-embed-large",
+                        400,
+                        10,
+                        ProjectIndexProfile.computeProfileHash(
+                                MaterializationStrategy.HYBRID, true, "meta-v1", "mxbai-embed-large", 400, 10),
+                        Instant.now(),
+                        Instant.now());
+        when(projectIndexProfileService.ensureDefault(indexProjectId)).thenReturn(profile);
+        when(labIndexProfileOverrideFactory.buildEffectiveProfile(any(), any(), any())).thenReturn(profile);
+        when(corpusAvailabilityGate.snapshotHasVectorRows(userId, corpusId, snapshotId)).thenReturn(true);
+        when(knowledgePipelineOrchestrator.computeSnapshotSignatureHex(any(), any(), any(), any()))
+                .thenReturn("sig-current");
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        UUID.randomUUID(),
+                        corpusId,
+                        null,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "n",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of("P8"),
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        false,
+                        null,
+                        false,
+                        true,
+                        true,
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        null,
+                        null);
+        LabBenchmarkConfigPreflightResult result =
+                service.validateOrThrow(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req);
+        assertThat(result.passed()).isTrue();
+        assertThat(result.details()).containsEntry("activeSnapshotReuseEligible", true);
+    }
+
+    @Test
     void ragRejectsHybridPresetWithChunkOnlySnapshotWhenAutoReindexDisabled() {
         UUID corpusId = UUID.randomUUID();
         KnowledgeIndexSnapshotEntity snap = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
         when(snap.getId()).thenReturn(UUID.randomUUID());
-        when(snap.getIndexProfileJsonb()).thenReturn(Map.of("materializationStrategy", "CHUNK_LEVEL", "supportsMetadata", true));
+        when(snapshotProfileAccess.resolveProfileJsonb(snap))
+                .thenReturn(Map.of("materializationStrategy", "CHUNK_LEVEL", "supportsMetadata", true));
         when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.of(snap));
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(

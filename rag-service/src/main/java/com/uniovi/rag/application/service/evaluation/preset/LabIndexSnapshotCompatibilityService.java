@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.evaluation.preset;
 
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess;
 import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
 import com.uniovi.rag.application.service.runtime.config.IndexCompatibilityResult;
 import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
@@ -23,12 +24,15 @@ public class LabIndexSnapshotCompatibilityService {
 
     private final CorpusAvailabilityGate corpusAvailabilityGate;
     private final KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
+    private final KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess;
 
     public LabIndexSnapshotCompatibilityService(
             CorpusAvailabilityGate corpusAvailabilityGate,
-            KnowledgePipelineOrchestrator knowledgePipelineOrchestrator) {
+            KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
+            KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess) {
         this.corpusAvailabilityGate = corpusAvailabilityGate;
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
+        this.snapshotProfileAccess = snapshotProfileAccess;
     }
 
     public record ReuseEligibility(boolean eligible, String reasonCode, String reasonMessage) {
@@ -77,8 +81,7 @@ public class LabIndexSnapshotCompatibilityService {
         if (snapshot == null || snapshot.getId() == null) {
             return false;
         }
-        Map<String, Object> profile =
-                snapshot.getIndexProfileJsonb() != null ? snapshot.getIndexProfileJsonb() : Map.of();
+        Map<String, Object> profile = snapshotProfileAccess.resolveProfileJsonb(snapshot);
         IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
         if (embeddingModelIdOverride != null
                 && !embeddingModelIdOverride.isBlank()

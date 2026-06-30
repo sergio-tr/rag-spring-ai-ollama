@@ -11,9 +11,11 @@ import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCa
 import com.uniovi.rag.application.service.evaluation.preset.LabIndexSnapshotCompatibilityService;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunGroupKey;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunPlanService;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
 import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileService;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.application.service.runtime.config.IndexCompatibilityResult;
 import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
@@ -49,6 +51,8 @@ public class LabBenchmarkConfigPreflightService {
     private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     private final CorpusAvailabilityGate corpusAvailabilityGate;
     private final EvaluationModelCatalogService evaluationModelCatalogService;
+    private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
+    private final KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess;
 
     public LabBenchmarkConfigPreflightService(
             RagFeatureConfiguration ragFeatureConfiguration,
@@ -59,7 +63,9 @@ public class LabBenchmarkConfigPreflightService {
             ProjectIndexProfileService projectIndexProfileService,
             LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
             CorpusAvailabilityGate corpusAvailabilityGate,
-            EvaluationModelCatalogService evaluationModelCatalogService) {
+            EvaluationModelCatalogService evaluationModelCatalogService,
+            KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
+            KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess) {
         this.ragFeatureConfiguration = ragFeatureConfiguration;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.embeddingSpaceGuard = embeddingSpaceGuard;
@@ -69,6 +75,8 @@ public class LabBenchmarkConfigPreflightService {
         this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
         this.corpusAvailabilityGate = corpusAvailabilityGate;
         this.evaluationModelCatalogService = evaluationModelCatalogService;
+        this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
+        this.snapshotProfileAccess = snapshotProfileAccess;
     }
 
     /**
@@ -121,6 +129,8 @@ public class LabBenchmarkConfigPreflightService {
         if (request.corpusId() != null && strictIndexCheck) {
             if (request.autoReindexEffective()) {
                 details.put("indexPreflight", "DEFERRED_AUTO_REINDEX");
+            } else if (request.indexSnapshotId() != null) {
+                validateExplicitSnapshotForPresets(userId, request.corpusId(), request.indexSnapshotId(), presets, details);
             } else {
                 validateIndexForPresets(userId, request.corpusId(), presets, details);
             }
@@ -237,6 +247,24 @@ public class LabBenchmarkConfigPreflightService {
         return LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_REINDEX;
     }
 
+    private void validateExplicitSnapshotForPresets(
+            UUID userId,
+            UUID corpusId,
+            UUID indexSnapshotId,
+            List<RagExperimentalPresetCode> presets,
+            Map<String, Object> details) {
+        KnowledgeIndexSnapshotEntity explicit =
+                knowledgeIndexSnapshotRepository.findById(indexSnapshotId).orElse(null);
+        if (explicit == null || explicit.getId() == null) {
+            fail(HttpStatus.BAD_REQUEST, LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_INDEX);
+        }
+        details.put("explicitIndexSnapshotId", indexSnapshotId.toString());
+        RagExperimentalPresetCode strictest =
+                presets.stream().max(Comparator.comparingInt(Enum::ordinal)).orElseThrow();
+        validateActiveSnapshotReuseEligibility(userId, corpusId, strictest, explicit, details);
+        details.put("indexPreflight", "EXPLICIT_SNAPSHOT_COMPATIBLE");
+    }
+
     private void validateIndexForPresets(
             UUID userId,
             UUID corpusId,
@@ -256,7 +284,7 @@ public class LabBenchmarkConfigPreflightService {
         details.put("strictestPreset", strictest.name());
 
         IndexSnapshotCapabilities caps =
-                active.map(KnowledgeIndexSnapshotEntity::getIndexProfileJsonb)
+                active.map(snapshotProfileAccess::resolveProfileJsonb)
                         .map(IndexSnapshotCapabilities::fromIndexProfile)
                         .orElse(IndexSnapshotCapabilities.fromIndexProfile(Map.of()));
 
