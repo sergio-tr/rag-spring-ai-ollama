@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
 import AdminHomePage from "./page";
-import type { AdminModelEntryDto } from "@/types/api";
+import type { LlmCatalogModelDto, LlmCatalogResponse } from "@/types/api";
 
 const apiFetch = vi.fn();
 
@@ -18,67 +17,64 @@ vi.mock("@/lib/async-task", () => ({
   pollLabJob: vi.fn(),
 }));
 
-const llmRow: AdminModelEntryDto = {
-  id: "11111111-1111-1111-1111-111111111111",
-  modelId: "llama3:latest",
-  displayName: null,
-  modelType: "LLM",
-  enabled: true,
+const LEGACY_MODEL_IDS = ["gemma3:4b", "mistral:7b", "llama3.1:8b"] as const;
+
+const chatAvailable: LlmCatalogModelDto = {
+  provider: "OPENAI_COMPATIBLE",
+  modelName: "gpt-oss:20b",
+  displayName: "GPT OSS 20B",
+  configured: true,
+  capability: "CHAT",
   available: true,
-  lastCheckedAt: null,
-  lastPullStatus: "OK",
-  lastPullError: null,
-  installedAt: null,
-  tags: [],
+  selectableByUser: true,
+  usableAsDefault: true,
+  runtimeStatus: "AVAILABLE",
+  runtimeDetail: null,
+  embeddingDimensions: null,
+  compatibleWithCurrentVectorStore: null,
+  source: "PROPERTIES",
 };
 
-const embRow: AdminModelEntryDto = {
-  id: "22222222-2222-2222-2222-222222222222",
-  modelId: "qwen3-embedding:latest",
-  displayName: "Qwen3 Embedding",
-  modelType: "EMBEDDING",
-  enabled: true,
+const chatUnavailable: LlmCatalogModelDto = {
+  provider: "OLLAMA_NATIVE",
+  modelName: "ollama-missing:latest",
+  capability: "CHAT",
   available: false,
-  lastCheckedAt: null,
-  lastPullStatus: "PROBE_FAILED",
-  lastPullError: "HTTP 404",
-  installedAt: null,
-  tags: [],
+  selectableByUser: false,
+  usableAsDefault: false,
+  runtimeStatus: "UNAVAILABLE",
+  runtimeDetail: "Model not installed locally",
+  embeddingDimensions: null,
+  compatibleWithCurrentVectorStore: null,
+  source: "PROPERTIES",
 };
 
-describe("AdminHomePage", () => {
+const embeddingIncompatible: LlmCatalogModelDto = {
+  provider: "OLLAMA_NATIVE",
+  modelName: "wrong-dim-embed:latest",
+  capability: "EMBEDDING",
+  available: true,
+  selectableByUser: false,
+  usableAsDefault: false,
+  runtimeStatus: "AVAILABLE",
+  runtimeDetail: null,
+  embeddingDimensions: 512,
+  compatibleWithCurrentVectorStore: false,
+  source: "PROPERTIES",
+};
+
+const catalogResponse: LlmCatalogResponse = {
+  models: [chatAvailable, chatUnavailable, embeddingIncompatible],
+};
+
+describe("AdminHomePage catalog", () => {
   const qc = createTestQueryClient();
 
   beforeEach(() => {
     apiFetch.mockReset();
-    apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
-      if (path === "/api/v5/admin/models" && (!init || init.method === undefined)) {
-        return [llmRow, embRow];
-      }
-      if (path.startsWith("/api/v5/admin/models/") && init?.method === "DELETE") {
-        return {
-          id: embRow.id,
-          modelId: embRow.modelId,
-          modelType: "EMBEDDING",
-          outcome: "DELETED",
-          message: "ok",
-        };
-      }
-      if (path === "/api/v5/admin/models/check" && init?.method === "POST") {
-        return {
-          modelId: "qwen3-embedding:latest",
-          requestedType: "EMBEDDING",
-          existsLocal: true,
-          canPull: true,
-          pulled: false,
-          embeddingProbeOk: false,
-          matchedLocalIds: ["qwen3-embedding:latest"],
-          checkedAt: new Date().toISOString(),
-          errorCode: "MODEL_EMBEDDING_PROBE_FAILED",
-          errorMessage: "Embedding endpoint rejected the model",
-          technicalDetail: "HTTP 404",
-          pullSummary: null,
-        };
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path === "/api/v5/llm/catalog?includeRuntimeStatus=true") {
+        return catalogResponse;
       }
       throw new Error(`Unexpected apiFetch ${path}`);
     });
@@ -94,34 +90,52 @@ describe("AdminHomePage", () => {
     );
   }
 
-  it("renders LLM and embedding sections separately", async () => {
+  it("admin shows configured catalog models", async () => {
     renderPage();
-    expect(await screen.findByText("LLM models")).toBeInTheDocument();
-    expect(screen.getByText("Embedding models")).toBeInTheDocument();
-    expect(await screen.findByTestId("admin-model-row-LLM-llama3:latest")).toBeInTheDocument();
-    expect(await screen.findByTestId("admin-model-row-EMBEDDING-qwen3-embedding:latest")).toBeInTheDocument();
+    expect(await screen.findByText("Configured model catalog")).toBeInTheDocument();
+    expect(await screen.findByTestId("admin-catalog-row-OPENAI_COMPATIBLE-CHAT-gpt-oss:20b")).toBeInTheDocument();
+    expect(await screen.findByTestId("admin-catalog-display-name-gpt-oss:20b")).toHaveTextContent("GPT OSS 20B");
+    expect(apiFetch).toHaveBeenCalledWith("/api/v5/llm/catalog?includeRuntimeStatus=true");
   });
 
-  it("shows friendly embedding probe failure on check", async () => {
-    const user = userEvent.setup();
+  it("provider and capability are shown", async () => {
     renderPage();
-    await screen.findByTestId("admin-model-row-EMBEDDING-qwen3-embedding:latest");
-    await user.type(screen.getByLabelText("Model name", { selector: "#aname" }), "qwen3-embedding");
-    await user.selectOptions(screen.getByLabelText("Type"), "EMBEDDING");
-    await user.click(screen.getByRole("button", { name: /^check$/i }));
-    expect(await screen.findByText(/did not pass the embedding check/i)).toBeInTheDocument();
-    expect(screen.queryByText(/POST/i)).not.toBeInTheDocument();
+    expect(await screen.findByTestId("admin-catalog-provider-gpt-oss:20b")).toHaveTextContent("Configured API catalog");
+    expect(screen.getByTestId("admin-catalog-capability-gpt-oss:20b")).toHaveTextContent("CHAT");
+    expect(screen.getByTestId("admin-catalog-source-gpt-oss:20b")).toHaveTextContent("Properties file");
+    expect(screen.getByTestId("admin-catalog-runtime-status-gpt-oss:20b")).toHaveTextContent("Available");
   });
 
-  it("wires delete action to admin models endpoint", async () => {
-    const user = userEvent.setup();
+  it("unavailable model visible with warning", async () => {
     renderPage();
-    const row = await screen.findByTestId("admin-model-row-EMBEDDING-qwen3-embedding:latest");
-    await user.click(within(row).getByRole("button", { name: /^delete$/i }));
-    expect(apiFetch).toHaveBeenCalledWith(
-      `/api/v5/admin/models/${embRow.id}`,
-      expect.objectContaining({ method: "DELETE" }),
+    expect(await screen.findByTestId("admin-catalog-row-OLLAMA_NATIVE-CHAT-ollama-missing:latest")).toBeInTheDocument();
+    expect(screen.getByTestId("admin-catalog-unavailable-ollama-missing:latest")).toHaveTextContent(
+      /Configured but unavailable at runtime/i,
     );
-    expect(await screen.findByText(/entry removed/i)).toBeInTheDocument();
+    expect(screen.getByTestId("admin-catalog-unavailable-ollama-missing:latest")).toHaveTextContent(
+      /Model not installed locally/i,
+    );
+  });
+
+  it("incompatible embedding marked incompatible", async () => {
+    renderPage();
+    const row = await screen.findByTestId("admin-catalog-row-OLLAMA_NATIVE-EMBEDDING-wrong-dim-embed:latest");
+    expect(row).toHaveAttribute("data-indexing-disabled", "true");
+    expect(screen.getByTestId("admin-catalog-incompatible-wrong-dim-embed:latest")).toHaveTextContent(
+      /Incompatible with vector store/i,
+    );
+    expect(screen.getByTestId("admin-catalog-embedding-dims-wrong-dim-embed:latest")).toHaveTextContent("512");
+    expect(screen.getByTestId("admin-catalog-vector-compatible-wrong-dim-embed:latest")).toHaveTextContent("No");
+  });
+
+  it("no hardcoded model list", async () => {
+    renderPage();
+    await screen.findByTestId("admin-catalog-row-OPENAI_COMPATIBLE-CHAT-gpt-oss:20b");
+    const card = screen.getByTestId("admin-models-card");
+    const text = card.textContent ?? "";
+    for (const legacy of LEGACY_MODEL_IDS) {
+      expect(text).not.toContain(legacy);
+    }
+    expect(apiFetch).not.toHaveBeenCalledWith("/api/v5/admin/models", expect.anything());
   });
 });

@@ -73,7 +73,7 @@ describe("NewProjectDialog", () => {
     await user.click(screen.getByRole("button", { name: /^New project$/i }));
     await user.click(screen.getByRole("button", { name: /^Create$/i }));
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toMatch(/Too small|required|at least 1|>=1/i);
+    expect(alert).toHaveTextContent(/Enter a project name/i);
   });
 
   it("shows validation error when name exceeds max length", async () => {
