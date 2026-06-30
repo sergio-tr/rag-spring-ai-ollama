@@ -59,6 +59,27 @@ Or with Docker (from repo root):
 docker compose -f docker/docker-compose.yml up -d classifier-service
 ```
 
+### Docker image size
+
+The **default** image uses `python:3.10-slim-bookworm` and `requirements-runtime.txt` only (sklearn 1.7 + FastAPI, **no TensorFlow**). It is about **600 MiB** and builds in under a minute on a typical CI runner.
+
+The default `model.joblib` (sklearn C3) is trained with **scikit-learn 1.7.x** on Python 3.10 — no Python 3.11 or CUDA base is required for serving.
+
+The previous default (`nvidia/cuda` base + `tensorflow[and-cuda]`) pulled **~10 GiB** because CUDA was installed twice (OS image + pip wheels) even though the production default model is **sklearn** (`models/default/model.joblib`).
+
+| Profile | Base image | Python deps | Approx. size |
+| --- | --- | --- | --- |
+| Default (sklearn serving) | `python:3.10-slim-bookworm` | `requirements-runtime.txt` | ~600 MiB |
+| GPU / Keras Lab | `nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04` | runtime + `requirements-gpu.txt` | ~8–10 GiB |
+
+Enable the GPU stack only when training or serving legacy Keras models:
+
+```bash
+./docker/scripts/up.sh dev --classifier-gpu   # sets CLASSIFIER_INSTALL_GPU_EXTRAS=1
+```
+
+Local dev / CI pytest: `pip install -r requirements.txt` (includes CPU TensorFlow for unit tests).
+
 The RAG backend is configured via `RAG_CLASSIFIER_SERVICE_URL` (default `http://localhost:8000`; in Docker `http://classifier-service:8000`).
 
 ## Environment
