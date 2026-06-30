@@ -20,18 +20,28 @@ const webappRoot = join(__dirname, "../..");
 const repoRoot = join(webappRoot, "..");
 
 function evidenceClosureDirs(): string[] {
-  const evidenceRoot = join(repoRoot, ".cursor/evidence");
-  if (!existsSync(evidenceRoot)) {
-    return [];
+  const prefixes = [
+    "assistant-configuration-closure-",
+  ];
+  const roots = [
+    join(webappRoot, "test-fixtures"),
+  ];
+  const dirs: string[] = [];
+  for (const evidenceRoot of roots) {
+    if (!existsSync(evidenceRoot)) {
+      continue;
+    }
+    for (const name of readdirSync(evidenceRoot)) {
+      if (!prefixes.some((prefix) => name.startsWith(prefix))) {
+        continue;
+      }
+      const path = join(evidenceRoot, name);
+      if (statSync(path).isDirectory()) {
+        dirs.push(path);
+      }
+    }
   }
-  return readdirSync(evidenceRoot)
-    .filter(
-      (name) =>
-        name.startsWith("assistant-configuration-closure-") ||
-        name.startsWith("wave-3-configurable-assistant-product-closure-"),
-    )
-    .map((name) => join(evidenceRoot, name))
-    .filter((path) => statSync(path).isDirectory());
+  return dirs;
 }
 
 function walkMarkdownFiles(rootDir: string): string[] {
