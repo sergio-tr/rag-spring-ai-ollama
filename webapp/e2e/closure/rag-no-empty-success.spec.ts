@@ -15,7 +15,7 @@ import {
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.docs/evidence/final-lab-rag-closure/rag-no-empty-success",
+  "../../../docs/evidence/final-lab-rag-closure/rag-no-empty-success",
 );
 
 test.describe("Closure RAG no empty success @closure @fullstack", () => {

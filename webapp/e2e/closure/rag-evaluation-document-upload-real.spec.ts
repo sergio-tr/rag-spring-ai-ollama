@@ -19,7 +19,7 @@ import {
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.docs/evidence/p0-lab-rag-runtime-closure/rag-upload",
+  "../../../docs/evidence/p0-lab-rag-runtime-closure/rag-upload",
 );
 
 function actaVariants(): { name: string; mimeType: string; buffer: Buffer }[] {

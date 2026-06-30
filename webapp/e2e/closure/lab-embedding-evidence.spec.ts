@@ -27,7 +27,7 @@ import { authHeadersFromPage, productApiUrl } from "../support/helpers";
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.docs/evidence/final-lab-rag-closure/embeddings",
+  "../../../docs/evidence/final-lab-rag-closure/embeddings",
 );
 const LOG_PATH = path.join(EVIDENCE_DIR, "e2e-embedding-evidence.log");
 

@@ -12,7 +12,7 @@ import {
   sendChatMessage,
 } from "../support/helpers";
 
-const EVIDENCE_DIR = path.resolve(__dirname, "../../../.docs/evidence/wave-3-current/message-order");
+const EVIDENCE_DIR = path.resolve(__dirname, "../../../docs/evidence/wave-3-current/message-order");
 
 type ApiMessage = {
   id: string;

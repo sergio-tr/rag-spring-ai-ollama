@@ -79,27 +79,59 @@ export function productBasePath() {
 export function resolveE2eBases() {
   applyDemoProxyEnvDefaults();
 
-  const publicBase = (
-    process.env.E2E_PUBLIC_BASE_URL ??
-    process.env.PLAYWRIGHT_BASE_URL ??
-    "https://127.0.0.1:8444"
-  ).replace(/\/$/, "");
-
-  let apiBase =
+  const isCi = process.env.CI === "true" || process.env.CI === "1";
+  const configuredApi =
     process.env.E2E_PRODUCT_URL ??
     process.env.API_BASE_URL ??
     process.env.INTEGRATION_BACKEND_URL;
+
+  const defaultPublicBase = "https://127.0.0.1:8444";
+  const provisionalPublic = (
+    process.env.E2E_PUBLIC_BASE_URL ??
+    process.env.PLAYWRIGHT_BASE_URL ??
+    defaultPublicBase
+  ).replace(/\/$/, "");
+
+  let apiBase = configuredApi;
   if (!apiBase) {
-    apiBase = isReverseProxyOrigin(publicBase) ? publicBase : "http://127.0.0.1:9000";
+    apiBase = isReverseProxyOrigin(provisionalPublic) ? provisionalPublic : "http://127.0.0.1:9000";
   }
   apiBase = apiBase.replace(/\/$/, "");
 
-  const healthBase = normalizeHealthBase(process.env.E2E_BACKEND_HEALTH_URL ?? publicBase);
+  const publicBase = (
+    process.env.E2E_PUBLIC_BASE_URL ??
+    process.env.PLAYWRIGHT_BASE_URL ??
+    (isCi && configuredApi ? apiBase : defaultPublicBase)
+  ).replace(/\/$/, "");
+
+  const healthBase = normalizeHealthBase(process.env.E2E_BACKEND_HEALTH_URL ?? apiBase);
 
   const webBase = publicBase;
   const webHealthBase = (process.env.E2E_WEB_HEALTH_URL ?? webBase).replace(/\/$/, "");
 
   return { publicBase, apiBase, healthBase, webBase, webHealthBase };
+}
+
+/** True when a Next.js (or reverse-proxy) UI origin is configured for preflight. */
+export function shouldProbeWebLogin(bases) {
+  if (process.env.E2E_API_PREFLIGHT_SKIP_WEB === "1") {
+    return false;
+  }
+  if (process.env.E2E_WEB_HEALTH_URL === "") {
+    return false;
+  }
+  const isCi = process.env.CI === "true" || process.env.CI === "1";
+  const configuredApi =
+    process.env.E2E_PRODUCT_URL ?? process.env.API_BASE_URL ?? process.env.INTEGRATION_BACKEND_URL;
+  if (
+    isCi &&
+    configuredApi &&
+    !process.env.PLAYWRIGHT_BASE_URL &&
+    !process.env.E2E_PUBLIC_BASE_URL
+  ) {
+    return false;
+  }
+  return !isReverseProxyOrigin(bases.apiBase) || isReverseProxyOrigin(bases.publicBase);
 }
 
 export function actuatorHealthUrl(healthBase, suffix = "") {

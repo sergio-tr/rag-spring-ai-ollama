@@ -15,6 +15,27 @@ const PREFLIGHT_REQUEST_MS = Number.parseInt(
   10,
 );
 
+function shouldProbeWebLogin(): boolean {
+  if (process.env.E2E_API_PREFLIGHT_SKIP_WEB === "1") {
+    return false;
+  }
+  if (process.env.E2E_WEB_HEALTH_URL === "") {
+    return false;
+  }
+  const isCi = process.env.CI === "true" || process.env.CI === "1";
+  const configuredApi =
+    process.env.E2E_PRODUCT_URL ?? process.env.API_BASE_URL ?? process.env.INTEGRATION_BACKEND_URL;
+  if (
+    isCi &&
+    configuredApi &&
+    !process.env.PLAYWRIGHT_BASE_URL &&
+    !process.env.E2E_PUBLIC_BASE_URL
+  ) {
+    return false;
+  }
+  return true;
+}
+
 type ProjectListResponse = { items?: Array<{ id?: string; name?: string }> };
 type MeSelectableLlmModelsResponse = {
   capability?: string;
@@ -55,14 +76,16 @@ export async function runApiStackPreflight(request: APIRequestContext): Promise<
   }
   await assertOk("backend liveness", liveness.status(), await liveness.text());
 
-  let loginPage;
-  try {
-    loginPage = await request.get(`${webBase}/en/login`, { timeout: PREFLIGHT_REQUEST_MS });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new BlockedEnvironmentError(`frontend /en/login unreachable at ${webBase}/en/login (${msg})`);
+  if (shouldProbeWebLogin()) {
+    let loginPage;
+    try {
+      loginPage = await request.get(`${webBase}/en/login`, { timeout: PREFLIGHT_REQUEST_MS });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new BlockedEnvironmentError(`frontend /en/login unreachable at ${webBase}/en/login (${msg})`);
+    }
+    await assertOk("frontend login page", loginPage.status(), await loginPage.text());
   }
-  await assertOk("frontend login page", loginPage.status(), await loginPage.text());
 
   const { email, password } = integrationCredentials();
   let loginRes;

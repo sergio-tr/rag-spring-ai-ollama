@@ -18,13 +18,15 @@ test.describe("UX surfaces smoke @smoke", () => {
     await expect(page.getByTestId("user-account-preferences")).toBeVisible();
     await expect(page.getByLabel(/language/i)).toBeVisible();
     const technicalDetails = page.getByTestId("settings-model-parameters-advanced");
-    await expect(technicalDetails.locator("summary")).toBeVisible();
+    const technicalSummary = technicalDetails.locator(":scope > summary");
+    await expect(technicalSummary).toBeVisible();
     expect(await technicalDetails.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false);
-    await expect(page.locator("textarea")).not.toBeVisible();
+    await expect(page.getByTestId("assistant-global-persona-input")).toBeVisible();
+    await expect(page.getByLabel("Advanced configuration (JSON)")).not.toBeVisible();
     const mainText = await page.locator("main").innerText();
     expect(mainText).not.toMatch(/\{[\s\S]*"schemaVersion"/);
 
-    await technicalDetails.locator("summary").click();
+    await technicalSummary.click();
     const advancedJson = page.getByTestId("rag-config-advanced-json");
     await expect(advancedJson).toBeAttached();
     expect(await advancedJson.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false);
@@ -44,7 +46,7 @@ test.describe("UX surfaces smoke @smoke", () => {
   test("chat model selector is provider-aware", async ({ page }) => {
     await openChatConfiguration(page);
     await page.getByTestId("chat-config-edit-button").click({ timeout: 15_000 });
-    await expect(page.getByTestId("chat-llm-model-provider")).toHaveText(/Configured API catalog/i, {
+    await expect(page.getByTestId("chat-llm-model-provider")).toHaveText(/Configured model provider/i, {
       timeout: 15_000,
     });
   });

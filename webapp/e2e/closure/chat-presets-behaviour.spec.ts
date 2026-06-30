@@ -29,7 +29,7 @@ function classifierStatusFromMetadata(meta: Record<string, unknown> | null | und
   return typeof legacy === "string" ? legacy : null;
 }
 
-const EVIDENCE_DIR = path.resolve(__dirname, "../../../.docs/evidence/wave-3-current/chat-rag/presets");
+const EVIDENCE_DIR = path.resolve(__dirname, "../../../docs/evidence/wave-3-current/chat-rag/presets");
 
 type RunEvidence = {
   presetLabel: string;

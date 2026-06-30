@@ -21,7 +21,7 @@ import {
   sendChatMessage,
 } from "../support/helpers";
 
-const EVIDENCE_DIR = path.resolve(__dirname, "../../../.docs/evidence/wave-3-current/classifier-closure");
+const EVIDENCE_DIR = path.resolve(__dirname, "../../../docs/evidence/wave-3-current/classifier-closure");
 
 const MINIMAL_CHAT_QUERY = "How many meetings mention the lift?";
 

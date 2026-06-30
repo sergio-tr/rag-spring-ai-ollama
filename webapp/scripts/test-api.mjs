@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
-import { applyDemoProxyEnvDefaults, actuatorHealthUrl, productBasePath, resolveE2eBases } from "./e2e-bases.mjs";
+import { applyDemoProxyEnvDefaults, actuatorHealthUrl, productBasePath, resolveE2eBases, shouldProbeWebLogin } from "./e2e-bases.mjs";
 
 applyDemoProxyEnvDefaults();
-const { apiBase, healthBase, webHealthBase } = resolveE2eBases();
+const e2eBases = resolveE2eBases();
+const { apiBase, healthBase, webHealthBase } = e2eBases;
 const PRODUCT_PREFIX = productBasePath();
 const PREFLIGHT_REQUEST_MS = Number.parseInt(
   process.env.E2E_STACK_PREFLIGHT_REQUEST_MS ?? "20000",
@@ -38,6 +39,19 @@ async function fetchJson(url, init = {}) {
   }
 }
 
+function parseJsonBody(text, label) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error(`${label}: empty response body`);
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`${label}: invalid JSON (${msg}) body=${trimmed.slice(0, 160)}`);
+  }
+}
+
 async function runMandatoryPreflight() {
   if (process.env.E2E_SKIP_STACK_PREFLIGHT === "1") {
     console.log("test-api: stack preflight skipped (E2E_SKIP_STACK_PREFLIGHT=1)");
@@ -54,13 +68,17 @@ async function runMandatoryPreflight() {
     blockedExit(`backend liveness unreachable at ${livenessUrl}: ${e instanceof Error ? e.message : e}`);
   }
 
-  try {
-    const { res } = await fetchJson(`${webHealthBase}/en/login`);
-    if (!res.ok) {
-      blockedExit(`frontend /en/login HTTP ${res.status}`);
+  if (shouldProbeWebLogin(e2eBases)) {
+    try {
+      const { res } = await fetchJson(`${webHealthBase}/en/login`);
+      if (!res.ok) {
+        blockedExit(`frontend /en/login HTTP ${res.status}`);
+      }
+    } catch (e) {
+      blockedExit(`frontend unreachable: ${e instanceof Error ? e.message : e}`);
     }
-  } catch (e) {
-    blockedExit(`frontend unreachable: ${e instanceof Error ? e.message : e}`);
+  } else {
+    console.log("test-api: web login preflight skipped (API-only environment)");
   }
 
   const loginUrl = `${apiBase}${PRODUCT_PREFIX}/auth/login`;
@@ -74,7 +92,7 @@ async function runMandatoryPreflight() {
     if (res.status !== 200) {
       blockedExit(`seed login HTTP ${res.status} ${text.slice(0, 160)}`);
     }
-    accessToken = JSON.parse(text).accessToken;
+    accessToken = parseJsonBody(text, "seed login").accessToken;
     if (!accessToken) {
       blockedExit("seed login missing accessToken");
     }
@@ -93,7 +111,7 @@ async function runMandatoryPreflight() {
     if (res.status !== 200) {
       blockedExit(`selectable models HTTP ${res.status} ${text.slice(0, 160)}`);
     }
-    const models = JSON.parse(text).models ?? [];
+    const models = parseJsonBody(text, "selectable CHAT models").models ?? [];
     const selectable = models.filter((m) => m.selectable && String(m.modelName ?? "").trim());
     if (selectable.length < 1) {
       blockedExit("no selectable CHAT models (check LiteLLM / model registry)");
@@ -108,7 +126,7 @@ async function runMandatoryPreflight() {
     if (res.status !== 200) {
       blockedExit(`projects list HTTP ${res.status} ${text.slice(0, 160)}`);
     }
-    const items = JSON.parse(text).items ?? [];
+    const items = parseJsonBody(text, "seed projects list").items ?? [];
     if (!items.some((p) => p.id === SEED_PROJECT_ID)) {
       blockedExit(`seed project fixture missing (id=${SEED_PROJECT_ID})`);
     }
@@ -129,7 +147,13 @@ function runPlaywrightApi(extraArgs = []) {
         "playwright",
         "test",
         "--project=api",
-        ...(process.env.RUN_CHAT_ACCEPTANCE === "1" ? [] : ["--grep-invert", "@chatAcceptance"]),
+        ...(process.env.RUN_CHAT_ACCEPTANCE === "1"
+          ? []
+          : [
+              "--grep-invert",
+              // Shallow API smoke only — live-stack closure suites need real LLM / LiteLLM (see e2e/api/README.md).
+              "@chatAcceptance|@ragCrit|@eightCase|@multiturn|@phaseCGateway|@phaseC|@critical|@providerRuntime",
+            ]),
         ...extraArgs,
       ],
       {

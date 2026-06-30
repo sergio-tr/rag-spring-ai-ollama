@@ -239,13 +239,15 @@ export async function runUiFullstackSmokeChecks(
     await expect(page.getByTestId("user-rag-config-form")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("rag-config-structured-form")).toBeVisible();
     const technicalDetails = page.getByTestId("settings-model-parameters-advanced");
-    await expect(technicalDetails.locator("summary")).toBeVisible();
+    const technicalSummary = technicalDetails.locator(":scope > summary");
+    await expect(technicalSummary).toBeVisible();
     expect(await technicalDetails.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false);
     const jsonOpen = await page
       .getByTestId("rag-config-advanced-json")
       .evaluate((el) => (el as HTMLDetailsElement).open)
       .catch(() => true);
-    await expect(page.locator("textarea")).not.toBeVisible();
+    await expect(page.getByTestId("assistant-global-persona-input")).toBeVisible();
+    await expect(page.getByLabel("Advanced configuration (JSON)")).not.toBeVisible();
     const mainText = await page.locator("main").innerText();
     const pass =
       !jsonOpen && !/\{[\s\S]*"schemaVersion"/.test(mainText) && !mainText.includes("rag.llm.");
@@ -291,7 +293,7 @@ export async function runUiFullstackSmokeChecks(
     checks.push({
       id: "chat-model-selector-provider",
       description: "Selector chat muestra modelos del provider efectivo",
-      pass: /Configured API catalog|Local model server/i.test(providerText),
+      pass: /Configured model provider|Local model provider/i.test(providerText),
       evidence: providerText,
     });
 

@@ -21,7 +21,7 @@ import {
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.docs/evidence/wave-2-current/w2-rag/exports",
+  "../../../docs/evidence/wave-2-current/w2-rag/exports",
 );
 
 test.describe("Closure LAB RAG knowledge-base evaluation @closure @fullstack @wave2", () => {

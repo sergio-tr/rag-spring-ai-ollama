@@ -62,7 +62,7 @@ export function apiBaseUrl(): string {
 
 /** Actuator health at servlet root (proxied as {origin}/actuator/*, not under /api/v5). */
 export function actuatorHealthUrl(suffix = ""): string {
-  const base = (process.env.E2E_BACKEND_HEALTH_URL ?? publicBaseUrl())
+  const base = (process.env.E2E_BACKEND_HEALTH_URL ?? apiBaseUrl())
     .replace(/\/$/, "")
     .replace(/\/api\/v5\/?$/i, "");
   const path = suffix.startsWith("/") ? suffix : suffix ? `/${suffix}` : "";

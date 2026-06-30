@@ -20,7 +20,7 @@ import { authHeadersFromPage, productApiUrl } from "../support/helpers";
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.docs/evidence/p0-lab-rag-runtime-closure/progress",
+  "../../../docs/evidence/p0-lab-rag-runtime-closure/progress",
 );
 
 function evidenceLog(line: string): void {

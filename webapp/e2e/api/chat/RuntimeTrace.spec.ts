@@ -12,7 +12,7 @@ import * as path from "node:path";
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.docs/evidence/sprint-s4-fullstack-runtime-closure-20260628/04_memory_runtime_closure",
+  "../../../../docs/evidence/sprint-s4-fullstack-runtime-closure-20260628/04_memory_runtime_closure",
 );
 
 const TURNS = [
