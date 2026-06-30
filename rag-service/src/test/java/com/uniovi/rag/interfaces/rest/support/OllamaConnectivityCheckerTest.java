@@ -2,7 +2,9 @@ package com.uniovi.rag.interfaces.rest.support;
 
 import com.uniovi.rag.domain.exception.ErrorCode;
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.infrastructure.health.RagHealthProperties;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import com.uniovi.rag.infrastructure.llm.ollama.OllamaApiClient;
 import com.uniovi.rag.infrastructure.llm.ollama.OllamaModelProvisioningService;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +18,7 @@ import static org.mockito.Mockito.*;
 class OllamaConnectivityCheckerTest {
 
     private RagHealthProperties healthProperties;
+    private LlmProperties llmProperties;
     private OllamaApiClient ollamaApiClient;
     private OllamaModelProvisioningService provisioningService;
     private OllamaConnectivityChecker checker;
@@ -23,9 +26,10 @@ class OllamaConnectivityCheckerTest {
     @BeforeEach
     void setUp() {
         healthProperties = mock(RagHealthProperties.class);
+        llmProperties = new LlmProperties();
         ollamaApiClient = mock(OllamaApiClient.class);
         provisioningService = mock(OllamaModelProvisioningService.class);
-        checker = new OllamaConnectivityChecker(healthProperties, ollamaApiClient, provisioningService);
+        checker = new OllamaConnectivityChecker(healthProperties, llmProperties, ollamaApiClient, provisioningService);
     }
 
     @Test
@@ -58,7 +62,7 @@ class OllamaConnectivityCheckerTest {
         when(ollamaApiClient.ping()).thenThrow(new InterruptedException("stop"));
 
         assertFalse(checker.isOllamaReachable());
-        assertTrue(Thread.interrupted()); // clear flag for other tests
+        assertTrue(Thread.interrupted());
     }
 
     @Test
@@ -72,6 +76,17 @@ class OllamaConnectivityCheckerTest {
     @Test
     void prepareForQuery_whenOllamaDisabled_doesNothing() throws Exception {
         when(healthProperties.isOllamaEnabled()).thenReturn(false);
+
+        checker.prepareForQuery("m");
+
+        verify(ollamaApiClient, never()).ping();
+        verify(provisioningService, never()).ensureChatAndEmbeddingModelsPresent(any());
+    }
+
+    @Test
+    void prepareForQuery_openAiOnlyProviders_skipsOllamaChecks() throws Exception {
+        llmProperties.setDefaultProvider(LlmProvider.OPENAI_COMPATIBLE);
+        when(healthProperties.isOllamaEnabled()).thenReturn(true);
 
         checker.prepareForQuery("m");
 

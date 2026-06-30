@@ -72,6 +72,19 @@ public class RagHealthProperties {
         this.readTimeoutMs = readTimeoutMs;
     }
 
+    /**
+     * When true, readiness stays UP if only OpenAI-compatible embeddings fail (chat-only degraded mode).
+     */
+    private boolean chatOnlyMode = false;
+
+    public boolean isChatOnlyMode() {
+        return chatOnlyMode;
+    }
+
+    public void setChatOnlyMode(boolean chatOnlyMode) {
+        this.chatOnlyMode = chatOnlyMode;
+    }
+
     public boolean isClassifierRequireModelLoaded() {
         return classifierRequireModelLoaded;
     }
