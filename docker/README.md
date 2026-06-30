@@ -259,6 +259,7 @@ Options:
 
 - Use `./docker/scripts/up.sh prod --obs --no-env-prompt` to include `compose.obs.yml` and **`--profile observability`** (OTEL, Jaeger, Prometheus, Grafana).
 - Use `./docker/scripts/up.sh prod --obs --obs-private --no-env-prompt` when you need observability but do not want Jaeger/Prometheus/Grafana published on host ports.
+- **Production server (university VM):** `./docker/scripts/up.sh prod --server --obs --obs-private --no-env-prompt` merges `compose.prod-server.yml` (reverse-proxy only public entry; Spring profile `prod,docker,infra`; LiteLLM-only; no Mailpit). Used by [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) on the self-hosted runner.
 - `--gpu` or `--ollama`: adds **`--profile ollama`** only when the NVIDIA runtime is available (requires `ollama/.env` and NVIDIA Container Toolkit).
 - `--volumes` (only `down.sh`): also remove named volumes
 
