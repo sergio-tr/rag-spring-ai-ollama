@@ -363,11 +363,11 @@ if [ "$MODE" = dev ]; then
   if [ "$WITH_RAG_BACKEND" = true ]; then
     echo "  Backend:     in Docker (backend-dev) — hot reload via DevTools. Container port ${SERVER_PORT:-9000}."
     if [ "$WITH_DEV_PROXY" = true ]; then
-      _https_port="${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}"
+      _https_port="${REVERSE_PROXY_DEV_HTTPS_PORT:-8443}"
       if [ "${REVERSE_PROXY_ENFORCE_HTTPS:-0}" = "1" ]; then
-        echo "               Entry: https://127.0.0.1:${_https_port}/ (self-signed; HTTP :${REVERSE_PROXY_DEV_HTTP_PORT:-80} redirects)."
+        echo "               Entry: https://127.0.0.1:${_https_port}/ (self-signed; HTTP :${REVERSE_PROXY_DEV_HTTP_PORT:-8080} redirects)."
       else
-        echo "               Entry: http://127.0.0.1:${REVERSE_PROXY_DEV_HTTP_PORT:-80}/ (HTTPS optional: https://127.0.0.1:${_https_port}/)."
+        echo "               Entry: http://127.0.0.1:${REVERSE_PROXY_DEV_HTTP_PORT:-8080}/ (HTTPS optional: https://127.0.0.1:${_https_port}/)."
       fi
       echo "               API + BFF via nginx (NEXT_PUBLIC_API_BASE_URL empty = same-origin ${NEXT_PUBLIC_RAG_API_PREFIX:-/api/v5})."
     else
@@ -402,7 +402,7 @@ if [ "$MODE" = dev ]; then
     echo "Mailpit SMTP:         127.0.0.1:${MAILPIT_SMTP_PORT:-1025} (in-stack host: mailpit:1025)"
     if [ "$WITH_RAG_BACKEND" = true ]; then
       if [ "$WITH_DEV_PROXY" = true ]; then
-        echo "Auth email links:     set RAG_AUTH_WEBAPP_BASE_URL=http://127.0.0.1 (or https://127.0.0.1:${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}) in rag-service/.env"
+        echo "Auth email links:     set RAG_AUTH_WEBAPP_BASE_URL=http://127.0.0.1 (or https://127.0.0.1:${REVERSE_PROXY_DEV_HTTPS_PORT:-8443}) in rag-service/.env"
       else
         echo "Auth email links:     set RAG_AUTH_WEBAPP_BASE_URL to match how you open the webapp (see WEBAPP_HTTP_PORT in webapp/.env)"
       fi

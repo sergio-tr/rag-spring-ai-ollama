@@ -1,0 +1,27 @@
+# OpenSSL request configuration template (reference).
+# generate-self-signed-cert.sh builds the final config dynamically so empty SAN entries are omitted.
+[req]
+default_bits = 4096
+prompt = no
+default_md = sha256
+x509_extensions = v3_req
+distinguished_name = dn
+
+[dn]
+C = ${TLS_CERT_COUNTRY}
+ST = ${TLS_CERT_STATE}
+L = ${TLS_CERT_LOCALITY}
+O = ${TLS_CERT_ORGANIZATION}
+OU = ${TLS_CERT_ORGANIZATIONAL_UNIT}
+CN = ${TLS_CERT_COMMON_NAME}
+
+[v3_req]
+subjectAltName = @alt_names
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+
+[alt_names]
+DNS.1 = ${TLS_CERT_DNS_1}
+DNS.2 = ${TLS_CERT_DNS_2}
+DNS.3 = ${TLS_CERT_DNS_3}
+IP.1 = ${TLS_CERT_IP_1}

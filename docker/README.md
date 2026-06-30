@@ -332,14 +332,16 @@ Keep a copy of the repo (e.g. `/opt/rag-spring-ai-ollama`):
 
 > Note: if the backend is not exposed directly (only via reverse proxy), use the reverse-proxy published port (`REVERSE_PROXY_HTTP_PORT` defaults to **80** in `compose.prod.yml`; HTTPS uses `REVERSE_PROXY_HTTPS_PORT`, default **8443** until TLS on **443** is wired).
 
-### HTTPS certificate policy (local/prod-like)
+### HTTPS certificate policy (local / production)
 
-- The reverse-proxy image generates a self-signed certificate by default for local/prod-like testing.
-- You can provide certificate paths with:
-  - `TLS_CERT_PATH`
-  - `TLS_KEY_PATH`
-- Do not commit certificate files or private keys to this repository.
-- For production issuance/renewal with external accounts (ACME, cloud certificates), document operational steps outside this branch scope.
+- The reverse-proxy container generates a **self-signed** certificate at **startup** when `tls.crt` / `tls.key` are missing (see [`../reverse-proxy/README.md`](../reverse-proxy/README.md)).
+- SAN entries are configured with `TLS_CERT_DNS_*`, `TLS_CERT_IP_*`, and `TLS_CERT_COMMON_NAME`.
+- Certificates persist in Docker volume **`reverse_proxy_certs`** mounted at `/etc/nginx/certs`.
+- **Local dev** (`dev --proxy`): HTTP `http://localhost:8080`, HTTPS `https://localhost:8443`, redirect off by default.
+- **Production**: set `REVERSE_PROXY_HTTP_PORT=80`, `REVERSE_PROXY_HTTPS_PORT=443`, `REVERSE_PROXY_ENFORCE_HTTPS=1`, `REVERSE_PROXY_HTTPS_PORT_SUFFIX=` (empty), and university hostname SANs. Open port **443** on the host firewall.
+- Browsers warn on self-signed certs unless trusted manually; use a CA-signed certificate for public production (mount into the cert volume).
+- **Google OAuth** redirect URIs must match the exact production HTTPS callback URL.
+- Override paths with `TLS_CERT_PATH` and `TLS_KEY_PATH`. Do not commit keys to the repository.
 
 ### Log rotation and volumes
 
@@ -350,6 +352,7 @@ Keep a copy of the repo (e.g. `/opt/rag-spring-ai-ollama`):
    - `prometheus_data`
    - `grafana_data`
    - `ollama_data`
+   - `reverse_proxy_certs`
 3. Backups:
    - Use `db/scripts/backup-db.sh` / `db/scripts/restore-db.sh` for PostgreSQL.
 
