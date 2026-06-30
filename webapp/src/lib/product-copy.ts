@@ -102,7 +102,7 @@ export const FORBIDDEN_PRIMARY_UI_PATTERNS: RegExp[] = [
   /\bM9 experimental evidence\b/i,
   /\bM10\b|\bM11\b|\bM12\b|\bM9\b/i,
   /claim map/i,
-  /\.cursor/i,
+  /docs/i,
   /handoff/i,
   /\bTFG\b/i,
   /Jaeger verified/i,

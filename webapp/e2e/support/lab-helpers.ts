@@ -194,7 +194,7 @@ export const FORBIDDEN_LAB_UI_PATTERNS: RegExp[] = [
   /\bM9\b|\bM10\b|\bM11\b|\bM12\b/i,
   /\bTFG\b/i,
   /claim map/i,
-  /\.cursor/i,
+  /docs/i,
   /Jaeger verified/i,
   /RAG ladder complete/i,
   /Do not claim/i,

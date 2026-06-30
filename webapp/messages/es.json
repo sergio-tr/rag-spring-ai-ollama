@@ -759,7 +759,7 @@
     "benchmarkExportV1ResultsJson": "Exportar results.json",
     "benchmarkExportV1SummaryCsv": "Exportar summary.csv",
     "benchmarkExportV1FullBundle": "Exportar paquete completo (.zip)",
-    "benchmarkExportMvpItemsJson": "Exportar ítems (.json) [legacy]",
+    "benchmarkExportMvpItemsJson": "Exportar ítems (.json)",
     "benchmarkExportMvpRollupsJson": "Exportar agregados (.json)",
     "benchmarkExportCampaignItemsJson": "Exportar campaña ítems (.json)",
     "benchmarkExportCampaignSummaryJson": "Exportar resumen de campaña (.json)",

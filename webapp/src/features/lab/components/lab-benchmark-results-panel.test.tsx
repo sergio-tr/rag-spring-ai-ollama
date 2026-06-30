@@ -259,7 +259,7 @@ describe("LabBenchmarkResultsPanel", () => {
     expect(screen.queryByTestId("lab-benchmark-m9-export-path")).not.toBeInTheDocument();
     expect(screen.queryByText(/\bM9\b/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/partial evidence/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/\.cursor/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/docs/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Do not claim/i)).not.toBeInTheDocument();
   });
 

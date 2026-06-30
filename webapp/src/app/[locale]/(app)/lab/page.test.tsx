@@ -318,7 +318,7 @@ describe("LabOverviewPage", () => {
     expect(screen.queryByTestId("lab-m9-limitation-banner")).not.toBeInTheDocument();
     expect(screen.queryByTestId("lab-m9-evidence-panel")).not.toBeInTheDocument();
     expect(screen.queryByText(/M9 experimental evidence/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/\.cursor/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/docs/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Do not claim/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Research Lab is ready/i)).not.toBeInTheDocument();
     expect(screen.getAllByText(/Enabled/i).length).toBeGreaterThan(0);

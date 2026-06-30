@@ -826,7 +826,7 @@
     "benchmarkExportV1ResultsJson": "Export results.json",
     "benchmarkExportV1SummaryCsv": "Export summary.csv",
     "benchmarkExportV1FullBundle": "Export full bundle (.zip)",
-    "benchmarkExportMvpItemsJson": "Export items (.json) [legacy]",
+    "benchmarkExportMvpItemsJson": "Export items (.json)",
     "benchmarkExportMvpRollupsJson": "Export rollups (.json)",
     "benchmarkExportCampaignItemsJson": "Export campaign items (.json)",
     "benchmarkExportCampaignSummaryJson": "Export campaign summary (.json)",
