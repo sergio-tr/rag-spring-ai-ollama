@@ -519,4 +519,65 @@ describe("RegisterForm", () => {
     await user.click(screen.getByRole("button", { name: /^Register$/i }));
     await vi.waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
   });
+
+  it("includes active legal document versions in the register payload", async () => {
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "false");
+    vi.stubEnv("NEXT_PUBLIC_LEGAL_PRIVACY_VERSION", "2026-06-21");
+    vi.stubEnv("NEXT_PUBLIC_LEGAL_TERMS_VERSION", "2026-06-21");
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      status: "REGISTERED",
+      login: {
+        accessToken: "a",
+        refreshToken: "r",
+        user: { id: "1", email: "e@e.com", name: "n", role: "USER" },
+      },
+    });
+    render(
+      <IntlTestProvider>
+        <RegisterForm />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/display name/i), "N");
+    await user.type(screen.getByLabelText(/email/i), "a@b.com");
+    await user.type(screen.getByLabelText(/^password$/i), "secret12");
+    await user.type(screen.getByLabelText(/repeat password/i), "secret12");
+    await user.click(screen.getByRole("checkbox", { name: /privacy policy/i }));
+    await user.click(screen.getByRole("checkbox", { name: /terms and conditions/i }));
+    await user.click(screen.getByRole("button", { name: /^Register$/i }));
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    const [, options] = vi.mocked(apiFetch).mock.calls[0] ?? [];
+    const body = JSON.parse(String(options?.body));
+    expect(body.privacyPolicyVersion).toBe("2026-06-21");
+    expect(body.termsVersion).toBe("2026-06-21");
+    expect(body.acceptedPrivacyPolicy).toBe(true);
+    expect(body.acceptedTerms).toBe(true);
+  });
+
+  it("shows legal version mismatch message when backend rejects outdated versions", async () => {
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "false");
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockRejectedValueOnce(
+      new ApiError(400, "Privacy policy version mismatch", {
+        parsedJson: { code: "PRIVACY_VERSION_MISMATCH" },
+      }),
+    );
+    render(
+      <IntlTestProvider>
+        <RegisterForm />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/display name/i), "N");
+    await user.type(screen.getByLabelText(/email/i), "a@b.com");
+    await user.type(screen.getByLabelText(/^password$/i), "secret12");
+    await user.type(screen.getByLabelText(/repeat password/i), "secret12");
+    await user.click(screen.getByRole("checkbox", { name: /privacy policy/i }));
+    await user.click(screen.getByRole("checkbox", { name: /terms and conditions/i }));
+    await user.click(screen.getByRole("button", { name: /^Register$/i }));
+    await vi.waitFor(() =>
+      expect(
+        screen.getByText(/legal document versions are out of date/i),
+      ).toBeInTheDocument(),
+    );
+  });
 });

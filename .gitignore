@@ -26,8 +26,7 @@ HELP.md
 /nbdist/
 /.nb-gradle/
 build/
-target/
-target-*/
+target*/
 bin/
 # Java coverage (local HTML report; XML is committed to allow CI to upload)
 rag-service/target/site/jacoco/
