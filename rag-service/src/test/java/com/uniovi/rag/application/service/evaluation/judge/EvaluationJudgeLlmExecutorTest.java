@@ -122,6 +122,36 @@ class EvaluationJudgeLlmExecutorTest {
     }
 
     @Test
+    void emptyResponseRetriesThenReturnsStructuredFailure() throws Exception {
+        when(llmClientResolver.resolveChatClient(any())).thenReturn(openAiChatClient);
+        when(openAiChatClient.chat(any()))
+                .thenReturn(LlmChatResponse.ofContent(""))
+                .thenReturn(LlmChatResponse.ofContent(""));
+
+        try (var ignored = EvaluationJudgeExecutionScope.open(USER_ID, null)) {
+            EvaluationJudgeCallResult result = executor.completeJudgeUserPromptResult("prompt");
+            assertThat(result.judgeFailed()).isTrue();
+            assertThat(result.judgeFailureReason())
+                    .isEqualTo(EvaluationJudgeException.ERROR_CODE_EMPTY_RESPONSE);
+            assertThat(result.content()).isEmpty();
+        }
+    }
+
+    @Test
+    void emptyResponseRetrySucceedsOnSecondAttempt() throws Exception {
+        when(llmClientResolver.resolveChatClient(any())).thenReturn(openAiChatClient);
+        when(openAiChatClient.chat(any()))
+                .thenReturn(LlmChatResponse.ofContent(""))
+                .thenReturn(LlmChatResponse.ofContent("Correctness: 4 - Justification: ok"));
+
+        try (var ignored = EvaluationJudgeExecutionScope.open(USER_ID, null)) {
+            EvaluationJudgeCallResult result = executor.completeJudgeUserPromptResult("prompt");
+            assertThat(result.judgeFailed()).isFalse();
+            assertThat(result.content()).contains("Correctness");
+        }
+    }
+
+    @Test
     void evaluationModelSourceDoesNotUseProductDemoModelAsTruth() {
         LlmModelCatalogService catalog = LlmModelCatalogTestSupport.catalogFrom(properties);
         String resolved = executor.resolveJudgeModelId(USER_ID);

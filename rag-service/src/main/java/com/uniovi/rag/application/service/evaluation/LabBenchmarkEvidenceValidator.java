@@ -97,6 +97,7 @@ public class LabBenchmarkEvidenceValidator {
                         0,
                         0,
                         totalRows,
+                        0,
                         skippedMissing,
                         notSupportedMissing);
         return validateTally(merged);
@@ -143,6 +144,7 @@ public class LabBenchmarkEvidenceValidator {
                         0,
                         0,
                         totalRows,
+                        0,
                         false,
                         false);
         return merged.toClosureMap();

@@ -64,6 +64,24 @@ public class EvaluationJudgeLlmExecutor {
     }
 
     public String completeJudgeUserPrompt(String userPrompt) {
+        EvaluationJudgeCallResult result = completeJudgeUserPromptResult(userPrompt);
+        if (result.judgeFailed()) {
+            if (EvaluationJudgeException.ERROR_CODE_EMPTY_RESPONSE.equals(result.judgeFailureReason())) {
+                throw EvaluationJudgeException.emptyResponse(result.judgeProvider(), result.judgeModel());
+            }
+            throw EvaluationJudgeException.invocationFailed(
+                    result.judgeProvider(),
+                    result.judgeModel(),
+                    new RuntimeException(result.judgeFailureReason()));
+        }
+        return result.content();
+    }
+
+    /**
+     * Invokes the judge with one empty-response retry at lower temperature, returning structured degradation
+     * instead of throwing when the judge still returns no content.
+     */
+    public EvaluationJudgeCallResult completeJudgeUserPromptResult(String userPrompt) {
         UUID userId = resolveUserId();
         TaskLlmConfigResolver.SecondaryCallConfig call =
                 taskLlmConfigResolver.resolveSecondaryCall(userId, null, "evaluation-judge", null, null);
@@ -82,16 +100,49 @@ public class EvaluationJudgeLlmExecutor {
                 call.taskOverrideApplied());
 
         try {
-            LlmChatClient client = llmClientResolver.resolveChatClient(judgeConfig);
+            String content = invokeJudgeOnce(judgeConfig, judgeModel, userPrompt, false);
+            return EvaluationJudgeCallResult.success(content);
+        } catch (EvaluationJudgeException first) {
+            if (!EvaluationJudgeException.ERROR_CODE_EMPTY_RESPONSE.equals(first.errorCode())) {
+                return EvaluationJudgeCallResult.failed(
+                        first.errorCode(), first.judgeProvider(), first.judgeModel());
+            }
+            log.warn(
+                    "Evaluation judge empty response; retrying once with lower temperature provider={} model={}",
+                    judgeConfig.chatProvider(),
+                    judgeModel);
+            try {
+                String retryContent = invokeJudgeOnce(judgeConfig, judgeModel, userPrompt, true);
+                return EvaluationJudgeCallResult.success(retryContent);
+            } catch (EvaluationJudgeException retry) {
+                String code =
+                        EvaluationJudgeException.ERROR_CODE_EMPTY_RESPONSE.equals(retry.errorCode())
+                                ? EvaluationJudgeException.ERROR_CODE_EMPTY_RESPONSE
+                                : retry.errorCode();
+                return EvaluationJudgeCallResult.failed(code, retry.judgeProvider(), retry.judgeModel());
+            }
+        }
+    }
+
+    private String invokeJudgeOnce(
+            ResolvedLlmConfig judgeConfig, String judgeModel, String userPrompt, boolean lowRiskRetry) {
+        try {
+            Double temperature = judgeConfig.temperature();
+            if (lowRiskRetry) {
+                temperature = temperature != null ? Math.min(temperature, 0.1) : 0.1;
+            }
+            ResolvedLlmConfig effective =
+                    lowRiskRetry ? withChatModelAndSampling(judgeConfig, judgeModel, temperature) : judgeConfig;
+            LlmChatClient client = llmClientResolver.resolveChatClient(effective);
             LlmChatResponse response =
                     client.chat(
                             LlmChatRequest.of(
                                     judgeModel,
                                     null,
                                     userPrompt,
-                                    judgeConfig.temperature(),
-                                    judgeConfig.timeoutMs(),
-                                    judgeConfig.additionalParameters()));
+                                    effective.temperature(),
+                                    effective.timeoutMs(),
+                                    effective.additionalParameters()));
             String content = response != null ? response.content() : null;
             if (content == null || content.isBlank()) {
                 throw EvaluationJudgeException.emptyResponse(judgeConfig.chatProvider(), judgeModel);

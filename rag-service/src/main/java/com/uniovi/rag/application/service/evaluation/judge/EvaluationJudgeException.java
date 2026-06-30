@@ -44,4 +44,12 @@ public final class EvaluationJudgeException extends RuntimeException {
         return new EvaluationJudgeException(
                 ERROR_CODE_EMPTY_RESPONSE, provider, model, ERROR_CODE_EMPTY_RESPONSE, null);
     }
+
+    public static EvaluationJudgeException fromErrorCode(String errorCode) {
+        String code =
+                errorCode != null && !errorCode.isBlank()
+                        ? errorCode.trim()
+                        : ERROR_CODE_INVOCATION_FAILED;
+        return new EvaluationJudgeException(code, null, null, code, null);
+    }
 }

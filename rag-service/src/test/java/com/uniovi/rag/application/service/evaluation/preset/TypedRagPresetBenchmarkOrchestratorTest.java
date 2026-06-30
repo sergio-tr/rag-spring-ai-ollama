@@ -125,7 +125,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         @SuppressWarnings("unchecked")
         ObjectProvider<LabJobProgressTracker> labJobProgressTracker = Mockito.mock(ObjectProvider.class);
         LabIndexSnapshotCompatibilityService indexSnapshotCompatibilityService =
-                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator);
+                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator, org.mockito.Mockito.mock(com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess.class));
         LabEvaluationSnapshotService labEvaluationSnapshotService =
                 new LabEvaluationSnapshotService(
                         knowledgeSnapshotService,
@@ -136,6 +136,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         corpusAvailabilityGate,
                         indexSnapshotCompatibilityService,
                         knowledgeIndexSnapshotRepository,
+                        org.mockito.Mockito.mock(com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess.class),
                         evaluationRunRepository,
                         projectRepository,
                         labJobProgressTracker);

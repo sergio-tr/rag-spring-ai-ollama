@@ -18,6 +18,8 @@ import com.uniovi.rag.application.service.evaluation.preset.CampaignParentOutcom
 import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolBenchmarkContext;
 import com.uniovi.rag.application.service.knowledge.document.DocumentService;
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeCallResult;
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeException;
 import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor;
 import com.uniovi.rag.application.service.runtime.ChatExecutionTelemetryMapper;
 import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
@@ -217,9 +219,16 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             QueryResponse queryResponse = queryServiceToUse.generateResponse(questionText);
             String llmResponse =
                     queryResponse != null && queryResponse.getAnswer() != null ? queryResponse.getAnswer() : "";
-            String evaluation = evaluateResponse(questionText, correctAnswer, llmResponse);
+            EvaluationJudgeCallResult judgeResult =
+                    evaluateJudgeWithDegradation(questionText, correctAnswer, llmResponse);
             LlmJudgeItemResult result =
-                    buildEvalQuestionResult(questionText, correctAnswer, llmResponse, evaluation, queryResponse)
+                    buildEvalQuestionResult(
+                                    questionText,
+                                    correctAnswer,
+                                    llmResponse,
+                                    judgeResult.content(),
+                                    queryResponse,
+                                    judgeResult)
                             .datasetQuestionId(q.id())
                             .itemOutcome(BenchmarkItemOutcome.EXECUTED)
                             .build();
@@ -266,9 +275,16 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 String llmResponse =
                         queryResponse != null && queryResponse.getAnswer() != null ? queryResponse.getAnswer() : "";
                 CampaignParentOutcomeRecorder.maybeRecord(q.id(), queryResponse, llmResponse);
-                String evaluation = evaluateResponse(questionText, correctAnswer, llmResponse);
+                EvaluationJudgeCallResult judgeResult =
+                        evaluateJudgeWithDegradation(questionText, correctAnswer, llmResponse);
                 LlmJudgeItemResult.Builder builder =
-                        buildEvalQuestionResult(questionText, correctAnswer, llmResponse, evaluation, queryResponse)
+                        buildEvalQuestionResult(
+                                        questionText,
+                                        correctAnswer,
+                                        llmResponse,
+                                        judgeResult.content(),
+                                        queryResponse,
+                                        judgeResult)
                                 .datasetQuestionId(q.id())
                                 .itemOutcome(BenchmarkItemOutcome.EXECUTED)
                                 .latencyMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0))
@@ -285,12 +301,13 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 resultsForPrompt.add(result);
                 logEvalQuestion(questionText, queryResponse, result);
             } catch (RuntimeException ex) {
+                String partialAnswer = "";
                 LlmJudgeItemResult.Builder builder =
-                        buildEvalQuestionResult(questionText, correctAnswer, "", "", null)
+                        buildEvalQuestionResult(questionText, correctAnswer, partialAnswer, "", null, null)
                                 .datasetQuestionId(q.id())
                                 .itemOutcome(BenchmarkItemOutcome.FAILED)
                                 .latencyMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0))
-                                .errorCode(ex.getClass().getSimpleName())
+                                .errorCode(ex instanceof EvaluationJudgeException judgeEx ? judgeEx.errorCode() : ex.getClass().getSimpleName())
                                 .errorMessage(
                                         ex.getMessage() != null && !ex.getMessage().isBlank()
                                                 ? ex.getMessage()
@@ -346,6 +363,17 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             String llmResponse,
             String evaluation,
             QueryResponse queryResponse) {
+        return buildEvalQuestionResult(question, correctAnswer, llmResponse, evaluation, queryResponse, null);
+    }
+
+    private static LlmJudgeItemResult.Builder buildEvalQuestionResult(
+            String question,
+            String correctAnswer,
+            String llmResponse,
+            String evaluation,
+            QueryResponse queryResponse,
+            EvaluationJudgeCallResult judgeResult) {
+        Map<String, Object> labMetrics = judgeMetricsPayload(judgeResult);
         return LlmJudgeItemResult.builder()
                 .question(question)
                 .correctAnswer(correctAnswer)
@@ -356,7 +384,37 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                         queryResponse != null && queryResponse.getQueryType() != null
                                 ? queryResponse.getQueryType().name()
                                 : null)
-                .usedTool(queryResponse != null && queryResponse.isUsedTool());
+                .usedTool(queryResponse != null && queryResponse.isUsedTool())
+                .labMetricsPayload(labMetrics);
+    }
+
+    private static Map<String, Object> judgeMetricsPayload(EvaluationJudgeCallResult judgeResult) {
+        if (judgeResult == null || !judgeResult.judgeFailed()) {
+            return Map.of();
+        }
+        Map<String, Object> metrics = new LinkedHashMap<>();
+        metrics.put(BenchmarkResultRowKeys.JUDGE_STATUS, EvaluationJudgeCallResult.STATUS_FAILED);
+        if (judgeResult.judgeFailureReason() != null && !judgeResult.judgeFailureReason().isBlank()) {
+            metrics.put(BenchmarkResultRowKeys.JUDGE_FAILURE_REASON, judgeResult.judgeFailureReason());
+        }
+        return Map.copyOf(metrics);
+    }
+
+    protected EvaluationJudgeCallResult evaluateJudgeWithDegradation(
+            String question, String correctAnswer, String llmResponse) {
+        String q = question != null ? question : "";
+        String ca = correctAnswer != null ? correctAnswer : "";
+        String gen = llmResponse != null ? llmResponse : "";
+        if (evaluationJudgeLlmExecutor != null) {
+            String prompt = evaluationJudgeLlmExecutor.buildJudgeUserPrompt(q, ca, gen);
+            return evaluationJudgeLlmExecutor.completeJudgeUserPromptResult(prompt);
+        }
+        try {
+            String evaluation = evaluateResponse(q, ca, gen);
+            return EvaluationJudgeCallResult.success(evaluation != null ? evaluation : "");
+        } catch (EvaluationJudgeException ex) {
+            return EvaluationJudgeCallResult.failed(ex.errorCode());
+        }
     }
 
     private void logEvalQuestion(String question, QueryResponse queryResponse, LlmJudgeItemResult result) {

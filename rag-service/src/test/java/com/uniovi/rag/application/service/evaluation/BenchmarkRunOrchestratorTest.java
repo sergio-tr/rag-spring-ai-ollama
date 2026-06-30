@@ -266,7 +266,7 @@ class BenchmarkRunOrchestratorTest {
     @Test
     void startJsonBenchmark_ragRejectsInvalidPresetConfigAfterCorpusReady() {
         LabIndexSnapshotCompatibilityService indexSnapshotCompatibilityService =
-                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator);
+                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator, org.mockito.Mockito.mock(com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess.class));
         LabBenchmarkConfigPreflightService realPreflight =
                 new LabBenchmarkConfigPreflightService(
                         new RagFeatureConfiguration(),
@@ -277,7 +277,9 @@ class BenchmarkRunOrchestratorTest {
                         projectIndexProfileService,
                         labIndexProfileOverrideFactory,
                         corpusAvailabilityGate,
-                        org.mockito.Mockito.mock(EvaluationModelCatalogService.class));
+                        org.mockito.Mockito.mock(EvaluationModelCatalogService.class),
+                        org.mockito.Mockito.mock(com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository.class),
+                        org.mockito.Mockito.mock(com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess.class));
         BenchmarkRunOrchestrator orch =
                 new BenchmarkRunOrchestrator(
                         userRepository,
@@ -1920,7 +1922,7 @@ class BenchmarkRunOrchestratorTest {
     }
 
     @Test
-    void startJsonBenchmark_p0Only_acceptsWithoutCorpusId() throws Exception {
+    void startJsonBenchmark_p0Only_rejectsWithoutCorpusId() throws Exception {
         BenchmarkRunOrchestrator orch =
                 new BenchmarkRunOrchestrator(
                         userRepository,
@@ -2009,13 +2011,14 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         List.of(), List.of(), null, null);
 
-        BenchmarkJobAccepted accepted =
-                orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req);
-
-        assertThat(accepted.evaluationRunId()).isNotNull();
-        assertThat(accepted.asyncTaskId()).isEqualTo(taskId);
+        assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(
+                        ex ->
+                                assertThat(((ResponseStatusException) ex).getReason())
+                                        .isEqualTo(EvaluationCorpusApplicationService.NO_CORPUS_SELECTED));
         verify(evaluationCorpusReadinessService, never()).getReadiness(any(), any());
-        verify(asyncTaskService).submitEvalRag(eq(userId), any(), eq(accepted.evaluationRunId()));
+        verify(asyncTaskService, never()).submitEvalRag(any(), any(), any());
     }
 
     private static byte[] demoReferenceBundleBytes() throws Exception {

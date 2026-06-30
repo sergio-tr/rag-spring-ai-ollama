@@ -82,6 +82,8 @@ public final class BenchmarkMvpMetricsCalculator {
         generation.put("faithfulness", normalizedJudgeScore(mp, "groundedness"));
         generation.put("sourceSupport", normalizedJudgeScore(mp, "context_sufficiency"));
         generation.put("dateCorrectness", dateCorrectness(mp));
+        putIfPresent(generation, mp, BenchmarkResultRowKeys.JUDGE_STATUS, "judgeStatus");
+        putIfPresent(generation, mp, BenchmarkResultRowKeys.JUDGE_FAILURE_REASON, "judgeFailureReason");
 
         Map<String, Object> operational = new LinkedHashMap<>();
         operational.put("latencyMs", item.getLatencyMs());
@@ -515,6 +517,17 @@ public final class BenchmarkMvpMetricsCalculator {
             return b;
         }
         return fallback;
+    }
+
+    private static void putIfPresent(
+            Map<String, Object> target, Map<String, Object> source, String sourceKey, String targetKey) {
+        if (source == null || !source.containsKey(sourceKey)) {
+            return;
+        }
+        Object value = source.get(sourceKey);
+        if (value != null && !String.valueOf(value).isBlank()) {
+            target.put(targetKey, value);
+        }
     }
 
     private static String str(Object o) {

@@ -1167,7 +1167,7 @@ public class BenchmarkRunOrchestrator {
                     HttpStatus.BAD_REQUEST,
                     "AUTO_REINDEX_UNSUPPORTED_FOR_BENCHMARK_KIND: autoReindex is only supported for RAG_PRESET_END_TO_END");
         }
-        if (request.corpusId() == null && !ExperimentalPresetCanonicalCatalog.allCanRunWithoutCorpus(request.experimentalPresetCodes())) {
+        if (request.corpusId() == null) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     EvaluationCorpusApplicationService.NO_CORPUS_SELECTED + ": autoReindex requires corpusId");
@@ -1184,9 +1184,6 @@ public class BenchmarkRunOrchestrator {
             return;
         }
         if (request == null || request.corpusId() == null) {
-            if (ExperimentalPresetCanonicalCatalog.allCanRunWithoutCorpus(request != null ? request.experimentalPresetCodes() : null)) {
-                return;
-            }
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, EvaluationCorpusApplicationService.NO_CORPUS_SELECTED);
         }

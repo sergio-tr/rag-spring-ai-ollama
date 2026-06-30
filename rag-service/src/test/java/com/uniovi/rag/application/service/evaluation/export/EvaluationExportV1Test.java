@@ -260,6 +260,28 @@ class EvaluationExportV1Test {
     }
 
     @Test
+    void includesJudgeFailureReason() {
+        EvaluationRunEntity run = baseOpenAiRun();
+        EvaluationResultEntity item = executedItem(run);
+        Map<String, Object> metrics = new LinkedHashMap<>(item.getMetricsPayload());
+        metrics.put(BenchmarkResultRowKeys.JUDGE_STATUS, "FAILED");
+        metrics.put(
+                BenchmarkResultRowKeys.JUDGE_FAILURE_REASON,
+                "EVALUATION_JUDGE_EMPTY_RESPONSE");
+        item.setMetricsPayload(metrics);
+
+        Map<String, Object> json = EvaluationExportV1Builder.buildResultsJson(run, List.of(item));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> results = (List<Map<String, Object>>) json.get("results");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> generation = (Map<String, Object>) results.getFirst().get("metrics");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> gen = (Map<String, Object>) generation.get("generation");
+        assertThat(gen.get("judgeFailureReason")).isEqualTo("EVALUATION_JUDGE_EMPTY_RESPONSE");
+        assertThat(gen.get("judgeStatus")).isEqualTo("FAILED");
+    }
+
+    @Test
     void exportIncludesDerivedErrorClassWhenAvailable() {
         EvaluationRunEntity run = new EvaluationRunEntity();
         run.setId(UUID.randomUUID());
