@@ -5,6 +5,7 @@ import com.uniovi.rag.application.service.runtime.document.extraction.DocumentCo
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
+import com.uniovi.rag.util.NerDateFieldSupport;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -238,9 +239,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 if (ner.has(NER_KEY_FILTERS) && !ner.isNull(NER_KEY_FILTERS)) {
                     JSONObject filters = ner.getJSONObject(NER_KEY_FILTERS);
                     if (filters.has("date") && !filters.isNull("date")) {
-                        JSONArray dates = filters.getJSONArray("date");
-                        for (int i = 0; i < dates.length(); i++) {
-                            String dateStr = dates.getString(i);
+                        for (String dateStr : NerDateFieldSupport.readDateStrings(filters, "date")) {
                             // Extract year from date string
                             Pattern yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
                             Matcher matcher = yearPattern.matcher(dateStr);

@@ -1,23 +1,33 @@
 package com.uniovi.rag.tool.metadata;
 
+import com.uniovi.rag.application.port.llm.LlmChatClient;
+import com.uniovi.rag.application.port.llm.LlmChatRequest;
+import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.llm.LlmClientResolver;
+import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 /**
  * Holds {@link Cacheable} LLM calls so they are invoked through the Spring proxy (not {@code this}).
+ * Resolves {@link LlmChatClient} via {@link LlmClientResolver} from the effective {@link ResolvedLlmConfig}
+ * (orchestration scope when bound, otherwise application defaults) — never the Spring default Ollama {@code ChatClient}.
  */
 @Service
 public class MetadataLlmResponseCacheService {
 
     private static final Logger log = LoggerFactory.getLogger(MetadataLlmResponseCacheService.class);
 
-    private final ChatClient chatClient;
+    private final LlmClientResolver llmClientResolver;
+    private final ResolvedLlmConfigResolver resolvedLlmConfigResolver;
 
-    public MetadataLlmResponseCacheService(ChatClient chatClient) {
-        this.chatClient = chatClient;
+    public MetadataLlmResponseCacheService(
+            LlmClientResolver llmClientResolver, ResolvedLlmConfigResolver resolvedLlmConfigResolver) {
+        this.llmClientResolver = llmClientResolver;
+        this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
     }
 
     /**
@@ -65,6 +75,15 @@ public class MetadataLlmResponseCacheService {
         return "";
     }
 
+    /**
+     * Effective LLM config for metadata enrichment: per-turn orchestration binding when present,
+     * otherwise application defaults (same semantics as {@code ProviderAwareEmbeddingService}).
+     */
+    public ResolvedLlmConfig resolveEffectiveConfig() {
+        return OrchestrationLlmConfigScope.current()
+                .orElseGet(() -> resolvedLlmConfigResolver.resolve(null, null, null));
+    }
+
     private void sleepBeforeRetryIfNeeded(int attempt) throws InterruptedException {
         if (attempt > 0) {
             log.debug("Retry attempt {} for LLM call", attempt);
@@ -73,7 +92,17 @@ public class MetadataLlmResponseCacheService {
     }
 
     private String invokeLlm(String prompt) {
-        return chatClient.prompt().user(prompt).call().content();
+        ResolvedLlmConfig config = resolveEffectiveConfig();
+        LlmChatClient client = llmClientResolver.resolveChatClient(config);
+        LlmChatRequest request =
+                LlmChatRequest.of(
+                        config.chatModel(),
+                        null,
+                        prompt,
+                        config.temperature(),
+                        config.timeoutMs(),
+                        config.additionalParameters());
+        return client.chat(request).content();
     }
 
     private static void logLlmExceptionByKind(int attemptOneBased, Exception e) {

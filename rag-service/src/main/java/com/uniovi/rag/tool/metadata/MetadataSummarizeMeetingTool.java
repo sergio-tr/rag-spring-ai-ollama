@@ -59,42 +59,43 @@ import java.util.stream.Collectors;
             }
         }
 
-        List<Document> docs = retrieveDocumentsWithFallback(
-            query,
-            new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"},
-            ner
-        );
-        docs = mergeChunksByDocumentId(docs);
-        
-        // Validate date if present in query
+        String[] relevantFields =
+                new String[] {
+                    "date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"
+                };
         String requestedDate = extractDateFromQuery(query, ner);
-        if (requestedDate != null && docs.isEmpty()) {
-            // Date was specified but no documents match
-            String errorMessage = generateDateNotFoundMessage(query, requestedDate);
-            log().info("No documents found for specified date: {} in query: {}", requestedDate, query);
-            return ToolResult.from(formatResponse(errorMessage, query), getClass());
-        }
-        
-        if (docs.isEmpty()) {
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
-        }
-
-        List<Minute> minutes = extractMinutesInParallel(docs);
-        if (minutes.isEmpty()) {
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
-        }
-
         List<Minute> relevantMinutes;
         if (requestedDate != null) {
-            relevantMinutes = minutes;
+            List<Document> corpus =
+                    mergeChunksByDocumentId(retrieveCorpusDocumentsWithFallback(query, relevantFields));
+            relevantMinutes =
+                    mergeMinutesByDocumentId(
+                            filterMinutesByDate(query, ner, extractMinutesInParallel(corpus)));
+            if (relevantMinutes.isEmpty()) {
+                String errorMessage = generateDateNotFoundMessage(query, requestedDate);
+                log().info(
+                        "No minutes found for specified date: {} in query: {} (corpus scan)",
+                        requestedDate,
+                        query);
+                return ToolResult.from(formatResponse(errorMessage, query), getClass());
+            }
         } else {
+            List<Document> docs =
+                    mergeChunksByDocumentId(
+                            retrieveDocumentsWithFallback(query, relevantFields, ner));
+            if (docs.isEmpty()) {
+                return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+            }
+            List<Minute> minutes = extractMinutesInParallel(docs);
+            if (minutes.isEmpty()) {
+                return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+            }
             relevantMinutes = filterRelevantMinutes(query, minutes, ner);
+            if (relevantMinutes.isEmpty()) {
+                return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+            }
+            relevantMinutes = mergeMinutesByDocumentId(relevantMinutes);
         }
-        if (relevantMinutes.isEmpty()) {
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
-        }
-
-        relevantMinutes = mergeMinutesByDocumentId(relevantMinutes);
 
         if (StructuredMinuteMetadataSupport.isBriefDatedMeetingSummaryQuery(query)
                 && relevantMinutes.size() == 1) {

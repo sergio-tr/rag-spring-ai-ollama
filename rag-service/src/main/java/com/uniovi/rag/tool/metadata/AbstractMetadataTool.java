@@ -4,11 +4,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures;
+import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
 import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.AbstractTool;
 import com.uniovi.rag.tool.ToolResult;
 import com.uniovi.rag.util.DateParsingSupport;
+import com.uniovi.rag.util.NerDateFieldSupport;
 import com.uniovi.rag.util.RegexSafety;
 import java.text.Normalizer;
 import java.time.LocalDate;
@@ -28,6 +30,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.web.server.ResponseStatusException;
 
 public abstract class AbstractMetadataTool extends AbstractTool {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
@@ -2143,9 +2146,17 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     protected List<Document> retrieveDocumentsWithMetadataFilter(String query, String[] relevantFields, JSONObject nerEntities) {
-        List<Document> docs = (nerEntities != null && !nerEntities.isEmpty())
-                ? retriever.retrieveWithMetadataFilters(query, nerEntities)
-                : retriever.retrieve(query);
+        List<Document> docs;
+        try {
+            docs = (nerEntities != null && !nerEntities.isEmpty())
+                    ? retriever.retrieveWithMetadataFilters(query, nerEntities)
+                    : retriever.retrieve(query);
+        } catch (ResponseStatusException ex) {
+            if (EmbeddingIndexCompatibilityService.isIncompatibleIndexFailure(ex)) {
+                log().warn("Vector retrieval blocked (incompatible embedding index): {}", ex.getReason());
+            }
+            throw ex;
+        }
 
         List<Document> metadataDocs = docs.stream()
                 .filter(doc -> hasMetadataFields(doc, relevantFields))
@@ -3286,10 +3297,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             if (ner.has(NER_KEY_FILTERS) && !ner.isNull(NER_KEY_FILTERS)) {
                 JSONObject filters = ner.getJSONObject(NER_KEY_FILTERS);
                 if (filters.has("date") && !filters.isNull("date")) {
-                    JSONArray dates = filters.getJSONArray("date");
-                    Pattern yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
-                    for (int i = 0; i < dates.length(); i++) {
-                        String dateStr = dates.getString(i);
+                    for (String dateStr : NerDateFieldSupport.readDateStrings(filters, "date")) {
+                        Pattern yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
                         Matcher matcher = yearPattern.matcher(dateStr);
                         if (matcher.find()) {
                             String year = matcher.group(1);
@@ -4035,6 +4044,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     || normalizedHaystack.contains("modernizar el ascensor")
                     || normalizedHaystack.contains("reparar el ascensor");
         }
+        if (stem.contains("elevator")) {
+            return normalizedHaystack.contains("elevator")
+                    || normalizedHaystack.contains("ascensor")
+                    || normalizedHaystack.contains("mejora del ascensor")
+                    || normalizedHaystack.contains("modernizar el ascensor")
+                    || normalizedHaystack.contains("reparar el ascensor");
+        }
         if (stem.contains("videovigilancia") || stem.contains("vigilancia")) {
             return normalizedHaystack.contains("videovigilancia")
                     || normalizedHaystack.contains("vigilancia")
@@ -4323,7 +4339,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         retriever.setSimilarityThreshold(0.0);
         try {
             List<Document> docs =
-                    mergeChunksByDocumentId(retrieveDocumentsWithFallback(query, relevantFields, ner));
+                    mergeChunksByDocumentId(retrieveCorpusDocumentsWithFallback(query, relevantFields));
             return validateDateMatch(docs, requestedDate);
         } finally {
             retriever.restoreDefaultSettings();
@@ -4998,29 +5014,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Reads NER {@code date} whether stored as a JSON array or a single string.
      */
     protected List<String> extractNerDateStrings(JSONObject ner) {
-        if (ner == null || !ner.has("date")) {
-            return List.of();
-        }
-        List<String> out = new ArrayList<>();
-        try {
-            JSONArray arr = ner.optJSONArray("date");
-            if (arr != null) {
-                for (int i = 0; i < arr.length(); i++) {
-                    String s = arr.optString(i, "").trim();
-                    if (!s.isBlank()) {
-                        out.add(s);
-                    }
-                }
-                return out;
-            }
-            Object raw = ner.get("date");
-            if (raw instanceof String s && !s.isBlank()) {
-                out.add(s.trim());
-            }
-        } catch (Exception e) {
-            log().warn("Error extracting dates from NER: {}", e.getMessage());
-        }
-        return out;
+        return NerDateFieldSupport.readDateStrings(ner);
     }
 
     /**

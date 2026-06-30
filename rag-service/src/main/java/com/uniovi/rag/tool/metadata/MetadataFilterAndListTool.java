@@ -841,6 +841,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         }
         String q = query.toLowerCase(Locale.ROOT);
         return isCompoundMonthTopicAttendeeFilterQuery(query)
+                || StructuredMinuteMetadataSupport.isTopicMinuteDatesListQuery(query)
                 || extractRequestedMonthFromQuery(query) != null
                 || detectTopicAndPersonFilter(query)
                 || (q.contains("agosto") && q.contains("videovigilancia"));

@@ -428,11 +428,92 @@ public final class StructuredMinuteMetadataSupport {
             }
         }
 
+        if (isTopicMinuteDatesListQuery(q)) {
+            return formatTopicMinuteDatesListAnswer(query, minutes, topic);
+        }
+
         if (isCompoundMonthTopicAttendeeFilterQuery(q)) {
             return formatCompoundMonthTopicAttendeeFilterAnswer(minutes, topic);
         }
 
         return Optional.empty();
+    }
+
+    /**
+     * True when the query asks for meeting dates where a topic (e.g. elevator) is discussed.
+     */
+    public static boolean isTopicMinuteDatesListQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q =
+                Normalizer.normalize(query.toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+                        .replaceAll("\\p{M}", "");
+        boolean asksDates =
+                (q.contains("dates") && q.contains("minute"))
+                        || (q.contains("fechas")
+                                && (q.contains("acta") || q.contains("reunion") || q.contains("reuniones")));
+        boolean topicContext =
+                q.contains("elevator")
+                        || q.contains("ascensor")
+                        || q.contains("where")
+                                && (q.contains("commented") || q.contains("mentioned") || q.contains("discussed"));
+        return asksDates && topicContext;
+    }
+
+    /**
+     * Deterministic FILTER_AND_LIST answer listing slash dates for actas that mention a topic.
+     */
+    public static Optional<String> formatTopicMinuteDatesListAnswer(
+            String query, List<Minute> minutes, String topic) {
+        if (minutes == null || minutes.isEmpty()) {
+            return Optional.empty();
+        }
+        boolean spanish = querySeemsSpanish(query);
+        List<String> dateSlashes =
+                minutes.stream()
+                        .map(StructuredMinuteMetadataSupport::resolveCanonicalSlashDate)
+                        .filter(s -> s != null && !s.isBlank())
+                        .distinct()
+                        .toList();
+        if (dateSlashes.isEmpty()) {
+            return Optional.empty();
+        }
+        String topicLabel =
+                topic != null && !topic.isBlank()
+                        ? topic.trim().toLowerCase(Locale.ROOT)
+                        : spanish ? "el tema indicado" : "the requested topic";
+        String listPart = joinNaturalLanguageList(dateSlashes, spanish);
+        if (spanish) {
+            if (dateSlashes.size() == 1) {
+                return Optional.of(
+                        "Las actas que mencionan "
+                                + topicLabel
+                                + " corresponden a la fecha "
+                                + listPart
+                                + ".");
+            }
+            return Optional.of(
+                    "Las actas que mencionan "
+                            + topicLabel
+                            + " corresponden a las fechas "
+                            + listPart
+                            + ".");
+        }
+        if (dateSlashes.size() == 1) {
+            return Optional.of(
+                    "The meeting minutes that mention "
+                            + topicLabel
+                            + " are dated "
+                            + listPart
+                            + ".");
+        }
+        return Optional.of(
+                "The meeting minutes that mention "
+                        + topicLabel
+                        + " are dated "
+                        + listPart
+                        + ".");
     }
 
     private static boolean isCompoundMonthTopicAttendeeFilterQuery(String qLower) {
@@ -1010,10 +1091,15 @@ public final class StructuredMinuteMetadataSupport {
         boolean brief =
                 q.contains("resume brevemente")
                         || q.contains("resumen breve")
+                        || q.contains("puntos tratados")
+                        || (q.contains("resumen") && q.contains("acta"))
                         || (q.contains("resume") && q.contains("acta"));
-        boolean dated = q.matches(".*\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b.*")
-                || q.contains("25/02/2026")
-                || q.contains("24/02/2025");
+        boolean dated =
+                q.matches(".*\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b.*")
+                        || q.contains("25/02/2026")
+                        || q.contains("24/02/2025")
+                        || q.matches(
+                                ".*\\b\\d{1,2}\\s+de\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\s+de\\s+\\d{4}.*");
         return brief && dated;
     }
 
