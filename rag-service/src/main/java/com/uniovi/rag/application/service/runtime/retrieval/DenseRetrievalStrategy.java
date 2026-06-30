@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
+import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
 import com.uniovi.rag.configuration.RagVectorProperties;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
@@ -32,6 +33,7 @@ public class DenseRetrievalStrategy {
     private final PgVectorStoreRegistry vectorStoreRegistry;
     private final PgVectorStore fallbackVectorStore;
     private final RagVectorProperties ragVectorProperties;
+    private final EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService;
     private final int defaultTopK;
     private final double defaultSimilarityThreshold;
 
@@ -39,12 +41,14 @@ public class DenseRetrievalStrategy {
             PgVectorStoreRegistry vectorStoreRegistry,
             PgVectorStore fallbackVectorStore,
             RagVectorProperties ragVectorProperties,
+            EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService,
             @Value("${spring.ai.ollama.top-k:10}") int defaultTopK,
             @Value("${spring.ai.ollama.similarity-threshold:0.7}")
                     double defaultSimilarityThreshold) {
         this.vectorStoreRegistry = vectorStoreRegistry;
         this.fallbackVectorStore = fallbackVectorStore;
         this.ragVectorProperties = ragVectorProperties;
+        this.embeddingIndexCompatibilityService = embeddingIndexCompatibilityService;
         this.defaultTopK = defaultTopK;
         this.defaultSimilarityThreshold = defaultSimilarityThreshold;
     }
@@ -54,6 +58,7 @@ public class DenseRetrievalStrategy {
     }
 
     public DenseRetrievalOutcome retrieveWithOutcome(RetrievalRequest req) {
+        embeddingIndexCompatibilityService.assertRetrievalCompatible(req);
         double sim = effectiveSimilarityThreshold();
         SearchRequest.Builder searchBuilder =
                 SearchRequest.builder().query(req.queryText()).topK(req.denseFetchLimit()).similarityThreshold(sim);

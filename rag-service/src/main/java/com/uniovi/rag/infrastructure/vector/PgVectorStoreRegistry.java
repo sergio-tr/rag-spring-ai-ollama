@@ -8,15 +8,17 @@ import org.springframework.stereotype.Component;
 
 /**
  * Caches {@link PgVectorStore} instances keyed by embedding model id (same JDBC table; dimension enforcement is separate).
+ * Embedding calls route through {@link ProviderAwareEmbeddingModelFactory}, not {@link OllamaEmbeddingModelFactory}.
  */
 @Component
 public class PgVectorStoreRegistry {
 
     private final JdbcTemplate jdbcTemplate;
-    private final OllamaEmbeddingModelFactory embeddingModelFactory;
+    private final ProviderAwareEmbeddingModelFactory embeddingModelFactory;
     private final ConcurrentHashMap<String, PgVectorStore> cache = new ConcurrentHashMap<>();
 
-    public PgVectorStoreRegistry(JdbcTemplate jdbcTemplate, OllamaEmbeddingModelFactory embeddingModelFactory) {
+    public PgVectorStoreRegistry(
+            JdbcTemplate jdbcTemplate, ProviderAwareEmbeddingModelFactory embeddingModelFactory) {
         this.jdbcTemplate = jdbcTemplate;
         this.embeddingModelFactory = embeddingModelFactory;
     }

@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.knowledge;
 
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import com.uniovi.rag.infrastructure.persistence.ProjectIndexProfileRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectIndexProfileEntity;
 import java.time.Instant;
@@ -20,11 +21,11 @@ public class ProjectIndexProfileService {
 
     public ProjectIndexProfileService(
             ProjectIndexProfileRepository repository,
-            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large:latest}") String defaultEmbeddingModelId,
+            LlmProperties llmProperties,
             @Value("${rag.chunk.max-chars:400}") int defaultChunkMaxChars,
             @Value("${rag.knowledge.materialization-strategy:CHUNK_LEVEL}") String defaultMaterializationStrategyRaw) {
         this.repository = repository;
-        this.defaultEmbeddingModelId = defaultEmbeddingModelId;
+        this.defaultEmbeddingModelId = llmProperties.effectiveDefaultEmbeddingModel();
         this.defaultChunkMaxChars = defaultChunkMaxChars > 0 ? defaultChunkMaxChars : 400;
         this.defaultMaterializationStrategy = parseStrategy(defaultMaterializationStrategyRaw);
     }

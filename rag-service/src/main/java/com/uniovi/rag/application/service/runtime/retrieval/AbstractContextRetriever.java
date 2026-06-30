@@ -5,6 +5,7 @@ import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
 import com.uniovi.rag.infrastructure.observability.Loggable;
 import com.uniovi.rag.application.service.runtime.RuntimePromptBudgeter;
 import com.uniovi.rag.util.DateParsingSupport;
+import com.uniovi.rag.util.NerDateFieldSupport;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -259,10 +260,13 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             return docs;
         }
         try {
-            JSONArray arr = nerEntities.getJSONArray("date");
+            List<String> dateStrings = NerDateFieldSupport.readDateStrings(nerEntities);
+            if (dateStrings.isEmpty()) {
+                return docs;
+            }
             List<LocalDate> requestedDates = new ArrayList<>();
-            for (int i = 0; i < arr.length(); i++) {
-                LocalDate d = parseDateToLocalDate(arr.optString(i, "").trim());
+            for (String dateStr : dateStrings) {
+                LocalDate d = parseDateToLocalDate(dateStr);
                 if (d != null) requestedDates.add(d);
             }
             if (requestedDates.isEmpty()) return docs;
