@@ -17,7 +17,8 @@ import { useChatPresetsCatalog } from "@/features/chat/hooks/use-chat-presets-ca
 import { useCreateConversation } from "@/features/chat/hooks/use-conversations";
 import { useProjectDocuments } from "@/features/documents/hooks/use-project-documents";
 import type { ConversationDto } from "@/types/api";
-import { getSafeApiErrorMessage } from "@/lib/api-client";
+import {  getSafeApiErrorMessage } from "@/lib/api-client";
+import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
 
 export type NewConversationDialogProps = {
   projectId: string;
@@ -123,7 +124,7 @@ export function NewConversationDialog({
               <option value="">{t("presetServerDefault")}</option>
               {(catalog.data?.productPresets ?? []).map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {toProductPresetDisplayName(p.name)}
                   {p.system ? ` (${t("presetSystem")})` : ""}
                 </option>
               ))}

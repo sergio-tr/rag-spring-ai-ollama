@@ -1,0 +1,204 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ChatConfigurationPanelContent } from "./ChatConfigurationPanelContent";
+import { ChatAssistantMessageExtras } from "./ChatAssistantMessageExtras";
+import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
+import { IntlTestProvider } from "@/test-utils/intl";
+import { ADVANCED_TECHNICAL_DETAILS_TITLE } from "@/lib/product-provider-labels";
+import { FORBIDDEN_NORMAL_UI_STRING_PATTERNS } from "@/lib/forbidden-primary-ui-strings";
+import type { MessageDto } from "@/types/api";
+
+const hooksMock = vi.hoisted(() => ({
+  useProjectIndexProfile: vi.fn(),
+  useActiveProjectSnapshot: vi.fn(),
+  useRuntimeConfigCapabilities: vi.fn(),
+}));
+
+vi.mock("@/features/projects/hooks/use-project-index-profile", () => ({
+  useProjectIndexProfile: (...args: unknown[]) => hooksMock.useProjectIndexProfile(...args),
+}));
+vi.mock("@/features/projects/hooks/use-active-project-snapshot", () => ({
+  useActiveProjectSnapshot: (...args: unknown[]) => hooksMock.useActiveProjectSnapshot(...args),
+}));
+vi.mock("@/features/chat/hooks/use-runtime-config-capabilities", () => ({
+  useRuntimeConfigCapabilities: (...args: unknown[]) => hooksMock.useRuntimeConfigCapabilities(...args),
+}));
+vi.mock("@/features/lab/hooks/use-classifier-registry", () => ({
+  useClassifierModelsQuery: () => ({ data: [], isError: false, isLoading: false }),
+}));
+
+function renderChatConfig() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <IntlTestProvider>
+        <ChatConfigurationPanelContent />
+      </IntlTestProvider>
+    </QueryClientProvider>,
+  );
+}
+
+function seedChatStore(overrides: Record<string, unknown> = {}) {
+  useChatToolbarStore.setState({
+    api: {
+      projectId: "p1",
+      conversationId: "c1",
+      runtimeOverride: {},
+      runtimeState: {
+        conversationId: "c1",
+        selectedPresetId: "preset-1",
+        effectivePresetId: "preset-1",
+        effectiveConfig: { topK: 5, chatModel: "gpt-test" },
+        manualOverrideKeys: ["topK"],
+        baseEffectiveConfig: { topK: 3 },
+        blockingIssues: [],
+        warnings: [],
+        preset: { kind: "PRODUCT", chatSelectable: true, supportStatus: "EXECUTABLE", reasonIfUnsupported: null },
+        indexCompatibility: {
+          compatibilityStatus: "COMPATIBLE",
+          activeSnapshotCapabilities: {
+            materializationStrategy: "HYBRID",
+            supportsMetadata: true,
+            embeddingModelId: "emb-1",
+            chunkMaxChars: 1000,
+          },
+        },
+        requiresReindex: false,
+        ...((overrides.runtimeState as object) ?? {}),
+      },
+      presets: [],
+      experimentalPresets: [],
+      documents: [{ id: "d1", status: "READY", filename: "a.pdf" }],
+      limitDocs: false,
+      limitDocsDisabled: false,
+      patchConvPending: false,
+      effectiveLoading: false,
+      effectiveError: null,
+      needsProject: false,
+      needsConversation: false,
+      ...overrides,
+    },
+  });
+}
+
+async function openChatAdvancedTechnical(user: ReturnType<typeof userEvent.setup>) {
+  const currentSettings = screen.getByTestId("chat-config-current-settings");
+  if (!currentSettings.hasAttribute("open")) {
+    await user.click(within(currentSettings).getByText(/Current settings/i));
+  }
+  const advanced = screen.getByTestId("chat-config-advanced-technical");
+  expect(within(advanced).getByText(ADVANCED_TECHNICAL_DETAILS_TITLE)).toBeInTheDocument();
+  if (!advanced.hasAttribute("open")) {
+    await user.click(within(advanced).getByText(ADVANCED_TECHNICAL_DETAILS_TITLE));
+  }
+  return advanced;
+}
+
+describe("Advanced technical details visibility — chat configuration", () => {
+  beforeEach(() => {
+    hooksMock.useProjectIndexProfile.mockReturnValue({ data: null, isLoading: false, isError: false });
+    hooksMock.useActiveProjectSnapshot.mockReturnValue({
+      data: { id: "snap-hidden-1", status: "ACTIVE", indexProfileHash: "hash-hidden-1" },
+      isLoading: false,
+      isError: false,
+    });
+    hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
+      data: { capabilities: [], disabledRuntimeFeatures: [] },
+      isLoading: false,
+      isError: false,
+    });
+    seedChatStore();
+  });
+
+  it("uses the exact collapsed section label Advanced technical details", () => {
+    renderChatConfig();
+    const advanced = screen.getByTestId("chat-config-advanced-technical");
+    expect(within(advanced).getByText(ADVANCED_TECHNICAL_DETAILS_TITLE).textContent).toBe(
+      "Advanced technical details",
+    );
+  });
+
+  it("does not show forbidden internal strings in the normal compact summary", () => {
+    renderChatConfig();
+    const summary = screen.getByTestId("chat-config-compact-summary");
+    for (const pattern of FORBIDDEN_NORMAL_UI_STRING_PATTERNS) {
+      expect(summary.textContent ?? "").not.toMatch(pattern);
+    }
+    expect(summary.textContent ?? "").not.toMatch(/\bsnapshot\b/i);
+    expect(screen.queryByText("hash-hidden-1")).not.toBeVisible();
+    expect(screen.queryByText("snap-hidden-1")).not.toBeVisible();
+    const json = screen.queryByTestId("chat-config-effective-json");
+    if (json) {
+      expect(json).not.toBeVisible();
+    }
+  });
+
+  it("maps function-calling precedence warnings to product copy in normal UI", () => {
+    seedChatStore({
+      runtimeState: {
+        warnings: [
+          {
+            code: "TOOLS_FUNCTION_CALLING_PRECEDENCE",
+            field: null,
+            message:
+              "Tools and function calling are both enabled. Function calling takes precedence over deterministic tools.",
+            severity: "WARNING",
+          },
+        ],
+      },
+    });
+    renderChatConfig();
+    const warning = screen.getByText(/Function calling is used when both tools and function calling are enabled/i);
+    expect(warning).toBeVisible();
+    expect(warning.textContent ?? "").not.toMatch(/deterministic tool/i);
+    expect(warning.textContent ?? "").not.toMatch(/takes precedence/i);
+  });
+
+  it("reveals diagnostic identifiers and JSON after expanding Advanced technical details", async () => {
+    const user = userEvent.setup();
+    renderChatConfig();
+    const advanced = await openChatAdvancedTechnical(user);
+    expect(within(advanced).getByText("snap-hidden-1")).toBeVisible();
+    expect(within(advanced).getByText("hash-hidden-1")).toBeVisible();
+    expect(within(advanced).getByText(/Configuration identifier/i)).toBeVisible();
+    expect(screen.getByTestId("chat-config-effective-json")).toBeVisible();
+  });
+});
+
+describe("Advanced technical details visibility — assistant message trace", () => {
+  const message: MessageDto = {
+    id: "m1",
+    role: "ASSISTANT",
+    content: "Answer",
+    createdAt: "",
+    sources: [],
+    queryType: null,
+    pipelineSteps: null,
+    status: "DONE",
+    executionMetadata: {
+      traceId: "trace-diag-1",
+      selectedSnapshotIds: ["snap-trace-1"],
+      workflowName: "rag-workflow",
+    },
+  };
+
+  it("hides trace metadata until Advanced technical details is expanded inside the message panel", async () => {
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <ChatAssistantMessageExtras message={message} />
+      </IntlTestProvider>,
+    );
+    expect(screen.queryByText("trace-diag-1")).not.toBeVisible();
+    expect(screen.queryByText("snap-trace-1")).not.toBeVisible();
+    await user.click(screen.getByTestId("chat-message-metadata-toggle"));
+    const traceDisclosure = screen.getByTestId("chat-trace-disclosure");
+    expect(within(traceDisclosure).getByText(ADVANCED_TECHNICAL_DETAILS_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText("trace-diag-1")).not.toBeVisible();
+    await user.click(within(traceDisclosure).getByText(ADVANCED_TECHNICAL_DETAILS_TITLE));
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("trace-diag-1");
+    expect(screen.getByTestId("chat-trace")).toHaveTextContent("snap-trace-1");
+  });
+});

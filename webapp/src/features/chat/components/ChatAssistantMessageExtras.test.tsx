@@ -44,7 +44,7 @@ describe("ChatAssistantMessageExtras", () => {
     expect(screen.queryByText(/No sources available/i)).not.toBeInTheDocument();
   });
 
-  it("shows collapsed More information for completed answers", () => {
+  it("shows collapsed Details for completed answers", () => {
     renderExtras({
       id: "a-done",
       role: "ASSISTANT",
@@ -56,9 +56,13 @@ describe("ChatAssistantMessageExtras", () => {
       status: "DONE",
       executionMetadata: { traceId: "trace-1" },
     });
-    expect(screen.getByTestId("chat-message-metadata-toggle")).toHaveTextContent(/More information/i);
+    expect(screen.getByTestId("chat-message-metadata-toggle")).toHaveTextContent(/Answer quality checks/i);
+    expect(screen.queryByText(/More information/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-sources")).not.toBeVisible();
-    expect(screen.getByTestId("chat-trace")).not.toBeVisible();
+    const trace = screen.queryByTestId("chat-trace");
+    if (trace) {
+      expect(trace).not.toBeVisible();
+    }
   });
 
   it("reveals sources and trace when expanded", async () => {
@@ -77,7 +81,11 @@ describe("ChatAssistantMessageExtras", () => {
     await user.click(screen.getByTestId("chat-message-metadata-toggle"));
     const panel = screen.getByTestId("chat-message-metadata-panel");
     expect(within(panel).getByTestId("chat-sources")).toBeVisible();
+    const traceDisclosure = within(panel).getByTestId("chat-trace-disclosure");
+    expect(traceDisclosure).not.toHaveAttribute("open");
+    await user.click(within(traceDisclosure).getByText(/Advanced technical details/i));
     expect(within(panel).getByTestId("chat-trace")).toBeVisible();
+    expect(within(panel).getByTestId("chat-sources")).toHaveTextContent(/Source documents/i);
     expect(within(panel).getByTestId("chat-sources")).toHaveTextContent("doc.pdf");
     expect(within(panel).getByTestId("chat-trace")).toHaveTextContent("trace-1");
   });

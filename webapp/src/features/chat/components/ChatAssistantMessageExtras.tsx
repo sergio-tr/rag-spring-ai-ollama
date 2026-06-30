@@ -176,7 +176,7 @@ export function ChatAssistantMessageExtras({ message }: Readonly<{ message: Mess
                     ) : null}
                     {mismatched && !alternative ? (
                       <p className="mt-0.5 text-amber-700 dark:text-amber-300" data-testid="chat-date-warning">
-                        Source date differs from requested date {requestedDate}.
+                        {t("chatSourceDateMismatch", { date: requestedDate ?? "" })}
                       </p>
                     ) : null}
                     {!sourceSupportsAnswer(s) && !alternative && !mismatched ? (
@@ -202,14 +202,19 @@ export function ChatAssistantMessageExtras({ message }: Readonly<{ message: Mess
             className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px]"
             data-testid="chat-date-warning"
           >
-            Date grounding warning: requested {messageMetadataString(message, "requestedDate") ?? "date"} did not have
-            an exact supported source.
+            {t("chatDateGroundingWarning", {
+              date: messageMetadataString(message, "requestedDate") ?? "date",
+            })}
           </div>
         ) : null}
         {showTrace ? (
-          <div className="rounded-md border bg-muted/20 px-2 py-1 text-[11px]" data-testid="chat-trace">
-            <p className="font-medium text-muted-foreground">{t("chatTraceHeading")}</p>
-            <dl className="mt-1 grid grid-cols-1 gap-1 font-mono">
+          <details className="rounded-md border bg-muted/20 px-2 py-1 text-[11px]" data-testid="chat-trace-disclosure">
+            <summary className="cursor-pointer font-medium text-muted-foreground">
+              {t("chatTraceTechnicalSummary")}
+            </summary>
+            <div className="mt-2" data-testid="chat-trace">
+              <p className="font-medium text-muted-foreground">{t("chatTraceHeading")}</p>
+              <dl className="mt-1 grid grid-cols-1 gap-1 font-mono">
               {messageMetadataString(message, "traceId") ? (
                 <div className="flex justify-between gap-2">
                   <dt className="text-muted-foreground">{t("chatTraceFieldTraceId")}</dt>
@@ -329,7 +334,8 @@ export function ChatAssistantMessageExtras({ message }: Readonly<{ message: Mess
                 </div>
               ) : null}
             </dl>
-          </div>
+            </div>
+          </details>
         ) : null}
       </div>
     </details>

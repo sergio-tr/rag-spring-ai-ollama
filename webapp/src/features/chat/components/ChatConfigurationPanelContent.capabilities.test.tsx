@@ -37,6 +37,15 @@ function renderSubject() {
   );
 }
 
+function openEditMode() {
+  fireEvent.click(screen.getByTestId("chat-config-edit-button"));
+}
+
+function openAdvancedRuntimeSection() {
+  openEditMode();
+  fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
+}
+
 describe("ChatConfigurationPanelContent runtime capability toggles", () => {
   beforeEach(() => {
     hooksMock.useProjectIndexProfile.mockReturnValue({ data: null, isLoading: false, isError: false });
@@ -87,7 +96,9 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
         setLlmModelChoice: vi.fn(),
         classifierModelChoice: "",
         setClassifierModelChoice: vi.fn(),
-        modelsCatalog: undefined,
+        selectableLlmModels: [],
+        selectableLlmModelsLoading: false,
+        selectableLlmModelsEffectiveProvider: undefined,
         modelsError: false,
         modelsErrorMessage: "",
         presetSelectValue: "",
@@ -156,7 +167,7 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     }));
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    fireEvent.click(screen.getByTestId("chat-config-edit-button"));
     fireEvent.change(screen.getByTestId("chat-runtime-toggle-topK"), { target: { value: "9" } });
     fireEvent.change(screen.getByTestId("chat-runtime-toggle-similarityThreshold"), { target: { value: "0.4" } });
 
@@ -225,9 +236,9 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     renderSubject();
 
     expect(screen.getByTestId("chat-error-code-REINDEX_REQUIRED")).toHaveTextContent("REINDEX_REQUIRED");
-    expect(screen.getByTestId("chat-runtime-blocking-banner")).toHaveTextContent(/requires a new compatible index snapshot/i);
+    expect(screen.getByTestId("chat-runtime-blocking-banner")).toHaveTextContent(/compatible search index/i);
     const user = userEvent.setup();
-    await user.click(screen.getByText(/Technical details/i));
+    await user.click(screen.getByText(/Advanced technical details/i));
     expect(screen.getByTestId("chat-index-info")).toHaveTextContent("CHUNK_LEVEL");
     expect(screen.getByTestId("chat-index-info")).toHaveTextContent("mxbai-embed-large");
   });
@@ -260,8 +271,8 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     });
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("Tools").closest("div");
+    openEditMode();
+    const row = screen.getByText("Retrieval tools").closest("div");
     expect(row).toBeTruthy();
     const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
@@ -305,8 +316,8 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     }));
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("Reasoning").closest("div");
+    openAdvancedRuntimeSection();
+    const row = screen.getByText("Extended reasoning").closest("div");
     const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
     expect(checkbox.disabled).toBe(false);
     fireEvent.click(checkbox);
@@ -341,7 +352,7 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     });
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    openEditMode();
     expect(screen.queryByText("Ranker")).toBeNull();
   });
 
@@ -373,8 +384,8 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     });
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("NER").closest("div");
+    openEditMode();
+    const row = screen.getByText("Named-entity signals in retrieval").closest("div");
     const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
     expect(screen.getByText("Disabled")).toBeInTheDocument();
@@ -418,8 +429,8 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     }));
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("Post retrieval").closest("div");
+    openEditMode();
+    const row = screen.getByText("Post-retrieval processing").closest("div");
     const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
     expect(screen.getByText("Disabled")).toBeInTheDocument();
@@ -468,8 +479,8 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     }));
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("Post retrieval").closest("div");
+    openEditMode();
+    const row = screen.getByText("Post-retrieval processing").closest("div");
     const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
     expect(screen.getByText("Disabled")).toBeInTheDocument();
@@ -512,8 +523,8 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     }));
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("Tools").closest("div");
+    openEditMode();
+    const row = screen.getByText("Retrieval tools").closest("div");
     const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
     expect(screen.getByText("Disabled")).toBeInTheDocument();
@@ -556,8 +567,8 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     }));
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("Tools").closest("div");
+    openEditMode();
+    const row = screen.getByText("Retrieval tools").closest("div");
     const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
   });
@@ -590,7 +601,7 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     });
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    openEditMode();
     expect(screen.getByText("Multi-turn")).toBeInTheDocument();
     expect(screen.getByText("May use multiple turns.")).toBeInTheDocument();
   });

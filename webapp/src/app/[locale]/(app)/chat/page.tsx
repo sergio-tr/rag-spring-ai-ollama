@@ -23,7 +23,7 @@ import {
 } from "@/features/chat/lib/chat-message-order";
 import { useChatRuntimeState } from "@/features/chat/hooks/use-chat-runtime-state";
 import { optimisticConsumed } from "@/features/chat/lib/chat-optimistic";
-import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
+import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
 import { useChatPresetsCatalog } from "@/features/chat/hooks/use-chat-presets-catalog";
 import {
   useProjectDocumentsForConversation,
@@ -94,11 +94,14 @@ function coerceBool(v: unknown): boolean {
   return v === true || v === "true";
 }
 
-function firstRuntimeBlockingMessage(runtimeState: {
-  isValid?: boolean;
-  blockingIssues?: Array<{ code?: string | null; message?: string | null }>;
-  validation?: { valid: boolean; supported: boolean; errors: Array<{ code?: string | null; message?: string | null }> };
-} | null): string | null {
+function firstRuntimeBlockingMessage(
+  runtimeState: {
+    isValid?: boolean;
+    blockingIssues?: Array<{ code?: string | null; message?: string | null }>;
+    validation?: { valid: boolean; supported: boolean; errors: Array<{ code?: string | null; message?: string | null }> };
+  } | null,
+  t: (key: string) => string,
+): string | null {
   if (!runtimeState) return null;
   const issues = runtimeState.blockingIssues ?? runtimeState.validation?.errors ?? [];
   const first = issues.find((i) => typeof i.message === "string" && i.message.trim() !== "");
@@ -106,7 +109,7 @@ function firstRuntimeBlockingMessage(runtimeState: {
   const valid =
     runtimeState.isValid ??
     (runtimeState.validation ? runtimeState.validation.valid && runtimeState.validation.supported : true);
-  return valid ? null : "Configuration is invalid. Open Chat configuration to resolve it.";
+  return valid ? null : `${t("chatConfigInvalidTitle")} ${t("chatConfigInvalidOpenPanel")}`;
 }
 
 function firstRuntimeBlockingUserMessage(
@@ -123,7 +126,7 @@ function firstRuntimeBlockingUserMessage(
     (i) => normalizeChatFailureCode(i.code) || (typeof i.message === "string" && i.message.trim() !== ""),
   );
   const mapped = first ? chatFailureHintForCode(first.code, t) : null;
-  return mapped ?? firstRuntimeBlockingMessage(runtimeState);
+  return mapped ?? firstRuntimeBlockingMessage(runtimeState, t);
 }
 
 function firstRuntimeBlockingCode(
@@ -362,7 +365,12 @@ function ChatPageInner() {
     () => projectListData?.items?.find((p) => p.id === projectId),
     [projectListData?.items, projectId],
   );
-  const { data: modelsCatalog, isError: modelsError, error: modelsQueryError } = useModelsCatalog();
+  const {
+    data: selectableLlmModelsResponse,
+    isError: modelsError,
+    error: modelsQueryError,
+    isLoading: selectableLlmModelsLoading,
+  } = useMeSelectableLlmModels("CHAT");
   const chatPresetsCatalog = useChatPresetsCatalog();
   const presets = chatPresetsCatalog.data?.productPresets;
   const presetsError = chatPresetsCatalog.isError;
@@ -631,6 +639,7 @@ function ChatPageInner() {
             task: terminal,
             errorMessageSanitized: sanitized,
             t,
+            provider: selectableLlmModelsResponse?.effectiveProvider ?? null,
           });
           setSendError(hint);
           setSendFailureCode(
@@ -739,7 +748,7 @@ function ChatPageInner() {
         apiProductPath(`/conversations/${targetConversationId}/runtime-state`),
         { signal },
       );
-      const blocking = firstRuntimeBlockingMessage(rs);
+      const blocking = firstRuntimeBlockingMessage(rs,t);
       if (blocking) {
         const msg = blocking;
         setSendError(msg);
@@ -891,7 +900,7 @@ function ChatPageInner() {
         apiProductPath(`/conversations/${conversationId}/runtime-state`),
         { signal },
       );
-      const blocking = firstRuntimeBlockingMessage(rs);
+      const blocking = firstRuntimeBlockingMessage(rs,t);
       if (blocking) {
         setSendError(blocking);
         return;
@@ -1272,7 +1281,9 @@ function ChatPageInner() {
       setLlmModelChoice: applyLlmModelChoice,
       classifierModelChoice,
       setClassifierModelChoice: applyClassifierModelChoice,
-      modelsCatalog,
+      selectableLlmModels: selectableLlmModelsResponse?.models ?? [],
+      selectableLlmModelsLoading,
+      selectableLlmModelsEffectiveProvider: selectableLlmModelsResponse?.effectiveProvider,
       modelsError,
       modelsErrorMessage: modelsErrorMessage ?? "",
       presetSelectValue,
@@ -1318,7 +1329,9 @@ function ChatPageInner() {
     applyLlmModelChoice,
     classifierModelChoice,
     applyClassifierModelChoice,
-    modelsCatalog,
+    selectableLlmModelsResponse?.models,
+    selectableLlmModelsResponse?.effectiveProvider,
+    selectableLlmModelsLoading,
     modelsError,
     modelsErrorMessage,
     presetSelectValue,
@@ -1363,7 +1376,7 @@ function ChatPageInner() {
   }
 
   return (
-    <div data-testid="chat-page" className="flex h-full min-h-0 flex-1 flex-col gap-2 md:flex-row md:gap-3">
+    <div data-testid="chat-page" className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col gap-2 md:flex-row md:gap-3">
       {convListCollapsed ? (
         <div className="flex w-full shrink-0 flex-col items-stretch gap-2 border-border border-b pb-2 md:w-auto md:border-b-0 md:border-r md:pb-0 md:pr-2">
           <Button
@@ -1538,7 +1551,7 @@ function ChatPageInner() {
         <div
           ref={scrollAreaRef}
           data-testid="chat-thread-dropzone"
-          className="relative min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg border bg-card/30 p-3"
+          className="relative min-h-0 min-w-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto rounded-lg border bg-card/30 p-3"
           onDragOver={(e) => {
             // Allow dropping files anywhere in the chat thread area.
             e.preventDefault();
@@ -1616,9 +1629,9 @@ function ChatPageInner() {
               data-message-seq={typeof m.seq === "number" ? String(m.seq) : undefined}
               className={
                 m.role === "USER"
-                  ? "ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed"
+                  ? "ml-auto max-w-[85%] min-w-0 rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed [overflow-wrap:anywhere]"
                   : cn(
-                      "mr-auto max-w-[85%] rounded-lg border px-3 py-2 text-sm leading-relaxed",
+                      "mr-auto max-w-[85%] min-w-0 rounded-lg border px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]",
                       isAssistantClarificationTurn(m)
                         ? "border-amber-500/55 bg-amber-500/10"
                         : "bg-background",
@@ -1719,7 +1732,7 @@ function ChatPageInner() {
             <article
               aria-label={t("optimisticUserAria")}
               data-testid="chat-optimistic-user"
-              className="ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed"
+              className="ml-auto max-w-[85%] min-w-0 rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed [overflow-wrap:anywhere]"
             >
               <p className="whitespace-pre-wrap break-words">{optimisticUserContent}</p>
             </article>
@@ -1733,7 +1746,7 @@ function ChatPageInner() {
             </div>
           ) : null}
           {isStreaming && streamingText && (
-            <div className="mr-auto max-w-[85%] rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-sm leading-relaxed">
+            <div className="mr-auto max-w-[85%] min-w-0 rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]">
               <p className="whitespace-pre-wrap break-words">{streamingText}</p>
             </div>
           )}

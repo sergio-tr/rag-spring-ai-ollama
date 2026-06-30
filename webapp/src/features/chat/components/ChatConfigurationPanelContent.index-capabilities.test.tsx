@@ -36,13 +36,17 @@ function renderSubject() {
   );
 }
 
-async function openTechnicalDetails() {
+async function openAdvancedTechnical() {
   const user = userEvent.setup();
-  const details = screen.getByTestId("chat-config-technical-details");
-  if (!details.hasAttribute("open")) {
-    await user.click(within(details).getByText(/Technical details/i));
+  const currentSettings = screen.getByTestId("chat-config-current-settings");
+  if (!currentSettings.hasAttribute("open")) {
+    await user.click(within(currentSettings).getByText(/Current settings/i));
   }
-  return { user, details };
+  const advanced = screen.getByTestId("chat-config-advanced-technical");
+  if (!advanced.hasAttribute("open")) {
+    await user.click(within(advanced).getByText(/Advanced technical details/i));
+  }
+  return { user, advanced };
 }
 
 async function openEditPanel() {
@@ -135,7 +139,9 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
         setLlmModelChoice: vi.fn(),
         classifierModelChoice: "",
         setClassifierModelChoice: vi.fn(),
-        modelsCatalog: undefined,
+        selectableLlmModels: [],
+        selectableLlmModelsLoading: false,
+        selectableLlmModelsEffectiveProvider: undefined,
         modelsError: false,
         modelsErrorMessage: "",
         presetSelectValue: "",
@@ -161,7 +167,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     });
   });
 
-  it("shows compact summary without exposing profile hash by default", () => {
+  it("shows compact summary without exposing configuration identifiers by default", () => {
     hooksMock.useActiveProjectSnapshot.mockReturnValue({
       data: { id: "snap-1", status: "ACTIVE", indexProfileHash: "h1" },
       isLoading: false,
@@ -169,34 +175,37 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     });
     renderSubject();
     expect(screen.getByTestId("chat-config-compact-summary")).toBeInTheDocument();
-    expect(screen.getByTestId("chat-config-summary-index")).toBeInTheDocument();
-    const technical = screen.getByTestId("chat-config-technical-details");
-    expect(technical).not.toHaveAttribute("open");
-    expect(within(technical).getByText("h1")).not.toBeVisible();
-    const effectiveKeys = screen.queryByTestId("chat-config-effective-keys");
-    if (effectiveKeys) {
-      expect(effectiveKeys).not.toBeVisible();
+    expect(screen.getByTestId("chat-config-summary-index")).toHaveTextContent(/Ready/i);
+    const currentSettings = screen.getByTestId("chat-config-current-settings");
+    expect(currentSettings).not.toHaveAttribute("open");
+    const hashNode = within(currentSettings).queryByText("h1");
+    if (hashNode) {
+      expect(hashNode).not.toBeVisible();
+    }
+    const jsonNode = screen.queryByTestId("chat-config-effective-json");
+    if (jsonNode) {
+      expect(jsonNode).not.toBeVisible();
     }
   });
 
-  it("shows a hint when there is no active snapshot yet inside technical details", async () => {
+  it("shows a hint when there is no active snapshot yet inside advanced technical details", async () => {
     renderSubject();
-    const { details } = await openTechnicalDetails();
-    expect(within(details).getByText(/No active index snapshot yet/i)).toBeInTheDocument();
+    const { advanced } = await openAdvancedTechnical();
+    expect(within(advanced).getByText(/No active search index yet/i)).toBeInTheDocument();
   });
 
-  it("renders active snapshot details including profile hash when technical details are open", async () => {
+  it("renders saved configuration state and configuration identifier when advanced technical is open", async () => {
     hooksMock.useActiveProjectSnapshot.mockReturnValue({
       data: { id: "snap-1", status: "ACTIVE", indexProfileHash: "h1" },
       isLoading: false,
       isError: false,
     });
     renderSubject();
-    const { details } = await openTechnicalDetails();
-    expect(within(details).getByText(/Active snapshot/i)).toBeInTheDocument();
-    expect(within(details).getByText("snap-1")).toBeInTheDocument();
-    expect(within(details).getByText("ACTIVE")).toBeInTheDocument();
-    expect(within(details).getByText("h1")).toBeInTheDocument();
+    const { advanced } = await openAdvancedTechnical();
+    expect(within(advanced).getByText(/Saved configuration state/i)).toBeInTheDocument();
+    expect(within(advanced).getByText("snap-1")).toBeInTheDocument();
+    expect(within(advanced).getByText("ACTIVE")).toBeInTheDocument();
+    expect(within(advanced).getByText("h1")).toBeInTheDocument();
   });
 
   it("renders preset requirements + compatibility and shows reindex-required callout", async () => {
@@ -223,11 +232,11 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     }));
 
     renderSubject();
-    const { details } = await openTechnicalDetails();
-    expect(within(details).getByText(/Preset index requirements/i)).toBeInTheDocument();
+    const { advanced: details } = await openAdvancedTechnical();
+    expect(within(details).getByText(/Index requirements for selected profile/i)).toBeInTheDocument();
     expect(within(details).getByText("HYBRID")).toBeInTheDocument();
     expect(within(details).getByText("INCOMPATIBLE")).toBeInTheDocument();
-    expect(within(details).getByText(/Reindex required for this preset/i)).toBeInTheDocument();
+    expect(within(details).getByText(/Reindex required for this configuration profile/i)).toBeInTheDocument();
   });
 
   it("falls back to effectiveConfig values when project index profile is not loaded", async () => {
@@ -243,7 +252,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     }));
 
     renderSubject();
-    const { details } = await openTechnicalDetails();
+    const { advanced: details } = await openAdvancedTechnical();
     expect(within(details).getByText(/Materialization strategy/i)).toBeInTheDocument();
     expect(within(details).getAllByText("FULL_TEXT").length).toBeGreaterThan(0);
     expect(within(details).getByText(/Metadata index/i)).toBeInTheDocument();
@@ -333,7 +342,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     }));
     renderSubject();
     await openEditPanel();
-    const sel = screen.getByRole("combobox", { name: /preset/i }) as HTMLSelectElement;
+    const sel = screen.getByRole("combobox", { name: /configuration profile/i }) as HTMLSelectElement;
     expect(sel.value).toBe("preset-missing-id");
     // The synthetic option should be present so UI doesn't appear blank.
     expect(screen.getByRole("option", { name: "Prior Preset Label" })).toBeInTheDocument();
@@ -421,12 +430,10 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     }));
     renderSubject();
     await openEditPanel();
-    expect(screen.getByText(/P13 — Multi turn \(requires multi turn\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/P0 — Hidden \(not allowed\)/i)).toBeInTheDocument();
-    // Supported selectable presets should render the base label without extra hints.
-    expect(screen.getByText(/P2 — Supported selectable$/)).toBeInTheDocument();
-    // Not-supported but chat-selectable presets include a readable hint in parentheses.
-    expect(screen.getByText(/P3 — Not supported but selectable \(incompatible index\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Multi turn \(requires multi turn\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Hidden \(not allowed\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Supported selectable$/)).toBeInTheDocument();
+    expect(screen.getByText(/Not supported but selectable \(incompatible index\)/i)).toBeInTheDocument();
     expect(screen.queryByText(/REQUIRES_MULTI_TURN/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\[NOT_SUPPORTED/i)).not.toBeInTheDocument();
   });
@@ -483,7 +490,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
 
     renderSubject();
     await openEditPanel();
-    const option = screen.getByRole("option", { name: /P7 — Hybrid preset/i }) as HTMLOptionElement;
+    const option = screen.getByRole("option", { name: /Hybrid preset/i }) as HTMLOptionElement;
     expect(option.disabled).toBe(true);
     expect(option.textContent).toMatch(/Create or reindex the project with a compatible index profile/i);
   });
