@@ -38,10 +38,6 @@ function renderSubject() {
 
 async function openAdvancedTechnical() {
   const user = userEvent.setup();
-  const currentSettings = screen.getByTestId("chat-config-current-settings");
-  if (!currentSettings.hasAttribute("open")) {
-    await user.click(within(currentSettings).getByText(/Current settings/i));
-  }
   const advanced = screen.getByTestId("chat-config-advanced-technical");
   if (!advanced.hasAttribute("open")) {
     await user.click(within(advanced).getByText(/Advanced technical details/i));

@@ -6,7 +6,7 @@ import type { MeSelectableLlmModelsResponse } from "@/types/api";
 
 export const meSelectableLlmModelsQueryKey = ["me", "llm", "selectable-models"] as const;
 
-export function useMeSelectableLlmModels(capability: "CHAT" = "CHAT") {
+export function useMeSelectableLlmModels(capability: "CHAT" | "EMBEDDING" = "CHAT") {
   return useQuery({
     queryKey: [...meSelectableLlmModelsQueryKey, capability] as const,
     queryFn: () =>

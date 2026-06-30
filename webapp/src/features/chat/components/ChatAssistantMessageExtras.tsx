@@ -1,8 +1,10 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { useState } from "react";
 import type { MessageDto } from "@/types/api";
 import { formatClassifierFallbackNote } from "@/lib/product-copy";
+import { dedupeChatSourcesForDisplay } from "@/features/sources/lib/dedupe-chat-sources";
 
 function coerceBool(v: unknown): boolean {
   return v === true || v === "true" || v === 1 || v === "1";
@@ -122,6 +124,105 @@ function sourceIsAlternativeOnly(source: Record<string, unknown>): boolean {
   return false;
 }
 
+function SourceChunkDetails({
+  source,
+  requestedDate,
+  t,
+}: Readonly<{
+  source: Record<string, unknown>;
+  requestedDate: string | null;
+  t: ReturnType<typeof useTranslations<"Chat">>;
+}>) {
+  const detectedDate = sourceDetectedDate(source);
+  const excerpt = sourceSnippet(source);
+  const chunk = sourceChunkIndex(source);
+  const mismatched = sourceDateMismatch(detectedDate, requestedDate);
+  const alternative = sourceIsAlternativeOnly(source);
+
+  return (
+    <>
+      {detectedDate ? <p className="font-mono text-muted-foreground mt-0.5">date={detectedDate}</p> : null}
+      {chunk ? <p className="font-mono text-muted-foreground mt-0.5">chunk={chunk}</p> : null}
+      {alternative ? (
+        <p className="mt-0.5 text-amber-700 dark:text-amber-300" data-testid="chat-source-alternative">
+          {t("sourceAlternativeOnly")}
+        </p>
+      ) : null}
+      {mismatched && !alternative ? (
+        <p className="mt-0.5 text-amber-700 dark:text-amber-300" data-testid="chat-date-warning">
+          {t("chatSourceDateMismatch", { date: requestedDate ?? "" })}
+        </p>
+      ) : null}
+      {!sourceSupportsAnswer(source) && !alternative && !mismatched ? (
+        <p className="mt-0.5 text-muted-foreground">{t("sourceNotSupportingAnswer")}</p>
+      ) : null}
+      {excerpt ? (
+        <p className="text-muted-foreground mt-0.5 line-clamp-3 whitespace-pre-wrap break-words">{String(excerpt)}</p>
+      ) : null}
+    </>
+  );
+}
+
+function DedupedSourceGroup({
+  group,
+  requestedDate,
+  t,
+}: Readonly<{
+  group: ReturnType<typeof dedupeChatSourcesForDisplay>[number];
+  requestedDate: string | null;
+  t: ReturnType<typeof useTranslations<"Chat">>;
+}>) {
+  const [expanded, setExpanded] = useState(false);
+  const principal = group.chunks[0];
+  const principalScore = sourceScore(principal);
+  const chunkCount = group.chunks.length;
+
+  return (
+    <li className="space-y-1" data-testid="chat-source-group">
+      <div className="min-w-0 rounded-sm bg-muted/20 px-2 py-1">
+        <div className="flex min-w-0 items-baseline justify-between gap-2">
+          <span className="truncate font-medium break-all">{group.displayName}</span>
+          {principalScore ? <span className="shrink-0 font-mono text-muted-foreground">{principalScore}</span> : null}
+        </div>
+        {chunkCount === 1 ? (
+          <SourceChunkDetails source={principal} requestedDate={requestedDate} t={t} />
+        ) : (
+          <>
+            <button
+              type="button"
+              className="text-primary mt-1 text-[10px] underline underline-offset-2"
+              data-testid="chat-source-chunks-toggle"
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? t("sourceChunksHide") : t("sourceChunksShow", { count: chunkCount })}
+            </button>
+            {!expanded ? <SourceChunkDetails source={principal} requestedDate={requestedDate} t={t} /> : null}
+          </>
+        )}
+      </div>
+      {expanded && chunkCount > 1 ? (
+        <ul className="space-y-1 pl-2" data-testid="chat-source-chunks">
+          {group.chunks.map((chunk, idx) => (
+            <li key={`${group.key}-${idx}`} className="rounded-sm bg-muted/10 px-2 py-1">
+              <div className="flex items-baseline justify-between gap-2">
+                {sourceChunkIndex(chunk) ? (
+                  <span className="font-mono text-muted-foreground text-[10px]">chunk={sourceChunkIndex(chunk)}</span>
+                ) : (
+                  <span className="text-muted-foreground text-[10px]">#{idx + 1}</span>
+                )}
+                {sourceScore(chunk) ? (
+                  <span className="shrink-0 font-mono text-muted-foreground text-[10px]">{sourceScore(chunk)}</span>
+                ) : null}
+              </div>
+              <SourceChunkDetails source={chunk} requestedDate={requestedDate} t={t} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
 export function ChatAssistantMessageExtras({ message }: Readonly<{ message: MessageDto }>) {
   const t = useTranslations("Chat");
 
@@ -129,9 +230,11 @@ export function ChatAssistantMessageExtras({ message }: Readonly<{ message: Mess
     return null;
   }
 
-  const sources = Array.isArray(message.sources) ? message.sources : [];
+  const rawSources = Array.isArray(message.sources) ? message.sources : [];
+  const sourceGroups = dedupeChatSourcesForDisplay(rawSources);
   const showTrace =
     hasRuntimeTraceMetadata(message) || Boolean(messageMetadataString(message, "abstentionReason"));
+  const requestedDate = messageMetadataString(message, "requestedDate");
 
   return (
     <details className="group mt-2" data-testid="chat-message-metadata">
@@ -142,54 +245,15 @@ export function ChatAssistantMessageExtras({ message }: Readonly<{ message: Mess
         {t("chatMoreInformationLabel")}
       </summary>
       <div className="mt-2 space-y-2 border-border border-t pt-2" data-testid="chat-message-metadata-panel">
-        {sources.length > 0 ? (
+        {sourceGroups.length > 0 ? (
           <div data-testid="chat-sources">
             <p className="text-muted-foreground text-[11px] font-medium">
-              {t("chatSourcesHeading", { count: sources.length })}
+              {t("chatSourcesHeading", { count: sourceGroups.length })}
             </p>
             <ul className="mt-1 space-y-1 text-[11px]">
-              {sources.slice(0, 5).map((raw, idx) => {
-                const s = raw as Record<string, unknown>;
-                const file =
-                  s.fileName ?? s.filename ?? s.documentName ?? s.documentId ?? `source-${idx + 1}`;
-                const requestedDate = messageMetadataString(message, "requestedDate");
-                const detectedDate = sourceDetectedDate(s);
-                const excerpt = sourceSnippet(s);
-                const score = sourceScore(s);
-                const chunk = sourceChunkIndex(s);
-                const mismatched = sourceDateMismatch(detectedDate, requestedDate);
-                const alternative = sourceIsAlternativeOnly(s);
-                return (
-                  <li key={idx} className="rounded-sm bg-muted/20 px-2 py-1">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="truncate font-medium">{String(file)}</span>
-                      {score ? <span className="font-mono text-muted-foreground">{score}</span> : null}
-                    </div>
-                    {detectedDate ? (
-                      <p className="font-mono text-muted-foreground mt-0.5">date={detectedDate}</p>
-                    ) : null}
-                    {chunk ? <p className="font-mono text-muted-foreground mt-0.5">chunk={chunk}</p> : null}
-                    {alternative ? (
-                      <p className="mt-0.5 text-amber-700 dark:text-amber-300" data-testid="chat-source-alternative">
-                        {t("sourceAlternativeOnly")}
-                      </p>
-                    ) : null}
-                    {mismatched && !alternative ? (
-                      <p className="mt-0.5 text-amber-700 dark:text-amber-300" data-testid="chat-date-warning">
-                        {t("chatSourceDateMismatch", { date: requestedDate ?? "" })}
-                      </p>
-                    ) : null}
-                    {!sourceSupportsAnswer(s) && !alternative && !mismatched ? (
-                      <p className="mt-0.5 text-muted-foreground">{t("sourceNotSupportingAnswer")}</p>
-                    ) : null}
-                    {excerpt ? (
-                      <p className="text-muted-foreground mt-0.5 line-clamp-3 whitespace-pre-wrap">
-                        {String(excerpt)}
-                      </p>
-                    ) : null}
-                  </li>
-                );
-              })}
+              {sourceGroups.slice(0, 5).map((group) => (
+                <DedupedSourceGroup key={group.key} group={group} requestedDate={requestedDate} t={t} />
+              ))}
             </ul>
           </div>
         ) : (

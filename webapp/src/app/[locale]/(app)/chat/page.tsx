@@ -72,6 +72,16 @@ import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import { ChatAssistantMessageExtras } from "@/features/chat/components/ChatAssistantMessageExtras";
 import { ChatConfigurationSidePanel } from "@/features/chat/components/ChatConfigurationSidePanel";
 import { useChatConfigurationPanelStore } from "@/features/chat/store/chat-configuration-panel.store";
+import {
+  markUserMessageEdited,
+  readEditedUserMessageIds,
+} from "@/features/chat/lib/edited-message-marker";
+import {
+  clearLastConversationId,
+  writeLastConversationId,
+} from "@/features/chat/lib/last-conversation-persistence";
+import { resolveInitialConversationId } from "@/features/chat/lib/resolve-initial-conversation";
+import { ChatAssistantMarkdown } from "@/features/messages/components/ChatAssistantMarkdown";
 
 const CHAT_CONV_LIST_COLLAPSED_KEY = "chat-conv-list-collapsed";
 
@@ -315,6 +325,20 @@ function ChatPageInner() {
   /** Visible pipeline stages between send and a terminal assistant outcome. */
   const [assistantPhase, setAssistantPhase] = useState<AssistantPipelinePhase>(null);
   const [chatDropActive, setChatDropActive] = useState(false);
+  const [editedUserMessageIds, setEditedUserMessageIds] = useState<Set<string>>(() => new Set());
+  const lastConversationRestoreKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!conversationId) {
+      const clearTimer = setTimeout(() => setEditedUserMessageIds(new Set()), 0);
+      return () => clearTimeout(clearTimer);
+    }
+    const hydrateTimer = setTimeout(
+      () => setEditedUserMessageIds(readEditedUserMessageIds(conversationId)),
+      0,
+    );
+    return () => clearTimeout(hydrateTimer);
+  }, [conversationId]);
 
   useEffect(() => {
     if (urlConversationId && urlConversationId !== conversationId) {
@@ -326,8 +350,10 @@ function ChatPageInner() {
   const selectConversation = useCallback(
     (nextId: string) => {
       setConversationId(nextId);
-      if (!projectId) return;
-      router.push(buildProjectScopedChatHref(projectId, nextId));
+      if (projectId) {
+        writeLastConversationId(projectId, nextId);
+        router.push(buildProjectScopedChatHref(projectId, nextId));
+      }
     },
     [router, projectId],
   );
@@ -344,6 +370,18 @@ function ChatPageInner() {
   const { data: convs } = useConversations(projectId);
   const createConv = useCreateConversation(projectId);
   const patchConv = usePatchConversation(projectId);
+
+  useEffect(() => {
+    if (!projectId || !convs?.length || urlConversationId) return;
+    const attemptKey = `${projectId}:${convs.length}`;
+    if (lastConversationRestoreKeyRef.current === attemptKey) return;
+    if (conversationId && convs.some((c) => c.id === conversationId)) return;
+    const resolved = resolveInitialConversationId(convs, projectId, null);
+    if (!resolved) return;
+    lastConversationRestoreKeyRef.current = attemptKey;
+    selectConversation(resolved);
+  }, [projectId, convs, urlConversationId, conversationId, selectConversation]);
+
   // Runtime state is the authoritative steady-state validation source.
   const { data: rawMessages, refetch: refetchMessages } = useConversationMessages(conversationId ?? undefined);
   const messages = useMemo(() => {
@@ -917,6 +955,8 @@ function ChatPageInner() {
       );
       setEditingUserMessageId(null);
       setEditBody("");
+      markUserMessageEdited(conversationId, userMsgId);
+      setEditedUserMessageIds((prev) => new Set(prev).add(userMsgId));
       try {
         await refetchMessages();
       } catch (refetchErr) {
@@ -1385,12 +1425,13 @@ function ChatPageInner() {
             size="icon-sm"
             className="shrink-0 self-start"
             aria-expanded={false}
-            aria-label={t("sidebarExpand")}
+            aria-label={`${t("sidebarExpand")}. ${t("sidebarCollapsedHint")}`}
+            title={t("sidebarCollapsedHint")}
             onClick={() => persistConvListCollapsed(false)}
           >
             <PanelLeftOpen className="size-4" />
+            <span className="sr-only">{t("sidebarCollapsedHint")}</span>
           </Button>
-          <p className="text-muted-foreground hidden text-xs md:block md:max-w-[7rem]">{t("sidebarCollapsedHint")}</p>
         </div>
       ) : (
         <aside
@@ -1468,7 +1509,7 @@ function ChatPageInner() {
           className={cn(
             "flex w-full min-h-0 min-w-0 flex-col gap-3 px-2 sm:px-3 md:px-5",
             desktopConfigSplit
-              ? "md:min-w-0 md:flex-1"
+              ? "md:min-w-0 md:flex-[7] md:basis-[70%] md:max-w-[70%]"
               : "md:mx-auto md:w-full md:max-w-[min(50%,48rem)] md:flex-none",
           )}
         >
@@ -1686,12 +1727,21 @@ function ChatPageInner() {
                       {t("clarificationQuestionLabel")}
                     </p>
                   ) : null}
-                  <p
-                    className="whitespace-pre-wrap break-words"
-                    data-testid={m.role === "ASSISTANT" ? "chat-answer" : undefined}
-                  >
-                    {m.content}
-                  </p>
+                  {m.role === "ASSISTANT" ? (
+                    <ChatAssistantMarkdown content={m.content} data-testid="chat-answer" />
+                  ) : (
+                    <p className="whitespace-pre-wrap break-words" data-testid="chat-user-message">
+                      {m.content}
+                    </p>
+                  )}
+                  {m.role === "USER" && editedUserMessageIds.has(m.id) ? (
+                    <p
+                      className="text-primary-foreground/75 mt-1 text-[10px] font-medium"
+                      data-testid="chat-message-edited-label"
+                    >
+                      {t("messageEditedLabel")}
+                    </p>
+                  ) : null}
                   {m.role === "ASSISTANT" ? <ChatAssistantMessageExtras message={m} /> : null}
                   {m.role === "USER" && m.id === lastUserMessageId && (
                     <Button
@@ -1721,9 +1771,11 @@ function ChatPageInner() {
                       {t("retryAssistant")}
                     </Button>
                   )}
-                  {m.role === "ASSISTANT" && m.status && m.status !== "DONE" && (
-                    <p className="text-muted-foreground mt-1 text-xs">[{m.status}]</p>
-                  )}
+                  {m.role === "ASSISTANT" && m.status && m.status !== "DONE" ? (
+                    <p className="text-muted-foreground mt-1 text-xs" data-testid="chat-assistant-status">
+                      {t("assistantMessageInProgress")}
+                    </p>
+                  ) : null}
                 </>
               )}
             </div>
@@ -1745,11 +1797,11 @@ function ChatPageInner() {
               />
             </div>
           ) : null}
-          {isStreaming && streamingText && (
-            <div className="mr-auto max-w-[85%] min-w-0 rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]">
+          {isStreaming && streamingText ? (
+            <div className="mr-auto max-w-[85%] min-w-0 overflow-x-hidden rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]">
               <p className="whitespace-pre-wrap break-words">{streamingText}</p>
             </div>
-          )}
+          ) : null}
           <div ref={bottomRef} />
         </div>
         <div className="flex w-full min-w-0 shrink-0 flex-col gap-2" data-testid="chat-composer-dock">
@@ -1907,9 +1959,12 @@ function ChatPageInner() {
           conversationTitle={deleteDialogTarget?.title ?? ""}
           onDeleted={() => {
             const deletedId = deleteDialogTarget?.id;
-            if (deletedId && conversationId === deletedId && projectId) {
-              router.push(buildProjectScopedChatHref(projectId, null));
-              setConversationId(null);
+            if (deletedId && projectId) {
+              clearLastConversationId(projectId, deletedId);
+              if (conversationId === deletedId) {
+                router.push(buildProjectScopedChatHref(projectId, null));
+                setConversationId(null);
+              }
             }
           }}
         />

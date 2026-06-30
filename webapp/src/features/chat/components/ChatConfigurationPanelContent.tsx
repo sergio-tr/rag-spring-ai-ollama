@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Link } from "@/navigation";
 import { useTranslations } from "next-intl";
 import { formatChatExperimentalPresetOptionLabel, formatPresetSupportMessage } from "@/lib/product-copy";
 import {
@@ -21,7 +22,10 @@ import {
   CompactSummaryRow,
 } from "@/features/chat/components/chat-config-compact-ui";
 import { chatFailureHintForCode, normalizeChatFailureCode } from "@/features/chat/lib/chat-job-errors";
-import { formatRuntimeValidationIssueMessage } from "@/features/chat/lib/runtime-validation-copy";
+import {
+  formatRuntimeValidationIssueMessage,
+  isAdvancedTechnicalValidationIssue,
+} from "@/features/chat/lib/runtime-validation-copy";
 import { cn } from "@/lib/utils";
 import { productProviderLabel, productProviderLabelsFromSettings } from "@/lib/product-provider-labels";
 import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
@@ -179,6 +183,14 @@ export function ChatConfigurationPanelContent() {
       api?.runtimeState?.runtimeCompatibility?.warnings,
       api?.runtimeState?.validation?.warnings,
     ],
+  );
+  const normalWarningIssues = useMemo(
+    () => warningIssues.filter((issue) => !isAdvancedTechnicalValidationIssue(issue)),
+    [warningIssues],
+  );
+  const advancedTechnicalWarningIssues = useMemo(
+    () => warningIssues.filter((issue) => isAdvancedTechnicalValidationIssue(issue)),
+    [warningIssues],
   );
   const activeSnapshotCapabilities = api?.runtimeState?.indexCompatibility?.activeSnapshotCapabilities ?? null;
   const documentCounts = useMemo(() => {
@@ -399,6 +411,12 @@ export function ChatConfigurationPanelContent() {
   }
 
   useEffect(() => {
+    if (editOpen) {
+      setRuntimeOpen(true);
+    }
+  }, [editOpen]);
+
+  useEffect(() => {
     const known = new Set(
       [
         "useRetrieval",
@@ -432,6 +450,21 @@ export function ChatConfigurationPanelContent() {
     const trimmed = raw.trim();
     if (!trimmed) return null;
     return trimmed.length > 280 ? `${trimmed.slice(0, 277).trimEnd()}…` : trimmed;
+  }, [mergedRuntimeFlagValues]);
+
+  const effectivePromptSource = useMemo(() => {
+    const customSystem =
+      typeof mergedRuntimeFlagValues.llmSystemPrompt === "string"
+      && mergedRuntimeFlagValues.llmSystemPrompt.trim().length > 0;
+    const overrides = mergedRuntimeFlagValues.promptOverrides;
+    const customInternal =
+      overrides != null
+      && typeof overrides === "object"
+      && !Array.isArray(overrides)
+      && Object.values(overrides as Record<string, unknown>).some(
+        (v) => typeof v === "string" && v.trim().length > 0,
+      );
+    return customSystem || customInternal ? "project" : "default";
   }, [mergedRuntimeFlagValues]);
 
   function formatIndexBoundCapabilityValue(key: string): string {
@@ -590,13 +623,13 @@ export function ChatConfigurationPanelContent() {
         </div>
       ) : null}
 
-      {warningIssues.length > 0 ? (
+      {normalWarningIssues.length > 0 ? (
         <div
           className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
           role="status"
           data-testid="chat-config-validation-warning"
         >
-          {formatRuntimeValidationIssueMessage(warningIssues[0]!, tChat)}
+          {formatRuntimeValidationIssueMessage(normalWarningIssues[0]!, tChat)}
         </div>
       ) : null}
 
@@ -667,100 +700,194 @@ export function ChatConfigurationPanelContent() {
 
       {editOpen ? (
         <>
-      <Section title={tChat("configSectionDocumentScope")}>
-        <Box>
-          <div className="space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <label className="flex cursor-pointer items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  data-testid="chat-limit-documents-checkbox"
-                  className="border-input size-4 rounded"
-                  checked={Boolean(api?.limitDocs)}
-                  disabled={needsProject || needsConversation || Boolean(api?.limitDocsDisabled) || Boolean(api?.patchConvPending)}
-                  onChange={(e) => api?.onLimitDocsChange(e.target.checked)}
-                />
-                <span>{tChat("limitDocumentsLabel")}</span>
-              </label>
-              {api?.limitDocsDisabled ? (
-                <MenuHint>{tChat("limitDocumentsNoReadyHint")}</MenuHint>
-              ) : null}
-            </div>
-
-            {documentScopeHint ? <MenuHint>{documentScopeHint}</MenuHint> : null}
-
-            <div className="grid grid-cols-2 gap-2 rounded-md border bg-background/50 px-3 py-2 text-xs sm:grid-cols-4">
-              <div>
-                <span className="text-muted-foreground block">{tChat("configDocumentCountTotal")}</span>
-                <span className="font-mono">{documentCounts.total}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block">{tChat("configDocumentCountReady")}</span>
-                <span className="font-mono">{documentCounts.ready}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block">{tChat("configDocumentCountIngesting")}</span>
-                <span className="font-mono">{documentCounts.ingesting}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block">{tChat("configDocumentCountError")}</span>
-                <span className="font-mono">{documentCounts.error}</span>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                data-testid="chat-open-documents-sheet"
-                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-                disabled={needsProject || needsConversation}
-                onClick={() => api?.openDocumentsSheet()}
-              >
-                {tChat("manageDocuments")}
-              </button>
-
-              <input
-                ref={uploadInputRef}
-                type="file"
-                className="sr-only"
-                multiple
-                aria-label={tChat("documentsSheetUploadInputAria")}
-                onChange={(e) => api?.onAddDocuments(e.target.files)}
-              />
-              <button
-                type="button"
-                className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
-                disabled={needsProject || needsConversation || Boolean(api?.uploadPending)}
-                onClick={() => uploadInputRef.current?.click()}
-              >
-                {tChat("addDocuments")}
-              </button>
-            </div>
-          </div>
-        </Box>
-      </Section>
-
       <p className="text-muted-foreground text-xs" data-testid="chat-config-scope-legend">
         {tChat("configScopeLegend")}
       </p>
 
-      <Section title={tChat("configSectionAssistantInstructions")}>
+      <Section title={tChat("configSectionAssistant")}>
         <Box>
-          <div className="space-y-2" data-testid="chat-assistant-instructions-section">
-            <MenuHint>{tChat("chatInstructionsEditInSettingsHint")}</MenuHint>
-            {instructionsPreview ? (
-              <div className="rounded-md border bg-background/50 px-3 py-2 text-xs">
-                <p className="text-muted-foreground mb-1 font-medium">{tChat("chatInstructionsPreviewLabel")}</p>
-                <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{instructionsPreview}</p>
+          <div className="space-y-4">
+            <div className="space-y-3" data-testid="chat-assistant-document-scope">
+              <div className="flex items-start justify-between gap-3">
+                <label className="flex cursor-pointer items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    data-testid="chat-limit-documents-checkbox"
+                    className="border-input size-4 rounded"
+                    checked={Boolean(api?.limitDocs)}
+                    disabled={needsProject || needsConversation || Boolean(api?.limitDocsDisabled) || Boolean(api?.patchConvPending)}
+                    onChange={(e) => api?.onLimitDocsChange(e.target.checked)}
+                  />
+                  <span>{tChat("limitDocumentsLabel")}</span>
+                </label>
+                {api?.limitDocsDisabled ? (
+                  <MenuHint>{tChat("limitDocumentsNoReadyHint")}</MenuHint>
+                ) : null}
               </div>
-            ) : (
-              <output className="text-muted-foreground text-xs">{tChat("chatInstructionsEmpty")}</output>
-            )}
+
+              {documentScopeHint ? <MenuHint>{documentScopeHint}</MenuHint> : null}
+
+              <div className="grid grid-cols-2 gap-2 rounded-md border bg-background/50 px-3 py-2 text-xs sm:grid-cols-4">
+                <div>
+                  <span className="text-muted-foreground block">{tChat("configDocumentCountTotal")}</span>
+                  <span className="font-mono">{documentCounts.total}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">{tChat("configDocumentCountReady")}</span>
+                  <span className="font-mono">{documentCounts.ready}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">{tChat("configDocumentCountIngesting")}</span>
+                  <span className="font-mono">{documentCounts.ingesting}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">{tChat("configDocumentCountError")}</span>
+                  <span className="font-mono">{documentCounts.error}</span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  data-testid="chat-open-documents-sheet"
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                  disabled={needsProject || needsConversation}
+                  onClick={() => api?.openDocumentsSheet()}
+                >
+                  {tChat("manageDocuments")}
+                </button>
+
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  className="sr-only"
+                  multiple
+                  aria-label={tChat("documentsSheetUploadInputAria")}
+                  onChange={(e) => api?.onAddDocuments(e.target.files)}
+                />
+                <button
+                  type="button"
+                  className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
+                  disabled={needsProject || needsConversation || Boolean(api?.uploadPending)}
+                  onClick={() => uploadInputRef.current?.click()}
+                >
+                  {tChat("addDocuments")}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3 border-t pt-3" data-testid="chat-assistant-preset-section">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor={presetSelectId} className="text-xs">
+                    {tChat("presetLabel")}
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    {presetKindBadge ? (
+                      <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">
+                        {presetKindBadge}
+                      </span>
+                    ) : null}
+                    {selectedExperimental ? (
+                      <span
+                        className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium"
+                        title={formatChatPresetTechnicalTitle(selectedExperimental, presetCopyT)}
+                        data-testid="chat-preset-experimental-badge"
+                      >
+                        {tChat("presetExperimentalBadge")}
+                      </span>
+                    ) : null}
+                    {hasCustomOverride ? (
+                      <span
+                        className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium"
+                        data-testid="chat-custom-state"
+                      >
+                        Custom
+                      </span>
+                    ) : null}
+                    {presetSupportBadge ? (
+                      <span
+                        className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium"
+                        data-testid="chat-preset-support-badge"
+                      >
+                        {presetSupportBadge}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <select
+                  id={presetSelectId}
+                  data-testid="chat-preset-select"
+                  className={cn(
+                    "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
+                    api?.presetsError && "border-destructive",
+                  )}
+                  value={selectedPresetValue}
+                  onChange={(e) => api?.onPresetChange(e.target.value)}
+                  disabled={needsProject || needsConversation || !!api?.presetSelectDisabled}
+                  aria-label={tChat("presetLabel")}
+                >
+                  <option value="">{tChat("presetRecommendedDefault")}</option>
+                  {runtimeSelectedPresetId &&
+                  !selectedInProduct &&
+                  !selectedExperimental &&
+                  api?.runtimeState?.preset?.label ? (
+                    <option value={runtimeSelectedPresetId}>
+                      {toProductPresetDisplayName(api.runtimeState.preset.label.trim())}
+                    </option>
+                  ) : null}
+                  <optgroup label={tChat("presetGroupProduct")}>
+                    {api?.presets?.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {toProductPresetDisplayName(p.name)}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label={tChat("presetGroupExperimental")}>
+                    {experimentalUnique.map((p) => {
+                      const reason = presetIndexDisabledReason(p);
+                      const optionLabel =
+                        reason && p.chatSelectable
+                          ? `${formatChatExperimentalPresetOptionLabel(p, presetCopyT)} (${reason})`
+                          : formatChatExperimentalPresetOptionLabel(p, presetCopyT);
+                      return (
+                        <option
+                          key={p.productPresetId}
+                          value={p.productPresetId}
+                          disabled={Boolean(reason)}
+                          title={formatChatPresetTechnicalTitle(p, presetCopyT)}
+                        >
+                          {optionLabel}
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+                </select>
+
+                {selectedPresetDisabledReason ? (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
+                    <p className="font-medium text-destructive">{selectedPresetDisabledReason}</p>
+                    {api?.runtimeState?.requiresReindex ? (
+                      <p className="mt-1 text-muted-foreground">
+                        Create or reindex project with compatible profile.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {!api?.presetsLoading && !api?.presetsError && (api?.presets?.length ?? 0) === 0 ? (
+                  <output className="text-muted-foreground text-xs">{tChat("presetCatalogEmpty")}</output>
+                ) : null}
+                {api?.presetsError ? (
+                  <output className="text-destructive text-xs">{tChat("presetsLoadError")}</output>
+                ) : null}
+              </div>
+            </div>
           </div>
         </Box>
       </Section>
 
-      <Section title={tChat("configSectionModelConfiguration")}>
+      <Section title={tChat("configSectionModels")}>
         <Box>
           <div className="space-y-3">
             <div className="flex flex-col gap-1">
@@ -897,140 +1024,24 @@ export function ChatConfigurationPanelContent() {
                 </output>
               ) : null}
             </div>
-          </div>
-        </Box>
-      </Section>
 
-      <Section title={tChat("configSectionEmbeddingModel")}>
-        <Box>
-          {embeddingIndexBoundCap ? (
-            <div className="flex min-w-0 flex-col gap-1" data-testid="chat-embedding-model-readonly">
-              <div className="flex items-center justify-between gap-2">
-                <Label className="text-xs">{tChat("chatEmbeddingModelLabel")}</Label>
-                <ConfigScopeBadge scope="project" label={scopeLabel("project")} />
-              </div>
-              <div
-                className="border-input bg-muted/30 min-w-0 break-words rounded-md border px-2 py-2 text-sm [overflow-wrap:anywhere]"
-                data-testid="chat-embedding-model-value"
-              >
-                {displayEmbeddingModel}
-              </div>
-              <p className="text-muted-foreground text-xs break-words [overflow-wrap:anywhere]">
-                {embeddingIndexBoundCap.reasonIfDisabled ?? tChat("chatEmbeddingModelReadOnlyHint")}
-              </p>
-            </div>
-          ) : (
-            <output className="text-muted-foreground text-xs">{notLoadedLabel}</output>
-          )}
-        </Box>
-      </Section>
-
-      <Section title={tChat("configSectionConfigurationProfile")}>
-        <Box>
-          <div className="space-y-3">
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor={presetSelectId} className="text-xs">
-                  {tChat("presetLabel")}
-                </Label>
-                <div className="flex items-center gap-2">
-                  {presetKindBadge ? (
-                    <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">
-                      {presetKindBadge}
-                    </span>
-                  ) : null}
-                  {selectedExperimental ? (
-                    <span
-                      className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium"
-                      title={formatChatPresetTechnicalTitle(selectedExperimental, presetCopyT)}
-                      data-testid="chat-preset-experimental-badge"
-                    >
-                      {tChat("presetExperimentalBadge")}
-                    </span>
-                  ) : null}
-                  {hasCustomOverride ? (
-                    <span
-                      className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium"
-                      data-testid="chat-custom-state"
-                    >
-                      Custom
-                    </span>
-                  ) : null}
-                  {presetSupportBadge ? (
-                    <span
-                      className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium"
-                      data-testid="chat-preset-support-badge"
-                    >
-                      {presetSupportBadge}
-                    </span>
-                  ) : null}
+            {embeddingIndexBoundCap ? (
+              <div className="flex min-w-0 flex-col gap-1 border-t pt-3" data-testid="chat-embedding-model-readonly">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">{tChat("chatEmbeddingModelLabel")}</Label>
+                  <ConfigScopeBadge scope="project" label={scopeLabel("project")} />
                 </div>
-              </div>
-
-              <select
-                id={presetSelectId}
-                data-testid="chat-preset-select"
-                className={cn(
-                  "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
-                  api?.presetsError && "border-destructive",
-                )}
-                value={selectedPresetValue}
-                onChange={(e) => api?.onPresetChange(e.target.value)}
-                disabled={needsProject || needsConversation || !!api?.presetSelectDisabled}
-                aria-label={tChat("presetLabel")}
-              >
-                <option value="">{tChat("presetRecommendedDefault")}</option>
-                {runtimeSelectedPresetId &&
-                !selectedInProduct &&
-                !selectedExperimental &&
-                api?.runtimeState?.preset?.label ? (
-                  <option value={runtimeSelectedPresetId}>{api.runtimeState.preset.label}</option>
-                ) : null}
-                <optgroup label={tChat("presetGroupProduct")}>
-                  {api?.presets?.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {toProductPresetDisplayName(p.name)}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label={tChat("presetGroupExperimental")}>
-                  {experimentalUnique.map((p) => {
-                    const reason = presetIndexDisabledReason(p);
-                    const optionLabel =
-                      reason && p.chatSelectable
-                        ? `${formatChatExperimentalPresetOptionLabel(p, presetCopyT)} (${reason})`
-                        : formatChatExperimentalPresetOptionLabel(p, presetCopyT);
-                    return (
-                      <option
-                        key={p.productPresetId}
-                        value={p.productPresetId}
-                        disabled={Boolean(reason)}
-                        title={formatChatPresetTechnicalTitle(p, presetCopyT)}
-                      >
-                        {optionLabel}
-                      </option>
-                    );
-                  })}
-                </optgroup>
-              </select>
-
-              {selectedPresetDisabledReason ? (
-                <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
-                  <p className="font-medium text-destructive">{selectedPresetDisabledReason}</p>
-                  {api?.runtimeState?.requiresReindex ? (
-                    <p className="mt-1 text-muted-foreground">
-                      Create or reindex project with compatible profile.
-                    </p>
-                  ) : null}
+                <div
+                  className="border-input bg-muted/30 min-w-0 break-words rounded-md border px-2 py-2 text-sm [overflow-wrap:anywhere]"
+                  data-testid="chat-embedding-model-value"
+                >
+                  {displayEmbeddingModel}
                 </div>
-              ) : null}
-              {!api?.presetsLoading && !api?.presetsError && (api?.presets?.length ?? 0) === 0 ? (
-                <output className="text-muted-foreground text-xs">{tChat("presetCatalogEmpty")}</output>
-              ) : null}
-              {api?.presetsError ? (
-                <output className="text-destructive text-xs">{tChat("presetsLoadError")}</output>
-              ) : null}
-            </div>
+                <p className="text-muted-foreground text-xs break-words [overflow-wrap:anywhere]">
+                  {embeddingIndexBoundCap.reasonIfDisabled ?? tChat("chatEmbeddingModelReadOnlyHint")}
+                </p>
+              </div>
+            ) : null}
           </div>
         </Box>
       </Section>
@@ -1114,86 +1125,201 @@ export function ChatConfigurationPanelContent() {
         </Box>
       </Section>
 
-      {memoryRuntimeCap ? (
-        <Section title={tChat("configSectionConversationMemory")}>
-          <Box data-testid="chat-conversation-memory-section">
-            <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
-              <span className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  data-testid="chat-runtime-toggle-memoryEnabled"
-                  className="border-input size-4 rounded"
-                  checked={getBooleanValue(MEMORY_FEATURE_KEY)}
-                  disabled={!!disabledReason(MEMORY_FEATURE_KEY) || patchPending}
-                  onChange={(e) => setOverrideBoolean(MEMORY_FEATURE_KEY, e.target.checked)}
-                />
-                <span>{tChat("runtimeFeatureMemoryEnabled")}</span>
+      <Section title={tChat("configSectionPrompts")}>
+        <Box>
+          <div className="space-y-2" data-testid="chat-assistant-instructions-section">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <MenuHint>{tChat("chatPromptConfigSummary")}</MenuHint>
+              {api?.projectId ? (
+                <Link
+                  href="/settings/project#internal-prompt-configuration"
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                  data-testid="chat-edit-project-prompts-link"
+                >
+                  {tChat("chatConfigureProjectPromptsAction")}
+                </Link>
+              ) : null}
+            </div>
+            <p className="text-muted-foreground text-xs" data-testid="chat-effective-prompt-source">
+              {tChat("chatEffectivePromptSourceLabel")}:{" "}
+              {effectivePromptSource === "project"
+                ? tChat("chatEffectivePromptSourceProject")
+                : tChat("chatEffectivePromptSourceDefault")}
+            </p>
+            {instructionsPreview ? (
+              <div className="rounded-md border bg-background/50 px-3 py-2 text-xs">
+                <p className="text-muted-foreground mb-1 font-medium">{tChat("chatInstructionsPreviewLabel")}</p>
+                <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{instructionsPreview}</p>
+              </div>
+            ) : (
+              <output className="text-muted-foreground text-xs">{tChat("chatInstructionsEmpty")}</output>
+            )}
+          </div>
+        </Box>
+      </Section>
+
+      {(memoryRuntimeCap || clarificationRuntimeCap) ? (
+        <Section title={tChat("configSectionMemoryAndClarification")}>
+          <Box className="space-y-4" data-testid="chat-memory-clarification-section">
+            {memoryRuntimeCap ? (
+              <div data-testid="chat-conversation-memory-section">
+                <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                  <span className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      data-testid="chat-runtime-toggle-memoryEnabled"
+                      className="border-input size-4 rounded"
+                      checked={getBooleanValue(MEMORY_FEATURE_KEY)}
+                      disabled={!!disabledReason(MEMORY_FEATURE_KEY) || patchPending}
+                      onChange={(e) => setOverrideBoolean(MEMORY_FEATURE_KEY, e.target.checked)}
+                    />
+                    <span>{tChat("runtimeFeatureMemoryEnabled")}</span>
+                    {memoryRuntimeCap.supportMode === "MULTI_TURN_REQUIRED" ? (
+                      <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">Multi-turn</span>
+                    ) : null}
+                  </span>
+                  <ConfigScopeBadge
+                    scope={scopeForRuntimeKey(MEMORY_FEATURE_KEY)}
+                    label={scopeLabel(scopeForRuntimeKey(MEMORY_FEATURE_KEY))}
+                  />
+                </label>
                 {memoryRuntimeCap.supportMode === "MULTI_TURN_REQUIRED" ? (
-                  <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">Multi-turn</span>
+                  <MenuHint>{tChat("runtimeMultiTurnHint")}</MenuHint>
                 ) : null}
-              </span>
-              <ConfigScopeBadge
-                scope={scopeForRuntimeKey(MEMORY_FEATURE_KEY)}
-                label={scopeLabel(scopeForRuntimeKey(MEMORY_FEATURE_KEY))}
-              />
-            </label>
-            {memoryRuntimeCap.supportMode === "MULTI_TURN_REQUIRED" ? (
-              <MenuHint>{tChat("runtimeMultiTurnHint")}</MenuHint>
+              </div>
             ) : null}
-          </Box>
-        </Section>
-      ) : null}
-
-      {clarificationRuntimeCap ? (
-        <Section title={tChat("configSectionClarification")}>
-          <Box data-testid="chat-clarification-section">
-            <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
-              <span className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  data-testid="chat-runtime-toggle-clarificationEnabled"
-                  className="border-input size-4 rounded"
-                  checked={getBooleanValue(CLARIFICATION_FEATURE_KEY)}
-                  disabled={!!disabledReason(CLARIFICATION_FEATURE_KEY) || patchPending}
-                  onChange={(e) => setOverrideBoolean(CLARIFICATION_FEATURE_KEY, e.target.checked)}
-                />
-                <span>{tChat("runtimeFeatureClarificationEnabled")}</span>
+            {clarificationRuntimeCap ? (
+              <div data-testid="chat-clarification-section">
+                <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                  <span className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      data-testid="chat-runtime-toggle-clarificationEnabled"
+                      className="border-input size-4 rounded"
+                      checked={getBooleanValue(CLARIFICATION_FEATURE_KEY)}
+                      disabled={!!disabledReason(CLARIFICATION_FEATURE_KEY) || patchPending}
+                      onChange={(e) => setOverrideBoolean(CLARIFICATION_FEATURE_KEY, e.target.checked)}
+                    />
+                    <span>{tChat("runtimeFeatureClarificationEnabled")}</span>
+                    {clarificationRuntimeCap.supportMode === "MULTI_TURN_REQUIRED" ? (
+                      <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">Multi-turn</span>
+                    ) : null}
+                  </span>
+                  <ConfigScopeBadge
+                    scope={scopeForRuntimeKey(CLARIFICATION_FEATURE_KEY)}
+                    label={scopeLabel(scopeForRuntimeKey(CLARIFICATION_FEATURE_KEY))}
+                  />
+                </label>
                 {clarificationRuntimeCap.supportMode === "MULTI_TURN_REQUIRED" ? (
-                  <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">Multi-turn</span>
+                  <MenuHint>{tChat("runtimeMultiTurnHint")}</MenuHint>
                 ) : null}
-              </span>
-              <ConfigScopeBadge
-                scope={scopeForRuntimeKey(CLARIFICATION_FEATURE_KEY)}
-                label={scopeLabel(scopeForRuntimeKey(CLARIFICATION_FEATURE_KEY))}
-              />
-            </label>
-            {clarificationRuntimeCap.supportMode === "MULTI_TURN_REQUIRED" ? (
-              <MenuHint>{tChat("runtimeMultiTurnHint")}</MenuHint>
+              </div>
             ) : null}
           </Box>
         </Section>
       ) : null}
 
-      {answerQualityRuntimeCap ? (
-        <Section title={tChat("configSectionAnswerQualityChecks")}>
-          <Box data-testid="chat-answer-quality-section">
-            <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
-              <span className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  data-testid="chat-runtime-toggle-judgeEnabled"
-                  className="border-input size-4 rounded"
-                  checked={getBooleanValue(ANSWER_QUALITY_FEATURE_KEY)}
-                  disabled={!!disabledReason(ANSWER_QUALITY_FEATURE_KEY) || patchPending}
-                  onChange={(e) => setOverrideBoolean(ANSWER_QUALITY_FEATURE_KEY, e.target.checked)}
-                />
-                <span>{tChat("runtimeFeatureAnswerQualityChecks")}</span>
-              </span>
-              <ConfigScopeBadge
-                scope={scopeForRuntimeKey(ANSWER_QUALITY_FEATURE_KEY)}
-                label={scopeLabel(scopeForRuntimeKey(ANSWER_QUALITY_FEATURE_KEY))}
-              />
-            </label>
+      {(answerQualityRuntimeCap || advancedRuntimeToggles.length > 0 || editOpen) ? (
+        <Section title={tChat("configSectionToolsAndQualityChecks")}>
+          <Box className="space-y-4">
+            {answerQualityRuntimeCap ? (
+              <div data-testid="chat-answer-quality-section">
+                <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                  <span className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      data-testid="chat-runtime-toggle-judgeEnabled"
+                      className="border-input size-4 rounded"
+                      checked={getBooleanValue(ANSWER_QUALITY_FEATURE_KEY)}
+                      disabled={!!disabledReason(ANSWER_QUALITY_FEATURE_KEY) || patchPending}
+                      onChange={(e) => setOverrideBoolean(ANSWER_QUALITY_FEATURE_KEY, e.target.checked)}
+                    />
+                    <span>{tChat("runtimeFeatureAnswerQualityChecks")}</span>
+                  </span>
+                  <ConfigScopeBadge
+                    scope={scopeForRuntimeKey(ANSWER_QUALITY_FEATURE_KEY)}
+                    label={scopeLabel(scopeForRuntimeKey(ANSWER_QUALITY_FEATURE_KEY))}
+                  />
+                </label>
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-1 gap-3">
+              {advancedRuntimeToggles.map((cap) => {
+                const key = cap.key;
+                const reason = disabledReason(key);
+                const fieldIssue = issueByField.get(key);
+                const rid = `disabled-${key}`;
+                const showMultiTurn = cap.supportMode === "MULTI_TURN_REQUIRED";
+                const labelKey = chatRuntimeLabelKey(key);
+                const label = tChat(labelKey) !== labelKey ? tChat(labelKey) : cap.label ?? key;
+                return (
+                  <div key={key} className="flex flex-col gap-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <label className="flex cursor-pointer items-center gap-3 text-sm">
+                        <input
+                          type="checkbox"
+                          data-testid={`chat-runtime-toggle-${key}`}
+                          className="border-input size-4 rounded"
+                          checked={getBooleanValue(key)}
+                          disabled={!!reason || patchPending}
+                          onChange={(e) => setOverrideBoolean(key, e.target.checked)}
+                          aria-describedby={reason ? rid : undefined}
+                        />
+                        <span>{label}</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        {showMultiTurn ? (
+                          <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">
+                            Multi-turn
+                          </span>
+                        ) : null}
+                        {reason ? <DisabledReason id={rid} reason={reason} label={tChat("configDisabledLabel")} /> : null}
+                      </div>
+                    </div>
+                    {fieldIssue ? <MenuHint>{fieldIssue.message}</MenuHint> : null}
+                    {showMultiTurn ? <MenuHint>{tChat("runtimeMultiTurnHint")}</MenuHint> : null}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-start justify-between gap-3 border-t pt-3">
+              <button
+                type="button"
+                data-testid="chat-config-runtime-collapsible"
+                className="hover:bg-muted inline-flex items-center gap-2 rounded-md px-2 py-1 text-left text-sm font-medium"
+                aria-expanded={runtimeOpen}
+                onClick={() => setRuntimeOpen((p) => !p)}
+              >
+                <span>{tChat("configAdvancedSection")}</span>
+                <span className="text-muted-foreground text-xs font-normal">
+                  {runtimeOpen ? tChat("configHide") : tChat("configShow")}
+                </span>
+              </button>
+              <button
+                type="button"
+                data-testid="chat-config-runtime-refresh-effective"
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                disabled={needsProject || needsConversation || effectiveLoading}
+                onClick={() => api?.refreshRuntimeState()}
+              >
+                {effectiveLoading ? tChat("configLoadingShort") : tChat("configRefresh")}
+              </button>
+            </div>
+
+            {runtimeOpen ? (
+              <p className="text-muted-foreground text-xs">{tChat("runtimeEffectiveCollapsedHint")}</p>
+            ) : null}
+
+            {advancedError ? (
+              <p className="text-destructive text-xs" role="alert">
+                {advancedError}
+              </p>
+            ) : null}
+            {advancedValidationText ? (
+              <p className="text-muted-foreground text-xs">{advancedValidationText}</p>
+            ) : null}
           </Box>
         </Section>
       ) : null}
@@ -1202,20 +1328,28 @@ export function ChatConfigurationPanelContent() {
 
       <details
         className="rounded-lg border bg-muted/20 p-3 text-xs"
-        data-testid="chat-config-current-settings"
+        data-testid="chat-config-advanced-technical"
+        id="chat-config-current-settings"
       >
         <summary className="cursor-pointer text-sm font-medium text-foreground">
-          {tChat("runtimeCurrentSettingsTitle")}
+          {tChat("configAdvancedTechnicalSummary")}
         </summary>
-        <div className="mt-3 space-y-3">
+        <div className="mt-3 space-y-3" data-testid="chat-config-current-settings">
           <p className="text-muted-foreground text-xs">{tChat("runtimeEffectiveCollapsedHint")}</p>
-
-          <details
-            className="rounded-md border bg-background/40 p-3"
-            data-testid="chat-config-advanced-technical"
-          >
-            <summary className="cursor-pointer text-xs font-medium">{tChat("configAdvancedTechnicalSummary")}</summary>
-            <div className="mt-3 space-y-2">
+          <div className="space-y-2">
+              {advancedTechnicalWarningIssues.length > 0 ? (
+                <div
+                  className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+                  role="status"
+                  data-testid="chat-config-advanced-validation-warning"
+                >
+                  {advancedTechnicalWarningIssues.map((issue) => (
+                    <p key={`${issue.code}-${issue.field ?? "global"}`}>
+                      {formatRuntimeValidationIssueMessage(issue, tChat)}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
               <MenuHint>{tChat("chatConfigIndexProfileReindexHint")}</MenuHint>
 
               {activeSnapQuery.data ? (
@@ -1400,113 +1534,23 @@ export function ChatConfigurationPanelContent() {
                   </pre>
                 ) : null}
               </div>
-            </div>
-          </details>
-        </div>
-      </details>
 
-      <Section title={tChat("configAdvancedSection")}>
-        <Box>
-          <div className="space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
+              <div className="flex flex-wrap gap-2 border-t pt-3">
                 <button
                   type="button"
-                  data-testid="chat-config-runtime-collapsible"
-                  className="hover:bg-muted inline-flex w-full items-center justify-between gap-3 rounded-md px-2 py-1 text-left"
-                  aria-expanded={runtimeOpen}
-                  onClick={() => setRuntimeOpen((p) => !p)}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                  disabled={needsConversation || !!api?.patchConvPending}
+                  onClick={() => {
+                    api?.clearRuntimeOverride();
+                    setAdvancedError(null);
+                    setAdvancedValidationText("Cleared.");
+                  }}
                 >
-                  <span className="text-sm font-medium">{tChat("configAdvancedSection")}</span>
-                  <span className="text-muted-foreground text-xs">{runtimeOpen ? tChat("configHide") : tChat("configShow")}</span>
+                  Clear
                 </button>
-                {!runtimeOpen ? (
-                  <p className="text-muted-foreground text-xs">{tChat("runtimeEffectiveCollapsedHint")}</p>
-                ) : null}
               </div>
-              <button
-                type="button"
-                data-testid="chat-config-runtime-refresh-effective"
-                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-                disabled={needsProject || needsConversation || effectiveLoading}
-                onClick={() => api?.refreshRuntimeState()}
-              >
-                {effectiveLoading ? tChat("configLoadingShort") : tChat("configRefresh")}
-              </button>
-            </div>
 
-            {runtimeOpen ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-3">
-                  {advancedRuntimeToggles.map((cap) => {
-                    const key = cap.key;
-                    const reason = disabledReason(key);
-                    const fieldIssue = issueByField.get(key);
-                    const rid = `disabled-${key}`;
-                    const showMultiTurn = cap.supportMode === "MULTI_TURN_REQUIRED";
-                    const labelKey = chatRuntimeLabelKey(key);
-                    const label = tChat(labelKey) !== labelKey ? tChat(labelKey) : cap.label ?? key;
-                    return (
-                      <div key={key} className="flex flex-col gap-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <label className="flex cursor-pointer items-center gap-3 text-sm">
-                            <input
-                              type="checkbox"
-                              data-testid={`chat-runtime-toggle-${key}`}
-                              className="border-input size-4 rounded"
-                              checked={getBooleanValue(key)}
-                              disabled={!!reason || patchPending}
-                              onChange={(e) => setOverrideBoolean(key, e.target.checked)}
-                              aria-describedby={reason ? rid : undefined}
-                            />
-                            <span>{label}</span>
-                          </label>
-                          <div className="flex items-center gap-2">
-                            {showMultiTurn ? (
-                              <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">
-                                Multi-turn
-                              </span>
-                            ) : null}
-                            {reason ? <DisabledReason id={rid} reason={reason} label={tChat("configDisabledLabel")} /> : null}
-                          </div>
-                        </div>
-                        {fieldIssue ? (
-                          <MenuHint>{fieldIssue.message}</MenuHint>
-                        ) : null}
-                        {showMultiTurn ? <MenuHint>{tChat("runtimeMultiTurnHint")}</MenuHint> : null}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-                    disabled={needsConversation || !!api?.patchConvPending}
-                    onClick={() => {
-                      api?.clearRuntimeOverride();
-                      setAdvancedError(null);
-                      setAdvancedValidationText("Cleared.");
-                    }}
-                  >
-                    Clear
-                  </button>
-                </div>
-
-                {advancedError ? (
-                  <p className="text-destructive text-xs" role="alert">
-                    {advancedError}
-                  </p>
-                ) : null}
-                {advancedValidationText ? (
-                  <p className="text-muted-foreground text-xs">{advancedValidationText}</p>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="border-border border-t pt-4">
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 border-t pt-3">
                 <button
                   type="button"
                   data-testid="chat-move-project-button"
@@ -1532,10 +1576,9 @@ export function ChatConfigurationPanelContent() {
                   {t("chatDelete")}
                 </button>
               </div>
-            </div>
           </div>
-        </Box>
-      </Section>
+        </div>
+      </details>
     </div>
   );
 }

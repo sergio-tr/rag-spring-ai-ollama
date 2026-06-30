@@ -21,8 +21,9 @@ export function ChatConfigurationSidePanel({
       data-testid="chat-configuration-side-panel"
       className={cn(
         "hidden md:flex",
-        "h-full min-h-0 min-w-0 w-[min(100%,22rem)] max-w-[min(100%,22rem)] shrink-0 self-stretch flex-col overflow-hidden",
+        "h-full min-h-0 min-w-0 w-full shrink-0 self-stretch flex-col overflow-hidden",
         "border-border border-l bg-background",
+        "md:min-w-[18rem] md:max-w-[32rem] md:basis-[30%] md:flex-[3]",
       )}
       aria-label={tChat("chatConfigPanelTitle")}
     >

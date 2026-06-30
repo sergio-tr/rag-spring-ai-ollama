@@ -84,10 +84,6 @@ function seedChatStore(overrides: Record<string, unknown> = {}) {
 }
 
 async function openChatAdvancedTechnical(user: ReturnType<typeof userEvent.setup>) {
-  const currentSettings = screen.getByTestId("chat-config-current-settings");
-  if (!currentSettings.hasAttribute("open")) {
-    await user.click(within(currentSettings).getByText(/Current settings/i));
-  }
   const advanced = screen.getByTestId("chat-config-advanced-technical");
   expect(within(advanced).getByText(ADVANCED_TECHNICAL_DETAILS_TITLE)).toBeInTheDocument();
   if (!advanced.hasAttribute("open")) {
@@ -135,7 +131,8 @@ describe("Advanced technical details visibility — chat configuration", () => {
     }
   });
 
-  it("maps function-calling precedence warnings to product copy in normal UI", () => {
+  it("maps function-calling precedence warnings to advanced technical details only", async () => {
+    const user = userEvent.setup();
     seedChatStore({
       runtimeState: {
         warnings: [
@@ -150,8 +147,13 @@ describe("Advanced technical details visibility — chat configuration", () => {
       },
     });
     renderChatConfig();
-    const warning = screen.getByText(/Function calling is used when both tools and function calling are enabled/i);
-    expect(warning).toBeVisible();
+    const precedenceCopy = /Function calling is used when both tools and function calling are enabled/i;
+    expect(screen.queryByTestId("chat-config-validation-warning")).not.toBeInTheDocument();
+    expect(screen.queryByText(precedenceCopy)).not.toBeVisible();
+
+    const advanced = await openChatAdvancedTechnical(user);
+    const warning = within(advanced).getByTestId("chat-config-advanced-validation-warning");
+    expect(within(warning).getByText(precedenceCopy)).toBeVisible();
     expect(warning.textContent ?? "").not.toMatch(/deterministic tool/i);
     expect(warning.textContent ?? "").not.toMatch(/takes precedence/i);
   });

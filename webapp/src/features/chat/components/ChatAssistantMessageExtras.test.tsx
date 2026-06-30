@@ -106,4 +106,25 @@ describe("ChatAssistantMessageExtras", () => {
     await user.click(screen.getByTestId("chat-message-metadata-toggle"));
     expect(screen.getByTestId("chat-sources")).toHaveTextContent(/No sources available for this answer/i);
   });
+
+  it("groups duplicate filenames in expanded panel @SourceDedup", async () => {
+    const user = userEvent.setup();
+    renderExtras({
+      id: "a-dedup",
+      role: "ASSISTANT",
+      content: "Done",
+      createdAt: "",
+      sources: [
+        chatSource({ filename: "acta.pdf", chunkIndex: 1 }),
+        chatSource({ filename: "acta.pdf", chunkIndex: 2 }),
+      ],
+      queryType: "DOCUMENT",
+      pipelineSteps: [],
+      status: "DONE",
+    });
+    await user.click(screen.getByTestId("chat-message-metadata-toggle"));
+    const groups = screen.getAllByTestId("chat-source-group");
+    expect(groups).toHaveLength(1);
+    expect(screen.getByTestId("chat-source-chunks-toggle")).toHaveTextContent(/2 chunks/i);
+  });
 });

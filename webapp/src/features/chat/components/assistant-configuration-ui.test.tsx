@@ -191,15 +191,12 @@ describe("Assistant configuration UI sections", () => {
     expect(screen.getByTestId("chat-assistant-configuration-surface")).toBeInTheDocument();
 
     const required = [
-      "Source documents",
-      "Assistant instructions",
-      "Model configuration",
-      "Embedding model",
-      "Configuration profile",
-      "Retrieval settings",
-      "Conversation memory",
-      "Clarification",
-      "Answer quality checks",
+      "Assistant",
+      "Models",
+      "Retrieval",
+      "Prompts",
+      "Memory and clarification",
+      "Tools and quality checks",
     ];
     for (const title of required) {
       expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
@@ -214,12 +211,10 @@ describe("Assistant configuration UI sections", () => {
       expect(jsonNode).not.toBeVisible();
     }
 
-    const currentSettings = screen.getByTestId("chat-config-current-settings");
-    await user.click(within(currentSettings).getByText(/Current settings/i));
     const advanced = screen.getByTestId("chat-config-advanced-technical");
-    const jsonAfterCurrent = screen.queryByTestId("chat-config-effective-json");
-    if (jsonAfterCurrent) {
-      expect(jsonAfterCurrent).not.toBeVisible();
+    const jsonAfterClosed = screen.queryByTestId("chat-config-effective-json");
+    if (jsonAfterClosed) {
+      expect(jsonAfterClosed).not.toBeVisible();
     }
 
     await user.click(within(advanced).getByText(/Advanced technical details/i));
