@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { ChatConfigurationPanelContent } from "./ChatConfigurationPanelContent";
-import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
+import { useChatToolbarStore, type ChatToolbarApi } from "@/features/chat/store/chat-toolbar.store";
 import type { MeSelectableLlmModelDto } from "@/types/api";
 
 const hooksMock = vi.hoisted(() => ({
@@ -50,7 +50,7 @@ const apiModels: MeSelectableLlmModelDto[] = [
   },
 ];
 
-function baseToolbarApi(overrides: Partial<NonNullable<ReturnType<typeof useChatToolbarStore.getState>["api"]>> = {}) {
+function baseToolbarApi(overrides: Partial<ChatToolbarApi> = {}): ChatToolbarApi {
   return {
     projectId: "p1",
     conversationId: "c1",

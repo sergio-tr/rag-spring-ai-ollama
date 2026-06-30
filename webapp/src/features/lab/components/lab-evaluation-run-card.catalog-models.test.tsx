@@ -147,7 +147,7 @@ function renderLlmCard() {
       <IntlTestProvider locale="en">
         <LabEvaluationRunCard
           benchmarkKind="LLM_JUDGE_QA"
-          sectionKey="evaluation-llm-catalog"
+          sectionKey="evaluation-llm"
           taskTypeHint="LLM_EVALUATION"
           cardTitle="LLM evaluation"
           runButtonTestId="lab-llm-catalog-run"
@@ -164,7 +164,7 @@ function renderRagCard() {
       <IntlTestProvider locale="en">
         <LabEvaluationRunCard
           benchmarkKind="RAG_PRESET_END_TO_END"
-          sectionKey="evaluation-rag-catalog"
+          sectionKey="evaluation-rag"
           taskTypeHint="RAG_EVALUATION"
           cardTitle="RAG evaluation"
           runButtonTestId="lab-rag-catalog-run"

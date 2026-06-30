@@ -31,6 +31,19 @@ describe("product-model-catalog", () => {
     ]);
   });
 
+  it("falls back to modelName when displayName is blank", () => {
+    const blankDisplay: MeSelectableLlmModelDto[] = [
+      {
+        ...rows[0]!,
+        modelName: "raw-id",
+        displayName: "   ",
+      },
+    ];
+    expect(toConfigModelOptions(blankDisplay)).toEqual([
+      { value: "raw-id", label: "raw-id", disabled: false },
+    ]);
+  });
+
   it("lists only selectable model ids", () => {
     expect(selectableCatalogModelIds(rows)).toEqual(["gpt-test"]);
   });

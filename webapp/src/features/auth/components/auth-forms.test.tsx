@@ -559,6 +559,7 @@ describe("RegisterForm", () => {
     const user = userEvent.setup();
     vi.mocked(apiFetch).mockRejectedValueOnce(
       new ApiError(400, "Privacy policy version mismatch", {
+        kind: "http",
         parsedJson: { code: "PRIVACY_VERSION_MISMATCH" },
       }),
     );

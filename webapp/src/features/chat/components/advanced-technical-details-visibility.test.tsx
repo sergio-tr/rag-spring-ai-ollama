@@ -4,11 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChatConfigurationPanelContent } from "./ChatConfigurationPanelContent";
 import { ChatAssistantMessageExtras } from "./ChatAssistantMessageExtras";
-import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
+import { useChatToolbarStore, type ChatToolbarApi } from "@/features/chat/store/chat-toolbar.store";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { ADVANCED_TECHNICAL_DETAILS_TITLE } from "@/lib/product-provider-labels";
 import { FORBIDDEN_NORMAL_UI_STRING_PATTERNS } from "@/lib/forbidden-primary-ui-strings";
-import type { MessageDto } from "@/types/api";
+import type { ChatRuntimeStateDto, MessageDto } from "@/types/api";
 
 const hooksMock = vi.hoisted(() => ({
   useProjectIndexProfile: vi.fn(),
@@ -40,46 +40,123 @@ function renderChatConfig() {
   );
 }
 
-function seedChatStore(overrides: Record<string, unknown> = {}) {
-  useChatToolbarStore.setState({
-    api: {
-      projectId: "p1",
+function baseChatToolbarApi(overrides: Partial<ChatToolbarApi> = {}): ChatToolbarApi {
+  return {
+    projectId: "p1",
+    conversationId: "c1",
+    runtimeOverride: {},
+    runtimeState: {
       conversationId: "c1",
+      selectedPresetId: "preset-1",
+      effectivePresetId: "preset-1",
+      effectiveConfig: { topK: 5, chatModel: "gpt-test" },
+      manualOverrideKeys: ["topK"],
+      baseEffectiveConfig: { topK: 3 },
+      conversationLlmModel: null,
+      conversationClassifierModelId: null,
+      conversationModelsPinned: false,
       runtimeOverride: {},
-      runtimeState: {
-        conversationId: "c1",
-        selectedPresetId: "preset-1",
-        effectivePresetId: "preset-1",
-        effectiveConfig: { topK: 5, chatModel: "gpt-test" },
-        manualOverrideKeys: ["topK"],
-        baseEffectiveConfig: { topK: 3 },
-        blockingIssues: [],
-        warnings: [],
-        preset: { kind: "PRODUCT", chatSelectable: true, supportStatus: "EXECUTABLE", reasonIfUnsupported: null },
-        indexCompatibility: {
-          compatibilityStatus: "COMPATIBLE",
-          activeSnapshotCapabilities: {
-            materializationStrategy: "HYBRID",
-            supportsMetadata: true,
-            embeddingModelId: "emb-1",
-            chunkMaxChars: 1000,
-          },
-        },
-        requiresReindex: false,
-        ...((overrides.runtimeState as object) ?? {}),
+      isCustom: false,
+      validation: { valid: true, supported: true, errors: [], warnings: [] },
+      selectedWorkflow: null,
+      blockingIssues: [],
+      warnings: [],
+      preset: {
+        kind: "PRODUCT",
+        code: null,
+        label: "Production assistant configuration",
+        chatSelectable: true,
+        supported: true,
+        supportStatus: "EXECUTABLE",
+        reasonIfUnsupported: null,
       },
-      presets: [],
-      experimentalPresets: [],
-      documents: [{ id: "d1", status: "READY", filename: "a.pdf" }],
-      limitDocs: false,
-      limitDocsDisabled: false,
-      patchConvPending: false,
-      effectiveLoading: false,
-      effectiveError: null,
-      needsProject: false,
-      needsConversation: false,
-      ...overrides,
+      indexCompatibility: {
+        activeProjectSnapshotId: "snap-hidden-1",
+        activeConversationSnapshotId: null,
+        activeIndexProfileHash: "hash-hidden-1",
+        activeIndexProfile: {},
+        hasActiveIndex: true,
+        compatibilityStatus: "COMPATIBLE",
+        activeSnapshotCapabilities: {
+          materializationStrategy: "HYBRID",
+          supportsMetadata: true,
+          embeddingModelId: "emb-1",
+          chunkMaxChars: 1000,
+          chunkOverlap: null,
+        },
+      },
+      requiresReindex: false,
     },
+    runtimeStateLoading: false,
+    runtimeStateError: null,
+    refreshRuntimeState: vi.fn(),
+    saveRuntimeOverride: vi.fn(),
+    clearRuntimeOverride: vi.fn(),
+    openDeleteForActiveConversation: vi.fn(),
+    openMoveDialog: vi.fn(),
+    openDocumentsSheet: vi.fn(),
+    onAddDocuments: vi.fn(),
+    llmModelChoice: "",
+    setLlmModelChoice: vi.fn(),
+    classifierModelChoice: "",
+    setClassifierModelChoice: vi.fn(),
+    selectableLlmModels: [],
+    selectableLlmModelsLoading: false,
+    selectableLlmModelsEffectiveProvider: undefined,
+    modelsError: false,
+    modelsErrorMessage: "",
+    presetSelectValue: "",
+    onPresetChange: vi.fn(),
+    presets: [],
+    presetsError: false,
+    presetsLoading: false,
+    experimentalPresets: [],
+    experimentalPresetsLoading: false,
+    experimentalPresetsError: false,
+    presetSelectDisabled: false,
+    syntheticPresetOptionNeeded: false,
+    presetLabelOpts: { systemSuffix: "", recommendedDefault: "", defaultConfiguration: "" },
+    limitDocs: false,
+    onLimitDocsChange: vi.fn(),
+    limitDocsDisabled: false,
+    limitDocsToggleNotice: null,
+    patchConvPending: false,
+    uploadPending: false,
+    uploadError: null,
+    uploadNotice: null,
+    documents: [
+      {
+        id: "d1",
+        status: "READY",
+        fileName: "a.pdf",
+        chunkCount: null,
+        errorMessage: null,
+        uploadedAt: "2025-01-01T00:00:00Z",
+        reindexedAt: null,
+        corpusScope: "PROJECT_SHARED",
+        conversationId: null,
+        currentIndexSnapshotId: null,
+        indexSignatureHash: null,
+        storagePresent: true,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function seedChatStore(
+  overrides: Omit<Partial<ChatToolbarApi>, "runtimeState"> & { runtimeState?: Partial<ChatRuntimeStateDto> } = {},
+) {
+  const { runtimeState: runtimeStateOverride, ...rest } = overrides;
+  const base = baseChatToolbarApi();
+  useChatToolbarStore.setState({
+    api: baseChatToolbarApi({
+      ...rest,
+      runtimeState:
+        runtimeStateOverride && base.runtimeState
+          ? { ...base.runtimeState, ...runtimeStateOverride }
+          : base.runtimeState,
+    }),
   });
 }
 

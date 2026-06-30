@@ -87,7 +87,7 @@ describe("product UI language — en.json primary surfaces", () => {
 
   it("includes required English product labels", () => {
     for (const { namespace, key, value } of REQUIRED_ENGLISH_LABELS) {
-      const section = (en as Record<string, Record<string, string>>)[namespace];
+      const section = (en as unknown as Record<string, Record<string, string>>)[namespace];
       expect(section?.[key], `${namespace}.${key}`).toBe(value);
     }
   });
@@ -129,7 +129,7 @@ describe("product UI language — es.json locale policy", () => {
   });
 
   it("uses exact English title for Advanced technical details when present", () => {
-    const chat = es.Chat as Record<string, string>;
+    const chat = es.Chat as unknown as Record<string, string>;
     expect(chat.chatTraceTechnicalSummary).toBe(ADVANCED_TECHNICAL_DETAILS_TITLE);
     expect(chat.configTechnicalDetails).toBe(ADVANCED_TECHNICAL_DETAILS_TITLE);
   });

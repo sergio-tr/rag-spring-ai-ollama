@@ -82,7 +82,7 @@ describe("ProductModelRegistryCard", () => {
       data: { effectiveProvider: "OLLAMA_NATIVE", models: [] },
       isLoading: false,
       isError: false,
-    } as ReturnType<typeof useMeSelectableLlmModels>);
+    } as unknown as ReturnType<typeof useMeSelectableLlmModels>);
   });
 
   it("renders only available configured models in recommended sections", async () => {
@@ -132,7 +132,7 @@ describe("ProductModelRegistryCard", () => {
       data: { effectiveProvider: "OPENAI_COMPATIBLE", models: [] },
       isLoading: false,
       isError: false,
-    } as ReturnType<typeof useMeSelectableLlmModels>);
+    } as unknown as ReturnType<typeof useMeSelectableLlmModels>);
     apiFetch.mockResolvedValue(
       registryResponse({
         ollamaReachable: false,

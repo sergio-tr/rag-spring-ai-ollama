@@ -31,7 +31,8 @@ test.describe("Runtime trace @api @trace", () => {
       actaFixtureFiles: ACTA_ACCEPTANCE_EXTENDED_FILES,
     });
 
-    const trace: Record<string, unknown> = { conversationId, turns: [] as unknown[] };
+    const turns: unknown[] = [];
+    const trace = { conversationId, turns };
 
     for (const q of TURNS) {
       const { job, assistant } = await postChatAndGetLatestAssistant(request, token, conversationId, q, {
@@ -40,7 +41,7 @@ test.describe("Runtime trace @api @trace", () => {
       const messages = await getConversationMessages(request, token, conversationId);
       const user = [...messages].reverse().find((m) => m.role === "USER" && m.content === q);
       const meta = assistant?.executionMetadata ?? {};
-      trace.turns.push({
+      turns.push({
         question: q,
         userMessageId: user?.id ?? null,
         assistantMessageId: assistant?.id ?? null,

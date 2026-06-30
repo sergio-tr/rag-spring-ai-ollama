@@ -6,6 +6,7 @@ import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
 import type { ReactNode } from "react";
 import { LabEvaluationRunCard } from "./lab-evaluation-run-card";
+import type { LabEvaluationModelDto } from "@/types/api";
 
 function LabEvalHarness({ children }: Readonly<{ children: ReactNode }>) {
   return (
@@ -151,8 +152,8 @@ const embeddingCatalogFixture = [
 ];
 
 function mockEvaluationCatalogs(
-  chatModels = chatCatalogFixture,
-  embeddingModels = embeddingCatalogFixture,
+  chatModels: LabEvaluationModelDto[] = chatCatalogFixture,
+  embeddingModels: LabEvaluationModelDto[] = embeddingCatalogFixture,
 ) {
   vi.mocked(useLabEvaluationModels).mockImplementation(((capability: string) => ({
     data:
@@ -971,7 +972,7 @@ describe("LabEvaluationRunCard", () => {
       <LabEvalHarness>
         <LabEvaluationRunCard
           benchmarkKind="LLM_JUDGE_QA"
-          sectionKey="evaluation-llm-single"
+          sectionKey="evaluation-llm"
           taskTypeHint="LLM_EVALUATION"
           cardTitle="LLM evaluation"
           cardDescription="Benchmark the configured LLM against loaded evaluation questions."
