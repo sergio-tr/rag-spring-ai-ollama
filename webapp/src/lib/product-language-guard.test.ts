@@ -21,7 +21,7 @@ const repoRoot = join(webappRoot, "..");
 
 function evidenceClosureDirs(): string[] {
   const prefixes = [
-    "assistant-configuration-closure-",
+    "assistant-configuration-closure",
   ];
   const roots = [
     join(webappRoot, "test-fixtures"),

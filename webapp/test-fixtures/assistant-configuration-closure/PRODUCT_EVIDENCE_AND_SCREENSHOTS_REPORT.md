@@ -78,7 +78,7 @@ Regression tests beyond environment/API checks were **not required** for product
 | Path | Purpose |
 |------|---------|
 | `webapp/e2e/closure/assistant-configuration-thesis-screenshots.spec.ts` | Thesis screenshot Playwright harness |
-| `.cursor/evidence/assistant-configuration-closure-20260629/**` | Evidence package (this report + PNGs) |
+| `exports/evaluation-evidence/assistant-configuration-closure/**` | Evidence package (this report + PNGs) |
 | `rag-service/target/` (host compile) | Restore backend classpath for seeded stack |
 
 ## 10. Tests or checks executed
