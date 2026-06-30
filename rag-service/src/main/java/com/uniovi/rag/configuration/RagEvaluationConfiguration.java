@@ -7,6 +7,7 @@ import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTraceP
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedEvaluationService;
 import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor;
+import com.uniovi.rag.application.service.llm.LlmErrorComposer;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.service.knowledge.document.DocumentService;
 import com.uniovi.rag.application.service.evaluation.ReferenceBundleMinuteEvaluationService;
@@ -55,8 +56,8 @@ public class RagEvaluationConfiguration {
         RuntimeTracePersistenceService runtimeTracePersistenceService,
         ChatGenerationModelSelector chatGenerationModelSelector,
         @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled,
-        com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor,
-        com.uniovi.rag.application.service.llm.LlmErrorComposer llmErrorComposer
+        EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor,
+        LlmErrorComposer llmErrorComposer
     ) {
         EvaluationServiceFactory.Settings settings =
                 new EvaluationServiceFactory.Settings(
@@ -95,7 +96,7 @@ public class RagEvaluationConfiguration {
         DocumentService documentService,
         QueryExecutionService queryService,
         EvaluationServiceFactory evaluationServiceFactory,
-        com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor,
+        EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor,
         @Value("${evaluation.clean-before-load:true}") boolean cleanBeforeLoad,
         @Autowired(required = false) ObservabilitySupport observability
     ) {

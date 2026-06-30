@@ -15,6 +15,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -118,7 +119,7 @@ public class ModelBaselineLlmRunner {
 
     private UUID resolveUserId() {
         return LabBenchmarkExecutionContext.currentLabRuntimeContext()
-                .flatMap(ctx -> ctx.runId() != null ? evaluationRunRepository.findById(ctx.runId()) : java.util.Optional.empty())
+                .flatMap(ctx -> ctx.runId() != null ? evaluationRunRepository.findById(ctx.runId()) : Optional.empty())
                 .map(EvaluationRunEntity::getUser)
                 .map(u -> u.getId())
                 .orElse(null);
@@ -126,7 +127,7 @@ public class ModelBaselineLlmRunner {
 
     private UUID resolveProjectId() {
         return LabBenchmarkExecutionContext.currentLabRuntimeContext()
-                .flatMap(ctx -> ctx.runId() != null ? evaluationRunRepository.findById(ctx.runId()) : java.util.Optional.empty())
+                .flatMap(ctx -> ctx.runId() != null ? evaluationRunRepository.findById(ctx.runId()) : Optional.empty())
                 .map(EvaluationRunEntity::getProject)
                 .map(p -> p.getId())
                 .orElse(null);

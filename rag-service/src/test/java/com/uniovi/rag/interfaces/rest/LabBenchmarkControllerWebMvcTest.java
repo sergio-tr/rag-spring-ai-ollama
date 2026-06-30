@@ -27,7 +27,11 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
+import org.hamcrest.Matchers;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -115,8 +119,8 @@ class LabBenchmarkControllerWebMvcTest {
     void compareMetrics_rejectsSingleRunId() throws Exception {
         UUID a = UUID.randomUUID();
         when(labMetricsComparisonService.compareMetrics(eq(userId), eq(List.of(a)), isNull(), isNull()))
-                .thenThrow(new org.springframework.web.server.ResponseStatusException(
-                        org.springframework.http.HttpStatus.BAD_REQUEST, "Provide at least two runIds"));
+                .thenThrow(new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Provide at least two runIds"));
 
         mockMvc.perform(
                         post(path("/lab/runs/compare/metrics"))
@@ -406,8 +410,8 @@ class LabBenchmarkControllerWebMvcTest {
 
         mockMvc.perform(get(path("/lab/runs/") + runId + "/export/v1/full-bundle.zip"))
                 .andExpect(status().isOk())
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
-                        .string("Content-Disposition", org.hamcrest.Matchers.containsString("full-bundle.zip")));
+                .andExpect(MockMvcResultMatchers.header()
+                        .string("Content-Disposition", Matchers.containsString("full-bundle.zip")));
     }
 
     @Test

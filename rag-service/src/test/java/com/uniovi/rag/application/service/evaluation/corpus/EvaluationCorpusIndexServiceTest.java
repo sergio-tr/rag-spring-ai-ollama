@@ -18,6 +18,7 @@ import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCa
 import com.uniovi.rag.application.service.evaluation.preset.LabIndexSnapshotCompatibilityService;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunGroupKey;
 import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
 import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileService;
@@ -55,6 +56,7 @@ class EvaluationCorpusIndexServiceTest {
     @Mock private ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
     @Mock private CorpusAvailabilityGate corpusAvailabilityGate;
     @Mock private EvaluationCorpusStorageIntegrityService storageIntegrityService;
+    @Mock private KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess;
 
     private LabIndexSnapshotCompatibilityService indexSnapshotCompatibilityService;
     private EvaluationCorpusIndexService service;
@@ -62,7 +64,18 @@ class EvaluationCorpusIndexServiceTest {
     @BeforeEach
     void setUp() {
         indexSnapshotCompatibilityService =
-                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator, org.mockito.Mockito.mock(com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess.class));
+                new LabIndexSnapshotCompatibilityService(
+                        corpusAvailabilityGate, knowledgePipelineOrchestrator, snapshotProfileAccess);
+        lenient()
+                .when(snapshotProfileAccess.resolveProfileJsonb(any()))
+                .thenAnswer(
+                        inv -> {
+                            KnowledgeIndexSnapshotEntity snapshot = inv.getArgument(0);
+                            if (snapshot == null || snapshot.getIndexProfileJsonb() == null) {
+                                return Map.of();
+                            }
+                            return snapshot.getIndexProfileJsonb();
+                        });
         lenient().when(storageIntegrityService.hasReadyDocumentWithMissingBinary(any())).thenReturn(false);
         service =
                 new EvaluationCorpusIndexService(

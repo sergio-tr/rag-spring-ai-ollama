@@ -1,5 +1,6 @@
 package com.uniovi.rag.domain.llm;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -33,7 +34,7 @@ public record TaskLlmOverride(
     }
 
     public Map<String, Object> toMap() {
-        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        Map<String, Object> m = new LinkedHashMap<>();
         if (enabled != null) m.put("enabled", enabled);
         if (model != null && !model.isBlank()) m.put("model", model);
         if (temperature != null) m.put("temperature", temperature);

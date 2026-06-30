@@ -10,12 +10,15 @@ import com.uniovi.rag.domain.config.prompt.MetadataConfigurablePromptSources;
 import com.uniovi.rag.domain.config.prompt.PromptOverrideKeys;
 import static org.mockito.Mockito.when;
 
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.testsupport.config.TestConfigurablePromptResolver;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 /** Verifies main RAG prompt groups resolve overrides at runtime (not catalog-only). */
 class PromptRuntimeWiringTest {
@@ -39,7 +42,7 @@ class PromptRuntimeWiringTest {
         ExecutionContext ctx = executionContext();
         String user =
                 answerResolver.ragUserTurn(
-                        ctx, "q?", "ctx", null, true, java.util.Optional.empty(), "plan");
+                        ctx, "q?", "ctx", null, true, Optional.empty(), "plan");
 
         assertThat(user).contains("SYNTH");
         assertThat(user).contains("GROUNDING_BLOCK");
@@ -98,7 +101,7 @@ class PromptRuntimeWiringTest {
     }
 
     private static ExecutionContext executionContext() {
-        ExecutionContext ctx = org.mockito.Mockito.mock(ExecutionContext.class);
+        ExecutionContext ctx = Mockito.mock(ExecutionContext.class);
         when(ctx.userId()).thenReturn(USER);
         when(ctx.projectId()).thenReturn(PROJECT);
         return ctx;

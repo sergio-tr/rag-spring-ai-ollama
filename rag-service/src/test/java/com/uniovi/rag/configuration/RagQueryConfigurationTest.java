@@ -1,5 +1,6 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
@@ -99,7 +100,7 @@ class RagQueryConfigurationTest {
                 config.responseRanker(
                         props,
                         mock(ProviderAwareSecondaryLlmExecutor.class),
-                        mock(com.uniovi.rag.application.config.ConfigurablePromptResolver.class),
+                        mock(ConfigurablePromptResolver.class),
                         null));
     }
 
@@ -113,7 +114,7 @@ class RagQueryConfigurationTest {
                 config.responseRanker(
                         props,
                         mock(ProviderAwareSecondaryLlmExecutor.class),
-                        mock(com.uniovi.rag.application.config.ConfigurablePromptResolver.class),
+                        mock(ConfigurablePromptResolver.class),
                         null));
     }
 
@@ -123,7 +124,7 @@ class RagQueryConfigurationTest {
         QueryExpander expander =
                 config.queryExpander(
                         mock(ProviderAwareSecondaryLlmExecutor.class),
-                        mock(com.uniovi.rag.application.config.ConfigurablePromptResolver.class),
+                        mock(ConfigurablePromptResolver.class),
                         "not-a-strategy",
                         1,
                         350,

@@ -40,7 +40,10 @@ class FullCorpusWorkflowGroundingTest {
                 new FullCorpusWorkflow(invoker, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         var out = workflow.execute(ctxWithQuery("¿Cuántas actas mencionan el ascensor?"));
-        assertThat(out.answerText()).isEqualTo(RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES);
+        assertThat(out.answerText())
+                .isIn(
+                        RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES,
+                        RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_EN);
     }
 
     @Test

@@ -4,8 +4,8 @@ import com.uniovi.rag.application.port.ClassifierLabPort;
 import com.uniovi.rag.application.port.ClassifierTrainBytesCommand;
 import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
 import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
+import com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver;
 import com.uniovi.rag.application.service.llm.ProviderAwareEmbeddingService;
-import com.uniovi.rag.configuration.RagVectorProperties;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import com.uniovi.rag.infrastructure.vector.OllamaEmbeddingModelFactory;
@@ -53,14 +53,14 @@ class RagE2eAiStubConfigurationTest {
                 cfg.e2eProviderAwareEmbeddingService(
                         null,
                         null,
-                        Mockito.mock(com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver.class));
+                        Mockito.mock(EmbeddingModelCatalogResolver.class));
 
         Map<String, Object> profile = new LinkedHashMap<>();
         profile.put(IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY, RagE2eAiStubConfiguration.E2E_EMBEDDING_MODEL_ID);
         profile.put(IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY, LlmProvider.OLLAMA_NATIVE.name());
 
         EmbeddingIndexCompatibilityService compatibility =
-                new EmbeddingIndexCompatibilityService(embeddingService, null, null, org.mockito.Mockito.mock(com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver.class));
+                new EmbeddingIndexCompatibilityService(embeddingService, null, null, Mockito.mock(EmbeddingModelCatalogResolver.class));
         Map<String, Object> enriched = compatibility.enrichIndexProfile(profile);
 
         assertEquals(LlmProvider.OLLAMA_NATIVE.name(), enriched.get(IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY));

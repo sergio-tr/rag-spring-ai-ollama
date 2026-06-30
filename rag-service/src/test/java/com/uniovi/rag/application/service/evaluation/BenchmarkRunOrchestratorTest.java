@@ -22,6 +22,7 @@ import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightResult;
 import com.uniovi.rag.application.service.evaluation.config.LabBenchmarkConfigPreflightService;
 import com.uniovi.rag.application.service.evaluation.config.LabRuntimeConfigReasonCodes;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
@@ -266,7 +267,7 @@ class BenchmarkRunOrchestratorTest {
     @Test
     void startJsonBenchmark_ragRejectsInvalidPresetConfigAfterCorpusReady() {
         LabIndexSnapshotCompatibilityService indexSnapshotCompatibilityService =
-                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator, org.mockito.Mockito.mock(com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess.class));
+                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator, Mockito.mock(KnowledgeIndexSnapshotProfileAccess.class));
         LabBenchmarkConfigPreflightService realPreflight =
                 new LabBenchmarkConfigPreflightService(
                         new RagFeatureConfiguration(),
@@ -277,9 +278,9 @@ class BenchmarkRunOrchestratorTest {
                         projectIndexProfileService,
                         labIndexProfileOverrideFactory,
                         corpusAvailabilityGate,
-                        org.mockito.Mockito.mock(EvaluationModelCatalogService.class),
-                        org.mockito.Mockito.mock(com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository.class),
-                        org.mockito.Mockito.mock(com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess.class));
+                        Mockito.mock(EvaluationModelCatalogService.class),
+                        Mockito.mock(KnowledgeIndexSnapshotRepository.class),
+                        Mockito.mock(KnowledgeIndexSnapshotProfileAccess.class));
         BenchmarkRunOrchestrator orch =
                 new BenchmarkRunOrchestrator(
                         userRepository,

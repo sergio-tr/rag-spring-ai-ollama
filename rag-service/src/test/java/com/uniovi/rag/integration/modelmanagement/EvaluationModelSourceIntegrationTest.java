@@ -12,6 +12,7 @@ import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogQuery;
 import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
+import com.uniovi.rag.domain.llm.catalog.LlmCatalogSource;
 import com.uniovi.rag.domain.llm.catalog.LlmModelReasonCodes;
 import com.uniovi.rag.domain.product.ProductDemoModel;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
@@ -72,7 +73,7 @@ class EvaluationModelSourceIntegrationTest {
 
         assertThat(response.models()).isNotEmpty();
         assertThat(response.models().getFirst().source())
-                .isEqualTo(com.uniovi.rag.domain.llm.catalog.LlmCatalogSource.LITELLM_CONFIGURED);
+                .isEqualTo(LlmCatalogSource.LITELLM_CONFIGURED);
     }
 
     @Test

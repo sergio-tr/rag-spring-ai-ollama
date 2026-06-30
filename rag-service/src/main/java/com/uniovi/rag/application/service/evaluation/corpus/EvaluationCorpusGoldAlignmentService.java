@@ -5,13 +5,16 @@ import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleSnapshot;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.evaluation.workbook.ChunkRegistryEntry;
 import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
+import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.infrastructure.persistence.EvaluationCorpusDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationCorpusRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCorpusDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCorpusEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
+import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusCreateRequest;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusGoldAlignmentDto;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -129,7 +132,7 @@ public class EvaluationCorpusGoldAlignmentService {
                                 filename,
                                 "text/plain");
                 evaluationCorpusDocumentRepository.save(
-                        com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCorpusDocumentEntity.link(
+                        EvaluationCorpusDocumentEntity.link(
                                 corpusId, dto.id(), Instant.now()));
                 ingested++;
                 indexedRows.add(rowSummary(entry, filename, dto.status() != null ? dto.status().name() : "READY"));
@@ -175,7 +178,7 @@ public class EvaluationCorpusGoldAlignmentService {
                 evaluationCorpusApplicationService
                         .create(
                                 userId,
-                                new com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusCreateRequest(
+                                new EvaluationCorpusCreateRequest(
                                         GOLD_ALIGNED_CORPUS_NAME))
                         .id();
         return evaluationCorpusRepository
@@ -197,7 +200,7 @@ public class EvaluationCorpusGoldAlignmentService {
         }
         Optional<KnowledgeDocumentEntity> byName =
                 knowledgeDocumentRepository.findFirstByProject_IdAndFileNameAndCorpusScopeAndConversationIsNull(
-                        indexProjectId, filename, com.uniovi.rag.domain.knowledge.CorpusScope.PROJECT_SHARED);
+                        indexProjectId, filename, CorpusScope.PROJECT_SHARED);
         return byName.filter(d -> d.getStatus() == ProjectDocumentStatus.READY).isPresent();
     }
 

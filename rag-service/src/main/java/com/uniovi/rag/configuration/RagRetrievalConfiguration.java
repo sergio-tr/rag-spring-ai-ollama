@@ -2,7 +2,6 @@ package com.uniovi.rag.configuration;
 
 import org.springframework.ai.chat.client.ChatClient;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
-import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.infrastructure.vector.ProviderAwareEmbeddingModelFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -35,10 +34,12 @@ public class RagRetrievalConfiguration {
             JdbcTemplate jdbcTemplate,
             ProviderAwareEmbeddingModelFactory embeddingModelFactory,
             LlmProperties llmProperties) {
-        String modelId =
-                llmProperties.getEffectiveDefaultEmbeddingProvider() == LlmProvider.OPENAI_COMPATIBLE
-                        ? llmProperties.getOpenAiCompatible().getDefaultEmbeddingModel()
-                        : llmProperties.getOllama().getDefaultEmbeddingModel();
+        String modelId = llmProperties.effectiveDefaultEmbeddingModel();
+        if (modelId == null || modelId.isBlank()) {
+            throw new IllegalStateException(
+                    "Effective default embedding model is not configured; set rag.llm.ollama.default-embedding-model "
+                            + "or rag.llm.openai-compatible.default-embedding-model for the active provider.");
+        }
         return PgVectorStore.builder(jdbcTemplate, embeddingModelFactory.forModel(modelId)).build();
     }
 

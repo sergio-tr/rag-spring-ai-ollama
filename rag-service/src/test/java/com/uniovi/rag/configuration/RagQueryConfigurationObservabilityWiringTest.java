@@ -1,5 +1,6 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedDateExistenceGuard;
 import com.uniovi.rag.infrastructure.observability.TracedQueryAnalyser;
@@ -44,12 +45,12 @@ class RagQueryConfigurationObservabilityWiringTest {
 
         RagRankerProperties rankerProps = new RagRankerProperties();
         rankerProps.setStrategy("FAITHFULNESS");
-        ResponseRanker responseRanker = config.responseRanker(rankerProps, mock(ProviderAwareSecondaryLlmExecutor.class), mock(com.uniovi.rag.application.config.ConfigurablePromptResolver.class), observability);
+        ResponseRanker responseRanker = config.responseRanker(rankerProps, mock(ProviderAwareSecondaryLlmExecutor.class), mock(ConfigurablePromptResolver.class), observability);
         assertInstanceOf(TracedResponseRanker.class, responseRanker);
 
         QueryExpander queryExpander = config.queryExpander(
                 mock(ProviderAwareSecondaryLlmExecutor.class),
-                mock(com.uniovi.rag.application.config.ConfigurablePromptResolver.class),
+                mock(ConfigurablePromptResolver.class),
                 "COT",
                 1,
                 350,

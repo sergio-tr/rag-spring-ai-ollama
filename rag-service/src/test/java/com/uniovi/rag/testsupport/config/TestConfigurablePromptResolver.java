@@ -7,6 +7,7 @@ import com.uniovi.rag.application.port.PresetProfileCompositionSources;
 import com.uniovi.rag.application.port.ConfigurationSourcePort;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /** Test double returning platform defaults (no persisted overrides). */
 public final class TestConfigurablePromptResolver {
@@ -17,24 +18,23 @@ public final class TestConfigurablePromptResolver {
         ConfigurationSourcePort empty =
                 new ConfigurationSourcePort() {
                     @Override
-                    public Optional<java.util.Map<String, Object>> loadSystemDefaults() {
+                    public Optional<Map<String, Object>> loadSystemDefaults() {
                         return Optional.empty();
                     }
 
                     @Override
-                    public Optional<java.util.Map<String, Object>> loadUserDefault(java.util.UUID userId) {
+                    public Optional<Map<String, Object>> loadUserDefault(UUID userId) {
                         return Optional.empty();
                     }
 
                     @Override
-                    public Optional<java.util.Map<String, Object>> loadProject(
-                            java.util.UUID userId, java.util.UUID projectId) {
+                    public Optional<Map<String, Object>> loadProject(UUID userId, UUID projectId) {
                         return Optional.empty();
                     }
 
                     @Override
                     public Optional<PresetProfileCompositionSources> loadPresetProfileCompositionSources(
-                            java.util.UUID userId, java.util.UUID presetId) {
+                            UUID userId, UUID presetId) {
                         return Optional.empty();
                     }
                 };
@@ -45,24 +45,23 @@ public final class TestConfigurablePromptResolver {
         ConfigurationSourcePort source =
                 new ConfigurationSourcePort() {
                     @Override
-                    public Optional<java.util.Map<String, Object>> loadSystemDefaults() {
+                    public Optional<Map<String, Object>> loadSystemDefaults() {
                         return Optional.empty();
                     }
 
                     @Override
-                    public Optional<java.util.Map<String, Object>> loadUserDefault(java.util.UUID userId) {
+                    public Optional<Map<String, Object>> loadUserDefault(UUID userId) {
                         return Optional.empty();
                     }
 
                     @Override
-                    public Optional<java.util.Map<String, Object>> loadProject(
-                            java.util.UUID userId, java.util.UUID projectId) {
+                    public Optional<Map<String, Object>> loadProject(UUID userId, UUID projectId) {
                         return Optional.of(projectValues);
                     }
 
                     @Override
                     public Optional<PresetProfileCompositionSources> loadPresetProfileCompositionSources(
-                            java.util.UUID userId, java.util.UUID presetId) {
+                            UUID userId, UUID presetId) {
                         return Optional.empty();
                     }
                 };

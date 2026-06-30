@@ -26,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -34,6 +35,7 @@ class MinuteNERQueryAnalyserProviderAwareTest {
 
     @Mock private ResolvedLlmConfigResolver configResolver;
     @Mock private LlmClientResolver llmClientResolver;
+    @Mock private TaskLlmConfigResolver taskLlmConfigResolver;
     @Mock private LlmChatClient openAiChatClient;
 
     private ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
@@ -44,12 +46,18 @@ class MinuteNERQueryAnalyserProviderAwareTest {
     void setUp() {
         properties = LlmModelCatalogTestSupport.openAiLiteLlmProperties();
         ResolvedLlmConfig config = openAiConfig(properties);
-        when(configResolver.resolve(any(), eq(null), eq(null))).thenReturn(config);
+        when(taskLlmConfigResolver.resolveSecondaryCall(
+                        ArgumentMatchers.isNull(),
+                        ArgumentMatchers.isNull(),
+                        ArgumentMatchers.eq("ner"),
+                        ArgumentMatchers.isNull(),
+                        ArgumentMatchers.isNull()))
+                .thenReturn(new TaskLlmConfigResolver.SecondaryCallConfig(config, config.chatModel(), 0.0, false));
         secondaryLlmExecutor =
                 new ProviderAwareSecondaryLlmExecutor(
                         llmClientResolver,
                         configResolver,
-                        mock(TaskLlmConfigResolver.class),
+                        taskLlmConfigResolver,
                         mock(ChatGenerationModelSelector.class),
                         new ObjectMapper());
         when(llmClientResolver.resolveChatClient(any())).thenReturn(openAiChatClient);

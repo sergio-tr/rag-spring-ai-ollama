@@ -5,6 +5,7 @@ import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
 import com.uniovi.rag.domain.evaluation.snapshot.PromptProfileSnapshot;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -98,11 +99,11 @@ class PromptBundleFingerprintTest {
                 .containsKey("promptBundleExcludedGroups");
 
         @SuppressWarnings("unchecked")
-        var included = (java.util.List<Map<String, String>>) map.get("promptBundleIncludedGroups");
+        var included = (List<Map<String, String>>) map.get("promptBundleIncludedGroups");
         assertThat(included)
                 .anyMatch(g -> PromptBundleFingerprint.GROUP_RUNTIME_ANSWER_PROMPTS.equals(g.get("groupId")));
         @SuppressWarnings("unchecked")
-        var excluded = (java.util.List<Map<String, String>>) map.get("promptBundleExcludedGroups");
+        var excluded = (List<Map<String, String>>) map.get("promptBundleExcludedGroups");
         assertThat(excluded)
                 .anyMatch(g -> PromptBundleFingerprint.GROUP_FACTUAL_VERIFIER.equals(g.get("groupId")));
     }

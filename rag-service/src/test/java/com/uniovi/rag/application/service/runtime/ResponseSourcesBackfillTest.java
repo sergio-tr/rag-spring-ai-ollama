@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -49,7 +50,7 @@ class ResponseSourcesBackfillTest {
                                 List.of())
                         .withResponseSources(List.of());
 
-        List<java.util.Map<String, Object>> sources = ResponseSourcesBackfill.resolve(result);
+        List<Map<String, Object>> sources = ResponseSourcesBackfill.resolve(result);
 
         assertThat(sources).hasSize(1);
         assertThat(sources.getFirst().get("chunkId")).isEqualTo("chunk-a");
@@ -57,8 +58,8 @@ class ResponseSourcesBackfillTest {
 
     @Test
     void preservesExistingResponseSources() {
-        List<java.util.Map<String, Object>> existing =
-                List.of(java.util.Map.of("documentId", "doc-1", "snippet", "text"));
+        List<Map<String, Object>> existing =
+                List.of(Map.of("documentId", "doc-1", "snippet", "text"));
         RagExecutionResult result =
                 RagExecutionResult.withPlaceholderTrace(
                                 "answer",

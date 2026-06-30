@@ -16,9 +16,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusGoldAlignmentService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexPrepareResult;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunGroupKey;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusDocumentUploadItemDto;
@@ -64,6 +66,9 @@ class LabEvaluationCorpusControllerWebMvcTest {
 
     @MockitoBean
     private EvaluationCorpusIndexService evaluationCorpusIndexService;
+
+    @MockitoBean
+    private EvaluationCorpusGoldAlignmentService evaluationCorpusGoldAlignmentService;
 
     private UUID userId;
 
@@ -160,7 +165,7 @@ class LabEvaluationCorpusControllerWebMvcTest {
         when(evaluationCorpusIndexService.prepareForPresetRequirements(
                         eq(userId),
                         eq(corpusId),
-                        eq(com.uniovi.rag.application.service.evaluation.preset.LabPresetRunGroupKey.HYBRID_METADATA),
+                        eq(LabPresetRunGroupKey.HYBRID_METADATA),
                         any(),
                         any(),
                         eq(true)))

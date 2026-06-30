@@ -90,7 +90,7 @@ public final class EvaluationProvenanceSupport {
                 provenance.get(EvaluationProvenanceKeys.EMBEDDING_PROVIDER));
     }
 
-    public static Map<String, Object> providerMetricsFromConfig(com.uniovi.rag.domain.llm.ResolvedLlmConfig config) {
+    public static Map<String, Object> providerMetricsFromConfig(ResolvedLlmConfig config) {
         Map<String, Object> out = new LinkedHashMap<>();
         if (config == null) {
             return Map.of();

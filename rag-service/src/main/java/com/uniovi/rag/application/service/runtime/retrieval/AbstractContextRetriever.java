@@ -28,6 +28,7 @@ import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 
 public abstract class AbstractContextRetriever implements ContextRetriever, Loggable {
@@ -91,7 +92,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     }
 
     /** When execution binds an active hybrid snapshot, scope vector reads to that snapshot only. */
-    protected org.springframework.ai.vectorstore.filter.Filter.Expression snapshotFilterForActiveRequest() {
+    protected Filter.Expression snapshotFilterForActiveRequest() {
         Set<String> snapshotIds = RagSnapshotContextHolder.activeSnapshotIds();
         if (snapshotIds.isEmpty()) {
             return null;

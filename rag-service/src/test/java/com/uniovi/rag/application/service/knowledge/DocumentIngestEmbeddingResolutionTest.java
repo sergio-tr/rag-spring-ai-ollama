@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.knowledge;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -48,8 +49,8 @@ class DocumentIngestEmbeddingResolutionTest {
     @BeforeEach
     void setUp() {
         lenient()
-                .when(embeddingModelCatalogResolver.resolve(any(), any()))
-                .thenAnswer(inv -> String.valueOf(inv.getArgument(1)).trim());
+                .when(embeddingModelCatalogResolver.resolve(any(LlmProvider.class), anyString()))
+                .thenAnswer(inv -> inv.getArgument(1, String.class).trim());
         LlmClientResolver clientResolver = new LlmClientResolver(clientRegistry);
         ProviderAwareEmbeddingService embeddingService =
                 new ProviderAwareEmbeddingService(clientResolver, configResolver, embeddingModelCatalogResolver);

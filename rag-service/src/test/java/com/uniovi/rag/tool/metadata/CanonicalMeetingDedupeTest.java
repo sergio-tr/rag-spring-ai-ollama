@@ -9,9 +9,11 @@ import com.uniovi.rag.application.service.runtime.document.extraction.DocumentCo
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -112,7 +114,7 @@ class CanonicalMeetingDedupeTest {
     void resolveDominantActiveSnapshotIds_prefersSnapshotCoveringMoreActasOverChunkCount() {
         String active = "snap-active-five-actas";
         String stale = "snap-stale-many-chunks";
-        List<Document> docs = new java.util.ArrayList<>();
+        List<Document> docs = new ArrayList<>();
         for (int i = 1; i <= 5; i++) {
             docs.add(
                     doc(
@@ -155,7 +157,7 @@ class CanonicalMeetingDedupeTest {
     void resolveDominantActiveSnapshotIds_usesExecutionSnapshotWhenBound() {
         String stale = "snap-stale-many-chunks";
         try {
-            RagSnapshotContextHolder.set(List.of(java.util.UUID.fromString("4ec7f3a7-e0ba-4729-ad5e-a17102058d84")));
+            RagSnapshotContextHolder.set(List.of(UUID.fromString("4ec7f3a7-e0ba-4729-ad5e-a17102058d84")));
             List<Document> docs =
                     List.of(
                             doc(

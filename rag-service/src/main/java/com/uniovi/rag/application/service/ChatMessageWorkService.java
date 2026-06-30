@@ -91,7 +91,7 @@ public class ChatMessageWorkService {
             Duration duration,
             Map<String, Object> chatTelemetry) {
         MessageEntity m = messageRepository.findById(assistantMessageId).orElseThrow();
-        String visible = ReasoningBlockSanitizer.sanitizeForUser(answer);
+        String visible = answer == null ? "" : ReasoningBlockSanitizer.sanitizeForUser(answer);
         m.setContent(visible);
         m.setSources(ChatSourceMapper.toPersistedMapsFromInternal(sources));
         m.setQueryType(queryType);

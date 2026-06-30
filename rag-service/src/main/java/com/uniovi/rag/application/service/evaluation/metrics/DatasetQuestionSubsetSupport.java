@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -159,8 +160,8 @@ public final class DatasetQuestionSubsetSupport {
     private static <T> List<T> filterByQuestionId(
             List<T> items,
             ResolvedSubset subset,
-            java.util.function.Function<T, String> idFn,
-            java.util.function.Function<String, String> unknownIdMessage) {
+            Function<T, String> idFn,
+            Function<String, String> unknownIdMessage) {
         if (items == null || items.isEmpty() || subset == null || subset.allQuestions()) {
             return items != null ? items : List.of();
         }

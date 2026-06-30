@@ -4,6 +4,7 @@ import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.catalog.LlmModelReasonCodes;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import com.uniovi.rag.domain.llm.catalog.LlmCatalogRuntimeStatus;
 import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
 import com.uniovi.rag.interfaces.rest.dto.llm.catalog.LlmCatalogModelDto;
 import com.uniovi.rag.interfaces.rest.dto.llm.catalog.LlmCatalogResponseDto;
@@ -86,10 +87,10 @@ public class EvaluationModelCatalogService {
 
     static boolean isRuntimeEvalSelectable(LlmCatalogModelDto model) {
         return model.runtimeStatus() == null
-                || model.runtimeStatus() == com.uniovi.rag.domain.llm.catalog.LlmCatalogRuntimeStatus.UNKNOWN
-                || model.runtimeStatus() == com.uniovi.rag.domain.llm.catalog.LlmCatalogRuntimeStatus.CONFIGURED
-                || model.runtimeStatus() == com.uniovi.rag.domain.llm.catalog.LlmCatalogRuntimeStatus.NOT_PROBED
-                || model.runtimeStatus() == com.uniovi.rag.domain.llm.catalog.LlmCatalogRuntimeStatus.AVAILABLE;
+                || model.runtimeStatus() == LlmCatalogRuntimeStatus.UNKNOWN
+                || model.runtimeStatus() == LlmCatalogRuntimeStatus.CONFIGURED
+                || model.runtimeStatus() == LlmCatalogRuntimeStatus.NOT_PROBED
+                || model.runtimeStatus() == LlmCatalogRuntimeStatus.AVAILABLE;
     }
 
     private static Optional<LlmCatalogModelDto> findModel(

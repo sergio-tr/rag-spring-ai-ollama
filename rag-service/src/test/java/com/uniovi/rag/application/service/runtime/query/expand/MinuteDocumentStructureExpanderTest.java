@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -37,7 +38,7 @@ class MinuteDocumentStructureExpanderTest {
     @Test
     void expand_withMockedLlmReturnsOriginalPlusExpansion() {
         when(secondaryLlmExecutor.complete(
-                        eq(MinuteDocumentStructureExpander.OPERATION_QUERY_EXPANSION), isNull(), org.mockito.ArgumentMatchers.anyString()))
+                        eq(MinuteDocumentStructureExpander.OPERATION_QUERY_EXPANSION), isNull(), anyString()))
                 .thenReturn("reunión acta fecha asistentes");
 
         String result = expander.expand("¿Quién presidió?");
@@ -48,6 +49,6 @@ class MinuteDocumentStructureExpanderTest {
                 .complete(
                         eq(MinuteDocumentStructureExpander.OPERATION_QUERY_EXPANSION),
                         isNull(),
-                        org.mockito.ArgumentMatchers.anyString());
+                        anyString());
     }
 }

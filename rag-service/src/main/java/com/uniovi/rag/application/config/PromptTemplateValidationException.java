@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.config;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -43,7 +44,7 @@ public final class PromptTemplateValidationException extends RuntimeException {
     }
 
     public Map<String, Object> toDetailsMap() {
-        Map<String, Object> details = new java.util.LinkedHashMap<>();
+        Map<String, Object> details = new LinkedHashMap<>();
         if (promptGroup != null && !promptGroup.isBlank()) {
             details.put("promptGroup", promptGroup);
         }

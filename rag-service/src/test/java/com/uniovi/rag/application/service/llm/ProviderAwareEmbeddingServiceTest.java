@@ -2,6 +2,8 @@ package com.uniovi.rag.application.service.llm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -47,8 +49,9 @@ class ProviderAwareEmbeddingServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(embeddingModelCatalogResolver.resolve(any(), any()))
-                .thenAnswer(inv -> inv.getArgument(1) != null ? String.valueOf(inv.getArgument(1)).trim() : "");
+        lenient()
+                .when(embeddingModelCatalogResolver.resolve(any(LlmProvider.class), anyString()))
+                .thenAnswer(inv -> inv.getArgument(1, String.class).trim());
         service = new ProviderAwareEmbeddingService(clientResolver, configResolver, embeddingModelCatalogResolver);
     }
 

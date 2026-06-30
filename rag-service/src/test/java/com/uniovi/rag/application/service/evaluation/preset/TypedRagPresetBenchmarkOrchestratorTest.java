@@ -2,6 +2,8 @@ package com.uniovi.rag.application.service.evaluation.preset;
 
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
+import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess;
 import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
 import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
 import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileService;
@@ -68,11 +70,13 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class TypedRagPresetBenchmarkOrchestratorTest {
 
+    private static final Map<UUID, KnowledgeIndexSnapshotEntity> SNAPSHOTS_BY_ID = new HashMap<>();
+
     @Mock private EvaluationService evaluationService;
     @Mock private EvaluationRunRepository evaluationRunRepository;
     @Mock private ProjectRepository projectRepository;
     @Mock private BaselineRunSnapshotWriter baselineRunSnapshotWriter;
-    @Mock private com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver resolvedLlmConfigResolver;
+    @Mock private ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     @Mock private ExperimentalSnapshotFactory experimentalSnapshotFactory;
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
     @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
@@ -81,9 +85,11 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     @Mock private LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     @Mock private EvaluationCorpusIndexService evaluationCorpusIndexService;
     @Mock private CorpusAvailabilityGate corpusAvailabilityGate;
+    @Mock private KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess;
 
     @BeforeEach
     void defaultCorpusAvailabilityGate() {
+        SNAPSHOTS_BY_ID.clear();
         CorpusAvailabilityGate.Result satisfied =
                 new CorpusAvailabilityGate.Result(true, 1, List.of(UUID.randomUUID()), 1, 3L, null, null);
         Mockito.lenient()
@@ -109,7 +115,30 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 .thenReturn(3L);
         Mockito.lenient()
                 .when(knowledgeIndexSnapshotRepository.findById(ArgumentMatchers.any()))
-                .thenReturn(Optional.empty());
+                .thenAnswer(
+                        invocation ->
+                                Optional.ofNullable(SNAPSHOTS_BY_ID.get(invocation.getArgument(0))));
+        Mockito.lenient()
+                .when(snapshotProfileAccess.loadProfileJsonb(ArgumentMatchers.any()))
+                .thenAnswer(
+                        invocation -> {
+                            UUID id = invocation.getArgument(0);
+                            KnowledgeIndexSnapshotEntity snap = SNAPSHOTS_BY_ID.get(id);
+                            if (snap == null || snap.getIndexProfileJsonb() == null) {
+                                return Map.of();
+                            }
+                            return snap.getIndexProfileJsonb();
+                        });
+        Mockito.lenient()
+                .when(snapshotProfileAccess.resolveProfileJsonb(ArgumentMatchers.any()))
+                .thenAnswer(
+                        invocation -> {
+                            KnowledgeIndexSnapshotEntity snap = invocation.getArgument(0);
+                            if (snap == null || snap.getIndexProfileJsonb() == null) {
+                                return Map.of();
+                            }
+                            return snap.getIndexProfileJsonb();
+                        });
     }
 
     private static LlmExperimentalSnapshot llmSnap() {
@@ -125,7 +154,8 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         @SuppressWarnings("unchecked")
         ObjectProvider<LabJobProgressTracker> labJobProgressTracker = Mockito.mock(ObjectProvider.class);
         LabIndexSnapshotCompatibilityService indexSnapshotCompatibilityService =
-                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator, org.mockito.Mockito.mock(com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess.class));
+                new LabIndexSnapshotCompatibilityService(
+                        corpusAvailabilityGate, knowledgePipelineOrchestrator, snapshotProfileAccess);
         LabEvaluationSnapshotService labEvaluationSnapshotService =
                 new LabEvaluationSnapshotService(
                         knowledgeSnapshotService,
@@ -136,7 +166,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         corpusAvailabilityGate,
                         indexSnapshotCompatibilityService,
                         knowledgeIndexSnapshotRepository,
-                        org.mockito.Mockito.mock(com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess.class),
+                        snapshotProfileAccess,
                         evaluationRunRepository,
                         projectRepository,
                         labJobProgressTracker);
@@ -1426,6 +1456,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 "embeddingModelId", "emb",
                 "chunkMaxChars", 400,
                 "chunkOverlap", 40));
+        SNAPSHOTS_BY_ID.put(snapshotId, snap);
         return snap;
     }
 

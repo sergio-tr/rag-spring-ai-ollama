@@ -4,6 +4,7 @@ import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
+import com.uniovi.rag.infrastructure.config.PromptBundleFingerprint;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -96,7 +97,7 @@ public final class ConfigurablePromptRuntimeSupport {
                         && resolver.mergedOverrides(ctx.userId(), ctx.projectId(), null, null, null)
                                 .containsKey(group.id());
         String hash =
-                com.uniovi.rag.infrastructure.config.PromptBundleFingerprint.sha256Hex(content);
+                PromptBundleFingerprint.sha256Hex(content);
         String preview = hash.length() > 12 ? hash.substring(0, 12) : hash;
         return "promptGroup=" + group.id() + " source=" + (custom ? "override" : "default") + " promptHash=" + preview;
     }

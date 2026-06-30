@@ -370,10 +370,11 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
 
             try {
                 long t0 = System.nanoTime();
+                int topK = Math.max(1, ctx.retrievalParams().topK());
                 SearchRequest.Builder searchBuilder =
                         SearchRequest.builder()
                                 .query(question)
-                                .topK(ctx.retrievalParams().topK())
+                                .topK(topK)
                                 .similarityThreshold(ctx.retrievalParams().similarityThreshold());
                 Filter.Expression snapshotFilter =
                         SnapshotBoundRetrievalFilter.buildForSnapshotIds(

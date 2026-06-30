@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -502,7 +503,7 @@ public final class EvaluationExportV1Builder {
         return v == null ? "" : String.valueOf(v).trim();
     }
 
-    private static String uuid(java.util.UUID id) {
+    private static String uuid(UUID id) {
         return id != null ? id.toString() : "";
     }
 

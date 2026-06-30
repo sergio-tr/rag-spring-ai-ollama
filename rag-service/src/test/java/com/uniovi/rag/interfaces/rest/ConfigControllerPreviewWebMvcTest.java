@@ -1,7 +1,9 @@
 package com.uniovi.rag.interfaces.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.config.ConfigurablePromptCatalogService;
 import com.uniovi.rag.application.config.ConfigurationSchemaProvider;
+import com.uniovi.rag.application.config.TaskLlmCatalogService;
 import com.uniovi.rag.application.config.RuntimeConfigResolutionInput;
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
@@ -57,6 +59,8 @@ class ConfigControllerPreviewWebMvcTest {
     @MockitoBean private UserProjectConfigurationService userProjectConfigurationService;
     @MockitoBean private RuntimeConfigResolutionService runtimeConfigResolutionService;
     @MockitoBean private ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
+    @MockitoBean private ConfigurablePromptCatalogService configurablePromptCatalogService;
+    @MockitoBean private TaskLlmCatalogService taskLlmCatalogService;
 
     private UUID userId;
 

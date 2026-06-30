@@ -1,11 +1,13 @@
 package com.uniovi.rag.application.service.evaluation.judge;
 
+import com.uniovi.rag.domain.llm.LlmProvider;
+
 /** Outcome of an evaluation judge LLM call (success or structured degradation). */
 public record EvaluationJudgeCallResult(
         String content,
         String judgeStatus,
         String judgeFailureReason,
-        com.uniovi.rag.domain.llm.LlmProvider judgeProvider,
+        LlmProvider judgeProvider,
         String judgeModel) {
 
     public static final String STATUS_SUCCESS = "SUCCESS";
@@ -16,8 +18,7 @@ public record EvaluationJudgeCallResult(
         return new EvaluationJudgeCallResult(text, STATUS_SUCCESS, null, null, null);
     }
 
-    public static EvaluationJudgeCallResult failed(
-            String failureReason, com.uniovi.rag.domain.llm.LlmProvider provider, String model) {
+    public static EvaluationJudgeCallResult failed(String failureReason, LlmProvider provider, String model) {
         return new EvaluationJudgeCallResult("", STATUS_FAILED, failureReason, provider, model);
     }
 
