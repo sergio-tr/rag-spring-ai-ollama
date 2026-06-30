@@ -1,4 +1,6 @@
 /** Canonical LAB LLM comparison tags (Flyway V61 allowlist). */
+import { isLabComparisonAvailabilityBlocked } from "@/features/lab/lib/lab-comparison-availability";
+
 export const LLM_CAMPAIGN_PREFERRED_MODEL_IDS = [
   "llama3.1:8b",
   "gemma3:4b",
@@ -17,6 +19,9 @@ export function missingPreferredLlmModels(
 
 export function llmComparisonAvailabilityStatus(
   availableCount: number,
+  selectedCount = 0,
 ): LlmModelAvailabilityStatus {
-  return availableCount >= 2 ? "READY" : "BLOCKED_BY_MODEL_AVAILABILITY";
+  return isLabComparisonAvailabilityBlocked(selectedCount, availableCount)
+    ? "BLOCKED_BY_MODEL_AVAILABILITY"
+    : "READY";
 }

@@ -69,8 +69,8 @@ vi.mock("@/features/lab/hooks/use-active-lab-jobs", () => ({
   useActiveLabJobs: vi.fn(),
 }));
 
-vi.mock("@/features/chat/hooks/use-models-by-type", () => ({
-  useModelsByType: vi.fn(),
+vi.mock("@/features/lab/hooks/use-lab-evaluation-models", () => ({
+  useLabEvaluationModels: vi.fn(),
 }));
 
 vi.mock("@/store/app.store", () => ({
@@ -91,8 +91,89 @@ import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimen
 import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
-import { useModelsByType } from "@/features/chat/hooks/use-models-by-type";
+import { useLabEvaluationModels } from "@/features/lab/hooks/use-lab-evaluation-models";
 import { apiFetch } from "@/lib/api-client";
+
+const chatCatalogFixture = [
+  {
+    modelName: "llama:judge",
+    evalSelectable: true,
+    blockedReason: null,
+    blockedReasonCode: null,
+    runtimeStatus: "AVAILABLE" as const,
+    embeddingDimensions: null,
+    compatibleWithCurrentVectorStore: null,
+    usableAsDefault: true,
+  },
+  {
+    modelName: "llama:fast",
+    evalSelectable: true,
+    blockedReason: null,
+    blockedReasonCode: null,
+    runtimeStatus: "AVAILABLE" as const,
+    embeddingDimensions: null,
+    compatibleWithCurrentVectorStore: null,
+    usableAsDefault: false,
+  },
+  {
+    modelName: "llama:quality",
+    evalSelectable: true,
+    blockedReason: null,
+    blockedReasonCode: null,
+    runtimeStatus: "AVAILABLE" as const,
+    embeddingDimensions: null,
+    compatibleWithCurrentVectorStore: null,
+    usableAsDefault: false,
+  },
+];
+
+const embeddingCatalogFixture = [
+  {
+    modelName: "mxbai-embed:latest",
+    evalSelectable: true,
+    blockedReason: null,
+    blockedReasonCode: null,
+    runtimeStatus: "AVAILABLE" as const,
+    embeddingDimensions: 1024,
+    compatibleWithCurrentVectorStore: true,
+    usableAsDefault: true,
+  },
+  {
+    modelName: "nomic-embed-test",
+    evalSelectable: false,
+    blockedReason: "Incompatible with vector store",
+    blockedReasonCode: "EMBEDDING_MODEL_INCOMPATIBLE_WITH_VECTOR_STORE",
+    runtimeStatus: "AVAILABLE" as const,
+    embeddingDimensions: 768,
+    compatibleWithCurrentVectorStore: false,
+    usableAsDefault: false,
+  },
+];
+
+function mockEvaluationCatalogs(
+  chatModels = chatCatalogFixture,
+  embeddingModels = embeddingCatalogFixture,
+) {
+  vi.mocked(useLabEvaluationModels).mockImplementation(((capability: string) => ({
+    data:
+      capability === "CHAT"
+        ? {
+            effectiveProvider: "OLLAMA_NATIVE",
+            capability: "CHAT",
+            models: chatModels,
+            hasCompatibleEmbeddingModels: embeddingModels.some((m) => m.compatibleWithCurrentVectorStore === true),
+          }
+        : {
+            effectiveProvider: "OLLAMA_NATIVE",
+            capability: "EMBEDDING",
+            models: embeddingModels,
+            hasCompatibleEmbeddingModels: embeddingModels.some((m) => m.compatibleWithCurrentVectorStore === true),
+          },
+    isLoading: false,
+    isSuccess: true,
+    isError: false,
+  })) as never);
+}
 
 const llmDataset = {
   id: "550e8400-e29b-41d4-a716-446655440000",
@@ -175,6 +256,25 @@ function storedLlmDraft(overrides: Record<string, unknown>) {
     followMode: "poll",
     lastEvaluationRunId: null,
     corpusId: null,
+    ...overrides,
+  });
+}
+
+function storedEmbeddingDraft(overrides: Record<string, unknown>) {
+  return JSON.stringify({
+    v: 1,
+    datasetId: embeddingDataset.id,
+    explicitDraftClear: false,
+    llmModelId: "",
+    llmModelIds: [] as string[],
+    embeddingModelId: "",
+    embeddingModelIds: [] as string[],
+    embeddingDownstreamRag: false,
+    selectedExperimentalPresetCodes: [] as string[],
+    runName: "",
+    followMode: "poll",
+    lastEvaluationRunId: null,
+    corpusId: "corpus-emb",
     ...overrides,
   });
 }
@@ -283,21 +383,7 @@ describe("LabEvaluationRunCard", () => {
       isSuccess: true,
     } as never);
     vi.mocked(useActiveLabJobs).mockReturnValue({ data: [], isLoading: false, isFetched: true, isError: false } as never);
-    vi.mocked(useModelsByType).mockImplementation(((type: string) => ({
-      data:
-        type === "LLM"
-          ? [
-              { modelId: "llama:judge", displayName: "llama:judge", type: "LLM" },
-              { modelId: "llama:fast", displayName: "llama:fast", type: "LLM" },
-              { modelId: "llama:quality", displayName: "llama:quality", type: "LLM" },
-            ]
-          : [
-              { modelId: "nomic-embed-test", displayName: "nomic-embed-test", type: "EMBEDDING" },
-              { modelId: "qwen3-embedding:latest", displayName: "qwen3-embedding", type: "EMBEDDING" },
-            ],
-      isLoading: false,
-      isSuccess: true,
-    })) as never);
+    mockEvaluationCatalogs();
     vi.mocked(apiFetch).mockReset();
   });
 
@@ -386,8 +472,8 @@ describe("LabEvaluationRunCard", () => {
     const developerDetails = screen.getByTestId("lab-eval-technical-details");
     expect(developerDetails).not.toHaveAttribute("open");
     expect(screen.queryByText(/LLM_JUDGE_QA/i)).not.toBeInTheDocument();
-    await user.click(screen.getByText(/Technical details/i));
-    expect(screen.getByTestId("lab-eval-benchmark-kind-label")).toHaveTextContent(/LLM evaluation/i);
+    await user.click(screen.getByText(/Advanced technical details/i));
+    expect(screen.getByTestId("lab-eval-benchmark-kind-label")).toHaveTextContent(/Chat model evaluation/i);
     expect(screen.queryByText(/POST \/api/i)).not.toBeInTheDocument();
   });
 
@@ -849,7 +935,7 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
 
-    expect(screen.getByRole("button", { name: /Run model comparison/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Compare selected models/i })).toBeInTheDocument();
     expect(screen.getByTestId("lab-comparison-selection-hint")).toHaveTextContent(/Comparing 3 models/i);
 
     await user.click(screen.getByTestId("lab-llm-run"));
@@ -867,6 +953,56 @@ describe("LabEvaluationRunCard", () => {
     expect(body.campaignName).toBeTruthy();
   });
 
+  it("shows evaluate-selected label and submits llmModelId for single checkbox selection", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      "lab:evaluation-draft:v1:LLM_JUDGE_QA",
+      storedLlmDraft({
+        llmModelIds: ["llama:judge"],
+        corpusId: "corpus-1111-1111-1111-111111111111",
+      }),
+    );
+    vi.mocked(apiFetch).mockResolvedValue({
+      evaluationRunId: "run-0000-0000-0000-000000000002",
+      asyncTaskId: "job-0000-0000-0000-000000000002",
+    });
+
+    render(
+      <LabEvalHarness>
+        <LabEvaluationRunCard
+          benchmarkKind="LLM_JUDGE_QA"
+          sectionKey="evaluation-llm-single"
+          taskTypeHint="LLM_EVALUATION"
+          cardTitle="LLM evaluation"
+          cardDescription="Benchmark the configured LLM against loaded evaluation questions."
+          runButtonTestId="lab-llm-single-run"
+          radioGroupName="follow-single-model"
+        />
+      </LabEvalHarness>,
+    );
+
+    expect(screen.getByRole("button", { name: /Evaluate selected model/i })).toBeInTheDocument();
+    expect(screen.getByTestId("lab-comparison-selection-hint")).toHaveTextContent(/Evaluate selected model/i);
+    expect(screen.queryByTestId("lab-llm-model-availability-blocked")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("lab-llm-single-run"));
+
+    const call = vi.mocked(apiFetch).mock.calls.find((c) => {
+      const url = String(c[0] ?? "");
+      const method = (c[1] as RequestInit | undefined)?.method ?? "GET";
+      return url.includes("/lab/benchmarks/LLM_JUDGE_QA/runs") && method === "POST";
+    });
+    expect(call).toBeTruthy();
+    const body = JSON.parse(String((call?.[1] as RequestInit | undefined)?.body ?? "{}")) as {
+      llmModelId?: string;
+      llmModelIds?: string[];
+      campaignName?: string;
+    };
+    expect(body.llmModelId).toBe("llama:judge");
+    expect(body.llmModelIds).toBeUndefined();
+    expect(body.campaignName).toBeUndefined();
+  });
+
   describe("EMBEDDING_RETRIEVAL model compatibility", () => {
     beforeEach(() => {
       useEvaluationCorpusMock.mockReturnValue({
@@ -881,15 +1017,19 @@ describe("LabEvaluationRunCard", () => {
       } as never);
     });
 
-    it("shows concise blocked message when only one compatible embedding is available", () => {
-      vi.mocked(useModelsByType).mockImplementation(((type: string) => ({
-        data:
-          type === "EMBEDDING"
-            ? [{ modelId: "mxbai-embed-large:latest", displayName: "mxbai", type: "EMBEDDING" }]
-            : [],
-        isLoading: false,
-        isSuccess: true,
-      })) as never);
+    it("does not block single-model embedding evaluation when only one compatible model exists", () => {
+      mockEvaluationCatalogs([], [
+        {
+          modelName: "mxbai-embed-large:latest",
+          evalSelectable: true,
+          blockedReason: null,
+    blockedReasonCode: null,
+          runtimeStatus: "AVAILABLE",
+          embeddingDimensions: 1024,
+          compatibleWithCurrentVectorStore: true,
+          usableAsDefault: true,
+        },
+      ]);
 
       render(
         <LabEvalHarness>
@@ -905,28 +1045,82 @@ describe("LabEvaluationRunCard", () => {
         </LabEvalHarness>,
       );
 
+      expect(screen.queryByTestId("lab-embedding-model-availability-blocked")).not.toBeInTheDocument();
+    });
+
+    it("shows blocked message when comparison selects more models than catalog offers", () => {
+      localStorage.setItem(
+        "lab:evaluation-draft:v1:EMBEDDING_RETRIEVAL",
+        storedEmbeddingDraft({
+          embeddingModelIds: ["mxbai-embed-large:latest", "other:model"],
+        }),
+      );
+      mockEvaluationCatalogs([], [
+        {
+          modelName: "mxbai-embed-large:latest",
+          evalSelectable: true,
+          blockedReason: null,
+    blockedReasonCode: null,
+          runtimeStatus: "AVAILABLE",
+          embeddingDimensions: 1024,
+          compatibleWithCurrentVectorStore: true,
+          usableAsDefault: true,
+        },
+      ]);
+
+      render(
+        <LabEvalHarness>
+          <LabEvaluationRunCard
+            benchmarkKind="EMBEDDING_RETRIEVAL"
+            sectionKey="evaluation-embedding"
+            taskTypeHint="EMBEDDING_EVALUATION"
+            cardTitle="Embedding evaluation"
+            cardDescription="Compare embedding models."
+            runButtonTestId="lab-embedding-run"
+            radioGroupName="follow-embedding-two"
+          />
+        </LabEvalHarness>,
+      );
+
       const blocked = screen.getByTestId("lab-embedding-model-availability-blocked");
       expect(blocked).toHaveTextContent(
         "At least two compatible embedding models are required for comparison.",
       );
-      expect(blocked.textContent).not.toMatch(/Missing preferred/i);
-      expect(blocked.textContent).not.toMatch(/bge-m3/i);
-      expect(blocked.textContent).not.toMatch(/EMBEDDING_CAMPAIGN_STORE_DIMENSION/);
     });
 
     it("does not offer incompatible embedding tags in the checkbox group", () => {
-      vi.mocked(useModelsByType).mockImplementation(((type: string) => ({
-        data:
-          type === "EMBEDDING"
-            ? [
-                { modelId: "mxbai-embed-large:latest", displayName: "mxbai", type: "EMBEDDING" },
-                { modelId: "nomic-embed-text:latest", displayName: "nomic", type: "EMBEDDING" },
-                { modelId: "qwen3-embedding:latest", displayName: "qwen3", type: "EMBEDDING" },
-              ]
-            : [],
-        isLoading: false,
-        isSuccess: true,
-      })) as never);
+      mockEvaluationCatalogs([], [
+        {
+          modelName: "mxbai-embed-large:latest",
+          evalSelectable: true,
+          blockedReason: null,
+    blockedReasonCode: null,
+          runtimeStatus: "AVAILABLE",
+          embeddingDimensions: 1024,
+          compatibleWithCurrentVectorStore: true,
+          usableAsDefault: true,
+        },
+        {
+          modelName: "nomic-embed-text:latest",
+          evalSelectable: false,
+          blockedReason: "Incompatible with vector store",
+    blockedReasonCode: "EMBEDDING_MODEL_INCOMPATIBLE_WITH_VECTOR_STORE",
+          runtimeStatus: "AVAILABLE",
+          embeddingDimensions: 768,
+          compatibleWithCurrentVectorStore: false,
+          usableAsDefault: false,
+        },
+        {
+          modelName: "qwen3-embedding:latest",
+          evalSelectable: false,
+          blockedReason: "Incompatible with vector store",
+    blockedReasonCode: "EMBEDDING_MODEL_INCOMPATIBLE_WITH_VECTOR_STORE",
+          runtimeStatus: "AVAILABLE",
+          embeddingDimensions: null,
+          compatibleWithCurrentVectorStore: false,
+          usableAsDefault: false,
+        },
+      ]);
 
       render(
         <LabEvalHarness>

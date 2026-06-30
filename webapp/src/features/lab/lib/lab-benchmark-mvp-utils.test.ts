@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  readDerivedErrorClassFromItem,
   readGlobalOutcomeCounts,
   readMvpItemOperational,
   readMvpItems,
@@ -105,5 +106,17 @@ describe("lab-benchmark-mvp-utils", () => {
     expect(readMvpItems({ items: [{ id: 1 }] })).toEqual([{ id: 1 }]);
     expect(readMvpItems({ items: "nope" })).toEqual([]);
     expect(readMvpItems({})).toEqual([]);
+  });
+
+  it("readDerivedErrorClassFromItem reads top-level and operational fields", () => {
+    expect(readDerivedErrorClassFromItem({ derivedErrorClass: "INDEX_PREPARATION" })).toBe(
+      "INDEX_PREPARATION",
+    );
+    expect(
+      readDerivedErrorClassFromItem({
+        mvp: { operational: { derivedErrorClass: "RUNTIME_FAILURE" } },
+      }),
+    ).toBe("RUNTIME_FAILURE");
+    expect(readDerivedErrorClassFromItem({ mvp: { operational: { outcome: "EXECUTED" } } })).toBeNull();
   });
 });

@@ -13,8 +13,13 @@ describe("llm-campaign-preferred-models", () => {
     ]);
   });
 
-  it("reports READY when two or more models are selectable", () => {
-    expect(llmComparisonAvailabilityStatus(2)).toBe("READY");
-    expect(llmComparisonAvailabilityStatus(1)).toBe("BLOCKED_BY_MODEL_AVAILABILITY");
+  it("reports READY for single-model runs", () => {
+    expect(llmComparisonAvailabilityStatus(1, 0)).toBe("READY");
+    expect(llmComparisonAvailabilityStatus(1, 1)).toBe("READY");
+  });
+
+  it("reports BLOCKED when comparison selection exceeds availability", () => {
+    expect(llmComparisonAvailabilityStatus(1, 2)).toBe("BLOCKED_BY_MODEL_AVAILABILITY");
+    expect(llmComparisonAvailabilityStatus(2, 2)).toBe("READY");
   });
 });

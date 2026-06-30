@@ -386,7 +386,7 @@ export async function collectLlmModelValidation(page: Page): Promise<LlmModelVal
   const ollamaTags = listOllamaTagsViaDockerExec();
   const missingPreferred = preferred.filter((id) => !selectableLlmModelIds.includes(id));
   const status: LlmModelValidationSnapshot["status"] =
-    selectableLlmModelIds.length >= 2 ? "READY" : "BLOCKED_BY_MODEL_AVAILABILITY";
+    selectableLlmModelIds.length >= 1 ? "READY" : "BLOCKED_BY_MODEL_AVAILABILITY";
   return {
     status,
     selectableLlmModelIds,
@@ -556,7 +556,7 @@ export async function collectEmbeddingModelValidation(page: Page): Promise<Embed
   }
 
   const status: EmbeddingModelValidationSnapshot["status"] =
-    selectableCompatibleEmbeddingIds.length >= 2 ? "READY" : "BLOCKED_BY_MODEL_AVAILABILITY";
+    selectableCompatibleEmbeddingIds.length >= 1 ? "READY" : "BLOCKED_BY_MODEL_AVAILABILITY";
 
   return {
     status,

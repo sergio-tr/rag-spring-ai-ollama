@@ -288,7 +288,7 @@ describe("LabOverviewPage", () => {
     expect(serverDetails).not.toHaveAttribute("open");
     expect(serverDetails).toHaveTextContent(/Additional detail/i);
     expect(serverDetails).toHaveTextContent(/Research Lab is ready/i);
-    await user.click(screen.getByText(/Technical details/i));
+    await user.click(screen.getByText(/Advanced technical details/i));
     expect(technical).toHaveAttribute("open");
     await user.click(screen.getByText(/Server note/i));
     expect(serverDetails).toHaveAttribute("open");

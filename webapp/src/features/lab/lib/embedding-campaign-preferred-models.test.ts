@@ -23,9 +23,14 @@ describe("embedding-campaign-preferred-models", () => {
     ).toEqual(["mxbai-embed-large:latest", "bge-m3:latest"]);
   });
 
-  it("reports READY when two compatible models exist", () => {
-    expect(embeddingComparisonAvailabilityStatus(2)).toBe("READY");
-    expect(embeddingComparisonAvailabilityStatus(1)).toBe("BLOCKED_BY_MODEL_AVAILABILITY");
+  it("reports READY for single-model runs", () => {
+    expect(embeddingComparisonAvailabilityStatus(1, 0)).toBe("READY");
+    expect(embeddingComparisonAvailabilityStatus(1, 1)).toBe("READY");
+  });
+
+  it("reports BLOCKED when comparison selection exceeds availability", () => {
+    expect(embeddingComparisonAvailabilityStatus(1, 2)).toBe("BLOCKED_BY_MODEL_AVAILABILITY");
+    expect(embeddingComparisonAvailabilityStatus(2, 2)).toBe("READY");
   });
 
   it("validates probed dimension against store width", () => {

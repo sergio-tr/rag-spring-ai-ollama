@@ -32,14 +32,22 @@ import {
   listCoreExperimentalPresetCodes,
 } from "@/features/lab/lib/experimental-preset-selection";
 import { useLabEvaluationDraft } from "@/features/lab/hooks/use-lab-evaluation-draft";
+import { useLabEvaluationModels } from "@/features/lab/hooks/use-lab-evaluation-models";
 import { useLabJobLiveStream } from "@/features/lab/hooks/use-lab-job-live-stream";
 import { fetchLabJobStatusOnce, pollLabJob } from "@/lib/async-task";
 import {
-  LAB_DEFAULT_EMBEDDING_MODEL_ID,
   type LabEvaluationDraftKind,
 } from "@/features/lab/lib/lab-evaluation-draft";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
-import { useModelsByType } from "@/features/chat/hooks/use-models-by-type";
+import { isLabComparisonAvailabilityBlocked } from "@/features/lab/lib/lab-comparison-availability";
+import {
+  allEvalModelNames,
+  compatibleEmbeddingEvalModelNames,
+  defaultEmbeddingModelId,
+  labComparisonBlockedMessageKey,
+  labDraftInvalidModelMessageKey,
+  selectableEvalModelNames,
+} from "@/features/lab/lib/lab-evaluation-models";
 import {
   asyncTaskDtoFromSnapshot,
   type LabJobSectionKey,
@@ -53,13 +61,11 @@ import {
 } from "@/features/lab/lib/lab-job-trace";
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
 import { resolveEmbeddingCampaignIndexSnapshotIds } from "@/features/lab/lib/embedding-campaign-index-snapshots";
-import {
-  filterCampaignCompatibleEmbeddingIds,
-} from "@/features/lab/lib/embedding-campaign-preferred-models";
 import { mapKnowledgeBaseApiError } from "@/features/lab/lib/evaluation-corpus-upload";
 import { resolveDocumentCentricReadinessDisplay } from "@/features/lab/lib/evaluation-corpus-readiness-display";
 import { extractTechnicalErrorCode } from "@/lib/user-facing-error-messages";
 import { formatBenchmarkKindLabel, formatPresetSupportMessage } from "@/lib/product-copy";
+import { formatLabExperimentalPresetLabel, sortPresetsByRank } from "@/features/presets/lib/preset-display";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import { beginTraceSession, endTraceSession } from "@/lib/trace-session";
 import { useAppStore } from "@/store/app.store";
@@ -204,8 +210,12 @@ export function LabEvaluationRunCard({
   const activeJobs = useActiveLabJobs();
   const experimentalDatasets = useExperimentalDatasetsQuery();
   const experimentalPresets = useExperimentalPresetCatalog();
-  const llmModels = useModelsByType("LLM");
-  const embeddingModels = useModelsByType("EMBEDDING");
+  const sortedExperimentalPresets = useMemo(
+    () => sortPresetsByRank(experimentalPresets.data ?? []),
+    [experimentalPresets.data],
+  );
+  const chatCatalog = useLabEvaluationModels("CHAT");
+  const embeddingCatalog = useLabEvaluationModels("EMBEDDING");
   const activeProject = useAppStore((s) => s.activeProject);
 
   const [running, setRunning] = useState(false);
@@ -245,26 +255,29 @@ export function LabEvaluationRunCard({
     [benchmarkKind, experimentalDatasets.data],
   );
 
-  const availableLlmModels = useMemo(
-    () => llmModels.data?.map((m) => m.modelId).sort((a, b) => a.localeCompare(b)) ?? [],
-    [llmModels.data],
+  const chatCatalogModels = useMemo(() => chatCatalog.data?.models ?? [], [chatCatalog.data?.models]);
+  const embeddingCatalogModels = useMemo(
+    () => embeddingCatalog.data?.models ?? [],
+    [embeddingCatalog.data?.models],
   );
-  const llmComparisonAvailabilityBlocked = useMemo(() => {
-    if (benchmarkKind !== "LLM_JUDGE_QA") return false;
-    return availableLlmModels.length > 0 && availableLlmModels.length < 2;
-  }, [benchmarkKind, availableLlmModels.length]);
+
+  const availableLlmModels = useMemo(
+    () => selectableEvalModelNames(chatCatalogModels),
+    [chatCatalogModels],
+  );
+  const allLlmModelNames = useMemo(() => allEvalModelNames(chatCatalogModels), [chatCatalogModels]);
   const availableEmbeddingModels = useMemo(
-    () => embeddingModels.data?.map((m) => m.modelId).sort((a, b) => a.localeCompare(b)) ?? [],
-    [embeddingModels.data],
+    () => allEvalModelNames(embeddingCatalogModels),
+    [embeddingCatalogModels],
   );
   const compatibleEmbeddingModels = useMemo(
-    () => filterCampaignCompatibleEmbeddingIds(availableEmbeddingModels),
-    [availableEmbeddingModels],
+    () => compatibleEmbeddingEvalModelNames(embeddingCatalogModels),
+    [embeddingCatalogModels],
   );
-  const embeddingComparisonAvailabilityBlocked = useMemo(() => {
-    if (benchmarkKind !== "EMBEDDING_RETRIEVAL") return false;
-    return compatibleEmbeddingModels.length > 0 && compatibleEmbeddingModels.length < 2;
-  }, [benchmarkKind, compatibleEmbeddingModels.length]);
+  const selectableCompatibleEmbeddings = useMemo(
+    () => selectableEvalModelNames(embeddingCatalogModels.filter((m) => m.compatibleWithCurrentVectorStore === true)),
+    [embeddingCatalogModels],
+  );
 
   const setUserFacingErr = useCallback(
     (raw: string | null | undefined) => {
@@ -304,6 +317,46 @@ export function LabEvaluationRunCard({
 
   const { draft, patchDraft, clearDraft, resetToRecommended, setLastEvaluationRunId, warnings, sanitizedRemovedPresets } =
     useLabEvaluationDraft(benchmarkKind as LabEvaluationDraftKind, draftValidation);
+
+  const llmComparisonAvailabilityBlocked = useMemo(() => {
+    if (benchmarkKind !== "LLM_JUDGE_QA") return false;
+    const selected = draft.llmModelIds.map((x) => x.trim()).filter(Boolean).length;
+    return isLabComparisonAvailabilityBlocked(selected, availableLlmModels.length);
+  }, [benchmarkKind, availableLlmModels.length, draft.llmModelIds]);
+  const embeddingComparisonAvailabilityBlocked = useMemo(() => {
+    if (benchmarkKind !== "EMBEDDING_RETRIEVAL") return false;
+    const selected = draft.embeddingModelIds.map((x) => x.trim()).filter(Boolean).length;
+    return isLabComparisonAvailabilityBlocked(selected, compatibleEmbeddingModels.length);
+  }, [benchmarkKind, compatibleEmbeddingModels.length, draft.embeddingModelIds]);
+
+  const catalogModelBlockReason = useMemo(() => {
+    if (chatCatalog.isLoading || embeddingCatalog.isLoading) return null;
+    if (chatCatalog.isError || embeddingCatalog.isError) return t("evalCatalogLoadError");
+    const needsChat =
+      benchmarkKind === "LLM_JUDGE_QA" ||
+      benchmarkKind === "RAG_PRESET_END_TO_END" ||
+      (benchmarkKind === "EMBEDDING_RETRIEVAL" && draft.embeddingDownstreamRag);
+    const needsEmbedding = benchmarkKind === "EMBEDDING_RETRIEVAL" || benchmarkKind === "RAG_PRESET_END_TO_END";
+    if (needsChat && chatCatalog.isSuccess && chatCatalogModels.length === 0) {
+      return t("evalCatalogNoChatModels");
+    }
+    if (needsEmbedding && embeddingCatalog.isSuccess && !embeddingCatalog.data?.hasCompatibleEmbeddingModels) {
+      return t("evalCatalogNoCompatibleEmbeddings");
+    }
+    return null;
+  }, [
+    benchmarkKind,
+    chatCatalog.isError,
+    chatCatalog.isLoading,
+    chatCatalog.isSuccess,
+    chatCatalogModels.length,
+    draft.embeddingDownstreamRag,
+    embeddingCatalog.data?.hasCompatibleEmbeddingModels,
+    embeddingCatalog.isError,
+    embeddingCatalog.isLoading,
+    embeddingCatalog.isSuccess,
+    t,
+  ]);
 
   useEffect(() => {
     if (!watchLive) {
@@ -574,6 +627,7 @@ export function LabEvaluationRunCard({
     (draft.selectedExperimentalPresetCodes.length === 0 || invalidLabPresetSelections.length > 0);
 
   const draftBlocksRun =
+    Boolean(catalogModelBlockReason) ||
     warnings.datasetDeletedOrUnknown ||
     warnings.datasetIncompatibleWithBenchmark ||
     warnings.llmModelInvalid ||
@@ -644,25 +698,22 @@ export function LabEvaluationRunCard({
     Boolean(draft.datasetId) &&
     (warnings.datasetDeletedOrUnknown || warnings.datasetIncompatibleWithBenchmark);
 
-  const recommendedDraftPartial = useMemo(
-    () => ({
+  const recommendedDraftPartial = useMemo(() => {
+    const defaultEmbedding = defaultEmbeddingModelId(embeddingCatalogModels) ?? "";
+    return {
       datasetId: defaultDataset?.id ?? null,
-      embeddingModelId: compatibleEmbeddingModels.includes(LAB_DEFAULT_EMBEDDING_MODEL_ID)
-        ? LAB_DEFAULT_EMBEDDING_MODEL_ID
-        : (compatibleEmbeddingModels[0] ?? ""),
-      embeddingModelIds: compatibleEmbeddingModels.includes(LAB_DEFAULT_EMBEDDING_MODEL_ID)
-        ? [LAB_DEFAULT_EMBEDDING_MODEL_ID]
-        : [],
-    }),
-    [defaultDataset?.id, compatibleEmbeddingModels],
-  );
+      embeddingModelId: defaultEmbedding,
+      embeddingModelIds: defaultEmbedding ? [defaultEmbedding] : [],
+    };
+  }, [defaultDataset?.id, embeddingCatalogModels]);
 
   useEffect(() => {
     if (benchmarkKind !== "EMBEDDING_RETRIEVAL" && benchmarkKind !== "RAG_PRESET_END_TO_END") return;
     if (draft.embeddingModelId.trim() !== "") return;
-    if (!compatibleEmbeddingModels.includes(LAB_DEFAULT_EMBEDDING_MODEL_ID)) return;
-    patchDraft({ embeddingModelId: LAB_DEFAULT_EMBEDDING_MODEL_ID });
-  }, [benchmarkKind, draft.embeddingModelId, compatibleEmbeddingModels, patchDraft]);
+    const defaultEmbedding = defaultEmbeddingModelId(embeddingCatalogModels);
+    if (!defaultEmbedding) return;
+    patchDraft({ embeddingModelId: defaultEmbedding });
+  }, [benchmarkKind, draft.embeddingModelId, embeddingCatalogModels, patchDraft]);
 
   useEffect(() => {
     if (draft.datasetId != null || draft.explicitDraftClear) return;
@@ -754,6 +805,11 @@ export function LabEvaluationRunCard({
         return t("labEvalPreparingDocumentsAndIndexes");
       }
       return t("evalRunning");
+    }
+    if (comparisonSelectionCount === 1) {
+      if (benchmarkKind === "LLM_JUDGE_QA") return t("runEvalSelectedModel");
+      if (benchmarkKind === "RAG_PRESET_END_TO_END") return t("runEvalSelectedPreset");
+      if (benchmarkKind === "EMBEDDING_RETRIEVAL") return t("runEvalSelectedEmbedding");
     }
     if (benchmarkKind === "LLM_JUDGE_QA" && comparisonSelectionCount >= 2) {
       return t("runEvalComparisonLlm");
@@ -848,28 +904,31 @@ export function LabEvaluationRunCard({
       const lmList = draft.llmModelIds.map((x) => x.trim()).filter(Boolean);
       const emList = draft.embeddingModelIds.map((x) => x.trim()).filter(Boolean);
       const presetList = draft.selectedExperimentalPresetCodes.map((x) => x.trim()).filter(Boolean);
-      if (lmList.length > 0) {
+      if (lmList.length >= 2) {
         body.llmModelIds = lmList;
         body.campaignName = body.campaignName ?? `LLM campaign (${lmList.length})`;
+      } else if (lmList.length === 1) {
+        body.llmModelId = lmList[0];
       } else if (lm) {
         body.llmModelId = lm;
       }
-      if (emList.length > 0) {
+      if (emList.length >= 2) {
         body.embeddingModelIds = emList;
         body.campaignName = body.campaignName ?? `Embedding campaign (${emList.length})`;
-        if (emList.length >= 2) {
-          const projectId = activeProject?.id?.trim();
-          if (projectId) {
-            const { snapshotIds, unresolvedModels } = await resolveEmbeddingCampaignIndexSnapshotIds(
-              projectId,
-              emList,
-            );
-            if (unresolvedModels.length === 0 && snapshotIds.every((id) => id.trim().length > 0)) {
-              body.indexSnapshotIds = snapshotIds;
-            }
+        const projectId = activeProject?.id?.trim();
+        if (projectId) {
+          const { snapshotIds, unresolvedModels } = await resolveEmbeddingCampaignIndexSnapshotIds(
+            projectId,
+            emList,
+          );
+          if (unresolvedModels.length === 0 && snapshotIds.every((id) => id.trim().length > 0)) {
+            body.indexSnapshotIds = snapshotIds;
           }
-          // Without a UI project, backend aligns from evaluation-corpus index project and may prepare snapshots.
-        } else if (emList.length === 1 && activeProject?.id) {
+        }
+        // Without a UI project, backend aligns from evaluation-corpus index project and may prepare snapshots.
+      } else if (emList.length === 1) {
+        body.embeddingModelId = emList[0];
+        if (activeProject?.id) {
           const { snapshotIds } = await resolveEmbeddingCampaignIndexSnapshotIds(activeProject.id, emList);
           if (snapshotIds[0]?.trim()) {
             body.indexSnapshotId = snapshotIds[0];
@@ -1130,6 +1189,16 @@ export function LabEvaluationRunCard({
             </output>
           ) : null}
 
+          {catalogModelBlockReason ? (
+            <output
+              role="alert"
+              data-testid="lab-eval-catalog-block"
+              className="block rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive text-sm"
+            >
+              {catalogModelBlockReason}
+            </output>
+          ) : null}
+
           {draftBlocksRun ? (
             <output
               role="alert"
@@ -1145,16 +1214,16 @@ export function LabEvaluationRunCard({
                   <li>{t("evalDraftWarnDatasetIncompatible")}</li>
                 ) : null}
                 {warnings.llmModelInvalid ? (
-                  <li>{t("evalDraftWarnLlmInvalid", { modelId: draft.llmModelId.trim() })}</li>
+                  <li>{t(labDraftInvalidModelMessageKey("llm", chatCatalog.data?.effectiveProvider), { modelId: draft.llmModelId.trim() })}</li>
                 ) : null}
                 {warnings.llmModelsInvalid.length > 0 ? (
-                  <li>{t("evalDraftWarnLlmListInvalid", { models: warnings.llmModelsInvalid.join(", ") })}</li>
+                  <li>{t(labDraftInvalidModelMessageKey("llmList", chatCatalog.data?.effectiveProvider), { models: warnings.llmModelsInvalid.join(", ") })}</li>
                 ) : null}
                 {warnings.embeddingModelInvalid ? (
-                  <li>{t("evalDraftWarnEmbeddingInvalid", { modelId: draft.embeddingModelId.trim() })}</li>
+                  <li>{t(labDraftInvalidModelMessageKey("embedding", embeddingCatalog.data?.effectiveProvider), { modelId: draft.embeddingModelId.trim() })}</li>
                 ) : null}
                 {warnings.embeddingModelsInvalid.length > 0 ? (
-                  <li>{t("evalDraftWarnEmbeddingListInvalid", { models: warnings.embeddingModelsInvalid.join(", ") })}</li>
+                  <li>{t(labDraftInvalidModelMessageKey("embeddingList", embeddingCatalog.data?.effectiveProvider), { models: warnings.embeddingModelsInvalid.join(", ") })}</li>
                 ) : null}
                 {warnings.presetsUnknown.length > 0 ? (
                   <li>{t("evalDraftWarnPresetsUnknown", { codes: warnings.presetsUnknown.join(", ") })}</li>
@@ -1337,11 +1406,17 @@ export function LabEvaluationRunCard({
                         {draft.llmModelId}
                       </option>
                     ) : null}
-                    {availableLlmModels.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
+                    {allLlmModelNames.map((name) => {
+                      const row = chatCatalogModels.find((m) => m.modelName === name);
+                      const disabled = row != null && !row.evalSelectable;
+                      return (
+                        <option key={name} value={name} disabled={disabled}>
+                          {disabled && row?.blockedReason
+                            ? `${name} (${row.blockedReason})`
+                            : name}
+                        </option>
+                      );
+                    })}
                   </select>
                   {availableLlmModels.length === 0 ? (
                     <output className="text-muted-foreground block text-xs">{t("noLlmModelsAvailable")}</output>
@@ -1353,11 +1428,11 @@ export function LabEvaluationRunCard({
 
           {(benchmarkKind === "EMBEDDING_RETRIEVAL" || benchmarkKind === "RAG_PRESET_END_TO_END") && (
             <div className="space-y-2">
-              {benchmarkKind === "EMBEDDING_RETRIEVAL" && compatibleEmbeddingModels.length > 0 ? (
+              {benchmarkKind === "EMBEDDING_RETRIEVAL" && selectableCompatibleEmbeddings.length > 0 ? (
                 <ModelCheckboxGroup
                   id={`lab-emb-model-${sectionKey}`}
                   label={t("benchmarkEmbeddingModelOptional")}
-                  availableModelIds={compatibleEmbeddingModels}
+                  availableModelIds={selectableCompatibleEmbeddings}
                   selectedIds={draft.embeddingModelIds}
                   disabled={running}
                   testIdPrefix="lab-benchmark-embedding-models"
@@ -1372,7 +1447,7 @@ export function LabEvaluationRunCard({
                     data-testid="lab-benchmark-embedding-model"
                     className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                     value={draft.embeddingModelId}
-                    disabled={running || compatibleEmbeddingModels.length === 0}
+                    disabled={running || selectableCompatibleEmbeddings.length === 0}
                     onChange={(e) => patchDraft({ embeddingModelId: e.target.value })}
                   >
                     <option value="">{t("benchmarkEmbeddingModelPlaceholder")}</option>
@@ -1381,14 +1456,23 @@ export function LabEvaluationRunCard({
                         {draft.embeddingModelId}
                       </option>
                     ) : null}
-                    {compatibleEmbeddingModels.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
+                    {embeddingCatalogModels.map((row) => (
+                      <option
+                        key={row.modelName}
+                        value={row.modelName}
+                        disabled={!row.evalSelectable}
+                        data-testid={`lab-benchmark-embedding-option-${row.modelName}`}
+                      >
+                        {!row.evalSelectable && row.blockedReason
+                          ? `${row.modelName} (${row.blockedReason})`
+                          : row.modelName}
                       </option>
                     ))}
                   </select>
-                  {compatibleEmbeddingModels.length === 0 ? (
-                    <output className="text-muted-foreground block text-xs">{t("noEmbeddingModelsAvailable")}</output>
+                  {selectableCompatibleEmbeddings.length === 0 ? (
+                    <output className="text-muted-foreground block text-xs" data-testid="lab-eval-no-compatible-embeddings">
+                      {t("noEmbeddingModelsAvailable")}
+                    </output>
                   ) : null}
                 </>
               )}
@@ -1446,7 +1530,7 @@ export function LabEvaluationRunCard({
                 data-testid="lab-experimental-presets-list"
                 className="max-h-60 space-y-2 overflow-auto rounded-md border p-2"
               >
-                {(experimentalPresets.data ?? []).map((p) => {
+                {sortedExperimentalPresets.map((p) => {
                   const checked = draft.selectedExperimentalPresetCodes.includes(p.code);
                   const labSelectable = isLabBenchmarkPresetSelectable(p);
                   return (
@@ -1469,7 +1553,7 @@ export function LabEvaluationRunCard({
                           }
                         />
                         <span className="font-medium">
-                          {p.code} — {p.label}
+                          {formatLabExperimentalPresetLabel(p, t)}
                         </span>
                       </span>
                       {!labSelectable ? (
@@ -1569,7 +1653,7 @@ export function LabEvaluationRunCard({
               data-testid="lab-llm-model-availability-blocked"
               className="block rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-950 dark:text-amber-100"
             >
-              {t("labLlmBlockedByModelAvailability")}
+              {t(labComparisonBlockedMessageKey("CHAT", chatCatalog.data?.effectiveProvider))}
             </output>
           ) : null}
 
@@ -1579,7 +1663,7 @@ export function LabEvaluationRunCard({
               data-testid="lab-embedding-model-availability-blocked"
               className="block rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-950 dark:text-amber-100"
             >
-              {t("labEmbeddingBlockedByModelAvailability")}
+              {t(labComparisonBlockedMessageKey("EMBEDDING", embeddingCatalog.data?.effectiveProvider))}
             </output>
           ) : null}
 

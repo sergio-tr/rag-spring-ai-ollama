@@ -1,4 +1,5 @@
 import { formatBenchmarkKindLabel } from "@/lib/product-copy";
+import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
 
 /** Normalized display labels for LAB benchmark results, exports, and comparison tables. */
 
@@ -55,6 +56,9 @@ export function formatPresetDisplay(
   const code = normalizeMetadataKey(presetCode);
   if (code === MISSING_METADATA_KEY) {
     return "";
+  }
+  if (/^demo_/i.test(code)) {
+    return toProductPresetDisplayName(code);
   }
   const label = (presetLabel ?? "").trim();
   if (label && label !== code) {

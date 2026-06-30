@@ -17,8 +17,9 @@ describe("lab-evaluation-draft", () => {
     localStorage.clear();
   });
 
-  it("defaults embedding model to product standard mxbai-embed-large:latest", () => {
-    expect(defaultLabEvaluationDraft().embeddingModelId).toBe(LAB_DEFAULT_EMBEDDING_MODEL_ID);
+  it("defaults embedding model empty until catalog API selects usableAsDefault", () => {
+    expect(defaultLabEvaluationDraft().embeddingModelId).toBe("");
+    expect(LAB_DEFAULT_EMBEDDING_MODEL_ID).toBe("");
   });
 
   it("uses versioned storage keys per benchmark kind", () => {
