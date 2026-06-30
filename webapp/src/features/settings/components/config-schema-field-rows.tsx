@@ -19,8 +19,8 @@ export function ConfigSchemaFieldRows(props: Readonly<{
   form: UseFormReturn<ConfigFormValues>;
   labelFor: (fieldKey: string) => string;
   inputIdPrefix: string;
-  llmModelOptions?: ConfigModelOption[];
-  embeddingModelOptions?: ConfigModelOption[];
+  llmModelOptions?: readonly ConfigModelOption[];
+  embeddingModelOptions?: readonly ConfigModelOption[];
   effectiveProviderLabel?: string | null;
 }>): ReactElement {
   const {
@@ -117,7 +117,15 @@ export function ConfigSchemaFieldRows(props: Readonly<{
             <Input
               id={`${inputIdPrefix}-${f.key}`}
               type={f.type === "integer" || f.type === "number" ? "number" : "text"}
-              step={f.type === "integer" ? "1" : undefined}
+              step={
+                f.type === "integer"
+                  ? "1"
+                  : f.type === "number"
+                    ? f.key === "similarityThreshold"
+                      ? "0.01"
+                      : "any"
+                    : undefined
+              }
               min={f.min === undefined || f.min === null ? undefined : String(f.min)}
               max={f.max === undefined || f.max === null ? undefined : String(f.max)}
               {...form.register(f.key, {

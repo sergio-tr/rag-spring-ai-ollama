@@ -54,8 +54,23 @@ function Section({
   );
 }
 
-function Box({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <div className="min-w-0 max-w-full rounded-lg border bg-background/60 p-3">{children}</div>;
+function Box({
+  children,
+  className,
+  "data-testid": dataTestId,
+}: Readonly<{
+  children: React.ReactNode;
+  className?: string;
+  "data-testid"?: string;
+}>) {
+  return (
+    <div
+      className={cn("min-w-0 max-w-full rounded-lg border bg-background/60 p-3", className)}
+      data-testid={dataTestId}
+    >
+      {children}
+    </div>
+  );
 }
 
 function MenuHint({ children }: Readonly<{ children: React.ReactNode }>) {

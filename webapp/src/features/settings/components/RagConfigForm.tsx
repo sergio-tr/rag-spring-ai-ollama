@@ -55,7 +55,7 @@ import { ProviderUnsupportedParametersPanel } from "@/features/settings/componen
 import { RagConfigAdvancedJsonPanel } from "@/features/settings/components/RagConfigAdvancedJsonPanel";
 import { RagConfigModelWarnings } from "@/features/settings/components/RagConfigModelWarnings";
 import { UserAccountPreferencesSection } from "@/features/settings/components/UserAccountPreferencesSection";
-import { apiFetch, apiProductPath } from "@/lib/api-client";
+import { apiFetch, apiProductPath, ApiError, getSafeApiErrorMessage } from "@/lib/api-client";
 import type { MePersonalizationResponse } from "@/types/api";
 
 import { toConfigModelOptions, selectableCatalogModelIds } from "@/lib/product-model-catalog";
@@ -73,6 +73,16 @@ function formatProviderLabel(provider: string | undefined, t: (key: string) => s
     provider,
     productProviderLabelsFromSettings(t as never),
   );
+}
+
+function resolveConfigSaveError(error: unknown, genericLabel: string): string {
+  if (error && typeof error === "object" && "status" in error && "meta" in error) {
+    const parsed = (error as ApiError).meta?.parsedJson;
+    if (parsed && typeof parsed === "object" && (parsed as { code?: string }).code === "PROMPT_TEMPLATE_INVALID") {
+      return getSafeApiErrorMessage(error);
+    }
+  }
+  return genericLabel;
 }
 
 export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
@@ -474,8 +484,11 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
                 </p>
               )}
               {(putUser.isError || putProject.isError) && (
-                <p className="text-destructive text-sm" role="alert">
-                  {t("configSaveError")}
+                <p className="text-destructive text-sm" role="alert" data-testid="config-save-error">
+                  {resolveConfigSaveError(
+                    mode === "user" ? putUser.error : putProject.error,
+                    t("configSaveError"),
+                  )}
                 </p>
               )}
               {mode === "project" && delProject.isError && (
