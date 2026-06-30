@@ -30,7 +30,7 @@ import {
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.cursor/evidence/final-lab-rag-closure/rag-presets",
+  "../../../.docs/evidence/final-lab-rag-closure/rag-presets",
 );
 const LOG_PATH = path.join(EVIDENCE_DIR, "e2e-rag-preset-evidence.log");
 

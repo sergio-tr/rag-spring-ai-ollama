@@ -13,7 +13,7 @@ import { gotoLabEvaluationPage } from "../support/lab-helpers";
 
 const SCREENSHOT_DIR = path.resolve(
   process.cwd(),
-  "../.cursor/evidence/assistant-configuration-closure-20260629/thesis-screenshots",
+  "../../../docs/evidence/assistant-configuration-closure/thesis-screenshots",
 );
 
 const SEED_PROJECT_ID = "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";

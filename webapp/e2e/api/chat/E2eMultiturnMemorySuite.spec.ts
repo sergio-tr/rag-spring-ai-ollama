@@ -27,8 +27,8 @@ const MULTITURN_ACTA_FILES = [
 
 const EVIDENCE_DIR = path.resolve(
   process.cwd(),
-  "..",
-  ".cursor/evidence/sprint-s2-answer-quality-evaluation-20260628/07_e2e_multiturn_suite",
+  "../../../..",
+  "/docs/evidence/sprint-s2-answer-quality-evaluation-20260628/07_e2e_multiturn_suite",
 );
 
 type RecordedTurn = {

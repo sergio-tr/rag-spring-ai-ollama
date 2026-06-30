@@ -18,8 +18,7 @@ import { integrationCredentials } from "../fixtures/env";
 
 const EVIDENCE_DIR = path.resolve(
   process.cwd(),
-  "..",
-  ".cursor/evidence/sprint-s4-fullstack-runtime-closure-20260628/05_eight_case_chat_acceptance",
+  "../../../../docs/evidence/sprint-s4-fullstack-runtime-closure-20260628/05_eight_case_chat_acceptance",
 );
 
 type RecordedCase = {

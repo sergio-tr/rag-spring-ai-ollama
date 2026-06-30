@@ -10,7 +10,7 @@ import {
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.cursor/evidence/p0-lab-rag-runtime-closure/human-errors",
+  "../../../.docs/evidence/p0-lab-rag-runtime-closure/human-errors",
 );
 
 const FORBIDDEN_IN_MAIN = [

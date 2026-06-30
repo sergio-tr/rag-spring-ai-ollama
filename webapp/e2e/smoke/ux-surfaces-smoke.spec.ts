@@ -18,7 +18,8 @@ test.describe("UX surfaces smoke @smoke", () => {
     await expect(page.getByTestId("user-account-preferences")).toBeVisible();
     await expect(page.getByLabel(/language/i)).toBeVisible();
     const advancedJson = page.getByTestId("rag-config-advanced-json");
-    await expect(advancedJson).toBeVisible();
+    await expect(advancedJson).toBeAttached();
+    await expect(advancedJson.locator("summary")).toBeVisible();
     expect(await advancedJson.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false);
     await expect(page.locator("textarea")).not.toBeVisible();
     const mainText = await page.locator("main").innerText();
@@ -69,7 +70,8 @@ test.describe("UX surfaces smoke @smoke", () => {
     await expect(page.getByTestId("lab-export-primary-csv")).toBeVisible();
     await expect(page.getByTestId("lab-export-mvp-csv")).not.toBeVisible();
     const advanced = page.getByTestId("lab-benchmark-export-advanced");
-    await expect(advanced).toBeVisible();
+    await expect(advanced).toBeAttached();
+    await expect(advanced.locator("summary")).toBeVisible();
     expect(await advanced.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false);
   });
 });

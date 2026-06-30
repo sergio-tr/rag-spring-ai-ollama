@@ -18,7 +18,7 @@ import {
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.cursor/context/evidence/m5-chat-rag-quality-grounding",
+  "../../../../docs/evidence/m5-chat-rag-quality-grounding",
 );
 
 test.describe("Closure Chat RAG quality @closure @fullstack @m5", () => {

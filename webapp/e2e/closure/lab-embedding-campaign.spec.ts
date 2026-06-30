@@ -70,7 +70,7 @@ test.describe("Closure LAB embedding campaign @closure @fullstack", () => {
       .poll(() => Boolean(acceptedCapture.accepted.campaignId), { timeout: 15_000 })
       .toBe(true);
 
-    const evidenceDir = path.resolve(__dirname, "../../../.cursor/evidence/wave-1-current/p0-04");
+    const evidenceDir = path.resolve(__dirname, "../../../.docs/evidence/wave-1-current/p0-04");
     fs.mkdirSync(evidenceDir, { recursive: true });
     fs.writeFileSync(
       path.join(evidenceDir, "embedding-campaign-payload.json"),

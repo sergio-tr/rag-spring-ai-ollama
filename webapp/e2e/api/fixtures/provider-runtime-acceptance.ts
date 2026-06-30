@@ -14,14 +14,13 @@ import { OLLAMA_ERROR_RE, PROVIDER_MISMATCH_RE } from "./e2e-multiturn-assertion
 
 export const PROVIDER_EVIDENCE_DIR = path.resolve(
   process.cwd(),
-  "..",
-  ".cursor/evidence/sprint-s4-fullstack-runtime-closure-20260628/06_provider_runtime_acceptance",
+  "../../../../docs/evidence/sprint-s4-fullstack-runtime-closure-20260628/06_provider_runtime_acceptance",
 );
 
 export const PHASE_C_LIVE_SMOKE_EVIDENCE_DIR = path.resolve(
   process.cwd(),
   "..",
-  ".cursor/evidence/phase-c-gateway-parity-live-smoke-20260628",
+  "../../../../docs/evidence/phase-c-gateway-parity-live-smoke-20260628",
 );
 
 export type ReadinessRagProvider = {

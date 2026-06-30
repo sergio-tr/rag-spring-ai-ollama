@@ -18,7 +18,7 @@ import {
   waitForSingleActiveLabJob,
 } from "../support/lab-helpers";
 
-const EVIDENCE_DIR = path.resolve(__dirname, "../../../.cursor/evidence/wave-2-current/w2-rag");
+const EVIDENCE_DIR = path.resolve(__dirname, "../../../.docs/evidence/wave-2-current/w2-rag");
 
 test.describe("Closure LAB RAG evaluation @closure @fullstack @wave2", () => {
   test.describe.configure({ mode: "serial" });

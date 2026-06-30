@@ -10,7 +10,7 @@ import { adminEmail, adminPassword, seedEmail, seedPassword } from "../fixtures/
 
 const E2E_PREFLIGHT_EVIDENCE_DIR = path.resolve(
   process.cwd(),
-  "../.cursor/evidence/wave-3-current/preflight-flake",
+  "../../../docs/evidence/wave-3-current/preflight-flake",
 );
 
 /**

@@ -22,8 +22,7 @@ import {
 
 export const RAG_CRIT_EVIDENCE_DIR = path.resolve(
   process.cwd(),
-  "..",
-  ".cursor/evidence/rag-correctness-critical-suite-20260628",
+  "../../../../docs/evidence/rag-correctness-critical-suite-20260628",
 );
 
 type RecordedCritCase = {
