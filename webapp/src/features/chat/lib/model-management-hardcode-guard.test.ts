@@ -66,7 +66,7 @@ describe("model-management hardcode guard", () => {
     expect(chatPage).not.toMatch(/llm-campaign-preferred-models/);
     expect(chatPage).not.toMatch(/LLM_CAMPAIGN_PREFERRED_MODEL_IDS/);
   });
-
+  
   it("admin panel uses catalog API instead of legacy allowlist listing", () => {
     const adminPage = readFileSync(join(webappRoot, "src/app/[locale]/(app)/admin/page.tsx"), "utf8");
     const catalogHook = readFileSync(
