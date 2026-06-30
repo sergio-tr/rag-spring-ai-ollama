@@ -57,7 +57,8 @@ public final class ClassifierOverrides {
             return QueryType.COUNT_DOCUMENTS;
         }
 
-        if ((q.contains("quién fue") || q.contains("quien fue") || q.contains("y quién") || q.contains("y quien"))
+        if (dated
+                && (q.contains("quién fue") || q.contains("quien fue") || q.contains("y quién") || q.contains("y quien"))
                 && (q.contains("secretari") || q.contains("presidente") || q.contains("presidenta"))) {
             return QueryType.GET_FIELD;
         }
@@ -108,6 +109,20 @@ public final class ClassifierOverrides {
         }
 
         if (q.contains("dime qué actas") || q.contains("dime que actas")) {
+            return QueryType.FILTER_AND_LIST;
+        }
+
+        if ((q.contains("fechas") || q.contains("dates"))
+                && (q.contains("terminaron") || q.contains("termino") || q.contains("finaliz"))
+                && (q.contains("tarde")
+                        || q.contains("más tarde")
+                        || q.contains("mas tarde")
+                        || q.contains("later"))) {
+            return QueryType.FILTER_AND_LIST;
+        }
+
+        if (q.contains("dime las actas")
+                && (q.contains("mencionan") || q.contains("comentan") || q.contains("comment"))) {
             return QueryType.FILTER_AND_LIST;
         }
 
@@ -191,7 +206,15 @@ public final class ClassifierOverrides {
             return QueryType.GET_FIELD;
         }
 
-        if (dated && (q.contains("orden del día") || q.contains("orden del dia") || q.contains("puntos del orden"))) {
+        if (dated && (q.contains("orden del día") || q.contains("orden del dia")
+                || q.contains("puntos del orden") || q.contains("puntos del día")
+                || q.contains("puntos del dia"))) {
+            return QueryType.GET_FIELD;
+        }
+
+        if (!dated
+                && (q.contains("puntos del día") || q.contains("puntos del dia")
+                        || q.contains("orden del día") || q.contains("orden del dia"))) {
             return QueryType.GET_FIELD;
         }
 

@@ -245,4 +245,29 @@ class ClassifierOverridesTest {
                         "Verifica si se mencionó la limpieza en alguna reunión celebrada en 2026.",
                         QueryType.COUNT_DOCUMENTS));
     }
+
+    @Test
+    void puntosDelDiaWithDateMapsToGetFieldAgenda() {
+        assertEquals(
+                QueryType.GET_FIELD,
+                ClassifierOverrides.apply(
+                        "¿Cuáles fueron los puntos del día del acta del 25 de febrero de 2026?",
+                        QueryType.GET_DURATION));
+    }
+
+    @Test
+    void undatedPuntosDelDiaMapsToGetField() {
+        assertEquals(
+                QueryType.GET_FIELD,
+                ClassifierOverrides.apply("¿Cuáles fueron los puntos del día?", QueryType.COUNT_DOCUMENTS));
+    }
+
+    @Test
+    void endTimeAfter830MapsToFilterAndList() {
+        assertEquals(
+                QueryType.FILTER_AND_LIST,
+                ClassifierOverrides.apply(
+                        "dime las fechas de las actas que terminaron más tarde de las 8:30",
+                        QueryType.SUMMARIZE_MEETING));
+    }
 }
