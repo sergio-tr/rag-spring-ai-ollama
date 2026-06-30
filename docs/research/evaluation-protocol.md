@@ -2,9 +2,9 @@
 
 **Purpose:** Normative methodology for layered evaluation before thesis campaigns: classifier → embeddings → retrieval → LLMs → presets → multiturn → final configuration.
 
-**Status:** Gate audit 2026-06-29 (`evaluation-readiness-gate-20250629`). **No campaigns** were run to produce this document.
+**Status:** Gate audit 2026-06-29 (`evaluation-readiness-gate-20250629`). Classifier status frozen 2026-06-29 ([`classifier-status-freeze.md`](classifier-status-freeze.md)). **No campaigns** were run to produce this document.
 
-**Related:** [`evaluation-workbook-inventory.md`](evaluation-workbook-inventory.md), [`protocol-reproducibility.md`](protocol-reproducibility.md), [`experimental-design-matrix.md`](experimental-design-matrix.md), [`rag-service/README.md`](../../rag-service/README.md) (Lab benchmarks).
+**Related:** [`classifier-status-freeze.md`](classifier-status-freeze.md), [`evaluation-workbook-inventory.md`](evaluation-workbook-inventory.md), [`protocol-reproducibility.md`](protocol-reproducibility.md), [`experimental-design-matrix.md`](experimental-design-matrix.md), [`rag-service/README.md`](../../rag-service/README.md) (Lab benchmarks).
 
 ---
 
@@ -23,8 +23,8 @@
 | --- | --- | ---: | --- |
 | Reference workbook | `rag-service/src/main/resources/evaluation/rag_experiment_datasets_and_protocols.xlsx` | LLM 36, embedding 60, RAG 60 | Parsed by `EvaluationReferenceBundleLoader` |
 | Gold subset | `rag-service/src/main/resources/evaluation/gold-subset-v1.json` | 18 | Answerability / negative-evidence sentinel |
-| Classifier train | `classifier-service/data/basic_dataset_qa_clasificacion.xlsx` | 46 | 12 `QueryType` classes |
-| Classifier eval | `classifier-service/data/evaluation_dataset.xlsx` | 60 | Balanced 5/class; **11 question overlaps with train** (audit finding) |
+| Classifier train | `classifier-service/data/basic_dataset_qa_clasificacion.xlsx` | 46 | 12 `QueryType` classes; **leakage closed** (audit 2026-06-29) |
+| Classifier eval | `classifier-service/data/evaluation_dataset.xlsx` | 60 | Balanced 5/class; held out; **0 train/eval overlaps** |
 | Multiturn | `webapp/e2e/api/fixtures/e2e-multiturn-assertions.ts` | 8-turn suite | Chat E2E only; not a Lab benchmark dataset |
 
 Record `content_sha256` per run sheet (see § Dataset manifest in [`protocol-reproducibility.md`](protocol-reproducibility.md)).
@@ -140,6 +140,16 @@ Record `content_sha256` per run sheet (see § Dataset manifest in [`protocol-rep
 - Exports: `classifierModelId` on run entity and MVP flat row.
 - Low-confidence / fallback: runtime `ClassifierDeterministicResolver` + `DefaultQueryClassifierAdapter`.
 
+**Status freeze (2026-06-29):** See [`classifier-status-freeze.md`](classifier-status-freeze.md).
+
+| Deployable model | Held-out macro-F1 | Accepted for production routing? |
+| --- | ---: | --- |
+| Keras `models/default` (train-only C1) | **0.013** | **No** — experimental only |
+| Legacy Keras (train+eval leaked) | 0.369 | **No** — invalid inflated score |
+| Offline sklearn C3 (char_wb + LinearSVC) | 0.797 | **No** — not served; research candidate |
+
+**Campaign rule:** Embedding and LLM layers may proceed classifier-independently. RAG preset rows must disable, bypass, use deterministic-only routing, or explicitly document weak C1. No final RAG claim may attribute improvements to classifier until an accepted-model classifier campaign.
+
 ---
 
 ## Run commands
@@ -184,7 +194,7 @@ cd webapp && npm test -- --run src/features/lab src/features/settings src/featur
 | **CONDITIONAL_PASS** | Readiness **known** but at least one **campaign blocker** documented (e.g. classifier train/eval overlap) |
 | **FAIL** | Unknown readiness, broken exports, or uninventoried datasets |
 
-**Current gate verdict (2026-06-29):** **CONDITIONAL_PASS** — proceed to **Classifier Dataset Audit** before classifier campaign.
+**Current gate verdict (2026-06-29):** **Classifier status freeze PASS** — embeddings and LLMs may proceed under [`classifier-status-freeze.md`](classifier-status-freeze.md) constraints. Classifier comparison campaign **postponed**.
 
 ---
 
@@ -193,10 +203,10 @@ cd webapp && npm test -- --run src/features/lab src/features/settings src/featur
 1. Multiturn evaluation is **chat E2E only**; no Lab multiturn benchmark harness.
 2. `citationAccuracy` not implemented.
 3. Embedding prefix/normalization not captured in experimental snapshots.
-4. Classifier train/eval sets share **11 identical questions** (leakage risk).
-5. Classifier regression baseline JSON is a placeholder (`classifier_regression_baseline.json`).
-6. Live Lab dry-run against running stack was not executed (export proven via unit tests in container).
+4. Deployable classifier macro-F1 **0.013** on held-out eval — not production-quality (see classifier status freeze).
+5. Dataset expansion planned (`proposed_train_expansion.json`) but **not applied**.
+6. Live Lab dry-run against running stack was not executed for readiness gate (export proven via unit tests in container).
 
 ---
 
-*Generated by Evaluation Readiness Gate — audit only, no campaigns.*
+*Updated through Evaluation Readiness Gate and Classifier Status Freeze — audit/documentation only, no campaigns.*
