@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.config;
 
+import com.uniovi.rag.domain.config.prompt.PromptOverrideKeys;
 import com.uniovi.rag.domain.llm.LlmConfigurationKeys;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -37,7 +38,9 @@ public final class RagConfigValueSanitizer {
             LlmConfigurationKeys.TEMPERATURE,
             LlmConfigurationKeys.TIMEOUT_MS,
             LlmConfigurationKeys.SYSTEM_PROMPT,
-            LlmConfigurationKeys.ADDITIONAL_PARAMETERS);
+            LlmConfigurationKeys.ADDITIONAL_PARAMETERS,
+            PromptOverrideKeys.OVERRIDES_MAP_KEY,
+            PromptOverrideKeys.TASK_LLM_OVERRIDES_MAP_KEY);
 
     /** Keys that must never be persisted — use {@link LlmConfigurationKeys#API_KEY_ENV} or {@link LlmConfigurationKeys#SECRET_NAME}. */
     public static final Set<String> FORBIDDEN_SECRET_KEYS = Set.of(
@@ -68,8 +71,14 @@ public final class RagConfigValueSanitizer {
             }
             if (ALLOWED_KEYS.contains(key)) {
                 out.put(key, e.getValue());
+            } else if (PromptOverrideKeys.isPromptOverrideKey(key)) {
+                out.put(key, e.getValue());
             }
         }
         return out;
+    }
+
+    public static boolean isAllowedKey(String key) {
+        return ALLOWED_KEYS.contains(key) || PromptOverrideKeys.isPromptOverrideKey(key);
     }
 }

@@ -42,6 +42,7 @@ public final class PromptBundleFingerprint {
     public static final String GROUP_METADATA_INGEST = "METADATA_INGEST";
     public static final String GROUP_SYSTEM_PROMPT_LAYERS = "SYSTEM_PROMPT_LAYERS";
     public static final String GROUP_LLM_SYSTEM_PROMPT = "LLM_SYSTEM_PROMPT";
+    public static final String GROUP_PROMPT_OVERRIDES = "PROMPT_OVERRIDES";
 
     public static final String GROUP_FUNCTION_CALLING = "FUNCTION_CALLING_USER_ASSEMBLY";
     public static final String GROUP_FACTUAL_VERIFIER = "FACTUAL_VERIFIER_RULES";
@@ -82,25 +83,34 @@ public final class PromptBundleFingerprint {
 
     /** Fingerprints all code-frozen prompt sources (no per-run DB or user text). */
     public static Result computeFrozen() {
-        return compute(null, null, null, null);
+        return compute(null, null, null, null, null);
     }
 
     /**
      * Frozen sources plus optional runtime overlays (system layers, llmSystemPrompt, evaluation snapshot).
      */
     public static Result computeForRuntime(SystemPromptLayers layers, String effectiveSystemPrompt, String llmSystemPrompt) {
-        return compute(layers, effectiveSystemPrompt, llmSystemPrompt, null);
+        return compute(layers, effectiveSystemPrompt, llmSystemPrompt, null, null);
+    }
+
+    public static Result computeForRuntime(
+            SystemPromptLayers layers,
+            String effectiveSystemPrompt,
+            String llmSystemPrompt,
+            String promptOverrideMaterial) {
+        return compute(layers, effectiveSystemPrompt, llmSystemPrompt, null, promptOverrideMaterial);
     }
 
     public static Result computeForEvaluation(PromptProfileSnapshot prompts, String llmSystemPrompt) {
-        return compute(null, null, llmSystemPrompt, prompts);
+        return compute(null, null, llmSystemPrompt, prompts, null);
     }
 
     private static Result compute(
             SystemPromptLayers layers,
             String effectiveSystemPrompt,
             String llmSystemPrompt,
-            PromptProfileSnapshot prompts) {
+            PromptProfileSnapshot prompts,
+            String promptOverrideMaterial) {
         List<GroupHash> included = new ArrayList<>();
         included.add(group(GROUP_RUNTIME_ANSWER_PROMPTS, RuntimeAnswerPrompts.fingerprintMaterial()));
         included.add(group(GROUP_EVALUATION_JUDGE, EvaluationJudgePromptSources.fingerprintMaterial()));
@@ -126,6 +136,10 @@ public final class PromptBundleFingerprint {
 
         if (llmSystemPrompt != null && !llmSystemPrompt.isBlank()) {
             included.add(group(GROUP_LLM_SYSTEM_PROMPT, llmSystemPrompt.trim()));
+        }
+
+        if (promptOverrideMaterial != null && !promptOverrideMaterial.isBlank()) {
+            included.add(group(GROUP_PROMPT_OVERRIDES, promptOverrideMaterial));
         }
 
         List<ExcludedGroup> excluded = defaultExcludedGroups();
@@ -214,7 +228,7 @@ public final class PromptBundleFingerprint {
         }
     }
 
-    static String sha256Hex(String input) {
+    public static String sha256Hex(String input) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] bytes = input != null ? input.getBytes(StandardCharsets.UTF_8) : new byte[0];
