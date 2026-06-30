@@ -54,8 +54,8 @@ class OpenAiCompatibleChatMapperTest {
         assertEquals(0.85, apiRequest.topP());
         assertEquals(256, apiRequest.maxTokens());
         assertEquals(List.of("END"), apiRequest.stop());
-        assertEquals(-0.1, apiRequest.presencePenalty());
-        assertEquals(0.2, apiRequest.frequencyPenalty());
+        assertEquals(null, apiRequest.presencePenalty());
+        assertEquals(null, apiRequest.frequencyPenalty());
         assertEquals(42, apiRequest.seed());
         assertInstanceOf(Map.class, apiRequest.responseFormat());
         assertEquals("json_object", ((Map<?, ?>) apiRequest.responseFormat()).get("type"));

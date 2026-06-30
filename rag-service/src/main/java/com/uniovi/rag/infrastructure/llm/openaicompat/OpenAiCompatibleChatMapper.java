@@ -29,8 +29,8 @@ final class OpenAiCompatibleChatMapper {
                 readDouble(additional, "topP", "top_p"),
                 readInteger(additional, "maxTokens", "max_tokens"),
                 readStop(additional),
-                readDouble(additional, "presencePenalty", "presence_penalty"),
-                readDouble(additional, "frequencyPenalty", "frequency_penalty"),
+                null,
+                null,
                 readInteger(additional, "seed"),
                 readResponseFormat(additional));
     }
