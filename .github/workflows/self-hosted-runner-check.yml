@@ -1,0 +1,53 @@
+name: Self-hosted Runner Check
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: self-hosted
+    steps:
+      - name: Host and toolchain
+        run: |
+          set -euo pipefail
+          echo "hostname=$(hostname)"
+          echo "user=$(whoami)"
+          echo "pwd=$(pwd)"
+          git --version
+          docker --version
+          docker compose version
+
+      - name: DEPLOY_DIR access
+        env:
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_DIR:-}" ]; then
+            echo "DEPLOY_DIR is not set (optional for this check)"
+            exit 0
+          fi
+          if [ ! -d "$DEPLOY_DIR" ]; then
+            echo "::warning::DEPLOY_DIR does not exist: $DEPLOY_DIR"
+            exit 0
+          fi
+          echo "DEPLOY_DIR is accessible"
+          if [ -d "$DEPLOY_DIR/.git" ]; then
+            echo "git repository: yes"
+            git -C "$DEPLOY_DIR" rev-parse --short HEAD
+          else
+            echo "git repository: no"
+          fi
+          if [ -f "$DEPLOY_DIR/docker/docker-compose.yml" ]; then
+            echo "compose file: OK"
+          fi
+
+      - name: Optional Compose config validation
+        if: vars.DEPLOY_DIR != ''
+        working-directory: ${{ vars.DEPLOY_DIR }}
+        run: |
+          set -euo pipefail
+          if [ -f ./docker/scripts/docker-compose.sh ]; then
+            ./docker/scripts/docker-compose.sh config prod --server --obs --obs-private --no-env-prompt
+          else
+            echo "docker-compose.sh not found; skipping config validation"
+          fi

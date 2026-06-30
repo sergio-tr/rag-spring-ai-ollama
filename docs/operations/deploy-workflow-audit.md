@@ -1,63 +1,50 @@
-# Audit: `deploy.yml` — gates, secrets, and proposed follow-ups
+# Audit: `deploy.yml` — self-hosted runner, gates, and configuration
 
 **Workflow:** [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)  
-**Trigger:** `workflow_dispatch` only (manual).
+**Triggers:** `push` to `main`, `workflow_dispatch`.
 
 ---
 
 ## Summary
 
-The workflow runs on `ubuntu-latest`, **gates** on a successful **`ci.yml`** run for the **current commit SHA** (that workflow runs the full DAG including stack integration, Playwright fullstack, and Sonar), then **SSH**s to the VM and runs **Docker Compose** (`docker-compose.yml` + `compose.prod.yml`) with `pull` and `up -d`.
+The workflow runs on a **self-hosted** runner on the application server (`156.35.95.27`). It syncs `DEPLOY_DIR` to `origin/main`, validates Compose, builds and starts the production stack locally, then curls `DEPLOY_HEALTH_URL`.
 
-**Selenium:** There is **no** `selenium.yml` in this repository and **no** Selenium step in `deploy.yml`. If a future policy reintroduces a browser gate, add it explicitly to `deploy.yml` and this audit.
+**No SSH:** Legacy secrets `VM_HOST`, `VM_USER`, `VM_SSH_KEY`, and `VM_DEPLOY_DIR` are **obsolete**. Use repository **Variables** instead.
 
-**Strengths:** Single required workflow keeps the gate aligned with the full PR DAG; uses GitHub API to require **success** at the same `head_sha`; polls until `ci.yml` completes (avoids racing an in-progress CI run); permissions `contents: read` and `actions: read` for workflow run queries.
+**CI gate:** Deploy assumes **branch protection** on `main` blocks merges unless [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) passes. Deploy does not poll CI (avoids deadlocks on post-merge pushes).
 
-**Post-deploy (implemented):** If repository secret `DEPLOY_HEALTH_URL` is set to an HTTP(S) URL reachable from GitHub Actions (e.g. public health endpoint behind the reverse proxy), the workflow runs `curl -fsS` after SSH deploy and **fails the job** on non-success. If the secret is **unset**, the step is skipped (documented skip).
+**Compose chain:** `docker-compose.yml` + `compose.obs.yml` + `compose.prod.yml` + `compose.prod-server.yml` + `compose.prod-obs.yml` with `--profile observability`, via:
 
-**Remaining gaps:** Image references in Compose may still use `build:` locally; pinning prebuilt GHCR images by **commit SHA** tag is documented in [../../docker/README.md](../../docker/README.md) and [release-and-deploy.md](release-and-deploy.md). VM `.env` secrets are assumed pre-configured (see runbook).
+```bash
+./docker/scripts/up.sh prod --server --obs --obs-private --no-env-prompt
+```
 
----
-
-## Gate (pre-deploy)
-
-Implemented in the first step (`actions/github-script@v8`, Node 24–compatible):
-
-| Required workflow file | Role in quality model |
-| ------------------------ | ------------------------ |
-| `.github/workflows/ci.yml` | Full PR pipeline via `reusable-ci-core.yml`: backend, classifier, webapp, Playwright smoke, stack integration, fullstack E2E, Sonar, and performance on PRs to **main/master**. |
-
-**Mechanics:** For each path, the script resolves the workflow id, lists runs for `head_sha: context.sha`, and **polls** until a matching run exists, `status === 'completed'`, and `conclusion === 'success'` (defaults: 30s interval, 90 minute cap via `CI_GATE_POLL_MS` / `CI_GATE_TIMEOUT_MS` on the job).
-
-**Not gated by deploy (by design today):** `integration.yml`, `e2e-fullstack.yml`, `sonar.yml` (manual), `build-images.yml`, `gatling.yml`, `micro-benchmark.yml`, `system-checks.yml`, `e2e.yml`. Promote any of these to **required** only if product policy demands it (adds friction to manual deploys).
+**Post-deploy:** `DEPLOY_HEALTH_URL` must be set; the job **fails** on curl error.
 
 ---
 
-## Secrets (repository)
+## Repository variables (required)
 
-| Secret | Use | Notes |
+| Variable | Use | Notes |
 | -------- | ----- | -------- |
-| `VM_HOST` | SSH target | Prefer **DNS name**, not a literal IP, so Azure/public IP changes do not require doc edits. |
-| `VM_USER` | SSH user | Service account with deploy rights only. |
-| `VM_SSH_KEY` | Private key | Protect key rotation via GitHub **environments** if staging/prod split later. |
-| `VM_DEPLOY_DIR` | `cd` before compose | Path to cloned repo on the VM (single string). |
-| `GHCR_TOKEN` | `docker login ghcr.io` | Passed to stdin; actor is `${{ github.actor }}`. |
-| `DEPLOY_HEALTH_URL` | Optional post-deploy HTTP check | If set, must be reachable from `ubuntu-latest`; job fails on curl error. Omit if no public URL yet. |
+| `DEPLOY_DIR` | Git checkout path on the runner host | Must be a git repository |
+| `DEPLOY_HEALTH_URL` | HTTP(S) health check after deploy | Reachable from the runner (e.g. reverse-proxy liveness URL) |
 
-**Security notes:**
-
-- `permissions: contents: read` — good default; no `id-token` unless OIDC is added later.
-- Log output should **not** echo secret values; current script only echoes generic steps.
-- Consider **environment** protection rules (required reviewers) for production VM secrets.
+Optional documentation variables: `PRODUCTION_BASE_URL`, `FRONTEND_PUBLIC_URL`, `BACKEND_PUBLIC_URL`, `GITHUB_PAGES_URL`.
 
 ---
 
-## Follow-up improvements (optional)
+## Obsolete secrets
 
-1. **Record metadata:** echo image digests or `docker compose images` to the step summary.
-2. **Concurrency:** `concurrency: { group: deploy-vm, cancel-in-progress: false }` to avoid overlapping SSH deploys.
-3. **Checkout on runner:** pass `git rev-parse HEAD` into the remote script and verify `VM_DEPLOY_DIR` matches the same SHA.
-4. **Wider gate (policy):** add `integration.yml` to `required` if stack HTTP tests must block production deploys.
+| Secret | Status |
+| ------ | ------ |
+| `VM_HOST` | Obsolete (SSH deploy removed) |
+| `VM_USER` | Obsolete |
+| `VM_SSH_KEY` | Obsolete |
+| `VM_DEPLOY_DIR` | Replaced by Variable `DEPLOY_DIR` |
+| `GHCR_TOKEN` | Optional — only if switching to prebuilt GHCR images instead of `--build` on server |
+
+Application secrets (database, JWT, LiteLLM API key, OAuth, SMTP) belong in **server `.env` files**, not in GitHub, unless your ops model centralizes them in GitHub Environments.
 
 ---
 
@@ -65,3 +52,4 @@ Implemented in the first step (`actions/github-script@v8`, Node 24–compatible)
 
 - [runbook-docker-vm.md](runbook-docker-vm.md)
 - [release-readiness-checklist.md](release-readiness-checklist.md)
+- [../../docker/README.md](../../docker/README.md)

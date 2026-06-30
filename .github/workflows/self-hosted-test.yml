@@ -1,0 +1,23 @@
+name: Self-hosted runner test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - self-hosted
+
+jobs:
+  test-runner:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show machine info
+        run: |
+          hostname
+          whoami
+          pwd
+          docker version
+          docker compose version
