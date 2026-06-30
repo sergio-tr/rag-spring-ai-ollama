@@ -2,8 +2,9 @@
  * Shared E2E base URL resolution for stack preflight and Playwright fixtures.
  *
  * Contract (demo reverse-proxy):
- * - E2E_PUBLIC_BASE_URL / PLAYWRIGHT_BASE_URL → https://127.0.0.1:8444 (UI + /actuator/* at origin)
- * - API_BASE_URL → same origin when using proxy (product API at /api/v5/*)
+ * - PLAYWRIGHT_BASE_URL / E2E_PUBLIC_BASE_URL → https://127.0.0.1:8444 (UI + /actuator/* at origin)
+ * - E2E_PRODUCT_URL / API_BASE_URL → same origin when using proxy (product API at /api/v5/*)
+ * - RAG_API_PRODUCT_BASE_PATH / NEXT_PUBLIC_RAG_API_PREFIX → /api/v5
  * - E2E_BACKEND_HEALTH_URL → origin only (never …/api/v5); actuator is not under the product prefix
  */
 
@@ -15,6 +16,7 @@ function applyInsecureTlsForHttpsProxyFetch() {
     return;
   }
   const candidates = [
+    process.env.E2E_PRODUCT_URL,
     process.env.API_BASE_URL,
     process.env.PLAYWRIGHT_BASE_URL,
     process.env.E2E_PUBLIC_BASE_URL,
@@ -64,16 +66,29 @@ export function normalizeHealthBase(url) {
   return url.replace(/\/$/, "").replace(/\/api\/v5\/?$/i, "");
 }
 
+export function productBasePath() {
+  const raw =
+    process.env.RAG_API_PRODUCT_BASE_PATH ??
+    process.env.INTEGRATION_RAG_PRODUCT_BASE_PATH ??
+    process.env.NEXT_PUBLIC_RAG_API_PREFIX ??
+    "/api/v5";
+  const p = raw.replace(/\/$/, "");
+  return p || "/api/v5";
+}
+
 export function resolveE2eBases() {
   applyDemoProxyEnvDefaults();
 
   const publicBase = (
     process.env.E2E_PUBLIC_BASE_URL ??
     process.env.PLAYWRIGHT_BASE_URL ??
-    "http://127.0.0.1:3000"
+    "https://127.0.0.1:8444"
   ).replace(/\/$/, "");
 
-  let apiBase = process.env.API_BASE_URL ?? process.env.INTEGRATION_BACKEND_URL;
+  let apiBase =
+    process.env.E2E_PRODUCT_URL ??
+    process.env.API_BASE_URL ??
+    process.env.INTEGRATION_BACKEND_URL;
   if (!apiBase) {
     apiBase = isReverseProxyOrigin(publicBase) ? publicBase : "http://127.0.0.1:9000";
   }

@@ -84,13 +84,7 @@ export async function gotoWithProxyRetry(
 
 function directProductApiUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
-  const base = (
-    process.env.INTEGRATION_BACKEND_URL ??
-    process.env.API_BASE_URL ??
-    process.env.PLAYWRIGHT_BASE_URL ??
-    "http://127.0.0.1:9000"
-  ).replace(/\/$/, "");
-  return `${base}${productBasePath()}${p}`;
+  return `${apiBaseUrl()}${productBasePath()}${p}`;
 }
 
 export async function authHeadersFromPage(page: Page): Promise<Record<string, string>> {
