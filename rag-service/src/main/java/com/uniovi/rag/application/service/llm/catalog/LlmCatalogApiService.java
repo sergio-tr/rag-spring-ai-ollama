@@ -132,6 +132,12 @@ public class LlmCatalogApiService {
         if (lower.contains("mxbai-embed")) {
             return OptionalInt.of(1024);
         }
+        if (lower.contains("bge-m3")) {
+            return OptionalInt.of(1024);
+        }
+        if (lower.contains("snowflake-arctic-embed")) {
+            return OptionalInt.of(1024);
+        }
         if (lower.contains("nomic-embed")) {
             return OptionalInt.of(768);
         }

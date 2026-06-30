@@ -205,6 +205,22 @@ class MeSelectableLlmModelsIntegrationTest {
         assertThat(available.disabledReason()).isNull();
     }
 
+    @Test
+    void selectableEmbeddingModelsForOpenAiCompatibleDoNotDependOnOllamaTags() {
+        when(configResolver.resolve(eq(USER_ID), isNull(), isNull()))
+                .thenReturn(openAiConfig());
+
+        MeSelectableLlmModelsResponseDto response =
+                service.listForUser(USER_ID, LlmModelCapability.EMBEDDING);
+
+        verify(ollamaAvailability, never()).isModelPresent(any());
+        assertThat(response.capability()).isEqualTo(LlmModelCapability.EMBEDDING);
+        assertThat(response.models())
+                .extracting(MeSelectableLlmModelDto::modelName)
+                .contains("hf.co/mixedbread-ai/mxbai-embed-large-v1:latest");
+        assertThat(response.models()).allMatch(MeSelectableLlmModelDto::selectable);
+    }
+
     private static LlmProperties catalogProperties() {
         LlmProperties props = new LlmProperties();
         LlmOllamaDefaults ollama = props.getOllama();

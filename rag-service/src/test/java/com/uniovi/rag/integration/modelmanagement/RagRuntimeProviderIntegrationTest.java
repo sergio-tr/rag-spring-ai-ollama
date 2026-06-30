@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -17,7 +19,9 @@ import com.uniovi.rag.application.port.llm.LlmChatRequest;
 import com.uniovi.rag.application.port.llm.LlmChatResponse;
 import com.uniovi.rag.application.port.llm.LlmClientRegistryPort;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.config.llm.TaskLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
+import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
 import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
@@ -119,6 +123,29 @@ class RagRuntimeProviderIntegrationTest {
     @Test
     void metadataToolFallbackUsesProviderAwareRetrieval() {
         assertNotEquals(LlmProvider.OLLAMA_NATIVE, openAiConfig().embeddingProvider());
+    }
+
+    @Test
+    void metadataYesNoFilterDoesNotCallOllamaWhenProviderIsOpenAiCompatible() {
+        ResolvedLlmConfig config = openAiConfig();
+        OrchestrationLlmConfigScope.bind(config);
+        TaskLlmConfigResolver taskLlmConfigResolver = mock(TaskLlmConfigResolver.class);
+        when(taskLlmConfigResolver.resolveSecondaryCall(
+                        isNull(), isNull(), eq("metadata-yes-no-filter"), isNull(), isNull()))
+                .thenReturn(
+                        new TaskLlmConfigResolver.SecondaryCallConfig(
+                                config, config.chatModel(), config.temperature(), false));
+        LlmClientResolver mockResolver = mock(LlmClientResolver.class);
+        when(mockResolver.resolveChatClient(config)).thenReturn(openAiChatClient);
+        when(openAiChatClient.chat(any())).thenReturn(LlmChatResponse.ofContent("YES"));
+        MetadataLlmResponseCacheService metadataCache =
+                new MetadataLlmResponseCacheService(mockResolver, configResolver, taskLlmConfigResolver);
+
+        String out = metadataCache.getCachedResponse("metadata-yes-no-filter", "interpret response");
+
+        assertEquals("YES", out);
+        verify(clientRegistry, never()).ollamaNativeChatClient();
+        verify(openAiChatClient).chat(any());
     }
 
     @Test

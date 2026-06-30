@@ -5,7 +5,6 @@ import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogRuntimeStatus;
 import com.uniovi.rag.domain.llm.catalog.LlmModelReasonCodes;
-import com.uniovi.rag.application.service.llm.catalog.LlmModelRuntimeReasonSupport;
 import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
 import com.uniovi.rag.interfaces.rest.dto.llm.catalog.LlmCatalogModelDto;
 import com.uniovi.rag.interfaces.rest.dto.llm.catalog.LlmCatalogResponseDto;
@@ -19,7 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-/** User-scoped chat model picker backed by the properties catalog (Phase 2). */
+/** User-scoped model picker backed by the properties catalog for CHAT and EMBEDDING. */
 @Service
 public class MeSelectableLlmModelsService {
 
@@ -36,32 +35,39 @@ public class MeSelectableLlmModelsService {
         if (userId == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
         }
-        if (capability != LlmModelCapability.CHAT) {
+        if (capability != LlmModelCapability.CHAT && capability != LlmModelCapability.EMBEDDING) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Only CHAT capability is supported for user-selectable models");
+                    HttpStatus.BAD_REQUEST, "Only CHAT and EMBEDDING capabilities are supported");
         }
         ResolvedLlmConfig config = configResolver.resolve(userId, null, null);
-        LlmProvider effectiveProvider = config.chatProvider();
+        LlmProvider effectiveProvider =
+                capability == LlmModelCapability.CHAT ? config.chatProvider() : config.embeddingProvider();
+        Boolean selectableFilter = capability == LlmModelCapability.CHAT ? Boolean.TRUE : null;
 
         LlmCatalogResponseDto catalog =
-                llmCatalogApiService.listCatalog(
-                        effectiveProvider, LlmModelCapability.CHAT, true, true);
+                llmCatalogApiService.listCatalog(effectiveProvider, capability, selectableFilter, true);
 
         List<MeSelectableLlmModelDto> models = new ArrayList<>();
         for (LlmCatalogModelDto entry : catalog.models()) {
-            if (!entry.available() || !entry.selectableByUser()) {
+            if (!entry.available()) {
                 continue;
             }
-            if (entry.capability() != LlmModelCapability.CHAT) {
+            if (entry.capability() != capability) {
                 continue;
             }
             if (entry.provider() != effectiveProvider) {
                 continue;
             }
+            if (capability == LlmModelCapability.CHAT && !entry.selectableByUser()) {
+                continue;
+            }
             models.add(toSelectable(entry));
         }
-        ensureConfiguredRuntimeChatModel(models, config, effectiveProvider);
+        if (capability == LlmModelCapability.CHAT) {
+            ensureConfiguredRuntimeChatModel(models, config, effectiveProvider);
+        } else {
+            ensureConfiguredRuntimeEmbeddingModel(models, config, effectiveProvider);
+        }
         models.sort(Comparator.comparing(MeSelectableLlmModelDto::modelName));
         return new MeSelectableLlmModelsResponseDto(effectiveProvider, capability, List.copyOf(models));
     }
@@ -72,13 +78,35 @@ public class MeSelectableLlmModelsService {
         if (chatModel == null || chatModel.isBlank()) {
             return;
         }
-        String configured = chatModel.trim();
+        ensureConfiguredRuntimeModel(
+                models, chatModel.trim(), effectiveProvider, LlmModelCapability.CHAT, LlmModelReasonCodes.LLM_MODEL_NOT_CONFIGURED);
+    }
+
+    private void ensureConfiguredRuntimeEmbeddingModel(
+            List<MeSelectableLlmModelDto> models, ResolvedLlmConfig config, LlmProvider effectiveProvider) {
+        String embeddingModel = config.embeddingModel();
+        if (embeddingModel == null || embeddingModel.isBlank()) {
+            return;
+        }
+        ensureConfiguredRuntimeModel(
+                models,
+                embeddingModel.trim(),
+                effectiveProvider,
+                LlmModelCapability.EMBEDDING,
+                LlmModelReasonCodes.LLM_MODEL_NOT_CONFIGURED);
+    }
+
+    private void ensureConfiguredRuntimeModel(
+            List<MeSelectableLlmModelDto> models,
+            String configured,
+            LlmProvider effectiveProvider,
+            LlmModelCapability capability,
+            String notConfiguredReasonCode) {
         if (models.stream().anyMatch(m -> configured.equals(m.modelName()))) {
             return;
         }
         LlmCatalogResponseDto fullCatalog =
-                llmCatalogApiService.listCatalog(
-                        effectiveProvider, LlmModelCapability.CHAT, null, true);
+                llmCatalogApiService.listCatalog(effectiveProvider, capability, null, true);
         for (LlmCatalogModelDto entry : fullCatalog.models()) {
             if (configured.equals(entry.modelName()) && entry.provider() == effectiveProvider) {
                 models.add(toSelectable(entry));
@@ -93,7 +121,7 @@ public class MeSelectableLlmModelsService {
                         effectiveProvider == LlmProvider.OLLAMA_NATIVE
                                 ? "Model not registered in provider catalog"
                                 : null,
-                        LlmModelReasonCodes.LLM_MODEL_NOT_CONFIGURED,
+                        notConfiguredReasonCode,
                         false,
                         LlmCatalogRuntimeStatus.UNKNOWN));
     }
