@@ -63,4 +63,8 @@ public final class EvaluationJudgePromptSources {
     public static String fingerprintMaterial() {
         return TEMPLATE_RAW;
     }
+
+    public static String defaultTemplate() {
+        return TEMPLATE_RAW;
+    }
 }

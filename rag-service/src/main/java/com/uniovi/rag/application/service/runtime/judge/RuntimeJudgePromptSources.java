@@ -48,4 +48,12 @@ public final class RuntimeJudgePromptSources {
                 RETRY_DENIED_LINE,
                 EMPTY_CONTEXT_PLACEHOLDER);
     }
+
+    public static String defaultTemplate() {
+        return TEMPLATE_RAW;
+    }
+
+    public static String defaultRetryPolicyMaterial() {
+        return RETRY_ALLOWED_LINE + "\n" + RETRY_DENIED_LINE;
+    }
 }

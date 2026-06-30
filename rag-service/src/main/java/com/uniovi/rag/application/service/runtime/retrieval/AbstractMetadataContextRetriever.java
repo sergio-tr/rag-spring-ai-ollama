@@ -57,13 +57,17 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
         }
         
         // Build metadata filters from NER entities
-        SearchRequest req = SearchRequest.builder()
-                .query(query)
-                .topK(effectiveTopK() * 2) // Retrieve more documents to account for post-filtering
-                .similarityThreshold(effectiveSimilarityThreshold())
-                .build();
+        SearchRequest.Builder searchBuilder =
+                SearchRequest.builder()
+                        .query(query)
+                        .topK(effectiveTopK() * 2) // Retrieve more documents to account for post-filtering
+                        .similarityThreshold(effectiveSimilarityThreshold());
+        var snapshotFilter = snapshotFilterForActiveRequest();
+        if (snapshotFilter != null) {
+            searchBuilder.filterExpression(snapshotFilter);
+        }
 
-        List<Document> retrievedDocs = vectorStore.similaritySearch(req);
+        List<Document> retrievedDocs = vectorStore.similaritySearch(searchBuilder.build());
         retrievedDocs = applyProjectAndDocumentFilter(retrievedDocs);
         
         // Group and combine chunks first (before filtering)

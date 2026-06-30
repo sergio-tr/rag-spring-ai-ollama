@@ -33,4 +33,12 @@ public final class ConversationCondensePromptSources {
     public static String fingerprintMaterial() {
         return SYSTEM_PROMPT + "\n---\n" + USER_PROMPT_WRAPPER;
     }
+
+    public static String defaultSystemPrompt() {
+        return SYSTEM_PROMPT;
+    }
+
+    public static String defaultUserWrapper() {
+        return USER_PROMPT_WRAPPER;
+    }
 }

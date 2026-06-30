@@ -126,6 +126,19 @@ class ConversationRecallGuardTest {
         assertThat(ConversationRecallGuard.isAmbiguousActaScopedWithoutDate(query)).isFalse();
     }
 
+    @Test
+    void corpusWideAscensorList_shouldNotShortCircuitToClarification() {
+        ConversationHistoryLoader loader = mock(ConversationHistoryLoader.class);
+        when(loader.loadEligibleHistory(any())).thenReturn(List.of());
+        ConversationRecallGuard guard = new ConversationRecallGuard(loader);
+
+        String query = "dime las actas donde se comentan problemas del ascensor";
+        ExecutionContext ctx = ctx(query, ConversationMemoryOutcome.NO_HISTORY_AVAILABLE, false);
+
+        assertThat(guard.shouldShortCircuitAmbiguousActaQuery(ctx)).isFalse();
+        assertThat(ConversationRecallGuard.isAmbiguousActaScopedWithoutDate(query)).isFalse();
+    }
+
     private static RagConfig rag(boolean memoryEnabled) {
         return new RagConfig(
                 false,

@@ -131,7 +131,11 @@ public class JudgeStrategy {
                     decision.retryAllowed() ? JudgeOutcome.RETRY_REQUESTED : JudgeOutcome.REJECTED_NO_RETRY;
             if (rejected == JudgeOutcome.RETRY_REQUESTED) {
                 JudgeRetryExecutor.RetryResult retry =
-                        retryExecutor.retry(plan.rewrittenQueryText(), candidateAnswerText, String.join("; ", quality.reasons()));
+                        retryExecutor.retry(
+                                ctx,
+                                plan.rewrittenQueryText(),
+                                candidateAnswerText,
+                                String.join("; ", quality.reasons()));
                 stages.addAll(retry.stageTraces());
                 if (retry.success()) {
                     stages.add(
@@ -175,7 +179,11 @@ public class JudgeStrategy {
         String contextText = AnswerQualityAdvisor.resolveContextText(ctx);
         JudgeEvaluation eval =
                 evaluator.evaluate(
-                        plan.rewrittenQueryText(), candidateAnswerText, contextText, decision.retryAllowed());
+                        ctx,
+                        plan.rewrittenQueryText(),
+                        candidateAnswerText,
+                        contextText,
+                        decision.retryAllowed());
         stages.addAll(eval.stageTraces());
 
         if (eval.outcome() == JudgeOutcome.FAILED_SAFE) {
@@ -231,7 +239,9 @@ public class JudgeStrategy {
                     List.copyOf(stages));
         }
 
-        JudgeRetryExecutor.RetryResult retry = retryExecutor.retry(plan.rewrittenQueryText(), candidateAnswerText, eval.feedback());
+        JudgeRetryExecutor.RetryResult retry =
+                retryExecutor.retry(
+                        ctx, plan.rewrittenQueryText(), candidateAnswerText, eval.feedback());
         stages.addAll(retry.stageTraces());
         if (retry.success()) {
             stages.add(new ExecutionStageTrace(STAGE_JUDGE_FINALIZE, 0L, ExecutionStageOutcome.SUCCESS, "outcome=RETRY_SUCCEEDED"));

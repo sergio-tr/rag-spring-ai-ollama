@@ -39,16 +39,17 @@ class RagQueryConfigurationObservabilityWiringTest {
 
         RagReasoningProperties reasoningProps = new RagReasoningProperties();
         reasoningProps.setStrategy(null); // Default: SIMPLE
-        ReasoningStrategy reasoningStrategy = config.reasoningStrategy(reasoningProps, mock(ChatClient.class), observability);
+        ReasoningStrategy reasoningStrategy = config.reasoningStrategy(reasoningProps, mock(ProviderAwareSecondaryLlmExecutor.class), observability);
         assertInstanceOf(TracedReasoningStrategy.class, reasoningStrategy);
 
         RagRankerProperties rankerProps = new RagRankerProperties();
         rankerProps.setStrategy("FAITHFULNESS");
-        ResponseRanker responseRanker = config.responseRanker(rankerProps, mock(ChatClient.class), observability);
+        ResponseRanker responseRanker = config.responseRanker(rankerProps, mock(ProviderAwareSecondaryLlmExecutor.class), mock(com.uniovi.rag.application.config.ConfigurablePromptResolver.class), observability);
         assertInstanceOf(TracedResponseRanker.class, responseRanker);
 
         QueryExpander queryExpander = config.queryExpander(
-                mock(ChatClient.class),
+                mock(ProviderAwareSecondaryLlmExecutor.class),
+                mock(com.uniovi.rag.application.config.ConfigurablePromptResolver.class),
                 "COT",
                 1,
                 350,

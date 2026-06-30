@@ -25,6 +25,34 @@ public final class FactualAnswerVerificationLoop {
             String contextText,
             String draftAnswer,
             Function<String, String> revisionInvoker) {
+        return apply(question, constraints, contextText, draftAnswer, revisionInvoker, FactualRevisionPrompts.defaultRevisionTemplate());
+    }
+
+    public static Outcome apply(
+            String question,
+            FactualQuestionConstraints constraints,
+            String contextText,
+            String draftAnswer,
+            Function<String, String> revisionInvoker,
+            String revisionTemplate) {
+        return apply(
+                question,
+                constraints,
+                contextText,
+                draftAnswer,
+                revisionInvoker,
+                revisionTemplate,
+                RuntimeAnswerPrompts.insufficientDocumentContextMessageFor(question));
+    }
+
+    public static Outcome apply(
+            String question,
+            FactualQuestionConstraints constraints,
+            String contextText,
+            String draftAnswer,
+            Function<String, String> revisionInvoker,
+            String revisionTemplate,
+            String abstentionMessage) {
         List<ExecutionStageTrace> stages = new ArrayList<>();
         if (contextText == null || contextText.isBlank() || draftAnswer == null || draftAnswer.isBlank()) {
             if (contextText == null || contextText.isBlank()) {
@@ -51,7 +79,8 @@ public final class FactualAnswerVerificationLoop {
         }
 
         stages.add(new ExecutionStageTrace("factual_verify_revision", 0L, ExecutionStageOutcome.SUCCESS, "attempted=true"));
-        String revisionPrompt = FactualRevisionPrompts.revisionUserTurn(question, contextText, draftAnswer, first);
+        String revisionPrompt =
+                FactualRevisionPrompts.revisionUserTurn(revisionTemplate, question, contextText, draftAnswer, first);
         String revised = revisionInvoker.apply(revisionPrompt);
         FactualVerifierResult second = FactualAnswerVerifier.verify(constraints, contextText, revised);
         stages.add(stage("factual_verify", second.passed() ? ExecutionStageOutcome.SUCCESS : ExecutionStageOutcome.FAILED, second));
@@ -61,7 +90,10 @@ public final class FactualAnswerVerificationLoop {
             return new Outcome(revised, false, "", FinalAnswerSource.GENERATED, stages);
         }
 
-        String abstain = RuntimeAnswerPrompts.insufficientDocumentContextMessageFor(question);
+        String abstain =
+                abstentionMessage != null && !abstentionMessage.isBlank()
+                        ? abstentionMessage
+                        : RuntimeAnswerPrompts.insufficientDocumentContextMessageFor(question);
         stages.add(stage("factual_verify_final", ExecutionStageOutcome.FAILED, second, true));
         return new Outcome(abstain, true, "factual_verifier_forced_abstention", FinalAnswerSource.FORCED_ABSTENTION, stages);
     }

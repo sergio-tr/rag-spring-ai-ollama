@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.reasoning;
 
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.configuration.RagReasoningProperties;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
@@ -7,7 +8,6 @@ import com.uniovi.rag.application.result.reasoning.PostStepOutput;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.application.result.reasoning.ReasoningPreOutput;
 import org.json.JSONObject;
-import org.springframework.ai.chat.client.ChatClient;
 
 import java.util.Locale;
 
@@ -22,10 +22,11 @@ public final class SelectingReasoningStrategy implements ReasoningStrategy {
     private final PlanAndVerifyReasoningStrategy planAndVerify;
     private final RagReasoningProperties defaultProperties;
 
-    public SelectingReasoningStrategy(ChatClient chatClient, RagReasoningProperties defaultProperties) {
+    public SelectingReasoningStrategy(
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor, RagReasoningProperties defaultProperties) {
         this.simple = new SimpleReasoningStrategy();
-        this.cot = new COTReasoningStrategy(chatClient);
-        this.planAndVerify = new PlanAndVerifyReasoningStrategy(chatClient);
+        this.cot = new COTReasoningStrategy(secondaryLlmExecutor);
+        this.planAndVerify = new PlanAndVerifyReasoningStrategy(secondaryLlmExecutor);
         this.defaultProperties = defaultProperties;
     }
 

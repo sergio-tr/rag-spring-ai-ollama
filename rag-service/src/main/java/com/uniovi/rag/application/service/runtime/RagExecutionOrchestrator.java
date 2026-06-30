@@ -52,6 +52,7 @@ import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
+import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorDecision;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorExecutionResult;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorOutcome;
@@ -968,6 +969,7 @@ public class RagExecutionOrchestrator {
                 selectExecutableWorkflow(effectiveCtx, workflowSelector.select(effectiveCtx));
         String wname = workflow.workflowName();
         RagExecutionContextHolder.set(toRagExecutionContextHolder(effectiveCtx));
+        RagSnapshotContextHolder.set(effectiveCtx.knowledgeSnapshotSelection().orderedSnapshotIds());
         try {
             RuntimeObservability obs = runtimeObservability != null ? runtimeObservability.getIfAvailable() : null;
             final int promptChars =
@@ -1037,6 +1039,7 @@ public class RagExecutionOrchestrator {
                     new ExecutionOutcome(judgedPartial, trace));
         } finally {
             RagExecutionContextHolder.clear();
+            RagSnapshotContextHolder.clear();
         }
     }
 
@@ -1399,13 +1402,7 @@ public class RagExecutionOrchestrator {
     }
 
     private static RagExecutionContext toRagExecutionContextHolder(ExecutionContext ctx) {
-        return new RagExecutionContext(
-                ctx.conversationId() != null ? ctx.conversationId().toString() : null,
-                ctx.userId() != null ? ctx.userId().toString() : null,
-                ctx.projectId() != null ? ctx.projectId().toString() : null,
-                ctx.resolved().toRagConfig(),
-                ctx.documentFilter(),
-                ctx.correlationId());
+        return RagExecutionContext.fromEngineContext(ctx);
     }
 
     private ExecutionOutcome executeIntegratedAdaptiveRoute(

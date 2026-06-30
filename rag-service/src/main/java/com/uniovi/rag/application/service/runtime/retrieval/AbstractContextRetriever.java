@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime.retrieval;
 
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
+import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
 import com.uniovi.rag.infrastructure.observability.Loggable;
 import com.uniovi.rag.application.service.runtime.RuntimePromptBudgeter;
 import com.uniovi.rag.util.DateParsingSupport;
@@ -18,6 +19,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -73,15 +75,39 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
 
     @Override
     public List<Document> retrieve(String query) {
-        SearchRequest req = SearchRequest.builder()
-                .query(query)
-                .topK(effectiveTopK())
-                .similarityThreshold(effectiveSimilarityThreshold())
-                .build();
-        List<Document> docs = vectorStore.similaritySearch(req);
+        SearchRequest.Builder searchBuilder =
+                SearchRequest.builder()
+                        .query(query)
+                        .topK(effectiveTopK())
+                        .similarityThreshold(effectiveSimilarityThreshold());
+        var snapshotFilter = snapshotFilterForActiveRequest();
+        if (snapshotFilter != null) {
+            searchBuilder.filterExpression(snapshotFilter);
+        }
+        List<Document> docs = vectorStore.similaritySearch(searchBuilder.build());
         docs = applyProjectAndDocumentFilter(docs);
         // Group and combine chunks by document_id to ensure complete content
         return groupAndCombineChunks(docs);
+    }
+
+    /** When execution binds an active hybrid snapshot, scope vector reads to that snapshot only. */
+    protected org.springframework.ai.vectorstore.filter.Filter.Expression snapshotFilterForActiveRequest() {
+        Set<String> snapshotIds = RagSnapshotContextHolder.activeSnapshotIds();
+        if (snapshotIds.isEmpty()) {
+            return null;
+        }
+        List<UUID> uuids = new ArrayList<>();
+        for (String id : snapshotIds) {
+            if (id == null || id.isBlank()) {
+                continue;
+            }
+            try {
+                uuids.add(UUID.fromString(id.trim()));
+            } catch (IllegalArgumentException ignored) {
+                // skip malformed snapshot ids
+            }
+        }
+        return SnapshotBoundRetrievalFilter.buildForRequest(uuids);
     }
 
     protected int effectiveTopK() {

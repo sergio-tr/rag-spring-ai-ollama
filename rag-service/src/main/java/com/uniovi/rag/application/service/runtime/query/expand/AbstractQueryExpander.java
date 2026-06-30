@@ -1,13 +1,12 @@
 package com.uniovi.rag.application.service.runtime.query.expand;
 
-import org.springframework.ai.chat.client.ChatClient;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 
 public abstract class AbstractQueryExpander implements QueryExpander {
 
-    protected final ChatClient client;
+    protected final ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
 
-    public AbstractQueryExpander(ChatClient client) {
-        this.client = client;
+    public AbstractQueryExpander(ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor) {
+        this.secondaryLlmExecutor = secondaryLlmExecutor;
     }
-
 }

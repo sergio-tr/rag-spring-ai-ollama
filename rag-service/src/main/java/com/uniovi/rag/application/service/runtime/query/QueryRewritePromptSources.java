@@ -48,4 +48,12 @@ public final class QueryRewritePromptSources {
     public static String fingerprintMaterial() {
         return SYSTEM_PROMPT + "\n---\n" + USER_PROMPT_TEMPLATE;
     }
+
+    public static String defaultSystemPrompt() {
+        return SYSTEM_PROMPT;
+    }
+
+    public static String defaultUserTemplate() {
+        return USER_PROMPT_TEMPLATE;
+    }
 }

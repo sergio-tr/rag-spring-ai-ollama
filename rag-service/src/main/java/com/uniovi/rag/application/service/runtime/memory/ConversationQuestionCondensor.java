@@ -1,11 +1,11 @@
 package com.uniovi.rag.application.service.runtime.memory;
 
-import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
+import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemorySlice;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryTurn;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
@@ -18,13 +18,13 @@ import java.util.Optional;
 @Service
 public class ConversationQuestionCondensor {
 
-    private final ChatClient chatClient;
-    private final ChatGenerationModelSelector chatGenerationModelSelector;
+    private final ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
+    private final ConfigurablePromptResolver promptResolver;
 
     public ConversationQuestionCondensor(
-            ChatClient chatClient, ChatGenerationModelSelector chatGenerationModelSelector) {
-        this.chatClient = chatClient;
-        this.chatGenerationModelSelector = chatGenerationModelSelector;
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor, ConfigurablePromptResolver promptResolver) {
+        this.secondaryLlmExecutor = secondaryLlmExecutor;
+        this.promptResolver = promptResolver;
     }
 
     public String condense(
@@ -41,20 +41,21 @@ public class ConversationQuestionCondensor {
             return deterministic.get();
         }
 
-        String prompt = buildUserPrompt(slice, literalLatestUserTurn, preMemoryPlanningInputText);
-        var spec = chatClient.prompt()
-                .system(ConversationCondensePromptSources.SYSTEM_PROMPT)
-                .user(prompt);
-
-        OllamaOptions.Builder opt = OllamaOptions.builder().temperature(0.0);
-        chatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(opt::model);
-        spec = spec.options(opt.build());
-
-        String out = spec.call().content();
-        return out == null ? "" : out.trim();
+        String prompt = buildUserPrompt(ctx, slice, literalLatestUserTurn, preMemoryPlanningInputText);
+        String system =
+                promptResolver.resolveSystem(ConfigurablePromptGroup.MEMORY_CONDENSE, ctx.userId(), ctx.projectId());
+        return secondaryLlmExecutor
+                .complete(
+                        ctx,
+                        "conversation-condense",
+                        system,
+                        prompt,
+                        ProviderAwareSecondaryLlmExecutor.SECONDARY_TASK_DEFAULT_TEMPERATURE)
+                .trim();
     }
 
-    private static String buildUserPrompt(
+    private String buildUserPrompt(
+            ExecutionContext ctx,
             ConversationMemorySlice slice,
             String literalLatestUserTurn,
             String preMemoryPlanningInputText) {
@@ -63,7 +64,9 @@ public class ConversationQuestionCondensor {
             history.append(t.role().name()).append(": ").append(t.content() == null ? "" : t.content()).append("\n");
         }
 
-        return ConversationCondensePromptSources.USER_PROMPT_WRAPPER.formatted(
+        String wrapper =
+                promptResolver.resolve(ConfigurablePromptGroup.MEMORY_CONDENSE, ctx.userId(), ctx.projectId());
+        return wrapper.formatted(
                 history.toString().trim(), safe(literalLatestUserTurn), safe(preMemoryPlanningInputText));
     }
 

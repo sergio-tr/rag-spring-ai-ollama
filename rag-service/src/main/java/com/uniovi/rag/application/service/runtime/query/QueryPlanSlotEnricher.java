@@ -54,6 +54,8 @@ public final class QueryPlanSlotEnricher {
         if (q.contains("orden del día")
                 || q.contains("orden del dia")
                 || q.contains("puntos del orden")
+                || q.contains("puntos del día")
+                || q.contains("puntos del dia")
                 || q.contains("agenda")) {
             return Optional.of("agenda");
         }

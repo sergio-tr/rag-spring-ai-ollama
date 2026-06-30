@@ -3,19 +3,23 @@ package com.uniovi.rag.application.service.runtime.query.analyser;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.application.port.llm.LlmChatClient;
 import com.uniovi.rag.application.port.llm.LlmChatResponse;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.config.llm.TaskLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
-import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import com.uniovi.rag.testsupport.llm.LlmModelCatalogTestSupport;
+import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,7 +45,13 @@ class MinuteNERQueryAnalyserProviderAwareTest {
         properties = LlmModelCatalogTestSupport.openAiLiteLlmProperties();
         ResolvedLlmConfig config = openAiConfig(properties);
         when(configResolver.resolve(any(), eq(null), eq(null))).thenReturn(config);
-        secondaryLlmExecutor = new ProviderAwareSecondaryLlmExecutor(llmClientResolver, configResolver);
+        secondaryLlmExecutor =
+                new ProviderAwareSecondaryLlmExecutor(
+                        llmClientResolver,
+                        configResolver,
+                        mock(TaskLlmConfigResolver.class),
+                        mock(ChatGenerationModelSelector.class),
+                        new ObjectMapper());
         when(llmClientResolver.resolveChatClient(any())).thenReturn(openAiChatClient);
         analyser = new MinuteNERQueryAnalyser(secondaryLlmExecutor);
     }

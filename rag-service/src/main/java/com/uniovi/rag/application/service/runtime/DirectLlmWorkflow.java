@@ -18,9 +18,14 @@ import java.util.Optional;
 @Component
 public class DirectLlmWorkflow extends AbstractExecutionWorkflow {
 
+    private final RuntimeAnswerPromptResolver answerPromptResolver;
+
     public DirectLlmWorkflow(
-            RagLlmChatInvoker llmChatInvoker, @Autowired(required = false) ObservabilitySupport observability) {
+            RagLlmChatInvoker llmChatInvoker,
+            @Autowired(required = false) RuntimeAnswerPromptResolver answerPromptResolver,
+            @Autowired(required = false) ObservabilitySupport observability) {
         super(llmChatInvoker, observability);
+        this.answerPromptResolver = answerPromptResolver;
     }
 
     @Override
@@ -44,7 +49,12 @@ public class DirectLlmWorkflow extends AbstractExecutionWorkflow {
             abstentionReason = "document_bound_requires_retrieval";
             stages.add(stage("llm", t0, ExecutionStageOutcome.SKIPPED, "document_bound_requires_retrieval"));
         } else {
-            String user = RuntimeAnswerPrompts.ragUserTurn(q, "", policy, false, Optional.empty(), answerPlanBlock(ctx));
+            String user =
+                    answerPromptResolver != null
+                            ? answerPromptResolver.ragUserTurn(
+                                    ctx, q, "", policy, false, Optional.empty(), answerPlanBlock(ctx))
+                            : RuntimeAnswerPrompts.ragUserTurn(
+                                    q, "", policy, false, Optional.empty(), answerPlanBlock(ctx));
             answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
             stages.add(stage("llm", t0, ExecutionStageOutcome.SUCCESS, ""));
         }

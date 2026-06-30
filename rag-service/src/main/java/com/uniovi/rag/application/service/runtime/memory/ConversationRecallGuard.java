@@ -217,6 +217,12 @@ public class ConversationRecallGuard {
                 || q.contains("todas las reuniones")
                 || q.contains("cuántas reuniones")
                 || q.contains("cuantas reuniones")
+                || q.contains("qué actas mencionan")
+                || q.contains("que actas mencionan")
+                || (q.contains("dime las actas")
+                        && (q.contains("mencionan") || q.contains("comentan")))
+                || (q.contains("dime que actas")
+                        && (q.contains("mencionan") || q.contains("comentan")))
                 || ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(q);
     }
 

@@ -1,7 +1,10 @@
 package com.uniovi.rag.application.service.runtime.query.expand;
 
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
+import com.uniovi.rag.application.config.ConfigurablePromptRuntimeSupport;
+import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.domain.model.ExpansionStrategy;
-import org.springframework.ai.chat.client.ChatClient;
 
 import java.util.regex.Pattern;
 
@@ -12,6 +15,8 @@ import java.util.regex.Pattern;
  * query (and optional upweighting by repeating it) instead of replacing it.
  */
 public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
+
+    public static final String OPERATION_QUERY_EXPANSION = "query-expansion";
 
     /** Default max length of the expansion segment (configurable via rag.expansion.max-expansion-chars). */
     private static final int DEFAULT_MAX_EXPANSION_LENGTH = 350;
@@ -33,31 +38,60 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
     private final int maxQueryLengthTotal;
     private final int maxQueryLengthForLlm;
     private final int retryQueryLength;
+    private final ConfigurablePromptResolver promptResolver;
 
-    public MinuteDocumentStructureExpander(ChatClient client) {
-        this(client, ExpansionStrategy.COT, 1, DEFAULT_MAX_EXPANSION_LENGTH, DEFAULT_MAX_QUERY_LENGTH_TOTAL, DEFAULT_MAX_QUERY_LENGTH_FOR_LLM, DEFAULT_RETRY_QUERY_LENGTH);
+    public MinuteDocumentStructureExpander(ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor) {
+        this(secondaryLlmExecutor, ExpansionStrategy.COT, 1, DEFAULT_MAX_EXPANSION_LENGTH, DEFAULT_MAX_QUERY_LENGTH_TOTAL, DEFAULT_MAX_QUERY_LENGTH_FOR_LLM, DEFAULT_RETRY_QUERY_LENGTH, null);
     }
 
-    public MinuteDocumentStructureExpander(ChatClient client, ExpansionStrategy strategy, int originalQueryRepeatCount) {
-        this(client, strategy, originalQueryRepeatCount, DEFAULT_MAX_EXPANSION_LENGTH, DEFAULT_MAX_QUERY_LENGTH_TOTAL, DEFAULT_MAX_QUERY_LENGTH_FOR_LLM, DEFAULT_RETRY_QUERY_LENGTH);
+    public MinuteDocumentStructureExpander(
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor, ExpansionStrategy strategy, int originalQueryRepeatCount) {
+        this(secondaryLlmExecutor, strategy, originalQueryRepeatCount, DEFAULT_MAX_EXPANSION_LENGTH, DEFAULT_MAX_QUERY_LENGTH_TOTAL, DEFAULT_MAX_QUERY_LENGTH_FOR_LLM, DEFAULT_RETRY_QUERY_LENGTH, null);
     }
 
-    public MinuteDocumentStructureExpander(ChatClient client, ExpansionStrategy strategy, int originalQueryRepeatCount,
-                                          int maxExpansionLength, int maxQueryLengthTotal) {
-        this(client, strategy, originalQueryRepeatCount, maxExpansionLength, maxQueryLengthTotal, DEFAULT_MAX_QUERY_LENGTH_FOR_LLM, DEFAULT_RETRY_QUERY_LENGTH);
+    public MinuteDocumentStructureExpander(
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor,
+            ExpansionStrategy strategy,
+            int originalQueryRepeatCount,
+            int maxExpansionLength,
+            int maxQueryLengthTotal) {
+        this(secondaryLlmExecutor, strategy, originalQueryRepeatCount, maxExpansionLength, maxQueryLengthTotal, DEFAULT_MAX_QUERY_LENGTH_FOR_LLM, DEFAULT_RETRY_QUERY_LENGTH, null);
     }
 
     /** Full constructor with all expansion params (used by RagConfiguration and EvaluationServiceFactory from properties). */
-    public MinuteDocumentStructureExpander(ChatClient client, ExpansionStrategy strategy, int originalQueryRepeatCount,
-                                          int maxExpansionLength, int maxQueryLengthTotal,
-                                          int maxQueryLengthForLlm, int retryQueryLength) {
-        super(client);
+    public MinuteDocumentStructureExpander(
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor,
+            ExpansionStrategy strategy,
+            int originalQueryRepeatCount,
+            int maxExpansionLength,
+            int maxQueryLengthTotal,
+            int maxQueryLengthForLlm,
+            int retryQueryLength) {
+        this(secondaryLlmExecutor, strategy, originalQueryRepeatCount, maxExpansionLength, maxQueryLengthTotal, maxQueryLengthForLlm, retryQueryLength, null);
+    }
+
+    public MinuteDocumentStructureExpander(
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor,
+            ExpansionStrategy strategy,
+            int originalQueryRepeatCount,
+            int maxExpansionLength,
+            int maxQueryLengthTotal,
+            int maxQueryLengthForLlm,
+            int retryQueryLength,
+            ConfigurablePromptResolver promptResolver) {
+        super(secondaryLlmExecutor);
         this.strategy = strategy != null ? strategy : ExpansionStrategy.COT;
         this.originalQueryRepeatCount = Math.max(1, Math.min(5, originalQueryRepeatCount));
         this.maxExpansionLength = maxExpansionLength > 0 ? maxExpansionLength : DEFAULT_MAX_EXPANSION_LENGTH;
         this.maxQueryLengthTotal = maxQueryLengthTotal > 0 ? maxQueryLengthTotal : DEFAULT_MAX_QUERY_LENGTH_TOTAL;
         this.maxQueryLengthForLlm = maxQueryLengthForLlm > 0 ? maxQueryLengthForLlm : DEFAULT_MAX_QUERY_LENGTH_FOR_LLM;
         this.retryQueryLength = retryQueryLength > 0 ? retryQueryLength : DEFAULT_RETRY_QUERY_LENGTH;
+        this.promptResolver = promptResolver;
+    }
+
+    private String rephraseTemplate() {
+        return ConfigurablePromptRuntimeSupport.resolveFromHolder(
+                promptResolver, ConfigurablePromptGroup.QUERY_EXPANSION);
     }
 
     private static final String DOCUMENT_STRUCTURE_REPHRASE_PROMPT = """
@@ -91,6 +125,10 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
         
         Rephrased question (in the same language):
         """;
+
+    public static String defaultExpansionPrompt() {
+        return DOCUMENT_STRUCTURE_REPHRASE_PROMPT;
+    }
 
     /** CoT prompt: rationale step-by-step produces many keywords (paper: best for recall). Domain-adapted for actas. */
     private static final String COT_PROMPT = """
@@ -225,7 +263,7 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
     }
 
     private String callRephrase(String query) {
-        String prompt = String.format(DOCUMENT_STRUCTURE_REPHRASE_PROMPT, query);
+        String prompt = String.format(rephraseTemplate(), query);
         return callLlm(prompt);
     }
 
@@ -246,15 +284,11 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
 
     private String callLlm(String prompt) {
         try {
-            String content = client.prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
+            String content = secondaryLlmExecutor.complete(OPERATION_QUERY_EXPANSION, null, prompt);
             return content != null ? content.trim() : "";
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
-            if (e instanceof RuntimeException re) {
-                throw re;
-            }
             throw new RuntimeException(e);
         }
     }

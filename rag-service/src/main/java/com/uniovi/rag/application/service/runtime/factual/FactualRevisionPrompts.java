@@ -24,11 +24,24 @@ public final class FactualRevisionPrompts {
         return REVISION_TEMPLATE;
     }
 
+    public static String defaultRevisionTemplate() {
+        return REVISION_TEMPLATE;
+    }
+
     public static String revisionUserTurn(
             String question, String context, String draftAnswer, FactualVerifierResult failed) {
+        return revisionUserTurn(defaultRevisionTemplate(), question, context, draftAnswer, failed);
+    }
+
+    public static String revisionUserTurn(
+            String template,
+            String question,
+            String context,
+            String draftAnswer,
+            FactualVerifierResult failed) {
         String reasons =
                 failed.failures().stream().map(Enum::name).collect(Collectors.joining(", "));
-        return REVISION_TEMPLATE.formatted(safe(reasons), safe(question), safe(context), safe(draftAnswer));
+        return template.formatted(safe(reasons), safe(question), safe(context), safe(draftAnswer));
     }
 
     private static String safe(String s) {

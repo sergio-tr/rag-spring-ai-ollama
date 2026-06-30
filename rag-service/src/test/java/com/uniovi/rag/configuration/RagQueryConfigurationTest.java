@@ -61,8 +61,8 @@ class RagQueryConfigurationTest {
         RagQueryConfiguration config = new RagQueryConfiguration();
         RagReasoningProperties props = new RagReasoningProperties();
         props.setStrategy(null);
-        ChatClient chatClient = mock(ChatClient.class);
-        ReasoningStrategy strategy = config.reasoningStrategy(props, chatClient, null);
+        ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor = mock(ProviderAwareSecondaryLlmExecutor.class);
+        ReasoningStrategy strategy = config.reasoningStrategy(props, secondaryLlmExecutor, null);
         assertNotNull(strategy);
         assertTrue(strategy instanceof SelectingReasoningStrategy);
     }
@@ -96,7 +96,11 @@ class RagQueryConfigurationTest {
         props.setStrategy(null);
         assertInstanceOf(
                 LLMAsJudgeRanker.class,
-                config.responseRanker(props, mock(ChatClient.class), null));
+                config.responseRanker(
+                        props,
+                        mock(ProviderAwareSecondaryLlmExecutor.class),
+                        mock(com.uniovi.rag.application.config.ConfigurablePromptResolver.class),
+                        null));
     }
 
     @Test
@@ -106,14 +110,27 @@ class RagQueryConfigurationTest {
         props.setStrategy("faithfulness");
         assertInstanceOf(
                 FaithfulnessRanker.class,
-                config.responseRanker(props, mock(ChatClient.class), null));
+                config.responseRanker(
+                        props,
+                        mock(ProviderAwareSecondaryLlmExecutor.class),
+                        mock(com.uniovi.rag.application.config.ConfigurablePromptResolver.class),
+                        null));
     }
 
     @Test
     void queryExpander_invalidStrategyFallsBackToCot() {
         RagQueryConfiguration config = new RagQueryConfiguration();
         QueryExpander expander =
-                config.queryExpander(mock(ChatClient.class), "not-a-strategy", 1, 350, 512, 500, 200, null);
+                config.queryExpander(
+                        mock(ProviderAwareSecondaryLlmExecutor.class),
+                        mock(com.uniovi.rag.application.config.ConfigurablePromptResolver.class),
+                        "not-a-strategy",
+                        1,
+                        350,
+                        512,
+                        500,
+                        200,
+                        null);
         assertInstanceOf(MinuteDocumentStructureExpander.class, expander);
     }
 
