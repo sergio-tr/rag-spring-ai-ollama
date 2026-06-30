@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   extractTechnicalErrorCode,
   isTechnicalErrorMessage,
+  isZodLikeValidationMessage,
   mapUserFacingErrorMessage,
   mapUserFacingErrorMessageEnglish,
+  resolveUserFacingErrorDisplay,
 } from "./user-facing-error-messages";
 
 const t = (key: string) => `i18n:${key}`;
@@ -29,6 +31,9 @@ describe("user-facing-error-messages", () => {
     expect(mapUserFacingErrorMessage("BLOCKED_BY_MODEL_AVAILABILITY", t, "fb")).toBe(
       "i18n:userError_BLOCKED_BY_MODEL_AVAILABILITY",
     );
+    expect(mapUserFacingErrorMessage("BLOCKED_BY_MODEL_AVAILABILITY", t, "fb", "OPENAI_COMPATIBLE")).toBe(
+      "i18n:userError_BLOCKED_BY_MODEL_AVAILABILITY_OPENAI",
+    );
     expect(mapUserFacingErrorMessage("EMBEDDING_DIMENSION_MISMATCH: x", t, "fb")).toBe(
       "i18n:userError_EMBEDDING_DIMENSION_MISMATCH",
     );
@@ -45,6 +50,12 @@ describe("user-facing-error-messages", () => {
   it("mapUserFacingErrorMessageEnglish provides English copy", () => {
     expect(mapUserFacingErrorMessageEnglish("NO_READY_DOCUMENTS", "fb")).toContain("knowledge base");
     expect(mapUserFacingErrorMessageEnglish("BLOCKED_BY_MODEL_AVAILABILITY", "fb")).toContain("two");
+    expect(mapUserFacingErrorMessageEnglish("BLOCKED_BY_MODEL_AVAILABILITY", "fb", "OPENAI_COMPATIBLE")).not.toMatch(
+      /ollama|installed on the server/i,
+    );
+    expect(mapUserFacingErrorMessageEnglish("BLOCKED_BY_MODEL_AVAILABILITY", "fb", "OPENAI_COMPATIBLE")).toContain(
+      "catalog",
+    );
   });
 
   it("extractTechnicalErrorCode handles empty and embedded hints", () => {
@@ -74,7 +85,7 @@ describe("user-facing-error-messages", () => {
 
   it("mapUserFacingErrorMessage uses generic userError key when i18n key is missing", () => {
     const echoT = (key: string) => key;
-    expect(mapUserFacingErrorMessage("DATASET_INVALID", echoT, "fb")).toBe("fb");
+    expect(mapUserFacingErrorMessage("DATASET_INVALID", echoT, "fb")).toContain("dataset");
     expect(mapUserFacingErrorMessage("DATASET_INVALID", t, "fb")).toBe("i18n:userError_DATASET_INVALID");
   });
 
@@ -113,5 +124,49 @@ describe("user-facing-error-messages", () => {
     expect(mapUserFacingErrorMessage("PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED", t, "fb")).toBe(
       "i18n:labConfigP13",
     );
+  });
+
+  it("provider OpenAI-compatible error does not mention Ollama", () => {
+    const display = resolveUserFacingErrorDisplay({
+      raw: "The AI inference service is unavailable. Please try again once Ollama is running and reachable.",
+      t,
+      fallback: "fb",
+      provider: "OPENAI_COMPATIBLE",
+    });
+    expect(display.primary).not.toMatch(/ollama/i);
+    expect(display.primary).toBe("i18n:userError_INFERENCE_UNAVAILABLE_OPENAI");
+  });
+
+  it("validation error is human-readable", () => {
+    const display = resolveUserFacingErrorDisplay({
+      raw: "Too small: expected string to have >=1 characters",
+      t,
+      fallback: "fb",
+    });
+    expect(isZodLikeValidationMessage("Too small: expected string to have >=1 characters")).toBe(true);
+    expect(display.primary).toBe("i18n:userError_VALIDATION_TOO_SHORT");
+    expect(display.primary).not.toMatch(/Too small|>=1/);
+    expect(display.technical).toContain("Too small");
+  });
+
+  it("technical code hidden under details payload", () => {
+    const display = resolveUserFacingErrorDisplay({
+      raw: "NO_READY_DOCUMENTS",
+      t,
+      fallback: "fb",
+    });
+    expect(display.primary).not.toBe("NO_READY_DOCUMENTS");
+    expect(display.primary).toBe("i18n:userError_NO_READY_DOCUMENTS");
+    expect(display.technical).toBe("NO_READY_DOCUMENTS");
+  });
+
+  it("Ollama provider uses Ollama-specific inference copy key", () => {
+    const display = resolveUserFacingErrorDisplay({
+      raw: "LLM_UNAVAILABLE",
+      t,
+      fallback: "fb",
+      provider: "OLLAMA_NATIVE",
+    });
+    expect(display.primary).toBe("i18n:userError_INFERENCE_UNAVAILABLE_OLLAMA");
   });
 });

@@ -10,13 +10,13 @@ import {
 
 const labT = (key: string) => {
   const map: Record<string, string> = {
-    "benchmarkKindLabel.llm": "LLM evaluation",
-    "benchmarkKindLabel.ragPreset": "RAG preset evaluation",
+    "benchmarkKindLabel.llm": "Chat model evaluation",
+    "benchmarkKindLabel.ragPreset": "Retrieval evaluation",
     "benchmarkKindLabel.unknown": "Evaluation",
     "labConfigNotSingleTurn": "This preset is not available for this evaluation type.",
     "labConfigP13": "This preset is not available for this evaluation type. Use Chat for multi-turn flows.",
     "labConfigRequiresIndex": "A compatible index is required before running this evaluation.",
-    "labConfigUnsupportedPreset": "This experimental preset is not supported.",
+    "labConfigUnsupportedPreset": "This assistant configuration profile is not supported.",
     "presetSupportStatus.requiresMultiTurn":
       "This preset is not available for this evaluation type. Use Chat for multi-turn flows.",
     "chatPresetNotSelectable": "Not selectable in Chat for this configuration.",
@@ -28,8 +28,8 @@ const labT = (key: string) => {
 
 describe("product-copy humanizers", () => {
   it("formatBenchmarkKindLabel maps raw benchmark enums to readable labels", () => {
-    expect(formatBenchmarkKindLabel("RAG_PRESET_END_TO_END", labT)).toBe("RAG preset evaluation");
-    expect(formatBenchmarkKindLabel("LLM_JUDGE_QA", labT)).toBe("LLM evaluation");
+    expect(formatBenchmarkKindLabel("RAG_PRESET_END_TO_END", labT)).toBe("Retrieval evaluation");
+    expect(formatBenchmarkKindLabel("LLM_JUDGE_QA", labT)).toBe("Chat model evaluation");
     expect(formatBenchmarkKindLabel(null, labT)).toBe("Evaluation");
   });
 
@@ -58,7 +58,8 @@ describe("product-copy humanizers", () => {
       },
       labT,
     );
-    expect(label).toContain("P13 — Clarification loop");
+    expect(label).toContain("Clarification loop");
+    expect(label).not.toMatch(/^P13\b/);
     expect(label).not.toMatch(/REQUIRES_MULTI_TURN/);
     expect(label).not.toMatch(/PRESET_CLARIFICATION/);
     expect(label).toMatch(/not available for this evaluation type/i);
