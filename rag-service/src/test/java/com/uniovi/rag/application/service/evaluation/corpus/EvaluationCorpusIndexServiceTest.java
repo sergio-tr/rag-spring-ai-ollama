@@ -62,7 +62,7 @@ class EvaluationCorpusIndexServiceTest {
     @BeforeEach
     void setUp() {
         indexSnapshotCompatibilityService =
-                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator);
+                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator, org.mockito.Mockito.mock(com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess.class));
         lenient().when(storageIntegrityService.hasReadyDocumentWithMissingBinary(any())).thenReturn(false);
         service =
                 new EvaluationCorpusIndexService(
