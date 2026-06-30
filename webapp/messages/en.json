@@ -1625,5 +1625,36 @@
     "light": "Light",
     "dark": "Dark",
     "system": "System"
+  },
+  "PrivacyPolicy": {
+    "title": "Privacy Policy",
+    "meta": "Version: {version} · Last updated: {lastUpdated} · Locale: {locale}",
+    "version": "2026-06-21",
+    "lastUpdated": "21 June 2026",
+    "intro": "This Privacy Policy explains how personal data is processed in RAG Console, a web application developed as part of an academic Final Degree Project. The application allows users to configure intelligent assistants based on language models, upload documents, consult them through natural language questions and evaluate different assistant configurations.",
+    "dataProcessing": "The application may process account data, authentication data, project data, uploaded documents, extracted text, document metadata, conversation data, evaluation results and technical diagnostic information. This data is processed to create and manage user accounts, authenticate users, maintain secure sessions, organise projects, process uploaded documents, generate document-based answers, store conversations, configure assistant behaviour, execute evaluations, detect errors and support academic validation of the system.",
+    "userResponsibility": "Users are responsible for ensuring that they have the right to upload and process the documents they add to the application. Uploaded documents may be processed to extract text, metadata and searchable representations. Assistant answers are generated from the available document content and selected configuration, but they may contain mistakes, incomplete interpretations or unsupported statements. Important information should always be verified against the original documents.",
+    "modelServices": "The system may use local or configured language model services to generate answers and embeddings. If external model providers are enabled in the future, users must be informed before document content or questions are sent to those providers.",
+    "dataRetention": "Personal data is kept only for as long as necessary to provide the application features, support academic evaluation, maintain security or preserve justified technical evidence. Users may request access, correction, deletion, restriction, portability where applicable and objection where legally applicable.",
+    "security": "The application includes technical measures such as authentication, protected routes, restricted administrative access and user/project separation. However, this academic version is not certified as a production-grade system and must not be presented as a complete legal compliance solution without further legal, organisational and security review.",
+    "contact": "Contact:",
+    "contactEmail": "support.rag@gmail.es"
+  },
+  "Terms": {
+    "title": "Terms and Conditions",
+    "meta": "Version: {version} · Last updated: {lastUpdated} · Locale: {locale}",
+    "version": "2026-06-21",
+    "lastUpdated": "21 June 2026",
+    "intro": "These Terms and Conditions regulate the use of RAG Console, a web application developed as part of an academic Final Degree Project. By creating an account or using the application, the user accepts these terms.",
+    "purpose": "RAG Console allows users to create projects, upload documents, configure assistant behaviour, ask questions about uploaded documents and evaluate different assistant configurations. The application is intended for academic, experimental and demonstrative use. It is not provided as a commercial production service.",
+    "userObligations": "Users must provide accurate account information, keep their credentials secure and use the application lawfully and responsibly. Users must not upload documents they are not authorised to use, upload unlawful or harmful content, attempt to access other users' projects or restricted administrative areas, bypass security mechanisms, interfere with the system operation or use the assistant to generate harmful or misleading content.",
+    "documentResponsibility": "Users are responsible for the documents they upload. Uploaded documents may be processed to extract text, metadata and searchable representations required by the assistant. The original documents remain the reference source.",
+    "answerDisclaimer": "Assistant answers may be useful, but they may also be incomplete, inaccurate or unsupported by the source documents. The application does not provide legal, financial, administrative, medical or professional advice. Any relevant decision must be checked against the original documents and, where necessary, reviewed by a qualified person.",
+    "labUse": "The Research Lab area is used to compare models, embeddings, presets and assistant configurations. Evaluation results are intended for analysis and academic documentation, not as a guarantee that a configuration will always provide correct answers.",
+    "availability": "The application may be modified, interrupted or temporarily unavailable due to maintenance, development changes, infrastructure limitations or academic testing. No continuous availability, production service level or commercial support commitment is provided.",
+    "adminAccess": "Some areas are restricted to administrator users. Ordinary users must not attempt to access restricted administrative features.",
+    "privacyReference": "The processing of personal data is described in the Privacy Policy. Users must read and accept the Privacy Policy before creating an account.",
+    "contact": "Contact:",
+    "contactEmail": "support.rag@gmail.es"
   }
 }
