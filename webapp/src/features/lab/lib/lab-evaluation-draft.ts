@@ -36,6 +36,34 @@ export type LabEvaluationDraftStored = {
   corpusId: string | null;
 };
 
+/** Legacy Ollama-only defaults removed from product catalog — cleared on load. */
+const LEGACY_STALE_LLM_MODEL_IDS = new Set(["gemma3:4b", "mistral:7b", "llama3.1:8b"]);
+const LEGACY_STALE_EMBEDDING_MODEL_IDS = new Set(["mxbai-embed-large:latest", "mxbai-embed-large"]);
+
+export function stripLegacyStaleLabModelIds(
+  draft: Omit<LabEvaluationDraftStored, "v">,
+): Omit<LabEvaluationDraftStored, "v"> {
+  const next = { ...draft };
+  if (LEGACY_STALE_LLM_MODEL_IDS.has(next.llmModelId.trim())) next.llmModelId = "";
+  next.llmModelIds = next.llmModelIds.filter((id) => !LEGACY_STALE_LLM_MODEL_IDS.has(id.trim()));
+  if (LEGACY_STALE_EMBEDDING_MODEL_IDS.has(next.embeddingModelId.trim())) next.embeddingModelId = "";
+  next.embeddingModelIds = next.embeddingModelIds.filter((id) => !LEGACY_STALE_EMBEDDING_MODEL_IDS.has(id.trim()));
+  return next;
+}
+
+export function migrateLabDraftModelsFromCatalog(
+  draft: Omit<LabEvaluationDraftStored, "v">,
+  availableLlmModelIds: string[],
+  availableEmbeddingModelIds: string[],
+): Omit<LabEvaluationDraftStored, "v"> {
+  let next = stripLegacyStaleLabModelIds(draft);
+  const firstLlm = availableLlmModelIds[0] ?? "";
+  const firstEmb = availableEmbeddingModelIds[0] ?? "";
+  if (!next.llmModelId.trim() && firstLlm) next = { ...next, llmModelId: firstLlm };
+  if (!next.embeddingModelId.trim() && firstEmb) next = { ...next, embeddingModelId: firstEmb };
+  return next;
+}
+
 export function defaultLabEvaluationDraft(): Omit<LabEvaluationDraftStored, "v"> {
   return {
     datasetId: null,
@@ -93,18 +121,22 @@ function migrateV1FormParsed(kind: LabEvaluationDraftKind, parsed: Record<string
 }
 
 function finalizeLoadedDraft(kind: LabEvaluationDraftKind, stored: LabEvaluationDraftStored): LabEvaluationDraftStored {
+  const stripped: LabEvaluationDraftStored = { ...stored, ...stripLegacyStaleLabModelIds(stored) };
   if (kind !== "RAG_PRESET_END_TO_END") {
-    return stored;
+    if (stripped.llmModelId !== stored.llmModelId || stripped.embeddingModelId !== stored.embeddingModelId) {
+      saveLabEvaluationDraft(kind, stripped);
+    }
+    return stripped;
   }
   const { selected, removed } = sanitizeLabBenchmarkDraftPresetCodes(
-    stored.selectedExperimentalPresetCodes,
+    stripped.selectedExperimentalPresetCodes,
     undefined,
     false,
   );
-  if (removed.length === 0) {
-    return stored;
+  if (removed.length === 0 && stripped.llmModelId === stored.llmModelId && stripped.embeddingModelId === stored.embeddingModelId) {
+    return stripped;
   }
-  const sanitized: LabEvaluationDraftStored = { ...stored, selectedExperimentalPresetCodes: selected };
+  const sanitized: LabEvaluationDraftStored = { ...stripped, selectedExperimentalPresetCodes: selected };
   saveLabEvaluationDraft(kind, sanitized);
   return sanitized;
 }
@@ -237,18 +269,7 @@ export function computeLabEvaluationDraftWarnings(input: {
   catalogPresetCodes: string[];
   presetsCatalogReady: boolean;
 }): LabEvaluationDraftWarnings {
-  const emptyWarnings = (): LabEvaluationDraftWarnings => ({
-    datasetDeletedOrUnknown: false,
-    datasetIncompatibleWithBenchmark: false,
-    llmModelInvalid: false,
-    llmModelsInvalid: [],
-    embeddingModelInvalid: false,
-    embeddingModelsInvalid: [],
-    presetsUnknown: [],
-  });
-
   const id = input.draft.datasetId?.trim();
-  if (!id) return emptyWarnings();
 
   const allKnownIds = new Set(input.allDatasetRows.map((r) => r.id));
   const compatibleIds = new Set(input.compatibleDatasetRows.map((r) => r.id));
@@ -256,10 +277,12 @@ export function computeLabEvaluationDraftWarnings(input: {
   let datasetDeletedOrUnknown = false;
   let datasetIncompatibleWithBenchmark = false;
 
-  if (input.datasetsFetched && !allKnownIds.has(id)) {
-    datasetDeletedOrUnknown = true;
-  } else if (input.datasetsFetched && allKnownIds.has(id) && !compatibleIds.has(id)) {
-    datasetIncompatibleWithBenchmark = true;
+  if (id) {
+    if (input.datasetsFetched && !allKnownIds.has(id)) {
+      datasetDeletedOrUnknown = true;
+    } else if (input.datasetsFetched && allKnownIds.has(id) && !compatibleIds.has(id)) {
+      datasetIncompatibleWithBenchmark = true;
+    }
   }
 
   const llmSet = new Set(input.availableLlmModelIds);

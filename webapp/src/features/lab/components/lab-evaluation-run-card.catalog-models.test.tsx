@@ -182,14 +182,15 @@ describe("LabEvaluationRunCard catalog models", () => {
 
   it("evaluation selector renders catalog models", async () => {
     renderLlmCard();
-    expect(await screen.findByTestId("lab-benchmark-llm-models-gpt-oss:20b")).toBeInTheDocument();
+    const select = await screen.findByTestId("lab-benchmark-llm-model");
+    expect(select).toBeInTheDocument();
+    expect(select.querySelector('option[value="gpt-oss:20b"]')).toBeTruthy();
   });
 
   it("old preferred model list is not used", async () => {
     renderLlmCard();
-    await screen.findByTestId("lab-benchmark-llm-models-gpt-oss:20b");
-    const group = screen.getByTestId("lab-benchmark-llm-models-list");
-    const text = group.textContent ?? "";
+    const select = await screen.findByTestId("lab-benchmark-llm-model");
+    const text = select.textContent ?? "";
     for (const legacy of LEGACY_PREFERRED) {
       expect(text).not.toContain(legacy);
     }

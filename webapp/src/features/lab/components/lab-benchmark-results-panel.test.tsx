@@ -106,7 +106,7 @@ describe("LabBenchmarkResultsPanel", () => {
           itemId: "item-1",
           question: "Q1",
           presetCode: "P0",
-          presetLabel: "Corpus text only",
+          presetLabel: "Indexed text answers",
           status: "EXECUTED",
           mvp: { operational: { outcome: "EXECUTED", presetCode: "P0" } },
         },
@@ -118,7 +118,7 @@ describe("LabBenchmarkResultsPanel", () => {
       rows: [
         {
           presetKey: "P0",
-          presetLabel: "Corpus text only",
+          presetLabel: "Indexed text answers",
           executed: 60,
           skipped: 0,
           totalItems: 60,
@@ -404,8 +404,8 @@ describe("LabBenchmarkResultsPanel", () => {
     });
     vi.mocked(fetchMvpItemsBundle).mockResolvedValue({ items: [] });
     vi.mocked(fetchLabCampaignRuns).mockResolvedValue([
-      { runId: "r-p0", presetCode: "P0", presetLabel: "Corpus text only", status: "SUCCEEDED" },
-      { runId: "r-p2", presetCode: "P2", presetLabel: "Document-level dense retrieval", status: "SUCCEEDED" },
+      { runId: "r-p0", presetCode: "P0", presetLabel: "Indexed text answers", status: "SUCCEEDED" },
+      { runId: "r-p2", presetCode: "P2", presetLabel: "Document-level retrieval", status: "SUCCEEDED" },
     ]);
     vi.mocked(fetchCampaignComparison).mockResolvedValue({
       comparisonAxis: "PRESET_CODE",
@@ -413,7 +413,7 @@ describe("LabBenchmarkResultsPanel", () => {
       rows: [
         {
           presetKey: "P2",
-          presetLabel: "Document-level dense retrieval",
+          presetLabel: "Document-level retrieval",
           modelLabel: "gemma3:4b",
           totalItems: 60,
           executed: 60,
@@ -422,7 +422,7 @@ describe("LabBenchmarkResultsPanel", () => {
         },
         {
           presetKey: "P0",
-          presetLabel: "Corpus text only",
+          presetLabel: "Indexed text answers",
           modelLabel: "gemma3:4b",
           totalItems: 60,
           executed: 0,
@@ -438,7 +438,7 @@ describe("LabBenchmarkResultsPanel", () => {
           question: "What is RAG?",
           answer: "Retrieval augmented generation",
           presetCode: "P2",
-          presetLabel: "Document-level dense retrieval",
+          presetLabel: "Document-level retrieval",
           status: "EXECUTED",
           mvp: {
             generation: { correctness: 0.9 },
@@ -449,7 +449,7 @@ describe("LabBenchmarkResultsPanel", () => {
           itemId: "skip-1",
           question: "Skipped question",
           presetCode: "P0",
-          presetLabel: "Corpus text only",
+          presetLabel: "Indexed text answers",
           status: "SKIPPED",
           failureReason: "INDEX_PREPARATION_REQUIRED",
           mvp: {
@@ -466,8 +466,8 @@ describe("LabBenchmarkResultsPanel", () => {
     renderPanel({ evaluationRunId: baseRun.id, campaignId: "rag-campaign" });
 
     await waitFor(() => expect(screen.getByTestId("lab-campaign-comparison-panel")).toBeInTheDocument());
-    expect(screen.getAllByText(/Document-level dense retrieval/i).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/Corpus text only/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Document-level retrieval/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Indexed text answers/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByTestId("lab-campaign-comparison-panel").textContent).not.toMatch(/gemma3:4b/i);
     expect(screen.queryByTestId("lab-benchmark-no-executed-warning")).not.toBeInTheDocument();
     expect(screen.getByTestId("lab-campaign-partial-summary")).toBeInTheDocument();
@@ -688,7 +688,7 @@ describe("LabBenchmarkResultsPanel", () => {
     vi.mocked(fetchCampaignComparison).mockResolvedValue({
       comparisonAxis: "PRESET_CODE",
       rows: [
-        { presetKey: "P0", presetLabel: "Corpus text only", executed: 1, totalItems: 1, scoreAnswerable: 0.9 },
+        { presetKey: "P0", presetLabel: "Indexed text answers", executed: 1, totalItems: 1, scoreAnswerable: 0.9 },
         { presetKey: "P2", presetLabel: "Dense retrieval", executed: 1, totalItems: 1, scoreAnswerable: 0.8 },
       ],
     } as never);

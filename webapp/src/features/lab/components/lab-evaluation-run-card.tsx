@@ -320,9 +320,10 @@ export function LabEvaluationRunCard({
 
   const llmComparisonAvailabilityBlocked = useMemo(() => {
     if (benchmarkKind !== "LLM_JUDGE_QA") return false;
-    const selected = draft.llmModelIds.map((x) => x.trim()).filter(Boolean).length;
+    const fromList = draft.llmModelIds.map((x) => x.trim()).filter(Boolean).length;
+    const selected = fromList > 0 ? fromList : draft.llmModelId.trim() ? 1 : 0;
     return isLabComparisonAvailabilityBlocked(selected, availableLlmModels.length);
-  }, [benchmarkKind, availableLlmModels.length, draft.llmModelIds]);
+  }, [benchmarkKind, availableLlmModels.length, draft.llmModelId, draft.llmModelIds]);
   const embeddingComparisonAvailabilityBlocked = useMemo(() => {
     if (benchmarkKind !== "EMBEDDING_RETRIEVAL") return false;
     const selected = draft.embeddingModelIds.map((x) => x.trim()).filter(Boolean).length;
@@ -700,12 +701,24 @@ export function LabEvaluationRunCard({
 
   const recommendedDraftPartial = useMemo(() => {
     const defaultEmbedding = defaultEmbeddingModelId(embeddingCatalogModels) ?? "";
+    const defaultLlm = availableLlmModels[0] ?? "";
     return {
       datasetId: defaultDataset?.id ?? null,
+      llmModelId: defaultLlm,
+      llmModelIds: [],
       embeddingModelId: defaultEmbedding,
       embeddingModelIds: defaultEmbedding ? [defaultEmbedding] : [],
     };
-  }, [defaultDataset?.id, embeddingCatalogModels]);
+  }, [availableLlmModels, defaultDataset?.id, embeddingCatalogModels]);
+
+  useEffect(() => {
+    if (benchmarkKind !== "LLM_JUDGE_QA") return;
+    if (draft.llmModelId.trim() !== "") return;
+    const fromList = draft.llmModelIds.map((x) => x.trim()).filter(Boolean)[0];
+    const defaultLlm = fromList ?? availableLlmModels[0];
+    if (!defaultLlm) return;
+    patchDraft({ llmModelId: defaultLlm, llmModelIds: [] });
+  }, [benchmarkKind, draft.llmModelId, draft.llmModelIds, availableLlmModels, patchDraft]);
 
   useEffect(() => {
     if (benchmarkKind !== "EMBEDDING_RETRIEVAL" && benchmarkKind !== "RAG_PRESET_END_TO_END") return;
@@ -788,7 +801,9 @@ export function LabEvaluationRunCard({
 
   const comparisonSelectionCount = useMemo(() => {
     if (benchmarkKind === "LLM_JUDGE_QA") {
-      return draft.llmModelIds.map((x) => x.trim()).filter(Boolean).length;
+      const fromList = draft.llmModelIds.map((x) => x.trim()).filter(Boolean).length;
+      if (fromList > 0) return fromList;
+      return draft.llmModelId.trim() ? 1 : 0;
     }
     if (benchmarkKind === "EMBEDDING_RETRIEVAL") {
       return draft.embeddingModelIds.map((x) => x.trim()).filter(Boolean).length;
@@ -1375,54 +1390,39 @@ export function LabEvaluationRunCard({
             benchmarkKind === "RAG_PRESET_END_TO_END" ||
             (benchmarkKind === "EMBEDDING_RETRIEVAL" && draft.embeddingDownstreamRag)) && (
             <div className="space-y-2">
-              {benchmarkKind === "LLM_JUDGE_QA" && availableLlmModels.length > 0 ? (
-                <ModelCheckboxGroup
-                  id={`lab-llm-model-${sectionKey}`}
-                  label={t("benchmarkLlmModelOptional")}
-                  availableModelIds={availableLlmModels}
-                  selectedIds={draft.llmModelIds}
-                  disabled={running}
-                  testIdPrefix="lab-benchmark-llm-models"
-                  hint={t("benchmarkLlmMultiHint")}
-                  onChange={(llmModelIds) => patchDraft({ llmModelIds })}
-                />
-              ) : (
-                <>
-                  <select
-                    id={`lab-llm-model-${sectionKey}`}
-                    data-testid="lab-benchmark-llm-model"
-                    className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                    value={draft.llmModelId}
-                    disabled={running || availableLlmModels.length === 0}
-                    onChange={(e) => patchDraft({ llmModelId: e.target.value })}
-                  >
-                    {availableLlmModels.length === 0 ? (
-                      <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
-                    ) : (
-                      <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
-                    )}
-                    {warnings.llmModelInvalid && draft.llmModelId.trim() !== "" ? (
-                      <option value={draft.llmModelId} disabled>
-                        {draft.llmModelId}
-                      </option>
-                    ) : null}
-                    {allLlmModelNames.map((name) => {
-                      const row = chatCatalogModels.find((m) => m.modelName === name);
-                      const disabled = row != null && !row.evalSelectable;
-                      return (
-                        <option key={name} value={name} disabled={disabled}>
-                          {disabled && row?.blockedReason
-                            ? `${name} (${row.blockedReason})`
-                            : name}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  {availableLlmModels.length === 0 ? (
-                    <output className="text-muted-foreground block text-xs">{t("noLlmModelsAvailable")}</output>
-                  ) : null}
-                </>
-              )}
+              <Label htmlFor={`lab-llm-model-${sectionKey}`}>{t("benchmarkLlmModelOptional")}</Label>
+              <select
+                id={`lab-llm-model-${sectionKey}`}
+                data-testid="lab-benchmark-llm-model"
+                className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                value={benchmarkKind === "LLM_JUDGE_QA" ? draft.llmModelId : draft.llmModelId}
+                disabled={running || availableLlmModels.length === 0}
+                onChange={(e) =>
+                  patchDraft({
+                    llmModelId: e.target.value,
+                    llmModelIds: benchmarkKind === "LLM_JUDGE_QA" ? [] : draft.llmModelIds,
+                  })
+                }
+              >
+                <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
+                {warnings.llmModelInvalid && draft.llmModelId.trim() !== "" ? (
+                  <option value={draft.llmModelId} disabled>
+                    {draft.llmModelId}
+                  </option>
+                ) : null}
+                {allLlmModelNames.map((name) => {
+                  const row = chatCatalogModels.find((m) => m.modelName === name);
+                  const disabled = row != null && !row.evalSelectable;
+                  return (
+                    <option key={name} value={name} disabled={disabled}>
+                      {disabled && row?.blockedReason ? `${name} (${row.blockedReason})` : name}
+                    </option>
+                  );
+                })}
+              </select>
+              {availableLlmModels.length === 0 ? (
+                <output className="text-muted-foreground block text-xs">{t("noLlmModelsAvailable")}</output>
+              ) : null}
             </div>
           )}
 

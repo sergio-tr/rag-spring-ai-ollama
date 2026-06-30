@@ -426,7 +426,7 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
     expect(screen.getByTestId("lab-benchmark-needs-dataset-warn")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Run evaluation/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Run evaluation|Evaluate selected model/i })).toBeDisabled();
   });
 
   it("disables run when the selected dataset is INVALID", () => {
@@ -451,7 +451,7 @@ describe("LabEvaluationRunCard", () => {
     );
     expect(screen.getByTestId("lab-selected-dataset-details")).toBeInTheDocument();
     expect(screen.getByTestId("lab-dataset-invalid-warn")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Run evaluation/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Run evaluation|Evaluate selected model/i })).toBeDisabled();
   });
 
   it("keeps benchmark kind label inside technical disclosure by default", async () => {
@@ -563,7 +563,7 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
     expect(screen.getByTestId("lab-experimental-presets-list")).toBeInTheDocument();
-    expect(screen.getByText(/PX_OBSOLETE — Clarification loop/i)).toBeInTheDocument();
+    expect(screen.getByText(/Clarification loop/i)).toBeInTheDocument();
     expect(screen.getByTestId("lab-preset-blocked-PX_OBSOLETE")).toBeInTheDocument();
     expect(screen.getByTestId("lab-preset-blocked-PX_OBSOLETE")).toHaveTextContent(
       /not available for this evaluation type/i,
@@ -602,7 +602,7 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
     expect(screen.getByTestId("lab-dataset-blocked-demo")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Run evaluation/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Run evaluation|Evaluate selected model/i })).toBeDisabled();
   });
 
   it("disables Run when another active lab job exists", () => {
@@ -638,7 +638,7 @@ describe("LabEvaluationRunCard", () => {
         />
       </LabEvalHarness>,
     );
-    expect(screen.getByRole("button", { name: /Run evaluation/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Run evaluation|Evaluate selected model/i })).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent(/already running/i);
   });
 
@@ -666,7 +666,7 @@ describe("LabEvaluationRunCard", () => {
     );
     expect(screen.getByTestId("lab-eval-run-name")).toHaveValue("Regression May");
     expect(screen.getByTestId("lab-benchmark-dataset-select")).toHaveValue(llmDataset.id);
-    expect(screen.getByTestId("lab-benchmark-llm-models-llama:judge")).toBeChecked();
+    expect(screen.getByTestId("lab-benchmark-llm-model")).toHaveValue("llama:judge");
 
     first.unmount();
 
@@ -685,7 +685,7 @@ describe("LabEvaluationRunCard", () => {
     );
     expect(screen.getByTestId("lab-eval-run-name")).toHaveValue("Regression May");
     expect(screen.getByTestId("lab-benchmark-dataset-select")).toHaveValue(llmDataset.id);
-    expect(screen.getByTestId("lab-benchmark-llm-models-llama:judge")).toBeChecked();
+    expect(screen.getByTestId("lab-benchmark-llm-model")).toHaveValue("llama:judge");
   });
 
   it("restores RAG preset picks P0–P10 from localStorage and sanitizes P11–P14", () => {
@@ -903,15 +903,16 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
     expect(screen.getByTestId("lab-evaluation-draft-warnings")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Run evaluation/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Run evaluation|Evaluate selected model/i })).toBeDisabled();
   });
 
-  it("shows comparison button label and submits llmModelIds array when multiple models selected", async () => {
+  it("submits single llmModelId from catalog select for LLM judge evaluation", async () => {
     const user = userEvent.setup();
     localStorage.setItem(
       "lab:evaluation-draft:v1:LLM_JUDGE_QA",
       storedLlmDraft({
-        llmModelIds: ["llama:judge", "llama:fast", "llama:quality"],
+        llmModelId: "llama:judge",
+        llmModelIds: [],
         corpusId: "corpus-1111-1111-1111-111111111111",
       }),
     );
@@ -935,12 +936,10 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
 
-    expect(screen.getByRole("button", { name: /Compare selected models/i })).toBeInTheDocument();
-    expect(screen.getByTestId("lab-comparison-selection-hint")).toHaveTextContent(/Comparing 3 models/i);
+    expect(screen.getByTestId("lab-benchmark-llm-model")).toBeInTheDocument();
 
     await user.click(screen.getByTestId("lab-llm-run"));
 
-    expect(vi.mocked(apiFetch)).toHaveBeenCalled();
     const call = vi.mocked(apiFetch).mock.calls.find((c) => {
       const url = String(c[0] ?? "");
       const method = (c[1] as RequestInit | undefined)?.method ?? "GET";
@@ -948,17 +947,18 @@ describe("LabEvaluationRunCard", () => {
     });
     expect(call).toBeTruthy();
     const init = call?.[1] as RequestInit | undefined;
-    const body = JSON.parse(String(init?.body ?? "{}")) as { llmModelIds?: string[]; campaignName?: string };
-    expect(body.llmModelIds).toEqual(["llama:judge", "llama:fast", "llama:quality"]);
-    expect(body.campaignName).toBeTruthy();
+    const body = JSON.parse(String(init?.body ?? "{}")) as { llmModelId?: string; llmModelIds?: string[] };
+    expect(body.llmModelId).toBe("llama:judge");
+    expect(body.llmModelIds).toBeUndefined();
   });
 
-  it("shows evaluate-selected label and submits llmModelId for single checkbox selection", async () => {
+  it("shows evaluate-selected label and submits llmModelId for single model selection", async () => {
     const user = userEvent.setup();
     localStorage.setItem(
       "lab:evaluation-draft:v1:LLM_JUDGE_QA",
       storedLlmDraft({
-        llmModelIds: ["llama:judge"],
+        llmModelId: "llama:judge",
+        llmModelIds: [],
         corpusId: "corpus-1111-1111-1111-111111111111",
       }),
     );
@@ -1052,15 +1052,15 @@ describe("LabEvaluationRunCard", () => {
       localStorage.setItem(
         "lab:evaluation-draft:v1:EMBEDDING_RETRIEVAL",
         storedEmbeddingDraft({
-          embeddingModelIds: ["mxbai-embed-large:latest", "other:model"],
+          embeddingModelIds: ["hf-embed-a", "hf-embed-b"],
         }),
       );
       mockEvaluationCatalogs([], [
         {
-          modelName: "mxbai-embed-large:latest",
+          modelName: "hf-embed-a",
           evalSelectable: true,
           blockedReason: null,
-    blockedReasonCode: null,
+          blockedReasonCode: null,
           runtimeStatus: "AVAILABLE",
           embeddingDimensions: 1024,
           compatibleWithCurrentVectorStore: true,

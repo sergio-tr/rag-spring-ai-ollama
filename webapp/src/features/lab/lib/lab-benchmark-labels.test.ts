@@ -6,7 +6,7 @@ describe("lab-benchmark-labels product display", () => {
     expect(formatPresetDisplay("Demo_Best", "Demo_Best")).toBe("Production assistant configuration");
   });
 
-  it("formatPresetDisplay keeps P-code labels for evaluation rows", () => {
-    expect(formatPresetDisplay("P4", "Hybrid retrieval")).toBe("P4 — Hybrid retrieval");
+  it("formatPresetDisplay uses functional preset names without P-code prefix", () => {
+    expect(formatPresetDisplay("P4", "Hybrid retrieval")).toBe("Chunk retrieval with metadata");
   });
 });

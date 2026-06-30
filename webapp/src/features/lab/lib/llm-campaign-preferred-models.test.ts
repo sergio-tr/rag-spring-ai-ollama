@@ -6,11 +6,8 @@ import {
 } from "@/features/lab/lib/llm-campaign-preferred-models";
 
 describe("llm-campaign-preferred-models", () => {
-  it("flags missing preferred tags", () => {
-    expect(missingPreferredLlmModels(["llama3.1:8b"], LLM_CAMPAIGN_PREFERRED_MODEL_IDS)).toEqual([
-      "gemma3:4b",
-      "mistral:7b",
-    ]);
+  it("returns no missing preferred tags when legacy list is empty", () => {
+    expect(missingPreferredLlmModels(["llama3.1:8b"], LLM_CAMPAIGN_PREFERRED_MODEL_IDS)).toEqual([]);
   });
 
   it("reports READY for single-model runs", () => {

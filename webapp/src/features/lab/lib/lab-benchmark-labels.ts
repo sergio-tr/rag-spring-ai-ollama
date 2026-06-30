@@ -1,5 +1,5 @@
 import { formatBenchmarkKindLabel } from "@/lib/product-copy";
-import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
+import { productPresetLabel, toProductPresetDisplayName } from "@/lib/product-preset-labels";
 
 /** Normalized display labels for LAB benchmark results, exports, and comparison tables. */
 
@@ -60,11 +60,15 @@ export function formatPresetDisplay(
   if (/^demo_/i.test(code)) {
     return toProductPresetDisplayName(code);
   }
-  const label = (presetLabel ?? "").trim();
-  if (label && label !== code) {
-    return `${code} — ${label}`;
+  const functional = productPresetLabel(code);
+  if (functional && functional !== code) {
+    return functional;
   }
-  return code;
+  const label = (presetLabel ?? "").trim();
+  if (label && label !== code && !/^P\d+([_\s]|$)/i.test(label)) {
+    return label;
+  }
+  return functional || code;
 }
 
 export function formatGroupLabel(

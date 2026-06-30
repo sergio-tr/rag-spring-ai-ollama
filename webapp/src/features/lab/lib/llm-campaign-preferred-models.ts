@@ -1,11 +1,7 @@
-/** Canonical LAB LLM comparison tags (Flyway V61 allowlist). */
+/** @deprecated Legacy preferred model ids removed — Lab defaults come from evaluation catalog API. */
 import { isLabComparisonAvailabilityBlocked } from "@/features/lab/lib/lab-comparison-availability";
 
-export const LLM_CAMPAIGN_PREFERRED_MODEL_IDS = [
-  "llama3.1:8b",
-  "gemma3:4b",
-  "mistral:7b",
-] as const;
+export const LLM_CAMPAIGN_PREFERRED_MODEL_IDS = [] as const;
 
 export type LlmModelAvailabilityStatus = "READY" | "BLOCKED_BY_MODEL_AVAILABILITY";
 

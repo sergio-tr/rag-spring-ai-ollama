@@ -116,7 +116,7 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       allDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       datasetsFetched: true,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: ["P0", "P1"],
       presetsCatalogReady: true,
@@ -132,7 +132,7 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [],
       allDatasetRows: [],
       datasetsFetched: false,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: [],
       presetsCatalogReady: false,
@@ -149,7 +149,7 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [],
       allDatasetRows: [{ id: "d-other" } as ExperimentalDatasetListItemDto],
       datasetsFetched: true,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: [],
       presetsCatalogReady: false,
@@ -166,7 +166,7 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [{ id: "d2" } as ExperimentalDatasetListItemDto],
       allDatasetRows: [{ id: "d1" } as ExperimentalDatasetListItemDto],
       datasetsFetched: true,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: [],
       presetsCatalogReady: false,
@@ -274,12 +274,29 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       allDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       datasetsFetched: true,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: [],
       presetsCatalogReady: false,
     });
     expect(w.presetsUnknown).toEqual([]);
+  });
+
+  it("flags dataset warnings when catalog is empty", () => {
+    const draft = { ...defaultLabEvaluationDraft(), datasetId: "d-missing" };
+    const w = computeLabEvaluationDraftWarnings({
+      kind: "LLM_JUDGE_QA",
+      draft,
+      compatibleDatasetRows: [],
+      allDatasetRows: [{ id: "d-other" } as ExperimentalDatasetListItemDto],
+      datasetsFetched: true,
+      availableLlmModelIds: [],
+      availableEmbeddingModelIds: [],
+      catalogPresetCodes: [],
+      presetsCatalogReady: false,
+    });
+    expect(w.datasetDeletedOrUnknown).toBe(true);
+    expect(w.llmModelInvalid).toBe(false);
   });
 
   it("clearLabEvaluationDraftStorage removes persisted drafts", () => {
