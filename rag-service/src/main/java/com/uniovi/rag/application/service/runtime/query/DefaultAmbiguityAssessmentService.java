@@ -45,6 +45,20 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
             return new AmbiguityAssessment(AmbiguityStatus.MISSING_INFORMATION, reasons, missing);
         }
 
+        // memory-expanded planning input may carry ISO dates from structured anchors.
+        String effectiveLower = normalized.normalizedText().toLowerCase(Locale.ROOT);
+        boolean asksPresident =
+                effectiveLower.contains("presidente")
+                        || effectiveLower.contains("presidió")
+                        || effectiveLower.contains("presidio");
+        boolean asksWho = effectiveLower.contains("quién") || effectiveLower.contains("quien");
+        if (asksPresident
+                && asksWho
+                && ActaFieldAnchorHeuristics.hasExplicitDateInText(effectiveLower)
+                && !ActaFieldAnchorHeuristics.isCorpusWideAggregate(effectiveLower)) {
+            return AmbiguityAssessment.sufficient();
+        }
+
         // Conflict signal: classifier (when OK) vs rewrite targetAction (when present)
         Optional<String> targetAction = rewrite != null ? rewrite.targetAction() : Optional.empty();
         if (classifierStatus == ClassifierStatus.OK && cqt.isPresent()
@@ -75,10 +89,10 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
             return new AmbiguityAssessment(AmbiguityStatus.MISSING_INFORMATION, reasons, missing);
         }
 
-        boolean asksPresident =
-                q.contains("presidente") || q.contains("presidió") || q.contains("presidio") || q.contains("presidió");
-        boolean asksWho = q.contains("quién") || q.contains("quien");
-        if (asksPresident && asksWho && !hasTemporal && !ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)) {
+        boolean asksPresidentLate =
+                q.contains("presidente") || q.contains("presidió") || q.contains("presidio");
+        boolean asksWhoLate = q.contains("quién") || q.contains("quien");
+        if (asksPresidentLate && asksWhoLate && !hasTemporal && !ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)) {
             missing.add("time_reference");
             reasons.add("Missing date/meeting for president lookup");
             return new AmbiguityAssessment(AmbiguityStatus.MISSING_INFORMATION, reasons, missing);

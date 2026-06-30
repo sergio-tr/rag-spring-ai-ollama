@@ -17,10 +17,18 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionException;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Snapshot-bound PostgreSQL full-text search over {@code vector_store.content} (generated {@code content_tsv}).
@@ -28,6 +36,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class SparseRetrievalStrategy {
 
+    private static final Logger log = LoggerFactory.getLogger(SparseRetrievalStrategy.class);
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
     private final NamedParameterJdbcTemplate jdbc;
@@ -35,27 +44,82 @@ public class SparseRetrievalStrategy {
     private final SparseDomainSynonyms synonyms;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Boolean ilikeSupported;
+    private final TransactionTemplate transactionTemplate;
+    private final TransactionTemplate nestedTransactionTemplate;
+    private final boolean savepointsSupported;
 
     @Autowired
     public SparseRetrievalStrategy(
             NamedParameterJdbcTemplate jdbc,
             SparseQueryPreparer sparseQueryPreparer,
+            SparseDomainSynonyms synonyms,
+            PlatformTransactionManager transactionManager) {
+        this(
+                jdbc,
+                sparseQueryPreparer,
+                synonyms,
+                probeIlikeSupport(jdbc),
+                transactionManager,
+                probeSavepointSupport(transactionManager));
+    }
+
+    /** Explicit ILIKE probe override for unit/integration tests (no transaction savepoints). */
+    public SparseRetrievalStrategy(
+            NamedParameterJdbcTemplate jdbc,
+            SparseQueryPreparer sparseQueryPreparer,
+            SparseDomainSynonyms synonyms,
+            boolean ilikeSupported) {
+        this(jdbc, sparseQueryPreparer, synonyms, ilikeSupported, null, false);
+    }
+
+    /** Integration/tests without {@link PlatformTransactionManager} (savepoint isolation disabled). */
+    public SparseRetrievalStrategy(
+            NamedParameterJdbcTemplate jdbc,
+            SparseQueryPreparer sparseQueryPreparer,
             SparseDomainSynonyms synonyms) {
-        this.jdbc = jdbc;
-        this.sparseQueryPreparer = sparseQueryPreparer;
-        this.synonyms = synonyms;
-        this.ilikeSupported = probeIlikeSupport();
+        this(jdbc, sparseQueryPreparer, synonyms, probeIlikeSupport(jdbc), null, false);
     }
 
     SparseRetrievalStrategy(
             NamedParameterJdbcTemplate jdbc,
             SparseQueryPreparer sparseQueryPreparer,
             SparseDomainSynonyms synonyms,
-            boolean ilikeSupported) {
+            boolean ilikeSupported,
+            PlatformTransactionManager transactionManager) {
+        this(
+                jdbc,
+                sparseQueryPreparer,
+                synonyms,
+                ilikeSupported,
+                transactionManager,
+                probeSavepointSupport(transactionManager));
+    }
+
+    SparseRetrievalStrategy(
+            NamedParameterJdbcTemplate jdbc,
+            SparseQueryPreparer sparseQueryPreparer,
+            SparseDomainSynonyms synonyms,
+            boolean ilikeSupported,
+            PlatformTransactionManager transactionManager,
+            boolean savepointsSupported) {
         this.jdbc = jdbc;
         this.sparseQueryPreparer = sparseQueryPreparer;
         this.synonyms = synonyms;
         this.ilikeSupported = ilikeSupported;
+        this.savepointsSupported = transactionManager != null && savepointsSupported;
+        this.transactionTemplate =
+                transactionManager != null ? new TransactionTemplate(transactionManager) : null;
+        if (transactionManager != null) {
+            this.nestedTransactionTemplate = new TransactionTemplate(transactionManager);
+            nestedTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        } else {
+            this.nestedTransactionTemplate = null;
+        }
+        if (transactionManager != null && !this.savepointsSupported) {
+            log.warn(
+                    "JPA dialect does not support savepoints — sparse retrieval SQL runs in REQUIRES_NEW"
+                            + " transactions with controlled fallback (dense/metadata retrieval continues)");
+        }
     }
 
     public List<RetrievalCandidate> retrieve(RetrievalRequest req) {
@@ -81,7 +145,12 @@ public class SparseRetrievalStrategy {
             List<RetrievalCandidate> hits;
             try {
                 hits = executeStage(req, stage);
-            } catch (Exception ignored) {
+            } catch (Exception ex) {
+                log.warn(
+                        "Sparse retrieval stage {} failed (query='{}'): {}",
+                        stage.stage(),
+                        truncateForLog(stage.queryText(), 120),
+                        ex.getMessage());
                 continue;
             }
             for (RetrievalCandidate c : hits) {
@@ -235,8 +304,13 @@ public class SparseRetrievalStrategy {
     }
 
     private List<RetrievalCandidate> executeStage(RetrievalRequest req, StageAttempt stage) throws Exception {
-        String queryText = stage.queryText();
+        boolean orMode = stage.tsQueryMode() == TsQueryMode.OR_TSQUERY;
+        String queryText = SparseTsQuerySanitizer.sanitizeStageQuery(stage.queryText(), orMode);
         if (queryText == null || queryText.isBlank()) {
+            log.debug(
+                    "Skipping sparse stage {} — query empty or invalid after sanitization (raw='{}')",
+                    stage.stage(),
+                    truncateForLog(stage.queryText(), 120));
             return List.of();
         }
 
@@ -257,14 +331,14 @@ public class SparseRetrievalStrategy {
         }
         sql.append(" ORDER BY rank DESC NULLS LAST LIMIT :limit ");
 
-        List<RetrievalCandidate> rows = executeQuery(sql.toString(), p);
+        List<RetrievalCandidate> rows = executeQueryIsolated(sql.toString(), p);
         if (rows.isEmpty() && stage.usePlaintoFallback()) {
             StringBuilder fallbackSql = new StringBuilder(buildSelectClause("plainto_tsquery('simple', :query)"));
             if (!appendDocumentAllowlist(fallbackSql, req, p)) {
                 return List.of();
             }
             fallbackSql.append(" ORDER BY rank DESC NULLS LAST LIMIT :limit ");
-            rows = executeQuery(fallbackSql.toString(), p);
+            rows = executeQueryIsolated(fallbackSql.toString(), p);
         }
         return rows;
     }
@@ -321,7 +395,7 @@ public class SparseRetrievalStrategy {
             return List.of();
         }
         sql.append(" LIMIT :limit ");
-        return executeQuery(sql.toString(), p);
+        return executeQueryIsolated(sql.toString(), p);
     }
 
     private String buildSelectClause(String tsqueryExpr) {
@@ -364,6 +438,77 @@ public class SparseRetrievalStrategy {
                  )
                 """);
         return true;
+    }
+
+    private List<RetrievalCandidate> executeQueryIsolated(String sql, MapSqlParameterSource p) {
+        if (transactionTemplate == null) {
+            return executeQuery(sql, p);
+        }
+        if (!savepointsSupported) {
+            return executeQueryInNestedTransaction(sql, p);
+        }
+        return transactionTemplate.execute(
+                status -> {
+                    try {
+                        Object savepoint = status.createSavepoint();
+                        try {
+                            List<RetrievalCandidate> rows = executeQuery(sql, p);
+                            status.releaseSavepoint(savepoint);
+                            return rows;
+                        } catch (DataAccessException ex) {
+                            status.rollbackToSavepoint(savepoint);
+                            status.releaseSavepoint(savepoint);
+                            throw ex;
+                        }
+                    } catch (TransactionException ex) {
+                        log.warn(
+                                "Sparse retrieval savepoint failed — falling back to nested transaction: {}",
+                                ex.getMessage());
+                        return executeQueryInNestedTransaction(sql, p);
+                    }
+                });
+    }
+
+    /**
+     * Runs sparse SQL in a separate transaction so failures do not mark the chat transaction
+     * rollback-only when JPA savepoints are unavailable.
+     */
+    private List<RetrievalCandidate> executeQueryInNestedTransaction(String sql, MapSqlParameterSource p) {
+        if (nestedTransactionTemplate == null) {
+            return executeQuery(sql, p);
+        }
+        return nestedTransactionTemplate.execute(
+                status -> {
+                    try {
+                        return executeQuery(sql, p);
+                    } catch (DataAccessException ex) {
+                        status.setRollbackOnly();
+                        throw ex;
+                    }
+                });
+    }
+
+    private static boolean probeSavepointSupport(PlatformTransactionManager transactionManager) {
+        if (transactionManager == null) {
+            return false;
+        }
+        TransactionTemplate probe = new TransactionTemplate(transactionManager);
+        try {
+            Boolean supported =
+                    probe.execute(
+                            status -> {
+                                try {
+                                    Object savepoint = status.createSavepoint();
+                                    status.releaseSavepoint(savepoint);
+                                    return true;
+                                } catch (TransactionException ex) {
+                                    return false;
+                                }
+                            });
+            return Boolean.TRUE.equals(supported);
+        } catch (Exception ex) {
+            return false;
+        }
     }
 
     private List<RetrievalCandidate> executeQuery(String sql, MapSqlParameterSource p) {
@@ -414,7 +559,7 @@ public class SparseRetrievalStrategy {
         }
     }
 
-    private Boolean probeIlikeSupport() {
+    private static Boolean probeIlikeSupport(NamedParameterJdbcTemplate jdbc) {
         try {
             Integer one = jdbc.getJdbcOperations().queryForObject("SELECT 1", Integer.class);
             return one != null && one == 1;
@@ -449,16 +594,17 @@ public class SparseRetrievalStrategy {
     }
 
     private static String joinOrTerms(List<String> terms) {
-        return terms.stream()
-                .filter(t -> t != null && !t.isBlank())
-                .map(String::trim)
-                .map(SparseRetrievalStrategy::sanitizeOrTerm)
-                .filter(t -> !t.isBlank())
-                .collect(Collectors.joining(" | "));
+        return SparseTsQuerySanitizer.joinOrTerms(terms);
     }
 
-    private static String sanitizeOrTerm(String term) {
-        return term.replace("'", "''").replaceAll("\\s+", " & ");
+    private static String truncateForLog(String value, int max) {
+        if (value == null) {
+            return "";
+        }
+        if (value.length() <= max) {
+            return value;
+        }
+        return value.substring(0, max) + "...";
     }
 
     private static List<String> splitOrTerms(String orJoined) {

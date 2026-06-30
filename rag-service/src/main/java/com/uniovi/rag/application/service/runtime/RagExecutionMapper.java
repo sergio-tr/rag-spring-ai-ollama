@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.result.chat.QueryResponse;
+import com.uniovi.rag.application.service.runtime.memory.ConversationMemoryAnchorMetadata;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import java.util.LinkedHashMap;
@@ -17,6 +18,7 @@ public final class RagExecutionMapper {
         Map<String, Object> telemetry = new LinkedHashMap<>(ChatExecutionTelemetryMapper.fromTrace(result.executionTrace()));
         List<Map<String, Object>> sources = result.responseSources();
         ChatExecutionTelemetryMapper.enrichRetrievedIdentifiersFromSources(telemetry, sources);
+        ConversationMemoryAnchorMetadata.enrichGroundedAnchor(telemetry, sources);
         if (result.usedTool()) {
             return QueryResponse.fromToolWithSources(
                     result.answerText(),

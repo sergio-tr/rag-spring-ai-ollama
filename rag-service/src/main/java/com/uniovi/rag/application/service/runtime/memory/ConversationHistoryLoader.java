@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -48,7 +49,14 @@ public class ConversationHistoryLoader {
             if (role != MessageRole.USER && role != MessageRole.ASSISTANT) {
                 continue;
             }
-            out.add(new ConversationMemoryTurn(m.getId(), m.getSeq(), role, m.getContent()));
+            Map<String, Object> meta = m.getExecutionMetadata();
+            out.add(
+                    new ConversationMemoryTurn(
+                            m.getId(),
+                            m.getSeq(),
+                            role,
+                            m.getContent(),
+                            meta != null ? meta : Map.of()));
         }
         return List.copyOf(out);
     }

@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.runtime.query.guard;
 import org.json.JSONObject;
 
 import com.uniovi.rag.infrastructure.observability.Loggable;
+import com.uniovi.rag.util.NerDateFieldSupport;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -60,16 +61,10 @@ public class QueryDateExtractor implements Loggable {
         if (ner == null || !ner.has("date")) {
             return;
         }
-        try {
-            var arr = ner.getJSONArray("date");
-            for (int i = 0; i < arr.length(); i++) {
-                String s = arr.optString(i, "").trim();
-                if (!s.isBlank()) {
-                    out.add(s);
-                }
+        for (String s : NerDateFieldSupport.readDateStrings(ner)) {
+            if (!s.isBlank()) {
+                out.add(s);
             }
-        } catch (Exception e) {
-            log().warn("Error extracting dates from NER: {}", e.getMessage());
         }
     }
 

@@ -57,6 +57,27 @@ public final class ClassifierOverrides {
             return QueryType.COUNT_DOCUMENTS;
         }
 
+        if ((q.contains("quién fue") || q.contains("quien fue") || q.contains("y quién") || q.contains("y quien"))
+                && (q.contains("secretari") || q.contains("presidente") || q.contains("presidenta"))) {
+            return QueryType.GET_FIELD;
+        }
+
+        if ((q.contains("what do you know about") || q.contains("tell me about"))
+                && !countCue) {
+            return QueryType.FIND_PARAGRAPH;
+        }
+
+        if ((q.contains("dates of the minutes") || q.contains("dates of the minute"))
+                && (q.contains("elevator") || q.contains("lift"))) {
+            return QueryType.FILTER_AND_LIST;
+        }
+
+        if (q.contains("hora")
+                && (q.contains("empez") || q.contains("comenz") || q.contains("termin") || q.contains("finaliz"))
+                && (actaContext || dated || q.contains("esa acta"))) {
+            return QueryType.GET_FIELD;
+        }
+
         if (q.contains("qué secciones comparten")
                 || q.contains("que secciones comparten")
                 || q.contains("qué secciones comunes")
@@ -204,6 +225,9 @@ public final class ClassifierOverrides {
 
         if (actaContext && dated && !countCue) {
             if (q.contains("presidente") || q.contains("presidió") || q.contains("presidio")) {
+                return QueryType.GET_FIELD;
+            }
+            if (q.contains("secretari")) {
                 return QueryType.GET_FIELD;
             }
             if (q.contains("participantes")

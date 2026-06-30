@@ -93,6 +93,32 @@ public class ConversationMemoryStrategy {
                     stages);
         }
 
+        Optional<String> deterministicExpand =
+                ConversationFollowUpResolver.expand(eligible, ctx.userQuery());
+        if (deterministicExpand.isPresent() && !deterministicExpand.get().isBlank()) {
+            ConversationMemorySlice slice = selector.selectSlice(eligible, decision);
+            stages.add(
+                    new ExecutionStageTrace(
+                            "memory_follow_up_expand",
+                            0L,
+                            ExecutionStageOutcome.SUCCESS,
+                            "status=DETERMINISTIC"));
+            stages.add(
+                    new ExecutionStageTrace(
+                            "memory_finalize_planning_input",
+                            0L,
+                            ExecutionStageOutcome.SUCCESS,
+                            "final_source=deterministic_follow_up"));
+            return new ConversationMemoryExecutionResult(
+                    ConversationMemoryOutcome.MEMORY_APPLIED,
+                    Optional.of(slice),
+                    false,
+                    false,
+                    false,
+                    deterministicExpand.get(),
+                    stages);
+        }
+
         ConversationMemorySlice slice = selector.selectSlice(eligible, decision);
         stages.add(new ExecutionStageTrace(
                 "memory_select_slice",
@@ -113,31 +139,6 @@ public class ConversationMemoryStrategy {
                     false,
                     false,
                     preMemoryPlanningInputText,
-                    stages);
-        }
-
-        Optional<String> deterministicExpand =
-                ConversationFollowUpResolver.expand(eligible, ctx.userQuery());
-        if (deterministicExpand.isPresent() && !deterministicExpand.get().isBlank()) {
-            stages.add(
-                    new ExecutionStageTrace(
-                            "memory_follow_up_expand",
-                            0L,
-                            ExecutionStageOutcome.SUCCESS,
-                            "status=DETERMINISTIC"));
-            stages.add(
-                    new ExecutionStageTrace(
-                            "memory_finalize_planning_input",
-                            0L,
-                            ExecutionStageOutcome.SUCCESS,
-                            "final_source=deterministic_follow_up"));
-            return new ConversationMemoryExecutionResult(
-                    ConversationMemoryOutcome.MEMORY_APPLIED,
-                    Optional.of(slice),
-                    false,
-                    false,
-                    false,
-                    deterministicExpand.get(),
                     stages);
         }
 

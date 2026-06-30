@@ -25,4 +25,13 @@ public enum ClarificationQuestionKind {
                     "I need one more detail to answer correctly. What specific item should I use?";
         };
     }
+
+    /** All frozen clarification templates for prompt bundle fingerprinting. */
+    public static String fingerprintMaterial() {
+        StringBuilder sb = new StringBuilder();
+        for (ClarificationQuestionKind kind : values()) {
+            sb.append(kind.name()).append('=').append(kind.templateText()).append('\n');
+        }
+        return sb.toString();
+    }
 }

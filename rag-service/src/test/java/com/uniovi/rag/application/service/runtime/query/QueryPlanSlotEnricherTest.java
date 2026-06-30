@@ -10,6 +10,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 class QueryPlanSlotEnricherTest {
 
     @Test
+    void fillsStartTimeFieldForStartEndActaQuery() {
+        assertThat(
+                        QueryPlanSlotEnricher.inferFieldSlot(
+                                "a qué hora empezó y a qué hora terminó esa acta? en el acta del 24 de febrero de 2025"))
+                .contains("startEndTime");
+    }
+
+    @Test
     void fillsAttendeesFieldForParticipantsQuery() {
         Map<String, String> slots =
                 QueryPlanSlotEnricher.enrich(

@@ -47,7 +47,7 @@ public class ConversationRecallGuard {
      */
     public boolean shouldShortCircuitAmbiguousActaQuery(ExecutionContext ctx) {
         Objects.requireNonNull(ctx, "ctx");
-        String query = ctx.userQuery();
+        String query = effectiveQueryForActaGuard(ctx);
         if (query == null || query.isBlank()) {
             return false;
         }
@@ -158,13 +158,19 @@ public class ConversationRecallGuard {
         boolean actaMeetingField =
                 participants
                         || q.contains("presidente")
+                        || q.contains("presidenta")
                         || q.contains("secretari")
                         || q.contains("duración")
                         || q.contains("duracion")
+                        || q.contains("lugar")
+                        || q.contains("temas")
+                        || q.contains("acuerdos")
+                        || q.contains("acuerdo")
                         || q.contains("orden del día")
                         || q.contains("orden del dia")
                         || demonstrativeFollowUp
-                        || (q.contains("los participantes") && !hasExplicitDateInText(q));
+                        || (q.contains("los participantes") && !hasExplicitDateInText(q))
+                        || ConversationFollowUpResolver.isActaStructuredFieldFollowUp(q);
         boolean asksPresident =
                 q.contains("presidente") || q.contains("presidió") || q.contains("presidio");
         boolean asksWho = q.contains("quién") || q.contains("quien");
@@ -174,26 +180,32 @@ public class ConversationRecallGuard {
         return countParticipants
                 || pronounFollowUp
                 || demonstrativeFollowUp
+                || ConversationFollowUpResolver.requiresUniqueAnchorDate(q)
                 || (actaMeetingField && (participants || q.contains("presidente")));
     }
 
     private boolean hasLocalConversationActaAnchor(ExecutionContext ctx) {
-        if (hasExplicitDateInText(ctx.userQuery())) {
+        String effective = effectiveQueryForActaGuard(ctx);
+        if (hasExplicitDateInText(effective)) {
             return true;
-        }
-        ConversationMemoryOutcome outcome = ctx.memoryOutcome();
-        if (outcome == ConversationMemoryOutcome.MEMORY_APPLIED
-                || outcome == ConversationMemoryOutcome.CONDENSE_FAILED_FALLBACK) {
-            String effective = ctx.effectivePlanningInputText();
-            if (effective != null && hasExplicitDateInText(effective)) {
-                return true;
-            }
         }
         List<ConversationMemoryTurn> history = historyLoader.loadEligibleHistory(ctx);
-        if (history.size() >= 2 && ConversationFollowUpResolver.findMostRecentDate(history).isPresent()) {
-            return true;
+        if (history.isEmpty()) {
+            return false;
         }
-        return false;
+        String lower = effective != null ? effective.toLowerCase(Locale.ROOT) : "";
+        if (ConversationFollowUpResolver.requiresUniqueAnchorDate(lower)) {
+            return ConversationFollowUpResolver.findUniqueAnchorDate(history).isPresent();
+        }
+        return ConversationFollowUpResolver.findMostRecentDate(history).isPresent();
+    }
+
+    static String effectiveQueryForActaGuard(ExecutionContext ctx) {
+        String effective = ctx.effectivePlanningInputText();
+        if (effective != null && !effective.isBlank()) {
+            return effective;
+        }
+        return ctx.userQuery();
     }
 
     private static boolean isCorpusWideAggregate(String q) {

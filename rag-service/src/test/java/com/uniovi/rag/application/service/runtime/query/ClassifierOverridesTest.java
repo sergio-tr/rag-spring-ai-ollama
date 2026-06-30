@@ -9,6 +9,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ClassifierOverridesTest {
 
     @Test
+    void actaStartEndTimeMapsToGetField() {
+        assertEquals(
+                QueryType.GET_FIELD,
+                ClassifierOverrides.apply(
+                        "a qué hora empezó y a qué hora terminó esa acta? en el acta del 24 de febrero de 2025",
+                        QueryType.SUMMARIZE_MEETING));
+    }
+
+    @Test
+    void englishPersonLookupMapsToFindParagraph() {
+        assertEquals(
+                QueryType.FIND_PARAGRAPH,
+                ClassifierOverrides.apply(
+                        "what do you know about Luis Ramírez Ortega?",
+                        QueryType.COUNT_DOCUMENTS));
+    }
+
+    @Test
+    void secretaryFollowUpMapsToGetField() {
+        assertEquals(
+                QueryType.GET_FIELD,
+                ClassifierOverrides.apply(
+                        "y quién fue la secretaria? en el acta del 24 de febrero de 2025",
+                        QueryType.COUNT_DOCUMENTS));
+    }
+
+    @Test
     void presencePhrasesMapToBooleanQuery() {
         assertEquals(QueryType.BOOLEAN_QUERY, ClassifierOverrides.apply("confirma si aparece X", QueryType.SUMMARIZE_MEETING));
     }

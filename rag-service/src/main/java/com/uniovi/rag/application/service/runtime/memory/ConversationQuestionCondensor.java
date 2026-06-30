@@ -19,9 +19,12 @@ import java.util.Optional;
 public class ConversationQuestionCondensor {
 
     private final ChatClient chatClient;
+    private final ChatGenerationModelSelector chatGenerationModelSelector;
 
-    public ConversationQuestionCondensor(ChatClient chatClient) {
+    public ConversationQuestionCondensor(
+            ChatClient chatClient, ChatGenerationModelSelector chatGenerationModelSelector) {
         this.chatClient = chatClient;
+        this.chatGenerationModelSelector = chatGenerationModelSelector;
     }
 
     public String condense(
@@ -40,18 +43,11 @@ public class ConversationQuestionCondensor {
 
         String prompt = buildUserPrompt(slice, literalLatestUserTurn, preMemoryPlanningInputText);
         var spec = chatClient.prompt()
-                .system("""
-                        You are a deterministic query condenser for a multi-turn conversation.
-                        Output ONLY a single plain text planning query. No markdown. No quotes.
-                        Do not invent facts. Use only the provided history and the latest user turn.
-                        When the latest turn uses demonstratives (esa reunión, ese acta, esa fecha),
-                        expand them with the most recent meeting date or acta reference from HISTORY.
-                        When the latest turn asks who presided, include the anchored acta date from HISTORY.
-                        """)
+                .system(ConversationCondensePromptSources.SYSTEM_PROMPT)
                 .user(prompt);
 
         OllamaOptions.Builder opt = OllamaOptions.builder().temperature(0.0);
-        ChatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(opt::model);
+        chatGenerationModelSelector.effectiveChatModelId(ctx).ifPresent(opt::model);
         spec = spec.options(opt.build());
 
         String out = spec.call().content();
@@ -67,19 +63,8 @@ public class ConversationQuestionCondensor {
             history.append(t.role().name()).append(": ").append(t.content() == null ? "" : t.content()).append("\n");
         }
 
-        return """
-                HISTORY (ordered oldest to newest, bounded):
-                %s
-
-                LATEST_USER_TURN (literal):
-                %s
-
-                PRE_MEMORY_PLANNING_INPUT (from clarification stage):
-                %s
-
-                TASK:
-                Return one condensed planning query suitable for query understanding and downstream execution.
-                """.formatted(history.toString().trim(), safe(literalLatestUserTurn), safe(preMemoryPlanningInputText));
+        return ConversationCondensePromptSources.USER_PROMPT_WRAPPER.formatted(
+                history.toString().trim(), safe(literalLatestUserTurn), safe(preMemoryPlanningInputText));
     }
 
     private static String safe(String s) {
