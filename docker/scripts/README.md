@@ -115,7 +115,7 @@ Entry point: [`docker-compose.sh`](docker-compose.sh). Shortcuts: [`up.sh`](up.s
 
 ```bash
 ./docker/scripts/docker-compose.sh config prod --obs --no-env-prompt
-./docker/scripts/docker-compose.sh config prod --server --obs --obs-private --no-env-prompt
+./docker/scripts/docker-compose.sh config prod --obs --obs-private --no-env-prompt
 ./docker/scripts/docker-compose.sh config prod --obs --ollama --no-env-prompt
 ./docker/scripts/docker-compose.sh config dev --rag --obs --no-env-prompt
 ./docker/scripts/docker-compose.sh config dev --rag --proxy --mail --no-env-prompt
@@ -154,7 +154,7 @@ Env setup runs **before** `compose up`, not before `dev --down`.
 
 **Compose layout:** `docker-compose.yml` (core + optional services behind **profiles**: `observability`, `logs`, `infra`, `ollama`, `dev-mail`, `cadvisor`, and **`rag`** for `backend-dev`). Overlays: `compose.dev.yml` (includes webapp ordering for `--rag`), `compose.dev-direct-ports.yml` (`--rag` without `--proxy`), `compose.dev-proxy.yml` (`--rag --proxy`, adds **`--profile proxy`**), `compose.dev-mail.yml` / `compose.prod-mail.yml` (`--mail`, SMTP + auth flags for Docker backends), `compose.obs.yml` (Spring OTLP for `backend` / `classifier-service`), `compose.gpu.yml`, `compose.rag-dev-obs.yml` (`--rag --obs`), `compose.prod.yml`, and `compose.prod-obs.yml` only with `prod --obs --obs-private`. Ollama HTTP URL is always from **`rag-service/.env`**; **`--ollama-remote`** only affects whether the **`ollama`** profile is started together with **`--gpu`/`--ollama`**.
 
-**Flags**: `dev`: `--all`, `--gpu`, `--ollama`, `--obs`, `--classifier`, `--logs`, `--infra`, **`--mail`**, `--rag`, **`--proxy`**, `--down`, `--volumes`. `prod`: **`--server`** (university production VM — `compose.prod-server.yml`, no Mailpit, remote LiteLLM), `--all`, `--obs`, `--obs-private`, `--gpu`, `--ollama`, `--logs`, `--infra`, **`--mail`** (nginx always). **`down.sh`**: same flags as `up` for `dev` or `prod`. For **`down dev`** / **`build dev`**, pass the **same** flags as `up dev` (including `--rag`, **`--proxy`**, `--mail`, `--all`).
+**Flags**: `dev`: `--all`, `--gpu`, `--ollama`, `--obs`, `--classifier`, `--logs`, `--infra`, **`--mail`**, `--rag`, **`--proxy`**, `--down`, `--volumes`. `prod`: `--all`, `--obs`, `--obs-private`, `--gpu`, `--ollama`, `--logs`, `--infra`, **`--mail`** (nginx always). **`down.sh`**: same flags as `up` for `dev` or `prod`. For **`down dev`** / **`build dev`**, pass the **same** flags as `up dev` (including `--rag`, **`--proxy`**, `--mail`, `--all`).
 
 **Auth email with `--mail`:** set **`RAG_AUTH_WEBAPP_BASE_URL`** in `rag-service/.env` to the URL users open in the browser (e.g. `http://127.0.0.1` with **`--proxy`**, or `http://127.0.0.1:3000` for `npm run dev`). **`RAG_AUTH_MAIL_FROM`** must be non-empty (default `no-reply@local.test` is fine for Mailpit).
 
