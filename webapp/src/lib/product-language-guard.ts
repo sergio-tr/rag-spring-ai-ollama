@@ -12,7 +12,6 @@ export type ProductLanguageViolation = {
 };
 
 const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx)$/;
-const SOURCE_SCAN_EXTENSIONS = new Set([".ts", ".tsx"]);
 
 /** Mapping / sanitization modules may reference internal preset ids in string literals. */
 const SOURCE_SCAN_SKIP_RELATIVE = new Set([
@@ -105,7 +104,7 @@ export function stripMarkdownCodeFences(markdown: string): string {
 export function scanMarkdownProse(relativePath: string, markdown: string): ProductLanguageViolation[] {
   const prose = stripMarkdownCodeFences(markdown);
   const violations = findForbiddenInText(prose, {
-    lineFilter: (line, _lineNo, match, patternId) => {
+    lineFilter: (line, _lineNo, match) => {
       if (isAllowedMarkdownPolicyLine(line, match)) {
         return false;
       }

@@ -385,7 +385,6 @@
     "flowRagBody": "Compara presets RAG con tu workbook de evaluación. Algunos presets requieren Chat multi-turno y no pueden ejecutarse en este benchmark.",
     "flowRagDataset": "Libro de presets RAG o datos de referencia integrados.",
     "flowRagOutput": "Resultados por preset como completados, omitidos o fallidos al terminar una ejecución.",
-
     "guidedStepsTitle": "Pasos guiados",
     "guidedStepDatasetTitle": "Dataset",
     "guidedStepDatasetHint": "Usa el bundle de referencia si existe, o sube un workbook experimental y confirma la validación.",
@@ -405,7 +404,6 @@
     "guidedStepAuthHint": "Esta página requiere una sesión iniciada. Si ves un error de permisos, vuelve a iniciar sesión e inténtalo de nuevo.",
     "guidedStepExportTitle": "Export",
     "guidedStepExportHint": "Exporta CSV y bundles JSON desde el panel de resultados.",
-
     "llmBaselineIntro": "Compara modelos LLM con una configuración de generación controlada sobre un dataset de preguntas/respuestas.",
     "llmEvalEmptyHint": "Sube un libro baseline LLM o usa el bundle de referencia, luego selecciona uno o más modelos de chat para comparar.",
     "embeddingBaselineIntro": "Compara modelos de embeddings midiendo qué chunks recuperan para consultas etiquetadas.",
@@ -868,7 +866,7 @@
     "jobQueued": "Trabajo aceptado — esperando al worker…",
     "jobProgress": "Registro de progreso",
     "jobProgressDetails": "Registro detallado de progreso",
-    "jobSubtasksTitle": "Pasos",
+    "jobSubtasksTitle": "Subtareas",
     "jobCancel": "Pausar actualizaciones",
     "jobStopEvaluation": "Detener evaluación",
     "jobCancelling": "Deteniendo…",
@@ -876,10 +874,8 @@
     "jobStopConfirmDescription": "El job {jobId} se detendrá tras el paso actual. Los resultados parciales seguirán disponibles.",
     "jobStopConfirmDescriptionGeneric": "La evaluación se detendrá tras el paso actual. Los resultados parciales seguirán disponibles.",
     "jobStopConfirmDismiss": "Seguir ejecutando",
-    "jobCancelled":
-      "Actualizaciones en vivo pausadas — la evaluación puede seguir ejecutándose. Pulsa Reanudar seguimiento o vuelve a ejecutar.",
-    "jobPollTimeout":
-      "Actualizaciones en vivo pausadas tras una espera larga — el trabajo puede seguir en el servidor. Pulsa Reanudar seguimiento o revisa Actividad.",
+    "jobCancelled": "Actualizaciones en vivo pausadas — la evaluación puede seguir ejecutándose. Pulsa Reanudar seguimiento o vuelve a ejecutar.",
+    "jobPollTimeout": "Actualizaciones en vivo pausadas tras una espera larga — el trabajo puede seguir en el servidor. Pulsa Reanudar seguimiento o revisa Actividad.",
     "jobResumeWatching": "Reanudar seguimiento",
     "jobElapsedWatching": "Seguimiento… {sec}s",
     "jobIdLabel": "Id del trabajo",
@@ -914,7 +910,6 @@
     "jobUiUnknownRunning": "En curso…",
     "jobUiStreamConfigurationError": "Error de configuración del stream en vivo",
     "jobTechnicalDetails": "Detalles técnicos",
-    "jobSubtasksTitle": "Subtareas",
     "jobProgressCurrentPhase": "Fase actual: {phase}",
     "jobProgressPhaseAccepted": "Aceptado",
     "jobProgressPhaseDataset": "Dataset",
@@ -952,8 +947,7 @@
     "jobRecoveryDismiss": "Cerrar",
     "jobRecoveryForget": "Dejar de seguir",
     "jobRecoverySessionExpired": "Tu sesión ha caducado. Vuelve a iniciar sesión y usa Reanudar seguimiento o abre de nuevo esta sección para recuperar la evaluación.",
-    "backgroundJobBannerLabel":
-      "El trabajo de lab {jobId} puede seguir en ejecución — las actualizaciones en vivo están pausadas en esta sesión del navegador. Abre la sección del Lab y usa Reanudar seguimiento si aparece, o relanza la operación.",
+    "backgroundJobBannerLabel": "El trabajo de lab {jobId} puede seguir en ejecución — las actualizaciones en vivo están pausadas en esta sesión del navegador. Abre la sección del Lab y usa Reanudar seguimiento si aparece, o relanza la operación.",
     "backgroundJobBannerDismiss": "Cerrar",
     "registryTitle": "Modelos registrados",
     "registryDescription": "Modelos guardados tras un entrenamiento correcto. Activa uno para el proyecto actual para asociarlo explícitamente a ese espacio de trabajo.",
@@ -1228,8 +1222,6 @@
     "presetGroupProduct": "Presets de producto",
     "presetGroupExperimental": "Presets experimentales",
     "presetExperimentalBadge": "Experimental",
-    "presetDisplay.P15": "Composición integrada single-turn",
-    "presetDisplay.P15Description": "Recuperación híbrida, function calling en backend y composición de ruta adaptativa.",
     "presetExperimentalHint": "Presets experimentales del catálogo. Los marcados como NOT_SUPPORTED se muestran pero están deshabilitados en este entorno.",
     "presetExperimentalEmpty": "El catálogo de presets experimentales está vacío.",
     "presetsExperimentalLoadError": "No se pudo cargar el catálogo experimental de presets.",
@@ -1343,7 +1335,11 @@
     "traceAssistantStarted": "El asistente empezó a procesar",
     "traceAssistantCompleted": "Respuesta del asistente recibida",
     "traceAssistantFailed": "Fallo del asistente",
-    "traceMessageSubmitFailed": "No se pudo contactar al servidor para este mensaje"
+    "traceMessageSubmitFailed": "No se pudo contactar al servidor para este mensaje",
+    "presetDisplay": {
+      "P15": "Composición integrada single-turn",
+      "P15Description": "Recuperación híbrida, function calling en backend y composición de ruta adaptativa."
+    }
   },
   "Documents": {
     "title": "Documentos",

@@ -75,18 +75,20 @@ export function useLabEvaluationDraft(
     if (validation.availableLlmModelIds.length === 0 && validation.availableEmbeddingModelIds.length === 0) {
       return;
     }
-    setDraft((prev) => {
-      const migrated = migrateLabDraftModelsFromCatalog(
-        prev,
-        validation.availableLlmModelIds,
-        validation.availableEmbeddingModelIds,
-      );
-      const changed =
-        migrated.llmModelId !== prev.llmModelId ||
-        migrated.embeddingModelId !== prev.embeddingModelId ||
-        migrated.llmModelIds.join("|") !== prev.llmModelIds.join("|") ||
-        migrated.embeddingModelIds.join("|") !== prev.embeddingModelIds.join("|");
-      return changed ? migrated : prev;
+    queueMicrotask(() => {
+      setDraft((prev) => {
+        const migrated = migrateLabDraftModelsFromCatalog(
+          prev,
+          validation.availableLlmModelIds,
+          validation.availableEmbeddingModelIds,
+        );
+        const changed =
+          migrated.llmModelId !== prev.llmModelId ||
+          migrated.embeddingModelId !== prev.embeddingModelId ||
+          migrated.llmModelIds.join("|") !== prev.llmModelIds.join("|") ||
+          migrated.embeddingModelIds.join("|") !== prev.embeddingModelIds.join("|");
+        return changed ? migrated : prev;
+      });
     });
   }, [validation.availableLlmModelIds, validation.availableEmbeddingModelIds]);
 

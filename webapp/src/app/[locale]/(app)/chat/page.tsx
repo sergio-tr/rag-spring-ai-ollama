@@ -379,7 +379,7 @@ function ChatPageInner() {
     const resolved = resolveInitialConversationId(convs, projectId, null);
     if (!resolved) return;
     lastConversationRestoreKeyRef.current = attemptKey;
-    selectConversation(resolved);
+    queueMicrotask(() => selectConversation(resolved));
   }, [projectId, convs, urlConversationId, conversationId, selectConversation]);
 
   // Runtime state is the authoritative steady-state validation source.
@@ -738,7 +738,15 @@ function ChatPageInner() {
         setStreaming(false);
       }
     },
-    [refetchMessages, resetStreaming, setLastDone, setStreaming, setStreamingText, t],
+    [
+      refetchMessages,
+      resetStreaming,
+      selectableLlmModelsResponse,
+      setLastDone,
+      setStreaming,
+      setStreamingText,
+      t,
+    ],
   );
 
   const send = useCallback(async () => {

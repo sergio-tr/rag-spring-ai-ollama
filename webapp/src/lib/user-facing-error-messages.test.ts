@@ -3,6 +3,7 @@ import {
   extractTechnicalErrorCode,
   isTechnicalErrorMessage,
   isZodLikeValidationMessage,
+  mentionsOllama,
   mapUserFacingErrorMessage,
   mapUserFacingErrorMessageEnglish,
   resolveUserFacingErrorDisplay,
@@ -168,5 +169,36 @@ describe("user-facing-error-messages", () => {
       provider: "OLLAMA_NATIVE",
     });
     expect(display.primary).toBe("i18n:userError_INFERENCE_UNAVAILABLE_OLLAMA");
+  });
+
+  it("mentionsOllama detects provider branding in raw text", () => {
+    expect(mentionsOllama("Please start Ollama on the server")).toBe(true);
+    expect(mentionsOllama("Configured API catalog unreachable")).toBe(false);
+  });
+
+  it("resolveUserFacingErrorDisplay handles corpus hints and explicit codes", () => {
+    const corpus = resolveUserFacingErrorDisplay({
+      raw: "Missing preferred corpus for evaluation",
+      t,
+      fallback: "fb",
+    });
+    expect(corpus.primary).toBe("fb");
+    expect(corpus.technical).toContain("corpus");
+
+    const echoT = (key: string) => key;
+    const english = resolveUserFacingErrorDisplay({
+      raw: "NO_READY_DOCUMENTS",
+      t: echoT,
+      fallback: "fb",
+    });
+    expect(english.primary).toContain("knowledge base");
+
+    const explicit = resolveUserFacingErrorDisplay({
+      raw: "wrapper text",
+      explicitCode: "DATASET_INVALID",
+      t,
+      fallback: "fb",
+    });
+    expect(explicit.primary).toBe("i18n:userError_DATASET_INVALID");
   });
 });

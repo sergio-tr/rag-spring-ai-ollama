@@ -812,7 +812,7 @@ export function LabEvaluationRunCard({
       return draft.selectedExperimentalPresetCodes.length;
     }
     return 0;
-  }, [benchmarkKind, draft.embeddingModelIds, draft.llmModelIds, draft.selectedExperimentalPresetCodes]);
+  }, [benchmarkKind, draft.embeddingModelIds, draft.llmModelId, draft.llmModelIds, draft.selectedExperimentalPresetCodes]);
 
   const runButtonLabel = useMemo(() => {
     if (running) {

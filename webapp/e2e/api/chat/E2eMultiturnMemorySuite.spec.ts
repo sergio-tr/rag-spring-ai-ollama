@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { expect, test } from "@playwright/test";
-import { authHeaders, loginAndGetToken } from "../fixtures/auth";
+import { loginAndGetToken } from "../fixtures/auth";
 import {
   ACTA_ACCEPTANCE_FIXTURES_DIR,
   ensureDemoBestConversation,

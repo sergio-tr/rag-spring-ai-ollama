@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FORBIDDEN_PRIMARY_UI_PATTERNS,
+  benchmarkKindI18nKey,
   formatBenchmarkKindLabel,
   formatChatExperimentalPresetOptionLabel,
   formatClassifierFallbackNote,
@@ -68,6 +69,9 @@ describe("product-copy humanizers", () => {
   it("formatClassifierFallbackNote humanizes classifier fallback values", () => {
     expect(formatClassifierFallbackNote("UNAVAILABLE: timeout", labT)).toMatch(/unavailable/i);
     expect(formatClassifierFallbackNote("INVALID_OUTPUT", labT)).toMatch(/invalid output/i);
+    expect(formatClassifierFallbackNote("INVALID_REQUEST: bad", labT)).toMatch(/invalid output/i);
+    expect(formatClassifierFallbackNote("TIMEOUT waiting", labT)).toMatch(/unavailable/i);
+    expect(formatClassifierFallbackNote(null, labT)).toBe("");
   });
 
   it("FORBIDDEN_PRIMARY_UI_PATTERNS cover raw enum and evidence strings", () => {
@@ -87,5 +91,43 @@ describe("product-copy humanizers", () => {
   it("sanitizeLabPrimarySurfaceCopy replaces forbidden API-derived labels", () => {
     expect(sanitizeLabPrimarySurfaceCopy("Lab evaluation corpus", "Knowledge base")).toBe("Knowledge base");
     expect(sanitizeLabPrimarySurfaceCopy("My KB", "Knowledge base")).toBe("My KB");
+    expect(sanitizeLabPrimarySurfaceCopy("", "Knowledge base")).toBe("Knowledge base");
+  });
+
+  it("formatBenchmarkKindLabel covers embedding and classifier kinds", () => {
+    const t = (key: string) =>
+      ({
+        "benchmarkKindLabel.embedding": "Embedding evaluation",
+        "benchmarkKindLabel.classifier": "Classifier evaluation",
+        "benchmarkKindLabel.unknown": "Evaluation",
+      })[key] ?? key;
+    expect(formatBenchmarkKindLabel("EMBEDDING_RETRIEVAL", t)).toBe("Embedding evaluation");
+    expect(formatBenchmarkKindLabel("CLASSIFIER_METRICS", t)).toBe("Classifier evaluation");
+  });
+
+  it("formatChatExperimentalPresetOptionLabel returns base label when selectable", () => {
+    const label = formatChatExperimentalPresetOptionLabel(
+      {
+        code: "P4",
+        label: "Chunk metadata",
+        supported: true,
+        supportStatus: "EXECUTABLE",
+        reasonIfUnsupported: null,
+        requiresMultiTurn: false,
+        chatSelectable: true,
+      },
+      labT,
+    );
+    expect(label).toBe("Chunk metadata");
+  });
+
+  it("formatPresetSupportMessage falls back for unsupported status without i18n", () => {
+    const echo = (key: string) => key;
+    expect(formatPresetSupportMessage("NOT_SUPPORTED", null, echo)).toBe("labConfigUnsupportedPreset");
+  });
+
+  it("benchmarkKindI18nKey normalizes benchmark enums", () => {
+    expect(benchmarkKindI18nKey(" llm_judge_qa ")).toBe("benchmarkKindLabel.llm");
+    expect(benchmarkKindI18nKey(undefined)).toBe("benchmarkKindLabel.unknown");
   });
 });

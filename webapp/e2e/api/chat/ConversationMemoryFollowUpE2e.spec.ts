@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { authHeaders, loginAndGetToken } from "../fixtures/auth";
+import { loginAndGetToken } from "../fixtures/auth";
 import {
   ACTA_ACCEPTANCE_EXTENDED_FILES,
   ensureDemoBestConversation,
   getConversationMessages,
   postChatAndGetLatestAssistant,
 } from "../fixtures/chat-runtime-api";
-import { integrationCredentials, productUrl } from "../fixtures/env";
+import { integrationCredentials } from "../fixtures/env";
 
 const CLARIFICATION_DATE_RE =
   /¿|especifica|qué acta|qué fecha|cuál|indica la fecha|fecha de la/i;

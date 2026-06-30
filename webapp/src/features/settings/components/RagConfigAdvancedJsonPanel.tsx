@@ -15,8 +15,11 @@ export function RagConfigAdvancedJsonPanel({ config, onApply }: RagConfigAdvance
   const [jsonError, setJsonError] = useState<string | null>(null);
 
   useEffect(() => {
-    setJsonText(JSON.stringify(config ?? {}, null, 2));
-    setJsonError(null);
+    const nextJson = JSON.stringify(config ?? {}, null, 2);
+    queueMicrotask(() => {
+      setJsonText(nextJson);
+      setJsonError(null);
+    });
   }, [config]);
 
   function applyJson() {

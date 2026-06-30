@@ -426,12 +426,6 @@ export function ChatConfigurationPanelContent() {
   }
 
   useEffect(() => {
-    if (editOpen) {
-      setRuntimeOpen(true);
-    }
-  }, [editOpen]);
-
-  useEffect(() => {
     const known = new Set(
       [
         "useRetrieval",
@@ -706,7 +700,12 @@ export function ChatConfigurationPanelContent() {
             type="button"
             data-testid="chat-config-edit-button"
             className={cn(buttonVariants({ variant: "default", size: "sm" }))}
-            onClick={() => setEditOpen((o) => !o)}
+            onClick={() => {
+              setEditOpen((open) => {
+                if (!open) setRuntimeOpen(true);
+                return !open;
+              });
+            }}
           >
             {editOpen ? tChat("configEditClose") : tChat("configEditButton")}
           </button>

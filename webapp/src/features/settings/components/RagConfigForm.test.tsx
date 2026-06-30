@@ -166,13 +166,14 @@ describe("RagConfigForm", () => {
       </IntlTestProvider>,
     );
 
-    const topK = screen.getByLabelText(/passages to retrieve/i);
+    const topK = await screen.findByLabelText(/passages to retrieve/i);
+    await waitFor(() => expect(topK).toHaveValue(5));
     await user.clear(topK);
     await user.type(topK, "7");
     await user.click(screen.getByLabelText("enableFoo"));
     await user.click(screen.getByRole("button", { name: /save/i }));
 
-    expect(putUser).toHaveBeenCalled();
+    await waitFor(() => expect(putUser).toHaveBeenCalled());
   });
 
   it("shows loading state", () => {
@@ -272,6 +273,7 @@ describe("RagConfigForm", () => {
     );
 
     const input = await screen.findByLabelText(/passages to retrieve/i);
+    await waitFor(() => expect(input).toHaveValue(4));
     await user.clear(input);
     await user.type(input, "6");
     await user.click(screen.getByRole("button", { name: /^save$/i }));

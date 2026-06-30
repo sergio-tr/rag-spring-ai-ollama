@@ -1063,7 +1063,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
 
     await expandChatMessageMetadata(user);
-    expect(await screen.findByTestId("chat-trace")).toHaveTextContent(/Message trace/i);
+    expect(await screen.findByTestId("chat-trace")).toHaveTextContent(/Retrieval and grounding trace/i);
     expect(screen.queryByTestId("chat-trace-jaeger-not-run")).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-sources")).toHaveTextContent(/Source documents \(1\)/i);
   });
@@ -1261,7 +1261,7 @@ describe("ChatPage", () => {
       .filter(Boolean);
 
     expect(optionTexts.some((t) => t.includes("Clarification loop"))).toBe(true);
-    expect(optionTexts.some((t) => t.includes("Memory-enabled preset"))).toBe(true);
+    expect(optionTexts.some((t) => t.includes("Memory flow"))).toBe(true);
     for (const text of optionTexts) {
       expect(text).not.toMatch(/REQUIRES_MULTI_TURN|FUTURE_MULTI_TURN|\[NOT_SUPPORTED|^P\d+\s*—/);
     }
@@ -1664,8 +1664,8 @@ describe("ChatPage", () => {
 
       expect(workspace).toHaveAttribute("data-chat-layout-mode", "split");
       expect(workspace).toContainElement(panel);
-      expect(readable.className).toMatch(/md:flex-1/);
-      expect(readable.className).not.toMatch(/md:max-w-\[min\(50%,48rem\)\]/);
+      expect(readable.className).toMatch(/md:flex-\[7\]/);
+      expect(readable.className).toMatch(/md:basis-\[70%\]/);
     });
 
     it("keeps the message thread inside the readable column, not inside the config panel", async () => {
@@ -1773,7 +1773,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByTestId("chat-config-trigger"));
     expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
     await user.click(screen.getByTestId("chat-config-edit-button"));
-    expect(await screen.findByRole("heading", { level: 3, name: "Source documents" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 3, name: "Assistant" })).toBeInTheDocument();
   });
 
   it("renders Chat actions sections with padded body and sticky footer", async () => {
@@ -1788,16 +1788,17 @@ describe("ChatPage", () => {
 
     expect(screen.queryByText(/Unavailable capabilities/i)).not.toBeInTheDocument();
 
-    // Edit mode exposes Source documents + Model & preset; index caps live under Advanced technical details; runtime is Advanced options.
+    // Edit mode exposes Assistant, Models, Retrieval, and tools sections; index caps live under Advanced technical details.
     const headings = within(panel)
       .getAllByRole("heading", { level: 3 })
       .map((h) => h.textContent?.trim() ?? "");
     const idx = (s: string) => headings.findIndex((h) => h === s);
-    expect(idx("Source documents")).toBeGreaterThanOrEqual(0);
-    expect(idx("Model configuration")).toBeGreaterThanOrEqual(0);
-    expect(idx("Source documents")).toBeLessThan(idx("Model configuration"));
-    expect(idx("Retrieval settings")).toBeGreaterThanOrEqual(0);
-    expect(idx("Advanced options")).toBeGreaterThan(idx("Model configuration"));
+    expect(idx("Assistant")).toBeGreaterThanOrEqual(0);
+    expect(idx("Models")).toBeGreaterThanOrEqual(0);
+    expect(idx("Assistant")).toBeLessThan(idx("Models"));
+    expect(idx("Retrieval")).toBeGreaterThanOrEqual(0);
+    expect(idx("Retrieval")).toBeGreaterThan(idx("Models"));
+    expect(within(panel).getByTestId("chat-config-runtime-collapsible")).toBeInTheDocument();
     expect(within(panel).getByTestId("chat-config-advanced-technical")).toBeInTheDocument();
 
     // Padding sanity: inner body is padded.
@@ -1810,14 +1811,14 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
 
     const toggle = screen.getByTestId("chat-config-runtime-collapsible");
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
   });
 
   it("delete chat button stays after move button (destructive at end)", async () => {

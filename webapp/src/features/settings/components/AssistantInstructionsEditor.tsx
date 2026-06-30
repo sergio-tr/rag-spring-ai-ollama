@@ -27,7 +27,6 @@ export function AssistantInstructionsEditor({
   mode,
   form,
   instructionFields,
-  fieldLabel,
   globalPersonaPrompt,
   projectPrompt,
   onGlobalPersonaPromptChange,

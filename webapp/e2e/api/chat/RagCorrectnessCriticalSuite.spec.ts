@@ -9,7 +9,6 @@ import {
   type MessageDto,
 } from "../fixtures/chat-runtime-api";
 import {
-  assertNoDuplicateSourceFilenames,
   assertRagCritTurnQuality,
   RAG_CRIT_CRITICAL_TURNS,
   type RagCritCaseDefinition,

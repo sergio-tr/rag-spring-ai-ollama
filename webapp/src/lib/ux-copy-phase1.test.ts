@@ -21,11 +21,11 @@ describe("S3 Phase 1 UX copy", () => {
     expect(en.Settings.userConfigDescription).not.toMatch(/JSON/i);
     expect(en.Settings.userConfigDescription).toMatch(/Default settings/i);
     expect(en.Settings.userConfigFormDescription).not.toMatch(/server schema/i);
-    expect(en.Settings.userConfigFormDescription).toMatch(/apply to your account/i);
+    expect(en.Settings.userConfigFormDescription).toMatch(/apply across your account/i);
   });
 
-  it("shows Details instead of More information in chat", () => {
-    expect(en.Chat.chatMoreInformationLabel).toBe("Details");
+  it("shows answer quality checks label in chat metadata", () => {
+    expect(en.Chat.chatMoreInformationLabel).toBe("Answer quality checks");
     expect(en.Chat.runtimeCurrentSettingsTitle).toBe("Current settings");
     expect(en.Chat.configCompactIndex).toBe("Search index");
     expect(en.Chat.configCompactIndexReady).toBe("Ready");

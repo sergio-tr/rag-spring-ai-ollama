@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { authHeaders, loginAndGetToken } from "../fixtures/auth";
+import { loginAndGetToken } from "../fixtures/auth";
 import {
   ensureDemoBestConversation,
   postChatAndGetLatestAssistant,

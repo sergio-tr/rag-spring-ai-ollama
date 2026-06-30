@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { productPresetLabel, toProductPresetDisplayName } from "./product-preset-labels";
+import {
+  productPresetDescription,
+  productPresetInternalCodeChip,
+  productPresetLabel,
+  toProductPresetDisplayName,
+} from "./product-preset-labels";
 
 describe("toProductPresetDisplayName", () => {
   it("maps seeded demo system preset names to product labels", () => {
@@ -25,5 +30,27 @@ describe("productPresetLabel", () => {
       const label = productPresetLabel(code);
       expect(label).not.toMatch(/^P\d+/);
     }
+  });
+
+  it("prefers resolved i18n copy when translator returns a value", () => {
+    const t = (key: string) => (key === "presetDisplay.P4" ? "Metadata retrieval (i18n)" : key);
+    expect(productPresetLabel("P4", t)).toBe("Metadata retrieval (i18n)");
+  });
+
+  it("productPresetDescription uses i18n description keys", () => {
+    const t = (key: string) =>
+      key === "presetDisplay.P4Description" ? "Chunk-level retrieval enriched with metadata." : key;
+    expect(productPresetDescription("P4", t)).toBe("Chunk-level retrieval enriched with metadata.");
+  });
+
+  it("productPresetLabel ignores unresolved i18n keys", () => {
+    const t = (key: string) => key;
+    expect(productPresetLabel("P4", t)).toBe("Chunk retrieval with metadata");
+    expect(productPresetDescription("P99", t)).toBe("");
+  });
+
+  it("productPresetInternalCodeChip exposes P-codes only for experimental presets", () => {
+    expect(productPresetInternalCodeChip("P4")).toBe("P4");
+    expect(productPresetInternalCodeChip("demo_best")).toBeNull();
   });
 });

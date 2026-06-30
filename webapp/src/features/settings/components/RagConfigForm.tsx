@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
-import { useForm, type Resolver } from "react-hook-form";
+import { useForm, useWatch, type Resolver } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -142,10 +142,11 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   const effectiveProvider = normalizeLlmProvider(selectableModelsQ.data?.effectiveProvider);
 
   useEffect(() => {
-    if (configData) {
+    if (!configData) return;
+    queueMicrotask(() => {
       setWorkingConfig(configData);
       setAdditionalParameters(readAdditionalParameters(configData));
-    }
+    });
   }, [configData]);
 
   useEffect(() => {
@@ -177,8 +178,10 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   useEffect(() => {
     if (mode !== "project" || !projectDetailQ.data) return;
     const value = projectDetailQ.data.projectPrompt ?? "";
-    setProjectPrompt(value);
-    setInitialProjectPrompt(value);
+    queueMicrotask(() => {
+      setProjectPrompt(value);
+      setInitialProjectPrompt(value);
+    });
   }, [mode, projectDetailQ.data]);
 
   const validationSchema = useMemo(() => {
@@ -229,9 +232,11 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
     [selectableEmbeddingQ.data?.models],
   );
 
-  const selectedLlmModel = typeof form.watch("llmModel") === "string" ? String(form.watch("llmModel")) : "";
+  const watchedLlmModel = useWatch({ control: form.control, name: "llmModel" });
+  const watchedEmbeddingModel = useWatch({ control: form.control, name: "embeddingModel" });
+  const selectedLlmModel = typeof watchedLlmModel === "string" ? String(watchedLlmModel) : "";
   const selectedEmbeddingModel =
-    typeof form.watch("embeddingModel") === "string" ? String(form.watch("embeddingModel")) : "";
+    typeof watchedEmbeddingModel === "string" ? String(watchedEmbeddingModel) : "";
 
   async function onSubmit(values: ConfigFormValues) {
     let payload = mergePayload(workingConfig, values, editableKeys);
@@ -318,7 +323,10 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
     });
   }
 
-  const watchedTemperature = form.watch(LLM_TEMPERATURE_KEY as keyof ConfigFormValues);
+  const watchedTemperature = useWatch({
+    control: form.control,
+    name: LLM_TEMPERATURE_KEY as keyof ConfigFormValues,
+  });
 
   const previewConfig = useMemo(() => {
     const merged: Record<string, unknown> = {

@@ -29,7 +29,7 @@ describe("ThemeLanguageMenu", () => {
         <ThemeLanguageMenu />
       </IntlTestProvider>,
     );
-    await user.click(screen.getByRole("button", { name: /appearance.*language/i }));
+    await user.click(screen.getByRole("button", { name: /^settings$/i }));
     await user.click(screen.getByRole("menuitem", { name: /^settings$/i }));
     expect(push).toHaveBeenCalledWith("/settings");
   });
