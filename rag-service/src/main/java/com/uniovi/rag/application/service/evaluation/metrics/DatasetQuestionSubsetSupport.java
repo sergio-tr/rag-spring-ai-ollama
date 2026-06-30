@@ -1,6 +1,8 @@
 package com.uniovi.rag.application.service.evaluation.metrics;
 
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
+import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalQuery;
+import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import java.util.ArrayList;
@@ -129,22 +131,52 @@ public final class DatasetQuestionSubsetSupport {
     }
 
     public static List<RagPresetQuestion> filterQuestions(List<RagPresetQuestion> questions, ResolvedSubset subset) {
-        if (questions == null || questions.isEmpty() || subset == null || subset.allQuestions()) {
-            return questions != null ? questions : List.of();
+        return filterByQuestionId(
+                questions,
+                subset,
+                RagPresetQuestion::id,
+                id -> "Unknown dataset question id: " + id);
+    }
+
+    public static List<LlmReaderQuestion> filterLlmQuestions(
+            List<LlmReaderQuestion> questions, ResolvedSubset subset) {
+        return filterByQuestionId(
+                questions,
+                subset,
+                LlmReaderQuestion::id,
+                id -> "Unknown llm_reader_questions id: " + id);
+    }
+
+    public static List<EmbeddingRetrievalQuery> filterEmbeddingQueries(
+            List<EmbeddingRetrievalQuery> queries, ResolvedSubset subset) {
+        return filterByQuestionId(
+                queries,
+                subset,
+                EmbeddingRetrievalQuery::id,
+                id -> "Unknown embedding_retrieval_queries id: " + id);
+    }
+
+    private static <T> List<T> filterByQuestionId(
+            List<T> items,
+            ResolvedSubset subset,
+            java.util.function.Function<T, String> idFn,
+            java.util.function.Function<String, String> unknownIdMessage) {
+        if (items == null || items.isEmpty() || subset == null || subset.allQuestions()) {
+            return items != null ? items : List.of();
         }
-        Map<String, RagPresetQuestion> byId = new LinkedHashMap<>();
-        for (RagPresetQuestion q : questions) {
-            if (q != null) {
-                byId.put(q.id(), q);
+        Map<String, T> byId = new LinkedHashMap<>();
+        for (T item : items) {
+            if (item != null) {
+                byId.put(idFn.apply(item), item);
             }
         }
-        List<RagPresetQuestion> filtered = new ArrayList<>();
+        List<T> filtered = new ArrayList<>();
         for (String id : subset.questionIds()) {
-            RagPresetQuestion q = byId.get(id);
-            if (q == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown dataset question id: " + id);
+            T item = byId.get(id);
+            if (item == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, unknownIdMessage.apply(id));
             }
-            filtered.add(q);
+            filtered.add(item);
         }
         return List.copyOf(filtered);
     }

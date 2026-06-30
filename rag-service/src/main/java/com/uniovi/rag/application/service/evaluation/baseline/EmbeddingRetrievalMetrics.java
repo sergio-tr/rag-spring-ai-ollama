@@ -117,6 +117,29 @@ public final class EmbeddingRetrievalMetrics {
         return 0;
     }
 
+    /** nDCG@N for binary relevance using gold id overlap (canonical for embedding evaluation). */
+    public static double ndcgAtNByIds(List<String> retrievedIds, Set<String> goldIds, int n) {
+        if (retrievedIds == null || retrievedIds.isEmpty() || goldIds == null || goldIds.isEmpty() || n <= 0) {
+            return 0.0;
+        }
+        int limit = Math.min(n, retrievedIds.size());
+        double dcg = 0.0;
+        for (int i = 0; i < limit; i++) {
+            if (containsNormalized(goldIds, retrievedIds.get(i))) {
+                dcg += 1.0 / (Math.log(i + 2) / Math.log(2));
+            }
+        }
+        int idealHits = Math.min(goldIds.size(), limit);
+        if (idealHits <= 0) {
+            return 0.0;
+        }
+        double idcg = 0.0;
+        for (int i = 0; i < idealHits; i++) {
+            idcg += 1.0 / (Math.log(i + 2) / Math.log(2));
+        }
+        return idcg > 0.0 ? dcg / idcg : 0.0;
+    }
+
     private static boolean containsNormalized(Set<String> goldIds, String candidate) {
         if (candidate == null || candidate.isBlank() || goldIds == null || goldIds.isEmpty()) {
             return false;

@@ -10,6 +10,9 @@ import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalDataset;
 import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalQuery;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import com.uniovi.rag.infrastructure.vector.PgVectorStoreRegistry;
 import com.uniovi.rag.application.service.async.AsyncTaskCancellationService;
@@ -18,6 +21,7 @@ import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
 import com.uniovi.rag.application.service.evaluation.baseline.BaselineRunSnapshotWriter;
+import com.uniovi.rag.application.service.evaluation.baseline.EmbeddingRetrievalRunConfigResolver;
 import com.uniovi.rag.application.service.evaluation.baseline.ExperimentalSnapshotFactory;
 import com.uniovi.rag.application.service.evaluation.baseline.ModelBaselineLlmRunner;
 import com.uniovi.rag.application.service.evaluation.LabBenchmarkCompletionService;
@@ -39,6 +43,7 @@ import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -116,6 +121,9 @@ class EvalEmbeddingRetrievalJobHandlerTest {
     private EvaluationRunRepository evaluationRunRepository;
 
     @Mock
+    private EmbeddingRetrievalRunConfigResolver retrievalRunConfigResolver;
+
+    @Mock
     private AsyncTaskMutationService mutation;
 
     @Mock
@@ -146,6 +154,12 @@ class EvalEmbeddingRetrievalJobHandlerTest {
     }
 
     private EvalEmbeddingRetrievalJobHandler handler(int topK) {
+        lenient()
+                .when(retrievalRunConfigResolver.resolveForRun(any()))
+                .thenReturn(new EmbeddingRetrievalRunConfigResolver.Params(topK, 0.0, false, false, false));
+        lenient()
+                .when(retrievalRunConfigResolver.defaultsWithoutSnapshot())
+                .thenReturn(new EmbeddingRetrievalRunConfigResolver.Params(topK, 0.0, false, false, false));
         return new EvalEmbeddingRetrievalJobHandler(
                 vectorStoreRegistry,
                 embeddingSpaceGuard,
@@ -157,12 +171,15 @@ class EvalEmbeddingRetrievalJobHandlerTest {
                 modelBaselineLlmRunner,
                 modelAvailabilityGate,
                 evaluationRunRepository,
+                retrievalRunConfigResolver,
                 cancellationService,
                 labJobProgressTracker,
                 labCampaignBenchmarkExecutor,
-                labBenchmarkCompletionService,
-                topK);
+                labBenchmarkCompletionService);
     }
+
+    private static final UUID STUB_SNAPSHOT_ID = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    private static final UUID STUB_PROJECT_ID = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
     private void stubBaselineForCanonicalRun(UUID runId) {
         when(experimentalSnapshotFactory.buildLlmSnapshot(any())).thenReturn(SAMPLE_LLM);
@@ -171,7 +188,11 @@ class EvalEmbeddingRetrievalJobHandlerTest {
         lenient().when(modelAvailabilityGate.isChatModelAvailable(any(), anyString())).thenReturn(true);
         when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(anyString())).thenReturn(1024);
         when(vectorStoreRegistry.forEmbeddingModelId(anyString())).thenReturn(vectorStore);
-        when(evaluationRunRepository.findById(runId)).thenReturn(Optional.empty());
+        EvaluationRunEntity run = Mockito.mock(EvaluationRunEntity.class);
+        when(evaluationRunRepository.findIndexSnapshotIdByRunId(runId)).thenReturn(Optional.of(STUB_SNAPSHOT_ID));
+        when(evaluationRunRepository.findEffectiveProjectIdByRunId(runId)).thenReturn(Optional.of(STUB_PROJECT_ID));
+        when(run.isEmbeddingDownstreamRag()).thenReturn(false);
+        when(evaluationRunRepository.findById(runId)).thenReturn(Optional.of(run));
     }
 
     @Test
@@ -315,6 +336,53 @@ class EvalEmbeddingRetrievalJobHandlerTest {
     }
 
     @Test
+    void run_appliesSnapshotBoundFilter_whenIndexSnapshotPresent() {
+        UUID taskId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        stubBaselineForCanonicalRun(runId);
+        EmbeddingRetrievalQuery q =
+                new EmbeddingRetrievalQuery(
+                        "eq1",
+                        "needle query",
+                        "",
+                        Optional.empty(),
+                        Optional.empty(),
+                        "needle",
+                        List.of("ACTA_1"),
+                        List.of("ACTA_1_ELEVATOR_PAINT"),
+                        "",
+                        "",
+                        "");
+        when(experimentalDatasetResolver.resolve(runId))
+                .thenReturn(
+                        new TypedBenchmarkDataset.EmbeddingQuestions(
+                                new EmbeddingRetrievalDataset(List.of(q), List.of(), List.of())));
+        when(vectorStore.similaritySearch(any(SearchRequest.class)))
+                .thenReturn(
+                        List.of(
+                                new Document(
+                                        "gold",
+                                        "needle text",
+                                        Map.of(
+                                                "evaluationChunkId",
+                                                "ACTA_1_ELEVATOR_PAINT",
+                                                "chunk_id",
+                                                "ACTA_1_ELEVATOR_PAINT",
+                                                "indexSnapshotId",
+                                                STUB_SNAPSHOT_ID.toString()))));
+        AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
+
+        handler(5).run(task, mutation);
+
+        ArgumentCaptor<SearchRequest> req = ArgumentCaptor.forClass(SearchRequest.class);
+        verify(vectorStore).similaritySearch(req.capture());
+        assertThat(req.getValue().hasFilterExpression()).isTrue();
+        Filter.Expression filter = req.getValue().getFilterExpression();
+        assertThat(filter).isNotNull();
+        assertThat(filter.toString()).contains(STUB_SNAPSHOT_ID.toString());
+    }
+
+    @Test
     void run_withoutRunId_throws() {
         UUID taskId = UUID.randomUUID();
         AsyncTaskEntity task = task(taskId, Map.of());
@@ -323,6 +391,49 @@ class EvalEmbeddingRetrievalJobHandlerTest {
 
         verifyNoInteractions(vectorStoreRegistry);
         verifyNoInteractions(experimentalDatasetResolver);
+    }
+
+    @Test
+    void run_withoutIndexSnapshot_recordsFailedWithoutVectorSearch() {
+        UUID taskId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        when(experimentalSnapshotFactory.buildLlmSnapshot(any())).thenReturn(SAMPLE_LLM);
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(any())).thenReturn(SAMPLE_EMB);
+        when(modelAvailabilityGate.isEmbeddingModelAvailable(any(), anyString())).thenReturn(true);
+        when(embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(anyString())).thenReturn(1024);
+        EvaluationRunEntity run = Mockito.mock(EvaluationRunEntity.class);
+        when(evaluationRunRepository.findIndexSnapshotIdByRunId(runId)).thenReturn(Optional.empty());
+        when(evaluationRunRepository.findEffectiveProjectIdByRunId(runId)).thenReturn(Optional.empty());
+        when(run.isEmbeddingDownstreamRag()).thenReturn(false);
+        when(evaluationRunRepository.findById(runId)).thenReturn(Optional.of(run));
+        EmbeddingRetrievalQuery q =
+                new EmbeddingRetrievalQuery(
+                        "eq1",
+                        "q1",
+                        "",
+                        Optional.empty(),
+                        Optional.empty(),
+                        "x",
+                        List.of("ACTA_1"),
+                        List.of("ACTA_1_META"),
+                        "",
+                        "",
+                        "");
+        when(experimentalDatasetResolver.resolve(runId))
+                .thenReturn(
+                        new TypedBenchmarkDataset.EmbeddingQuestions(
+                                new EmbeddingRetrievalDataset(List.of(q), List.of(), List.of())));
+        AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
+
+        handler(2).run(task, mutation);
+
+        verifyNoInteractions(vectorStore);
+        ArgumentCaptor<Map<String, Object>> payload = ArgumentCaptor.forClass(Map.class);
+        verify(canonicalPersistence).persistEmbeddingRetrievalResults(eq(runId), payload.capture());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) payload.getValue().get("results");
+        assertThat(rows.getFirst().get("item_outcome")).isEqualTo("FAILED");
+        assertThat(rows.getFirst().get("error_code")).isEqualTo("MISSING_INDEX_SNAPSHOT");
     }
 
     @Test

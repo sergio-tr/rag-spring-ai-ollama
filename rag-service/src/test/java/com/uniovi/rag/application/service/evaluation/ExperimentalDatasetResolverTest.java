@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.evaluation;
 
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
+import com.uniovi.rag.application.service.evaluation.metrics.DatasetQuestionSubsetSupport;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
 import com.uniovi.rag.domain.evaluation.workbook.ExperimentalDatasetType;
@@ -22,6 +23,7 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -170,5 +172,66 @@ class ExperimentalDatasetResolverTest {
         // Sanity: classpath resource exists (helps debug failures locally).
         assertThat(new ClassPathResource(EvaluationReferenceBundleLoader.CLASSPATH_LOCATION).exists())
                 .isTrue();
+    }
+
+    @Test
+    void resolve_filtersLlmQuestions_whenRunHasDatasetQuestionSubset() throws Exception {
+        UUID runId = UUID.randomUUID();
+        EvaluationDatasetEntity ds = EvaluationDatasetEntity.newLabUploadPlaceholder();
+        ds.setExperimentalKind(ExperimentalDatasetType.LLM_MODEL_BASELINE.name());
+        ds.setStorageUri("datasets/u1/file.xlsx");
+
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setId(runId);
+        run.setBenchmarkKind(BenchmarkKind.LLM_JUDGE_QA.name());
+        run.setDataset(ds);
+        run.setAggregatesJson(
+                Map.of(
+                        DatasetQuestionSubsetSupport.AGG_KEY_DATASET_QUESTION_FILTER,
+                        DatasetQuestionSubsetSupport.FILTER_EXPLICIT_IDS,
+                        DatasetQuestionSubsetSupport.AGG_KEY_FILTERED_QUESTION_IDS,
+                        List.of("LLM-001", "LLM-002")));
+
+        when(evaluationRunRepository.findByIdFetchDataset(runId)).thenReturn(Optional.of(run));
+
+        LlmReaderQuestion q1 = llmQuestion("LLM-001");
+        LlmReaderQuestion q2 = llmQuestion("LLM-002");
+        List<LlmReaderQuestion> all = new ArrayList<>();
+        all.add(q1);
+        all.add(q2);
+        for (int i = 3; i <= 12; i++) {
+            all.add(llmQuestion("LLM-" + String.format("%03d", i)));
+        }
+        EvaluationWorkbook wb =
+                EvaluationWorkbook.builder()
+                        .sheetNamesPresent(List.of())
+                        .llmReaderQuestions(all)
+                        .build();
+        when(evaluationDatasetStorePort.openStream("datasets/u1/file.xlsx"))
+                .thenReturn(new ByteArrayInputStream(new byte[] {1}));
+        when(evaluationWorkbookParser.parse(any(InputStream.class), eq(ExperimentalDatasetType.LLM_MODEL_BASELINE)))
+                .thenReturn(new WorkbookParseResult(wb, new ValidationReport()));
+
+        ExperimentalDatasetResolver resolver =
+                new ExperimentalDatasetResolver(evaluationRunRepository, evaluationDatasetStorePort, evaluationWorkbookParser);
+
+        TypedBenchmarkDataset out = resolver.resolve(runId);
+        assertThat(out).isInstanceOf(TypedBenchmarkDataset.LlmQuestions.class);
+        assertThat(((TypedBenchmarkDataset.LlmQuestions) out).questions()).containsExactly(q1, q2);
+    }
+
+    private static LlmReaderQuestion llmQuestion(String id) {
+        return new LlmReaderQuestion(
+                id,
+                "Question for " + id,
+                "context",
+                "Answer",
+                Optional.empty(),
+                Optional.empty(),
+                "",
+                "",
+                "",
+                false,
+                "");
     }
 }
