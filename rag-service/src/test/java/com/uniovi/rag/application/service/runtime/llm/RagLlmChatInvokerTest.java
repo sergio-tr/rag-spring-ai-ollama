@@ -63,6 +63,8 @@ class RagLlmChatInvokerTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final LlmModelCatalogService modelCatalog =
             LlmModelCatalogTestSupport.catalogFrom(LlmModelCatalogTestSupport.openAiLiteLlmProperties());
+    private final RagChatModelRoutingService chatModelRoutingService =
+            new RagChatModelRoutingService(modelCatalog);
     private final ChatGenerationModelSelector chatGenerationModelSelector =
             new ChatGenerationModelSelector(modelCatalog);
 
@@ -95,7 +97,8 @@ class RagLlmChatInvokerTest {
                         resolvedLlmConfigResolver,
                         objectMapper,
                         chatGenerationModelSelector,
-                        modelCatalog);
+                        modelCatalog,
+                        chatModelRoutingService);
         ExecutionContext ctx = minimalContext();
         String answer = invoker.invoke(ctx, "RAG base prompt", "user question");
 
@@ -107,7 +110,7 @@ class RagLlmChatInvokerTest {
         assertTrue(request.messages().getFirst().content().contains("RAG base prompt"));
         assertTrue(request.messages().getFirst().content().contains("Responde en español."));
         assertEquals(0.3, request.temperature());
-        assertEquals(45_000, request.timeoutMs());
+        assertEquals(20_000, request.timeoutMs());
     }
 
     @Test
@@ -135,7 +138,8 @@ class RagLlmChatInvokerTest {
                         resolvedLlmConfigResolver,
                         objectMapper,
                         chatGenerationModelSelector,
-                        modelCatalog);
+                        modelCatalog,
+                        chatModelRoutingService);
 
         LlmProviderException ex =
                 assertThrows(LlmProviderException.class, () -> invoker.invoke(minimalContext(), "sys", "hola"));
@@ -163,7 +167,8 @@ class RagLlmChatInvokerTest {
                         resolvedLlmConfigResolver,
                         objectMapper,
                         chatGenerationModelSelector,
-                        modelCatalog);
+                        modelCatalog,
+                        chatModelRoutingService);
         ExecutionContext ctx = minimalContextWithRagLlmAndOverride("gemma3:4b", Optional.of("gemma3:4b"));
 
         assertThrows(LlmConfigurationException.class, () -> invoker.invoke(ctx, "sys", "hola"));
@@ -192,7 +197,8 @@ class RagLlmChatInvokerTest {
                         resolvedLlmConfigResolver,
                         objectMapper,
                         chatGenerationModelSelector,
-                        modelCatalog);
+                        modelCatalog,
+                        chatModelRoutingService);
 
         String answer = invoker.invoke(minimalContextWithRagLlm("gemma3:4b"), "sys", "hola");
 
@@ -222,7 +228,8 @@ class RagLlmChatInvokerTest {
                         resolvedLlmConfigResolver,
                         objectMapper,
                         chatGenerationModelSelector,
-                        modelCatalog);
+                        modelCatalog,
+                        chatModelRoutingService);
 
         String answer = invoker.invoke(minimalContext(), "sys", "hola");
 

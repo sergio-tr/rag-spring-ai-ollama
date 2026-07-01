@@ -437,6 +437,15 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
 
         // Priority 4: Other specific field requests
         if (containsAny(q, "duración", FIELD_DURATION, "cuánto dur")) return "durationMinutes";
+        if (containsAny(q, "presentes", "presente")) {
+            if (containsAny(q, "cuantos", "cuántos", "cuantas", "cuántas", "numero", "número", "cuantos hay")) {
+                return "attendeesCount";
+            }
+            return FIELD_ATTENDEES;
+        }
+        if (containsAny(q, "estuvieron presentes", "estuvieron presente", "quienes estuvieron", "quiénes estuvieron")) {
+            return FIELD_ATTENDEES;
+        }
         if (containsAny(q, "año", "year")) return "year";
         if (containsAny(q, "mes", "month")) return "month";
         if (containsAny(q, "lugar", "sitio", "place", "ubicación")) return "place";
@@ -474,6 +483,11 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         if (containsAny(q, "enumera", "lista", "listar", "listado")
                 && containsAny(q, "asistente", "participante", "personas", "propietario", "propietarios")) {
             return FIELD_ATTENDEES;
+        }
+        if (containsAny(q, "temas", "discutieron", "trataron", "se discut", "qué temas", "que temas")
+                && !containsAny(q, "cuántos asistentes", "cuantos asistentes", "cuántas personas", "cuantas personas")) {
+            log().debug("Classified as 'topics' based on query intent over NER attendee hint");
+            return FIELD_TOPICS;
         }
         if (containsAny(q, "cuantos asistieron", "numero de asistentes", "attendees count")) {
             return "attendeesCount";

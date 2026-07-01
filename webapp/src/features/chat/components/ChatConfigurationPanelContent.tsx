@@ -3,7 +3,12 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "@/navigation";
 import { useTranslations } from "next-intl";
+import {
+  formatProductPresetOptionLabel,
+  isResearchLatencyPreset,
+} from "@/features/chat/lib/preset-latency-tier";
 import { formatChatExperimentalPresetOptionLabel, formatPresetSupportMessage } from "@/lib/product-copy";
+import { createPresetCopyFn } from "@/lib/preset-copy-i18n";
 import {
   formatChatPresetTechnicalTitle,
   resolvePresetDisplayName,
@@ -128,10 +133,7 @@ export function ChatConfigurationPanelContent() {
   const tSettings = useTranslations("Settings");
   const tLab = useTranslations("Lab");
   const notLoadedLabel = tChat("configNotLoaded");
-  const presetCopyT = (key: string) => {
-    if (key.startsWith("chat") || key.startsWith("presetDisplay")) return tChat(key);
-    return tLab(key);
-  };
+  const presetCopyT = createPresetCopyFn(tLab, tChat);
   const api = useChatToolbarStore((s) => s.api);
 
   const modelSelectId = useId();
@@ -854,7 +856,7 @@ export function ChatConfigurationPanelContent() {
                   <optgroup label={tChat("presetGroupProduct")}>
                     {api?.presets?.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {toProductPresetDisplayName(p.name)}
+                        {formatProductPresetOptionLabel(p, tChat)}
                       </option>
                     ))}
                   </optgroup>
@@ -888,6 +890,14 @@ export function ChatConfigurationPanelContent() {
                       </p>
                     ) : null}
                   </div>
+                ) : null}
+                {isResearchLatencyPreset(selectedExperimental) ? (
+                  <output
+                    className="text-amber-800 dark:text-amber-200 block rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs"
+                    data-testid="chat-preset-latency-warning"
+                  >
+                    {tChat("presetResearchLatencyWarning")}
+                  </output>
                 ) : null}
                 {!api?.presetsLoading && !api?.presetsError && (api?.presets?.length ?? 0) === 0 ? (
                   <output className="text-muted-foreground text-xs">{tChat("presetCatalogEmpty")}</output>

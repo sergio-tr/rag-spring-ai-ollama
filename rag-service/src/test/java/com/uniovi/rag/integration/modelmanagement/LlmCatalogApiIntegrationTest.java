@@ -19,6 +19,7 @@ import com.uniovi.rag.infrastructure.llm.LlmOllamaDefaults;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import com.uniovi.rag.interfaces.rest.dto.llm.catalog.LlmCatalogModelDto;
 import com.uniovi.rag.interfaces.rest.dto.llm.catalog.LlmCatalogResponseDto;
+import com.uniovi.rag.testsupport.llm.LlmCatalogApiServiceTestSupport;
 import com.uniovi.rag.testsupport.llm.LlmModelCatalogTestSupport;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,7 +38,7 @@ class LlmCatalogApiIntegrationTest {
         ollamaAvailability = mock(OllamaModelAvailabilityPort.class);
         when(ollamaAvailability.isModelPresent(anyString())).thenReturn(false);
         apiService =
-                new LlmCatalogApiService(
+                LlmCatalogApiServiceTestSupport.service(
                         new LlmModelCatalogService(properties),
                         ollamaAvailability,
                         new RagVectorProperties(1024, true));

@@ -23,6 +23,10 @@ const labT = (key: string) => {
     "chatPresetNotSelectable": "Not selectable in Chat for this configuration.",
     "chatClassifierFallbackUnavailable": "Classifier was unavailable; a fallback path was used.",
     "chatClassifierFallbackInvalidOutput": "Classifier returned invalid output; a fallback path was used.",
+    "presetLatencyTier.standard": "Standard",
+    "presetLatencyTier.fast": "Fast",
+    "presetLatencyTier.advanced": "Advanced",
+    "presetLatencyTier.research": "Research / Slow",
   };
   return map[key] ?? key;
 };
@@ -118,7 +122,7 @@ describe("product-copy humanizers", () => {
       },
       labT,
     );
-    expect(label).toBe("Chunk metadata");
+    expect(label).toBe("Chunk metadata (Standard)");
   });
 
   it("formatPresetSupportMessage falls back for unsupported status without i18n", () => {

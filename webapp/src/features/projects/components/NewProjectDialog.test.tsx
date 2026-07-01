@@ -19,6 +19,7 @@ const createHook = vi.hoisted(() => ({
   reset: vi.fn(),
   isPending: false,
   isError: false,
+  isSuccess: false,
 }));
 
 vi.mock("@/features/projects/hooks/use-projects", () => ({
@@ -27,6 +28,7 @@ vi.mock("@/features/projects/hooks/use-projects", () => ({
     reset: createHook.reset,
     isPending: createHook.isPending,
     isError: createHook.isError,
+    isSuccess: createHook.isSuccess,
   }),
 }));
 
@@ -138,8 +140,19 @@ describe("NewProjectDialog", () => {
     expect(createHook.mutateAsync).not.toHaveBeenCalled();
   });
 
+  it("closes without error after successful create", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await user.click(screen.getByRole("button", { name: /^New project$/i }));
+    await user.type(screen.getByLabelText(/^Name$/i), "Created ok");
+    await user.click(screen.getByRole("button", { name: /^Create$/i }));
+    await vi.waitFor(() => expect(createHook.mutateAsync).toHaveBeenCalled());
+    expect(screen.queryByTestId("project-create-error")).not.toBeInTheDocument();
+  });
+
   it("shows create error when mutation failed", async () => {
     createHook.isError = true;
+    createHook.isSuccess = false;
     const user = userEvent.setup();
     renderDialog();
     await user.click(screen.getByRole("button", { name: /^New project$/i }));

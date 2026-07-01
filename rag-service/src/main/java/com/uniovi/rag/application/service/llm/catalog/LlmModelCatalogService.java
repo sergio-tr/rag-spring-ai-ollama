@@ -9,6 +9,7 @@ import com.uniovi.rag.domain.llm.catalog.LlmCatalogQuery;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogSource;
 import com.uniovi.rag.domain.llm.catalog.LlmModelReasonCodes;
 import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
+import com.uniovi.rag.domain.llm.catalog.LlmModelRoleResolver;
 import com.uniovi.rag.domain.llm.catalog.LlmModelUsageContext;
 import com.uniovi.rag.infrastructure.llm.LlmOllamaDefaults;
 import com.uniovi.rag.infrastructure.llm.LlmOpenAiCompatibleDefaults;
@@ -207,14 +208,20 @@ public class LlmModelCatalogService implements LlmModelCatalogPort {
         if (names.isEmpty() && defaultModel != null && !defaultModel.isBlank()) {
             names.add(defaultModel.trim());
         }
-        boolean selectableByUser = capability == LlmModelCapability.CHAT;
         for (String name : names) {
             if (name == null || name.isBlank()) {
                 continue;
             }
             String trimmed = name.trim();
+            boolean chatPrimaryCapable =
+                    capability != LlmModelCapability.CHAT
+                            || LlmModelRoleResolver.supportsPrimaryChat(trimmed, capability);
+            boolean selectableByUser = capability == LlmModelCapability.CHAT && chatPrimaryCapable;
             boolean usableAsDefault =
-                    defaultModel != null && !defaultModel.isBlank() && trimmed.equals(defaultModel.trim());
+                    defaultModel != null
+                            && !defaultModel.isBlank()
+                            && trimmed.equals(defaultModel.trim())
+                            && chatPrimaryCapable;
             CatalogKey key = new CatalogKey(provider, trimmed, capability);
             target.put(
                     key,

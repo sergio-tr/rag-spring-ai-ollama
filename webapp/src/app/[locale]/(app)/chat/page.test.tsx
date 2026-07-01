@@ -1554,7 +1554,7 @@ describe("ChatPage", () => {
     await openChatConfigurationEdit(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Configuration profile/i });
     expect(presetSelect).toHaveValue("pr1");
-    expect(screen.getByRole("option", { name: /^P$/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /^P \(Standard\)$/ })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
   });
 

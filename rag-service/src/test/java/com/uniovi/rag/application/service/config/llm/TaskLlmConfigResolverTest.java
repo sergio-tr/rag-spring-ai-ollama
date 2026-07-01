@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.config.llm;
 
 import com.uniovi.rag.application.port.ConfigurationSourcePort;
 import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.llm.TaskLlmTask;
@@ -20,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,6 +29,7 @@ class TaskLlmConfigResolverTest {
 
     @Mock private ConfigurationSourcePort configurationSource;
     @Mock private ResolvedLlmConfigResolver resolvedLlmConfigResolver;
+    @Mock private RagRuntimeProperties ragRuntimeProperties;
 
     private TaskLlmConfigResolver resolver;
     private UUID userId;
@@ -34,9 +37,15 @@ class TaskLlmConfigResolverTest {
 
     @BeforeEach
     void setUp() {
-        resolver = new TaskLlmConfigResolver(configurationSource, resolvedLlmConfigResolver, new ObjectMapper());
+        resolver =
+                new TaskLlmConfigResolver(
+                        configurationSource, resolvedLlmConfigResolver, new ObjectMapper(), ragRuntimeProperties);
         userId = UUID.randomUUID();
         projectId = UUID.randomUUID();
+    }
+
+    private void stubNoSecondaryModel() {
+        lenient().when(ragRuntimeProperties.hasSecondaryModel()).thenReturn(false);
     }
 
     private void stubDefaultLayers() {
@@ -58,6 +67,7 @@ class TaskLlmConfigResolverTest {
 
     @Test
     void resolveSecondaryCall_appliesTaskModelOverride() {
+        stubNoSecondaryModel();
         stubDefaultLayers();
         Map<String, Object> values = new LinkedHashMap<>();
         values.put(
@@ -78,6 +88,7 @@ class TaskLlmConfigResolverTest {
 
     @Test
     void resolveSecondaryCall_inheritsBaseWhenNoOverride() {
+        stubNoSecondaryModel();
         stubDefaultLayers();
         TaskLlmConfigResolver.SecondaryCallConfig call =
                 resolver.resolveSecondaryCall(userId, projectId, "query-rewrite", null, null);
@@ -89,6 +100,7 @@ class TaskLlmConfigResolverTest {
 
     @Test
     void resolveSecondaryCall_appliesTopPAndMaxTokensFromOverride() {
+        stubNoSecondaryModel();
         stubDefaultLayers();
         Map<String, Object> values = new LinkedHashMap<>();
         values.put(
@@ -117,6 +129,7 @@ class TaskLlmConfigResolverTest {
 
     @Test
     void resolveSecondaryCall_metadataOperationMapsToMetadataReasoning() {
+        stubNoSecondaryModel();
         when(resolvedLlmConfigResolver.resolve(isNull(), isNull(), isNull())).thenReturn(baseConfig());
         when(configurationSource.loadSystemDefaults()).thenReturn(Optional.empty());
 
@@ -127,6 +140,7 @@ class TaskLlmConfigResolverTest {
 
     @Test
     void resolveSecondaryCall_appliesEvaluationJudgeOverride() {
+        stubNoSecondaryModel();
         stubDefaultLayers();
         Map<String, Object> values = new LinkedHashMap<>();
         values.put(
@@ -142,6 +156,19 @@ class TaskLlmConfigResolverTest {
         assertThat(call.taskOverrideApplied()).isTrue();
         assertThat(call.effectiveModel()).isEqualTo("judge-override");
         assertThat(call.effectiveTemperature()).isEqualTo(0.0);
+    }
+
+    @Test
+    void resolveSecondaryCall_usesRuntimeSecondaryModelWhenConfigured() {
+        stubDefaultLayers();
+        when(ragRuntimeProperties.hasSecondaryModel()).thenReturn(true);
+        when(ragRuntimeProperties.effectiveSecondaryModel()).thenReturn("fast-secondary");
+
+        TaskLlmConfigResolver.SecondaryCallConfig call =
+                resolver.resolveSecondaryCall(userId, projectId, "query-rewrite", null, null);
+
+        assertThat(call.secondaryModelApplied()).isTrue();
+        assertThat(call.effectiveModel()).isEqualTo("fast-secondary");
     }
 
     private static ResolvedLlmConfig baseConfig() {

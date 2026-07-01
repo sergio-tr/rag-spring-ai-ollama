@@ -134,7 +134,7 @@ export function NewConversationDialog({
                   value={exp.productPresetId}
                   disabled={!exp.chatSelectable || !exp.supported}
                 >
-                  {exp.code} — {exp.label}
+                  {exp.label}
                   {!exp.supported || !exp.chatSelectable ? " (N/A)" : ""}
                 </option>
               ))}

@@ -395,6 +395,22 @@ class MetadataCountDocumentsToolTest {
         assertThat(answer.toLowerCase(Locale.ROOT)).containsAnyOf("dos actas", "2 actas");
     }
 
+    @Test
+    void beatrizSuarez_exactlyFiveActas() {
+        stubRetriever(allDocs());
+
+        ToolResult result =
+                tool.execute(
+                        ToolExecutionContext.of(
+                                "¿En cuántas actas aparece Beatriz Suárez Aguilar?",
+                                QueryType.COUNT_DOCUMENTS,
+                                null));
+
+        String answer = result.result().toLowerCase(Locale.ROOT);
+        assertThat(answer).containsAnyOf("5", "cinco");
+        assertThat(answer).contains("beatriz");
+    }
+
     private List<Document> sparseHybridChunksWithSectionBody(
             String projectDocId, Map<String, Object> meta, String sectionBody) {
         List<Document> chunks = new ArrayList<>();

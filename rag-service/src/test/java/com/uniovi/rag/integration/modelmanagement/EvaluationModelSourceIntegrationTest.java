@@ -16,6 +16,7 @@ import com.uniovi.rag.domain.llm.catalog.LlmCatalogSource;
 import com.uniovi.rag.domain.llm.catalog.LlmModelReasonCodes;
 import com.uniovi.rag.domain.product.ProductDemoModel;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
+import com.uniovi.rag.testsupport.llm.LlmCatalogApiServiceTestSupport;
 import com.uniovi.rag.testsupport.llm.LlmModelCatalogTestSupport;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +50,7 @@ class EvaluationModelSourceIntegrationTest {
         LlmProperties properties = LlmModelCatalogTestSupport.openAiLiteLlmProperties();
         catalog = LlmModelCatalogTestSupport.catalogFrom(properties);
         LlmCatalogApiService catalogApiService =
-                new LlmCatalogApiService(
+                LlmCatalogApiServiceTestSupport.service(
                         catalog,
                         model -> true,
                         new RagVectorProperties(1024, true));
@@ -60,7 +61,7 @@ class EvaluationModelSourceIntegrationTest {
     @Test
     void evaluationCatalogApiOpenAiWithoutOllama() {
         LlmCatalogApiService catalogApiService =
-                new LlmCatalogApiService(
+                LlmCatalogApiServiceTestSupport.service(
                         catalog,
                         model -> {
                             throw new RuntimeException("Ollama should not be probed");
@@ -105,7 +106,7 @@ class EvaluationModelSourceIntegrationTest {
         properties.getOllama().setDefaultEmbeddingModel("nomic-embed-text");
         LlmModelCatalogService isolatedCatalog = LlmModelCatalogTestSupport.catalogFrom(properties);
         LlmCatalogApiService catalogApiService =
-                new LlmCatalogApiService(
+                LlmCatalogApiServiceTestSupport.service(
                         isolatedCatalog,
                         model -> true,
                         new RagVectorProperties(1024, true));

@@ -1,0 +1,166 @@
+# P0 full-application Playwright suite — nightly + manual on self-hosted runner (Ollama / LiteLLM on host).
+# Requires live demo stack at https://127.0.0.1:8444 (HTTPS reverse-proxy; see scripts/ci/e2e-stack-env.defaults.sh).
+name: E2E P0 Playwright (full application)
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_rag:
+        description: "Include P0-06 RAG chat test (@p0-app-rag)"
+        type: boolean
+        default: true
+      skip_stack_start:
+        description: "Skip stack start (stack already running on runner)"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 3 * * *"
+
+concurrency:
+  group: e2e-p0-playwright-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  E2E_STACK_MODE: https-proxy
+  REVERSE_PROXY_DEV_HTTPS_PORT: "8444"
+  REVERSE_PROXY_DEV_HTTP_PORT: "8080"
+  PLAYWRIGHT_BASE_URL: https://127.0.0.1:8444
+  E2E_PRODUCT_URL: https://127.0.0.1:8444
+  E2E_BACKEND_HEALTH_URL: https://127.0.0.1:8444
+  E2E_WEB_HEALTH_URL: https://127.0.0.1:8444
+  PLAYWRIGHT_SKIP_WEBSERVER: "1"
+  PLAYWRIGHT_IGNORE_HTTPS_ERRORS: "1"
+  NODE_TLS_REJECT_UNAUTHORIZED: "0"
+  E2E_ALLOW_INSECURE_COOKIES: "true"
+  E2E_ADMIN_ENABLED: "1"
+  E2E_ADMIN_EMAIL: admin@e2e.local
+  E2E_ADMIN_PASSWORD: e2e
+  E2E_SEED_EMAIL: dev@local.test
+  E2E_SEED_PASSWORD: dev
+  PLAYWRIGHT_RETRIES: "1"
+  PLAYWRIGHT_WORKERS: "1"
+  PLAYWRIGHT_MAX_FAILURES: "1"
+  PLAYWRIGHT_TEST_TIMEOUT_MS: "360000"
+  PLAYWRIGHT_EXPECT_TIMEOUT_MS: "15000"
+  PLAYWRIGHT_TRACE: retain-on-failure
+  E2E_STACK_PREFLIGHT_MAX_MS: "300000"
+  E2E_STACK_PREFLIGHT_REQUEST_MS: "30000"
+  E2E_STACK_WAIT_MAX_ATTEMPTS: "36"
+  E2E_STACK_WAIT_SLEEP_SEC: "10"
+  E2E_CI_LOG_DIR: /tmp/e2e-p0-stack-logs
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  p0-playwright:
+    name: P0 full application (@p0-app)
+    runs-on: self-hosted
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up JDK 21 (Maven compile for backend-dev)
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Cache npm (webapp)
+        uses: ./.github/actions/cache-npm-webapp
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: webapp/package.json
+          package-manager-cache: false
+
+      - name: Start E2E stack
+        if: inputs.skip_stack_start != true
+        run: bash ./scripts/ci/start-e2e-stack.sh
+
+      - name: Skip stack start (pre-running stack)
+        if: inputs.skip_stack_start == true
+        run: |
+          echo "Skipping stack start; seeding admin user only"
+          E2E_CI_SKIP_UP=1 bash ./scripts/ci/start-e2e-stack.sh
+
+      - name: Wait for E2E stack readiness
+        run: bash ./scripts/ci/wait-e2e-stack.sh
+
+      - name: Install Playwright dependencies
+        working-directory: webapp
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Playwright P0 suite
+        id: p0_tests
+        working-directory: webapp
+        run: |
+          GREP='@p0-app'
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.include_rag }}" != "true" ]; then
+            GREP='@p0-app-fast'
+          fi
+          echo "Running grep: ${GREP}"
+          npx cross-env \
+            PLAYWRIGHT_SKIP_WEBSERVER=1 \
+            PLAYWRIGHT_IGNORE_HTTPS_ERRORS=1 \
+            NODE_TLS_REJECT_UNAUTHORIZED=0 \
+            PLAYWRIGHT_RETRIES="${PLAYWRIGHT_RETRIES}" \
+            PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS}" \
+            PLAYWRIGHT_MAX_FAILURES="${PLAYWRIGHT_MAX_FAILURES}" \
+            PLAYWRIGHT_TEST_TIMEOUT_MS="${PLAYWRIGHT_TEST_TIMEOUT_MS}" \
+            PLAYWRIGHT_EXPECT_TIMEOUT_MS="${PLAYWRIGHT_EXPECT_TIMEOUT_MS}" \
+            PLAYWRIGHT_TRACE="${PLAYWRIGHT_TRACE}" \
+            PLAYWRIGHT_BASE_URL="${PLAYWRIGHT_BASE_URL}" \
+            E2E_PRODUCT_URL="${E2E_PRODUCT_URL}" \
+            E2E_ADMIN_ENABLED="${E2E_ADMIN_ENABLED}" \
+            E2E_ADMIN_EMAIL="${E2E_ADMIN_EMAIL}" \
+            E2E_ADMIN_PASSWORD="${E2E_ADMIN_PASSWORD}" \
+            E2E_ALLOW_INSECURE_COOKIES="${E2E_ALLOW_INSECURE_COOKIES}" \
+            node scripts/e2e-stack-preflight.mjs
+          npx cross-env \
+            PLAYWRIGHT_SKIP_WEBSERVER=1 \
+            PLAYWRIGHT_IGNORE_HTTPS_ERRORS=1 \
+            NODE_TLS_REJECT_UNAUTHORIZED=0 \
+            PLAYWRIGHT_RETRIES="${PLAYWRIGHT_RETRIES}" \
+            PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS}" \
+            PLAYWRIGHT_MAX_FAILURES="${PLAYWRIGHT_MAX_FAILURES}" \
+            PLAYWRIGHT_TEST_TIMEOUT_MS="${PLAYWRIGHT_TEST_TIMEOUT_MS}" \
+            PLAYWRIGHT_EXPECT_TIMEOUT_MS="${PLAYWRIGHT_EXPECT_TIMEOUT_MS}" \
+            PLAYWRIGHT_TRACE="${PLAYWRIGHT_TRACE}" \
+            PLAYWRIGHT_BASE_URL="${PLAYWRIGHT_BASE_URL}" \
+            E2E_PRODUCT_URL="${E2E_PRODUCT_URL}" \
+            E2E_ADMIN_ENABLED="${E2E_ADMIN_ENABLED}" \
+            E2E_ADMIN_EMAIL="${E2E_ADMIN_EMAIL}" \
+            E2E_ADMIN_PASSWORD="${E2E_ADMIN_PASSWORD}" \
+            E2E_ALLOW_INSECURE_COOKIES="${E2E_ALLOW_INSECURE_COOKIES}" \
+            playwright test --project=chromium e2e/p0 --grep "${GREP}"
+
+      - name: Collect stack logs before stop
+        if: always()
+        run: E2E_CI_COLLECT_LOGS=1 bash ./scripts/ci/stop-e2e-stack.sh
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-p0-report
+          path: |
+            webapp/playwright-report/
+            webapp/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload stack docker logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-p0-stack-logs
+          path: |
+            /tmp/e2e-p0-stack-logs/
+          retention-days: 7
+          if-no-files-found: ignore

@@ -426,10 +426,10 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     }));
     renderSubject();
     await openEditPanel();
-    expect(screen.getByText(/Multi turn \(requires multi turn\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Hidden \(not allowed\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Supported selectable$/)).toBeInTheDocument();
-    expect(screen.getByText(/Not supported but selectable \(incompatible index\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Multi turn \(Advanced\) \(requires multi turn\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Hidden \(Fast\) \(not allowed\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Supported selectable \(Fast\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Not supported but selectable \(Standard\) \(incompatible index\)/i)).toBeInTheDocument();
     expect(screen.queryByText(/REQUIRES_MULTI_TURN/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\[NOT_SUPPORTED/i)).not.toBeInTheDocument();
   });

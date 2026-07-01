@@ -53,22 +53,21 @@ class ChatMessageApplicationServiceValidationTest {
         afterCommitTaskScheduler = mock(AfterCommitTaskScheduler.class);
         runtimeConfigValidationService = mock(RuntimeConfigValidationService.class);
         chatPresetDefaults = mock(ChatPresetDefaults.class);
-        sut =
-                new ChatMessageApplicationService(
-                        projectAccessService,
-                        messageRepository,
-                        mock(ConversationRepository.class),
-                        mock(ConversationDraftRepository.class),
-                        mock(UserRepository.class),
-                        asyncTaskRepository,
-                        mock(AsyncLabTaskRunner.class),
-                        afterCommitTaskScheduler,
-                        mock(ChatJobCancellationRegistry.class),
-                        mock(AsyncTaskMutationService.class),
-                        mock(ChatMessageWorkService.class),
-                        runtimeConfigValidationService,
-                        chatPresetDefaults,
-                        mock(ObjectProvider.class));
+        sut =new ChatMessageApplicationService(
+                projectAccessService,
+                messageRepository,
+                mock(ConversationRepository.class),
+                mock(ConversationDraftRepository.class),
+                mock(UserRepository.class),
+                asyncTaskRepository,
+                mock(AsyncLabTaskRunner.class),
+                afterCommitTaskScheduler,
+                mock(ChatJobCancellationRegistry.class),
+                mock(AsyncTaskMutationService.class),
+                mock(ChatMessageWorkService.class),
+                runtimeConfigValidationService,
+                chatPresetDefaults,
+                mock(ObjectProvider.class));
     }
 
     @Test

@@ -15,6 +15,7 @@ import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.application.service.runtime.llm.RagChatModelRoutingService;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
@@ -53,6 +54,8 @@ class RagModelSelectionTest {
             LlmModelCatalogTestSupport.catalogFrom(LlmModelCatalogTestSupport.openAiLiteLlmProperties());
     private final ChatGenerationModelSelector chatGenerationModelSelector =
             new ChatGenerationModelSelector(modelCatalog);
+    private final RagChatModelRoutingService chatModelRoutingService =
+            new RagChatModelRoutingService(modelCatalog);
     private final ResolvedLlmConfigResolver configResolver = mock(ResolvedLlmConfigResolver.class);
     private final LlmClientResolver clientResolver = mock(LlmClientResolver.class);
     private final LlmChatClient chatClient = mock(LlmChatClient.class);
@@ -66,7 +69,8 @@ class RagModelSelectionTest {
                         configResolver,
                         objectMapper,
                         chatGenerationModelSelector,
-                        modelCatalog);
+                        modelCatalog,
+                        chatModelRoutingService);
     }
 
     @AfterEach

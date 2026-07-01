@@ -54,7 +54,8 @@ class LlmCatalogControllerWebMvcTest {
                                                 null,
                                                 null,
                                                 null,
-                                                LlmCatalogSource.PROPERTIES))));
+                                                LlmCatalogSource.PROPERTIES,
+                                                null))));
 
         mockMvc.perform(get(path("/llm/catalog")))
                 .andExpect(status().isOk())

@@ -56,7 +56,7 @@ class ChatMessagePropagationIntegrationTest {
 
     @Test
     void chatJobHandler_isRegisteredForChatMessageType() {
-        ChatMessageJobHandler handler = new ChatMessageJobHandler(null, null, null, null, null);
+        ChatMessageJobHandler handler = new ChatMessageJobHandler(null, null, null, null, null, null);
         assertThat(handler.taskType()).isEqualTo(AsyncTaskType.CHAT_MESSAGE);
     }
 

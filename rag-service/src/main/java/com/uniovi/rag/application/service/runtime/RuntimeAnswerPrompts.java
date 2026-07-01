@@ -242,7 +242,10 @@ public final class RuntimeAnswerPrompts {
             Grounding policy:
             - Base factual claims ONLY on the CONTEXT below.
             - Cite acta filename or date when stating facts.
-            - If the CONTEXT does not support the answer, abstain clearly.
+            - If the question asks "en qué acta", the primary output must be the acta identifier, document name and/or meeting date.
+            - Do not replace acta lookup with generic legal or thematic explanations.
+            - If the CONTEXT does not support the answer, abstain clearly; if evidence is partial, answer what is known.
+            - Never output judge/classifier format such as "Answer: NO".
             """;
     }
 

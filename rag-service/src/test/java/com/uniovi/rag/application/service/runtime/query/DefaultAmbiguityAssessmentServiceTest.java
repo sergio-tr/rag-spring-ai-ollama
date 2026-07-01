@@ -296,5 +296,39 @@ class DefaultAmbiguityAssessmentServiceTest {
         assertThat(out.status()).isEqualTo(AmbiguityStatus.SUFFICIENT);
         assertThat(out.missingFields()).isEmpty();
     }
+
+    @Test
+    void assess_broadScopeSummary_sufficient() {
+        DefaultAmbiguityAssessmentService sut = new DefaultAmbiguityAssessmentService();
+
+        AmbiguityAssessment out =
+                sut.assess(
+                        new NormalizedQuery("raw", "Resume todo lo tratado sobre calefacción.", List.of()),
+                        Optional.of(QueryType.SUMMARIZE_TOPIC),
+                        QueryType.SUMMARIZE_TOPIC.name(),
+                        ClassifierStatus.OK,
+                        StructuredRewriteResult.identityFallback(
+                                "Resume todo lo tratado sobre calefacción.", null),
+                        EntityExtractionResult.emptyWithNote(null));
+
+        assertThat(out.status()).isEqualTo(AmbiguityStatus.SUFFICIENT);
+    }
+
+    @Test
+    void assess_corpusWideListing_sufficient() {
+        DefaultAmbiguityAssessmentService sut = new DefaultAmbiguityAssessmentService();
+        String q = "dime qué actas tienen 20 asistentes";
+
+        AmbiguityAssessment out =
+                sut.assess(
+                        new NormalizedQuery("raw", q, List.of()),
+                        Optional.of(QueryType.FILTER_AND_LIST),
+                        QueryType.FILTER_AND_LIST.name(),
+                        ClassifierStatus.OK,
+                        StructuredRewriteResult.identityFallback(q, null),
+                        EntityExtractionResult.emptyWithNote(null));
+
+        assertThat(out.status()).isEqualTo(AmbiguityStatus.SUFFICIENT);
+    }
 }
 

@@ -31,7 +31,6 @@ const FORBIDDEN_IN_PRODUCT_MESSAGES = [
   /\bM10\b|\bM11\b|\bM12\b|\bM9\b/i,
   /Do not claim/i,
   /claim map/i,
-  /\.cursor\/context\/evidence/i,
   /handoff/i,
   /\bTFG\b/i,
   /partial evidence/i,

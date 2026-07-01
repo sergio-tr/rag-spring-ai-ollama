@@ -28,6 +28,15 @@ public final class QueryPlanSlotEnricher {
             slots.put("field", "attendeesCount");
             return Map.copyOf(slots);
         }
+        if ((q.contains("presentes") || q.contains("presente"))
+                && (q.contains("cuántos") || q.contains("cuantos") || q.contains("cuántas") || q.contains("cuantas"))) {
+            slots.put("field", "attendeesCount");
+            return Map.copyOf(slots);
+        }
+        if (q.contains("presentes") || q.contains("presente")) {
+            slots.put("field", "attendees");
+            return Map.copyOf(slots);
+        }
         if (existing != null && !existing.isBlank()) {
             return Map.copyOf(slots);
         }
@@ -42,6 +51,8 @@ public final class QueryPlanSlotEnricher {
                 || q.contains("participante")
                 || q.contains("asistentes")
                 || q.contains("asistente")
+                || q.contains("presentes")
+                || q.contains("presente")
                 || q.contains("attendees")) {
             return Optional.of("attendees");
         }

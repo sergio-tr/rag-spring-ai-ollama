@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.query;
 
+import com.uniovi.rag.application.service.runtime.optimization.DeterministicQueryRewriteShortcuts;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
 import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
@@ -31,10 +32,19 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
         List<String> missing = new ArrayList<>();
 
         String qLower = normalized.normalizedText().toLowerCase(Locale.ROOT);
+        if (ActaFieldAnchorHeuristics.isCorpusWideAggregate(qLower)) {
+            return AmbiguityAssessment.sufficient();
+        }
+        if (DeterministicQueryRewriteShortcuts.matches(normalized.normalizedText()).isPresent()) {
+            return AmbiguityAssessment.sufficient();
+        }
         if (ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(qLower)) {
             return AmbiguityAssessment.sufficient();
         }
         if (ActaFieldAnchorHeuristics.isCorpusWideExactAttendeeCountListing(qLower)) {
+            return AmbiguityAssessment.sufficient();
+        }
+        if (ActaFieldAnchorHeuristics.isDatedSummaryRequest(qLower)) {
             return AmbiguityAssessment.sufficient();
         }
 
@@ -83,7 +93,7 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
                 (entities != null && !entities.dates().isEmpty())
                         || ActaFieldAnchorHeuristics.hasExplicitDateInText(q)
                         || q.contains("last") || q.contains("últim") || q.contains("next") || q.contains("próxim");
-        if ((asksSummary || asksCompare) && !hasTemporal) {
+        if ((asksSummary || asksCompare) && !hasTemporal && !ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)) {
             missing.add("time_reference");
             reasons.add("Missing temporal anchor for summary/compare");
             return new AmbiguityAssessment(AmbiguityStatus.MISSING_INFORMATION, reasons, missing);

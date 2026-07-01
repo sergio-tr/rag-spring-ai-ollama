@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.memory;
 
+import com.uniovi.rag.application.service.runtime.optimization.RagLlmCallBudgetPolicy;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
@@ -143,25 +144,34 @@ public class ConversationMemoryStrategy {
         }
 
         boolean condensationAttempted = decision.attemptCondensation();
+        RagLlmCallBudgetPolicy.SkipDecision condenseSkip =
+                RagLlmCallBudgetPolicy.condenseDecision(ctx, eligible, ctx.userQuery());
         String condensed = "";
         boolean used = false;
         boolean fallbackApplied = false;
         ExecutionStageOutcome condenseOutcome = ExecutionStageOutcome.SUCCESS;
         String condenseMsg = "status=OK";
-        try {
-            condensed =
-                    condensationAttempted
-                            ? condensor.condense(ctx, slice, ctx.userQuery(), preMemoryPlanningInputText)
-                            : "";
-            if (condensed == null || condensed.isBlank()) {
+        if (condensationAttempted && condenseSkip.skip()) {
+            condensed = preMemoryPlanningInputText;
+            used = false;
+            fallbackApplied = false;
+            condenseMsg = "status=SKIPPED reason=" + condenseSkip.reason();
+        } else {
+            try {
+                condensed =
+                        condensationAttempted
+                                ? condensor.condense(ctx, slice, ctx.userQuery(), preMemoryPlanningInputText)
+                                : "";
+                if (condensed == null || condensed.isBlank()) {
+                    condenseOutcome = ExecutionStageOutcome.FAILED;
+                    condenseMsg = "status=BLANK_OUTPUT";
+                } else {
+                    used = condensationAttempted && !condensed.equals(preMemoryPlanningInputText);
+                }
+            } catch (Exception e) {
                 condenseOutcome = ExecutionStageOutcome.FAILED;
-                condenseMsg = "status=BLANK_OUTPUT";
-            } else {
-                used = true;
+                condenseMsg = "status=EXCEPTION message=" + safeMsg(e);
             }
-        } catch (Exception e) {
-            condenseOutcome = ExecutionStageOutcome.FAILED;
-            condenseMsg = "status=EXCEPTION message=" + safeMsg(e);
         }
         stages.add(new ExecutionStageTrace(
                 "memory_condense",

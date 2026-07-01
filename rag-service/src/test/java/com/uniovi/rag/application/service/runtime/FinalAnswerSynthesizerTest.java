@@ -213,7 +213,24 @@ class FinalAnswerSynthesizerTest {
     assertThat(out).contains("ACTA_2026-02-25.pdf");
   }
 
-  private static QueryPlan plan(String query, QueryType queryType) {
+    @Test
+    void enumerateAllWhenToolReturnsN() {
+        QueryPlan plan =
+                plan("¿Qué actas mencionan videovigilancia?", QueryType.FILTER_AND_LIST);
+        List<Map<String, Object>> sources =
+                List.of(
+                        Map.of("filename", "ACTA_1.pdf"),
+                        Map.of("filename", "ACTA_2.pdf"),
+                        Map.of("filename", "ACTA_3.pdf"));
+        String raw = "Una acta menciona videovigilancia.";
+
+        String out = FinalAnswerSynthesizer.synthesize(plan, raw, sources);
+
+        assertThat(out).contains("ACTA_1.pdf", "ACTA_2.pdf", "ACTA_3.pdf");
+        assertThat(out).contains("- ACTA_1.pdf");
+    }
+
+    private static QueryPlan plan(String query, QueryType queryType) {
     return new QueryPlan(
         QueryPlan.VERSION_P6_QU_CORE_V1,
         query,

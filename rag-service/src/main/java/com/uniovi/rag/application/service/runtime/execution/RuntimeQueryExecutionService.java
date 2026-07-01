@@ -5,6 +5,9 @@ import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.application.exception.llm.LlmProviderException;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.application.service.runtime.observability.ChatLatencyCollector;
+import com.uniovi.rag.tool.metadata.MetadataRequestCorpusCache;
+import com.uniovi.rag.application.service.runtime.optimization.RagLlmCallBudgetEnforcer;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.infrastructure.llm.openaicompat.OpenAiCompatibleLlmException;
@@ -125,9 +128,14 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
             }
             ExecutionContext ctx = executionContextFactory.buildForHttpQuery(query, chatModel);
             try {
+                RagLlmCallBudgetEnforcer.bind(ctx);
+                ChatLatencyCollector.bind(ctx);
                 prepareOllamaForContext(ctx);
                 return executeOrchestrated(ctx);
             } finally {
+                RagLlmCallBudgetEnforcer.clear();
+                ChatLatencyCollector.clear();
+                MetadataRequestCorpusCache.clear();
                 OrchestrationLlmConfigScope.clear();
             }
         } catch (RagServiceException | ResponseStatusException | LlmProviderException | OpenAiCompatibleLlmException e) {
@@ -179,6 +187,8 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
                             chatModel,
                             Optional.ofNullable(userMessageId));
             try {
+                RagLlmCallBudgetEnforcer.bind(ctx);
+                ChatLatencyCollector.bind(ctx);
                 prepareOllamaForContext(ctx);
                 RuntimeObservability obs = runtimeObservability != null ? runtimeObservability.getIfAvailable() : null;
                 if (obs != null) {
@@ -186,6 +196,9 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
                 }
                 return executeOrchestrated(ctx);
             } finally {
+                RagLlmCallBudgetEnforcer.clear();
+                ChatLatencyCollector.clear();
+                MetadataRequestCorpusCache.clear();
                 OrchestrationLlmConfigScope.clear();
             }
         } catch (RagServiceException | ResponseStatusException | LlmProviderException | OpenAiCompatibleLlmException e) {

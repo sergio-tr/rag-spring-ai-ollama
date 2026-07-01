@@ -187,6 +187,38 @@ class ClarificationPolicyResolverTest {
     }
 
     @Test
+    void resolve_notNeeded_forCorpusWideListing() {
+        ExecutionContext ctx = ctxBase("dime qué actas tienen 20 asistentes", false, false, false, Optional.empty());
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P11_QU_CLARIFICATION_CORE_V1,
+                        "raw",
+                        "raw",
+                        "dime qué actas tienen 20 asistentes",
+                        "rw",
+                        "lbl",
+                        Optional.of(QueryType.FILTER_AND_LIST),
+                        ClassifierStatus.OK,
+                        QueryIntent.UNKNOWN,
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled("norm", ""),
+                        ExpectedAnswerShape.UNKNOWN,
+                        new AmbiguityAssessment(
+                                AmbiguityStatus.MISSING_INFORMATION,
+                                List.of(),
+                                List.of("time_reference")),
+                        "c",
+                        "",
+                        List.of());
+        ClarificationDecision d = resolver.resolve(ctx, plan);
+        assertThat(d.ask()).isFalse();
+        assertThat(d.policyTraceNote()).contains("corpus_wide_listing_exempt");
+    }
+
+    @Test
     void selectKind_conflictStatus_selectsConflictingCuesKind() {
         QueryPlan plan = plan(AmbiguityStatus.CONFLICTING_CUES, List.of());
         assertThat(resolver.selectKind(plan))
@@ -277,6 +309,35 @@ class ClarificationPolicyResolverTest {
                 RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
                 RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
                 MaterializationStrategy.CHUNK_LEVEL);
+    }
+
+    @Test
+    void resumenSlashDate_noClarification() {
+        ExecutionContext ctx = ctxBase("hazme un resumen del 25/02/26", false, false, false, Optional.empty());
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P11_QU_CLARIFICATION_CORE_V1,
+                        "hazme un resumen del 25/02/26",
+                        "hazme un resumen del 25/02/26",
+                        "hazme un resumen del 25/02/26",
+                        "hazme un resumen del 25/02/26",
+                        "lbl",
+                        Optional.of(QueryType.SUMMARIZE_MEETING),
+                        ClassifierStatus.OK,
+                        QueryIntent.UNKNOWN,
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled("norm", ""),
+                        ExpectedAnswerShape.UNKNOWN,
+                        AmbiguityAssessment.sufficient(),
+                        "c",
+                        "",
+                        List.of());
+        ClarificationDecision d = resolver.resolve(ctx, plan);
+        assertThat(d.ask()).isFalse();
+        assertThat(d.terminalOutcome()).isEqualTo(ClarificationOutcome.NOT_NEEDED);
     }
 
     private static QueryPlan plan(AmbiguityStatus status, List<String> missing) {

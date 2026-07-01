@@ -15,6 +15,8 @@ import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
+import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
+import com.uniovi.rag.application.service.runtime.llm.RagChatModelRoutingService;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
@@ -41,6 +43,9 @@ class MinuteNERQueryAnalyserProviderAwareTest {
     private ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
     private MinuteNERQueryAnalyser analyser;
     private LlmProperties properties;
+    private final LlmModelCatalogService modelCatalog =
+            LlmModelCatalogTestSupport.catalogFrom(LlmModelCatalogTestSupport.openAiLiteLlmProperties());
+    private final RagChatModelRoutingService chatModelRoutingService = new RagChatModelRoutingService(modelCatalog);
 
     @BeforeEach
     void setUp() {
@@ -59,7 +64,8 @@ class MinuteNERQueryAnalyserProviderAwareTest {
                         configResolver,
                         taskLlmConfigResolver,
                         mock(ChatGenerationModelSelector.class),
-                        new ObjectMapper());
+                        new ObjectMapper(),
+                        chatModelRoutingService);
         when(llmClientResolver.resolveChatClient(any())).thenReturn(openAiChatClient);
         analyser = new MinuteNERQueryAnalyser(secondaryLlmExecutor);
     }

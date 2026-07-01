@@ -27,22 +27,35 @@ class JpaModelCatalogAdapterTest {
     private JpaModelCatalogAdapter adapter;
 
     @Test
-    void allowedLlmNamesInGovernance_filtersLlmAllowlistAndNonNullName() {
-        AllowedModelEntity llmOk =
-                AllowedModelEntity.newRow("m1", AllowedModelType.LLM, true, Instant.now());
+    void blockedLlmNamesInGovernance_filtersExplicitBlocksAndNonNullName() {
+        AllowedModelEntity llmBlocked =
+                AllowedModelEntity.newRow("blocked-chat", AllowedModelType.LLM, false, Instant.now());
+        AllowedModelEntity llmAllowed =
+                AllowedModelEntity.newRow("allowed-chat", AllowedModelType.LLM, true, Instant.now());
         AllowedModelEntity embedding =
-                AllowedModelEntity.newRow("e1", AllowedModelType.EMBEDDING, true, Instant.now());
-        AllowedModelEntity llmNotListed =
-                AllowedModelEntity.newRow("m2", AllowedModelType.LLM, false, Instant.now());
+                AllowedModelEntity.newRow("e1", AllowedModelType.EMBEDDING, false, Instant.now());
         AllowedModelEntity llmNullName = mock(AllowedModelEntity.class);
         when(llmNullName.getType()).thenReturn(AllowedModelType.LLM);
-        when(llmNullName.isInAllowlist()).thenReturn(true);
+        when(llmNullName.isInAllowlist()).thenReturn(false);
         when(llmNullName.getName()).thenReturn(null);
 
-        when(allowedModelRepository.findAll()).thenReturn(List.of(llmOk, embedding, llmNotListed, llmNullName));
+        when(allowedModelRepository.findAll())
+                .thenReturn(List.of(llmBlocked, llmAllowed, embedding, llmNullName));
 
-        Set<String> names = adapter.allowedLlmNamesInGovernance();
+        Set<String> names = adapter.blockedLlmNamesInGovernance();
 
-        assertThat(names).containsExactly("m1");
+        assertThat(names).containsExactly("blocked-chat");
+    }
+
+    @Test
+    void blockedEmbeddingNamesInGovernance_filtersExplicitBlocks() {
+        AllowedModelEntity embeddingBlocked =
+                AllowedModelEntity.newRow("blocked-embed", AllowedModelType.EMBEDDING, false, Instant.now());
+        AllowedModelEntity embeddingAllowed =
+                AllowedModelEntity.newRow("allowed-embed", AllowedModelType.EMBEDDING, true, Instant.now());
+
+        when(allowedModelRepository.findAll()).thenReturn(List.of(embeddingBlocked, embeddingAllowed));
+
+        assertThat(adapter.blockedEmbeddingNamesInGovernance()).containsExactly("blocked-embed");
     }
 }

@@ -43,6 +43,10 @@ const t = {
   catalogVectorCompatibleYes: "Yes",
   catalogVectorCompatibleNo: "No",
   catalogVectorCompatibleNa: "N/A",
+  catalogGovernanceAllowed: "Governance allowed",
+  catalogGovernanceAllowedYes: "Yes",
+  catalogGovernanceAllowedNo: "No",
+  catalogGovernanceAllowedNa: "Not applicable",
   modelAvailable: "Available",
   modelMissing: "Not installed",
 };

@@ -1,6 +1,8 @@
 package com.uniovi.rag.application.service;
 
-import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.application.service.model.ModelGovernanceService;
+import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
 import com.uniovi.rag.domain.config.runtime.ConfigProfileType;
 import com.uniovi.rag.infrastructure.persistence.ConfigProfileRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
@@ -29,17 +31,17 @@ public class ConfigProfileApplicationService {
 
     private final ConfigProfileRepository configProfileRepository;
     private final UserRepository userRepository;
-    private final ModelCatalogPort modelCatalogPort;
+    private final ModelGovernanceService modelGovernanceService;
     private final AuditApplicationService auditApplicationService;
 
     public ConfigProfileApplicationService(
             ConfigProfileRepository configProfileRepository,
             UserRepository userRepository,
-            ModelCatalogPort modelCatalogPort,
+            ModelGovernanceService modelGovernanceService,
             AuditApplicationService auditApplicationService) {
         this.configProfileRepository = configProfileRepository;
         this.userRepository = userRepository;
-        this.modelCatalogPort = modelCatalogPort;
+        this.modelGovernanceService = modelGovernanceService;
         this.auditApplicationService = auditApplicationService;
     }
 
@@ -115,10 +117,6 @@ public class ConfigProfileApplicationService {
     }
 
     private void validatePayloadModels(Map<String, Object> payload) {
-        Set<String> allowed = modelCatalogPort.allowedLlmNamesInGovernance();
-        if (allowed.isEmpty()) {
-            return;
-        }
         for (String key : MODEL_KEYS) {
             Object v = payload.get(key);
             if (v == null) {
@@ -128,11 +126,33 @@ public class ConfigProfileApplicationService {
             if (name.isEmpty()) {
                 continue;
             }
-            if (!allowed.contains(name)) {
+            LlmModelCapability capability =
+                    "embeddingModel".equals(key) ? LlmModelCapability.EMBEDDING : LlmModelCapability.CHAT;
+            if (!isKnownOnAnyProvider(name, capability)) {
                 throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "Model '" + name + "' for key '" + key + "' is not in the allowlist");
+                        HttpStatus.BAD_REQUEST,
+                        "Model '" + name + "' for key '" + key + "' is not in the catalog");
+            }
+            if (capability == LlmModelCapability.CHAT && modelGovernanceService.isChatModelBlocked(name)) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Model '" + name + "' for key '" + key + "' is blocked by governance");
+            }
+            if (capability == LlmModelCapability.EMBEDDING
+                    && modelGovernanceService.isEmbeddingModelBlocked(name)) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Model '" + name + "' for key '" + key + "' is blocked by governance");
             }
         }
+    }
+
+    private boolean isKnownOnAnyProvider(String modelName, LlmModelCapability capability) {
+        return (capability == LlmModelCapability.CHAT
+                        && (modelGovernanceService.isKnownChatModel(LlmProvider.OPENAI_COMPATIBLE, modelName)
+                                || modelGovernanceService.isKnownChatModel(LlmProvider.OLLAMA_NATIVE, modelName)))
+                || (capability == LlmModelCapability.EMBEDDING
+                        && (modelGovernanceService.isKnownEmbeddingModel(LlmProvider.OPENAI_COMPATIBLE, modelName)
+                                || modelGovernanceService.isKnownEmbeddingModel(
+                                        LlmProvider.OLLAMA_NATIVE, modelName)));
     }
 
     private ConfigProfileResponseDto toDto(ConfigProfileEntity e) {

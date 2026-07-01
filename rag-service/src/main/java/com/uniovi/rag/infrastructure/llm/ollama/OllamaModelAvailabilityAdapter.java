@@ -1,14 +1,14 @@
 package com.uniovi.rag.infrastructure.llm.ollama;
 
 import com.uniovi.rag.application.port.OllamaModelAvailabilityPort;
+import java.io.IOException;
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
-
-import java.io.IOException;
-import java.util.Locale;
-import java.util.Set;
 
 /**
  * Uses {@link OllamaApiClient} when present; when absent (e.g. {@code test} profile without HTTP client), treats models
@@ -18,8 +18,10 @@ import java.util.Set;
 public class OllamaModelAvailabilityAdapter implements OllamaModelAvailabilityPort {
 
     private static final Logger log = LoggerFactory.getLogger(OllamaModelAvailabilityAdapter.class);
+    private static final long CACHE_TTL_MS = 30_000L;
 
     private final ObjectProvider<OllamaApiClient> apiClientProvider;
+    private final AtomicReference<CachedModelNames> cachedNames = new AtomicReference<>(CachedModelNames.empty());
 
     public OllamaModelAvailabilityAdapter(ObjectProvider<OllamaApiClient> apiClientProvider) {
         this.apiClientProvider = apiClientProvider;
@@ -34,13 +36,26 @@ public class OllamaModelAvailabilityAdapter implements OllamaModelAvailabilityPo
         if (client == null) {
             return true;
         }
+        return matches(installedModelNames(client), modelName.trim());
+    }
+
+    private Set<String> installedModelNames(OllamaApiClient client) {
+        CachedModelNames snapshot = cachedNames.get();
+        if (snapshot.isFresh(CACHE_TTL_MS)) {
+            return snapshot.names();
+        }
         try {
             Set<String> names = client.listModelNames();
-            return matches(names, modelName.trim());
-        } catch (IOException | InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.warn("Ollama model list failed; treating model as unavailable: {}", e.getMessage());
-            return false;
+            CachedModelNames fresh = CachedModelNames.of(names);
+            cachedNames.set(fresh);
+            return fresh.names();
+        } catch (IOException e) {
+            log.warn("Ollama model list failed; using cached names when available: {}", e.getMessage());
+            return snapshot.names();
+        } catch (InterruptedException e) {
+            // Do not re-interrupt servlet worker threads: downstream JSON serialization would abort mid-response.
+            log.warn("Ollama model list interrupted; using cached names when available");
+            return snapshot.names();
         }
     }
 
@@ -55,5 +70,20 @@ public class OllamaModelAvailabilityAdapter implements OllamaModelAvailabilityPo
             }
         }
         return false;
+    }
+
+    private record CachedModelNames(long loadedAtEpochMs, Set<String> names) {
+
+        static CachedModelNames empty() {
+            return new CachedModelNames(0L, Set.of());
+        }
+
+        static CachedModelNames of(Set<String> names) {
+            return new CachedModelNames(System.currentTimeMillis(), Set.copyOf(names));
+        }
+
+        boolean isFresh(long ttlMs) {
+            return !names.isEmpty() && System.currentTimeMillis() - loadedAtEpochMs < ttlMs;
+        }
     }
 }

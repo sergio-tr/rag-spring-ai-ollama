@@ -61,11 +61,15 @@ class ChatMessageJobHandlerTest {
     @Mock
     private RuntimeObservability observability;
 
+    @Mock
+    private com.uniovi.rag.configuration.RagRuntimeProperties ragRuntimeProperties;
+
     @InjectMocks
     private ChatMessageJobHandler handler;
 
     @BeforeEach
     void stubSourceContributor() {
+        lenient().when(ragRuntimeProperties.hasSecondaryModel()).thenReturn(false);
         lenient()
                 .when(chatRetrievalSourceContributor.buildSources(any(), any(), any(), any(), any()))
                 .thenReturn(List.of());

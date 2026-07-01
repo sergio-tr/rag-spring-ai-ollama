@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.config.ConfigurablePromptResolver;
 import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
 import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.application.service.runtime.optimization.DeterministicQueryRewriteShortcuts;
+import com.uniovi.rag.application.service.runtime.optimization.RagLlmCallBudgetPolicy;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
@@ -49,6 +51,27 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
         RagConfig rag = ctx.resolved().toRagConfig();
         if (!rag.toolsEnabled()) {
             return StructuredRewriteResult.identityDisabled(normalized.normalizedText(), "toolsEnabled=false");
+        }
+
+        Optional<StructuredRewriteResult> deterministic =
+                DeterministicQueryRewriteShortcuts.tryRewrite(normalized.normalizedText());
+        if (deterministic.isPresent()) {
+            return validateOrFallback(deterministic.get(), normalized, entities);
+        }
+
+        RagLlmCallBudgetPolicy.SkipDecision rewriteSkip =
+                RagLlmCallBudgetPolicy.llmRewriteDecision(ctx, normalized.normalizedText());
+        if (rewriteSkip.skip()) {
+            return new StructuredRewriteResult(
+                    normalized.normalizedText(),
+                    false,
+                    List.of("OK: rewrite_skipped:" + rewriteSkip.reason()),
+                    StructuredRewriteResult.STRATEGY_STRUCTURED_V1,
+                    List.of(),
+                    List.of(),
+                    Optional.empty(),
+                    Map.of(),
+                    List.of());
         }
 
         try {
@@ -169,6 +192,10 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
             }
         }
 
+        if (carriedFieldRewriteBlocked(normalizedText, rewrittenLc)) {
+            return StructuredRewriteResult.identityFallback(normalizedText, "carried_field_frozen");
+        }
+
         // Validate that structured targetEntities do not introduce entities not present in extracted entities or query text.
         Set<String> allowed = allowedEntities(normalizedText, entities);
         for (String te : candidate.targetEntities()) {
@@ -179,6 +206,25 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
         }
 
         return candidate;
+    }
+
+    private static boolean carriedFieldRewriteBlocked(String normalizedText, String rewrittenLc) {
+        if (normalizedText == null || normalizedText.isBlank()) {
+            return false;
+        }
+        String original = normalizedText.toLowerCase(Locale.ROOT);
+        boolean carriedAttendees =
+                (original.contains("asistentes") || original.contains("participantes"))
+                        && (original.contains("cuántos") || original.contains("cuantos"));
+        if (!carriedAttendees) {
+            return false;
+        }
+        boolean rewriteToDuration =
+                rewrittenLc.contains("duración")
+                        || rewrittenLc.contains("duracion")
+                        || rewrittenLc.contains("cuánto duró")
+                        || rewrittenLc.contains("cuanto duro");
+        return rewriteToDuration;
     }
 
     private static List<String> requiredEntities(EntityExtractionResult entities) {

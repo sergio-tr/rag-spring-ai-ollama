@@ -2,6 +2,8 @@ package com.uniovi.rag.application.service.runtime.judge;
 
 import com.uniovi.rag.application.service.runtime.DeterministicToolTerminalAnswerGuard;
 import com.uniovi.rag.application.service.runtime.advisor.AnswerQualityAdvisor;
+import com.uniovi.rag.application.service.runtime.optimization.RagLlmCallBudgetPolicy;
+import com.uniovi.rag.application.service.runtime.optimization.RagLlmCallBudgetEnforcer;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.judge.JudgeCandidateSource;
@@ -111,6 +113,9 @@ public class JudgeStrategy {
                                 + " reasons="
                                 + String.join(",", quality.reasons())));
 
+        String contextText = AnswerQualityAdvisor.resolveContextText(ctx);
+        boolean hasGroundedSources = !contextText.isBlank();
+
         if (quality.preserveWithoutLlmJudge()) {
             stages.add(
                     new ExecutionStageTrace(
@@ -127,8 +132,33 @@ public class JudgeStrategy {
         }
 
         if (!quality.acceptable()) {
+            if (RagLlmCallBudgetPolicy.isInteractiveChat(ctx)
+                    && !RagLlmCallBudgetPolicy.requiresInteractiveLlmJudge(
+                            ctx, quality, hasGroundedSources)) {
+                stages.add(
+                        new ExecutionStageTrace(
+                                STAGE_JUDGE_FINALIZE,
+                                0L,
+                                ExecutionStageOutcome.SUCCESS,
+                                "outcome=ACCEPTED_INTERACTIVE_DETERMINISTIC_GATE"));
+                return new JudgeExecutionResult(
+                        true,
+                        JudgeOutcome.ACCEPTED,
+                        false,
+                        false,
+                        false,
+                        candidateAnswerText,
+                        false,
+                        List.copyOf(stages));
+            }
+            boolean retryAllowed =
+                    decision.retryAllowed()
+                            && RagLlmCallBudgetPolicy.allowJudgeRetry(
+                                    ctx,
+                                    quality,
+                                    !AnswerQualityAdvisor.resolveContextText(ctx).isBlank());
             JudgeOutcome rejected =
-                    decision.retryAllowed() ? JudgeOutcome.RETRY_REQUESTED : JudgeOutcome.REJECTED_NO_RETRY;
+                    retryAllowed ? JudgeOutcome.RETRY_REQUESTED : JudgeOutcome.REJECTED_NO_RETRY;
             if (rejected == JudgeOutcome.RETRY_REQUESTED) {
                 JudgeRetryExecutor.RetryResult retry =
                         retryExecutor.retry(
@@ -176,7 +206,42 @@ public class JudgeStrategy {
                     List.copyOf(stages));
         }
 
-        String contextText = AnswerQualityAdvisor.resolveContextText(ctx);
+        if (RagLlmCallBudgetPolicy.skipLlmJudgeForInteractive(ctx, quality)) {
+            stages.add(
+                    new ExecutionStageTrace(
+                            STAGE_JUDGE_FINALIZE,
+                            0L,
+                            ExecutionStageOutcome.SUCCESS,
+                            "outcome=ACCEPTED_INTERACTIVE_QUALITY_GATE"));
+            return new JudgeExecutionResult(
+                    true,
+                    JudgeOutcome.ACCEPTED,
+                    false,
+                    false,
+                    false,
+                    candidateAnswerText,
+                    false,
+                    List.copyOf(stages));
+        }
+
+        if (!RagLlmCallBudgetEnforcer.tryAllowSecondary("runtime-judge")) {
+            stages.add(
+                    new ExecutionStageTrace(
+                            STAGE_JUDGE_FINALIZE,
+                            0L,
+                            ExecutionStageOutcome.SUCCESS,
+                            "outcome=ACCEPTED_BUDGET_SKIP_LLM_JUDGE"));
+            return new JudgeExecutionResult(
+                    true,
+                    JudgeOutcome.ACCEPTED,
+                    false,
+                    false,
+                    false,
+                    candidateAnswerText,
+                    false,
+                    List.copyOf(stages));
+        }
+
         JudgeEvaluation eval =
                 evaluator.evaluate(
                         ctx,
