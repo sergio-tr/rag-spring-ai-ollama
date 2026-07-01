@@ -66,7 +66,7 @@ export function NewProjectDialog({
   const controlled = controlledOpen !== undefined && onOpenChange !== undefined;
   const open = controlled ? controlledOpen : uncontrolledOpen;
   const setOpenState = controlled ? onOpenChange! : setUncontrolledOpen;
-  const { mutateAsync, reset, isPending, isError } = useCreateProject();
+  const { mutateAsync, reset, isPending, isError, isSuccess } = useCreateProject();
   const chatCatalogQ = useMeSelectableLlmModels("CHAT");
   const embeddingCatalogQ = useMeSelectableLlmModels("EMBEDDING");
   const chatOptions = useMemo(
@@ -78,11 +78,13 @@ export function NewProjectDialog({
     [embeddingCatalogQ.data?.models],
   );
   const [createWarning, setCreateWarning] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   function handleOpenChange(next: boolean) {
     if (next) {
       reset();
       setCreateWarning(null);
+      setSubmitError(null);
     }
     setOpenState(next);
   }
@@ -101,7 +103,11 @@ export function NewProjectDialog({
   });
 
   async function onSubmit(values: FormValues) {
+    if (isPending) {
+      return;
+    }
     setCreateWarning(null);
+    setSubmitError(null);
     try {
       const outcome = await mutateAsync({
         name: values.name,
@@ -117,11 +123,15 @@ export function NewProjectDialog({
       });
       const llmModel = values.llmModelId?.trim();
       if (llmModel) {
-        await apiFetch(apiProductPath(`/config/project/${outcome.project.id}`), {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ llmModel }),
-        });
+        try {
+          await apiFetch(apiProductPath(`/config/project/${outcome.project.id}`), {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ llmModel }),
+          });
+        } catch {
+          setCreateWarning(t("createConfigWarning"));
+        }
       }
       if (outcome.activateFailed) {
         setCreateWarning(t("createActivateWarning"));
@@ -131,7 +141,7 @@ export function NewProjectDialog({
       handleOpenChange(false);
       form.reset();
     } catch {
-      // Critical failure only when POST did not yield a project (see useCreateProject).
+      setSubmitError(t("createError"));
     }
   }
 
@@ -247,9 +257,9 @@ export function NewProjectDialog({
               {t("configurePromptsAfterCreateAction")}
             </Link>
           </p>
-          {isError ? (
+          {submitError || (isError && !isSuccess) ? (
             <p className="text-destructive text-sm" role="alert" data-testid="project-create-error">
-              {t("createError")}
+              {submitError ?? t("createError")}
             </p>
           ) : null}
           {createWarning ? (
