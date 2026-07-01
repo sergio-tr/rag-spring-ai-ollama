@@ -17,4 +17,5 @@ public record LlmCatalogModelDto(
         String runtimeDetail,
         Integer embeddingDimensions,
         Boolean compatibleWithCurrentVectorStore,
-        LlmCatalogSource source) {}
+        LlmCatalogSource source,
+        Boolean governanceAllowed) {}

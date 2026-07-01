@@ -17,6 +17,9 @@ import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
 import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
 import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
+import com.uniovi.rag.application.service.runtime.optimization.DeterministicStructuredAnswerPlanFactory;
+import com.uniovi.rag.application.service.runtime.optimization.RagLlmCallBudgetPolicy;
+import com.uniovi.rag.application.service.runtime.observability.RagStageTimingTelemetry;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.routing.DeterministicToolRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
@@ -44,6 +47,7 @@ import com.uniovi.rag.application.service.runtime.routing.safety.P15ParentCandid
 import com.uniovi.rag.application.service.runtime.routing.safety.ParentCampaignOutcomeTelemetryPreservation;
 import com.uniovi.rag.application.service.runtime.routing.safety.ParentCandidateSnapshot;
 import java.util.Objects;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.application.service.runtime.routing.safety.RouteCandidateValidationResult;
@@ -180,6 +184,8 @@ public class RagExecutionOrchestrator {
         long quStart = System.nanoTime();
         QueryPlan plan = queryUnderstandingPipeline.buildPlan(ctx);
         ExecutionContext withPlan = executionContextFactory.attachQueryPlan(ctx, plan);
+        RagStageTimingTelemetry.logStage(
+                ctx, "query_understanding", RagStageTimingTelemetry.elapsedMs(quStart), "OK", "qu_completed");
 
         List<ExecutionStageTrace> quStages = RagExecutionTraceSupport.projectQuStages(plan);
         quStages.add(
@@ -958,10 +964,29 @@ public class RagExecutionOrchestrator {
         ExecutionContext effectiveCtx = ctxForWorkflow;
         var rag = ctxForWorkflow.resolved().toRagConfig();
         if (rag.reasoningEnabled()) {
-            var planResult = structuredAnswerPlanService.plan(ctxForWorkflow, plan);
-            reasoningStages.addAll(planResult.stageTraces());
-            if (planResult.plan().isPresent()) {
-                effectiveCtx = executionContextFactory.attachStructuredAnswerPlan(ctxForWorkflow, planResult.plan().get());
+            RagLlmCallBudgetPolicy.SkipDecision planSkip =
+                    RagLlmCallBudgetPolicy.structuredPlanDecision(ctxForWorkflow, plan);
+            if (planSkip.skip()) {
+                var deterministicPlan = DeterministicStructuredAnswerPlanFactory.build(plan);
+                if (deterministicPlan.isPresent()) {
+                    effectiveCtx =
+                            executionContextFactory.attachStructuredAnswerPlan(
+                                    ctxForWorkflow, deterministicPlan.get());
+                }
+                reasoningStages.add(
+                        new ExecutionStageTrace(
+                                "reasoning_plan",
+                                0L,
+                                ExecutionStageOutcome.SUCCESS,
+                                "status=SKIPPED reason=" + planSkip.reason()));
+            } else {
+                var planResult = structuredAnswerPlanService.plan(ctxForWorkflow, plan);
+                reasoningStages.addAll(planResult.stageTraces());
+                if (planResult.plan().isPresent()) {
+                    effectiveCtx =
+                            executionContextFactory.attachStructuredAnswerPlan(
+                                    ctxForWorkflow, planResult.plan().get());
+                }
             }
         }
 
@@ -1040,6 +1065,7 @@ public class RagExecutionOrchestrator {
         } finally {
             RagExecutionContextHolder.clear();
             RagSnapshotContextHolder.clear();
+            DeterministicToolEvidenceHolder.clear();
         }
     }
 

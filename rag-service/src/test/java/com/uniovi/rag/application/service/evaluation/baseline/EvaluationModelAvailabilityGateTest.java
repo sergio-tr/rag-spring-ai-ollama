@@ -59,7 +59,8 @@ class EvaluationModelAvailabilityGateTest {
                                                 null,
                                                 null,
                                                 null,
-                                                LlmCatalogSource.PROPERTIES))));
+                                                LlmCatalogSource.PROPERTIES,
+                                                true))));
 
         EvaluationModelAvailabilityGate gate =
                 new EvaluationModelAvailabilityGate(

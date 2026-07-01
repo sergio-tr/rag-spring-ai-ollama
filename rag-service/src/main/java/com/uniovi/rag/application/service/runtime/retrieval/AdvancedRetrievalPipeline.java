@@ -13,11 +13,15 @@ import com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet;
 import com.uniovi.rag.domain.runtime.retrieval.RerankOutcome;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
-import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
+import com.uniovi.rag.application.service.runtime.optimization.RagRankerDecisionPolicy;
+import com.uniovi.rag.application.service.runtime.advisor.MetadataToolContextAssembler;
+import com.uniovi.rag.application.service.runtime.optimization.DeterministicToolPromptBudgetPolicy;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievedContextSet;
 import com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry;
 import com.uniovi.rag.domain.runtime.retrieval.MetadataFilterTelemetry;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
 import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalTelemetry;
 import org.springframework.stereotype.Service;
 
@@ -51,6 +55,7 @@ public class AdvancedRetrievalPipeline {
     private final MetadataAppendixLoader metadataAppendixLoader;
     private final MetadataConstraintFilter metadataConstraintFilter;
     private final RetrievalContextExpander retrievalContextExpander;
+    private final MetadataToolContextAssembler metadataToolContextAssembler;
 
     public AdvancedRetrievalPipeline(
             RetrievalRequestBuilder retrievalRequestBuilder,
@@ -63,7 +68,8 @@ public class AdvancedRetrievalPipeline {
             RetrievalPromptTextBuilder retrievalPromptTextBuilder,
             MetadataAppendixLoader metadataAppendixLoader,
             MetadataConstraintFilter metadataConstraintFilter,
-            RetrievalContextExpander retrievalContextExpander) {
+            RetrievalContextExpander retrievalContextExpander,
+            MetadataToolContextAssembler metadataToolContextAssembler) {
         this.retrievalRequestBuilder = retrievalRequestBuilder;
         this.denseRetrievalStrategy = denseRetrievalStrategy;
         this.hybridRetrievalStrategy = hybridRetrievalStrategy;
@@ -75,9 +81,17 @@ public class AdvancedRetrievalPipeline {
         this.metadataAppendixLoader = metadataAppendixLoader;
         this.metadataConstraintFilter = metadataConstraintFilter;
         this.retrievalContextExpander = retrievalContextExpander;
+        this.metadataToolContextAssembler = metadataToolContextAssembler;
     }
 
     public CuratedContextSet retrieve(ExecutionContext ctx, QueryPlan plan, String workflowName) {
+        Optional<DeterministicToolEvidenceHolder.Evidence> toolEvidence = DeterministicToolEvidenceHolder.get();
+        if (toolEvidence.isPresent()
+                && toolEvidence.get().highConfidence()
+                && DeterministicToolPromptBudgetPolicy.shouldUseToolScopedContext(plan, workflowName)) {
+            return curatedFromToolEvidence(ctx, plan, workflowName, toolEvidence.get());
+        }
+
         List<ExecutionStageTrace> traces = new ArrayList<>();
         List<String> traceNotes = new ArrayList<>();
 
@@ -183,6 +197,13 @@ public class AdvancedRetrievalPipeline {
         if (!rerankEnabled) {
             rerankResult = identityRerank(req, retrieved.candidates());
             traces.add(skipped("retrieval_rerank", "rankerEnabled=false count=" + rerankResult.candidates().size()));
+        } else if (RagRankerDecisionPolicy.decide(req.queryText(), plan, retrieved.candidates())
+                == RagRankerDecisionPolicy.Decision.SKIP_CLEAR_FACTUAL) {
+            rerankResult = identityRerank(req, retrieved.candidates());
+            traces.add(
+                    skipped(
+                            "retrieval_rerank",
+                            "decision=SKIP_CLEAR_FACTUAL count=" + rerankResult.candidates().size()));
         } else {
             rerankResult = retrievalReranker.rerank(req, plan, retrieved.candidates());
             traces.add(
@@ -545,6 +566,60 @@ public class AdvancedRetrievalPipeline {
             }
         }
         return n;
+    }
+
+    private CuratedContextSet curatedFromToolEvidence(
+            ExecutionContext ctx,
+            QueryPlan plan,
+            String workflowName,
+            DeterministicToolEvidenceHolder.Evidence evidence) {
+        List<ExecutionStageTrace> traces = new ArrayList<>();
+        traces.add(
+                stage(
+                        "retrieval_tool_scoped_context",
+                        0L,
+                        ExecutionStageOutcome.SUCCESS,
+                        "TOOL_DIRECT_ANSWER_CONTEXT matchedMinutes="
+                                + evidence.matchedMinutes().size()));
+        String context =
+                DeterministicToolPromptBudgetPolicy.budgetPrimaryAnswerContext(
+                                evidence.assembledContextText() != null && !evidence.assembledContextText().isBlank()
+                                        ? evidence.assembledContextText()
+                                        : metadataToolContextAssembler.assembleFromMinutes(
+                                                evidence.matchedMinutes()))
+                        .textUsed();
+        CompressionOutcome compression =
+                new CompressionOutcome(context.length(), context.length(), 0, List.of("tool_scoped_context"));
+        RetrievalDiagnostics diagnostics =
+                new RetrievalDiagnostics(
+                        RetrievalMode.DENSE_ONLY,
+                        Optional.empty(),
+                        "",
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        false,
+                        List.of(),
+                        List.of(),
+                        Optional.empty(),
+                        0,
+                        0,
+                        false,
+                        0);
+        return new CuratedContextSet(
+                List.of(),
+                context,
+                compression,
+                List.of("skipped_dense_supplemental=tool_high_confidence"),
+                diagnostics,
+                List.of(),
+                traces);
     }
 
     private static String truncate(String value, int max) {

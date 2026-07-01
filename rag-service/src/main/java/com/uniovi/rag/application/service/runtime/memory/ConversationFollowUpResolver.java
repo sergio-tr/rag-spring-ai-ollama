@@ -1,6 +1,8 @@
 package com.uniovi.rag.application.service.runtime.memory;
 
 import com.uniovi.rag.domain.MessageRole;
+import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
+import com.uniovi.rag.application.service.runtime.query.ActaSlashDateSupport;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryTurn;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -16,10 +18,12 @@ import java.util.regex.Pattern;
  */
 public final class ConversationFollowUpResolver {
 
-    private static final Pattern DATE_SLASH = Pattern.compile("\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b");
+    private static final Pattern DATE_SLASH = Pattern.compile("\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}\\b");
     private static final Pattern DATE_ISO = Pattern.compile("\\b\\d{4}-\\d{2}-\\d{2}\\b");
     private static final Pattern DATE_SPANISH =
-            Pattern.compile("\\b\\d{1,2}\\s+de\\s+[\\p{L}]+\\s+de\\s+\\d{4}\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+            Pattern.compile(
+                    "\\b\\d{1,2}\\s+de\\s+[\\p{L}]+\\s+de[l]?\\s+\\d{4}\\b",
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     private ConversationFollowUpResolver() {}
 
@@ -28,7 +32,18 @@ public final class ConversationFollowUpResolver {
             return Optional.empty();
         }
         String lower = latestUserTurn.toLowerCase(Locale.ROOT);
-        if (containsDate(lower)) {
+
+        Optional<String> ellipticalWithField = expandEllipticalDateWithFieldCarryOver(history, latestUserTurn, lower);
+        if (ellipticalWithField.isPresent()) {
+            return ellipticalWithField;
+        }
+
+        Optional<String> topicFollowUp = expandTopicFollowUp(history, latestUserTurn, lower);
+        if (topicFollowUp.isPresent()) {
+            return topicFollowUp;
+        }
+
+        if (containsDate(lower) && !isEllipticalDateOnlyFollowUp(lower)) {
             return Optional.empty();
         }
         if (!needsExpansion(lower)) {
@@ -110,7 +125,7 @@ public final class ConversationFollowUpResolver {
     }
 
     static boolean isActaStructuredFieldFollowUp(String lower) {
-        if (lower == null || lower.isBlank() || isCorpusWideAggregate(lower)) {
+        if (lower == null || lower.isBlank() || ActaFieldAnchorHeuristics.isCorpusWideAggregate(lower)) {
             return false;
         }
         if (lower.contains("presidente") || lower.contains("presidenta")) {
@@ -165,15 +180,129 @@ public final class ConversationFollowUpResolver {
                 || lower.contains(" fin");
     }
 
-    private static boolean isCorpusWideAggregate(String lower) {
-        return lower.contains("todas las actas")
-                || lower.contains("cada acta")
-                || lower.contains("cuántas actas")
-                || lower.contains("cuantas actas")
-                || lower.contains("hay actas")
-                || lower.contains("todas las reuniones")
-                || lower.contains("cuántas reuniones")
-                || lower.contains("cuantas reuniones");
+    /** Topic follow-up: inherit prior topic and search corpus-wide when phrasing is elliptical. */
+    static Optional<String> expandTopicFollowUp(
+            List<ConversationMemoryTurn> history, String latestUserTurn, String lower) {
+        if (lower == null || lower.isBlank()) {
+            return Optional.empty();
+        }
+        boolean topicCue =
+                lower.contains("y qué se dice")
+                        || lower.contains("y que se dice")
+                        || lower.contains("y qué se coment")
+                        || lower.contains("y que se coment")
+                        || lower.contains("y qué se habl")
+                        || lower.contains("y que se habl");
+        if (!topicCue) {
+            return Optional.empty();
+        }
+        Optional<String> priorTopic = resolvePriorTopicPhrase(history);
+        if (priorTopic.isEmpty()) {
+            return Optional.empty();
+        }
+        String about = extractAboutPhrase(lower);
+        if (about.isBlank()) {
+            about = priorTopic.get();
+        }
+        return Optional.of("¿Qué se dice sobre " + about + " en las actas?");
+    }
+
+    private static Optional<String> resolvePriorTopicPhrase(List<ConversationMemoryTurn> history) {
+        for (int i = history.size() - 1; i >= 0; i--) {
+            ConversationMemoryTurn turn = history.get(i);
+            if (turn == null || turn.role() != MessageRole.USER || turn.content() == null) {
+                continue;
+            }
+            String lower = turn.content().toLowerCase(Locale.ROOT);
+            if (lower.contains("zonas comunes")) {
+                return Optional.of("zonas comunes");
+            }
+            if (lower.contains("sobre ")) {
+                int idx = lower.lastIndexOf("sobre ");
+                String tail = turn.content().substring(Math.min(turn.content().length(), idx + 6)).trim();
+                if (!tail.isBlank()) {
+                    return Optional.of(tail.replaceAll("[?.!]+$", "").trim());
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static String extractAboutPhrase(String lower) {
+        for (String prefix :
+                List.of(
+                        "y qué se dice sobre ",
+                        "y que se dice sobre ",
+                        "y qué se comenta sobre ",
+                        "y que se comenta sobre ",
+                        "y qué se habla sobre ",
+                        "y que se habla sobre ")) {
+            int idx = lower.indexOf(prefix);
+            if (idx >= 0) {
+                return lower.substring(idx + prefix.length()).replaceAll("[?.!]+$", "").trim();
+            }
+        }
+        return "";
+    }
+
+    static Optional<String> expandEllipticalDateWithFieldCarryOver(
+            List<ConversationMemoryTurn> history, String latestUserTurn, String lower) {
+        if (!isEllipticalDateOnlyFollowUp(lower) || !containsDate(lower)) {
+            return Optional.empty();
+        }
+        Optional<String> dateInFollowUp = firstExplicitDateInText(latestUserTurn);
+        if (dateInFollowUp.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<String> fieldTemplate = resolvePriorStructuredFieldQuery(history);
+        if (fieldTemplate.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(fieldTemplate.get() + " del " + dateInFollowUp.get());
+    }
+
+    static boolean isEllipticalDateOnlyFollowUp(String lower) {
+        if (lower == null || lower.isBlank()) {
+            return false;
+        }
+        return lower.contains("y la del")
+                || lower.contains("lo mismo para")
+                || lower.matches("(?s).*\\by\\s+la\\s+del\\b.*");
+    }
+
+    static Optional<String> resolvePriorStructuredFieldQuery(List<ConversationMemoryTurn> history) {
+        for (int i = history.size() - 1; i >= 0; i--) {
+            ConversationMemoryTurn turn = history.get(i);
+            if (turn == null || turn.role() != MessageRole.USER || turn.content() == null) {
+                continue;
+            }
+            Optional<String> template = structuredFieldTemplateFromQuery(turn.content());
+            if (template.isPresent()) {
+                return template;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> structuredFieldTemplateFromQuery(String userQuery) {
+        String lower = userQuery.toLowerCase(Locale.ROOT);
+        if ((lower.contains("cuántos") || lower.contains("cuantos"))
+                && (lower.contains("asistentes") || lower.contains("participantes"))) {
+            return Optional.of("¿Cuántos asistentes tiene el acta");
+        }
+        if (lower.contains("presidente") && (lower.contains("quién") || lower.contains("quien"))) {
+            return Optional.of("¿Quién fue el presidente en el acta");
+        }
+        if (lower.contains("secretari") && (lower.contains("quién") || lower.contains("quien"))) {
+            return Optional.of("¿Quién fue la secretaria en el acta");
+        }
+        if (lower.contains("duración") || lower.contains("duracion") || lower.contains("cuánto duró") || lower.contains("cuanto duro")) {
+            return Optional.of("¿Cuál fue la duración del acta");
+        }
+        if (lower.contains("temas") || lower.contains("orden del día") || lower.contains("orden del dia")) {
+            return Optional.of("¿Cuáles fueron los temas del acta");
+        }
+        return Optional.empty();
     }
 
     static Optional<String> findUniqueAnchorDate(List<ConversationMemoryTurn> history) {
@@ -244,7 +373,7 @@ public final class ConversationFollowUpResolver {
     }
 
     private static boolean needsExpansion(String lower) {
-        if (containsDate(lower)) {
+        if (containsDate(lower) && !isEllipticalDateOnlyFollowUp(lower)) {
             return false;
         }
         return lower.contains("esa reunión")
@@ -297,6 +426,10 @@ public final class ConversationFollowUpResolver {
     }
 
     private static Optional<String> firstDateInText(String text) {
+        Optional<String> slashToken = ActaSlashDateSupport.firstSlashDateTokenInText(text);
+        if (slashToken.isPresent()) {
+            return slashToken;
+        }
         Matcher slash = DATE_SLASH.matcher(text);
         if (slash.find()) {
             return Optional.of(slash.group());

@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.config.runtime.ConfigProvenance;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.config.validation.CompatibilityResult;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
@@ -39,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ContextPackingAdvisorTest {
 
-    private final ContextPackingAdvisor packing = new ContextPackingAdvisor();
+    private final ContextPackingAdvisor packing = new ContextPackingAdvisor(new MetadataToolContextAssembler());
 
     @Test
     void builds_deterministic_packed_set() {
@@ -87,6 +88,112 @@ class ContextPackingAdvisorTest {
         assertEquals("prompt body", packed.promptContextText());
         assertEquals(ContextPackingAdvisor.PACKING_STRATEGY_ID, packed.packingStrategyId());
         assertEquals("bid-1", packed.blocks().getFirst().blockId());
+    }
+
+    @Test
+    void countQuery_injectsAgendaNotFooter() {
+        com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder.set(
+                new com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder.Evidence(
+                        List.of(
+                                new com.uniovi.rag.domain.model.Minute(
+                                        "m1",
+                                        "ACTA 5.pdf",
+                                        "2026-02-25",
+                                        "Sala",
+                                        "",
+                                        "",
+                                        "",
+                                        "",
+                                        List.of(),
+                                        0,
+                                        Map.of("1", "Seguridad"),
+                                        List.of(),
+                                        List.of(),
+                                        List.of("videovigilancia"),
+                                        "Orden del día: seguridad")),
+                        "topics: videovigilancia\nagenda: Seguridad",
+                        true));
+        try {
+            UUID snap = UUID.randomUUID();
+            RetrievalCandidate footer =
+                    new RetrievalCandidate(
+                            "footer",
+                            "No habiendo más asuntos, se da por finalizada la sesión.",
+                            Map.of("documentId", "doc-1"),
+                            1.0,
+                            0.0,
+                            1,
+                            0,
+                            snap,
+                            1.0);
+            RetrievalCandidate body =
+                    new RetrievalCandidate(
+                            "body",
+                            "Se acordó instalar cámaras de videovigilancia.",
+                            Map.of("documentId", "doc-1"),
+                            0.5,
+                            0.0,
+                            2,
+                            0,
+                            snap,
+                            0.5);
+            CuratedContextSet curated =
+                    new CuratedContextSet(
+                            List.of(footer, body),
+                            "ignored",
+                            new CompressionOutcome(10, 10, 0, List.of()),
+                            List.of(),
+                            new RetrievalDiagnostics(
+                                    RetrievalMode.DENSE_ONLY,
+                                    Optional.of(RetrievalFusionMode.RRF_ONLY),
+                                    "",
+                                    2,
+                                    0,
+                                    2,
+                                    2,
+                                    2,
+                                    2,
+                                    2,
+                                    0,
+                                    0,
+                                    false,
+                                    List.of(),
+                                    List.of(),
+                                    Optional.empty(),
+                                    0,
+                                    0,
+                                    false,
+                                    0),
+                            List.of(),
+                            List.of());
+            QueryPlan plan =
+                    new QueryPlan(
+                            QueryPlan.VERSION_P6_QU_CORE_V1,
+                            "raw",
+                            "raw",
+                            "norm",
+                            "dime en cuántas reuniones se trató videovigilancia",
+                            "lbl",
+                            Optional.of(QueryType.COUNT_DOCUMENTS),
+                            ClassifierStatus.OK,
+                            QueryIntent.UNKNOWN,
+                            Map.of(),
+                            List.of(),
+                            List.of(),
+                            EntityExtractionResult.emptyWithNote(""),
+                            StructuredRewriteResult.identityDisabled("norm", ""),
+                            ExpectedAnswerShape.UNKNOWN,
+                            new AmbiguityAssessment(AmbiguityStatus.SUFFICIENT, List.of(), List.of()),
+                            "cid",
+                            "",
+                            List.of());
+            PackedContextSet packed = packing.pack(minimalCtx(), plan, curated, "ChunkDenseMetadataWorkflow");
+            assertTrue(packed.promptContextText().contains("videovigilancia"));
+            assertTrue(packed.promptContextText().length() < 20_000);
+            assertEquals("body", packed.blocks().getFirst().blockId());
+        } finally {
+            com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder.clear();
+        }
     }
 
     private static ExecutionContext minimalCtx() {

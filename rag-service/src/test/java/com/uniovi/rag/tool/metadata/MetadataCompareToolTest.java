@@ -13,8 +13,7 @@ import org.springframework.ai.chat.client.ChatClient;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class MetadataCompareToolTest {
@@ -41,8 +40,17 @@ class MetadataCompareToolTest {
     @Test
     void execute_emptyRetrieval_returnsToolResult() {
         ToolResult result = tool.execute(ToolExecutionContext.of("comparar", QueryType.COMPARE, null));
-        assertNotNull(result);
-        assertNotNull(result.result());
-        assertEquals("MetadataCompareTool", result.source());
+        assertThat(result).isNotNull();
+        assertThat(result.result()).isNotNull();
+        assertThat(result.source()).isEqualTo("MetadataCompareTool");
+    }
+
+    @Test
+    void proposalsFebVsAug_routesToCompare() {
+        assertThat(
+                        com.uniovi.rag.application.service.runtime.query.ClassifierOverrides.apply(
+                                "Compara la cantidad de propuestas presentadas en febrero y agosto.",
+                                QueryType.COUNT_DOCUMENTS))
+                .isEqualTo(QueryType.COMPARE);
     }
 }

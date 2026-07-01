@@ -2,6 +2,8 @@ package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.config.ConfigurablePromptResolver;
 import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
+import com.uniovi.rag.application.service.runtime.optimization.DeterministicToolPromptBudgetPolicy;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import com.uniovi.rag.application.service.runtime.factual.FactualAnswerVerificationLoop;
 import com.uniovi.rag.application.service.runtime.factual.FactualConstraintExtractor;
 import com.uniovi.rag.application.service.runtime.factual.FactualQuestionConstraints;
@@ -80,6 +82,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
         String effectivePromptContext =
                 RuntimeAnswerPrompts.effectivePromptContextForDateGrounding(
                         rawPromptContext, curated.finalCandidates(), dateDecision);
+        effectivePromptContext = budgetToolScopedContext(ctx, plan, effectivePromptContext, workflowName());
         stages.add(new ExecutionStageTrace(
                 "packed_context_preview",
                 0L,
@@ -174,6 +177,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
             FactualQuestionConstraints constraints,
             PackedContextSet packed) {
         String context = packed.promptContextText();
+        context = budgetToolScopedContext(ctx, ctx.queryPlan().orElse(null), context, workflowName());
         String user =
                 resolveRagUserTurn(
                         ctx,
@@ -224,6 +228,20 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                 0L,
                 ExecutionStageOutcome.SUCCESS,
                 "finalAnswerSource=" + (source != null ? source.name() : FinalAnswerSource.GENERATED.name()));
+    }
+
+    private static String budgetToolScopedContext(
+            ExecutionContext ctx, QueryPlan plan, String context, String workflowName) {
+        QueryPlan effectivePlan = plan != null ? plan : ctx.queryPlan().orElse(null);
+        if (!DeterministicToolPromptBudgetPolicy.shouldUseToolScopedContext(effectivePlan, workflowName)) {
+            return context;
+        }
+        String preferred =
+                DeterministicToolEvidenceHolder.get()
+                        .map(DeterministicToolEvidenceHolder.Evidence::assembledContextText)
+                        .filter(s -> s != null && !s.isBlank())
+                        .orElse(context);
+        return DeterministicToolPromptBudgetPolicy.budgetPrimaryAnswerContext(preferred).textUsed();
     }
 
     private static String combinePlanBlocks(String answerPlanBlock, String constraintsBlock) {

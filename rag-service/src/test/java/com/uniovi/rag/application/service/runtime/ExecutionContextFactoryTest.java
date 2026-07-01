@@ -1,6 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
-import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.application.service.model.ModelGovernanceService;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationBootstrap;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStateResolver;
@@ -57,7 +57,7 @@ class ExecutionContextFactoryTest {
     @Mock private RuntimeConfigResolutionService runtimeConfigResolutionService;
     @Mock private KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector;
     @Mock private ChatScopedRagConfigResolver chatScopedRagConfigResolver;
-    @Mock private ModelCatalogPort modelCatalogPort;
+    @Mock private ModelGovernanceService modelGovernanceService;
     @Mock private ClarificationStateResolver clarificationStateResolver;
     @Mock private ConversationMemoryStrategy conversationMemoryStrategy;
     @Mock private ConversationHistoryLoader conversationHistoryLoader;
@@ -96,7 +96,7 @@ class ExecutionContextFactoryTest {
                         runtimeConfigResolutionService,
                         knowledgeRuntimeSnapshotSelector,
                         chatScopedRagConfigResolver,
-                        modelCatalogPort,
+                        modelGovernanceService,
                         clarificationStateResolver,
                         conversationMemoryStrategy,
                         conversationHistoryLoader,
@@ -348,7 +348,22 @@ class ExecutionContextFactoryTest {
 
     @Test
     void buildForChatMessage_invalidModelOverride_throwsBadRequest() {
-        when(modelCatalogPort.allowedLlmNamesInGovernance()).thenReturn(Set.of("allowed-only"));
+        when(resolvedLlmConfigResolver.resolve(any(), any(), any()))
+                .thenReturn(
+                        ResolvedLlmConfig.uniform(
+                                LlmProvider.OPENAI_COMPATIBLE,
+                                "http://litellm:4000",
+                                "gpt-oss:20b",
+                                "embed",
+                                "KEY",
+                                null,
+                                0.1,
+                                60_000,
+                                null,
+                                Map.of()));
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("LLM model is not allowed by governance: unknown-model"))
+                .when(modelGovernanceService)
+                .assertChatModelAllowed(LlmProvider.OPENAI_COMPATIBLE, "unknown-model");
         UUID conversationId = UUID.randomUUID();
 
         assertThatThrownBy(

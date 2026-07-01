@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.tool;
 
+import com.uniovi.rag.application.service.runtime.optimization.DeterministicQueryRewriteShortcuts;
 import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.RagConfig;
@@ -135,6 +136,9 @@ public class DefaultDeterministicToolResolver implements DeterministicToolResolv
         if (isCorpusWideExactAttendeeCountListingPlan(plan)) {
             return true;
         }
+        if (isCorpusWideListingPlan(plan)) {
+            return true;
+        }
         return switch (plan.ambiguityAssessment().status()) {
             case SUFFICIENT -> true;
             case CONFLICTING_CUES ->
@@ -144,6 +148,35 @@ public class DefaultDeterministicToolResolver implements DeterministicToolResolv
                                     .isPresent();
             default -> false;
         };
+    }
+
+    private static boolean isCorpusWideListingPlan(QueryPlan plan) {
+        if (plan == null) {
+            return false;
+        }
+        for (String candidate :
+                List.of(plan.normalizedQueryText(), plan.rewrittenQueryText(), plan.rawUserQuery())) {
+            if (candidate == null || candidate.isBlank()) {
+                continue;
+            }
+            String q = candidate.toLowerCase(Locale.ROOT);
+            if (!ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)
+                    && DeterministicQueryRewriteShortcuts.matches(candidate).isEmpty()) {
+                continue;
+            }
+            return plan.classifierQueryType()
+                    .filter(
+                            type ->
+                                    type == QueryType.FILTER_AND_LIST
+                                            || type == QueryType.COUNT_DOCUMENTS
+                                            || type == QueryType.FIND_PARAGRAPH
+                                            || type == QueryType.SUMMARIZE_TOPIC
+                                            || type == QueryType.COUNT_AND_EXPLAIN
+                                            || type == QueryType.COMPARE)
+                    .isPresent()
+                    || DeterministicQueryRewriteShortcuts.matches(candidate).isPresent();
+        }
+        return false;
     }
 
     private static boolean isCorpusWideExactAttendeeCountListingPlan(QueryPlan plan) {

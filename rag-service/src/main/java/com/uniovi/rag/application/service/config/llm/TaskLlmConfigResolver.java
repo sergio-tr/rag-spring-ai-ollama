@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ConfigurationSourcePort;
 import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.domain.config.PresetProfilePayloadMerge;
 import com.uniovi.rag.domain.config.prompt.PromptOverrideKeys;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
@@ -26,14 +27,17 @@ public class TaskLlmConfigResolver {
     private final ConfigurationSourcePort configurationSource;
     private final ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     private final ObjectMapper objectMapper;
+    private final RagRuntimeProperties ragRuntimeProperties;
 
     public TaskLlmConfigResolver(
             ConfigurationSourcePort configurationSource,
             ResolvedLlmConfigResolver resolvedLlmConfigResolver,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            RagRuntimeProperties ragRuntimeProperties) {
         this.configurationSource = configurationSource;
         this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
         this.objectMapper = objectMapper;
+        this.ragRuntimeProperties = ragRuntimeProperties;
     }
 
     public record EffectiveTaskLlmConfig(
@@ -49,7 +53,17 @@ public class TaskLlmConfigResolver {
             ResolvedLlmConfig effectiveConfig,
             String effectiveModel,
             Double effectiveTemperature,
-            boolean taskOverrideApplied) {}
+            boolean taskOverrideApplied,
+            boolean secondaryModelApplied) {
+
+        public SecondaryCallConfig(
+                ResolvedLlmConfig effectiveConfig,
+                String effectiveModel,
+                Double effectiveTemperature,
+                boolean taskOverrideApplied) {
+            this(effectiveConfig, effectiveModel, effectiveTemperature, taskOverrideApplied, false);
+        }
+    }
 
     public EffectiveTaskLlmConfig resolve(
             TaskLlmTask task, UUID userId, UUID projectId, JsonNode runtimeOverride) {
@@ -88,7 +102,13 @@ public class TaskLlmConfigResolver {
         Optional<TaskLlmTask> taskOpt = TaskLlmTask.fromOperation(operation);
         if (taskOpt.isEmpty()) {
             Double temp = coalesceTemperature(base.temperature(), temperatureOverride);
-            return new SecondaryCallConfig(base, base.chatModel(), temp, false);
+            String model = resolveRuntimeSecondaryModel(base);
+            boolean secondaryApplied = ragRuntimeProperties.hasSecondaryModel();
+            if (secondaryApplied) {
+                model = ragRuntimeProperties.effectiveSecondaryModel();
+            }
+            ResolvedLlmConfig merged = secondaryApplied ? mergeTaskOverride(base, null, model, temp) : base;
+            return new SecondaryCallConfig(merged, model, temp, false, secondaryApplied);
         }
         EffectiveTaskLlmConfig effective = resolve(taskOpt.get(), userId, projectId, runtimeOverride);
         Double temp = effective.effectiveTemperature();
@@ -96,7 +116,26 @@ public class TaskLlmConfigResolver {
                 && (effective.override() == null || effective.override().temperature() == null)) {
             temp = temperatureOverride;
         }
-        return new SecondaryCallConfig(effective.mergedConfig(), effective.effectiveModel(), temp, effective.taskOverrideApplied());
+        String model = effective.effectiveModel();
+        boolean secondaryApplied = false;
+        if (!effective.taskOverrideApplied()
+                && !effective.task().inheritsMainModelByDefault()
+                && ragRuntimeProperties.hasSecondaryModel()) {
+            model = ragRuntimeProperties.effectiveSecondaryModel();
+            secondaryApplied = true;
+        }
+        ResolvedLlmConfig mergedConfig =
+                secondaryApplied
+                        ? mergeTaskOverride(effective.mergedConfig(), null, model, temp)
+                        : effective.mergedConfig();
+        return new SecondaryCallConfig(
+                mergedConfig, model, temp, effective.taskOverrideApplied(), secondaryApplied);
+    }
+
+    private String resolveRuntimeSecondaryModel(ResolvedLlmConfig base) {
+        return ragRuntimeProperties.hasSecondaryModel()
+                ? ragRuntimeProperties.effectiveSecondaryModel()
+                : base.chatModel();
     }
 
     private JsonNode buildRuntimeOverride(ExecutionContext ctx, @Nullable String chatModelFromSelector) {

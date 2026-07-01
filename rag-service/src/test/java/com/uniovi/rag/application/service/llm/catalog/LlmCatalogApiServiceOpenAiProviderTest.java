@@ -15,6 +15,7 @@ import com.uniovi.rag.domain.llm.catalog.LlmCatalogSource;
 import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
 import com.uniovi.rag.infrastructure.llm.LlmOpenAiCompatibleDefaults;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
+import com.uniovi.rag.testsupport.llm.LlmCatalogApiServiceTestSupport;
 import com.uniovi.rag.interfaces.rest.dto.llm.catalog.LlmCatalogModelDto;
 import com.uniovi.rag.interfaces.rest.dto.llm.catalog.LlmCatalogResponseDto;
 import java.util.List;
@@ -40,7 +41,7 @@ class LlmCatalogApiServiceOpenAiProviderTest {
         when(ollamaAvailability.isModelPresent(anyString())).thenThrow(new RuntimeException("Ollama unreachable"));
 
         apiService =
-                new LlmCatalogApiService(
+                LlmCatalogApiServiceTestSupport.service(
                         new LlmModelCatalogService(properties),
                         ollamaAvailability,
                         new RagVectorProperties(1024, true));
@@ -69,7 +70,7 @@ class LlmCatalogApiServiceOpenAiProviderTest {
         when(ollamaOnly.isModelPresent("gemma3:4b")).thenReturn(true);
 
         LlmCatalogApiService ollamaService =
-                new LlmCatalogApiService(
+                LlmCatalogApiServiceTestSupport.service(
                         new LlmModelCatalogService(properties),
                         ollamaOnly,
                         new RagVectorProperties(1024, true));

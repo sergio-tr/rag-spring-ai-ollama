@@ -1,6 +1,8 @@
 package com.uniovi.rag.application.service.llm.catalog;
 
+import com.uniovi.rag.application.service.model.ModelGovernanceService;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.domain.llm.catalog.LlmModelReasonCodes;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogRuntimeStatus;
@@ -24,11 +26,15 @@ public class MeSelectableLlmModelsService {
 
     private final ResolvedLlmConfigResolver configResolver;
     private final LlmCatalogApiService llmCatalogApiService;
+    private final ModelGovernanceService modelGovernanceService;
 
     public MeSelectableLlmModelsService(
-            ResolvedLlmConfigResolver configResolver, LlmCatalogApiService llmCatalogApiService) {
+            ResolvedLlmConfigResolver configResolver,
+            LlmCatalogApiService llmCatalogApiService,
+            ModelGovernanceService modelGovernanceService) {
         this.configResolver = configResolver;
         this.llmCatalogApiService = llmCatalogApiService;
+        this.modelGovernanceService = modelGovernanceService;
     }
 
     public MeSelectableLlmModelsResponseDto listForUser(UUID userId, LlmModelCapability capability) {
@@ -65,8 +71,10 @@ public class MeSelectableLlmModelsService {
         }
         if (capability == LlmModelCapability.CHAT) {
             ensureConfiguredRuntimeChatModel(models, config, effectiveProvider);
+            applyGovernanceBlocklist(models, effectiveProvider, LlmModelCapability.CHAT);
         } else {
             ensureConfiguredRuntimeEmbeddingModel(models, config, effectiveProvider);
+            applyGovernanceBlocklist(models, effectiveProvider, LlmModelCapability.EMBEDDING);
         }
         models.sort(Comparator.comparing(MeSelectableLlmModelDto::modelName));
         return new MeSelectableLlmModelsResponseDto(effectiveProvider, capability, List.copyOf(models));
@@ -124,6 +132,16 @@ public class MeSelectableLlmModelsService {
                         notConfiguredReasonCode,
                         false,
                         LlmCatalogRuntimeStatus.UNKNOWN));
+    }
+
+    private void applyGovernanceBlocklist(
+            List<MeSelectableLlmModelDto> models, LlmProvider provider, LlmModelCapability capability) {
+        models.removeIf(
+                model ->
+                        capability == LlmModelCapability.CHAT
+                                ? !modelGovernanceService.isChatModelGovernanceAllowed(provider, model.modelName())
+                                : !modelGovernanceService.isEmbeddingModelGovernanceAllowed(
+                                        provider, model.modelName()));
     }
 
     private static MeSelectableLlmModelDto toSelectable(LlmCatalogModelDto entry) {

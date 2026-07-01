@@ -11,6 +11,8 @@ import com.uniovi.rag.application.port.llm.catalog.LlmModelCatalogPort;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
+import com.uniovi.rag.application.service.runtime.observability.RagLlmCallTelemetry;
+import com.uniovi.rag.application.service.runtime.optimization.RagLlmCallBudgetEnforcer;
 import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
 import com.uniovi.rag.domain.llm.catalog.LlmModelUsageContext;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
@@ -20,6 +22,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -35,18 +38,21 @@ public class RagLlmChatInvoker {
     private final ObjectMapper objectMapper;
     private final ChatGenerationModelSelector chatGenerationModelSelector;
     private final LlmModelCatalogPort modelCatalog;
+    private final RagChatModelRoutingService chatModelRoutingService;
 
     public RagLlmChatInvoker(
             LlmClientResolver llmClientResolver,
             ResolvedLlmConfigResolver resolvedLlmConfigResolver,
             ObjectMapper objectMapper,
             ChatGenerationModelSelector chatGenerationModelSelector,
-            LlmModelCatalogPort modelCatalog) {
+            LlmModelCatalogPort modelCatalog,
+            RagChatModelRoutingService chatModelRoutingService) {
         this.llmClientResolver = llmClientResolver;
         this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
         this.objectMapper = objectMapper;
         this.chatGenerationModelSelector = chatGenerationModelSelector;
         this.modelCatalog = modelCatalog;
+        this.chatModelRoutingService = chatModelRoutingService;
     }
 
     /**
@@ -57,10 +63,14 @@ public class RagLlmChatInvoker {
         Objects.requireNonNull(ctx, "ctx");
         ResolvedLlmConfig config = effectiveConfig(ctx);
         LlmChatClient client = llmClientResolver.resolveChatClient(config);
-        String model =
+        String requestedModel =
                 chatGenerationModelSelector.effectiveChatModelId(ctx).orElse(config.chatModel());
+        RagChatModelRoutingService.RoutedChatModel routed =
+                chatModelRoutingService.resolvePrimary(config.provider(), requestedModel, ctx);
+        String model = routed.model();
         modelCatalog.assertUsable(
                 config.provider(), model, LlmModelCapability.CHAT, LlmModelUsageContext.RAG_CHAT);
+        int timeoutMs = RagLlmTimeoutPolicy.effectiveTimeoutMs(ctx, "PRIMARY", config.timeoutMs());
         String mergedSystem = mergeSystemPrompts(systemPrompt, config.systemPrompt());
         LlmChatRequest request =
                 LlmChatRequest.of(
@@ -68,22 +78,57 @@ public class RagLlmChatInvoker {
                         mergedSystem,
                         userMessage != null ? userMessage : "",
                         config.temperature(),
-                        config.timeoutMs(),
+                        timeoutMs,
                         config.additionalParameters());
+        int inputChars =
+                RagLlmCallTelemetry.approxChars(mergedSystem) + RagLlmChatInvoker.approxChars(userMessage);
+        Integer retrievedChunks =
+                ctx.advisorPackedContextSet().isPresent()
+                        ? ctx.advisorPackedContextSet().get().totalBlockCount()
+                        : null;
         long startedAt = System.nanoTime();
         LlmSafeOperationLogger.logStarted(log, "chat", config.provider(), model, config.baseUrl());
+        RagLlmCallTelemetry.logStarted(
+                ctx,
+                "primary-answer",
+                config.chatProvider(),
+                model,
+                inputChars,
+                ctx.advisorPackedContextSet()
+                        .map(p -> RagLlmCallTelemetry.approxChars(p.promptContextText()))
+                        .orElse(0),
+                retrievedChunks,
+                config.temperature());
+        if (!RagLlmCallBudgetEnforcer.tryAllowPrimary("primary-answer")) {
+            throw new IllegalStateException("Primary LLM call blocked by budget policy");
+        }
         try {
             String content = client.chat(request).content();
+            long latencyMs = elapsedMs(startedAt);
             LlmSafeOperationLogger.logCompleted(
                     log,
                     "chat",
                     config.provider(),
                     model,
                     config.baseUrl(),
-                    elapsedMs(startedAt),
+                    latencyMs,
                     "OK");
+            RagLlmCallTelemetry.logCompleted(
+                    ctx,
+                    "primary-answer",
+                    config.chatProvider(),
+                    model,
+                    inputChars,
+                    ctx.advisorPackedContextSet()
+                            .map(p -> RagLlmCallTelemetry.approxChars(p.promptContextText()))
+                            .orElse(0),
+                    retrievedChunks,
+                    latencyMs,
+                    "OK");
+            RagLlmCallBudgetEnforcer.recordCompleted("primary-answer");
             return content;
         } catch (Exception e) {
+            long latencyMs = elapsedMs(startedAt);
             LlmProviderException translated = LlmExceptionTranslator.translate(e, config, "chat", model);
             LlmSafeOperationLogger.logFailed(
                     log,
@@ -91,7 +136,19 @@ public class RagLlmChatInvoker {
                     config.provider(),
                     model,
                     config.baseUrl(),
-                    elapsedMs(startedAt),
+                    latencyMs,
+                    translated.failureKind().name(),
+                    translated.publicMessage());
+            RagLlmCallTelemetry.logFailed(
+                    ctx,
+                    "primary-answer",
+                    config.chatProvider(),
+                    model,
+                    inputChars,
+                    ctx.advisorPackedContextSet()
+                            .map(p -> RagLlmCallTelemetry.approxChars(p.promptContextText()))
+                            .orElse(0),
+                    latencyMs,
                     translated.failureKind().name(),
                     translated.publicMessage());
             throw translated;
@@ -133,5 +190,9 @@ public class RagLlmChatInvoker {
 
     private static long elapsedMs(long startedAtNanos) {
         return (System.nanoTime() - startedAtNanos) / 1_000_000L;
+    }
+
+    private static int approxChars(@Nullable String text) {
+        return text == null ? 0 : text.length();
     }
 }

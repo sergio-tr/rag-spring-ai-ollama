@@ -41,7 +41,8 @@ public final class FcToolArgumentParser {
                     COUNT_AND_EXPLAIN_TOOL,
                     GET_DURATION_TOOL,
                     FILTER_AND_LIST_TOOL,
-                    SUMMARIZE_MEETING_TOOL -> parseSingleQuery(obj, rewritten);
+                    SUMMARIZE_MEETING_TOOL,
+                    COMPARE_TOOL -> parseSingleQuery(obj, rewritten);
             case GET_FIELD_TOOL -> parseGetField(obj, rewritten, plan);
         };
     }

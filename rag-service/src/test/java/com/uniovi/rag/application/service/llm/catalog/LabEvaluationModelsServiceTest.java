@@ -195,6 +195,7 @@ class LabEvaluationModelsServiceTest {
                 runtimeDetail,
                 null,
                 null,
-                LlmCatalogSource.PROPERTIES);
+                LlmCatalogSource.PROPERTIES,
+                null);
     }
 }

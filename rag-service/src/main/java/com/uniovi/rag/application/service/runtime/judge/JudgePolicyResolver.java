@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime.judge;
 
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
+import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.judge.JudgeCandidateSource;
 import com.uniovi.rag.domain.runtime.judge.JudgeDecision;
 import com.uniovi.rag.domain.runtime.judge.JudgeKind;
@@ -48,7 +49,11 @@ public class JudgePolicyResolver {
         reasons.add("candidateSource=" + candidateSource);
 
         boolean retryAllowed = candidateSource == JudgeCandidateSource.WORKFLOW;
-        if (!retryAllowed) {
+        if (ctx.operationKind() == RuntimeOperationKind.CHAT_MESSAGE) {
+            retryAllowed = false;
+            reasons.add("interactive_chat_retry_disabled_by_default");
+        }
+        if (!retryAllowed && candidateSource != JudgeCandidateSource.WORKFLOW) {
             reasons.add("retryForbiddenForSource=" + candidateSource);
         }
 

@@ -7,6 +7,9 @@ import com.uniovi.rag.application.port.llm.LlmChatResponse;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.config.llm.TaskLlmConfigResolver;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
+import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
+import com.uniovi.rag.application.service.runtime.llm.RagChatModelRoutingService;
+import com.uniovi.rag.testsupport.llm.LlmModelCatalogTestSupport;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
@@ -37,6 +40,9 @@ class ProviderAwareSecondaryLlmExecutorTest {
     @Mock private LlmChatClient chatClient;
 
     private ProviderAwareSecondaryLlmExecutor executor;
+    private final LlmModelCatalogService modelCatalog =
+            LlmModelCatalogTestSupport.catalogFrom(LlmModelCatalogTestSupport.openAiLiteLlmProperties());
+    private final RagChatModelRoutingService chatModelRoutingService = new RagChatModelRoutingService(modelCatalog);
 
     @BeforeEach
     void setUp() {
@@ -46,14 +52,15 @@ class ProviderAwareSecondaryLlmExecutorTest {
                         resolvedLlmConfigResolver,
                         taskLlmConfigResolver,
                         chatGenerationModelSelector,
-                        new ObjectMapper());
+                        new ObjectMapper(),
+                        chatModelRoutingService);
     }
 
     @Test
     void complete_usesTaskOverrideModelAndTemperature() {
         ResolvedLlmConfig config = baseConfig();
         TaskLlmConfigResolver.SecondaryCallConfig call =
-                new TaskLlmConfigResolver.SecondaryCallConfig(config, "task-model", 0.0, true);
+                new TaskLlmConfigResolver.SecondaryCallConfig(config, "task-model", 0.0, true, false);
         when(taskLlmConfigResolver.resolveSecondaryCall(isNull(), isNull(), eq("query-rewrite"), isNull(), isNull()))
                 .thenReturn(call);
         when(llmClientResolver.resolveChatClient(config)).thenReturn(chatClient);
@@ -74,7 +81,7 @@ class ProviderAwareSecondaryLlmExecutorTest {
 
         ResolvedLlmConfig config = baseConfig();
         TaskLlmConfigResolver.SecondaryCallConfig call =
-                new TaskLlmConfigResolver.SecondaryCallConfig(config, "judge-model", 0.0, true);
+                new TaskLlmConfigResolver.SecondaryCallConfig(config, "judge-model", 0.0, true, false);
         when(taskLlmConfigResolver.resolveSecondaryCall(eq(ctx), eq("runtime-judge"), isNull(), eq("selector-model")))
                 .thenReturn(call);
         when(chatGenerationModelSelector.effectiveChatModelId(ctx)).thenReturn(Optional.of("selector-model"));

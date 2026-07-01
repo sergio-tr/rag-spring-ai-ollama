@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.application.service.runtime.optimization.DeterministicToolPromptBudgetPolicy;
 import com.uniovi.rag.application.service.runtime.routing.TerminalGetFieldRoutingSupport;
 import com.uniovi.rag.application.service.runtime.routing.safety.RouteCandidateValidationResult;
 import com.uniovi.rag.domain.model.QueryType;
@@ -48,6 +49,9 @@ public final class DeterministicToolTerminalAnswerGuard {
             RouteCandidateValidationResult validation) {
         if (!isSuccessfulTool(toolResult)) {
             return false;
+        }
+        if (DeterministicToolPromptBudgetPolicy.qualifiesForToolDirectAnswer(plan, toolResult.answerText())) {
+            return true;
         }
         if (!acceptanceAnswerPathGuardEnabled()) {
             return TerminalGetFieldRoutingSupport.shouldTerminateWithoutWorkflowFallback(plan, toolResult);

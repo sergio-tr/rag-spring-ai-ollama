@@ -20,6 +20,7 @@ import com.uniovi.rag.application.port.llm.LlmClientRegistryPort;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.application.service.runtime.llm.RagChatModelRoutingService;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
 import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
@@ -76,6 +77,7 @@ class RagLlmProviderIntegrationTest {
     private final LlmProperties llmProperties = LlmModelCatalogTestSupport.openAiLiteLlmProperties();
     private final LlmModelCatalogService modelCatalog = new LlmModelCatalogService(llmProperties);
     private final ChatGenerationModelSelector chatGenerationModelSelector = new ChatGenerationModelSelector(modelCatalog);
+    private final RagChatModelRoutingService chatModelRoutingService = new RagChatModelRoutingService(modelCatalog);
     private final UUID userId = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
 
     private ResolvedLlmConfigResolver configResolver;
@@ -92,7 +94,8 @@ class RagLlmProviderIntegrationTest {
                         configResolver,
                         objectMapper,
                         chatGenerationModelSelector,
-                        modelCatalog);
+                        modelCatalog,
+                        chatModelRoutingService);
     }
 
     @AfterEach
@@ -156,7 +159,7 @@ class RagLlmProviderIntegrationTest {
         LlmClientResolver mockResolver = mock(LlmClientResolver.class);
         RagLlmChatInvoker invoker =
                 new RagLlmChatInvoker(
-                        mockResolver, configResolver, objectMapper, chatGenerationModelSelector, modelCatalog);
+                        mockResolver, configResolver, objectMapper, chatGenerationModelSelector, modelCatalog, chatModelRoutingService);
         when(mockResolver.resolveChatClient(openAiConfig)).thenReturn(openAiBoundClient);
         when(openAiBoundClient.chat(any())).thenReturn(LlmChatResponse.ofContent("lite"));
 
@@ -189,7 +192,7 @@ class RagLlmProviderIntegrationTest {
         LlmClientResolver mockResolver = mock(LlmClientResolver.class);
         RagLlmChatInvoker invoker =
                 new RagLlmChatInvoker(
-                        mockResolver, configResolver, objectMapper, chatGenerationModelSelector, modelCatalog);
+                        mockResolver, configResolver, objectMapper, chatGenerationModelSelector, modelCatalog, chatModelRoutingService);
         when(mockResolver.resolveChatClient(openAiConfig)).thenReturn(openAiBoundClient);
         when(openAiBoundClient.chat(any())).thenReturn(LlmChatResponse.ofContent("lite"));
 
@@ -201,7 +204,7 @@ class RagLlmProviderIntegrationTest {
         LlmChatRequest request = captor.getValue();
         assertEquals("gpt-oss:20b", request.model());
         assertEquals(0.15, request.temperature());
-        assertEquals(25_000, request.timeoutMs());
+        assertEquals(20_000, request.timeoutMs());
         assertTrue(request.messages().getFirst().content().contains("Capa RAG"));
         assertTrue(request.messages().getFirst().content().contains("Capa usuario LLM"));
     }

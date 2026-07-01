@@ -11,6 +11,7 @@ public final class LlmModelReasonCodes {
     public static final String EMBEDDING_MODEL_INCOMPATIBLE_WITH_VECTOR_STORE =
             "EMBEDDING_MODEL_INCOMPATIBLE_WITH_VECTOR_STORE";
     public static final String LLM_PROVIDER_UNAVAILABLE = "LLM_PROVIDER_UNAVAILABLE";
+    public static final String LLM_MODEL_NOT_GOVERNANCE_ALLOWED = "LLM_MODEL_NOT_GOVERNANCE_ALLOWED";
 
     public static String format(String code, String message) {
         if (code == null || code.isBlank()) {

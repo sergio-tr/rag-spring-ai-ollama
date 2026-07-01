@@ -1,8 +1,10 @@
 package com.uniovi.rag.application.service.llm.catalog;
 
+import com.uniovi.rag.application.service.model.ModelGovernanceService;
 import com.uniovi.rag.application.port.OllamaModelAvailabilityPort;
 import com.uniovi.rag.application.port.llm.catalog.LlmModelCatalogPort;
 import com.uniovi.rag.configuration.RagVectorProperties;
+import com.uniovi.rag.infrastructure.health.RagHealthProperties;
 import com.uniovi.rag.domain.AllowedModelType;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogEntry;
@@ -28,14 +30,20 @@ public class LlmCatalogApiService {
     private final LlmModelCatalogPort modelCatalog;
     private final OllamaModelAvailabilityPort ollamaModelAvailability;
     private final RagVectorProperties ragVectorProperties;
+    private final ModelGovernanceService modelGovernanceService;
+    private final RagHealthProperties ragHealthProperties;
 
     public LlmCatalogApiService(
             LlmModelCatalogPort modelCatalog,
             OllamaModelAvailabilityPort ollamaModelAvailability,
-            RagVectorProperties ragVectorProperties) {
+            RagVectorProperties ragVectorProperties,
+            ModelGovernanceService modelGovernanceService,
+            RagHealthProperties ragHealthProperties) {
         this.modelCatalog = modelCatalog;
         this.ollamaModelAvailability = ollamaModelAvailability;
         this.ragVectorProperties = ragVectorProperties;
+        this.modelGovernanceService = modelGovernanceService;
+        this.ragHealthProperties = ragHealthProperties;
     }
 
     public LlmCatalogResponseDto listCatalog(
@@ -79,7 +87,22 @@ public class LlmCatalogApiService {
                 probe.detail(),
                 embeddingDimensions,
                 compatibleWithStore,
-                resolveDisplaySource(entry, probe));
+                resolveDisplaySource(entry, probe),
+                resolveGovernanceAllowed(entry.provider(), entry.modelName(), entry.capability()));
+    }
+
+    private Boolean resolveGovernanceAllowed(
+            LlmProvider provider, String modelName, LlmModelCapability capability) {
+        if (modelName == null || modelName.isBlank() || provider == null) {
+            return null;
+        }
+        if (capability == LlmModelCapability.CHAT) {
+            return modelGovernanceService.isChatModelGovernanceAllowed(provider, modelName);
+        }
+        if (capability == LlmModelCapability.EMBEDDING) {
+            return modelGovernanceService.isEmbeddingModelGovernanceAllowed(provider, modelName);
+        }
+        return null;
     }
 
     private static LlmCatalogSource resolveDisplaySource(LlmCatalogEntry entry, RuntimeProbe probe) {
@@ -102,6 +125,11 @@ public class LlmCatalogApiService {
             return new RuntimeProbe(
                     LlmCatalogRuntimeStatus.NOT_PROBED,
                     "Configured in catalog; remote provider runtime not probed");
+        }
+        if (!ragHealthProperties.isOllamaVerifyModels()) {
+            return new RuntimeProbe(
+                    LlmCatalogRuntimeStatus.NOT_PROBED,
+                    "Ollama runtime probe disabled; model configured in catalog only");
         }
         try {
             boolean present = ollamaModelAvailability.isModelPresent(entry.modelName());

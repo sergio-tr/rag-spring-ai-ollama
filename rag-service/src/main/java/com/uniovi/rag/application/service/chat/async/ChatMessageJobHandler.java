@@ -13,6 +13,9 @@ import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.evaluation.async.LabJobHandler;
 import com.uniovi.rag.application.service.chat.ChatStreamChunks;
 import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.application.service.runtime.observability.ChatLatencyCollector;
+import com.uniovi.rag.application.service.runtime.observability.ChatLatencyTelemetry;
+import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import java.time.Duration;
 import org.springframework.beans.factory.ObjectProvider;
@@ -41,18 +44,21 @@ public class ChatMessageJobHandler implements LabJobHandler {
     private final ChatMessageWorkService chatMessageWorkService;
     private final ChatRetrievalSourceContributor chatRetrievalSourceContributor;
     private final ObjectProvider<RuntimeObservability> runtimeObservability;
+    private final RagRuntimeProperties ragRuntimeProperties;
 
     public ChatMessageJobHandler(
             RuntimeQueryExecutionService runtimeQueryExecutionService,
             ChatJobCancellationRegistry cancellationRegistry,
             ChatMessageWorkService chatMessageWorkService,
             ChatRetrievalSourceContributor chatRetrievalSourceContributor,
-            ObjectProvider<RuntimeObservability> runtimeObservability) {
+            ObjectProvider<RuntimeObservability> runtimeObservability,
+            RagRuntimeProperties ragRuntimeProperties) {
         this.runtimeQueryExecutionService = runtimeQueryExecutionService;
         this.cancellationRegistry = cancellationRegistry;
         this.chatMessageWorkService = chatMessageWorkService;
         this.chatRetrievalSourceContributor = chatRetrievalSourceContributor;
         this.runtimeObservability = runtimeObservability;
+        this.ragRuntimeProperties = ragRuntimeProperties;
     }
 
     @Override
@@ -142,7 +148,10 @@ public class ChatMessageJobHandler implements LabJobHandler {
                     conversationId,
                     projectId,
                     qr.getSources() != null ? qr.getSources().size() : 0);
+            long persistenceStart = System.nanoTime();
             persistAssistantSuccess(taskId, conversationId, assistantId, mutation, qr, answer, llmModel, start);
+            long persistenceMs = (System.nanoTime() - persistenceStart) / 1_000_000L;
+            logChatLatencySummary(taskId, llmModel, qr, start, persistenceMs, 0L);
         } catch (RagServiceException e) {
             log.warn("Chat job {} failed: {}", taskId, e.getMessage());
             recordChatFailure(e.getErrorCode() != null ? e.getErrorCode().name() : "unknown");
@@ -263,6 +272,25 @@ public class ChatMessageJobHandler implements LabJobHandler {
         if (obs != null) {
             obs.chatFailed(errorCode);
         }
+    }
+
+    private void logChatLatencySummary(
+            UUID taskId,
+            String llmModel,
+            QueryResponse qr,
+            Instant start,
+            long persistenceMs,
+            long sseDispatchMs) {
+        long totalMs = Duration.between(start, Instant.now()).toMillis();
+        Map<String, Object> tel = qr.getChatTelemetry() != null ? qr.getChatTelemetry() : Map.of();
+        Map<String, Object> fields =
+                ChatLatencyCollector.buildSummaryFields(totalMs, persistenceMs, sseDispatchMs, 0L, tel);
+        if (tel.get("presetCode") != null) {
+            fields.put("presetCode", tel.get("presetCode"));
+        }
+        String secondaryModel =
+                ragRuntimeProperties.hasSecondaryModel() ? ragRuntimeProperties.effectiveSecondaryModel() : null;
+        ChatLatencyTelemetry.logSummary(taskId.toString(), llmModel, secondaryModel, fields);
     }
 
     private static List<Map<String, Object>> buildPipelineSteps(QueryResponse qr) {

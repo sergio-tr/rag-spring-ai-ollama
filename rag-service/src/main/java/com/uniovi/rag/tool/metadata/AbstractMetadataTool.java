@@ -10,6 +10,8 @@ import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
 import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
 import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.advisor.MetadataToolContextAssembler;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import com.uniovi.rag.tool.AbstractTool;
 import com.uniovi.rag.tool.ToolResult;
 import com.uniovi.rag.util.DateParsingSupport;
@@ -127,6 +129,17 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /** Used by subclasses when calling {@code @Cacheable} methods to avoid self-invocation. */
     protected AbstractMetadataTool cacheable() {
         return cacheableSelf != null ? cacheableSelf : this;
+    }
+
+    /** Publishes matched actas for scoped LLM context assembly on hybrid tool+retrieval paths. */
+    protected void publishMatchedMinutesContext(List<Minute> minutes, boolean highConfidence) {
+        if (minutes == null || minutes.isEmpty()) {
+            return;
+        }
+        MetadataToolContextAssembler assembler = new MetadataToolContextAssembler();
+        String context = assembler.assembleFromMinutes(minutes);
+        DeterministicToolEvidenceHolder.set(
+                new DeterministicToolEvidenceHolder.Evidence(List.copyOf(minutes), context, highConfidence));
     }
 
     private String filterAndListPrompt(String query, String metadataJson) {
@@ -2612,6 +2625,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (query == null || query.trim().isEmpty()) {
             return null;
         }
+        if (StructuredMinuteMetadataSupport.isPlaceListQuery(query)) {
+            return null;
+        }
         
         // Try to extract from NER first
         if (ner != null && !ner.isEmpty()) {
@@ -4401,8 +4417,26 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
     /**
      * Widens retrieval for corpus-wide deterministic queries (topic counts, compound filters).
+     * Gated by {@link MetadataCorpusScanSettings#fullScanMaxDocuments()} on distinct acta count.
      */
     protected List<Document> retrieveCorpusDocumentsWithFallback(String query, String[] relevantFields) {
+        long start = System.nanoTime();
+        List<Document> cached = MetadataCorpusAccess.getOrLoadCorpusChunks();
+        if (!cached.isEmpty()) {
+            List<Document> merged = mergeChunksWithRichestMetadata(collectInScopeCorpusRows(cached));
+            log().info(
+                    "Corpus retrieval (jdbc cache) for '{}': raw={}, merged={} actas",
+                    query,
+                    cached.size(),
+                    merged.size());
+            com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry.logTool(
+                    getClass().getSimpleName(),
+                    "corpus_merge",
+                    com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry.elapsedMs(start),
+                    "OK",
+                    "raw=" + cached.size() + " merged=" + merged.size());
+            return merged;
+        }
         retriever.setTopK(200);
         retriever.setSimilarityThreshold(0.0);
         try {
@@ -4411,18 +4445,82 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             raw.addAll(retrieveAllDocuments(query, null));
             List<Document> merged = mergeChunksWithRichestMetadata(collectInScopeCorpusRows(raw));
             log().info(
-                    "Corpus retrieval for '{}': raw={}, merged={} actas",
+                    "Corpus retrieval (vector fallback) for '{}': raw={}, merged={} actas",
                     query,
                     raw.size(),
                     merged.size());
+            com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry.logTool(
+                    getClass().getSimpleName(),
+                    "corpus_merge_vector",
+                    com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry.elapsedMs(start),
+                    "OK",
+                    "raw=" + raw.size() + " merged=" + merged.size());
             return merged;
         } finally {
             retriever.restoreDefaultSettings();
         }
     }
 
+    protected int countDistinctCanonicalActas(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return 0;
+        }
+        Set<String> keys = new LinkedHashSet<>();
+        for (Document doc : docs) {
+            if (doc == null) {
+                continue;
+            }
+            String key = actaDedupeKey(doc);
+            if (key != null && !key.isBlank()) {
+                keys.add(key);
+            }
+        }
+        return keys.size();
+    }
+
+    protected boolean isSmallCorpusEligibleForFullScan(List<Document> broadScan) {
+        int distinct = countDistinctCanonicalActas(broadScan);
+        return distinct > 0 && distinct <= MetadataCorpusScanSettings.fullScanMaxDocuments();
+    }
+
+    protected boolean isCorpusWideMetadataQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        return com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)
+                || q.contains("en cuántas actas")
+                || q.contains("en cuantas actas")
+                || q.contains("en qué actas")
+                || q.contains("en que actas")
+                || q.contains("en cuántas reuniones")
+                || q.contains("en cuantas reuniones");
+    }
+
+    protected List<Document> retrieveWithSmallCorpusFullScanIfEligible(
+            String query, String[] relevantFields, JSONObject ner) {
+        if (!isCorpusWideMetadataQuery(query)) {
+            return retrieveDocumentsWithFallback(query, relevantFields, ner);
+        }
+        List<Document> broad = retrieveAllDocuments(query, ner);
+        if (!isSmallCorpusEligibleForFullScan(broad)) {
+            return retrieveDocumentsWithFallback(query, relevantFields, ner);
+        }
+        log().info(
+                "Small corpus full-scan (<= {} actas) for corpus-wide query",
+                MetadataCorpusScanSettings.fullScanMaxDocuments());
+        if (!broad.isEmpty()) {
+            return mergeChunksWithRichestMetadata(collectInScopeCorpusRows(broad));
+        }
+        return retrieveCorpusDocumentsWithFallback(query, relevantFields);
+    }
+
     /** Broad corpus scan not limited to the user question's semantic top-k. */
     protected List<Document> retrieveAllDocuments(String query, JSONObject ner) {
+        List<Document> cached = MetadataCorpusAccess.getOrLoadCorpusChunks();
+        if (!cached.isEmpty()) {
+            return cached;
+        }
         List<Document> broad = retriever.retrieve("acta reunión junta propietarios");
         if (broad == null || broad.isEmpty()) {
             broad = retriever.retrieve("reunión acta");
@@ -4448,15 +4546,29 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             log().debug("lookupDocumentsByDateIso: year-only anchor {}, skipping exact lookup", requestedDate);
             return List.of();
         }
-        retriever.setTopK(200);
-        retriever.setSimilarityThreshold(0.0);
-        try {
-            List<Document> docs =
-                    mergeChunksByDocumentId(retrieveCorpusDocumentsWithFallback(query, relevantFields));
-            return validateDateMatch(docs, requestedDate);
-        } finally {
-            retriever.restoreDefaultSettings();
+        long start = System.nanoTime();
+        List<Document> cached = MetadataCorpusAccess.getOrLoadCorpusChunks();
+        List<Document> docs;
+        if (!cached.isEmpty()) {
+            docs =
+                    mergeChunksByDocumentId(
+                            mergeChunksWithRichestMetadata(collectInScopeCorpusRows(cached)));
+            com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry.logTool(
+                    getClass().getSimpleName(),
+                    "date_iso_lookup",
+                    com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry.elapsedMs(start),
+                    "CACHE",
+                    "date=" + requestedDate);
+        } else {
+            retriever.setTopK(200);
+            retriever.setSimilarityThreshold(0.0);
+            try {
+                docs = mergeChunksByDocumentId(retrieveCorpusDocumentsWithFallback(query, relevantFields));
+            } finally {
+                retriever.restoreDefaultSettings();
+            }
         }
+        return validateDateMatch(docs, requestedDate);
     }
 
     protected boolean hasExplicitActaDate(String query, JSONObject ner) {

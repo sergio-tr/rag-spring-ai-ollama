@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime.judge;
 
 import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import com.uniovi.rag.application.service.runtime.FinalAnswerSynthesizer;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
@@ -36,7 +37,7 @@ public class JudgeRetryExecutor {
                             prompt,
                             ProviderAwareSecondaryLlmExecutor.SECONDARY_TASK_DEFAULT_TEMPERATURE);
             ResolvedLlmConfig config = secondaryLlmExecutor.effectiveConfig(ctx);
-            String repaired = out != null ? out.trim() : "";
+            String repaired = out != null ? FinalAnswerSynthesizer.sanitizeJudgeLeakage(out.trim()) : "";
             String provenance =
                     "operation=" + OPERATION_RUNTIME_JUDGE_RETRY
                             + " provider=" + config.chatProvider()

@@ -441,7 +441,86 @@ public final class StructuredMinuteMetadataSupport {
             return formatCompoundMonthTopicAttendeeFilterAnswer(minutes, topic);
         }
 
+        if (isPlaceListQuery(q)) {
+            return formatPlaceListAnswer(query, minutes);
+        }
+
         return Optional.empty();
+    }
+
+    /** Corpus-wide place enumeration — metadata place field, not topic filter. */
+    public static boolean isPlaceListQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        return q.contains("dime los lugares")
+                || q.contains("lugares donde se han realizado")
+                || q.contains("lugares donde se celebr")
+                || q.contains("dónde se celebraron")
+                || q.contains("donde se celebraron");
+    }
+
+    public static Optional<String> formatPlaceListAnswer(String query, List<Minute> minutes) {
+        if (minutes == null || minutes.isEmpty()) {
+            return Optional.empty();
+        }
+        java.util.LinkedHashSet<String> places = new java.util.LinkedHashSet<>();
+        for (Minute minute : minutes) {
+            if (minute != null && minute.place() != null && !minute.place().isBlank()) {
+                places.add(minute.place().trim());
+            }
+        }
+        if (places.isEmpty()) {
+            return Optional.empty();
+        }
+        boolean spanish = querySeemsSpanish(query);
+        String list = joinNaturalLanguageList(new ArrayList<>(places), spanish);
+        if (spanish) {
+            if (places.size() == 1) {
+                return Optional.of("El lugar donde se han realizado las actas es " + list + ".");
+            }
+            return Optional.of("Los lugares donde se han realizado las actas son: " + list + ".");
+        }
+        if (places.size() == 1) {
+            return Optional.of("The meeting place is " + list + ".");
+        }
+        return Optional.of("The meeting places are: " + list + ".");
+    }
+
+    public static String formatExactAttendeeFallbackAnswer(String query, int threshold, List<Minute> exact) {
+        boolean spanish = querySeemsSpanish(query);
+        List<String> items =
+                exact.stream()
+                        .map(
+                                minute -> {
+                                    String source = formatSourceReference(minute);
+                                    String dateSlash = formatDateSlash(minute);
+                                    if (source.isBlank()) {
+                                        return dateSlash;
+                                    }
+                                    return source + (dateSlash.isBlank() ? "" : " (" + dateSlash + ")");
+                                })
+                        .filter(s -> s != null && !s.isBlank())
+                        .distinct()
+                        .toList();
+        String list = joinNaturalLanguageList(items, spanish);
+        if (spanish) {
+            return "No hay actas con más de "
+                    + threshold
+                    + " asistentes; las que tienen exactamente "
+                    + threshold
+                    + " son "
+                    + list
+                    + ".";
+        }
+        return "No minutes have more than "
+                + threshold
+                + " attendees; those with exactly "
+                + threshold
+                + " are "
+                + list
+                + ".";
     }
 
     /**

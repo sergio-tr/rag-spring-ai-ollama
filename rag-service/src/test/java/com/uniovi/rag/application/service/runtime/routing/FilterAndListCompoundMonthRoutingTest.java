@@ -117,13 +117,29 @@ class FilterAndListCompoundMonthRoutingTest {
         assertThat(decision.selectedToolKind()).contains(DeterministicToolKind.FILTER_AND_LIST_TOOL);
     }
 
+    @Test
+    void filterAndListFebreroTemasAndAttendeeThreshold_selectsFilterAndListTool() {
+        String query =
+                "¿Qué temas se discutieron en las reuniones celebradas en febrero que contaron con más de 15 asistentes?";
+        QueryPlan plan = planWithQuery(query, QueryType.FILTER_AND_LIST, AmbiguityStatus.SUFFICIENT);
+
+        var decision = toolResolver.resolve(ctx(), plan);
+
+        assertThat(decision.outcome()).isEqualTo(DeterministicToolOutcome.SELECTED);
+        assertThat(decision.selectedToolKind()).contains(DeterministicToolKind.FILTER_AND_LIST_TOOL);
+    }
+
     private static QueryPlan planWithClassifier(QueryType type, AmbiguityStatus ambiguityStatus) {
+        return planWithQuery(COMPOUND_MONTH_TOPIC_QUERY, type, ambiguityStatus);
+    }
+
+    private static QueryPlan planWithQuery(String query, QueryType type, AmbiguityStatus ambiguityStatus) {
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,
-                COMPOUND_MONTH_TOPIC_QUERY,
-                COMPOUND_MONTH_TOPIC_QUERY,
-                COMPOUND_MONTH_TOPIC_QUERY,
-                COMPOUND_MONTH_TOPIC_QUERY,
+                query,
+                query,
+                query,
+                query,
                 type.name(),
                 Optional.of(type),
                 ClassifierStatus.OK,
@@ -132,7 +148,7 @@ class FilterAndListCompoundMonthRoutingTest {
                 List.of(),
                 List.of(),
                 EntityExtractionResult.emptyWithNote(null),
-                StructuredRewriteResult.identityFallback(COMPOUND_MONTH_TOPIC_QUERY, null),
+                StructuredRewriteResult.identityFallback(query, null),
                 ExpectedAnswerShape.LIST,
                 new AmbiguityAssessment(ambiguityStatus, List.of(), List.of()),
                 "corr",

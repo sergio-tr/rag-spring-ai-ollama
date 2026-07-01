@@ -1,6 +1,8 @@
 package com.uniovi.rag.application.service.runtime.clarification;
 
+import com.uniovi.rag.application.service.runtime.optimization.DeterministicQueryRewriteShortcuts;
 import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationQuestion;
@@ -49,6 +51,11 @@ public class ClarificationPolicyResolver {
         if (isCorpusWideExactAttendeeCountListingQuery(plan)) {
             return new ClarificationDecision(
                     false, ClarificationOutcome.NOT_NEEDED, null, "corpus_wide_exact_attendee_count_listing");
+        }
+
+        if (isCorpusWideListingQuery(plan)) {
+            return new ClarificationDecision(
+                    false, ClarificationOutcome.NOT_NEEDED, null, "corpus_wide_listing_exempt");
         }
 
         AmbiguityStatus status = plan.ambiguityAssessment().status();
@@ -130,6 +137,39 @@ public class ClarificationPolicyResolver {
     private static boolean containsAnySubstring(String fieldLower, String... needles) {
         for (String n : needles) {
             if (fieldLower.contains(n)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isCorpusWideListingQuery(QueryPlan plan) {
+        if (plan == null) {
+            return false;
+        }
+        for (String candidate :
+                List.of(plan.normalizedQueryText(), plan.rewrittenQueryText(), plan.rawUserQuery())) {
+            if (candidate == null || candidate.isBlank()) {
+                continue;
+            }
+            String q = candidate.toLowerCase(Locale.ROOT);
+            if (!ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)
+                    && DeterministicQueryRewriteShortcuts.matches(candidate).isEmpty()) {
+                continue;
+            }
+            Optional<QueryType> classifier = plan.classifierQueryType();
+            if (classifier.isPresent()) {
+                QueryType type = classifier.get();
+                if (type == QueryType.FILTER_AND_LIST
+                        || type == QueryType.COUNT_DOCUMENTS
+                        || type == QueryType.FIND_PARAGRAPH
+                        || type == QueryType.SUMMARIZE_TOPIC
+                        || type == QueryType.COUNT_AND_EXPLAIN
+                        || type == QueryType.COMPARE) {
+                    return true;
+                }
+            }
+            if (DeterministicQueryRewriteShortcuts.matches(candidate).isPresent()) {
                 return true;
             }
         }
