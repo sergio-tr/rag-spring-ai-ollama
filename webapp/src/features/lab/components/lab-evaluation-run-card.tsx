@@ -65,6 +65,7 @@ import { mapKnowledgeBaseApiError } from "@/features/lab/lib/evaluation-corpus-u
 import { resolveDocumentCentricReadinessDisplay } from "@/features/lab/lib/evaluation-corpus-readiness-display";
 import { extractTechnicalErrorCode } from "@/lib/user-facing-error-messages";
 import { formatBenchmarkKindLabel, formatPresetSupportMessage } from "@/lib/product-copy";
+import { createPresetCopyFn } from "@/lib/preset-copy-i18n";
 import { formatLabExperimentalPresetLabel, sortPresetsByRank } from "@/features/presets/lib/preset-display";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import { beginTraceSession, endTraceSession } from "@/lib/trace-session";
@@ -204,6 +205,8 @@ export function LabEvaluationRunCard({
   introBeforeCard,
 }: LabEvaluationRunCardProps) {
   const t = useTranslations("Lab");
+  const tChat = useTranslations("Chat");
+  const presetCopyT = createPresetCopyFn(t, tChat);
   const tHelp = useTranslations("Help");
   const queryClient = useQueryClient();
   const { data: labStatus } = useLabStatus();
@@ -1553,7 +1556,7 @@ export function LabEvaluationRunCard({
                           }
                         />
                         <span className="font-medium">
-                          {formatLabExperimentalPresetLabel(p, t)}
+                          {formatLabExperimentalPresetLabel(p, presetCopyT)}
                         </span>
                       </span>
                       {!labSelectable ? (
