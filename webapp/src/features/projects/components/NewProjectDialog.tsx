@@ -152,7 +152,7 @@ export function NewProjectDialog({
           {t("newProject")}
         </DialogTrigger>
       ) : null}
-      <DialogContent>
+      <DialogContent data-testid="new-project-dialog">
         <DialogHeader>
           <DialogTitle>{t("createTitle")}</DialogTitle>
           <DialogDescription>{t("createDescription")}</DialogDescription>

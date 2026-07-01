@@ -29,6 +29,8 @@
     "test:e2e:fullstack:debug": "cross-env PLAYWRIGHT_RETRIES=1 PLAYWRIGHT_TEST_TIMEOUT_MS=45000 PLAYWRIGHT_EXPECT_TIMEOUT_MS=12000 PLAYWRIGHT_TRACE=on-first-retry playwright test --project=chromium --grep @fullstack",
     "test:e2e:all": "playwright test --project=chromium",
     "test:e2e:smoke": "playwright test --project=chromium --grep @smoke",
+    "test:e2e:p0": "cross-env PLAYWRIGHT_SKIP_WEBSERVER=1 PLAYWRIGHT_MAX_FAILURES=1 PLAYWRIGHT_WORKERS=1 PLAYWRIGHT_TEST_TIMEOUT_MS=360000 PLAYWRIGHT_EXPECT_TIMEOUT_MS=15000 PLAYWRIGHT_TRACE=retain-on-failure npm run test:e2e:stack-preflight && cross-env PLAYWRIGHT_SKIP_WEBSERVER=1 PLAYWRIGHT_MAX_FAILURES=1 PLAYWRIGHT_WORKERS=1 PLAYWRIGHT_TEST_TIMEOUT_MS=360000 PLAYWRIGHT_EXPECT_TIMEOUT_MS=15000 PLAYWRIGHT_TRACE=retain-on-failure playwright test --project=chromium e2e/p0 --grep @p0-app",
+    "test:e2e:p0:fast": "cross-env PLAYWRIGHT_SKIP_WEBSERVER=1 PLAYWRIGHT_MAX_FAILURES=1 PLAYWRIGHT_WORKERS=1 PLAYWRIGHT_TEST_TIMEOUT_MS=360000 PLAYWRIGHT_EXPECT_TIMEOUT_MS=15000 PLAYWRIGHT_TRACE=retain-on-failure npm run test:e2e:stack-preflight && cross-env PLAYWRIGHT_SKIP_WEBSERVER=1 PLAYWRIGHT_MAX_FAILURES=1 PLAYWRIGHT_WORKERS=1 PLAYWRIGHT_TEST_TIMEOUT_MS=360000 PLAYWRIGHT_EXPECT_TIMEOUT_MS=15000 PLAYWRIGHT_TRACE=retain-on-failure playwright test --project=chromium e2e/p0 --grep @p0-app-fast",
     "test:api": "node scripts/test-api.mjs",
     "test:api:acceptance": "cross-env RUN_CHAT_ACCEPTANCE=1 node scripts/test-api.mjs",
     "test:api:list": "cross-env PLAYWRIGHT_SKIP_WEBSERVER=1 npx playwright test --project=api --list",
