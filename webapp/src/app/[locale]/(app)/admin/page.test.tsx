@@ -19,6 +19,8 @@ vi.mock("@/lib/async-task", () => ({
 
 const LEGACY_MODEL_IDS = ["gemma3:4b", "mistral:7b", "llama3.1:8b"] as const;
 
+const CATALOG_PATH = "/api/v5/llm/catalog?includeRuntimeStatus=true&provider=OPENAI_COMPATIBLE";
+
 const chatAvailable: LlmCatalogModelDto = {
   provider: "OPENAI_COMPATIBLE",
   modelName: "gpt-oss:20b",
@@ -33,34 +35,36 @@ const chatAvailable: LlmCatalogModelDto = {
   embeddingDimensions: null,
   compatibleWithCurrentVectorStore: null,
   source: "PROPERTIES",
+  governanceAllowed: true,
 };
 
 const chatUnavailable: LlmCatalogModelDto = {
-  provider: "OLLAMA_NATIVE",
-  modelName: "ollama-missing:latest",
+  provider: "OPENAI_COMPATIBLE",
+  modelName: "deepseek-v2:16b",
   capability: "CHAT",
   available: false,
   selectableByUser: false,
   usableAsDefault: false,
   runtimeStatus: "UNAVAILABLE",
-  runtimeDetail: "Model not installed locally",
+  runtimeDetail: "Model not available at runtime",
   embeddingDimensions: null,
   compatibleWithCurrentVectorStore: null,
-  source: "PROPERTIES",
+  source: "LITELLM_CONFIGURED",
+  governanceAllowed: false,
 };
 
 const embeddingIncompatible: LlmCatalogModelDto = {
-  provider: "OLLAMA_NATIVE",
+  provider: "OPENAI_COMPATIBLE",
   modelName: "wrong-dim-embed:latest",
   capability: "EMBEDDING",
   available: true,
   selectableByUser: false,
   usableAsDefault: false,
-  runtimeStatus: "AVAILABLE",
+  runtimeStatus: "NOT_PROBED",
   runtimeDetail: null,
   embeddingDimensions: 512,
   compatibleWithCurrentVectorStore: false,
-  source: "PROPERTIES",
+  source: "LITELLM_CONFIGURED",
 };
 
 const catalogResponse: LlmCatalogResponse = {
@@ -73,7 +77,7 @@ describe("AdminHomePage catalog", () => {
   beforeEach(() => {
     apiFetch.mockReset();
     apiFetch.mockImplementation(async (path: string) => {
-      if (path === "/api/v5/llm/catalog?includeRuntimeStatus=true") {
+      if (path === CATALOG_PATH) {
         return catalogResponse;
       }
       throw new Error(`Unexpected apiFetch ${path}`);
@@ -95,7 +99,13 @@ describe("AdminHomePage catalog", () => {
     expect(await screen.findByText("Configured model catalog")).toBeInTheDocument();
     expect(await screen.findByTestId("admin-catalog-row-OPENAI_COMPATIBLE-CHAT-gpt-oss:20b")).toBeInTheDocument();
     expect(await screen.findByTestId("admin-catalog-display-name-gpt-oss:20b")).toHaveTextContent("GPT OSS 20B");
-    expect(apiFetch).toHaveBeenCalledWith("/api/v5/llm/catalog?includeRuntimeStatus=true");
+    expect(apiFetch).toHaveBeenCalledWith(CATALOG_PATH);
+  });
+
+  it("shows governance status for chat models", async () => {
+    renderPage();
+    expect(await screen.findByTestId("admin-catalog-governance-gpt-oss:20b")).toHaveTextContent("Yes");
+    expect(screen.getByTestId("admin-catalog-governance-deepseek-v2:16b")).toHaveTextContent("No");
   });
 
   it("provider and capability are shown", async () => {
@@ -108,18 +118,18 @@ describe("AdminHomePage catalog", () => {
 
   it("unavailable model visible with warning", async () => {
     renderPage();
-    expect(await screen.findByTestId("admin-catalog-row-OLLAMA_NATIVE-CHAT-ollama-missing:latest")).toBeInTheDocument();
-    expect(screen.getByTestId("admin-catalog-unavailable-ollama-missing:latest")).toHaveTextContent(
-      /Configured but unavailable at runtime/i,
+    expect(await screen.findByTestId("admin-catalog-row-OPENAI_COMPATIBLE-CHAT-deepseek-v2:16b")).toBeInTheDocument();
+    expect(screen.getByTestId("admin-catalog-unavailable-deepseek-v2:16b")).toHaveTextContent(
+      /Configured in API catalog but reported unavailable/i,
     );
-    expect(screen.getByTestId("admin-catalog-unavailable-ollama-missing:latest")).toHaveTextContent(
-      /Model not installed locally/i,
+    expect(screen.getByTestId("admin-catalog-unavailable-deepseek-v2:16b")).toHaveTextContent(
+      /Model not available at runtime/i,
     );
   });
 
   it("incompatible embedding marked incompatible", async () => {
     renderPage();
-    const row = await screen.findByTestId("admin-catalog-row-OLLAMA_NATIVE-EMBEDDING-wrong-dim-embed:latest");
+    const row = await screen.findByTestId("admin-catalog-row-OPENAI_COMPATIBLE-EMBEDDING-wrong-dim-embed:latest");
     expect(row).toHaveAttribute("data-indexing-disabled", "true");
     expect(screen.getByTestId("admin-catalog-incompatible-wrong-dim-embed:latest")).toHaveTextContent(
       /Incompatible with vector store/i,

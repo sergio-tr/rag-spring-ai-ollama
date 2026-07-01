@@ -6,15 +6,17 @@ import type { LlmCatalogResponse } from "@/types/api";
 
 export const llmCatalogQueryKey = ["llm", "catalog"] as const;
 
-export function useLlmCatalog(includeRuntimeStatus = true) {
+export function useLlmCatalog(includeRuntimeStatus = true, provider?: "OPENAI_COMPATIBLE" | "OLLAMA_NATIVE") {
   return useQuery({
-    queryKey: [...llmCatalogQueryKey, includeRuntimeStatus] as const,
-    queryFn: () =>
-      apiFetch<LlmCatalogResponse>(
-        apiProductPath(
-          `/llm/catalog?includeRuntimeStatus=${includeRuntimeStatus ? "true" : "false"}`,
-        ),
-      ),
+    queryKey: [...llmCatalogQueryKey, includeRuntimeStatus, provider ?? "all"] as const,
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set("includeRuntimeStatus", includeRuntimeStatus ? "true" : "false");
+      if (provider) {
+        params.set("provider", provider);
+      }
+      return apiFetch<LlmCatalogResponse>(apiProductPath(`/llm/catalog?${params.toString()}`));
+    },
     staleTime: 30_000,
   });
 }

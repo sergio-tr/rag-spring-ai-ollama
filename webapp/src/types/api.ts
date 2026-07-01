@@ -864,6 +864,7 @@ export type LlmCatalogModelDto = {
   embeddingDimensions: number | null;
   compatibleWithCurrentVectorStore: boolean | null;
   source: LlmCatalogSource;
+  governanceAllowed?: boolean | null;
 };
 
 export type LlmCatalogResponse = {

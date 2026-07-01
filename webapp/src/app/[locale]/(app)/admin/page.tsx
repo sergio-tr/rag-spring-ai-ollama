@@ -18,7 +18,7 @@ export default function AdminHomePage() {
   const t = useTranslations("Admin");
   const tLab = useTranslations("Lab");
   const qc = useQueryClient();
-  const catalogQ = useLlmCatalog(true);
+  const catalogQ = useLlmCatalog(true, "OPENAI_COMPATIBLE");
   const [rowMessage, setRowMessage] = useState<string | null>(null);
   const [rowErr, setRowErr] = useState<string | null>(null);
   const [busyRowKey, setBusyRowKey] = useState<string | null>(null);
@@ -70,6 +70,10 @@ export default function AdminHomePage() {
     catalogVectorCompatibleYes: t("catalogVectorCompatibleYes"),
     catalogVectorCompatibleNo: t("catalogVectorCompatibleNo"),
     catalogVectorCompatibleNa: t("catalogVectorCompatibleNa"),
+    catalogGovernanceAllowed: t("catalogGovernanceAllowed"),
+    catalogGovernanceAllowedYes: t("catalogGovernanceAllowedYes"),
+    catalogGovernanceAllowedNo: t("catalogGovernanceAllowedNo"),
+    catalogGovernanceAllowedNa: t("catalogGovernanceAllowedNa"),
     modelAvailable: t("modelAvailable"),
     modelMissing: t("modelMissing"),
   };

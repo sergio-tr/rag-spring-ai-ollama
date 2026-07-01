@@ -39,6 +39,10 @@ type AdminCatalogTranslations = CatalogAdminLabels & {
   catalogVectorCompatibleYes: string;
   catalogVectorCompatibleNo: string;
   catalogVectorCompatibleNa: string;
+  catalogGovernanceAllowed: string;
+  catalogGovernanceAllowedYes: string;
+  catalogGovernanceAllowedNo: string;
+  catalogGovernanceAllowedNa: string;
   catalogRuntimeNotProbedNote: string;
   modelAvailable: string;
   modelMissing: string;
@@ -103,6 +107,12 @@ export function AdminLlmCatalogSection({
                 : row.compatibleWithCurrentVectorStore
                   ? t.catalogVectorCompatibleYes
                   : t.catalogVectorCompatibleNo;
+            const governanceLabel =
+              row.governanceAllowed == null
+                ? t.catalogGovernanceAllowedNa
+                : row.governanceAllowed
+                  ? t.catalogGovernanceAllowedYes
+                  : t.catalogGovernanceAllowedNo;
             return (
               <li
                 key={rowKey}
@@ -159,6 +169,13 @@ export function AdminLlmCatalogSection({
                         label={t.catalogVectorCompatible}
                         value={vectorCompatibleLabel}
                         testId={`admin-catalog-vector-compatible-${row.modelName}`}
+                      />
+                    ) : null}
+                    {row.capability === "CHAT" ? (
+                      <CatalogField
+                        label={t.catalogGovernanceAllowed}
+                        value={governanceLabel}
+                        testId={`admin-catalog-governance-${row.modelName}`}
                       />
                     ) : null}
                     <CatalogField
