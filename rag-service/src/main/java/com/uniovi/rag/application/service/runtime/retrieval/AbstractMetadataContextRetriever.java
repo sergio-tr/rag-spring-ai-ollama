@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
+import com.uniovi.rag.util.NerDateFieldSupport;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -56,13 +57,17 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
         }
         
         // Build metadata filters from NER entities
-        SearchRequest req = SearchRequest.builder()
-                .query(query)
-                .topK(effectiveTopK() * 2) // Retrieve more documents to account for post-filtering
-                .similarityThreshold(effectiveSimilarityThreshold())
-                .build();
+        SearchRequest.Builder searchBuilder =
+                SearchRequest.builder()
+                        .query(query)
+                        .topK(effectiveTopK() * 2) // Retrieve more documents to account for post-filtering
+                        .similarityThreshold(effectiveSimilarityThreshold());
+        var snapshotFilter = snapshotFilterForActiveRequest();
+        if (snapshotFilter != null) {
+            searchBuilder.filterExpression(snapshotFilter);
+        }
 
-        List<Document> retrievedDocs = vectorStore.similaritySearch(req);
+        List<Document> retrievedDocs = vectorStore.similaritySearch(searchBuilder.build());
         retrievedDocs = applyProjectAndDocumentFilter(retrievedDocs);
         
         // Group and combine chunks first (before filtering)
@@ -132,21 +137,20 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
     }
 
     private boolean lenientDateNerPasses(Map<String, Object> metadata, JSONObject ner) {
-        if (!ner.has("date") || ner.getJSONArray("date").isEmpty()) {
+        List<String> nerDateStrings = NerDateFieldSupport.readDateStrings(ner);
+        if (nerDateStrings.isEmpty()) {
             return true;
         }
         String docDate = getMetadataDate(metadata);
         if (docDate == null || docDate.trim().isEmpty()) {
             return true;
         }
-        JSONArray nerDates = ner.getJSONArray("date");
         boolean hasYearMatch = false;
         String docYear =
                 metadata.get("year") instanceof Number number
                         ? String.valueOf(number.intValue())
                         : extractYearFromDate(docDate);
-        for (int i = 0; i < nerDates.length(); i++) {
-            String nerDate = nerDates.getString(i);
+        for (String nerDate : nerDateStrings) {
             String nerYear = extractYearFromDate(nerDate);
             if (docYear != null && nerYear != null && docYear.equals(nerYear)) {
                 hasYearMatch = true;
@@ -156,7 +160,7 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
             }
         }
         if (!hasYearMatch) {
-            log().info("Document filtered out by year mismatch: docDate={}, nerDates={}", docDate, nerDates);
+            log().info("Document filtered out by year mismatch: docDate={}, nerDates={}", docDate, nerDateStrings);
             return false;
         }
         return true;
@@ -214,7 +218,8 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
     }
 
     private boolean strictDateNerPasses(Map<String, Object> metadata, JSONObject ner) {
-        if (!ner.has("date") || ner.getJSONArray("date").isEmpty()) {
+        List<String> nerDateStrings = NerDateFieldSupport.readDateStrings(ner);
+        if (nerDateStrings.isEmpty()) {
             return true;
         }
         String docDate = getMetadataDate(metadata);
@@ -222,13 +227,12 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
             log().info("Document has no date metadata, skipping date filter");
             return true;
         }
-        JSONArray nerDates = ner.getJSONArray("date");
-        for (int i = 0; i < nerDates.length(); i++) {
-            if (normalizedDateMatches(docDate, nerDates.getString(i))) {
+        for (String nerDate : nerDateStrings) {
+            if (normalizedDateMatches(docDate, nerDate)) {
                 return true;
             }
         }
-        log().info("Document filtered out by date mismatch: docDate={}, nerDates={}", docDate, nerDates);
+        log().info("Document filtered out by date mismatch: docDate={}, nerDates={}", docDate, nerDateStrings);
         return false;
     }
 

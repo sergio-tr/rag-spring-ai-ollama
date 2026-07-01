@@ -70,7 +70,7 @@
 
 | Workflow | When it runs | Role |
 | --- | --- | --- |
-| [`ci.yml`](../.github/workflows/ci.yml) | `pull_request` on `dev`/`main`/`master`; `push` on `main`/`master` only | **Primary gate**: `mvn verify` (JUnit), classifier `pytest`, webapp lint/typecheck/coverage/build, Playwright **smoke** (excludes `@fullstack`), stack integration, **Docker build smoke** (no push), `@fullstack` E2E, Sonar (details: [devops/README.md](devops/README.md)) |
+| [`ci.yml`](../.github/workflows/ci.yml) | `pull_request` on `dev`/`main`/`master`; `push` on `main`/`master` only | **Primary gate**: `mvn verify` (JUnit), classifier `pytest`, webapp lint/typecheck/coverage/build, Playwright **smoke** (excludes `@fullstack`), stack integration, **Docker build smoke** (no push), `@fullstack` E2E. **SonarCloud** runs only on PRs to `main`/`master` and pushes to `main`/`master` (not `dev` PRs); see [devops/README.md](devops/README.md). |
 | [`docker-compose-ci.yml`](../.github/workflows/docker-compose-ci.yml) | `pull_request` path `docker/**` on `dev`/`main`/`master`; `push` path `docker/**` on `main`/`master` only | `create-env-all.sh`, `compose_guard.py`, `docker compose config` (merge validation) |
 | [`build.yml`](../.github/workflows/build.yml) | `pull_request` + `push` on `main`/`master` | Fast compile-only (`mvn package -DskipTests`, classifier build) — no tests; optional extra check, not the full DAG |
 | [`integration.yml`](../.github/workflows/integration.yml) | `push` path filter on `main`/`master` + `workflow_dispatch` | **Stack HTTP integration**: `pytest tests/integration` against Spring **`e2e`** + Postgres (`INTEGRATION_CHECK_OBS=0`; classifier tests skip if no classifier) |

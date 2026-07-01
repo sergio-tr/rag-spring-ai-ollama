@@ -73,5 +73,14 @@ cleanup() { kill "$WATCH_PID" 2>/dev/null || true; }
 trap cleanup EXIT
 
 : "${SPRING_PROFILES_ACTIVE:=dev}"
+
+# DevTools restarts on target/classes changes; with a bind-mounted target/ a partial clean on the
+# host can leave stale .class files and trigger NoClassDefFoundError crash-loops. After refactors or
+# mvn clean on the host, run ./mvnw clean compile (or docker/scripts/dev-smoke-bootstrap.sh).
+DEVTOOLS_RESTART=true
+if [ "${RAG_DEV_DISABLE_DEVTOOLS:-}" = "1" ] || [ "${RAG_DEV_DISABLE_DEVTOOLS:-}" = "true" ]; then
+  DEVTOOLS_RESTART=false
+fi
+
 exec ./mvnw spring-boot:run \
-  -Dspring.devtools.restart.enabled=true
+  -Dspring.devtools.restart.enabled="${DEVTOOLS_RESTART}"

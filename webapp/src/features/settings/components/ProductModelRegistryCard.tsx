@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { modelRegistryQueryKey, useModelRegistryCheckMutation, useModelRegistryQuery } from "@/features/settings/hooks/use-model-registry";
+import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { pollLabJob } from "@/lib/async-task";
 import type { LabJobAcceptedDto, ModelRegistryItemDto } from "@/types/api";
@@ -86,6 +87,10 @@ export function ProductModelRegistryCard() {
   const t = useTranslations("Settings");
   const qc = useQueryClient();
   const { data, isLoading, isError, error, refetch } = useModelRegistryQuery();
+  const selectableModelsQ = useMeSelectableLlmModels("CHAT");
+  const effectiveProvider = selectableModelsQ.data?.effectiveProvider;
+  const showModelServerUnreachable =
+    Boolean(data && !data.ollamaReachable) && effectiveProvider === "OLLAMA_NATIVE";
   const checkM = useModelRegistryCheckMutation();
   const [pullingId, setPullingId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -148,10 +153,10 @@ export function ProductModelRegistryCard() {
             </Button>
           </p>
         ) : null}
-        {data && !data.ollamaReachable ? (
-          <p className="text-sm text-destructive">
-            {t("modelRegistryOllamaUnreachable")}
-            {data.ollamaErrorMessage ? ` (${data.ollamaErrorMessage})` : ""}
+        {showModelServerUnreachable ? (
+          <p className="text-sm text-destructive" data-testid="model-registry-server-unreachable">
+            {t("modelRegistryServerUnreachable")}
+            {data?.ollamaErrorMessage ? ` (${data.ollamaErrorMessage})` : ""}
           </p>
         ) : null}
         {actionMessage ? <p className="text-sm text-muted-foreground">{actionMessage}</p> : null}
@@ -162,7 +167,9 @@ export function ProductModelRegistryCard() {
                 {t("modelRegistrySectionLlm")}
               </h3>
               <div>
-                {data.llmModels.map((row) => (
+                {data.llmModels
+                  .filter((row) => row.status === "AVAILABLE")
+                  .map((row) => (
                   <ModelRow
                     key={row.modelId}
                     row={row}
@@ -182,7 +189,9 @@ export function ProductModelRegistryCard() {
                 {t("modelRegistrySectionEmbedding")}
               </h3>
               <div>
-                {data.embeddingModels.map((row) => (
+                {data.embeddingModels
+                  .filter((row) => row.status === "AVAILABLE")
+                  .map((row) => (
                   <ModelRow
                     key={row.modelId}
                     row={row}

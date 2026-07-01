@@ -6,7 +6,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
-LOG_ROOT="${REPO_ROOT}/.cursor/context/evidence/tests/full-ci-${RUN_ID}"
+LOG_ROOT="${REPO_ROOT}/docs/evidence/tests/full-ci-${RUN_ID}"
 SUMMARY="${LOG_ROOT}/summary.md"
 RESULTS_TSV="${LOG_ROOT}/results.tsv"
 START_EPOCH="$(date +%s)"

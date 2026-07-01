@@ -51,6 +51,14 @@ export function useProjectList(page = 0, size = 24) {
   });
 }
 
+export function useProject(projectId: string | undefined) {
+  return useQuery({
+    queryKey: [...projectsKey, "detail", projectId],
+    enabled: Boolean(projectId),
+    queryFn: () => apiFetch<ProjectSummary>(apiProductPath(`/projects/${projectId}`)),
+  });
+}
+
 export function useCreateProject() {
   const queryClient = useQueryClient();
   const setActiveProject = useAppStore((s) => s.setActiveProject);

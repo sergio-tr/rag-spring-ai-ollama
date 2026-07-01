@@ -168,17 +168,17 @@ public class LlmClientResolver {
 
     private static void logSafeChatResolution(ResolvedLlmConfig config) {
         log.info(
-                "Resolved LLM chat client: provider={}, model={}, baseUrl={}",
+                "Resolved LLM chat client: provider={}, model={}",
                 config.chatProvider(),
-                config.chatModel(),
-                config.baseUrl());
+                config.chatModel());
+        log.debug("Resolved LLM chat client baseUrl={}", config.baseUrl());
     }
 
     private static void logSafeEmbeddingResolution(ResolvedLlmConfig config) {
         log.info(
-                "Resolved LLM embedding client: provider={}, model={}, baseUrl={}",
+                "Resolved LLM embedding client: provider={}, model={}",
                 config.embeddingProvider(),
-                config.embeddingModel(),
-                config.baseUrl());
+                config.embeddingModel());
+        log.debug("Resolved LLM embedding client baseUrl={}", config.baseUrl());
     }
 }

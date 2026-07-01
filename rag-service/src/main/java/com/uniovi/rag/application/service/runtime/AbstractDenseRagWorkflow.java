@@ -1,8 +1,11 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
+import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
 import com.uniovi.rag.application.service.runtime.factual.FactualAnswerVerificationLoop;
 import com.uniovi.rag.application.service.runtime.factual.FactualConstraintExtractor;
 import com.uniovi.rag.application.service.runtime.factual.FactualQuestionConstraints;
+import com.uniovi.rag.application.service.runtime.factual.FactualRevisionPrompts;
 import com.uniovi.rag.application.service.runtime.factual.FactualVerifierTelemetry;
 import com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline;
 import com.uniovi.rag.domain.runtime.RagConfig;
@@ -26,6 +29,12 @@ import java.util.Optional;
 abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
 
     private final AdvancedRetrievalPipeline advancedRetrievalPipeline;
+
+    @Autowired(required = false)
+    private ConfigurablePromptResolver promptResolver;
+
+    @Autowired(required = false)
+    private RuntimeAnswerPromptResolver answerPromptResolver;
 
     protected AbstractDenseRagWorkflow(
             RagLlmChatInvoker llmChatInvoker,
@@ -92,7 +101,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
         FinalAnswerSource finalAnswerSource = FinalAnswerSource.GENERATED;
 
         if (docBound && effectivePromptContext.isBlank()) {
-            answer = RuntimeAnswerPrompts.insufficientDocumentContextMessageFor(q);
+            answer = resolveInsufficientDocumentContextMessage(ctx, q);
             abstention = true;
             abstentionReason = "no_document_evidence";
             finalAnswerSource = FinalAnswerSource.FORCED_ABSTENTION;
@@ -109,14 +118,18 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                     ExecutionStageOutcome.SKIPPED,
                     FactualVerifierTelemetry.formatSkippedMessage("date_guard_abstention")));
         } else {
-            String user =
-                    RuntimeAnswerPrompts.ragUserTurn(
-                            q, effectivePromptContext, policy, docBound, mismatch, combinedPlan);
+            String user = resolveRagUserTurn(ctx, q, effectivePromptContext, policy, docBound, mismatch, combinedPlan);
             String draft = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
             stages.add(stage("llm", tLlm, ExecutionStageOutcome.SUCCESS, ""));
             FactualAnswerVerificationLoop.Outcome verified =
                     FactualAnswerVerificationLoop.apply(
-                            q, constraints, effectivePromptContext, draft, revisionPrompt -> invokeChat(ctx, ctx.effectiveSystemPrompt(), revisionPrompt));
+                            q,
+                            constraints,
+                            effectivePromptContext,
+                            draft,
+                            revisionPrompt -> invokeChat(ctx, ctx.effectiveSystemPrompt(), revisionPrompt),
+                            factualRevisionTemplate(ctx),
+                            resolveInsufficientDocumentContextMessage(ctx, q));
             answer = verified.answerText();
             abstention = verified.abstentionTriggered();
             abstentionReason = verified.abstentionReason();
@@ -162,7 +175,8 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
             PackedContextSet packed) {
         String context = packed.promptContextText();
         String user =
-                RuntimeAnswerPrompts.ragUserTurn(
+                resolveRagUserTurn(
+                        ctx,
                         q,
                         context,
                         policy,
@@ -174,7 +188,13 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
         stages.add(stage("llm", tLlm, ExecutionStageOutcome.SUCCESS, "from_advisor_packed_context"));
         FactualAnswerVerificationLoop.Outcome verified =
                 FactualAnswerVerificationLoop.apply(
-                        q, constraints, context, draft, revisionPrompt -> invokeChat(ctx, ctx.effectiveSystemPrompt(), revisionPrompt));
+                        q,
+                        constraints,
+                        context,
+                        draft,
+                        revisionPrompt -> invokeChat(ctx, ctx.effectiveSystemPrompt(), revisionPrompt),
+                        factualRevisionTemplate(ctx),
+                        resolveInsufficientDocumentContextMessage(ctx, q));
         stages.addAll(verified.stages());
         stages.add(finalAnswerSourceStage(verified.finalAnswerSource()));
         boolean packedDocBound = RuntimeAnswerPrompts.requiresStrictDocumentGrounding(q);
@@ -216,6 +236,36 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
             return plan;
         }
         return plan + "\n" + constraints;
+    }
+
+    private String resolveRagUserTurn(
+            ExecutionContext ctx,
+            String rawQuestion,
+            String contextBlock,
+            AnswerGroundingPolicy policy,
+            boolean documentScopedQuestion,
+            Optional<String> dateMismatchNotice,
+            String answerPlanBlock) {
+        if (answerPromptResolver != null) {
+            return answerPromptResolver.ragUserTurn(
+                    ctx, rawQuestion, contextBlock, policy, documentScopedQuestion, dateMismatchNotice, answerPlanBlock);
+        }
+        return RuntimeAnswerPrompts.ragUserTurn(
+                rawQuestion, contextBlock, policy, documentScopedQuestion, dateMismatchNotice, answerPlanBlock);
+    }
+
+    private String resolveInsufficientDocumentContextMessage(ExecutionContext ctx, String rawQuestion) {
+        if (answerPromptResolver != null) {
+            return answerPromptResolver.insufficientDocumentContextMessage(ctx, rawQuestion);
+        }
+        return RuntimeAnswerPrompts.insufficientDocumentContextMessageFor(rawQuestion);
+    }
+
+    private String factualRevisionTemplate(ExecutionContext ctx) {
+        if (promptResolver != null) {
+            return promptResolver.resolve(ConfigurablePromptGroup.FACTUAL_VERIFIER, ctx.userId(), ctx.projectId());
+        }
+        return FactualRevisionPrompts.defaultRevisionTemplate();
     }
 
     private static String preview(String s) {

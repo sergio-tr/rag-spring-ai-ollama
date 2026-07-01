@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogQuery;
+import com.uniovi.rag.domain.llm.catalog.LlmCatalogSource;
 import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
 import com.uniovi.rag.domain.product.ProductDemoModel;
 import com.uniovi.rag.testsupport.llm.LlmModelCatalogTestSupport;
@@ -65,6 +66,20 @@ class ModelCatalogIntegrationTest {
                 .isTrue();
         assertThat(ProductDemoModel.NOMIC_EMBED_TEXT.fitsStoreEmbeddingDimension(1024))
                 .isFalse();
+    }
+
+    @Test
+    void getCatalogOpenAiUsesLitellmConfiguredSource() {
+        LlmModelCatalogService catalog =
+                LlmModelCatalogTestSupport.catalogFrom(LlmModelCatalogTestSupport.openAiLiteLlmProperties());
+
+        assertThat(
+                        catalog.listConfigured(
+                                        LlmCatalogQuery.forProviderAndCapability(
+                                                LlmProvider.OPENAI_COMPATIBLE, LlmModelCapability.CHAT))
+                                .getFirst()
+                                .source())
+                .isEqualTo(LlmCatalogSource.LITELLM_CONFIGURED);
     }
 
     @Test

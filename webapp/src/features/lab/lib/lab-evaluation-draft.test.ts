@@ -17,8 +17,9 @@ describe("lab-evaluation-draft", () => {
     localStorage.clear();
   });
 
-  it("defaults embedding model to product standard mxbai-embed-large:latest", () => {
-    expect(defaultLabEvaluationDraft().embeddingModelId).toBe(LAB_DEFAULT_EMBEDDING_MODEL_ID);
+  it("defaults embedding model empty until catalog API selects usableAsDefault", () => {
+    expect(defaultLabEvaluationDraft().embeddingModelId).toBe("");
+    expect(LAB_DEFAULT_EMBEDDING_MODEL_ID).toBe("");
   });
 
   it("uses versioned storage keys per benchmark kind", () => {
@@ -115,7 +116,7 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       allDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       datasetsFetched: true,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: ["P0", "P1"],
       presetsCatalogReady: true,
@@ -131,7 +132,7 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [],
       allDatasetRows: [],
       datasetsFetched: false,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: [],
       presetsCatalogReady: false,
@@ -148,7 +149,7 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [],
       allDatasetRows: [{ id: "d-other" } as ExperimentalDatasetListItemDto],
       datasetsFetched: true,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: [],
       presetsCatalogReady: false,
@@ -165,7 +166,7 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [{ id: "d2" } as ExperimentalDatasetListItemDto],
       allDatasetRows: [{ id: "d1" } as ExperimentalDatasetListItemDto],
       datasetsFetched: true,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: [],
       presetsCatalogReady: false,
@@ -273,12 +274,29 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       allDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       datasetsFetched: true,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: [],
       presetsCatalogReady: false,
     });
     expect(w.presetsUnknown).toEqual([]);
+  });
+
+  it("flags dataset warnings when catalog is empty", () => {
+    const draft = { ...defaultLabEvaluationDraft(), datasetId: "d-missing" };
+    const w = computeLabEvaluationDraftWarnings({
+      kind: "LLM_JUDGE_QA",
+      draft,
+      compatibleDatasetRows: [],
+      allDatasetRows: [{ id: "d-other" } as ExperimentalDatasetListItemDto],
+      datasetsFetched: true,
+      availableLlmModelIds: [],
+      availableEmbeddingModelIds: [],
+      catalogPresetCodes: [],
+      presetsCatalogReady: false,
+    });
+    expect(w.datasetDeletedOrUnknown).toBe(true);
+    expect(w.llmModelInvalid).toBe(false);
   });
 
   it("clearLabEvaluationDraftStorage removes persisted drafts", () => {

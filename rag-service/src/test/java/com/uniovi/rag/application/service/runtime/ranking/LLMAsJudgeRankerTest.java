@@ -1,10 +1,11 @@
 package com.uniovi.rag.application.service.runtime.ranking;
 
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
 import com.uniovi.rag.application.result.query.CandidateResponse;
 import com.uniovi.rag.domain.model.RankerResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 
 import java.util.List;
 
@@ -14,13 +15,15 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 class LLMAsJudgeRankerTest {
 
-    private ChatClient chatClient;
+    private ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
+    private ConfigurablePromptResolver promptResolver;
     private LLMAsJudgeRanker ranker;
 
     @BeforeEach
     void setUp() {
-        chatClient = mock(ChatClient.class);
-        ranker = new LLMAsJudgeRanker(chatClient);
+        secondaryLlmExecutor = mock(ProviderAwareSecondaryLlmExecutor.class);
+        promptResolver = mock(ConfigurablePromptResolver.class);
+        ranker = new LLMAsJudgeRanker(secondaryLlmExecutor, promptResolver);
     }
 
     @Test
@@ -36,6 +39,6 @@ class LLMAsJudgeRankerTest {
         assertNotNull(result);
         assertEquals("only one", result.chosenText());
         assertEquals(0, result.chosenIndex());
-        verifyNoInteractions(chatClient);
+        verifyNoInteractions(secondaryLlmExecutor);
     }
 }

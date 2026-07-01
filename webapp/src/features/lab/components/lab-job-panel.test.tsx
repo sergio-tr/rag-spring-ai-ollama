@@ -156,7 +156,7 @@ describe("LabJobPanel", () => {
         <LabJobPanel accepted={accepted} taskStatus={runningTask} />
       </IntlTestProvider>,
     );
-    await user.click(screen.getByText(/Technical details/i));
+    await user.click(screen.getByText(/Advanced technical details/i));
     expect(screen.getByText("j1")).toBeInTheDocument();
     expect(screen.queryByText("/p")).not.toBeInTheDocument();
     expect(screen.queryByText("/s")).not.toBeInTheDocument();

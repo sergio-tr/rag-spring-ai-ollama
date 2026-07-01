@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.testsupport.config.TestConfigurablePromptResolver;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline;
@@ -121,16 +122,18 @@ class WorkflowSelectorTest {
         RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
         selector =
                 new WorkflowSelector(
-                        new DirectLlmWorkflow(llmChatInvoker, null),
+                        new DirectLlmWorkflow(llmChatInvoker, TestConfigurablePromptResolver.answerPromptResolver(), null),
                         new CorpusGroundedDirectWorkflow(
                                 llmChatInvoker,
                                 mock(SnapshotCorpusAssembler.class),
                                 new RuntimePromptBudgeter(new RagRuntimeProperties()),
+                                TestConfigurablePromptResolver.answerPromptResolver(),
                                 null),
                         new FullCorpusWorkflow(
                                 llmChatInvoker,
                                 mock(SnapshotCorpusAssembler.class),
                                 new RuntimePromptBudgeter(new RagRuntimeProperties()),
+                                TestConfigurablePromptResolver.answerPromptResolver(),
                                 null),
                         new DocumentDenseRagWorkflow(
                                 llmChatInvoker,

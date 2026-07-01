@@ -4,6 +4,7 @@ import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResul
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.domain.EvaluationRunStatus;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
+import com.uniovi.rag.application.service.evaluation.provenance.EvaluationProvenanceSupport;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
@@ -128,6 +129,7 @@ public class EvaluationCanonicalPersistenceService {
             metrics.put("llm_evaluation_excerpt", trunc(evalText, 4000));
             mergeOptionalRowKeys(r, metrics);
             mergeMetricsPayloadFromRow(r, metrics);
+            EvaluationProvenanceSupport.enrichMetricsFromRun(metrics, run);
             e.setMetricsPayload(metrics);
             saved.add(e);
         }
@@ -193,6 +195,7 @@ public class EvaluationCanonicalPersistenceService {
                 metrics.put("judge_scores", scores);
                 metrics.put("llm_evaluation_excerpt", trunc(evalText, 4000));
             }
+            EvaluationProvenanceSupport.enrichMetricsFromRun(metrics, run);
             e.setMetricsPayload(metrics);
             saved.add(e);
         }

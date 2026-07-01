@@ -54,6 +54,24 @@ export async function fetchCampaignItemsBundle(campaignId: string): Promise<Reco
   );
 }
 
+export async function fetchEvaluationResultsJson(runId: string): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>(
+    apiProductPath(`/lab/runs/${encodeURIComponent(runId)}/export/v1/results.json`),
+  );
+}
+
+export async function downloadEvaluationSummaryCsv(runId: string): Promise<void> {
+  const path = apiProductPath(`/lab/runs/${encodeURIComponent(runId)}/export/v1/summary.csv`);
+  const blob = await apiDownloadBlob(path);
+  triggerBrowserBlobDownload(blob, `lab-run-${runId}-summary.csv`);
+}
+
+export async function downloadEvaluationFullBundle(runId: string): Promise<void> {
+  const path = apiProductPath(`/lab/runs/${encodeURIComponent(runId)}/export/v1/full-bundle.zip`);
+  const blob = await apiDownloadBlob(path);
+  triggerBrowserBlobDownload(blob, `lab-run-${runId}-full-bundle.zip`);
+}
+
 export async function fetchMvpRollupsJson(runId: string): Promise<Record<string, unknown>> {
   return apiFetch<Record<string, unknown>>(
     apiProductPath(`/lab/runs/${encodeURIComponent(runId)}/export/mvp/rollups.json`),
@@ -66,10 +84,20 @@ export async function fetchMvpItemsBundle(runId: string): Promise<Record<string,
   );
 }
 
-export async function downloadMvpExport(runId: string, kind: "items.csv" | "items.json" | "rollups.json"): Promise<void> {
-  const path = apiProductPath(`/lab/runs/${encodeURIComponent(runId)}/export/mvp/${kind}`);
+export async function downloadMvpExport(
+  runId: string,
+  kind: "items.csv" | "items.json" | "rollups.json" | "results.json",
+): Promise<void> {
+  const path =
+    kind === "results.json"
+      ? apiProductPath(`/lab/runs/${encodeURIComponent(runId)}/export/v1/results.json`)
+      : apiProductPath(`/lab/runs/${encodeURIComponent(runId)}/export/mvp/${kind}`);
   const blob = await apiDownloadBlob(path);
   const filename =
-    kind === "items.csv" ? `lab-run-${runId}-mvp-items.csv` : `lab-run-${runId}-mvp-${kind}`;
+    kind === "items.csv"
+      ? `lab-run-${runId}-mvp-items.csv`
+      : kind === "results.json"
+        ? `lab-run-${runId}-results.json`
+        : `lab-run-${runId}-mvp-${kind}`;
   triggerBrowserBlobDownload(blob, filename);
 }

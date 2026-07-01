@@ -30,6 +30,18 @@ class LabMetricsComparisonServiceTest {
     @Mock EvaluationResultRepository resultRepo;
 
     @Test
+    void compareMetrics_rejectsFewerThanTwoRunIds() {
+        UUID userId = UUID.randomUUID();
+        LabMetricsComparisonService svc = new LabMetricsComparisonService(runRepo, resultRepo);
+        ResponseStatusException ex =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> svc.compareMetrics(userId, List.of(UUID.randomUUID()), null, null));
+        assertEquals(400, ex.getStatusCode().value());
+        assertEquals("Provide at least two runIds", ex.getReason());
+    }
+
+    @Test
     void comparesTwoLlmRunsByModelId() {
         UUID userId = UUID.randomUUID();
         UUID r1 = UUID.randomUUID();

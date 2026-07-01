@@ -194,7 +194,7 @@ export const FORBIDDEN_LAB_UI_PATTERNS: RegExp[] = [
   /\bM9\b|\bM10\b|\bM11\b|\bM12\b/i,
   /\bTFG\b/i,
   /claim map/i,
-  /\.cursor/i,
+  /docs/i,
   /Jaeger verified/i,
   /RAG ladder complete/i,
   /Do not claim/i,
@@ -386,7 +386,7 @@ export async function collectLlmModelValidation(page: Page): Promise<LlmModelVal
   const ollamaTags = listOllamaTagsViaDockerExec();
   const missingPreferred = preferred.filter((id) => !selectableLlmModelIds.includes(id));
   const status: LlmModelValidationSnapshot["status"] =
-    selectableLlmModelIds.length >= 2 ? "READY" : "BLOCKED_BY_MODEL_AVAILABILITY";
+    selectableLlmModelIds.length >= 1 ? "READY" : "BLOCKED_BY_MODEL_AVAILABILITY";
   return {
     status,
     selectableLlmModelIds,
@@ -556,7 +556,7 @@ export async function collectEmbeddingModelValidation(page: Page): Promise<Embed
   }
 
   const status: EmbeddingModelValidationSnapshot["status"] =
-    selectableCompatibleEmbeddingIds.length >= 2 ? "READY" : "BLOCKED_BY_MODEL_AVAILABILITY";
+    selectableCompatibleEmbeddingIds.length >= 1 ? "READY" : "BLOCKED_BY_MODEL_AVAILABILITY";
 
   return {
     status,

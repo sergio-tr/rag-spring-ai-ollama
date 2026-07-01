@@ -51,6 +51,7 @@ class MetadataCountDocumentsToolTest {
         extractor = mock(DocumentContentExtractor.class);
         MetadataLlmResponseCacheService llmCache = mock(MetadataLlmResponseCacheService.class);
         when(llmCache.getCachedResponse(anyString())).thenReturn("");
+        when(llmCache.getCachedResponse(anyString(), anyString())).thenReturn("NONE");
         tool = new MetadataCountDocumentsTool(chatClient, retriever, extractor, llmCache);
 
         MetadataMinuteDocumentService metadataService =
@@ -178,6 +179,23 @@ class MetadataCountDocumentsToolTest {
         String answer = result.result();
         assertThat(answer).contains("ACTA 1.pdf", "ACTA 6.pdf", "24/02/2025", "25/08/2026");
         assertThat(answer.toLowerCase(Locale.ROOT)).containsAnyOf("dos actas", "2 actas");
+    }
+
+    @Test
+    void englishElevatorCount_returnsEnglishAnswerWithActaReferences() {
+        stubRetriever(allDocs());
+
+        ToolResult result =
+                tool.execute(
+                        ToolExecutionContext.of(
+                                "How many meetings mention the elevator?",
+                                QueryType.COUNT_DOCUMENTS,
+                                null));
+
+        String answer = result.result();
+        assertThat(answer).contains("ACTA 1.pdf", "ACTA 6.pdf", "meetings");
+        assertThat(answer.toLowerCase(Locale.ROOT)).contains("elevator");
+        assertThat(answer).doesNotContain("actas");
     }
 
     @Test

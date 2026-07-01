@@ -2,7 +2,9 @@
 Service configuration: environment variables only.
 Exposed as a singleton Config class so all code uses the same instance and no loose functions.
 """
+import json
 import os
+from pathlib import Path
 from typing import ClassVar
 
 # Reduce TensorFlow log noise before it is imported elsewhere
@@ -38,11 +40,12 @@ class Config:
         return os.environ.get("DATA_DIR", "data")
 
     def get_default_model_path(self) -> str:
-        """Path to the default Keras model file. Default: models/default/model.keras."""
-        return os.environ.get(
-            "MODEL_PATH",
-            os.path.join(self.get_models_dir(), "default", "model.keras"),
-        )
+        """Path to the default classifier artifact (Keras or sklearn joblib)."""
+        explicit = os.environ.get("MODEL_PATH")
+        if explicit:
+            return explicit
+        default_dir = Path(self.get_models_dir()) / self.DEFAULT_MODEL_TAG
+        return str(self._resolve_artifact_in_dir(default_dir))
 
     def get_default_labels_path(self) -> str:
         """Path to the default labels file. Default: models/default/labels.txt."""
@@ -50,6 +53,26 @@ class Config:
             "LABELS_PATH",
             os.path.join(self.get_models_dir(), "default", "labels.txt"),
         )
+
+    @staticmethod
+    def _resolve_artifact_in_dir(model_dir: Path) -> Path:
+        meta_path = model_dir / "metadata.json"
+        if meta_path.exists():
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                raw = str(meta.get("modelType", "")).strip().lower()
+                if raw == "sklearn" and (model_dir / "model.joblib").exists():
+                    return model_dir / "model.joblib"
+                if raw == "keras" and (model_dir / "model.keras").exists():
+                    return model_dir / "model.keras"
+            except (json.JSONDecodeError, OSError):
+                pass
+        joblib_path = model_dir / "model.joblib"
+        keras_path = model_dir / "model.keras"
+        if joblib_path.exists():
+            return joblib_path
+        return keras_path
 
     def get_default_model_id(self) -> str:
         """Model id used when not provided. Always returns a string (default 'default')."""

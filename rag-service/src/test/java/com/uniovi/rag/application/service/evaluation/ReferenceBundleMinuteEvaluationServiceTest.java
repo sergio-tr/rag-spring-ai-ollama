@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation;
 
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.application.service.knowledge.document.DocumentService;
@@ -21,7 +22,8 @@ class ReferenceBundleMinuteEvaluationServiceTest {
                         mock(ChatClient.class),
                         mock(DocumentService.class),
                         mock(QueryExecutionService.class),
-                        false);
+                        false,
+                        mock(EvaluationJudgeLlmExecutor.class));
         assertThat(svc.isEvaluationDataLoaded()).isFalse();
     }
 }

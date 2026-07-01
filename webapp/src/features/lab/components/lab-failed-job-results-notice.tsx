@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { mapUserFacingErrorMessage } from "@/lib/user-facing-error-messages";
+import { UserFacingErrorNotice } from "@/lib/user-facing-error-notice";
 import type { AsyncTaskStatusDto } from "@/types/api";
 import { useTranslations } from "next-intl";
 
@@ -13,9 +13,6 @@ export type LabFailedJobResultsNoticeProps = Readonly<{
 export function LabFailedJobResultsNotice({ evaluationRunId, taskStatus }: LabFailedJobResultsNoticeProps) {
   const t = useTranslations("Lab");
   const runId = evaluationRunId.trim();
-  const errorMessage = taskStatus?.errorMessage?.trim()
-    ? mapUserFacingErrorMessage(taskStatus.errorMessage, t, t("jobUiFailed"))
-    : null;
 
   return (
     <div
@@ -32,10 +29,14 @@ export function LabFailedJobResultsNotice({ evaluationRunId, taskStatus }: LabFa
       <p className="font-mono text-xs" data-testid="lab-failed-job-run-id">
         {t("failedJobResultsRunId", { runId: runId.slice(0, 8) })}
       </p>
-      {errorMessage ? (
-        <p className="text-destructive text-xs" data-testid="lab-failed-job-error-message">
-          {errorMessage}
-        </p>
+      {taskStatus?.errorMessage?.trim() ? (
+        <UserFacingErrorNotice
+          raw={taskStatus.errorMessage}
+          fallback={t("jobUiFailed")}
+          t={t}
+          testId="lab-failed-job-error-message"
+          className="text-xs"
+        />
       ) : null}
     </div>
   );

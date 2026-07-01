@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.llm.catalog.LlmCatalogDefaults;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogEntry;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogQuery;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogSource;
+import com.uniovi.rag.domain.llm.catalog.LlmModelReasonCodes;
 import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
 import com.uniovi.rag.domain.llm.catalog.LlmModelUsageContext;
 import com.uniovi.rag.infrastructure.llm.LlmOllamaDefaults;
@@ -226,7 +227,9 @@ public class LlmModelCatalogService implements LlmModelCatalogPort {
                             usableAsDefault,
                             trimmed,
                             "",
-                            LlmCatalogSource.PROPERTIES,
+                            provider == LlmProvider.OPENAI_COMPATIBLE
+                                    ? LlmCatalogSource.LITELLM_CONFIGURED
+                                    : LlmCatalogSource.CONFIGURED_CATALOG,
                             Map.of()));
         }
     }
@@ -276,7 +279,18 @@ public class LlmModelCatalogService implements LlmModelCatalogPort {
                         + usageContext
                         + " (model catalog strict validation)";
         return LlmConfigurationException.invalidField(
-                provider, "catalog", modelName != null ? modelName.trim() : null, null, message + " [" + detail + "]");
+                provider,
+                "catalog",
+                modelName != null ? modelName.trim() : null,
+                null,
+                LlmModelReasonCodes.format(resolveConfigurationReasonCode(message), message + " [" + detail + "]"));
+    }
+
+    private static String resolveConfigurationReasonCode(String message) {
+        if (message != null && message.contains("not available in the catalog")) {
+            return LlmModelReasonCodes.LLM_MODEL_UNAVAILABLE;
+        }
+        return LlmModelReasonCodes.LLM_MODEL_NOT_CONFIGURED;
     }
 
     private record CatalogKey(LlmProvider provider, String modelName, LlmModelCapability capability) {}

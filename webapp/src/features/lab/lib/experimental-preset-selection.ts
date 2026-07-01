@@ -12,9 +12,9 @@ export function filterLabBenchmarkSelectablePresets(
   return (presets ?? []).filter(isLabBenchmarkPresetSelectable);
 }
 
-/** Core single-turn preset codes P0–P10 for Lab RAG benchmark selection. */
+/** Core single-turn preset codes P0–P10 and P15 for Lab RAG benchmark selection. */
 export function isCoreExperimentalPresetCode(code: string): boolean {
-  return /^P(?:[0-9]|10)$/.test(code);
+  return /^P(?:[0-9]|10|15)$/.test(code);
 }
 
 export function listCoreExperimentalPresetCodes(presets: ExperimentalPresetCatalogItemDto[]): string[] {

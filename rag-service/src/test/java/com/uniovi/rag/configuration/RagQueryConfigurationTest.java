@@ -1,5 +1,6 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
@@ -10,6 +11,8 @@ import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedQueryService;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
+import com.uniovi.rag.application.service.llm.LlmErrorComposer;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.application.service.runtime.query.analyser.MinuteNERQueryAnalyser;
 import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
 import com.uniovi.rag.application.service.runtime.query.expand.MinuteDocumentStructureExpander;
@@ -59,8 +62,8 @@ class RagQueryConfigurationTest {
         RagQueryConfiguration config = new RagQueryConfiguration();
         RagReasoningProperties props = new RagReasoningProperties();
         props.setStrategy(null);
-        ChatClient chatClient = mock(ChatClient.class);
-        ReasoningStrategy strategy = config.reasoningStrategy(props, chatClient, null);
+        ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor = mock(ProviderAwareSecondaryLlmExecutor.class);
+        ReasoningStrategy strategy = config.reasoningStrategy(props, secondaryLlmExecutor, null);
         assertNotNull(strategy);
         assertTrue(strategy instanceof SelectingReasoningStrategy);
     }
@@ -94,7 +97,11 @@ class RagQueryConfigurationTest {
         props.setStrategy(null);
         assertInstanceOf(
                 LLMAsJudgeRanker.class,
-                config.responseRanker(props, mock(ChatClient.class), null));
+                config.responseRanker(
+                        props,
+                        mock(ProviderAwareSecondaryLlmExecutor.class),
+                        mock(ConfigurablePromptResolver.class),
+                        null));
     }
 
     @Test
@@ -104,14 +111,27 @@ class RagQueryConfigurationTest {
         props.setStrategy("faithfulness");
         assertInstanceOf(
                 FaithfulnessRanker.class,
-                config.responseRanker(props, mock(ChatClient.class), null));
+                config.responseRanker(
+                        props,
+                        mock(ProviderAwareSecondaryLlmExecutor.class),
+                        mock(ConfigurablePromptResolver.class),
+                        null));
     }
 
     @Test
     void queryExpander_invalidStrategyFallsBackToCot() {
         RagQueryConfiguration config = new RagQueryConfiguration();
         QueryExpander expander =
-                config.queryExpander(mock(ChatClient.class), "not-a-strategy", 1, 350, 512, 500, 200, null);
+                config.queryExpander(
+                        mock(ProviderAwareSecondaryLlmExecutor.class),
+                        mock(ConfigurablePromptResolver.class),
+                        "not-a-strategy",
+                        1,
+                        350,
+                        512,
+                        500,
+                        200,
+                        null);
         assertInstanceOf(MinuteDocumentStructureExpander.class, expander);
     }
 
@@ -141,7 +161,7 @@ class RagQueryConfigurationTest {
         RagQueryConfiguration config = new RagQueryConfiguration();
         RagImplementationProperties impl = new RagImplementationProperties();
         impl.setAnalyserImpl(null);
-        QueryAnalyser analyser = config.queryAnalyser(mock(ChatClient.class), impl, null);
+        QueryAnalyser analyser = config.queryAnalyser(mock(ProviderAwareSecondaryLlmExecutor.class), impl, null);
         assertInstanceOf(MinuteNERQueryAnalyser.class, analyser);
     }
 
@@ -174,13 +194,13 @@ class RagQueryConfigurationTest {
         RagQueryConfiguration config = new RagQueryConfiguration();
         QueryExecutionService qs =
                 config.queryService(
-                        mock(ChatClient.class),
                         mock(OllamaConnectivityChecker.class),
                         mock(ExecutionContextFactory.class),
                         mock(RagExecutionOrchestrator.class),
                         mock(RuntimeTracePersistenceService.class),
                         mock(KnowledgeDocumentRepository.class),
                         mock(ChatGenerationModelSelector.class),
+                        mock(LlmErrorComposer.class),
                         null);
         assertInstanceOf(RuntimeQueryExecutionService.class, qs);
     }
@@ -191,13 +211,13 @@ class RagQueryConfigurationTest {
         ObservabilitySupport obs = new ObservabilitySupport(new SimpleTracer(), new SimpleMeterRegistry());
         QueryExecutionService qs =
                 config.queryService(
-                        mock(ChatClient.class),
                         mock(OllamaConnectivityChecker.class),
                         mock(ExecutionContextFactory.class),
                         mock(RagExecutionOrchestrator.class),
                         mock(RuntimeTracePersistenceService.class),
                         mock(KnowledgeDocumentRepository.class),
                         mock(ChatGenerationModelSelector.class),
+                        mock(LlmErrorComposer.class),
                         obs);
         assertInstanceOf(TracedQueryService.class, qs);
     }

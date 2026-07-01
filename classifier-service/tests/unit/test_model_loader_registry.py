@@ -27,18 +27,22 @@ def test_load_by_id_from_registry(monkeypatch, tmp_path):
 
     loaded = []
 
+    mock_tf = MagicMock()
+
     def fake_load_model(path):
         loaded.append(path)
         return object()
 
-    monkeypatch.setattr(ml_mod.tf.keras.models, "load_model", fake_load_model)
+    monkeypatch.setattr(ml_mod, "require_tensorflow", lambda: mock_tf)
+    monkeypatch.setattr(mock_tf.keras.models, "load_model", fake_load_model)
 
     loader = ModelLoader(config=Config())
-    m, names = loader.load_by_id(mid)
-    assert names == ["COUNT_DOCUMENTS", "SUMMARIZE_MEETING"]
+    loaded_model = loader.load_by_id(mid)
+    assert loaded_model.class_names == ["COUNT_DOCUMENTS", "SUMMARIZE_MEETING"]
+    assert loaded_model.model_type == "keras"
     assert loader.is_loaded(mid)
-    assert loader.get_model(mid) is m
-    assert loader.get_class_names(mid) == names
+    assert loader.get_model(mid) is loaded_model.artifact
+    assert loader.get_class_names(mid) == loaded_model.class_names
     assert len(loaded) == 1
 
 
@@ -51,11 +55,11 @@ def test_load_by_id_cache_hit_skips_disk(monkeypatch, tmp_path):
     (d / MODEL_FILENAME).write_bytes(b"k")
     (d / LABELS_FILENAME).write_text("COUNT_DOCUMENTS\n")
 
-    monkeypatch.setattr(ml_mod.tf.keras.models, "load_model", lambda p: MagicMock(name="model"))
+    mock_tf = MagicMock()
+    monkeypatch.setattr(ml_mod, "require_tensorflow", lambda: mock_tf)
+    monkeypatch.setattr(mock_tf.keras.models, "load_model", lambda p: MagicMock(name="model"))
 
     loader = ModelLoader(config=Config())
     loader.load_by_id(mid)
     loader.load_by_id(mid)
-    # Cache: second load_by_id returns without re-reading registry paths in load_by_id
-    # (first branch: model_id in cache after first load)
     assert loader.is_loaded(mid)

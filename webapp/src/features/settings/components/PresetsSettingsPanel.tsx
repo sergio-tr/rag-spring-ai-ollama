@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PresetProfileCard } from "@/features/settings/components/PresetProfileCard";
 import { ConfigSchemaFieldRows } from "@/features/settings/components/config-schema-field-rows";
 import { useConfigSchemaQuery } from "@/features/settings/hooks/use-rag-config";
 import { buildConfigValuesSchema, type ConfigFormValues } from "@/features/settings/lib/build-config-zod";
@@ -19,8 +20,8 @@ import {
   findKeysRejectedBySanitizer,
   partitionPresetImportValues,
 } from "@/features/settings/lib/preset-values";
+import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
 import type { RagPresetDto } from "@/types/api";
 
 const presetsKey = ["presets"] as const;
@@ -187,18 +188,11 @@ export function PresetsSettingsPanel() {
                 className="bg-muted/40 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
               >
                 <div className="min-w-0 flex-1">
-                  <span className="font-medium">{p.name}</span>
+                  <span className="font-medium">{toProductPresetDisplayName(p.name)}</span>
                   {p.system ? (
                     <span className="text-muted-foreground ml-2">({t("presetsSystem")})</span>
                   ) : null}
-                  <pre
-                    className={cn(
-                      "mt-2 max-h-52 min-h-[5rem] w-full max-w-full overflow-auto rounded-md border border-border bg-muted px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words",
-                    )}
-                    data-testid={`preset-values-preview-${p.id}`}
-                  >
-                    {JSON.stringify(p.values, null, 2)}
-                  </pre>
+                  <PresetProfileCard values={p.values ?? {}} presetId={p.id} />
                 </div>
                 {p.system ? null : (
                   <Button
@@ -268,15 +262,22 @@ export function PresetsSettingsPanel() {
             </div>
           ) : null}
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2" data-testid="preset-draft-summary">
             <span className="font-medium text-sm">{t("presetsPreviewTitle")}</span>
             <p className="text-muted-foreground text-xs">{t("presetsPreviewHint")}</p>
-            <pre
-              className="max-h-52 min-h-[6rem] w-full min-w-0 overflow-auto rounded-md border border-border bg-muted px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words"
-              data-testid="preset-draft-preview"
-            >
-              {JSON.stringify(previewPayload, null, 2)}
-            </pre>
+            {name.trim() ? (
+              <p className="text-sm">
+                <span className="text-muted-foreground">{t("presetsName")}: </span>
+                <span className="font-medium">{name.trim()}</span>
+              </p>
+            ) : null}
+            {description.trim() ? (
+              <p className="text-sm">
+                <span className="text-muted-foreground">{t("presetsDescriptionField")}: </span>
+                <span>{description.trim()}</span>
+              </p>
+            ) : null}
+            <PresetProfileCard values={previewPayload} presetId="draft" />
           </div>
 
           <details className="rounded-md border border-border p-3 text-sm">

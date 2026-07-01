@@ -2,6 +2,8 @@ package com.uniovi.rag.application.service.llm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -10,6 +12,7 @@ import com.uniovi.rag.application.port.llm.LlmEmbeddingClient;
 import com.uniovi.rag.application.port.llm.LlmEmbeddingRequest;
 import com.uniovi.rag.application.port.llm.LlmEmbeddingResponse;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
@@ -34,6 +37,9 @@ class ProviderAwareEmbeddingServiceTest {
     private ResolvedLlmConfigResolver configResolver;
 
     @Mock
+    private EmbeddingModelCatalogResolver embeddingModelCatalogResolver;
+
+    @Mock
     private LlmEmbeddingClient openAiEmbeddingClient;
 
     @Mock
@@ -43,7 +49,10 @@ class ProviderAwareEmbeddingServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ProviderAwareEmbeddingService(clientResolver, configResolver);
+        lenient()
+                .when(embeddingModelCatalogResolver.resolve(any(LlmProvider.class), anyString()))
+                .thenAnswer(inv -> inv.getArgument(1, String.class).trim());
+        service = new ProviderAwareEmbeddingService(clientResolver, configResolver, embeddingModelCatalogResolver);
     }
 
     @AfterEach

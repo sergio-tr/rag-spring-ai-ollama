@@ -16,6 +16,7 @@ public record RagBenchmarkOutcomeTally(
         long modelNotAvailable,
         long other,
         long totalRows,
+        long judgeDegradedExecuted,
         boolean skippedMissingReason,
         boolean notSupportedMissingReason) {
 
@@ -29,7 +30,10 @@ public record RagBenchmarkOutcomeTally(
             "COMPLETED_WITH_NO_EXECUTED_ITEMS";
     public static final String CLASSIFICATION_FAILED_NO_EXECUTED_ITEMS =
             CLASSIFICATION_COMPLETED_WITH_NO_EXECUTED_ITEMS;
-    public static final String CLASSIFICATION_FAILED_VALIDATION = "FAILED_VALIDATION";
+    public static final String CLASSIFICATION_COMPLETED_WITH_EVALUATION_WARNINGS =
+            "COMPLETED_WITH_EVALUATION_WARNINGS";
+    public static final String CLASSIFICATION_FAILED_EVALUATION_JUDGE_UNAVAILABLE =
+            "FAILED_EVALUATION_JUDGE_UNAVAILABLE";
 
     public long accountedItems() {
         return executed + failed + skipped + notSupported + modelNotAvailable + other;
@@ -43,6 +47,7 @@ public record RagBenchmarkOutcomeTally(
         long notSupported = 0;
         long modelNotAvailable = 0;
         long other = 0;
+        long judgeFailedExecuted = 0;
         boolean skippedMissingReason = false;
         boolean notSupportedMissingReason = false;
 
@@ -53,7 +58,12 @@ public record RagBenchmarkOutcomeTally(
             String outcome = readOutcome(item);
             Map<String, Object> mp = item.getMetricsPayload() != null ? item.getMetricsPayload() : Map.of();
             switch (outcome) {
-                case "EXECUTED" -> executed++;
+                case "EXECUTED" -> {
+                    executed++;
+                    if (isJudgeDegraded(mp)) {
+                        judgeFailedExecuted++;
+                    }
+                }
                 case "FAILED" -> failed++;
                 case "SKIPPED" -> {
                     skipped++;
@@ -82,6 +92,7 @@ public record RagBenchmarkOutcomeTally(
                 modelNotAvailable,
                 other,
                 totalRows,
+                judgeFailedExecuted,
                 skippedMissingReason,
                 notSupportedMissingReason);
     }
@@ -89,6 +100,9 @@ public record RagBenchmarkOutcomeTally(
     public String classifyCompletion() {
         if (expectedItems > 0 && executed <= 0) {
             return CLASSIFICATION_COMPLETED_WITH_NO_EXECUTED_ITEMS;
+        }
+        if (executed > 0 && judgeDegradedExecuted == executed) {
+            return CLASSIFICATION_COMPLETED_WITH_EVALUATION_WARNINGS;
         }
         if (executed > 0 && notSupported > 0 && failed == 0 && skipped == 0) {
             return CLASSIFICATION_COMPLETED_WITH_UNSUPPORTED;
@@ -149,5 +163,10 @@ public record RagBenchmarkOutcomeTally(
     private static boolean hasText(Map<String, Object> mp, String key) {
         Object v = mp.get(key);
         return v != null && !v.toString().isBlank();
+    }
+
+    private static boolean isJudgeDegraded(Map<String, Object> mp) {
+        Object status = mp.get(BenchmarkResultRowKeys.JUDGE_STATUS);
+        return status != null && "FAILED".equalsIgnoreCase(String.valueOf(status).trim());
     }
 }

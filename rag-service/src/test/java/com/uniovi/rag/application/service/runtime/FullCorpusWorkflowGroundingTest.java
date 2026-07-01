@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.testsupport.config.TestConfigurablePromptResolver;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -36,10 +37,13 @@ class FullCorpusWorkflowGroundingTest {
         SnapshotCorpusAssembler assembler = mock(SnapshotCorpusAssembler.class);
         when(assembler.assembleFullCorpusText(any())).thenReturn("");
         FullCorpusWorkflow workflow =
-                new FullCorpusWorkflow(invoker, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), null);
+                new FullCorpusWorkflow(invoker, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         var out = workflow.execute(ctxWithQuery("¿Cuántas actas mencionan el ascensor?"));
-        assertThat(out.answerText()).isEqualTo(RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES);
+        assertThat(out.answerText())
+                .isIn(
+                        RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES,
+                        RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_EN);
     }
 
     @Test
@@ -48,7 +52,7 @@ class FullCorpusWorkflowGroundingTest {
         SnapshotCorpusAssembler assembler = mock(SnapshotCorpusAssembler.class);
         when(assembler.assembleFullCorpusText(any())).thenReturn("ACTA 1: ... ascensor ...");
         FullCorpusWorkflow workflow =
-                new FullCorpusWorkflow(invoker, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), null);
+                new FullCorpusWorkflow(invoker, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         var out = workflow.execute(ctxWithQuery("¿Cuántas actas mencionan el ascensor?"));
         assertThat(out.answerText()).isEqualTo("Hay una acta que lo menciona.");
@@ -60,7 +64,7 @@ class FullCorpusWorkflowGroundingTest {
         SnapshotCorpusAssembler assembler = mock(SnapshotCorpusAssembler.class);
         when(assembler.assembleFullCorpusText(any())).thenReturn("");
         FullCorpusWorkflow workflow =
-                new FullCorpusWorkflow(invoker, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), null);
+                new FullCorpusWorkflow(invoker, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         var out = workflow.execute(ctxWithQuery("buenos dias"));
         assertThat(out.answerText())

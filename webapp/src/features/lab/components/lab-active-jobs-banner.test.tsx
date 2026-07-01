@@ -53,7 +53,7 @@ describe("LabActiveJobsBanner", () => {
         <LabActiveJobsBanner />
       </IntlTestProvider>,
     );
-    expect(screen.getByTestId("lab-active-job-row-j1")).toHaveTextContent(/RAG preset evaluation/i);
+    expect(screen.getByTestId("lab-active-job-row-j1")).toHaveTextContent(/Retrieval evaluation/i);
     expect(screen.queryByText(/RAG_PRESET_END_TO_END/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /view progress/i }));
     expect(routerMock.push).toHaveBeenCalledWith("/lab/evaluation/rag");

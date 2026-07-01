@@ -80,8 +80,34 @@ export function readMvpItemOperational(item: unknown): MvpItemOperational | null
 }
 
 export function readMvpItems(bundle: Record<string, unknown>): unknown[] {
+  const results = bundle.results;
+  if (Array.isArray(results)) {
+    return results.map(normalizeV1ResultRow);
+  }
   const items = bundle.items;
   return Array.isArray(items) ? items : [];
+}
+
+export function readRollupsFromResultsBundle(bundle: Record<string, unknown>): Record<string, unknown> {
+  const metrics = bundle.metrics;
+  return metrics && typeof metrics === "object" ? (metrics as Record<string, unknown>) : {};
+}
+
+function normalizeV1ResultRow(row: unknown): unknown {
+  if (!row || typeof row !== "object") {
+    return row;
+  }
+  const rec = row as Record<string, unknown>;
+  const answer = rec.answer && typeof rec.answer === "object" ? (rec.answer as Record<string, unknown>) : null;
+  const technical =
+    rec.technical && typeof rec.technical === "object" ? (rec.technical as Record<string, unknown>) : null;
+  return {
+    ...rec,
+    questionText: rec.questionText ?? rec.question,
+    actualAnswer: rec.actualAnswer ?? (typeof answer?.text === "string" ? answer.text : ""),
+    mvp: rec.mvp ?? rec.metrics,
+    metricsPayload: rec.metricsPayload ?? technical?.metricsPayload,
+  };
 }
 
 export function readComparisonScore(row: unknown, key: string): number | null {
@@ -94,6 +120,22 @@ export function readComparisonScore(row: unknown, key: string): number | null {
 
 export function readAnswerableScoreFromComparisonRow(row: unknown): number | null {
   return readComparisonScore(row, "scoreAnswerable");
+}
+
+/** Stable error bucket from v1 export rows; null for executed or missing items. */
+export function readDerivedErrorClassFromItem(item: unknown): string | null {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const rec = item as Record<string, unknown>;
+  const top = typeof rec.derivedErrorClass === "string" ? rec.derivedErrorClass.trim() : "";
+  if (top) {
+    return top;
+  }
+  const mvp = rec.mvp && typeof rec.mvp === "object" ? (rec.mvp as Record<string, unknown>) : null;
+  const op = mvp?.operational && typeof mvp.operational === "object" ? (mvp.operational as Record<string, unknown>) : null;
+  const fromOp = typeof op?.derivedErrorClass === "string" ? op.derivedErrorClass.trim() : "";
+  return fromOp || null;
 }
 
 export function countOutcomesFromItems(items: unknown[]): Record<string, number> {

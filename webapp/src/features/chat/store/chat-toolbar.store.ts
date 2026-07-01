@@ -4,7 +4,8 @@ import { create } from "zustand";
 import type {
   ChatRuntimeStateDto,
   ExperimentalPresetCatalogItemDto,
-  ModelsCatalogResponse,
+  MeSelectableLlmModelDto,
+  LlmProvider,
   ProjectDocumentDto,
   RagPresetDto,
 } from "@/types/api";
@@ -21,7 +22,9 @@ export type ChatToolbarApi = {
   setLlmModelChoice: (v: string) => void;
   classifierModelChoice: string;
   setClassifierModelChoice: (v: string) => void;
-  modelsCatalog: ModelsCatalogResponse | undefined;
+  selectableLlmModels: MeSelectableLlmModelDto[];
+  selectableLlmModelsLoading: boolean;
+  selectableLlmModelsEffectiveProvider: LlmProvider | undefined;
   modelsError: boolean;
   modelsErrorMessage: string;
   presetSelectValue: string;

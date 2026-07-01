@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.config;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.config.ConfigResolverService;
@@ -171,7 +172,9 @@ public class RuntimeConfigValidationService {
                 new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN");
         boolean requiresReindex = false;
         if (resolved.toRagConfig() != null) {
-            effectiveConfig = objectMapper.convertValue(resolved.toRagConfig(), Map.class);
+            effectiveConfig =
+                    objectMapper.convertValue(
+                            resolved.toRagConfig(), new TypeReference<Map<String, Object>>() {});
         }
 
         RagConfig rag = resolved.toRagConfig();

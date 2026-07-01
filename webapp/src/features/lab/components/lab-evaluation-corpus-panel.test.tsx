@@ -40,7 +40,7 @@ vi.mock("next-intl", () => ({
       labEvalDocumentsProcessing: "Documents are still being processed.",
       labEvalIndexWillPrepare: "The system will prepare the required index before running.",
       labEvalIndexPrepareFailed: "The system could not prepare the required index.",
-      labEvalIndexPrepareFailedDetails: "Technical details",
+      labEvalIndexPrepareFailedDetails: "Advanced technical details",
       labCorpusHelpDocumentCentric: "Add documents for this evaluation.",
     };
     return map[key] ?? key;

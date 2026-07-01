@@ -47,6 +47,17 @@ describe("chat-job-errors", () => {
     expect(hint).toBe("Safe backend text");
   });
 
+  it("uses OpenAI-compatible LLM unavailable copy without mentioning Ollama", () => {
+    const hint = resolveChatJobFailureUserHint({
+      task: task({ status: "FAILED", terminal: true, failureCode: "LLM_UNAVAILABLE" }),
+      errorMessageSanitized: "",
+      t: (key) => `TR:${key}`,
+      provider: "OPENAI_COMPATIBLE",
+    });
+    expect(hint).toBe("TR:chatJobFailure_LLM_UNAVAILABLE_OPENAI");
+    expect(hint).not.toMatch(/ollama/i);
+  });
+
   it("reads failureCode from result when top-level field absent", () => {
     const code = resolveChatJobFailureCode(
       task({

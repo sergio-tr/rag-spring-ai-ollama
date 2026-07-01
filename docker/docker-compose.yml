@@ -65,7 +65,8 @@ services:
       context: ../classifier-service
       dockerfile: Dockerfile
       args:
-        BASE_IMAGE: ${CLASSIFIER_PYTHON_BASE_IMAGE:-nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04}
+        BASE_IMAGE: ${CLASSIFIER_PYTHON_BASE_IMAGE:-python:3.10-slim-bookworm}
+        INSTALL_GPU_EXTRAS: ${CLASSIFIER_INSTALL_GPU_EXTRAS:-0}
         PORT: ${PORT:-8000}
         MODELS_DIR: ${MODELS_DIR:-/app/models}
         DATA_DIR: ${DATA_DIR:-/app/data}
@@ -429,3 +430,4 @@ volumes:
   prometheus_data:
   grafana_data:
   ollama_data:
+  reverse_proxy_certs:

@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation;
 
+import com.uniovi.rag.testsupport.evaluation.LabBenchmarkTestSupport;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
 import com.uniovi.rag.configuration.RagRuntimeProperties;
@@ -256,7 +257,7 @@ class RagPresetCampaignOrchestratorTest {
                 evaluationCorpusRepository,
                 labBenchmarkConfigPreflightService,
                 labPresetAxisSupport,
-                new LabBenchmarkDefaultModelResolver("gemma3:4b", "mxbai-embed-large:latest"),
+                LabBenchmarkTestSupport.stubDefaultModelResolver("gemma3:4b", "mxbai-embed-large:latest"),
                 runtimeObservability);
     }
 }

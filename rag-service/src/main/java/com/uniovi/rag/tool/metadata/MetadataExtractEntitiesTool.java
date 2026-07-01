@@ -680,13 +680,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             """, entityName);
         
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip()
-                    .toUpperCase();
+            String response = getLLMResponseCached("metadata-extract-entities", prompt).toUpperCase();
             
             return response.contains("GENERIC");
         } catch (Exception e) {

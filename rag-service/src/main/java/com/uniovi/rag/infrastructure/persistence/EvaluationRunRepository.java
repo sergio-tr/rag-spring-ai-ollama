@@ -99,6 +99,9 @@ public interface EvaluationRunRepository extends JpaRepository<EvaluationRunEnti
     @Query("SELECT p.id FROM EvaluationRunEntity r LEFT JOIN r.project p WHERE r.id = :runId AND p.id IS NOT NULL")
     Optional<UUID> findProjectIdByRunId(@Param("runId") UUID runId);
 
+    @Query("SELECT r.indexSnapshot.id FROM EvaluationRunEntity r WHERE r.id = :runId")
+    Optional<UUID> findIndexSnapshotIdByRunId(@Param("runId") UUID runId);
+
     @Query("SELECT r.aggregatesJson FROM EvaluationRunEntity r WHERE r.id = :runId")
     Optional<Map<String, Object>> findAggregatesJsonByRunId(@Param("runId") UUID runId);
 

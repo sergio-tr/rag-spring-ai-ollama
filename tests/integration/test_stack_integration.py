@@ -547,11 +547,11 @@ class TestBackendAuthApi:
 def _integration_legal_versions() -> tuple[str, str]:
     privacy = os.environ.get(
         "INTEGRATION_LEGAL_PRIVACY_VERSION",
-        os.environ.get("RAG_AUTH_LEGAL_PRIVACY_POLICY_VERSION", "2026-06"),
+        os.environ.get("RAG_AUTH_LEGAL_PRIVACY_POLICY_VERSION", "2026-06-21"),
     ).strip()
     terms = os.environ.get(
         "INTEGRATION_LEGAL_TERMS_VERSION",
-        os.environ.get("RAG_AUTH_LEGAL_TERMS_VERSION", "2026-06"),
+        os.environ.get("RAG_AUTH_LEGAL_TERMS_VERSION", "2026-06-21"),
     ).strip()
     return privacy, terms
 

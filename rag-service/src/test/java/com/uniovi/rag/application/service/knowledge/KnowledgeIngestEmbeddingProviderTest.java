@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.knowledge;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,6 +14,7 @@ import com.uniovi.rag.application.port.llm.LlmEmbeddingRequest;
 import com.uniovi.rag.application.port.llm.LlmEmbeddingResponse;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
+import com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver;
 import com.uniovi.rag.application.service.llm.ProviderAwareEmbeddingService;
 import com.uniovi.rag.configuration.RagVectorProperties;
 import com.uniovi.rag.domain.llm.LlmProvider;
@@ -46,6 +48,7 @@ class KnowledgeIngestEmbeddingProviderTest {
     @Mock private LlmEmbeddingClient openAiEmbeddingClient;
     @Mock private KnowledgeIndexSnapshotRepository snapshotRepository;
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
+    @Mock private EmbeddingModelCatalogResolver embeddingModelCatalogResolver;
 
     private ProviderAwareEmbeddingService embeddingService;
     private EmbeddingIndexCompatibilityService compatibilityService;
@@ -54,11 +57,15 @@ class KnowledgeIngestEmbeddingProviderTest {
 
     @BeforeEach
     void setUp() {
+        lenient()
+                .when(embeddingModelCatalogResolver.resolve(any(LlmProvider.class), anyString()))
+                .thenAnswer(inv -> inv.getArgument(1, String.class).trim());
         LlmClientResolver clientResolver = new LlmClientResolver(clientRegistry);
-        embeddingService = new ProviderAwareEmbeddingService(clientResolver, configResolver);
+        embeddingService =
+                new ProviderAwareEmbeddingService(clientResolver, configResolver, embeddingModelCatalogResolver);
         compatibilityService =
                 new EmbeddingIndexCompatibilityService(
-                        embeddingService, snapshotRepository, knowledgeSnapshotService);
+                        embeddingService, snapshotRepository, knowledgeSnapshotService, embeddingModelCatalogResolver);
         embeddingModelFactory = new ProviderAwareEmbeddingModelFactory(embeddingService);
         embeddingSpaceGuard = new EmbeddingSpaceGuard(embeddingModelFactory, new RagVectorProperties(1024, true));
         stubOpenAiEmbeddingClient();

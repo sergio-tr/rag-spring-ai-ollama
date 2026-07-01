@@ -1,94 +1,90 @@
-# Runbook: Linux VM + Docker Compose (deploy target)
+# Runbook: Linux VM + Docker Compose (production application server)
 
-**Audience:** Operators deploying the stack from this repository to a **Linux VM** (e.g. Azure VM) using the same compose files as local **prod-style** runs.
+**Audience:** Operators deploying the stack on the **university application server** (`156.35.95.27`) using a **self-hosted GitHub Actions runner** and Docker Compose.
 
-**Related:** [deploy-workflow-audit.md](deploy-workflow-audit.md), [azure-vm-parameterization.md](azure-vm-parameterization.md), [../../docker/README.md](../../docker/README.md), [../../docker/scripts/README.md](../../docker/scripts/README.md).
+**Related:** [deploy-workflow-audit.md](deploy-workflow-audit.md), [../../docker/README.md](../../docker/README.md), [../../docker/scripts/README.md](../../docker/scripts/README.md).
 
 ---
 
 ## 1. Prerequisites
 
 - **OS:** Linux x86_64 with Docker Engine and Compose plugin (`docker compose`).
-- **Network:** Outbound HTTPS to `ghcr.io` (image pull) and GitHub (if cloning/pulling via HTTPS).
-- **Repo:** Clone the monorepo to the path stored in GitHub secret `VM_DEPLOY_DIR` (same path used in [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)).
-- **Auth to GHCR:** The deploy workflow runs `docker login ghcr.io` using `GHCR_TOKEN`; the VM must be able to **pull** images your workflow publishes (package visibility + token scopes).
+- **Self-hosted runner:** Installed, online, labeled for `runs-on: self-hosted`; runner user in the `docker` group (or equivalent).
+- **Network:** Outbound HTTPS to `github.com`; application server → LiteLLM on model server `156.35.160.78` (confirm port, default `4000`).
+- **Repo:** Clone the monorepo to the path in GitHub Variable **`DEPLOY_DIR`** (same path the deploy workflow uses).
+- **GitHub Variables:** `DEPLOY_DIR`, `DEPLOY_HEALTH_URL` (required). Enable **Pages → GitHub Actions** for documentation site.
 
 ---
 
-## 2. Environment files on the VM
+## 2. Environment files on the server
 
-Application configuration is **not** fully defined in `deploy.yml`; the VM must have consistent `.env` files expected by Compose overlays. Typical layout (adjust to your team):
+Configuration is **not** in the deploy workflow; the server must have `.env` files:
 
-| File / area | Purpose |
-| ------------- | --------- |
-| `db/.env` | Postgres credentials and DB name. |
-| `rag-service/.env` | Spring datasource, Ollama URL, JWT, etc. |
-| `classifier-service/.env` | Classifier API keys and model paths. |
-| `webapp/` | Next.js runtime env if not only build-time (see [webapp/README.md](../../webapp/README.md)). |
+| File | Purpose |
+| ---- | ------- |
+| `db/.env` | Postgres credentials |
+| `rag-service/.env` | Spring, LiteLLM, JWT, OAuth, SMTP |
+| `classifier-service/.env` | Classifier service |
+| `webapp/.env` | Reverse-proxy ports, Next public build/runtime |
+| `observability/.env` | Grafana password, observability ports |
 
-**Rule:** Never commit secrets; use the VM filesystem or a secret manager; align variable names with [docker/README.md](../../docker/README.md). Bootstrap from each module’s **`.env.example`** (placeholders such as `CHANGE_ME`); replace with strong values before production — do not ship default passwords from examples.
+Bootstrap from [`.env.example`](../../.env.example) and per-module `.env.example` files. **Never commit secrets.**
+
+**Production rules:**
+
+- `RAG_LLM_DEFAULT_PROVIDER=OPENAI_COMPATIBLE` and `LITELLM_BASE_URL` pointing at the model server.
+- **No** direct Ollama URL for backend production.
+- **No** Mailpit; use SMTP with `support.rag@gmail.es`.
+- `SPRING_PROFILES_ACTIVE=prod,docker,infra` when observability is enabled.
 
 ---
 
-## 3. Compose command (matches deploy workflow)
+## 3. Compose command (production server)
 
-From `VM_DEPLOY_DIR`:
+From repository root:
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/compose.prod.yml pull || true
-docker compose -f docker/docker-compose.yml -f docker/compose.prod.yml up -d
+./docker/scripts/up.sh prod --server --obs --obs-private --no-env-prompt
 ```
 
-**Image tags:** Prebuilt GHCR images use the **commit SHA** as the primary tag (see [release-and-deploy.md](release-and-deploy.md)). For reproducible deploys, pin Compose `image:` references or `docker pull` to `ghcr.io/<owner>/rag-spring-ai-ollama-<service>:<SHA>` — do **not** rely on `latest` as the rollback contract.
-
-Use `docker compose ps` and service logs for troubleshooting: `docker compose logs -f <service>`.
+Equivalent flags: `--server` merges `compose.prod-server.yml` (no public backend/classifier ports), implies remote model serving (no local Ollama profile), and blocks `--mail`.
 
 ---
 
 ## 4. Verify after deploy
 
-1. **Containers:** `docker compose ps` — all required services `running` (or expected exit for one-shot jobs).
-2. **Proxy HTTP/HTTPS entrypoints:** verify redirect and HTTPS availability on the reverse-proxy host.
-3. **API contract through proxy:** verify `/api/v5/**` routes return API JSON (including failure contract for gateway errors).
-4. **Backend health (proxy path):** verify health/readiness route exposure policy per [rag-service/README.md](../../rag-service/README.md).
-
-Example smoke commands (replace host/ports):
-
-```bash
-curl -i "http://<host>:80/"
-curl -k -i "https://<host>:443/"
-curl -k -i "https://<host>:443/api/v5/config/schema"
-```
+1. **Containers:** `docker compose ps` (from `docker/` with the same `-f` chain) — services `running`.
+2. **Health:** `curl -fsS "$DEPLOY_HEALTH_URL"` (same URL as GitHub Variable).
+3. **Reverse proxy:** browser entry on `REVERSE_PROXY_HTTP_PORT` (default `80`).
+4. **Readiness:** `chatProvider` = `OPENAI_COMPATIBLE` in actuator readiness (no Ollama probe).
+5. **OAuth / SMTP / legal routes** — see post-deployment checklist in [`.env.example`](../../.env.example).
 
 ---
 
 ## 5. Rollback (manual)
 
 ```bash
-cd "$VM_DEPLOY_DIR"
-git fetch origin && git checkout <previous-good-sha>
-docker compose -f docker/docker-compose.yml -f docker/compose.prod.yml pull || true
-docker compose -f docker/docker-compose.yml -f docker/compose.prod.yml up -d
+cd "$DEPLOY_DIR"
+git fetch origin
+git reset --hard <previous-good-sha>
+./docker/scripts/up.sh prod --server --obs --obs-private --no-env-prompt
+curl -fsS "$DEPLOY_HEALTH_URL"
 ```
-
-Ensure `.env` files remain compatible with that revision.
 
 ---
 
-## 6. Observability on the same VM (optional)
+## 6. Observability (required in production)
 
-To run the observability stack **alongside** the product on one host:
+Production deploy enables **`--obs --obs-private`**: OTEL collector, Jaeger, Prometheus, and Grafana run with **no host-published UI ports** (`compose.prod-obs.yml`). Access via Docker network or port-forward on the university network only.
 
-- Follow [../../observability/README.md](../../observability/README.md) for `observability/.env` and port matrix.
-- Add overlays: `compose.obs.yml` (and logs/infra if used), with the same `--env-file` pattern as documented in the observability README.
-
-Treat observability as an **optional Compose overlay**; production parity is “product + reverse proxy + prod compose”; observability is a **documented add-on**, not a hard requirement for minimal deploy.
+See [../../observability/README.md](../../observability/README.md).
 
 ---
 
 ## 7. GitHub Actions vs manual
 
 | Method | When |
-| -------- | ------ |
-| `workflow_dispatch` on `deploy.yml` | After **`ci.yml`** is green on the **same SHA** (full DAG includes Playwright `@fullstack`; see [deploy-workflow-audit.md](deploy-workflow-audit.md)). |
-| SSH manual | Hotfix, rollback, or when Actions is unavailable — use the same compose commands as above. |
+| ------ | ---- |
+| `push` to `main` or `workflow_dispatch` on `deploy.yml` | Standard production deploy (self-hosted runner) |
+| `workflow_dispatch` on `self-hosted-runner-check.yml` | Validate runner, Docker, and Compose config |
+| Manual on server | Hotfix rollback when Actions is unavailable — same compose command as above |

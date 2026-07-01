@@ -1,11 +1,15 @@
 import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/test";
+import { applyDemoProxyEnvDefaults, resolveE2eBases } from "./scripts/e2e-bases.mjs";
 
-const uiBaseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
+applyDemoProxyEnvDefaults();
+const { publicBase: uiBaseURL, apiBase: apiBaseURL } = resolveE2eBases();
 const uiUrl = new URL(uiBaseURL);
 const uiPort = uiUrl.port || (uiUrl.protocol === "https:" ? "443" : "80");
 const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === "1";
-const apiBaseURL =
-  process.env.API_BASE_URL ?? process.env.INTEGRATION_BACKEND_URL ?? "http://127.0.0.1:9000";
+const apiTestTimeout = Number.parseInt(
+  process.env.PLAYWRIGHT_API_TEST_TIMEOUT_MS ?? process.env.PLAYWRIGHT_TEST_TIMEOUT_MS ?? "120000",
+  10,
+);
 const ignoreHTTPSErrors = process.env.PLAYWRIGHT_IGNORE_HTTPS_ERRORS === "1";
 const retries = process.env.PLAYWRIGHT_RETRIES
   ? Number.parseInt(process.env.PLAYWRIGHT_RETRIES, 10)
@@ -60,6 +64,7 @@ export default defineConfig({
     {
       name: "api",
       testMatch: ["**/api/**/*.spec.ts"],
+      timeout: apiTestTimeout,
       use: {
         baseURL: apiBaseURL,
       },

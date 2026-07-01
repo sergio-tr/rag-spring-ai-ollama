@@ -8,6 +8,7 @@ import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkEvaluationProtocol;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
 import com.uniovi.rag.domain.evaluation.snapshot.EmbeddingExperimentalSnapshot;
+import com.uniovi.rag.domain.evaluation.snapshot.ExperimentalSnapshotFieldSource;
 import com.uniovi.rag.domain.evaluation.snapshot.LlmExperimentalSnapshot;
 import com.uniovi.rag.domain.evaluation.snapshot.PromptProfileSnapshot;
 import com.uniovi.rag.domain.model.QueryType;
@@ -29,16 +30,19 @@ import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
 import com.uniovi.rag.application.service.evaluation.baseline.BaselineRunSnapshotWriter;
 import com.uniovi.rag.application.service.evaluation.baseline.EmbeddingRetrievalMetrics;
+import com.uniovi.rag.application.service.evaluation.baseline.EmbeddingRetrievalRunConfigResolver;
 import com.uniovi.rag.application.service.evaluation.baseline.ExperimentalSnapshotFactory;
 import com.uniovi.rag.application.service.evaluation.baseline.ModelBaselineLlmRunner;
-import com.uniovi.rag.application.service.evaluation.baseline.OllamaModelCatalogClient;
+import com.uniovi.rag.application.service.evaluation.baseline.EvaluationModelAvailabilityGate;
 import com.uniovi.rag.application.service.evaluation.baseline.PromptProfileSnapshotFactory;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationGoldChunkMetadataSupport;
+import com.uniovi.rag.application.service.runtime.retrieval.SnapshotBoundRetrievalFilter;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.web.server.ResponseStatusException;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -65,9 +69,9 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
     private final BaselineRunSnapshotWriter baselineRunSnapshotWriter;
     private final ExperimentalSnapshotFactory experimentalSnapshotFactory;
     private final ModelBaselineLlmRunner modelBaselineLlmRunner;
-    private final OllamaModelCatalogClient ollamaModelCatalogClient;
+    private final EvaluationModelAvailabilityGate modelAvailabilityGate;
     private final EvaluationRunRepository evaluationRunRepository;
-    private final int topK;
+    private final EmbeddingRetrievalRunConfigResolver retrievalRunConfigResolver;
     private final AsyncTaskCancellationService cancellationService;
     private final LabJobProgressTracker labJobProgressTracker;
     private final LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor;
@@ -82,13 +86,13 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             BaselineRunSnapshotWriter baselineRunSnapshotWriter,
             ExperimentalSnapshotFactory experimentalSnapshotFactory,
             ModelBaselineLlmRunner modelBaselineLlmRunner,
-            OllamaModelCatalogClient ollamaModelCatalogClient,
+            EvaluationModelAvailabilityGate modelAvailabilityGate,
             EvaluationRunRepository evaluationRunRepository,
+            EmbeddingRetrievalRunConfigResolver retrievalRunConfigResolver,
             AsyncTaskCancellationService cancellationService,
             LabJobProgressTracker labJobProgressTracker,
             LabCampaignBenchmarkExecutor labCampaignBenchmarkExecutor,
-            LabBenchmarkCompletionService labBenchmarkCompletionService,
-            @Value("${spring.ai.ollama.top-k:5}") int topK) {
+            LabBenchmarkCompletionService labBenchmarkCompletionService) {
         this.vectorStoreRegistry = vectorStoreRegistry;
         this.embeddingSpaceGuard = embeddingSpaceGuard;
         this.evaluationService = evaluationService;
@@ -97,13 +101,13 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
         this.baselineRunSnapshotWriter = baselineRunSnapshotWriter;
         this.experimentalSnapshotFactory = experimentalSnapshotFactory;
         this.modelBaselineLlmRunner = modelBaselineLlmRunner;
-        this.ollamaModelCatalogClient = ollamaModelCatalogClient;
+        this.modelAvailabilityGate = modelAvailabilityGate;
         this.evaluationRunRepository = evaluationRunRepository;
+        this.retrievalRunConfigResolver = retrievalRunConfigResolver;
         this.cancellationService = cancellationService;
         this.labJobProgressTracker = labJobProgressTracker;
         this.labCampaignBenchmarkExecutor = labCampaignBenchmarkExecutor;
         this.labBenchmarkCompletionService = labBenchmarkCompletionService;
-        this.topK = Math.max(1, topK);
     }
 
     @Override
@@ -156,22 +160,23 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             var llmSnap = experimentalSnapshotFactory.buildLlmSnapshot(runOrNull);
             var embSnap = experimentalSnapshotFactory.buildEmbeddingSnapshot(runOrNull);
             EmbeddingCompatibility embeddingCompatibility = resolveEmbeddingCompatibility(embSnap.model());
-            embSnap = new EmbeddingExperimentalSnapshot(
-                    embSnap.model(),
-                    embeddingCompatibility.dimension(),
-                    embSnap.normalize(),
-                    embSnap.queryPrefix(),
-                    embSnap.passagePrefix(),
-                    embSnap.batchSize(),
-                    embSnap.truncateStrategy(),
-                    embSnap.unsupportedFields());
+            if (embeddingCompatibility.dimension() != null) {
+                embSnap = embSnap.withDimension(
+                        embeddingCompatibility.dimension(), ExperimentalSnapshotFieldSource.INDEX_COMPATIBILITY);
+            }
             PromptProfileSnapshot prompts = PromptProfileSnapshotFactory.baselineLabProfile();
             baselineRunSnapshotWriter.writeSnapshots(evaluationRunId, llmSnap, embSnap, prompts);
 
             boolean downstream = runOrNull != null && runOrNull.isEmbeddingDownstreamRag();
-            boolean embeddingCatalogOk = ollamaModelCatalogClient.isModelAvailable(embSnap.model());
+            UUID runUserId = runOrNull != null && runOrNull.getUser() != null ? runOrNull.getUser().getId() : null;
+            boolean embeddingCatalogOk =
+                    modelAvailabilityGate.isEmbeddingModelAvailable(runUserId, embSnap.model());
             boolean downstreamLlmOk =
-                    !downstream || ollamaModelCatalogClient.isModelAvailable(llmSnap.model());
+                    !downstream || modelAvailabilityGate.isChatModelAvailable(runUserId, llmSnap.model());
+            UUID indexSnapshotId = evaluationRunRepository.findIndexSnapshotIdByRunId(evaluationRunId).orElse(null);
+            UUID projectId = evaluationRunRepository.findEffectiveProjectIdByRunId(evaluationRunId).orElse(null);
+            EmbeddingRetrievalRunConfigResolver.Params retrievalParams =
+                    retrievalRunConfigResolver.resolveForRun(evaluationRunId);
             EmbeddingBenchmarkContext ctx =
                     new EmbeddingBenchmarkContext(
                             downstream,
@@ -180,7 +185,10 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                             llmSnap,
                             prompts,
                             embSnap.model(),
-                            embeddingCompatibility);
+                            embeddingCompatibility,
+                            indexSnapshotId,
+                            projectId,
+                            retrievalParams);
             int runTotal = embeddingDs.queries().size();
             labJobProgressTracker.emitRunStarted(
                     taskId, evaluationRunId, runTotal, null, ctx.embeddingModelId(), null);
@@ -212,7 +220,11 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             retrieval.put("mean_recall_at_k", n > 0 ? (double) hitsAtK / n : null);
             retrieval.put("mean_mrr", n > 0 ? mrrSum / n : null);
             retrieval.put("n", n);
-            retrieval.put("k", topK);
+            retrieval.put("k", ctx.retrievalParams().topK());
+            retrieval.put("similarity_threshold", ctx.retrievalParams().similarityThreshold());
+            retrieval.put("ranker_enabled", ctx.retrievalParams().rankerEnabled());
+            retrieval.put("metadata_enabled", ctx.retrievalParams().metadataEnabled());
+            retrieval.put("expansion_enabled", ctx.retrievalParams().expansionEnabled());
             retrieval.put("embedding_model_id", ctx.embeddingModelId());
             retrieval.put("embedding_dimensions", ctx.embeddingCompatibility.dimension());
             retrieval.put("embedding_compatibility_status", ctx.embeddingCompatibility.status());
@@ -334,12 +346,45 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                 continue;
             }
 
+            if (ctx.indexSnapshotId() == null) {
+                Map<String, Object> metrics = baseMetrics(ctx);
+                metrics.put("benchmark_protocol", protocol.name());
+                metrics.put("reason", "missing_index_snapshot_id");
+                metrics.put("recall_at_1", 0.0);
+                metrics.put("recall_at_3", 0.0);
+                metrics.put("recall_at_5", 0.0);
+                metrics.put("recall_at_k", 0.0);
+                metrics.put("mrr", 0.0);
+                metrics.put("first_relevant_rank", 0);
+                metrics.put("retrieved_count", 0);
+                metrics.put("gold_found", false);
+                row.put("metrics", metrics);
+                row.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.FAILED.name());
+                row.put(BenchmarkResultRowKeys.ERROR_CODE, "MISSING_INDEX_SNAPSHOT");
+                row.put(BenchmarkResultRowKeys.REASON, "missing_index_snapshot_id");
+                row.put("top_document_id", null);
+                row.put(BenchmarkResultRowKeys.LATENCY_MS, null);
+                rows.add(row);
+                continue;
+            }
+
             try {
                 long t0 = System.nanoTime();
-                SearchRequest req =
-                        SearchRequest.builder().query(question).topK(topK).similarityThreshold(0.0).build();
+                int topK = Math.max(1, ctx.retrievalParams().topK());
+                SearchRequest.Builder searchBuilder =
+                        SearchRequest.builder()
+                                .query(question)
+                                .topK(topK)
+                                .similarityThreshold(ctx.retrievalParams().similarityThreshold());
+                Filter.Expression snapshotFilter =
+                        SnapshotBoundRetrievalFilter.buildForSnapshotIds(
+                                List.of(ctx.indexSnapshotId()), ctx.projectId());
+                if (snapshotFilter != null) {
+                    searchBuilder.filterExpression(snapshotFilter);
+                }
                 PgVectorStore store = vectorStoreRegistry.forEmbeddingModelId(ctx.embeddingModelId().trim());
-                List<Document> docs = store.similaritySearch(req);
+                List<Document> rawDocs = store.similaritySearch(searchBuilder.build());
+                List<Document> docs = filterDocsBySnapshot(rawDocs, ctx.indexSnapshotId());
                 long latencyMs = (System.nanoTime() - t0) / 1_000_000L;
 
                 GoldSpec gold = GoldSpec.fromQuery(q);
@@ -408,6 +453,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                 double r5 = EmbeddingRetrievalMetrics.recallAtNByIds(retrievedForScoring, goldForScoring, 5);
                 double rk = EmbeddingRetrievalMetrics.recallAtKByIds(retrievedForScoring, goldForScoring);
                 double mrr = EmbeddingRetrievalMetrics.mrrByIds(retrievedForScoring, goldForScoring);
+                double ndcg5 = EmbeddingRetrievalMetrics.ndcgAtNByIds(retrievedForScoring, goldForScoring, 5);
                 int rank = EmbeddingRetrievalMetrics.firstRelevantRankByIds(retrievedForScoring, goldForScoring);
                 boolean goldFound = rank > 0;
 
@@ -416,6 +462,8 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                 metrics.put("recall_at_5", r5);
                 metrics.put("recall_at_k", rk);
                 metrics.put("mrr", mrr);
+                metrics.put("ndcg_at_5", ndcg5);
+                metrics.put("ndcgAt5", ndcg5);
                 metrics.put("first_relevant_rank", rank);
                 metrics.put("retrieved_count", docs.size());
                 metrics.put("gold_found", goldFound);
@@ -483,7 +531,11 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
 
     private Map<String, Object> baseMetrics(EmbeddingBenchmarkContext ctx) {
         Map<String, Object> metrics = new LinkedHashMap<>();
-        metrics.put("k", topK);
+        metrics.put("k", ctx.retrievalParams().topK());
+        metrics.put("similarity_threshold", ctx.retrievalParams().similarityThreshold());
+        metrics.put("ranker_enabled", ctx.retrievalParams().rankerEnabled());
+        metrics.put("metadata_enabled", ctx.retrievalParams().metadataEnabled());
+        metrics.put("expansion_enabled", ctx.retrievalParams().expansionEnabled());
         metrics.put("embedding_downstream_rag", ctx.downstreamRag);
         metrics.put("embedding_model_id", ctx.embeddingModelId());
         metrics.put("embedding_dimensions", ctx.embeddingCompatibility.dimension());
@@ -605,7 +657,10 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
         if (meta == null) {
             return "";
         }
-        Object id = meta.get("document_id");
+        Object id = meta.get(EvaluationGoldChunkMetadataSupport.KEY_EVALUATION_DOCUMENT_ID);
+        if (id == null) {
+            id = meta.get("document_id");
+        }
         if (id == null) {
             id = meta.get("documentId");
         }
@@ -625,7 +680,12 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             return new ChunkIdCandidate("", false);
         }
         Map<String, Object> meta = d.getMetadata();
-        Object cid = meta != null ? firstNonNull(meta.get("chunk_id"), meta.get("chunkId")) : null;
+        Object cid = meta != null
+                ? firstNonNull(
+                        meta.get(EvaluationGoldChunkMetadataSupport.KEY_EVALUATION_CHUNK_ID),
+                        meta.get("chunk_id"),
+                        meta.get("chunkId"))
+                : null;
         if (cid != null) {
             return new ChunkIdCandidate(String.valueOf(cid), true);
         }
@@ -697,6 +757,24 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
         return t.toUpperCase(Locale.ROOT);
     }
 
+    private static List<Document> filterDocsBySnapshot(List<Document> docs, UUID snapshotId) {
+        if (docs == null || docs.isEmpty() || snapshotId == null) {
+            return docs != null ? docs : List.of();
+        }
+        String expected = snapshotId.toString();
+        List<Document> out = new ArrayList<>();
+        for (Document d : docs) {
+            if (d == null || d.getMetadata() == null) {
+                continue;
+            }
+            Object sid = d.getMetadata().get("indexSnapshotId");
+            if (sid != null && expected.equals(String.valueOf(sid))) {
+                out.add(d);
+            }
+        }
+        return out;
+    }
+
     private record EmbeddingBenchmarkContext(
             boolean downstreamRag,
             boolean embeddingModelCatalogOk,
@@ -704,10 +782,23 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             LlmExperimentalSnapshot llmSnapshot,
             PromptProfileSnapshot prompts,
             String embeddingModelId,
-            EmbeddingCompatibility embeddingCompatibility) {
+            EmbeddingCompatibility embeddingCompatibility,
+            UUID indexSnapshotId,
+            UUID projectId,
+            EmbeddingRetrievalRunConfigResolver.Params retrievalParams) {
 
         static EmbeddingBenchmarkContext disabled() {
-            return new EmbeddingBenchmarkContext(false, true, true, null, null, "", EmbeddingCompatibility.compatible(null));
+            return new EmbeddingBenchmarkContext(
+                    false,
+                    true,
+                    true,
+                    null,
+                    null,
+                    "",
+                    EmbeddingCompatibility.compatible(null),
+                    null,
+                    null,
+                    new EmbeddingRetrievalRunConfigResolver.Params(80, 0.0, false, false, false));
         }
 
         EmbeddingBenchmarkContext withEmbeddingCompatibility(EmbeddingCompatibility compatibility) {
@@ -718,7 +809,10 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                     llmSnapshot,
                     prompts,
                     embeddingModelId,
-                    compatibility != null ? compatibility : EmbeddingCompatibility.compatible(null));
+                    compatibility != null ? compatibility : EmbeddingCompatibility.compatible(null),
+                    indexSnapshotId,
+                    projectId,
+                    retrievalParams);
         }
     }
 

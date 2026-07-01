@@ -288,7 +288,7 @@ describe("LabOverviewPage", () => {
     expect(serverDetails).not.toHaveAttribute("open");
     expect(serverDetails).toHaveTextContent(/Additional detail/i);
     expect(serverDetails).toHaveTextContent(/Research Lab is ready/i);
-    await user.click(screen.getByText(/Technical details/i));
+    await user.click(screen.getByText(/Advanced technical details/i));
     expect(technical).toHaveAttribute("open");
     await user.click(screen.getByText(/Server note/i));
     expect(serverDetails).toHaveAttribute("open");
@@ -318,7 +318,7 @@ describe("LabOverviewPage", () => {
     expect(screen.queryByTestId("lab-m9-limitation-banner")).not.toBeInTheDocument();
     expect(screen.queryByTestId("lab-m9-evidence-panel")).not.toBeInTheDocument();
     expect(screen.queryByText(/M9 experimental evidence/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/\.cursor/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/docs/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Do not claim/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Research Lab is ready/i)).not.toBeInTheDocument();
     expect(screen.getAllByText(/Enabled/i).length).toBeGreaterThan(0);

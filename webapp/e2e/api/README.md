@@ -15,8 +15,8 @@
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `API_BASE_URL` | `http://127.0.0.1:9000` | Spring Boot base (also accepts `INTEGRATION_BACKEND_URL`). |
-| `RAG_API_PRODUCT_BASE_PATH` | *(match backend `rag.api.product-base-path`)* | Product API prefix (also `INTEGRATION_RAG_PRODUCT_BASE_PATH`). |
+| `E2E_PRODUCT_URL` | `https://127.0.0.1:8444` (proxy) / `http://127.0.0.1:9000` (direct) | Official product API origin (alias: `API_BASE_URL`). |
+| `RAG_API_PRODUCT_BASE_PATH` | `/api/v5` | Product API prefix (also `INTEGRATION_RAG_PRODUCT_BASE_PATH`). |
 | `INTEGRATION_LOGIN_EMAIL` / `INTEGRATION_LOGIN_PASSWORD` | `dev@local.test` / `dev` | Seed user for JWT flows. |
 | `CLASSIFIER_URL` | empty | When set, optional classifier `/health` check runs in `system-smoke.chain.spec.ts`. |
 

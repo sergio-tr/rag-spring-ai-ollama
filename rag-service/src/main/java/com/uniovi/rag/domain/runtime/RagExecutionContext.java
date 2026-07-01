@@ -1,5 +1,6 @@
 package com.uniovi.rag.domain.runtime;
 
+import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import java.util.List;
 
 /**
@@ -22,6 +23,20 @@ public record RagExecutionContext(
 ) {
 
     public static final String ALL_DOCUMENTS = "all";
+
+    /** Maps engine execution context to the thread-local holder shape used by retrievers and metadata tools. */
+    public static RagExecutionContext fromEngineContext(ExecutionContext ctx) {
+        if (ctx == null) {
+            return null;
+        }
+        return new RagExecutionContext(
+                ctx.conversationId() != null ? ctx.conversationId().toString() : null,
+                ctx.userId() != null ? ctx.userId().toString() : null,
+                ctx.projectId() != null ? ctx.projectId().toString() : null,
+                ctx.resolved().toRagConfig(),
+                ctx.documentFilter(),
+                ctx.correlationId());
+    }
 
     /** Unscoped execution: no conversation/user/project; retrieval uses {@link #ALL_DOCUMENTS} sentinel. */
     public static RagExecutionContext forUnscopedExecution(RagConfig resolvedConfig, String traceId) {

@@ -54,11 +54,24 @@ public final class QueryPlanSlotEnricher {
         if (q.contains("orden del día")
                 || q.contains("orden del dia")
                 || q.contains("puntos del orden")
+                || q.contains("puntos del día")
+                || q.contains("puntos del dia")
                 || q.contains("agenda")) {
             return Optional.of("agenda");
         }
         if (q.contains("secretario") || q.contains("secretaria")) {
             return Optional.of("secretary");
+        }
+        if (q.contains("hora")
+                && (q.contains("empez") || q.contains("comenz") || q.contains("inicio"))
+                && (q.contains("termin") || q.contains("finaliz"))) {
+            return Optional.of("startEndTime");
+        }
+        if (q.contains("hora") && (q.contains("empez") || q.contains("comenz") || q.contains("inicio"))) {
+            return Optional.of("startTime");
+        }
+        if (q.contains("hora") && (q.contains("termin") || q.contains("finaliz"))) {
+            return Optional.of("endTime");
         }
         if (q.contains("duración") || q.contains("duracion") || q.contains("duration")) {
             return Optional.of("duration");

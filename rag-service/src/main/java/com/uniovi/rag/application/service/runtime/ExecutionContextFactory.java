@@ -5,7 +5,9 @@ import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationBootstrap;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStateResolver;
+import com.uniovi.rag.application.service.runtime.memory.ConversationHistoryLoader;
 import com.uniovi.rag.application.service.runtime.memory.ConversationMemoryStrategy;
+import com.uniovi.rag.application.service.runtime.memory.ConversationFollowUpResolver;
 import com.uniovi.rag.domain.config.EffectiveModelPolicy;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.runtime.RagConfig;
@@ -16,6 +18,7 @@ import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryExecutionResult;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryTurn;
 import com.uniovi.rag.domain.runtime.reasoning.StructuredAnswerPlan;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
@@ -55,6 +58,7 @@ public class ExecutionContextFactory {
     private final Tracer tracer;
     private final ClarificationStateResolver clarificationStateResolver;
     private final ConversationMemoryStrategy conversationMemoryStrategy;
+    private final ConversationHistoryLoader conversationHistoryLoader;
     private final ResolvedLlmConfigResolver resolvedLlmConfigResolver;
 
     public ExecutionContextFactory(
@@ -64,6 +68,7 @@ public class ExecutionContextFactory {
             ModelCatalogPort modelCatalogPort,
             ClarificationStateResolver clarificationStateResolver,
             ConversationMemoryStrategy conversationMemoryStrategy,
+            ConversationHistoryLoader conversationHistoryLoader,
             ResolvedLlmConfigResolver resolvedLlmConfigResolver,
             @Autowired(required = false) Tracer tracer) {
         this.runtimeConfigResolutionService = runtimeConfigResolutionService;
@@ -72,6 +77,7 @@ public class ExecutionContextFactory {
         this.modelCatalogPort = modelCatalogPort;
         this.clarificationStateResolver = clarificationStateResolver;
         this.conversationMemoryStrategy = conversationMemoryStrategy;
+        this.conversationHistoryLoader = conversationHistoryLoader;
         this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
         this.tracer = tracer;
     }
@@ -290,7 +296,11 @@ public class ExecutionContextFactory {
                 false,
                 List.of());
 
-        ConversationMemoryExecutionResult mem = conversationMemoryStrategy.execute(base, preMemory);
+        List<ConversationMemoryTurn> eligibleHistory = conversationHistoryLoader.loadEligibleHistory(base);
+        String planningSeed =
+                ConversationFollowUpResolver.expand(eligibleHistory, uq).orElse(preMemory);
+        ConversationMemoryExecutionResult mem =
+                conversationMemoryStrategy.executeWithEligibleHistory(base, planningSeed, eligibleHistory);
         boolean attempted =
                 mem.outcome() != ConversationMemoryOutcome.DISABLED_BY_CONFIG
                         && mem.outcome() != ConversationMemoryOutcome.NO_CONVERSATION_SCOPE;

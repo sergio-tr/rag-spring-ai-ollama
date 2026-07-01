@@ -67,4 +67,32 @@ test.describe("Lab evaluation API contracts @api @chatAcceptance", () => {
     expect(body.success).toBe(false);
     expect(body.error?.code).toBeTruthy();
   });
+
+  test("GET lab/evaluation-models returns provider-aware catalog without Ollama tag dependency", async ({
+    request,
+  }) => {
+    const { email, password } = integrationCredentials();
+    const token = await loginAndGetToken(request, email, password);
+    const res = await request.get(productUrl("/lab/evaluation-models?capability=CHAT"), {
+      headers: authHeaders(token),
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    const body = parseJsonExpectNonHtml(await res.text(), "GET lab/evaluation-models") as {
+      effectiveProvider?: string;
+      capability?: string;
+      models?: Array<{ modelName: string; evalSelectable: boolean; blockedReason?: string | null }>;
+    };
+    expect(body.capability).toBe("CHAT");
+    expect(["OPENAI_COMPATIBLE", "OLLAMA_NATIVE"]).toContain(body.effectiveProvider);
+    expect(Array.isArray(body.models)).toBe(true);
+    const serialized = JSON.stringify(body);
+    if (body.effectiveProvider === "OPENAI_COMPATIBLE") {
+      expect(serialized).not.toMatch(/11434|:11434/);
+      for (const row of body.models ?? []) {
+        if (row.blockedReason) {
+          expect(row.blockedReason).not.toMatch(/ollama tag/i);
+        }
+      }
+    }
+  });
 });

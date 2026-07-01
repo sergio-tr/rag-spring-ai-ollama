@@ -26,10 +26,6 @@ public final class FinalAnswerSynthesizer {
                     "\\b(?:PARENT_P\\d+|PARENT_P[A-Z_]+|baseline_floor[\\w:]*|RETRIEVAL_WORKFLOW_ROUTE|DETERMINISTIC_TOOL_ROUTE|FUNCTION_CALLING_ROUTE|ADVISOR_ROUTE|deterministic-tool|function-calling|topic_not_in_context|not_in_context|function_sentinel_abstention|native_not_constraint_complete|advanced_preset_parent_floor|outcome=\\w+|routeKind=\\w+)\\b",
                     Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern BARE_COUNT = Pattern.compile("^\\s*(\\d{1,4})\\s*\\.?\\s*$");
-    private static final Pattern EN_COUNT_FALLBACK =
-            Pattern.compile(
-                    "^\\s*Found\\s+(\\d+)\\s+relevant\\s+meeting\\s+minutes\\.?\\s*$",
-                    Pattern.CASE_INSENSITIVE);
     private static final Pattern ACTA_REF = Pattern.compile("(?i)(acta[^\\s,;.]{0,40}\\.pdf)");
     private static final Pattern TIMING_ONLY_SUMMARY =
             Pattern.compile(
@@ -69,7 +65,7 @@ public final class FinalAnswerSynthesizer {
         if (result == null) {
             return null;
         }
-        String formatted = synthesizeSafeTerminal(plan, result.answerText());
+        String formatted = synthesizeSafeTerminal(plan, result.answerText(), result.responseSources());
         if (formatted.equals(result.answerText())) {
             return result;
         }
@@ -91,11 +87,13 @@ public final class FinalAnswerSynthesizer {
                 result.answerFinality());
     }
 
-    public static String synthesizeSafeTerminal(QueryPlan plan, String answerText) {
+    public static String synthesizeSafeTerminal(QueryPlan plan, String answerText, List<Map<String, Object>> responseSources) {
         if (answerText == null || answerText.isBlank()) {
             return answerText;
         }
         String cleaned = stripInternalLabels(answerText);
+        cleaned = ReasoningBlockSanitizer.stripReasoningBlocks(cleaned);
+        cleaned = FinalAnswerStubSanitizer.sanitizeForUser(plan, cleaned, responseSources);
         cleaned = normalizeSafeSpanishPunctuation(cleaned);
         cleaned = ensureSentenceStart(cleaned);
         return cleaned.trim();
@@ -117,6 +115,8 @@ public final class FinalAnswerSynthesizer {
                 || looksSpanish(query != null ? query : answerText);
 
         String cleaned = stripInternalLabels(answerText);
+        cleaned = ReasoningBlockSanitizer.stripReasoningBlocks(cleaned);
+        cleaned = FinalAnswerStubSanitizer.sanitizeForUser(plan, cleaned, responseSources);
         cleaned = normalizeUnavailableMessage(cleaned, spanish);
         cleaned = structureByQueryType(plan, cleaned, spanish);
         cleaned = appendSourceReferencesIfMissing(cleaned, responseSources, spanish);
@@ -144,12 +144,6 @@ public final class FinalAnswerSynthesizer {
                 }
             }
             return text;
-        }
-        if (lower.startsWith("found ") && lower.contains("meeting minutes")) {
-            Matcher m = EN_COUNT_FALLBACK.matcher(text.trim());
-            if (m.matches()) {
-                return "Se encontraron " + m.group(1) + " actas relevantes según los criterios de la consulta.";
-            }
         }
         if (lower.contains("i could not find") || lower.contains("no information found")) {
             return RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES;
@@ -182,12 +176,6 @@ public final class FinalAnswerSynthesizer {
         if (bare.matches() && spanish) {
             String n = bare.group(1);
             return "En total son " + n + " actas. Indica el criterio si necesitas el detalle de cada una.";
-        }
-        if (spanish && !text.toLowerCase(Locale.ROOT).contains("acta")) {
-            Matcher en = EN_COUNT_FALLBACK.matcher(text.trim());
-            if (en.matches()) {
-                return "Se encontraron " + en.group(1) + " actas relevantes según los criterios de la consulta.";
-            }
         }
         if (spanish
                 && text.matches(".*\\b\\d+\\b.*")

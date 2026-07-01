@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation.preset;
 
+import com.uniovi.rag.testsupport.config.TestConfigurablePromptResolver;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
@@ -135,16 +136,18 @@ class P0P1BaselineContractTest {
     private static WorkflowSelector workflowSelector() {
         RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
         return new WorkflowSelector(
-                new DirectLlmWorkflow(llmChatInvoker, null),
+                new DirectLlmWorkflow(llmChatInvoker, TestConfigurablePromptResolver.answerPromptResolver(), null),
                 new CorpusGroundedDirectWorkflow(
                         llmChatInvoker,
                         mock(SnapshotCorpusAssembler.class),
                         new RuntimePromptBudgeter(new RagRuntimeProperties()),
+                        TestConfigurablePromptResolver.answerPromptResolver(),
                         null),
                 new FullCorpusWorkflow(
                         llmChatInvoker,
                         mock(SnapshotCorpusAssembler.class),
                         new RuntimePromptBudgeter(new RagRuntimeProperties()),
+                        TestConfigurablePromptResolver.answerPromptResolver(),
                         null),
                 new DocumentDenseRagWorkflow(llmChatInvoker, mock(AdvancedRetrievalPipeline.class), null),
                 new ChunkDenseRagWorkflow(llmChatInvoker, mock(AdvancedRetrievalPipeline.class), null),

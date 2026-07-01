@@ -2,12 +2,12 @@
 # Final local closure lane: fail-fast CI reproduction with evidence logs.
 #
 # This script intentionally does not hide failures. Each step writes a log under
-# .cursor/context/evidence/tests and the first failing step stops the run.
+# docs/evidence/tests and the first failing step stops the run.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-EVIDENCE_DIR="${REPO_ROOT}/.cursor/context/evidence/tests"
+EVIDENCE_DIR="${REPO_ROOT}/docs/evidence/tests"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 RUN_DIR="${EVIDENCE_DIR}/local-ci-${RUN_ID}"
 SUMMARY="${RUN_DIR}/summary.md"

@@ -39,7 +39,12 @@ import com.uniovi.rag.application.service.evaluation.EvaluationPayloadMapper;
 import com.uniovi.rag.application.service.evaluation.EvaluationService;
 import com.uniovi.rag.application.service.evaluation.EvaluationSummaryBuilder;
 import com.uniovi.rag.application.service.evaluation.LabRagRunDiagnostics;
+import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.evaluation.baseline.BaselineRunSnapshotWriter;
 import com.uniovi.rag.application.service.evaluation.baseline.ExperimentalSnapshotFactory;
+import com.uniovi.rag.application.service.evaluation.baseline.PromptProfileSnapshotFactory;
+import com.uniovi.rag.application.service.evaluation.provenance.EvaluationProvenanceSupport;
+import com.uniovi.rag.domain.evaluation.snapshot.PromptProfileSnapshot;
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.domain.exception.ErrorCode;
 import com.uniovi.rag.application.service.async.LabJobCancelledException;
@@ -96,6 +101,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
     private final EvaluationService evaluationService;
     private final EvaluationRunRepository evaluationRunRepository;
     private final ExperimentalSnapshotFactory experimentalSnapshotFactory;
+    private final BaselineRunSnapshotWriter baselineRunSnapshotWriter;
+    private final ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     private final LabEvaluationSnapshotService labEvaluationSnapshotService;
     private final LabPresetRunPlanService labPresetRunPlanService;
     private final CorpusAvailabilityGate corpusAvailabilityGate;
@@ -105,6 +112,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
             EvaluationService evaluationService,
             EvaluationRunRepository evaluationRunRepository,
             ExperimentalSnapshotFactory experimentalSnapshotFactory,
+            BaselineRunSnapshotWriter baselineRunSnapshotWriter,
+            ResolvedLlmConfigResolver resolvedLlmConfigResolver,
             LabEvaluationSnapshotService labEvaluationSnapshotService,
             LabPresetRunPlanService labPresetRunPlanService,
             CorpusAvailabilityGate corpusAvailabilityGate,
@@ -112,6 +121,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
         this.evaluationService = evaluationService;
         this.evaluationRunRepository = evaluationRunRepository;
         this.experimentalSnapshotFactory = experimentalSnapshotFactory;
+        this.baselineRunSnapshotWriter = baselineRunSnapshotWriter;
+        this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
         this.labEvaluationSnapshotService = labEvaluationSnapshotService;
         this.labPresetRunPlanService = labPresetRunPlanService;
         this.corpusAvailabilityGate = corpusAvailabilityGate;
@@ -158,6 +169,16 @@ public class TypedRagPresetBenchmarkOrchestrator {
         }
         LlmExperimentalSnapshot llmSnap = experimentalSnapshotFactory.buildLlmSnapshot(run);
         EmbeddingExperimentalSnapshot embSnap = experimentalSnapshotFactory.buildEmbeddingSnapshot(run);
+        PromptProfileSnapshot promptSnap = PromptProfileSnapshotFactory.baselineLabProfile();
+        if (evaluationRunId != null) {
+            baselineRunSnapshotWriter.writeSnapshots(evaluationRunId, llmSnap, embSnap, promptSnap);
+        }
+        Map<String, Object> providerLabMetrics =
+                EvaluationProvenanceSupport.providerMetricsFromConfig(
+                        resolvedLlmConfigResolver.resolve(
+                                run != null && run.getUser() != null ? run.getUser().getId() : null,
+                                run != null && run.getProject() != null ? run.getProject().getId() : null,
+                                null));
 
         List<RagPresetQuestion> questions =
                 DatasetQuestionSubsetSupport.filterQuestions(
@@ -188,7 +209,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     LabPresetRunPlanModels.STRATEGY_VERSION,
                     null,
                     base,
-                    null);
+                    providerLabMetrics);
             EvaluationSummary summary =
                     single.evaluationSummary()
                             .withExtensions(
@@ -564,7 +585,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                 runPlan.strategyVersion(),
                                 exec,
                                 base,
-                                corpusDiagnostics.metrics());
+                                EvaluationProvenanceSupport.mergeLabMetrics(
+                                        corpusDiagnostics.metrics(), providerLabMetrics));
                         allRows.addAll(rows);
                     }
                 } catch (Exception ex) {

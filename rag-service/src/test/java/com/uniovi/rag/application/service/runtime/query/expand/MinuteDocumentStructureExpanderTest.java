@@ -1,23 +1,27 @@
 package com.uniovi.rag.application.service.runtime.query.expand;
 
-import com.uniovi.rag.testsupport.ChatClientTestSupport;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.domain.model.ExpansionStrategy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MinuteDocumentStructureExpanderTest {
 
-    private ChatClient client;
+    private ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
     private MinuteDocumentStructureExpander expander;
 
     @BeforeEach
     void setUp() {
-        client = ChatClientTestSupport.mockForUserPromptChain();
-        expander = new MinuteDocumentStructureExpander(client);
+        secondaryLlmExecutor = mock(ProviderAwareSecondaryLlmExecutor.class);
+        expander = new MinuteDocumentStructureExpander(secondaryLlmExecutor);
     }
 
     @Test
@@ -33,20 +37,18 @@ class MinuteDocumentStructureExpanderTest {
 
     @Test
     void expand_withMockedLlmReturnsOriginalPlusExpansion() {
-        ChatClientTestSupport.stubUserPromptReturns(client, "reunión acta fecha asistentes");
+        when(secondaryLlmExecutor.complete(
+                        eq(MinuteDocumentStructureExpander.OPERATION_QUERY_EXPANSION), isNull(), anyString()))
+                .thenReturn("reunión acta fecha asistentes");
 
         String result = expander.expand("¿Quién presidió?");
 
         assertNotNull(result);
         assertTrue(result.contains("¿Quién presidió?"));
-    }
-
-    @Test
-    void expand_llmThrowsReturnsOriginalOnly() {
-        when(client.prompt().user(anyString())).thenThrow(new RuntimeException("LLM error"));
-
-        String result = expander.expand("query");
-
-        assertEquals("query", result);
+        verify(secondaryLlmExecutor)
+                .complete(
+                        eq(MinuteDocumentStructureExpander.OPERATION_QUERY_EXPANSION),
+                        isNull(),
+                        anyString());
     }
 }

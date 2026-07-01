@@ -84,18 +84,30 @@ describe("PresetsSettingsPanel", () => {
     expect(within(card).getAllByTestId("preset-import-textarea")).toHaveLength(1);
   });
 
-  it("renders read-only payload preview with scroll container", async () => {
+  it("renders structured configuration summary without visible raw JSON in normal mode", async () => {
+    const user = userEvent.setup();
     renderWithQuery(
       <IntlTestProvider>
         <PresetsSettingsPanel />
       </IntlTestProvider>,
     );
     await waitFor(() => {
-      expect(screen.getByTestId("preset-draft-preview")).toBeInTheDocument();
+      expect(screen.getByTestId("preset-draft-summary")).toBeInTheDocument();
+      expect(screen.getByLabelText(/passages to retrieve/i)).toBeInTheDocument();
     });
-    const preview = screen.getByTestId("preset-draft-preview");
-    expect(preview.className).toMatch(/overflow-auto/);
-    expect(preview.className).toMatch(/max-h-/);
+    expect(screen.queryByTestId("preset-draft-preview")).not.toBeInTheDocument();
+    const summary = screen.getByTestId("preset-draft-summary");
+    const card = within(summary).getByTestId("preset-profile-card-draft");
+    const advancedDetails = within(card).getByText(/Advanced technical details/i).closest("details");
+    expect(advancedDetails).not.toHaveAttribute("open");
+
+    const topK = screen.getByLabelText(/passages to retrieve/i);
+    await user.clear(topK);
+    await user.type(topK, "5");
+
+    await user.click(within(card).getByText(/Advanced technical details/i));
+    expect(advancedDetails).toHaveAttribute("open");
+    expect(within(card).getByText(/"topK": 5/)).toBeInTheDocument();
   });
 
   it("rejects import JSON with unsupported keys", async () => {

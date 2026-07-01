@@ -17,7 +17,7 @@ import {
 
 const EVIDENCE_DIR = path.resolve(
   process.env.PHASE8_UI_EVIDENCE_DIR ??
-    path.join(process.cwd(), "../.cursor/evidence/final-engineering-hardening-20260626/08_ui_evaluation_validation"),
+    path.join(process.cwd(), "../../../docs/evidence/final-engineering-hardening-20260626/08_ui_evaluation_validation"),
 );
 
 async function installDockerWebappApiProxy(page: Page): Promise<void> {

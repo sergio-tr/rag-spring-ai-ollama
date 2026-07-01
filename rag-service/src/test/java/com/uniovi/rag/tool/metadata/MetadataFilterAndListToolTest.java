@@ -50,6 +50,7 @@ class MetadataFilterAndListToolTest {
         extractor = mock(DocumentContentExtractor.class);
         MetadataLlmResponseCacheService llmCache = mock(MetadataLlmResponseCacheService.class);
         when(llmCache.getCachedResponse(anyString())).thenReturn("");
+        when(llmCache.getCachedResponse(anyString(), anyString())).thenReturn("NONE");
         tool = new MetadataFilterAndListTool(chatClient, retriever, extractor, llmCache);
 
         MetadataMinuteDocumentService metadataService =
@@ -72,6 +73,65 @@ class MetadataFilterAndListToolTest {
         assertNotNull(result);
         assertNotNull(result.result());
         assertEquals("MetadataFilterAndListTool", result.source());
+    }
+
+    @Test
+    void fdFl02_ascensorComentan_listsActasWithElevatorTopic() {
+        stubRetriever(allDocs());
+
+        ToolResult result =
+                tool.execute(
+                        ToolExecutionContext.of(
+                                "dime las actas donde se comentan problemas del ascensor",
+                                QueryType.FILTER_AND_LIST,
+                                null));
+
+        assertThat(result.result()).containsIgnoringCase("ascensor");
+        assertThat(result.result()).containsAnyOf("ACTA 1", "24/02/2025");
+    }
+
+    @Test
+    void fdFl02_ascensorComentan_scansFullCorpusWhenRankedRetrievalMissesActa6() {
+        List<Document> fullCorpus = new ArrayList<>();
+        fullCorpus.addAll(
+                sparseHybridChunksWithSectionBody(
+                        ACTA1_ID,
+                        actaById.get(ACTA1_ID),
+                        "Se informa sobre la necesidad de reparar el ascensor y renovar la pintura del portal."));
+        fullCorpus.addAll(
+                sparseHybridChunksWithSectionBody(
+                        ACTA6_ID,
+                        actaById.get(ACTA6_ID),
+                        "Se presentan diferentes propuestas para modernizar el ascensor del edificio."));
+        List<Document> rankedOnlyActa1Headers =
+                fullCorpus.stream()
+                        .filter(
+                                d ->
+                                        ACTA1_ID.equals(d.getMetadata().get("projectDocumentId"))
+                                                && Integer.valueOf(0).equals(d.getMetadata().get("chunkIndex")))
+                        .toList();
+        when(retriever.retrieve(anyString()))
+                .thenAnswer(
+                        invocation -> {
+                            String q = invocation.getArgument(0);
+                            if (q != null && q.contains("junta propietarios")) {
+                                return fullCorpus;
+                            }
+                            return rankedOnlyActa1Headers;
+                        });
+        when(retriever.retrieveWithMetadataFilters(anyString(), any(JSONObject.class)))
+                .thenReturn(rankedOnlyActa1Headers);
+
+        ToolResult result =
+                tool.execute(
+                        ToolExecutionContext.of(
+                                "dime las actas donde se comentan problemas del ascensor",
+                                QueryType.FILTER_AND_LIST,
+                                null));
+
+        String answer = result.result();
+        assertThat(answer).containsIgnoringCase("ascensor");
+        assertThat(answer).contains("ACTA 1.pdf", "ACTA 6.pdf", "24/02/2025", "25/08/2026");
     }
 
     @Test
@@ -294,6 +354,23 @@ class MetadataFilterAndListToolTest {
                 .isEqualTo(
                         "La reunión del 25/08/2026 (ACTA 6) trató videovigilancia y tuvo 19 asistentes.");
         assertThat(result.result()).doesNotContain("ACTA 3", "25/08/2025", "18 asistentes");
+    }
+
+    @Test
+    void endTimeAfter830_listsActasEndingAfter2030() {
+        stubRetriever(allDocs());
+
+        ToolResult result =
+                tool.execute(
+                        ToolExecutionContext.of(
+                                "dime las fechas de las actas que terminaron más tarde de las 8:30",
+                                QueryType.FILTER_AND_LIST,
+                                null));
+
+        assertThat(result.result())
+                .contains("25/02/2025", "25/08/2025", "25/08/2026")
+                .contains("más tarde", "20:30");
+        assertThat(result.result()).doesNotContain("24/02/2025");
     }
 
     @Test

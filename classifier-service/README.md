@@ -2,13 +2,14 @@
 
 Query-type classification service for the RAG backend. It exposes an HTTP API used by the RAG service to classify user questions (e.g. `COUNT_DOCUMENTS`, `SUMMARIZE_MEETING`).
 
-**Target architecture (frozen model):** [Classifier System](../docs/architecture/target-architecture.md).
+**Target architecture (frozen model):** [Classifier System](../docs/architecture/target-architecture.md).  
+**Default model status:** [Classifier status freeze](../docs/research/classifier-status-freeze.md) (sklearn C3 default).
 
 ## Architecture
 
 - **Domain models** (`app/models/`): `ClassificationResult`, `ModelMetadata`, `TrainingResult`, `ErrorDetail` — value objects for responses and errors.
 - **Exceptions** (`app/exceptions.py`): `ValidationError` (400), `ModelNotFoundError` (404), `ClassificationError` (503), `TrainingError` (500).
-- **Inference** (`app/inference/`): `ModelLoader` (loads and caches Keras model + labels), `InferenceEngine` (runs prediction).
+- **Inference** (`app/inference/`): `ModelLoader` (loads and caches sklearn or Keras model + labels per `metadata.json`), `InferenceEngine` (runs prediction).
 - **Registry** (`app/registry/`): `ModelRegistry` (list models, resolve paths, register trained models).
 - **Training** (`app/training/`): `TrainingPipeline` (Excel → train → save → register).
 - **Evaluation** (`app/evaluation/`): `EvaluationPipeline` (metrics + classification report and confusion matrix PNGs), `EvaluationResult`.
@@ -48,7 +49,7 @@ These were moved from `rag-service/src/main/resources/python/` and are the singl
 
 ```bash
 pip install -r requirements.txt
-# Ensure models/default/model.keras and models/default/labels.txt exist
+# Ensure models/default/model.joblib (sklearn default) or model.keras and models/default/labels.txt exist
 uvicorn uvicorn_entry:app --host 0.0.0.0 --port 8000
 ```
 
@@ -57,6 +58,27 @@ Or with Docker (from repo root):
 ```bash
 docker compose -f docker/docker-compose.yml up -d classifier-service
 ```
+
+### Docker image size
+
+The **default** image uses `python:3.10-slim-bookworm` and `requirements-runtime.txt` only (sklearn 1.7 + FastAPI, **no TensorFlow**). It is about **600 MiB** and builds in under a minute on a typical CI runner.
+
+The default `model.joblib` (sklearn C3) is trained with **scikit-learn 1.7.x** on Python 3.10 — no Python 3.11 or CUDA base is required for serving.
+
+The previous default (`nvidia/cuda` base + `tensorflow[and-cuda]`) pulled **~10 GiB** because CUDA was installed twice (OS image + pip wheels) even though the production default model is **sklearn** (`models/default/model.joblib`).
+
+| Profile | Base image | Python deps | Approx. size |
+| --- | --- | --- | --- |
+| Default (sklearn serving) | `python:3.10-slim-bookworm` | `requirements-runtime.txt` | ~600 MiB |
+| GPU / Keras Lab | `nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04` | runtime + `requirements-gpu.txt` | ~8–10 GiB |
+
+Enable the GPU stack only when training or serving legacy Keras models:
+
+```bash
+./docker/scripts/up.sh dev --classifier-gpu   # sets CLASSIFIER_INSTALL_GPU_EXTRAS=1
+```
+
+Local dev / CI pytest: `pip install -r requirements.txt` (includes CPU TensorFlow for unit tests).
 
 The RAG backend is configured via `RAG_CLASSIFIER_SERVICE_URL` (default `http://localhost:8000`; in Docker `http://classifier-service:8000`).
 
@@ -69,7 +91,7 @@ The RAG backend is configured via `RAG_CLASSIFIER_SERVICE_URL` (default `http://
 | `MODELS_DIR` | models | Directory for default and trained models. |
 | `DATA_DIR` | data | Directory for default datasets. |
 | `DEFAULT_MODEL_ID` | default | Model id used when none is specified. |
-| `MODEL_PATH` | `{MODELS_DIR}/default/model.keras` | Default model file. |
+| `MODEL_PATH` | `{MODELS_DIR}/default/model.joblib` | Default model file (sklearn `model.joblib` or Keras `model.keras`; see `metadata.json`). |
 | `LABELS_PATH` | `{MODELS_DIR}/default/labels.txt` | Default labels file. |
 
 ## Tests

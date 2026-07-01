@@ -41,14 +41,15 @@
 | Q1 | **`ci.yml`** succeeds on the release candidate commit (backend, classifier, webapp including coverage gate where configured). | Green run on `main` / merge SHA. |
 | Q2 | **Playwright `@fullstack`** is part of a green **`ci.yml`** on the release SHA (see `e2e_fullstack` in [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml)). Optional: separate [`e2e-fullstack.yml`](../../.github/workflows/e2e-fullstack.yml) on `main` when paths change — not a `deploy.yml` gate. | `ci.yml` green; optional second workflow if used. |
 | Q3 | **Playwright API smoke** (`npm run test:api`) is documented for staging/ops; optional manual [`system-checks.yml`](../../.github/workflows/system-checks.yml) when validating a running URL. | Doc link or waiver if not exercised. |
-| Q4 | **Sonar / `sonar.yml`** (if enabled for the repo) — no new **blocking** quality gate regressions agreed with maintainers. | Sonar dashboard or CI conclusion. |
+| Q4 | **Sonar / `sonar.yml`** (if enabled for the repo) — no new **blocking** quality gate regressions agreed with maintainers. Runs on `main`/`master` PRs and pushes inside `ci.yml`; ad-hoc via `workflow_dispatch`. | Sonar dashboard or CI conclusion. |
+| Q5 | **Production email** uses real SMTP — Mailpit is only for local/prod-local mail capture (`compose.dev-mail.yml`, `compose.prod-mail.yml`), not university VM production. | [runbook-docker-vm.md](runbook-docker-vm.md); `compose.prod-server.yml` has no Mailpit. |
 
 ## Deploy path
 
 | # | Criterion | Evidence |
 | --- | ----------- | ---------- |
 | D1 | **`deploy.yml`** pre-deploy **gate** passes: **[`ci.yml`](../../.github/workflows/ci.yml)** completed **successfully** for the **same** `head_sha` as the deploy run. | Deploy job log shows “Gate OK” for `CI`. |
-| D2 | **Secrets** documented (names and purpose only — no values): `VM_HOST`, `VM_USER`, `VM_SSH_KEY`, `VM_DEPLOY_DIR`, `GHCR_TOKEN`. | [deploy-workflow-audit.md](deploy-workflow-audit.md). |
+| D2 | **Deploy configuration** documented (names only — no values): `DEPLOY_DIR`, `DEPLOY_HEALTH_URL`; server `.env` files per [`.env.example`](../../.env.example). | [deploy-workflow-audit.md](deploy-workflow-audit.md). |
 | D3 | Target VM can **pull images** (`docker login` + `compose pull`) and **apply** `docker-compose.yml` + `compose.prod.yml`. | Runbook section “Verify after deploy”. |
 
 ## Operations documentation

@@ -1,6 +1,7 @@
 package com.uniovi.rag.infrastructure.persistence;
 
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCorpusEntity;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,4 +22,6 @@ public interface EvaluationCorpusRepository extends JpaRepository<EvaluationCorp
     Optional<String> findNameById(@Param("corpusId") UUID corpusId);
 
     boolean existsByIndexProject_Id(UUID indexProjectId);
+
+    List<EvaluationCorpusEntity> findByOwner_IdAndName(UUID ownerId, String name);
 }

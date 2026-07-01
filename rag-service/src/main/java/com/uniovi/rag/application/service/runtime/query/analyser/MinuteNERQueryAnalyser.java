@@ -2,6 +2,8 @@ package com.uniovi.rag.application.service.runtime.query.analyser;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.util.NerDateFieldSupport;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -12,7 +14,6 @@ import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.annotation.Lazy;
@@ -165,7 +166,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     private static final ObjectMapper JACKSON_MAPPER = new ObjectMapper();
 
     @Nullable
-    private final ChatClient chatClient;
+    private final ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
     
     // Date patterns for normalization - enhanced to match parseDateFlexible and parseDateToLocalDate
     // These formatters are used to normalize dates extracted from NER
@@ -205,8 +206,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     private static final Pattern TIME_PATTERN = Pattern.compile("\\b(\\d{1,2}):(\\d{2})\\b");
     private static final Pattern NUMBER_PATTERN = Pattern.compile("\\b\\d+\\b");
 
-    public MinuteNERQueryAnalyser(@Nullable ChatClient chatClient) {
-        this.chatClient = chatClient;
+    public MinuteNERQueryAnalyser(@Nullable ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor) {
+        this.secondaryLlmExecutor = secondaryLlmExecutor;
     }
 
     @Autowired
@@ -240,19 +241,14 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
      */
     @Cacheable(value = "nerAnalysis", keyGenerator = "nerCacheKeyGenerator")
     private JSONObject analyseWithCache(String query) {
-        if (chatClient == null) {
-            log().warn("NER: ChatClient is not configured, returning fallback analysis");
+        if (secondaryLlmExecutor == null) {
+            log().warn("NER: secondary LLM executor is not configured, returning fallback analysis");
             return createFallbackResponse(query);
         }
         // Use simple string replacement instead of PromptTemplate to avoid issues with [ and ] in JSON examples
         String prompt = NER_PROMPT.replace("{query}", query);
 
-        String response = chatClient
-                .prompt()
-                .system(getSystemPrompt())
-                .user(prompt)
-                .call()
-                .content();
+        String response = secondaryLlmExecutor.complete("ner", getSystemPrompt(), prompt);
 
         if (response == null || response.trim().isEmpty()) {
             log().warn("NER: Empty response from LLM for query: {}", query);
@@ -442,22 +438,25 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
      * Normalizes date values to standard formats
      */
     private void normalizeDates(JSONObject json) {
-        if (json.has("date")) {
-            JSONArray dates = json.getJSONArray("date");
-            JSONArray normalizedDates = new JSONArray();
-            
-            for (int i = 0; i < dates.length(); i++) {
-                String dateStr = dates.getString(i);
-                String normalized = normalizeDate(dateStr);
-                if (normalized != null) {
-                    normalizedDates.put(normalized);
-                } else {
-                    normalizedDates.put(dateStr); // Keep original if can't normalize
-                }
-            }
-            
-            json.put("date", normalizedDates);
+        if (!json.has("date") || json.isNull("date")) {
+            return;
         }
+        List<String> dates = NerDateFieldSupport.readDateStrings(json);
+        if (dates.isEmpty()) {
+            return;
+        }
+        JSONArray normalizedDates = new JSONArray();
+
+        for (String dateStr : dates) {
+            String normalized = normalizeDate(dateStr);
+            if (normalized != null) {
+                normalizedDates.put(normalized);
+            } else {
+                normalizedDates.put(dateStr); // Keep original if can't normalize
+            }
+        }
+
+        json.put("date", normalizedDates);
     }
 
     /**

@@ -49,9 +49,10 @@ describe("experimental-preset-selection", () => {
     expect(isLabBenchmarkPresetSelectable(preset("P8", { supported: false }))).toBe(false);
   });
 
-  it("isCoreExperimentalPresetCode matches P0-P10 only", () => {
+  it("isCoreExperimentalPresetCode matches P0-P10 and P15", () => {
     expect(isCoreExperimentalPresetCode("P0")).toBe(true);
     expect(isCoreExperimentalPresetCode("P10")).toBe(true);
+    expect(isCoreExperimentalPresetCode("P15")).toBe(true);
     expect(isCoreExperimentalPresetCode("P11")).toBe(false);
     expect(isCoreExperimentalPresetCode("P12")).toBe(false);
     expect(isCoreExperimentalPresetCode("P13")).toBe(false);

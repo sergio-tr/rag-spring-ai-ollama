@@ -22,5 +22,9 @@ class DocumentIngestionHumanErrorsTest {
                 .isEqualTo(DocumentIngestionHumanErrors.INGESTION_TIMEOUT);
         assertThat(DocumentIngestionHumanErrors.humanize("FAILED_EMBEDDING: ollama down"))
                 .isEqualTo(DocumentIngestionHumanErrors.EMBEDDING_ERROR);
+        assertThat(
+                        DocumentIngestionHumanErrors.humanize(
+                                "No compatible vector index found for provider=OPENAI_COMPATIBLE"))
+                .isEqualTo(DocumentIngestionHumanErrors.INCOMPATIBLE_INDEX_ERROR);
     }
 }

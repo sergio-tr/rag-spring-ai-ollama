@@ -1,8 +1,8 @@
 package com.uniovi.rag.application.service.runtime.ranking;
 
 import com.uniovi.rag.application.result.query.CandidateResponse;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.domain.model.RankerResult;
-import org.springframework.ai.chat.client.ChatClient;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,16 +12,18 @@ import java.util.List;
  */
 public class FaithfulnessRanker implements ResponseRanker {
 
+    static final String OPERATION_LLM_RANKER = "llm-ranker";
+
     private static final String PROMPT = """
         Context: %s
         Response: %s
         Is this response fully supported by the context? Answer only: Yes or No.
         """;
 
-    private final ChatClient chatClient;
+    private final ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
 
-    public FaithfulnessRanker(ChatClient chatClient) {
-        this.chatClient = chatClient;
+    public FaithfulnessRanker(ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor) {
+        this.secondaryLlmExecutor = secondaryLlmExecutor;
     }
 
     @Override
@@ -50,7 +52,7 @@ public class FaithfulnessRanker implements ResponseRanker {
     private double scoreCandidate(String context, String response) {
         try {
             String prompt = String.format(PROMPT, context, response);
-            String answer = chatClient.prompt().user(prompt).call().content();
+            String answer = secondaryLlmExecutor.complete(OPERATION_LLM_RANKER, null, prompt);
             return (answer != null && answer.trim().toLowerCase().startsWith("yes")) ? 1.0 : 0.0;
         } catch (Exception e) {
             return 0.0;

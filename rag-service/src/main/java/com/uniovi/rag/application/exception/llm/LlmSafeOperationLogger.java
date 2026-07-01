@@ -14,13 +14,14 @@ public final class LlmSafeOperationLogger {
     private LlmSafeOperationLogger() {}
 
     /**
-     * Single-line summary of {@link ResolvedLlmConfig} for startup and pre-RAG verification. Logs provider, model, and
-     * baseUrl only — never {@code apiKeyEnv}, {@code secretName}, Bearer tokens, or resolved secret values.
+     * Single-line summary of {@link ResolvedLlmConfig} for startup and pre-RAG verification. Logs provider and model at
+     * INFO; baseUrl only at DEBUG — never {@code apiKeyEnv}, {@code secretName}, Bearer tokens, or resolved secrets.
      */
     public static void logResolvedConfig(Logger log, ResolvedLlmConfig config) {
         Objects.requireNonNull(log, "log");
         Objects.requireNonNull(config, "config");
         log.info(formatResolvedConfigSummary(config));
+        log.debug("Resolved LLM config baseUrl={}", sanitizeLogValue(config.baseUrl()));
     }
 
     public static String formatResolvedConfigSummary(ResolvedLlmConfig config) {
@@ -32,9 +33,7 @@ public final class LlmSafeOperationLogger {
                 + " embeddingProvider="
                 + config.embeddingProvider()
                 + " embeddingModel="
-                + sanitizeLogValue(config.embeddingModel())
-                + " baseUrl="
-                + sanitizeLogValue(config.baseUrl());
+                + sanitizeLogValue(config.embeddingModel());
     }
 
     static String sanitizeLogValue(String value) {
@@ -53,12 +52,8 @@ public final class LlmSafeOperationLogger {
     }
 
     public static void logStarted(Logger log, String operation, LlmProvider provider, String model, String baseUrl) {
-        log.info(
-                "LLM operation started: operation={} provider={} model={} baseUrl={}",
-                operation,
-                provider,
-                model,
-                baseUrl);
+        log.info("LLM operation started: operation={} provider={} model={}", operation, provider, model);
+        log.debug("LLM operation started baseUrl={}", sanitizeLogValue(baseUrl));
     }
 
     public static void logCompleted(
@@ -70,13 +65,13 @@ public final class LlmSafeOperationLogger {
             long latencyMs,
             String status) {
         log.info(
-                "LLM operation completed: operation={} provider={} model={} baseUrl={} latencyMs={} status={}",
+                "LLM operation completed: operation={} provider={} model={} latencyMs={} status={}",
                 operation,
                 provider,
                 model,
-                baseUrl,
                 latencyMs,
                 status);
+        log.debug("LLM operation completed baseUrl={}", sanitizeLogValue(baseUrl));
     }
 
     public static void logFailed(
@@ -89,13 +84,13 @@ public final class LlmSafeOperationLogger {
             String status,
             String publicMessage) {
         log.warn(
-                "LLM operation failed: operation={} provider={} model={} baseUrl={} latencyMs={} status={} message={}",
+                "LLM operation failed: operation={} provider={} model={} latencyMs={} status={} message={}",
                 operation,
                 provider,
                 model,
-                baseUrl,
                 latencyMs,
                 status,
                 publicMessage);
+        log.debug("LLM operation failed baseUrl={}", sanitizeLogValue(baseUrl));
     }
 }

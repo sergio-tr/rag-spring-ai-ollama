@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
@@ -18,6 +19,7 @@ import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
 import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
+import com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.llm.ProviderAwareEmbeddingService;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
@@ -50,6 +52,7 @@ class KnowledgeIngestionProviderIntegrationTest {
     @Mock private LlmEmbeddingClient openAiEmbeddingClient;
     @Mock private KnowledgeIndexSnapshotRepository snapshotRepository;
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
+    @Mock private EmbeddingModelCatalogResolver embeddingModelCatalogResolver;
 
     private ProviderAwareEmbeddingService embeddingService;
     private EmbeddingIndexCompatibilityService compatibilityService;
@@ -57,11 +60,15 @@ class KnowledgeIngestionProviderIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        lenient()
+                .when(embeddingModelCatalogResolver.resolve(any(LlmProvider.class), anyString()))
+                .thenAnswer(inv -> inv.getArgument(1, String.class).trim());
         LlmClientResolver clientResolver = new LlmClientResolver(clientRegistry);
-        embeddingService = new ProviderAwareEmbeddingService(clientResolver, configResolver);
+        embeddingService =
+                new ProviderAwareEmbeddingService(clientResolver, configResolver, embeddingModelCatalogResolver);
         compatibilityService =
                 new EmbeddingIndexCompatibilityService(
-                        embeddingService, snapshotRepository, knowledgeSnapshotService);
+                        embeddingService, snapshotRepository, knowledgeSnapshotService, embeddingModelCatalogResolver);
         embeddingSpaceGuard =
                 new EmbeddingSpaceGuard(
                         new ProviderAwareEmbeddingModelFactory(embeddingService),

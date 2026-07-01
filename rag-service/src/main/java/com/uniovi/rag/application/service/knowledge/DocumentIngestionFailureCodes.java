@@ -13,6 +13,7 @@ public final class DocumentIngestionFailureCodes {
     public static final String FAILED_INDEX = "FAILED_INDEX";
     public static final String DUPLICATE = "DUPLICATE";
     public static final String FAILED_GENERIC = "FAILED_GENERIC";
+    public static final String FAILED_INCOMPATIBLE_INDEX = "FAILED_INCOMPATIBLE_INDEX";
 
     private DocumentIngestionFailureCodes() {}
 
@@ -35,6 +36,9 @@ public final class DocumentIngestionFailureCodes {
 
         if (upper.contains("DUPLICATE")) {
             return format(DUPLICATE, msg);
+        }
+        if (upper.contains("NO COMPATIBLE VECTOR INDEX")) {
+            return format(FAILED_INCOMPATIBLE_INDEX, msg);
         }
         if (upper.contains("EMBEDDING") || upper.contains("CONTEXT LIMIT")) {
             return format(FAILED_EMBEDDING, msg);

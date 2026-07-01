@@ -4,15 +4,18 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.llm.catalog.EvaluationModelCatalogService;
 import com.uniovi.rag.application.service.evaluation.preset.CorpusAvailabilityGate;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetBenchmarkGate;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import com.uniovi.rag.application.service.evaluation.preset.LabIndexSnapshotCompatibilityService;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunGroupKey;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunPlanService;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
 import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileService;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.application.service.runtime.config.IndexCompatibilityResult;
 import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
@@ -47,6 +50,9 @@ public class LabBenchmarkConfigPreflightService {
     private final ProjectIndexProfileService projectIndexProfileService;
     private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     private final CorpusAvailabilityGate corpusAvailabilityGate;
+    private final EvaluationModelCatalogService evaluationModelCatalogService;
+    private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
+    private final KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess;
 
     public LabBenchmarkConfigPreflightService(
             RagFeatureConfiguration ragFeatureConfiguration,
@@ -56,7 +62,10 @@ public class LabBenchmarkConfigPreflightService {
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
             ProjectIndexProfileService projectIndexProfileService,
             LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
-            CorpusAvailabilityGate corpusAvailabilityGate) {
+            CorpusAvailabilityGate corpusAvailabilityGate,
+            EvaluationModelCatalogService evaluationModelCatalogService,
+            KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
+            KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess) {
         this.ragFeatureConfiguration = ragFeatureConfiguration;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.embeddingSpaceGuard = embeddingSpaceGuard;
@@ -65,6 +74,9 @@ public class LabBenchmarkConfigPreflightService {
         this.projectIndexProfileService = projectIndexProfileService;
         this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
         this.corpusAvailabilityGate = corpusAvailabilityGate;
+        this.evaluationModelCatalogService = evaluationModelCatalogService;
+        this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
+        this.snapshotProfileAccess = snapshotProfileAccess;
     }
 
     /**
@@ -78,7 +90,7 @@ public class LabBenchmarkConfigPreflightService {
         }
         return switch (kind) {
             case RAG_PRESET_END_TO_END -> validateRag(userId, request);
-            case EMBEDDING_RETRIEVAL -> validateEmbedding(request);
+            case EMBEDDING_RETRIEVAL -> validateEmbedding(userId, request);
             default -> okSummary(List.of(), null, request.autoReindexEffective(), false, Map.of());
         };
     }
@@ -117,6 +129,8 @@ public class LabBenchmarkConfigPreflightService {
         if (request.corpusId() != null && strictIndexCheck) {
             if (request.autoReindexEffective()) {
                 details.put("indexPreflight", "DEFERRED_AUTO_REINDEX");
+            } else if (request.indexSnapshotId() != null) {
+                validateExplicitSnapshotForPresets(userId, request.corpusId(), request.indexSnapshotId(), presets, details);
             } else {
                 validateIndexForPresets(userId, request.corpusId(), presets, details);
             }
@@ -124,9 +138,22 @@ public class LabBenchmarkConfigPreflightService {
 
         validateP1CorpusSnapshotCompatibility(userId, request, presets, details);
 
+        boolean needsEmbedding = presets.stream().anyMatch(ExperimentalPresetCanonicalCatalog::embeddingRequired);
+        if (needsEmbedding) {
+            evaluationModelCatalogService.assertHasCompatibleEmbeddingWhenRequired(userId);
+        }
+
+        String llmModelId = request.llmModelId() != null && !request.llmModelId().isBlank()
+                ? request.llmModelId().trim()
+                : null;
+        if (llmModelId != null) {
+            evaluationModelCatalogService.assertChatModelInCatalog(userId, llmModelId);
+            details.put("llmModelId", llmModelId);
+        }
+
         String embeddingModelId = resolveEmbeddingModelId(request);
         if (embeddingModelId != null && presets.stream().anyMatch(ExperimentalPresetCanonicalCatalog::embeddingRequired)) {
-            assertEmbeddingDimension(embeddingModelId);
+            evaluationModelCatalogService.assertEmbeddingCompatibleWithVectorStore(userId, embeddingModelId);
             details.put("embeddingModelId", embeddingModelId);
         }
 
@@ -138,13 +165,14 @@ public class LabBenchmarkConfigPreflightService {
                 details);
     }
 
-    private LabBenchmarkConfigPreflightResult validateEmbedding(StartBenchmarkRunRequest request) {
+    private LabBenchmarkConfigPreflightResult validateEmbedding(UUID userId, StartBenchmarkRunRequest request) {
+        evaluationModelCatalogService.assertHasCompatibleEmbeddingWhenRequired(userId);
         List<String> embeddingModelIds = resolveEmbeddingModelIds(request);
         if (embeddingModelIds.isEmpty()) {
             return okSummary(List.of(), null, request.autoReindexEffective(), false, Map.of());
         }
         for (String embeddingModelId : embeddingModelIds) {
-            assertEmbeddingDimension(embeddingModelId);
+            evaluationModelCatalogService.assertEmbeddingCompatibleWithVectorStore(userId, embeddingModelId);
         }
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("embeddingModelIds", embeddingModelIds);
@@ -219,6 +247,24 @@ public class LabBenchmarkConfigPreflightService {
         return LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_REINDEX;
     }
 
+    private void validateExplicitSnapshotForPresets(
+            UUID userId,
+            UUID corpusId,
+            UUID indexSnapshotId,
+            List<RagExperimentalPresetCode> presets,
+            Map<String, Object> details) {
+        KnowledgeIndexSnapshotEntity explicit =
+                knowledgeIndexSnapshotRepository.findById(indexSnapshotId).orElse(null);
+        if (explicit == null || explicit.getId() == null) {
+            fail(HttpStatus.BAD_REQUEST, LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_INDEX);
+        }
+        details.put("explicitIndexSnapshotId", indexSnapshotId.toString());
+        RagExperimentalPresetCode strictest =
+                presets.stream().max(Comparator.comparingInt(Enum::ordinal)).orElseThrow();
+        validateActiveSnapshotReuseEligibility(userId, corpusId, strictest, explicit, details);
+        details.put("indexPreflight", "EXPLICIT_SNAPSHOT_COMPATIBLE");
+    }
+
     private void validateIndexForPresets(
             UUID userId,
             UUID corpusId,
@@ -238,7 +284,7 @@ public class LabBenchmarkConfigPreflightService {
         details.put("strictestPreset", strictest.name());
 
         IndexSnapshotCapabilities caps =
-                active.map(KnowledgeIndexSnapshotEntity::getIndexProfileJsonb)
+                active.map(snapshotProfileAccess::resolveProfileJsonb)
                         .map(IndexSnapshotCapabilities::fromIndexProfile)
                         .orElse(IndexSnapshotCapabilities.fromIndexProfile(Map.of()));
 

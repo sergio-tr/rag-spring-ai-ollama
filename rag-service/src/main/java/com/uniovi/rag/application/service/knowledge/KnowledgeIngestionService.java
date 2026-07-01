@@ -2,7 +2,10 @@ package com.uniovi.rag.application.service.knowledge;
 
 import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
+import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
@@ -46,6 +49,7 @@ public class KnowledgeIngestionService {
     private final ProjectDocumentIngestionService projectDocumentIngestionService;
     private final ProjectAccessService projectAccessService;
     private final ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
+    private final ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     private final EntityManager entityManager;
     private final BinaryStoragePort binaryStoragePort;
 
@@ -55,6 +59,7 @@ public class KnowledgeIngestionService {
             @Lazy ProjectDocumentIngestionService projectDocumentIngestionService,
             ProjectAccessService projectAccessService,
             ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService,
+            ResolvedLlmConfigResolver resolvedLlmConfigResolver,
             EntityManager entityManager,
             BinaryStoragePort binaryStoragePort) {
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
@@ -62,6 +67,7 @@ public class KnowledgeIngestionService {
         this.projectDocumentIngestionService = projectDocumentIngestionService;
         this.projectAccessService = projectAccessService;
         this.resolvedConfigSnapshotApplicationService = resolvedConfigSnapshotApplicationService;
+        this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
         this.entityManager = entityManager;
         this.binaryStoragePort = binaryStoragePort;
     }
@@ -178,25 +184,30 @@ public class KnowledgeIngestionService {
             var snap =
                     resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshot(
                             userId, projectId, conversationId);
-            if (isolateOrchestratorTransaction) {
-                knowledgePipelineOrchestrator.ingestFromTempFile(
-                        projectId,
-                        projectDocumentId,
-                        tempFile,
-                        originalFilename,
-                        contentType,
-                        snap.getId(),
-                        snap.getConfigHash());
-            } else {
-                knowledgePipelineOrchestrator.ingestFromTempFileInCurrentTransaction(
-                        projectId,
-                        projectDocumentId,
-                        tempFile,
-                        originalFilename,
-                        contentType,
-                        snap.getId(),
-                        snap.getConfigHash());
-            }
+            runWithIngestLlmScope(
+                    userId,
+                    projectId,
+                    () -> {
+                        if (isolateOrchestratorTransaction) {
+                            knowledgePipelineOrchestrator.ingestFromTempFile(
+                                    projectId,
+                                    projectDocumentId,
+                                    tempFile,
+                                    originalFilename,
+                                    contentType,
+                                    snap.getId(),
+                                    snap.getConfigHash());
+                        } else {
+                            knowledgePipelineOrchestrator.ingestFromTempFileInCurrentTransaction(
+                                    projectId,
+                                    projectDocumentId,
+                                    tempFile,
+                                    originalFilename,
+                                    contentType,
+                                    snap.getId(),
+                                    snap.getConfigHash());
+                        }
+                    });
         } catch (Exception e) {
             KnowledgeDocumentEntity rowErr = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
             if (rowErr != null) {
@@ -216,8 +227,15 @@ public class KnowledgeIngestionService {
             UUID resolvedConfigSnapshotId,
             String resolvedConfigHash) {
         try {
-            knowledgePipelineOrchestrator.ingestFromStoredBinary(
-                    projectId, projectDocumentId, resolvedConfigSnapshotId, resolvedConfigHash);
+            runWithIngestLlmScope(
+                    userId,
+                    projectId,
+                    () ->
+                            knowledgePipelineOrchestrator.ingestFromStoredBinary(
+                                    projectId,
+                                    projectDocumentId,
+                                    resolvedConfigSnapshotId,
+                                    resolvedConfigHash));
         } catch (Exception e) {
             KnowledgeDocumentEntity rowErr = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
             if (rowErr != null) {
@@ -451,5 +469,19 @@ public class KnowledgeIngestionService {
                 e.getCurrentIndexSnapshot() != null ? e.getCurrentIndexSnapshot().getId() : null,
                 e.getCurrentIndexSnapshot() != null ? e.getCurrentIndexSnapshot().getSignatureHash() : null,
                 storagePresent);
+    }
+
+    /**
+     * Binds {@link OrchestrationLlmConfigScope} for async/sync ingest so embedding resolution uses the project
+     * provider catalog (not bare application defaults).
+     */
+    private void runWithIngestLlmScope(UUID userId, UUID projectId, Runnable ingestWork) {
+        ResolvedLlmConfig llm = resolvedLlmConfigResolver.resolve(userId, projectId, null);
+        OrchestrationLlmConfigScope.bind(llm);
+        try {
+            ingestWork.run();
+        } finally {
+            OrchestrationLlmConfigScope.clear();
+        }
     }
 }

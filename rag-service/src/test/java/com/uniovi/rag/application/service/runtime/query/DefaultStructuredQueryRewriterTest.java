@@ -1,6 +1,6 @@
 package com.uniovi.rag.application.service.runtime.query;
 
-import com.uniovi.rag.testsupport.llm.ChatGenerationModelSelectorTestSupport;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
@@ -21,17 +21,20 @@ import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import com.uniovi.rag.testsupport.config.TestConfigurablePromptResolver;
 import org.junit.jupiter.api.Test;
-import org.mockito.Answers;
-import org.springframework.ai.chat.client.ChatClient;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
+@ExtendWith(MockitoExtension.class)
 class DefaultStructuredQueryRewriterTest {
+
+    @Mock private ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
 
     private static ExecutionContext ctx(boolean toolsEnabled) {
         RagConfig rag =
@@ -103,9 +106,7 @@ class DefaultStructuredQueryRewriterTest {
 
     @Test
     void disabled_returnsIdentityDisabled() {
-        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
-        DefaultStructuredQueryRewriter rewriter =
-                new DefaultStructuredQueryRewriter(chatClient, ChatGenerationModelSelectorTestSupport.permissiveMock());
+        DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(secondaryLlmExecutor, TestConfigurablePromptResolver.defaultsOnly());
         NormalizedQuery nq = new NormalizedQuery("raw", "hello", List.of());
         EntityExtractionResult entities =
                 new EntityExtractionResult(List.of(), List.of(), List.of(), List.of(), List.of(),
@@ -115,15 +116,19 @@ class DefaultStructuredQueryRewriterTest {
         assertFalse(r.rewriteApplied());
         assertEquals("hello", r.rewrittenQueryText());
         assertTrue(r.rewriteNotes().get(0).startsWith("DISABLED"));
+        verifyNoInteractions(secondaryLlmExecutor);
     }
 
     @Test
     void invalidJson_returnsIdentityFallback() {
-        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content())
+        when(secondaryLlmExecutor.complete(
+                        any(ExecutionContext.class),
+                        eq("query-rewrite"),
+                        anyString(),
+                        anyString(),
+                        eq(ProviderAwareSecondaryLlmExecutor.SECONDARY_TASK_DEFAULT_TEMPERATURE)))
                 .thenReturn("not json");
-        DefaultStructuredQueryRewriter rewriter =
-                new DefaultStructuredQueryRewriter(chatClient, ChatGenerationModelSelectorTestSupport.permissiveMock());
+        DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(secondaryLlmExecutor, TestConfigurablePromptResolver.defaultsOnly());
         NormalizedQuery nq = new NormalizedQuery("raw", "hello", List.of());
         EntityExtractionResult entities =
                 new EntityExtractionResult(List.of(), List.of(), List.of(), List.of(), List.of(),
@@ -137,14 +142,17 @@ class DefaultStructuredQueryRewriterTest {
 
     @Test
     void droppedDate_isRejectedToFallback() {
-        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         String rewriteJson = """
                 {"rewrittenQueryText":"tell me about the meeting","targetEntities":[],"targetAttributes":[],"targetAction":"SUMMARIZE","slotFilling":{},"constraints":[]}
                 """;
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content())
+        when(secondaryLlmExecutor.complete(
+                        any(ExecutionContext.class),
+                        eq("query-rewrite"),
+                        anyString(),
+                        anyString(),
+                        eq(ProviderAwareSecondaryLlmExecutor.SECONDARY_TASK_DEFAULT_TEMPERATURE)))
                 .thenReturn(rewriteJson);
-        DefaultStructuredQueryRewriter rewriter =
-                new DefaultStructuredQueryRewriter(chatClient, ChatGenerationModelSelectorTestSupport.permissiveMock());
+        DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(secondaryLlmExecutor, TestConfigurablePromptResolver.defaultsOnly());
 
         NormalizedQuery nq = new NormalizedQuery("raw", "meeting on 2026-02-25", List.of());
         EntityExtractionResult entities =
@@ -165,4 +173,3 @@ class DefaultStructuredQueryRewriterTest {
         assertTrue(r.rewriteNotes().get(0).startsWith("FALLBACK"));
     }
 }
-

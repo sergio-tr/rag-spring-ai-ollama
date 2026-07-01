@@ -259,6 +259,7 @@ Options:
 
 - Use `./docker/scripts/up.sh prod --obs --no-env-prompt` to include `compose.obs.yml` and **`--profile observability`** (OTEL, Jaeger, Prometheus, Grafana).
 - Use `./docker/scripts/up.sh prod --obs --obs-private --no-env-prompt` when you need observability but do not want Jaeger/Prometheus/Grafana published on host ports.
+- **Production server (university VM):** `./docker/scripts/up.sh prod --server --obs --obs-private --no-env-prompt` merges `compose.prod-server.yml` (reverse-proxy only public entry; Spring profile `prod,docker,infra`; LiteLLM-only; no Mailpit). Used by [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) on the self-hosted runner.
 - `--gpu` or `--ollama`: adds **`--profile ollama`** only when the NVIDIA runtime is available (requires `ollama/.env` and NVIDIA Container Toolkit).
 - `--volumes` (only `down.sh`): also remove named volumes
 
@@ -267,8 +268,9 @@ Options:
 Use the official local/demo stack above, then capture evidence without committing secrets:
 
 ```bash
-mkdir -p .cursor/context/evidence/docker-observability
-docker ps > .cursor/context/evidence/docker-observability/docker-ps.txt
+EVIDENCE_DIR="${EVIDENCE_DIR:-exports/evaluation-evidence/docker-observability}"
+mkdir -p "$EVIDENCE_DIR"
+docker ps > "$EVIDENCE_DIR/docker-ps.txt"
 docker compose -f docker/docker-compose.yml -f docker/compose.obs.yml -f docker/compose.prod.yml \
   --profile observability \
   --env-file db/.env \
@@ -276,12 +278,12 @@ docker compose -f docker/docker-compose.yml -f docker/compose.obs.yml -f docker/
   --env-file rag-service/.env \
   --env-file webapp/.env \
   --env-file observability/.env \
-  logs --no-color backend > .cursor/context/evidence/docker-observability/backend.log
-curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/health > .cursor/context/evidence/docker-observability/backend-health.json
-curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/prometheus > .cursor/context/evidence/docker-observability/backend-prometheus.txt
-curl -sf http://127.0.0.1:${PROMETHEUS_PORT:-9090}/-/healthy > .cursor/context/evidence/docker-observability/prometheus-health.txt
-curl -sf http://127.0.0.1:${GRAFANA_PORT:-3000}/api/health > .cursor/context/evidence/docker-observability/grafana-health.json
-curl -sf http://127.0.0.1:${JAEGER_UI_PORT:-16686}/ > .cursor/context/evidence/docker-observability/jaeger-root.html
+  logs --no-color backend > "$EVIDENCE_DIR/backend.log"
+curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/health > "$EVIDENCE_DIR/backend-health.json"
+curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/prometheus > "$EVIDENCE_DIR/backend-prometheus.txt"
+curl -sf http://127.0.0.1:${PROMETHEUS_PORT:-9090}/-/healthy > "$EVIDENCE_DIR/prometheus-health.txt"
+curl -sf http://127.0.0.1:${GRAFANA_PORT:-3000}/api/health > "$EVIDENCE_DIR/grafana-health.json"
+curl -sf http://127.0.0.1:${JAEGER_UI_PORT:-16686}/ > "$EVIDENCE_DIR/jaeger-root.html"
 ```
 
 For screenshots, open Grafana and Jaeger at the URLs printed by `up.sh prod --obs`. Generate at least one Chat or Lab request first, then capture the Grafana dashboard and the Jaeger trace detail. Record the trace ID shown in the UI or in backend logs. Do not store real passwords, JWTs, cookies, or OAuth secrets in evidence files.
@@ -330,14 +332,16 @@ Keep a copy of the repo (e.g. `/opt/rag-spring-ai-ollama`):
 
 > Note: if the backend is not exposed directly (only via reverse proxy), use the reverse-proxy published port (`REVERSE_PROXY_HTTP_PORT` defaults to **80** in `compose.prod.yml`; HTTPS uses `REVERSE_PROXY_HTTPS_PORT`, default **8443** until TLS on **443** is wired).
 
-### HTTPS certificate policy (local/prod-like)
+### HTTPS certificate policy (local / production)
 
-- The reverse-proxy image generates a self-signed certificate by default for local/prod-like testing.
-- You can provide certificate paths with:
-  - `TLS_CERT_PATH`
-  - `TLS_KEY_PATH`
-- Do not commit certificate files or private keys to this repository.
-- For production issuance/renewal with external accounts (ACME, cloud certificates), document operational steps outside this branch scope.
+- The reverse-proxy container generates a **self-signed** certificate at **startup** when `tls.crt` / `tls.key` are missing (see [`../reverse-proxy/README.md`](../reverse-proxy/README.md)).
+- SAN entries are configured with `TLS_CERT_DNS_*`, `TLS_CERT_IP_*`, and `TLS_CERT_COMMON_NAME`.
+- Certificates persist in Docker volume **`reverse_proxy_certs`** mounted at `/etc/nginx/certs`.
+- **Local dev** (`dev --proxy`): HTTP `http://localhost:8080`, HTTPS `https://localhost:8443`, redirect off by default.
+- **Production**: set `REVERSE_PROXY_HTTP_PORT=80`, `REVERSE_PROXY_HTTPS_PORT=443`, `REVERSE_PROXY_ENFORCE_HTTPS=1`, `REVERSE_PROXY_HTTPS_PORT_SUFFIX=` (empty), and university hostname SANs. Open port **443** on the host firewall.
+- Browsers warn on self-signed certs unless trusted manually; use a CA-signed certificate for public production (mount into the cert volume).
+- **Google OAuth** redirect URIs must match the exact production HTTPS callback URL.
+- Override paths with `TLS_CERT_PATH` and `TLS_KEY_PATH`. Do not commit keys to the repository.
 
 ### Log rotation and volumes
 
@@ -348,6 +352,7 @@ Keep a copy of the repo (e.g. `/opt/rag-spring-ai-ollama`):
    - `prometheus_data`
    - `grafana_data`
    - `ollama_data`
+   - `reverse_proxy_certs`
 3. Backups:
    - Use `db/scripts/backup-db.sh` / `db/scripts/restore-db.sh` for PostgreSQL.
 

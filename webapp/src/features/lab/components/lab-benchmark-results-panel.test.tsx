@@ -12,7 +12,10 @@ vi.mock("@/features/lab/lib/lab-benchmark-results-api", () => ({
   fetchCampaignItemsBundle: vi.fn(),
   fetchMvpRollupsJson: vi.fn(),
   fetchMvpItemsBundle: vi.fn(),
+  fetchEvaluationResultsJson: vi.fn(),
   downloadMvpExport: vi.fn(),
+  downloadEvaluationSummaryCsv: vi.fn(),
+  downloadEvaluationFullBundle: vi.fn(),
   downloadCampaignMvpItemsJson: vi.fn(),
   downloadCampaignItemsJson: vi.fn(),
   downloadCampaignSummaryJson: vi.fn(),
@@ -26,6 +29,7 @@ import {
   fetchCampaignItemsBundle,
   fetchMvpItemsBundle,
   fetchMvpRollupsJson,
+  fetchEvaluationResultsJson,
 } from "@/features/lab/lib/lab-benchmark-results-api";
 import { ApiError } from "@/lib/api-client";
 
@@ -71,10 +75,19 @@ describe("LabBenchmarkResultsPanel", () => {
     vi.mocked(fetchLabCampaignRuns).mockReset();
     vi.mocked(fetchMvpRollupsJson).mockReset();
     vi.mocked(fetchMvpItemsBundle).mockReset();
+    vi.mocked(fetchEvaluationResultsJson).mockReset();
     vi.mocked(fetchCampaignComparison).mockReset();
     vi.mocked(fetchCampaignItemsBundle).mockReset();
     vi.mocked(fetchCampaignItemsBundle).mockResolvedValue({ items: [] });
+    vi.mocked(fetchEvaluationResultsJson).mockRejectedValue(new Error("mvp fallback"));
   });
+
+  function openAdvancedExports() {
+    const advanced = screen.getByTestId("lab-benchmark-export-advanced");
+    if (!(advanced as HTMLDetailsElement).open) {
+      fireEvent.click(screen.getByText(/Advanced exports/i));
+    }
+  }
 
   it("resolves campaignId from run detail when prop is missing", async () => {
     vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
@@ -93,7 +106,7 @@ describe("LabBenchmarkResultsPanel", () => {
           itemId: "item-1",
           question: "Q1",
           presetCode: "P0",
-          presetLabel: "Corpus text only",
+          presetLabel: "Indexed text answers",
           status: "EXECUTED",
           mvp: { operational: { outcome: "EXECUTED", presetCode: "P0" } },
         },
@@ -105,7 +118,7 @@ describe("LabBenchmarkResultsPanel", () => {
       rows: [
         {
           presetKey: "P0",
-          presetLabel: "Corpus text only",
+          presetLabel: "Indexed text answers",
           executed: 60,
           skipped: 0,
           totalItems: 60,
@@ -125,8 +138,10 @@ describe("LabBenchmarkResultsPanel", () => {
 
     renderPanel({ evaluationRunId: baseRun.id });
 
-    await waitFor(() => expect(screen.getByTestId("lab-export-campaign-items-json")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("lab-export-primary-json")).toBeInTheDocument());
     await waitFor(() => expect(screen.getByTestId("lab-campaign-comparison-panel")).toBeInTheDocument());
+    openAdvancedExports();
+    expect(screen.getByTestId("lab-export-campaign-items-json")).toBeInTheDocument();
     expect(fetchCampaignComparison).toHaveBeenCalledWith("recovered-campaign-id");
     expect(screen.getByText("Answerable score")).toBeInTheDocument();
     expect(screen.getByText("0.910")).toBeInTheDocument();
@@ -244,7 +259,7 @@ describe("LabBenchmarkResultsPanel", () => {
     expect(screen.queryByTestId("lab-benchmark-m9-export-path")).not.toBeInTheDocument();
     expect(screen.queryByText(/\bM9\b/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/partial evidence/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/\.cursor/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/docs/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Do not claim/i)).not.toBeInTheDocument();
   });
 
@@ -302,6 +317,9 @@ describe("LabBenchmarkResultsPanel", () => {
     expect(screen.getAllByTestId(/lab-comparison-row-/)).toHaveLength(3);
     expect(screen.getAllByText(/model-b/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/model-c/i).length).toBeGreaterThanOrEqual(1);
+    const comparisonPanel = screen.getByTestId("lab-campaign-comparison-panel");
+    expect(comparisonPanel).toHaveAttribute("data-comparison-axis", "LLM_MODEL");
+    openAdvancedExports();
     expect(screen.getByTestId("lab-export-campaign-summary-csv")).toBeInTheDocument();
   });
 
@@ -331,14 +349,21 @@ describe("LabBenchmarkResultsPanel", () => {
     vi.mocked(fetchCampaignComparison).mockResolvedValue({
       comparisonAxis: "EMBEDDING_MODEL",
       comparisonAxisLabel: "Embedding model",
-      rows: [{ comparisonLabel: "qwen3-embedding:latest", totalItems: 1, failed: 1, executed: 0 }],
+      rows: [
+        { comparisonLabel: "qwen3-embedding:latest", totalItems: 1, failed: 1, executed: 0 },
+        { comparisonLabel: "nomic-embed-text", totalItems: 1, executed: 1, meanExactMatch: 0.8 },
+      ],
     } as never);
 
     renderPanel({ evaluationRunId: baseRun.id, campaignId: "emb-campaign" });
 
     await waitFor(() => expect(screen.getByTestId("lab-failed-skipped-section")).toBeInTheDocument());
     expect(screen.queryByText(/_UNKNOWN/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/qwen3-embedding/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/qwen3-embedding/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByTestId("lab-campaign-comparison-panel")).toHaveAttribute(
+      "data-comparison-axis",
+      "EMBEDDING_MODEL",
+    );
   });
 
   it("shows RAG preset labels in the item table", async () => {
@@ -379,8 +404,8 @@ describe("LabBenchmarkResultsPanel", () => {
     });
     vi.mocked(fetchMvpItemsBundle).mockResolvedValue({ items: [] });
     vi.mocked(fetchLabCampaignRuns).mockResolvedValue([
-      { runId: "r-p0", presetCode: "P0", presetLabel: "Corpus text only", status: "SUCCEEDED" },
-      { runId: "r-p2", presetCode: "P2", presetLabel: "Document-level dense retrieval", status: "SUCCEEDED" },
+      { runId: "r-p0", presetCode: "P0", presetLabel: "Indexed text answers", status: "SUCCEEDED" },
+      { runId: "r-p2", presetCode: "P2", presetLabel: "Document-level retrieval", status: "SUCCEEDED" },
     ]);
     vi.mocked(fetchCampaignComparison).mockResolvedValue({
       comparisonAxis: "PRESET_CODE",
@@ -388,7 +413,7 @@ describe("LabBenchmarkResultsPanel", () => {
       rows: [
         {
           presetKey: "P2",
-          presetLabel: "Document-level dense retrieval",
+          presetLabel: "Document-level retrieval",
           modelLabel: "gemma3:4b",
           totalItems: 60,
           executed: 60,
@@ -397,7 +422,7 @@ describe("LabBenchmarkResultsPanel", () => {
         },
         {
           presetKey: "P0",
-          presetLabel: "Corpus text only",
+          presetLabel: "Indexed text answers",
           modelLabel: "gemma3:4b",
           totalItems: 60,
           executed: 0,
@@ -413,7 +438,7 @@ describe("LabBenchmarkResultsPanel", () => {
           question: "What is RAG?",
           answer: "Retrieval augmented generation",
           presetCode: "P2",
-          presetLabel: "Document-level dense retrieval",
+          presetLabel: "Document-level retrieval",
           status: "EXECUTED",
           mvp: {
             generation: { correctness: 0.9 },
@@ -424,7 +449,7 @@ describe("LabBenchmarkResultsPanel", () => {
           itemId: "skip-1",
           question: "Skipped question",
           presetCode: "P0",
-          presetLabel: "Corpus text only",
+          presetLabel: "Indexed text answers",
           status: "SKIPPED",
           failureReason: "INDEX_PREPARATION_REQUIRED",
           mvp: {
@@ -441,8 +466,8 @@ describe("LabBenchmarkResultsPanel", () => {
     renderPanel({ evaluationRunId: baseRun.id, campaignId: "rag-campaign" });
 
     await waitFor(() => expect(screen.getByTestId("lab-campaign-comparison-panel")).toBeInTheDocument());
-    expect(screen.getAllByText(/Document-level dense retrieval/i).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/Corpus text only/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Document-level retrieval/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Indexed text answers/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByTestId("lab-campaign-comparison-panel").textContent).not.toMatch(/gemma3:4b/i);
     expect(screen.queryByTestId("lab-benchmark-no-executed-warning")).not.toBeInTheDocument();
     expect(screen.getByTestId("lab-campaign-partial-summary")).toBeInTheDocument();
@@ -608,5 +633,113 @@ describe("LabBenchmarkResultsPanel", () => {
 
     await waitFor(() => expect(screen.getByTestId("lab-campaign-comparison-empty")).toBeInTheDocument());
     expect(screen.queryByTestId("lab-campaign-comparison-panel")).not.toBeInTheDocument();
+  });
+
+  it("shows only main JSON and CSV exports by default", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue(baseRun);
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 1 }, onExecuted: { n: 1, meanNormalizedExactMatch: 0.5 } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({ items: [] });
+
+    renderPanel({ evaluationRunId: baseRun.id });
+
+    await waitFor(() => expect(screen.getByTestId("lab-export-primary-json")).toBeInTheDocument());
+    expect(screen.getByTestId("lab-export-primary-csv")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-export-v1-full-bundle")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-export-mvp-csv")).not.toBeVisible();
+    expect(screen.getByTestId("lab-export-mvp-items-json")).not.toBeVisible();
+    expect(screen.getByText("Download JSON")).toBeInTheDocument();
+    expect(screen.getByText("Download CSV summary")).toBeInTheDocument();
+  });
+
+  it("places legacy and campaign exports under advanced section", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      campaignId: "adv-campaign",
+      campaignMode: true,
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 1 }, onExecuted: { n: 1, meanNormalizedExactMatch: 0.5 } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({ items: [] });
+    vi.mocked(fetchLabCampaignRuns).mockResolvedValue([]);
+    vi.mocked(fetchCampaignComparison).mockResolvedValue({ comparisonAxis: "LLM_MODEL", rows: [] } as never);
+
+    renderPanel({ evaluationRunId: baseRun.id, campaignId: "adv-campaign" });
+
+    await waitFor(() => expect(screen.getByTestId("lab-benchmark-export-advanced")).toBeInTheDocument());
+    expect(screen.getByTestId("lab-export-mvp-rollups-json")).not.toBeVisible();
+    openAdvancedExports();
+    expect(screen.getByTestId("lab-export-mvp-rollups-json")).toBeVisible();
+    expect(screen.getByTestId("lab-export-campaign-items-json")).toBeVisible();
+  });
+
+  it("renders comparison table with preset axis attribute", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      benchmarkKind: "RAG_PRESET_END_TO_END",
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 2 }, onExecuted: { n: 2, meanNormalizedExactMatch: 0.5 } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({ items: [] });
+    vi.mocked(fetchLabCampaignRuns).mockResolvedValue([]);
+    vi.mocked(fetchCampaignComparison).mockResolvedValue({
+      comparisonAxis: "PRESET_CODE",
+      rows: [
+        { presetKey: "P0", presetLabel: "Indexed text answers", executed: 1, totalItems: 1, scoreAnswerable: 0.9 },
+        { presetKey: "P2", presetLabel: "Dense retrieval", executed: 1, totalItems: 1, scoreAnswerable: 0.8 },
+      ],
+    } as never);
+
+    renderPanel({ evaluationRunId: baseRun.id, campaignId: "preset-campaign" });
+
+    await waitFor(() => expect(screen.getByTestId("lab-campaign-comparison-panel")).toBeInTheDocument());
+    expect(screen.getByTestId("lab-campaign-comparison-panel")).toHaveAttribute("data-comparison-axis", "PRESET_CODE");
+    expect(screen.getByText("Global score")).toBeInTheDocument();
+    expect(screen.getByText("Latency")).toBeInTheDocument();
+  });
+
+  it("shows derived error class filter when items expose error classes", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      benchmarkKind: "RAG_PRESET_END_TO_END",
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { SKIPPED: 2 }, onExecuted: { n: 0, meanNormalizedExactMatch: null } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({
+      items: [
+        {
+          id: "skip-index",
+          questionText: "Needs index",
+          derivedErrorClass: "INDEX_PREPARATION",
+          mvp: {
+            operational: { outcome: "SKIPPED", presetCode: "P0", skipReasonCode: "INDEX_PREPARATION_REQUIRED" },
+          },
+        },
+        {
+          id: "skip-runtime",
+          questionText: "Runtime issue",
+          derivedErrorClass: "RUNTIME_FAILURE",
+          mvp: {
+            operational: { outcome: "FAILED", presetCode: "P2" },
+          },
+        },
+      ],
+    });
+
+    renderPanel({ evaluationRunId: baseRun.id });
+
+    await waitFor(() => expect(screen.getByTestId("lab-results-filter-error-class")).toBeInTheDocument());
+    const errorSelect = screen.getByTestId("lab-results-filter-error-class") as HTMLSelectElement;
+    const optionValues = Array.from(errorSelect.options).map((option) => option.value);
+    expect(optionValues).toContain("INDEX_PREPARATION");
+    expect(optionValues).toContain("RUNTIME_FAILURE");
+
+    fireEvent.change(errorSelect, { target: { value: "INDEX_PREPARATION" } });
+    await waitFor(() => expect(screen.getByText(/Needs index/i)).toBeInTheDocument());
+    expect(screen.queryByText(/Runtime issue/i)).not.toBeInTheDocument();
   });
 });

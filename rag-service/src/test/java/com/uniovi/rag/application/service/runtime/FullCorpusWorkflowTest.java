@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.testsupport.config.TestConfigurablePromptResolver;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -48,7 +49,7 @@ class FullCorpusWorkflowTest {
         when(assembler.assembleFullCorpusText(any(ExecutionContext.class)))
                 .thenReturn("CORPUS");
 
-        FullCorpusWorkflow wf = new FullCorpusWorkflow(llmChatInvoker, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), null);
+        FullCorpusWorkflow wf = new FullCorpusWorkflow(llmChatInvoker, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         ExecutionContext ctx = minimalCtx();
         RagExecutionResult out = wf.execute(ctx);

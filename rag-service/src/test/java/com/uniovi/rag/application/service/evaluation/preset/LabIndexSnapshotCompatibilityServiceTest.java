@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess;
 import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
@@ -31,6 +32,7 @@ class LabIndexSnapshotCompatibilityServiceTest {
 
     @Mock private CorpusAvailabilityGate corpusAvailabilityGate;
     @Mock private KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
+    @Mock private KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess;
 
     private LabIndexSnapshotCompatibilityService service;
 
@@ -41,7 +43,9 @@ class LabIndexSnapshotCompatibilityServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator);
+        service =
+                new LabIndexSnapshotCompatibilityService(
+                        corpusAvailabilityGate, knowledgePipelineOrchestrator, snapshotProfileAccess);
     }
 
     @Test
@@ -197,6 +201,23 @@ class LabIndexSnapshotCompatibilityServiceTest {
     }
 
     @Test
+    void profileCompatible_usesTransactionalProfileAccess_notDetachedEntity() {
+        KnowledgeIndexSnapshotEntity detachedProxy = mock(KnowledgeIndexSnapshotEntity.class);
+        when(detachedProxy.getId()).thenReturn(snapshotId);
+        Map<String, Object> profile = Map.of("materializationStrategy", "CHUNK_LEVEL");
+        when(snapshotProfileAccess.resolveProfileJsonb(detachedProxy)).thenReturn(profile);
+
+        boolean compatible =
+                service.profileCompatible(
+                        detachedProxy,
+                        ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(
+                                RagExperimentalPresetCode.P3),
+                        null);
+
+        assertThat(compatible).isTrue();
+    }
+
+    @Test
     void staleSnapshotBlocked() {
         KnowledgeIndexSnapshotEntity snapshot =
                 snapshotWithProfile(Map.of("materializationStrategy", "CHUNK_LEVEL"));
@@ -226,8 +247,8 @@ class LabIndexSnapshotCompatibilityServiceTest {
     private KnowledgeIndexSnapshotEntity snapshotWithProfile(Map<String, Object> profile) {
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
         when(snapshot.getId()).thenReturn(snapshotId);
-        when(snapshot.getIndexProfileJsonb()).thenReturn(profile);
         when(snapshot.getSignatureHash()).thenReturn("sig-current");
+        when(snapshotProfileAccess.resolveProfileJsonb(snapshot)).thenReturn(profile);
         return snapshot;
     }
 

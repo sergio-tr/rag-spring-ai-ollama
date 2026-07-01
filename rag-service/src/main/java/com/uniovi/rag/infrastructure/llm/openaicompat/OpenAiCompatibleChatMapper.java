@@ -21,7 +21,18 @@ final class OpenAiCompatibleChatMapper {
         for (LlmChatMessage message : request.messages()) {
             messages.add(new OpenAiChatMessageDto(toApiRole(message.role()), message.content()));
         }
-        return new OpenAiChatCompletionRequest(request.model(), messages, request.temperature());
+        Map<String, Object> additional = request.additionalParameters();
+        return new OpenAiChatCompletionRequest(
+                request.model(),
+                messages,
+                request.temperature(),
+                readDouble(additional, "topP", "top_p"),
+                readInteger(additional, "maxTokens", "max_tokens"),
+                readStop(additional),
+                null,
+                null,
+                readInteger(additional, "seed"),
+                readResponseFormat(additional));
     }
 
     static LlmChatResponse toPortResponse(OpenAiChatCompletionResponse response, String requestedModel) {
@@ -62,6 +73,76 @@ final class OpenAiCompatibleChatMapper {
             case ASSISTANT -> "assistant";
             case TOOL -> "tool";
         };
+    }
+
+    private static Integer readInteger(Map<String, Object> parameters, String... keys) {
+        if (parameters == null || parameters.isEmpty()) {
+            return null;
+        }
+        for (String key : keys) {
+            if (!parameters.containsKey(key)) {
+                continue;
+            }
+            Object raw = parameters.get(key);
+            if (raw instanceof Number number) {
+                return number.intValue();
+            }
+        }
+        return null;
+    }
+
+    private static Double readDouble(Map<String, Object> parameters, String... keys) {
+        if (parameters == null || parameters.isEmpty()) {
+            return null;
+        }
+        for (String key : keys) {
+            if (!parameters.containsKey(key)) {
+                continue;
+            }
+            Object raw = parameters.get(key);
+            if (raw instanceof Number number) {
+                return number.doubleValue();
+            }
+        }
+        return null;
+    }
+
+    private static Object readStop(Map<String, Object> parameters) {
+        if (parameters == null || !parameters.containsKey("stop")) {
+            return null;
+        }
+        Object raw = parameters.get("stop");
+        if (raw instanceof String stop && !stop.isBlank()) {
+            return stop;
+        }
+        if (raw instanceof List<?> stopList) {
+            List<String> stops = new ArrayList<>();
+            for (Object item : stopList) {
+                if (item instanceof String s && !s.isBlank()) {
+                    stops.add(s);
+                }
+            }
+            return stops.isEmpty() ? null : stops;
+        }
+        return null;
+    }
+
+    /**
+     * Only forwards structured response_format objects (e.g. {@code {"type":"json_object"}}).
+     * Plain strings are ignored because they are not valid OpenAI request shapes.
+     */
+    private static Object readResponseFormat(Map<String, Object> parameters) {
+        if (parameters == null) {
+            return null;
+        }
+        Object raw = parameters.get("responseFormat");
+        if (raw == null) {
+            raw = parameters.get("response_format");
+        }
+        if (raw instanceof Map<?, ?> map && !map.isEmpty()) {
+            return Map.copyOf(map);
+        }
+        return null;
     }
 
     static OpenAiCompatibleLlmException mapHttpError(int statusCode, String body, String completionsUrl) {

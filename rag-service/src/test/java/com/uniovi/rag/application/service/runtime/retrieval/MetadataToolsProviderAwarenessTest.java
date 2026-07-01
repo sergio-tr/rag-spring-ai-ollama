@@ -13,6 +13,7 @@ import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityS
 import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.llm.ProviderAwareEmbeddingService;
+import com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
@@ -45,6 +46,7 @@ class MetadataToolsProviderAwarenessTest {
     @Mock private KnowledgeIndexSnapshotRepository snapshotRepository;
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
     @Mock private ContextRetriever delegateRetriever;
+    @Mock private EmbeddingModelCatalogResolver embeddingModelCatalogResolver;
 
     private EmbeddingIndexCompatibilityService compatibilityService;
     private ProviderAwareContextRetriever providerAwareRetriever;
@@ -53,7 +55,10 @@ class MetadataToolsProviderAwarenessTest {
     void setUp() {
         compatibilityService =
                 new EmbeddingIndexCompatibilityService(
-                        providerAwareEmbeddingService, snapshotRepository, knowledgeSnapshotService);
+                        providerAwareEmbeddingService,
+                        snapshotRepository,
+                        knowledgeSnapshotService,
+                        embeddingModelCatalogResolver);
         providerAwareRetriever = new ProviderAwareContextRetriever(delegateRetriever, compatibilityService);
         RagExecutionContextHolder.set(
                 new RagExecutionContext(

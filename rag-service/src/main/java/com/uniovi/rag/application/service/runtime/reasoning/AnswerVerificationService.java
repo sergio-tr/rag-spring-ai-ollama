@@ -1,13 +1,12 @@
 package com.uniovi.rag.application.service.runtime.reasoning;
 
-import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.stereotype.Service;
 
 /**
@@ -16,6 +15,8 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class AnswerVerificationService {
+
+    public static final String OPERATION_ANSWER_QUALITY_CHECK = "answer-quality-check";
 
     private static final String PROMPT = """
             You are a strict verifier.
@@ -27,13 +28,10 @@ public class AnswerVerificationService {
             Answer: %s
             """;
 
-    private final ChatClient chatClient;
-    private final ChatGenerationModelSelector chatGenerationModelSelector;
+    private final ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
 
-    public AnswerVerificationService(
-            ChatClient chatClient, ChatGenerationModelSelector chatGenerationModelSelector) {
-        this.chatClient = chatClient;
-        this.chatGenerationModelSelector = chatGenerationModelSelector;
+    public AnswerVerificationService(ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor) {
+        this.secondaryLlmExecutor = secondaryLlmExecutor;
     }
 
     public VerificationResult verify(ExecutionContext ctx, String question, String contextExcerpt, String answer) {
@@ -49,12 +47,14 @@ public class AnswerVerificationService {
         }
         try {
             String prompt = String.format(PROMPT, safe(question, 240), safe(contextExcerpt, 900), safe(answer, 900));
-            var spec = chatClient.prompt().user(prompt);
-            if (ctx != null) {
-                chatGenerationModelSelector.effectiveChatModelId(ctx)
-                        .ifPresent(m -> spec.options(OllamaOptions.builder().model(m).build()));
-            }
-            String raw = spec.call().content();
+            String raw =
+                    secondaryLlmExecutor.complete(
+                            ctx,
+                            OPERATION_ANSWER_QUALITY_CHECK,
+                            null,
+                            prompt,
+                            ProviderAwareSecondaryLlmExecutor.SECONDARY_TASK_DEFAULT_TEMPERATURE);
+            ResolvedLlmConfig config = secondaryLlmExecutor.effectiveConfig(ctx);
             String token = raw != null ? raw.trim().toUpperCase() : "";
             Optional<Boolean> verified =
                     token.startsWith("YES") ? Optional.of(true) : (token.startsWith("NO") ? Optional.of(false) : Optional.empty());
@@ -63,7 +63,14 @@ public class AnswerVerificationService {
                             "reasoning_verify",
                             TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0),
                             verified.isPresent() ? ExecutionStageOutcome.SUCCESS : ExecutionStageOutcome.FAILED,
-                            "outcome=" + (verified.map(v -> v ? "YES" : "NO").orElse("UNKNOWN")));
+                            "outcome="
+                                    + (verified.map(v -> v ? "YES" : "NO").orElse("UNKNOWN"))
+                                    + " operation="
+                                    + OPERATION_ANSWER_QUALITY_CHECK
+                                    + " provider="
+                                    + config.chatProvider()
+                                    + " model="
+                                    + config.chatModel());
             return new VerificationResult(verified, trace);
         } catch (Exception e) {
             return new VerificationResult(
@@ -89,4 +96,3 @@ public class AnswerVerificationService {
 
     public record VerificationResult(Optional<Boolean> verified, ExecutionStageTrace stageTrace) {}
 }
-

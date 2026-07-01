@@ -61,6 +61,7 @@ describe("EditProjectDialog", () => {
         id: "proj-1",
         name: "Beta",
         description: "Desc",
+        projectPrompt: null,
         colorHex: "#6b7280",
         iconKey: undefined,
       }),

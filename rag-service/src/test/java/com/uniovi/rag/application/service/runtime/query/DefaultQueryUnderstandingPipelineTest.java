@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.query;
 
+import com.uniovi.rag.testsupport.config.TestConfigurablePromptResolver;
 import com.uniovi.rag.testsupport.llm.ChatGenerationModelSelectorTestSupport;
 import com.uniovi.rag.configuration.RagClassifierProperties;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
@@ -35,7 +36,8 @@ import java.util.UUID;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.mockito.Answers;
-import org.springframework.ai.chat.client.ChatClient;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -171,7 +173,7 @@ class DefaultQueryUnderstandingPipelineTest {
         QueryAnalyser analyser = mock(QueryAnalyser.class);
         when(analyser.analyse(anyString())).thenReturn(new JSONObject("{\"date\":[],\"place\":[],\"attendees\":[],\"topics\":[],\"mentionedEntities\":[],\"answerType\":\"unknown\",\"comparisonType\":\"none\",\"temporalContext\":\"none\"}"));
 
-        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
+        ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor = mock(ProviderAwareSecondaryLlmExecutor.class);
         String rewriteJson = """
                 {
                   "rewrittenQueryText": "list all items",
@@ -182,13 +184,17 @@ class DefaultQueryUnderstandingPipelineTest {
                   "constraints": []
                 }
                 """;
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content())
+        when(secondaryLlmExecutor.complete(
+                        any(ExecutionContext.class),
+                        eq("query-rewrite"),
+                        anyString(),
+                        anyString(),
+                        eq(ProviderAwareSecondaryLlmExecutor.SECONDARY_TASK_DEFAULT_TEMPERATURE)))
                 .thenReturn(rewriteJson);
 
         DefaultQueryClassifierAdapter classifierAdapter = classifierAdapter(classifier);
         DefaultNamedEntityExtractionAdapter nerAdapter = new DefaultNamedEntityExtractionAdapter(analyser);
-        DefaultStructuredQueryRewriter rewriter =
-                new DefaultStructuredQueryRewriter(chatClient, ChatGenerationModelSelectorTestSupport.permissiveMock());
+        DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(secondaryLlmExecutor, TestConfigurablePromptResolver.defaultsOnly());
         DefaultQueryIntentResolver intentResolver = new DefaultQueryIntentResolver();
         DefaultExpectedAnswerShapeResolver shapeResolver = new DefaultExpectedAnswerShapeResolver();
         DefaultAmbiguityAssessmentService ambiguity = new DefaultAmbiguityAssessmentService();
