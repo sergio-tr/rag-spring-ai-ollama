@@ -72,7 +72,7 @@ class ProviderHttpClientIntegrationTest {
             OpenAiCompatibleEmbeddingsHttpClient client = new OpenAiCompatibleEmbeddingsHttpClient();
             assertEquals(
                     2,
-                    client.post(server.baseUrl(), "key", new OpenAiEmbeddingRequest("qwen3-embedding:8b", "hola"), 5_000)
+                    client.post(server.baseUrl(), "key", new OpenAiEmbeddingRequest("qwen3-embedding:8b", "hola", null, null, null), 5_000)
                             .data()
                             .getFirst()
                             .embedding()
@@ -130,7 +130,7 @@ class ProviderHttpClientIntegrationTest {
                     """));
 
             OpenAiCompatibleEmbeddingsHttpClient client = new OpenAiCompatibleEmbeddingsHttpClient();
-            client.post(server.baseUrl(), "key", new OpenAiEmbeddingRequest("m", "hola"), 5_000);
+            client.post(server.baseUrl(), "key", new OpenAiEmbeddingRequest("m", "hola", null, null, null), 5_000);
             assertFalse(ollamaTouched.get());
         }
     }

@@ -2,6 +2,8 @@ package com.uniovi.rag.infrastructure.llm.openaicompat;
 
 import com.uniovi.rag.application.port.llm.LlmEmbeddingRequest;
 import com.uniovi.rag.application.port.llm.LlmEmbeddingResponse;
+import com.uniovi.rag.application.service.embedding.EmbeddingBenchmarkRuntimeParameters;
+import com.uniovi.rag.domain.embedding.EmbeddingRequestOptions;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -13,7 +15,19 @@ final class OpenAiCompatibleEmbeddingMapper {
 
     static OpenAiEmbeddingRequest toApiRequest(LlmEmbeddingRequest request) {
         Object input = request.texts().size() == 1 ? request.texts().getFirst() : request.texts();
-        return new OpenAiEmbeddingRequest(request.model(), input);
+        EmbeddingRequestOptions options = readOptions(request);
+        return new OpenAiEmbeddingRequest(
+                request.model(),
+                input,
+                options.encodingFormat(),
+                options.dimensions(),
+                options.user());
+    }
+
+    private static EmbeddingRequestOptions readOptions(LlmEmbeddingRequest request) {
+        Map<String, Object> additional =
+                request.additionalParameters() != null ? request.additionalParameters() : Map.of();
+        return EmbeddingBenchmarkRuntimeParameters.readEmbeddingOptions(additional);
     }
 
     static LlmEmbeddingResponse toPortResponse(OpenAiEmbeddingResponse apiResponse, String requestedModel) {

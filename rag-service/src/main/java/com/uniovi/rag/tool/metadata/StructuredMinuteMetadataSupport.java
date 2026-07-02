@@ -11,6 +11,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -465,7 +466,7 @@ public final class StructuredMinuteMetadataSupport {
         if (minutes == null || minutes.isEmpty()) {
             return Optional.empty();
         }
-        java.util.LinkedHashSet<String> places = new java.util.LinkedHashSet<>();
+        LinkedHashSet<String> places = new LinkedHashSet<>();
         for (Minute minute : minutes) {
             if (minute != null && minute.place() != null && !minute.place().isBlank()) {
                 places.add(minute.place().trim());

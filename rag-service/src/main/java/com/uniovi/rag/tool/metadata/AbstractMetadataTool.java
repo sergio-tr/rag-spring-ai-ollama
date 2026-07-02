@@ -11,6 +11,8 @@ import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityS
 import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.application.service.runtime.advisor.MetadataToolContextAssembler;
+import com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry;
+import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import com.uniovi.rag.tool.AbstractTool;
 import com.uniovi.rag.tool.ToolResult;
@@ -4429,10 +4431,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     query,
                     cached.size(),
                     merged.size());
-            com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry.logTool(
+            RagToolTimingTelemetry.logTool(
                     getClass().getSimpleName(),
                     "corpus_merge",
-                    com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry.elapsedMs(start),
+                    RagToolTimingTelemetry.elapsedMs(start),
                     "OK",
                     "raw=" + cached.size() + " merged=" + merged.size());
             return merged;
@@ -4449,10 +4451,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     query,
                     raw.size(),
                     merged.size());
-            com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry.logTool(
+            RagToolTimingTelemetry.logTool(
                     getClass().getSimpleName(),
                     "corpus_merge_vector",
-                    com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry.elapsedMs(start),
+                    RagToolTimingTelemetry.elapsedMs(start),
                     "OK",
                     "raw=" + raw.size() + " merged=" + merged.size());
             return merged;
@@ -4488,7 +4490,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return false;
         }
         String q = query.toLowerCase(Locale.ROOT);
-        return com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)
+        return ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)
                 || q.contains("en cuántas actas")
                 || q.contains("en cuantas actas")
                 || q.contains("en qué actas")
@@ -4553,10 +4555,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             docs =
                     mergeChunksByDocumentId(
                             mergeChunksWithRichestMetadata(collectInScopeCorpusRows(cached)));
-            com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry.logTool(
+            RagToolTimingTelemetry.logTool(
                     getClass().getSimpleName(),
                     "date_iso_lookup",
-                    com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry.elapsedMs(start),
+                    RagToolTimingTelemetry.elapsedMs(start),
                     "CACHE",
                     "date=" + requestedDate);
         } else {

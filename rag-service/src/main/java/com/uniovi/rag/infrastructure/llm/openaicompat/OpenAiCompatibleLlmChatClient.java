@@ -3,6 +3,7 @@ package com.uniovi.rag.infrastructure.llm.openaicompat;
 import com.uniovi.rag.application.port.llm.LlmChatClient;
 import com.uniovi.rag.application.port.llm.LlmChatRequest;
 import com.uniovi.rag.application.port.llm.LlmChatResponse;
+import com.uniovi.rag.application.service.llm.LlmProviderParameterFilter;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.infrastructure.llm.LlmOpenAiCompatibleDefaults;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
@@ -22,14 +23,17 @@ public class OpenAiCompatibleLlmChatClient implements LlmChatClient {
     private final LlmProperties llmProperties;
     private final OpenAiCompatibleApiKeyResolver apiKeyResolver;
     private final OpenAiCompatibleChatCompletionsHttpClient httpClient;
+    private final LlmProviderParameterFilter parameterFilter;
 
     public OpenAiCompatibleLlmChatClient(
             LlmProperties llmProperties,
             OpenAiCompatibleApiKeyResolver apiKeyResolver,
-            OpenAiCompatibleChatCompletionsHttpClient httpClient) {
+            OpenAiCompatibleChatCompletionsHttpClient httpClient,
+            LlmProviderParameterFilter parameterFilter) {
         this.llmProperties = llmProperties;
         this.apiKeyResolver = apiKeyResolver;
         this.httpClient = httpClient;
+        this.parameterFilter = parameterFilter;
     }
 
     @Override
@@ -41,7 +45,8 @@ public class OpenAiCompatibleLlmChatClient implements LlmChatClient {
         }
         String apiKey = apiKeyResolver.resolve(config.getDefaultApiKeyEnv());
         long timeoutMs = resolveTimeoutMs(request, config);
-        OpenAiChatCompletionRequest apiRequest = OpenAiCompatibleChatMapper.toApiRequest(request);
+        LlmChatRequest filtered = parameterFilter.filterChatRequest(request, LlmProvider.OPENAI_COMPATIBLE);
+        OpenAiChatCompletionRequest apiRequest = OpenAiCompatibleChatMapper.toApiRequest(filtered);
         OpenAiChatCompletionResponse apiResponse =
                 httpClient.post(config.getDefaultBaseUrl(), apiKey, apiRequest, timeoutMs);
         return OpenAiCompatibleChatMapper.toPortResponse(apiResponse, request.model());

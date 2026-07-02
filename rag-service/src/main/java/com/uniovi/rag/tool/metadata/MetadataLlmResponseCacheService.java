@@ -5,6 +5,7 @@ import com.uniovi.rag.application.port.llm.LlmChatRequest;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.config.llm.TaskLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
+import com.uniovi.rag.application.service.llm.LlmProviderParameterFilter;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
@@ -96,6 +97,14 @@ public class MetadataLlmResponseCacheService {
                 return "";
             } catch (Exception e) {
                 lastException = e;
+                if (LlmProviderParameterFilter.isUnsupportedParamsError(e)) {
+                    log.error(
+                            "Unsupported LLM parameters in getCachedResponse (attempt {}): {}",
+                            attempt + 1,
+                            e.getMessage(),
+                            e);
+                    return "";
+                }
                 logLlmExceptionByKind(attempt + 1, e);
             }
         }

@@ -62,6 +62,8 @@ public final class LlmExceptionTranslator {
                     provider, operation, effectiveModel, baseUrl, ex);
             case INVALID_MODEL -> LlmRemoteFailures.invalidModel(
                     provider, operation, effectiveModel, baseUrl, ex.getMessage());
+            case UNSUPPORTED_PARAMS -> LlmRemoteFailures.remoteHttp(
+                    provider, operation, effectiveModel, baseUrl, 400, ex.getMessage());
             case INVALID_RESPONSE -> LlmRemoteFailures.invalidResponse(
                     provider, operation, effectiveModel, baseUrl, ex.getMessage());
             case HTTP_ERROR -> LlmRemoteFailures.remoteHttp(
