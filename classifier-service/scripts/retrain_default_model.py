@@ -29,6 +29,9 @@ from app.training.trainer import TrainingPipeline  # noqa: E402
 
 
 def _default_train_xlsx(data_dir: Path) -> Path:
+    final = data_dir / "basic_dataset_qa_clasificacion_final.xlsx"
+    if final.is_file():
+        return final
     clean = data_dir / "basic_dataset_qa_clasificacion_clean.xlsx"
     if clean.is_file():
         return clean
