@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime.query;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import org.junit.jupiter.api.Test;
 
 class ActaSlashDateSupportTest {
@@ -33,7 +34,7 @@ class ActaSlashDateSupportTest {
         assertThat(
                         ActaFieldAnchorHeuristics.needsActaAnchor(
                                 "hazme un resumen del 25/02/26",
-                                com.uniovi.rag.domain.runtime.query.EntityExtractionResult.emptyWithNote(null)))
+                                EntityExtractionResult.emptyWithNote(null)))
                 .isFalse();
     }
 }

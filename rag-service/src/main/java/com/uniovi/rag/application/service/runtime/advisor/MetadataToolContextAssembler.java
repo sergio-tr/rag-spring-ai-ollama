@@ -6,7 +6,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 /**
@@ -17,8 +19,8 @@ public class MetadataToolContextAssembler {
 
     private static final int MAX_CONTEXT_CHARS = 10_000;
 
-    private static final java.util.regex.Pattern FOOTER_BOILERPLATE =
-            java.util.regex.Pattern.compile(
+    private static final Pattern FOOTER_BOILERPLATE =
+            Pattern.compile(
                     "(?is).*(?:no habiendo más asuntos|se da por finalizada|clausura de la sesión|clausura de la sesion).*");
 
     public String assembleFromMinutes(List<Minute> minutes) {
@@ -90,7 +92,7 @@ public class MetadataToolContextAssembler {
         out.append('\n');
     }
 
-    private static void appendAgendaField(StringBuilder out, java.util.Map<String, String> agenda) {
+    private static void appendAgendaField(StringBuilder out, Map<String, String> agenda) {
         if (agenda == null || agenda.isEmpty()) {
             return;
         }

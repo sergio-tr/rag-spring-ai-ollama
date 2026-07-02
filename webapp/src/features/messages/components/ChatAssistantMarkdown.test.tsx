@@ -3,6 +3,21 @@ import { describe, expect, it } from "vitest";
 import { ChatAssistantMarkdown } from "./ChatAssistantMarkdown";
 
 describe("ChatAssistantMarkdown @ChatMarkdown", () => {
+  it("renders list after prose as ul with separated paragraphs", () => {
+    render(
+      <ChatAssistantMarkdown
+        content={
+          "Attendees are listed as follows:\n\n- Alice Example\n- Bob Example\n\nThe meeting ended on time.\n\nSource: ACTA 2.pdf."
+        }
+      />,
+    );
+    const root = screen.getByTestId("chat-assistant-markdown");
+    const items = root.querySelectorAll("ul li");
+    expect(items.length).toBe(2);
+    expect(root).toHaveTextContent("The meeting ended on time.");
+    expect(root).toHaveTextContent("Source: ACTA 2.pdf.");
+  });
+
   it("renders bullet list markdown", () => {
     render(<ChatAssistantMarkdown content={"- one\n- two"} />);
     const root = screen.getByTestId("chat-assistant-markdown");

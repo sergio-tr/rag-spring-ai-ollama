@@ -104,13 +104,14 @@ public final class FinalAnswerSynthesizer {
         cleaned = FinalAnswerStubSanitizer.sanitizeForUser(plan, cleaned, responseSources);
         cleaned = normalizeSafeSpanishPunctuation(cleaned);
         cleaned = ensureSentenceStart(cleaned);
+        cleaned = FinalAnswerMarkdownSanitizer.sanitize(cleaned);
         return cleaned.trim();
     }
 
     private static String normalizeSafeSpanishPunctuation(String text) {
-        return text.replaceAll("\\s{2,}", " ")
-                .replaceAll(" \\.", ".")
-                .replaceAll(" ,", ",")
+        return MarkdownAnswerFormatter.collapseHorizontalWhitespacePreservingNewlines(text)
+                .replaceAll("(?m) \\.", ".")
+                .replaceAll("(?m) ,", ",")
                 .trim();
     }
 
@@ -132,6 +133,7 @@ public final class FinalAnswerSynthesizer {
         cleaned = enforceActaIdentifierContract(plan, cleaned, responseSources, spanish);
         cleaned = appendSourceReferencesIfMissing(cleaned, responseSources, spanish);
         cleaned = ensureSentenceStart(cleaned);
+        cleaned = FinalAnswerMarkdownSanitizer.sanitize(cleaned);
         return cleaned.trim();
     }
 
@@ -270,9 +272,9 @@ public final class FinalAnswerSynthesizer {
 
     private static String stripInternalLabels(String text) {
         String out = INTERNAL_LABEL.matcher(text).replaceAll("").trim();
-        out = out.replaceAll("\\s{2,}", " ").trim();
-        out = out.replaceAll(" \\.", ".").replaceAll(" ,", ",");
-        out = out.replaceAll("^[:;\\-]+\\s*", "").trim();
+        out = MarkdownAnswerFormatter.collapseHorizontalWhitespacePreservingNewlines(out).trim();
+        out = out.replaceAll("(?m) \\.", ".").replaceAll("(?m) ,", ",");
+        out = out.replaceAll("(?m)^[:;\\-]+\\s*", "").trim();
         return out;
     }
 

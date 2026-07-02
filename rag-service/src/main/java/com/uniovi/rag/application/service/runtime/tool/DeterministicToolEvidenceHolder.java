@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime.tool;
 
 import com.uniovi.rag.domain.model.Minute;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Thread-local carrier for metadata-tool matched minutes between tool execution and retrieval packing.
@@ -22,8 +23,8 @@ public final class DeterministicToolEvidenceHolder {
         }
     }
 
-    public static java.util.Optional<Evidence> get() {
-        return java.util.Optional.ofNullable(CURRENT.get());
+    public static Optional<Evidence> get() {
+        return Optional.ofNullable(CURRENT.get());
     }
 
     public static void clear() {

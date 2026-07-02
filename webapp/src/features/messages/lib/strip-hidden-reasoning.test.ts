@@ -15,5 +15,6 @@ describe("stripHiddenReasoningBlocks", () => {
 
   it("returns plain text unchanged", () => {
     expect(stripHiddenReasoningBlocks("Plain answer")).toBe("Plain answer");
+    expect(stripHiddenReasoningBlocks("")).toBe("");
   });
 });

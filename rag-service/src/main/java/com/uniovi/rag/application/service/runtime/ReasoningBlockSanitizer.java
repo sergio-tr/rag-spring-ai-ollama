@@ -49,9 +49,9 @@ public final class ReasoningBlockSanitizer {
         out = INTERNAL_JSON_PLAN.matcher(out).replaceAll("");
         out = ROUTING_LABELS.matcher(out).replaceAll("");
         out = REDACTED_REASONING_TOKEN.matcher(out).replaceAll("");
-        out = out.replaceAll("\\s{2,}", " ").trim();
-        out = out.replaceAll(" \\.", ".").replaceAll(" ,", ",");
-        out = out.replaceAll("^[:;\\-]+\\s*", "").trim();
+        out = MarkdownAnswerFormatter.collapseHorizontalWhitespacePreservingNewlines(out).trim();
+        out = out.replaceAll("(?m) \\.", ".").replaceAll("(?m) ,", ",");
+        out = out.replaceAll("(?m)^[:;\\-]+\\s*", "").trim();
         return out;
     }
 

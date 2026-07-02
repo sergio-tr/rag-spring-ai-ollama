@@ -140,6 +140,8 @@ public final class ActaFieldAnchorHeuristics {
                 || q.contains("cuales actas")
                 || q.contains("dime qué actas")
                 || q.contains("dime que actas")
+                || q.contains("dime las actas")
+                || q.contains("las actas donde")
                 || q.contains("dime los lugares donde")
                 || q.contains("qué acta tiene más")
                 || q.contains("que acta tiene mas")
