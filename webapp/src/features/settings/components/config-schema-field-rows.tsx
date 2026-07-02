@@ -42,7 +42,7 @@ export function ConfigSchemaFieldRows(props: Readonly<{
         </div>
       ) : null}
       {fields.map((f) => (
-        <div key={f.key} className="flex flex-col gap-2">
+        <div key={f.key} className="flex min-w-0 max-w-full flex-col gap-2">
           {labelFor(f.key) ? <Label htmlFor={`${inputIdPrefix}-${f.key}`}>{labelFor(f.key)}</Label> : null}
           {f.key === "llmModel" && llmModelOptions.length > 0 ? (
             <Controller

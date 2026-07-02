@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
+import { createTestQueryClient } from "@/test-utils/query-client";
 import { ADVANCED_TECHNICAL_DETAILS_TITLE } from "@/lib/product-provider-labels";
 
 const putUser = vi.fn();
@@ -113,7 +115,82 @@ vi.mock("@/features/settings/components/TaskLlmSettingsSection", () => ({
   TASK_LLM_OVERRIDES_KEY: "taskLlmOverrides",
 }));
 
+vi.mock("@/features/settings/components/AdvancedTaskModelSettingsForm", () => ({
+  AdvancedTaskModelSettingsForm: () => <div data-testid="advanced-task-model-settings" />,
+  TASK_LLM_OVERRIDES_KEY: "taskLlmOverrides",
+}));
+
+vi.mock("@/features/settings/hooks/use-me-effective-embedding-defaults", () => ({
+  useMeEffectiveEmbeddingDefaults: () => ({
+    data: {
+      effectiveProvider: "OPENAI_COMPATIBLE",
+      embeddingModel: "nomic-embed-text",
+      embeddingOptions: { encodingFormat: "float", dimensions: 768, timeoutSeconds: 30 },
+      retrievalOptions: { topK: 10, similarityThreshold: 0.35, materializationStrategy: "CHUNK_LEVEL" },
+      indexingOptions: { maxInputChars: 2048, batchSize: 16, normalize: false },
+    },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
+vi.mock("@/features/settings/hooks/use-me-effective-llm-defaults", () => ({
+  useMeEffectiveLlmDefaults: () => ({
+    data: {
+      effectiveProvider: "OPENAI_COMPATIBLE",
+      chatModel: "qwen:latest",
+      classifierModelId: "default",
+      temperature: 0.1,
+      additionalParameters: { think: false, topP: 1 },
+    },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
+vi.mock("@/features/lab/hooks/use-lab-evaluation-models", () => ({
+  useLabEvaluationModels: () => ({
+    data: {
+      models: [
+        {
+          modelName: "nomic-embed-text",
+          evalSelectable: true,
+          supportsEncodingFormat: true,
+          supportedEncodingFormats: ["float", "base64"],
+          supportsDimensions: true,
+          supportsNormalize: true,
+        },
+      ],
+    },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 import { RagConfigForm } from "./RagConfigForm";
+
+function topKInput(): HTMLInputElement {
+  const field = screen.getByTestId("embedding-default-topK");
+  const input = field.querySelector('input[type="number"]');
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error("Top K number input not found");
+  }
+  return input;
+}
+
+async function waitForTopKInput(): Promise<HTMLInputElement> {
+  await screen.findByTestId("embedding-default-topK");
+  return topKInput();
+}
+
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = createTestQueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <IntlTestProvider>{ui}</IntlTestProvider>
+    </QueryClientProvider>,
+  );
+}
 
 describe("RagConfigForm", () => {
   beforeEach(() => {
@@ -139,11 +216,7 @@ describe("RagConfigForm", () => {
   });
 
   it("renders no-active-project message in project mode without projectId", () => {
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="project" projectId={undefined} />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="project" projectId={undefined} />);
     expect(screen.getByRole("status")).toBeInTheDocument();
   });
 
@@ -151,70 +224,53 @@ describe("RagConfigForm", () => {
     mockSchemaState.data = {
       fields: [
         { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
-        { key: "enableFoo", type: "boolean", userEditable: true },
-        { key: "llmModel", type: "string", userEditable: true },
-        { key: "embeddingModel", type: "string", userEditable: false },
+        { key: "embeddingModel", type: "string", userEditable: true },
       ],
     };
-    mockUserState.data = { topK: 5, enableFoo: false, llmModel: "qwen:latest" };
+    mockUserState.data = { topK: 5, embeddingModel: "nomic-embed-text" };
     putUser.mockResolvedValueOnce({});
 
     const user = userEvent.setup();
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="user" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="user" />);
 
-    const topK = await screen.findByLabelText(/passages to retrieve/i);
+    const topK = await waitForTopKInput();
     await waitFor(() => expect(topK).toHaveValue(5));
-    await user.clear(topK);
-    await user.type(topK, "7");
-    await user.click(screen.getByLabelText("enableFoo"));
-    await user.click(screen.getByRole("button", { name: /save/i }));
+    await user.tripleClick(topK);
+    await user.keyboard("7");
+    fireEvent.submit(screen.getByTestId("rag-config-structured-form"));
 
     await waitFor(() => expect(putUser).toHaveBeenCalled());
+    expect(putUser).toHaveBeenCalledWith(expect.objectContaining({ topK: 7 }));
   });
 
   it("shows loading state", () => {
     mockSchemaState.isLoading = true;
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="user" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="user" />);
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
   it("shows load error when schema query fails", () => {
     mockSchemaState.isError = true;
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="user" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="user" />);
     expect(screen.getByRole("alert")).toHaveTextContent(/could not load configuration/i);
   });
 
   it("shows empty schema message when no fields exist", () => {
     mockSchemaState.data = { fields: [] };
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="user" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="user" />);
     expect(screen.getByText(/no settings are available/i)).toBeInTheDocument();
   });
 
   it("shows product-oriented project description without removed HTTP copy in the card body", async () => {
-    mockSchemaState.data = { fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }] };
+    mockSchemaState.data = {
+      fields: [
+        { key: "embeddingModel", type: "string", userEditable: true },
+        { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
+      ],
+    };
     mockProjectState.data = { topK: 3 };
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="project" projectId="p1" />
-      </IntlTestProvider>,
-    );
-    await waitFor(() => expect(screen.getByLabelText(/passages to retrieve/i)).toBeInTheDocument());
+    renderWithProviders(<RagConfigForm mode="project" projectId="p1" />);
+    await waitFor(() => expect(screen.getByTestId("embedding-default-topK")).toBeInTheDocument());
     expect(screen.queryByText(/Project overrides from GET/i)).not.toBeInTheDocument();
     expect(screen.getByText(/These values apply only while this project is selected/i)).toBeInTheDocument();
   });
@@ -223,11 +279,7 @@ describe("RagConfigForm", () => {
     mockSchemaState.data = { fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }] };
     mockProjectState.data = { topK: 3 };
     const user = userEvent.setup();
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="project" projectId="proj-77" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="project" projectId="proj-77" />);
     await waitFor(() => expect(screen.getByText(/Technical reference/i)).toBeInTheDocument());
     await user.click(screen.getByText(/Technical reference \(API\)/i));
     expect(screen.getByText(/obtained from the project configuration/i)).toBeInTheDocument();
@@ -245,11 +297,7 @@ describe("RagConfigForm", () => {
     mockProjectState.data = { llmTemperature: 0.4 };
     delProject.mockResolvedValueOnce({});
     const user = userEvent.setup();
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="project" projectId="p1" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="project" projectId="p1" />);
 
     await user.click(screen.getByRole("button", { name: /remove project overrides/i }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -261,22 +309,21 @@ describe("RagConfigForm", () => {
 
   it("merges unknown keys into project PUT payload like before", async () => {
     mockSchemaState.data = {
-      fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }],
+      fields: [
+        { key: "embeddingModel", type: "string", userEditable: true },
+        { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
+      ],
     };
-    mockProjectState.data = { topK: 4, futureClientFlag: true };
+    mockProjectState.data = { topK: 4, futureClientFlag: true, embeddingModel: "nomic-embed-text" };
     putProject.mockResolvedValueOnce({});
     const user = userEvent.setup();
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="project" projectId="p9" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="project" projectId="p9" />);
 
-    const input = await screen.findByLabelText(/passages to retrieve/i);
+    const input = await waitForTopKInput();
     await waitFor(() => expect(input).toHaveValue(4));
-    await user.clear(input);
-    await user.type(input, "6");
-    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    await user.tripleClick(input);
+    await user.keyboard("6");
+    fireEvent.submit(screen.getByTestId("rag-config-structured-form"));
 
     await waitFor(() => expect(putProject).toHaveBeenCalled());
     expect(putProject).toHaveBeenCalledWith(
@@ -284,37 +331,33 @@ describe("RagConfigForm", () => {
     );
   });
 
-  it("shows provider-aware model parameters and hides unsupported params by default", async () => {
+  it("shows provider-aware model parameters and does not render applied parameters preview", async () => {
     mockSchemaState.data = {
       fields: [
         { key: "llmModel", type: "string", userEditable: true },
         { key: "llmTemperature", type: "number", userEditable: true, min: 0, max: 2 },
       ],
     };
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="user" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="user" />);
     expect(await screen.findByTestId("config-effective-provider")).toHaveTextContent(/Configured model provider/i);
     expect(screen.getByTestId("provider-aware-model-parameters")).toBeInTheDocument();
     expect(screen.getByTestId("model-param-field-temperature")).toBeInTheDocument();
+    const temperature = screen
+      .getByTestId("model-param-field-temperature")
+      .querySelector('input[type="number"]');
+    expect(temperature).toHaveValue(0.1);
     const unsupported = screen.queryByTestId("provider-unsupported-model-parameters");
     if (unsupported) {
       expect(unsupported).not.toBeVisible();
     }
-    expect(screen.getByTestId("effective-model-parameters-preview")).toBeInTheDocument();
+    expect(screen.queryByTestId("effective-model-parameters-preview")).not.toBeInTheDocument();
   });
 
   it("uses the exact Advanced technical details label on the collapsed wrapper", () => {
     mockSchemaState.data = {
       fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }],
     };
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="user" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="user" />);
     const advancedWrapper = screen.getByTestId("settings-model-parameters-advanced");
     expect(advancedWrapper).toHaveTextContent(ADVANCED_TECHNICAL_DETAILS_TITLE);
     expect(advancedWrapper).not.toHaveAttribute("open");
@@ -324,11 +367,7 @@ describe("RagConfigForm", () => {
     mockSchemaState.data = {
       fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }],
     };
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="user" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="user" />);
     const structured = screen.getByTestId("rag-config-structured-form");
     const advancedWrapper = screen.getByTestId("settings-model-parameters-advanced");
     expect(structured.compareDocumentPosition(advancedWrapper) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -341,11 +380,7 @@ describe("RagConfigForm", () => {
       fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }],
     };
     mockProjectState.data = { topK: 3 };
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="project" projectId="p1" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="project" projectId="p1" />);
     await waitFor(() => expect(screen.getByTestId("rag-config-structured-form")).toBeInTheDocument());
     const advancedWrapper = screen.getByTestId("settings-model-parameters-advanced");
     expect(advancedWrapper).not.toHaveAttribute("open");
@@ -359,11 +394,7 @@ describe("RagConfigForm", () => {
       ],
     };
     mockUserState.data = { llmModel: "ghost-model", topK: 5 };
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="user" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="user" />);
     expect(await screen.findByTestId("rag-config-model-warnings")).toHaveTextContent(/ghost-model/i);
     expect(screen.getByTestId("rag-config-model-warnings")).toHaveTextContent(/no longer available/i);
   });
@@ -377,11 +408,7 @@ describe("RagConfigForm", () => {
         { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
       ],
     };
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="user" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="user" />);
     expect(await screen.findByTestId("assistant-profile-section")).toBeInTheDocument();
     expect(await screen.findByTestId("assistant-instructions-editor")).toBeInTheDocument();
     expect(screen.getByTestId("assistant-system-instructions-field")).toBeInTheDocument();
@@ -389,7 +416,8 @@ describe("RagConfigForm", () => {
     expect(screen.getByTestId("assistant-instructions-preview")).toBeInTheDocument();
     expect(await screen.findByTestId("settings-model-configuration-section")).toBeInTheDocument();
     expect(screen.getByTestId("settings-embedding-model-section")).toBeInTheDocument();
-    expect(screen.getByTestId("settings-retrieval-settings-section")).toBeInTheDocument();
+    expect(screen.getByTestId("embedding-defaults-settings")).toBeInTheDocument();
+    expect(screen.getByTestId("embedding-default-topK")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /Assistant instructions/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /Model & retrieval settings/i })).toBeInTheDocument();
     expect(screen.getByTestId("assistant-behavior-section")).toBeInTheDocument();
@@ -401,11 +429,7 @@ describe("RagConfigForm", () => {
     mockSchemaState.data = {
       fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }],
     };
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="project" projectId="p1" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="project" projectId="p1" />);
     expect(await screen.findByTestId("assistant-source-usage-instructions-field")).toBeInTheDocument();
   });
 
@@ -415,11 +439,7 @@ describe("RagConfigForm", () => {
       fields: [{ key: "llmSystemPrompt", type: "text", userEditable: true, max: 50_000 }],
     };
     mockUserState.data = {};
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="user" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="user" />);
     await screen.findByTestId("config-field-llmSystemPrompt");
     await user.clear(screen.getByTestId("config-field-llmSystemPrompt"));
     await user.type(screen.getByTestId("config-field-llmSystemPrompt"), "Be helpful with records.");
@@ -432,14 +452,42 @@ describe("RagConfigForm", () => {
     });
   });
 
+  it("shows separate reset LLM and embedding defaults buttons in user mode", async () => {
+    mockSchemaState.data = {
+      fields: [
+        { key: "llmModel", type: "string", userEditable: true },
+        { key: "embeddingModel", type: "string", userEditable: true },
+        { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
+      ],
+    };
+    renderWithProviders(<RagConfigForm mode="user" />);
+    expect(await screen.findByTestId("reset-llm-defaults-button")).toBeInTheDocument();
+    expect(screen.getByTestId("reset-embedding-defaults-button")).toBeInTheDocument();
+  });
+
+  it("reset LLM defaults clears only LLM override keys on confirm", async () => {
+    mockSchemaState.data = {
+      fields: [
+        { key: "llmModel", type: "string", userEditable: true },
+        { key: "llmTemperature", type: "number", userEditable: true, min: 0, max: 2 },
+        { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
+      ],
+    };
+    mockUserState.data = { llmModel: "custom-model", llmTemperature: 0.8, topK: 7 };
+    putUser.mockResolvedValueOnce({});
+    const user = userEvent.setup();
+    renderWithProviders(<RagConfigForm mode="user" />);
+    await user.click(await screen.findByTestId("reset-llm-defaults-button"));
+    await user.click(screen.getByRole("button", { name: /^Reset LLM defaults$/i }));
+    await waitFor(() => expect(putUser).toHaveBeenCalled());
+    expect(putUser).toHaveBeenCalledWith(expect.objectContaining({ topK: 7 }));
+    expect(putUser).toHaveBeenCalledWith(expect.not.objectContaining({ llmModel: "custom-model" }));
+  });
+
   it("shows save error when mutate hook is in error state", () => {
     mutateState.putUserError = true;
     mockSchemaState.data = { fields: [{ key: "topK", type: "integer", userEditable: true }] };
-    render(
-      <IntlTestProvider>
-        <RagConfigForm mode="user" />
-      </IntlTestProvider>,
-    );
+    renderWithProviders(<RagConfigForm mode="user" />);
     expect(screen.getByRole("alert")).toHaveTextContent(/could not save/i);
   });
 });

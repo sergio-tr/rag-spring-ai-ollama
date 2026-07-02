@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslations } from "next-intl";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch, type Resolver } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +20,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
+import { useMeEffectiveEmbeddingDefaults } from "@/features/settings/hooks/use-me-effective-embedding-defaults";
+import { useMeEffectiveLlmDefaults } from "@/features/settings/hooks/use-me-effective-llm-defaults";
 import { usePatchProject, useProject } from "@/features/projects/hooks/use-projects";
 import {
   useConfigSchemaQuery,
@@ -34,11 +35,16 @@ import { buildConfigValuesSchema, type ConfigFormValues } from "@/features/setti
 import { labelConfigField } from "@/features/settings/lib/config-field-copy";
 import { buildPersonalizationPutPayload } from "@/features/settings/lib/me-canonical-user-config";
 import { partitionConfigFields, structuredConfigFields } from "@/features/settings/lib/rag-config-structured-fields";
-import { mergePayload, pickFormValues } from "@/features/settings/lib/rag-config-values";
+import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
 import {
-  mergeAdditionalParametersIntoPayload,
+  buildSavePayloadRespectingEffectiveDefaults,
+  clearConfigOverrideKeys,
+  EMBEDDING_RESET_TOP_LEVEL_KEYS,
+  LLM_RESET_TOP_LEVEL_KEYS,
+  mergeEffectiveIntoFormValues,
+} from "@/features/settings/lib/effective-config-form-values";
+import {
   readAdditionalParameters,
-  readTemperature,
 } from "@/features/settings/lib/llm-additional-parameters";
 import {
   LLM_TEMPERATURE_KEY,
@@ -49,7 +55,7 @@ import { AssistantInstructionsEditor } from "@/features/settings/components/Assi
 import { InternalPromptConfigurationSection } from "@/features/settings/components/InternalPromptConfigurationSection";
 import { TaskLlmSettingsSection } from "@/features/settings/components/TaskLlmSettingsSection";
 import { ConfigSchemaFieldRows } from "@/features/settings/components/config-schema-field-rows";
-import { EffectiveModelParametersPreview } from "@/features/settings/components/EffectiveModelParametersPreview";
+import { EmbeddingDefaultsSettings } from "@/features/settings/components/EmbeddingDefaultsSettings";
 import { ProviderAwareModelParameters } from "@/features/settings/components/ProviderAwareModelParameters";
 import { ProviderUnsupportedParametersPanel } from "@/features/settings/components/ProviderUnsupportedParametersPanel";
 import { RagConfigAdvancedJsonPanel } from "@/features/settings/components/RagConfigAdvancedJsonPanel";
@@ -92,6 +98,8 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   const projectQ = useProjectRagConfigQuery(mode === "project" ? projectId : undefined);
   const selectableModelsQ = useMeSelectableLlmModels("CHAT");
   const selectableEmbeddingQ = useMeSelectableLlmModels("EMBEDDING");
+  const llmEffectiveQ = useMeEffectiveLlmDefaults();
+  const embeddingEffectiveQ = useMeEffectiveEmbeddingDefaults();
 
   const configData = mode === "user" ? userQ.data : projectQ.data;
   const configLoading = mode === "user" ? userQ.isLoading : projectQ.isLoading;
@@ -118,7 +126,17 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
           f.key !== "llmModel" &&
           f.key !== LLM_TEMPERATURE_KEY &&
           f.key !== "temperature" &&
-          f.key !== "embeddingModel",
+          f.key !== "embeddingModel" &&
+          f.key !== "topK" &&
+          f.key !== "similarityThreshold" &&
+          f.key !== "materializationStrategy" &&
+          f.key !== "embeddingEncodingFormat" &&
+          f.key !== "embeddingDimensions" &&
+          f.key !== "embeddingTimeoutSeconds" &&
+          f.key !== "embeddingBatchSize" &&
+          f.key !== "embeddingMaxInputChars" &&
+          f.key !== "embeddingNormalize" &&
+          f.key !== "embeddingTruncate",
       ),
     [behaviorFields],
   );
@@ -197,15 +215,32 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
     defaultValues: {},
   });
 
+  const formSeedKey = useMemo(
+    () =>
+      JSON.stringify({
+        workingConfig,
+        editableKeys,
+        llmEffective: llmEffectiveQ.data,
+        embeddingEffective: embeddingEffectiveQ.data,
+        effectiveProvider,
+      }),
+    [workingConfig, editableKeys, llmEffectiveQ.data, embeddingEffectiveQ.data, effectiveProvider],
+  );
+  const lastFormSeedKey = useRef("");
+
   useEffect(() => {
     if (!workingConfig || !editableKeys.length) return;
-    const picked = pickFormValues(workingConfig, editableKeys);
-    const temp = readTemperature(workingConfig);
-    if (temp !== undefined) {
-      picked[LLM_TEMPERATURE_KEY] = temp;
-    }
-    form.reset(picked);
-  }, [workingConfig, editableKeys, form]);
+    if (lastFormSeedKey.current === formSeedKey) return;
+    lastFormSeedKey.current = formSeedKey;
+    const merged = mergeEffectiveIntoFormValues(
+      workingConfig,
+      editableKeys,
+      llmEffectiveQ.data,
+      embeddingEffectiveQ.data,
+      effectiveProvider,
+    );
+    form.reset(merged.formValues);
+  }, [form, formSeedKey, workingConfig, editableKeys, llmEffectiveQ.data, embeddingEffectiveQ.data, effectiveProvider]);
 
   const putUser = usePutUserRagConfig();
   const putProject = usePutProjectRagConfig(projectId);
@@ -215,6 +250,8 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   const clearing = delProject.isPending;
 
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [resetLlmDialogOpen, setResetLlmDialogOpen] = useState(false);
+  const [resetEmbeddingDialogOpen, setResetEmbeddingDialogOpen] = useState(false);
 
   const llmModelOptions = useMemo(
     () => toConfigModelOptions(selectableModelsQ.data?.models ?? []),
@@ -238,13 +275,17 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   const selectedEmbeddingModel =
     typeof watchedEmbeddingModel === "string" ? String(watchedEmbeddingModel) : "";
 
-  async function onSubmit(values: ConfigFormValues) {
-    let payload = mergePayload(workingConfig, values, editableKeys);
-    if (values[LLM_TEMPERATURE_KEY] === undefined) {
-      delete payload[LLM_TEMPERATURE_KEY];
-      delete payload.temperature;
-    }
-    payload = mergeAdditionalParametersIntoPayload(payload, additionalParameters);
+  async function onSubmit() {
+    const values = form.getValues();
+    const payload = buildSavePayloadRespectingEffectiveDefaults(
+      workingConfig,
+      values,
+      additionalParameters,
+      editableKeys,
+      llmEffectiveQ.data,
+      embeddingEffectiveQ.data,
+      effectiveProvider,
+    );
     if (mode === "user") {
       await putUser.mutateAsync(payload);
       if (globalPersonaPrompt.trim() !== initialGlobalPersona.trim()) {
@@ -285,6 +326,41 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
     }
   }
 
+  async function confirmResetLlmDefaults() {
+    const cleared = clearConfigOverrideKeys(workingConfig, LLM_RESET_TOP_LEVEL_KEYS);
+    if (mode === "user") {
+      await putUser.mutateAsync(cleared);
+    } else if (projectId) {
+      await putProject.mutateAsync(cleared);
+    }
+    setWorkingConfig(cleared);
+    setAdditionalParameters(readAdditionalParameters(cleared));
+    setResetLlmDialogOpen(false);
+  }
+
+  async function confirmResetEmbeddingDefaults() {
+    const cleared = clearConfigOverrideKeys(workingConfig, EMBEDDING_RESET_TOP_LEVEL_KEYS);
+    if (mode === "user") {
+      await putUser.mutateAsync(cleared);
+    } else if (projectId) {
+      await putProject.mutateAsync(cleared);
+    }
+    setWorkingConfig(cleared);
+    setResetEmbeddingDialogOpen(false);
+  }
+
+  function reloadFormFromConfig(config: Record<string, unknown>) {
+    const merged = mergeEffectiveIntoFormValues(
+      config,
+      editableKeys,
+      llmEffectiveQ.data,
+      embeddingEffectiveQ.data,
+      effectiveProvider,
+    );
+    form.reset(merged.formValues);
+    setAdditionalParameters(readAdditionalParameters(config));
+  }
+
   async function confirmClearProjectOverrides() {
     await delProject.mutateAsync();
     form.reset({});
@@ -302,16 +378,10 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
 
   function onAdvancedJsonApply(parsed: Record<string, unknown>) {
     setWorkingConfig(parsed);
-    setAdditionalParameters(readAdditionalParameters(parsed));
-    const picked = pickFormValues(parsed, editableKeys);
-    const temp = readTemperature(parsed);
-    if (temp !== undefined) {
-      picked[LLM_TEMPERATURE_KEY] = temp;
-    }
-    form.reset(picked);
+    reloadFormFromConfig(parsed);
   }
 
-  function onAdditionalParameterChange(key: string, value: number | undefined) {
+  function onAdditionalParameterChange(key: string, value: number | boolean | undefined) {
     setAdditionalParameters((prev) => {
       const next = { ...prev };
       if (value === undefined) {
@@ -322,22 +392,6 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
       return next;
     });
   }
-
-  const watchedTemperature = useWatch({
-    control: form.control,
-    name: LLM_TEMPERATURE_KEY as keyof ConfigFormValues,
-  });
-
-  const previewConfig = useMemo(() => {
-    const merged: Record<string, unknown> = {
-      ...workingConfig,
-      llmAdditionalParameters: additionalParameters,
-    };
-    if (typeof watchedTemperature === "number") {
-      merged[LLM_TEMPERATURE_KEY] = watchedTemperature;
-    }
-    return merged;
-  }, [workingConfig, additionalParameters, watchedTemperature]);
 
   if (mode === "project" && !projectId) {
     return (
@@ -353,7 +407,7 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   );
 
   return (
-    <Card data-testid={mode === "user" ? "user-rag-config-form" : "project-rag-config-form"}>
+    <Card className="min-w-0 max-w-full overflow-hidden" data-testid={mode === "user" ? "user-rag-config-form" : "project-rag-config-form"}>
       <CardHeader>
         <CardTitle>{mode === "user" ? t("userConfigTitle") : t("projectConfigTitle")}</CardTitle>
         <CardDescription>
@@ -383,7 +437,7 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
             <form
               className="flex flex-col gap-6"
               data-testid="rag-config-structured-form"
-              onSubmit={form.handleSubmit(onSubmit)}
+              onSubmit={form.handleSubmit(onSubmit, () => undefined)}
             >
               <section className="flex flex-col gap-4" data-testid="assistant-profile-section">
                 <div>
@@ -444,8 +498,9 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
                       form={form}
                       additionalParameters={additionalParameters}
                       onAdditionalParameterChange={onAdditionalParameterChange}
+                      effectiveDefaults={llmEffectiveQ.data}
+                      config={workingConfig}
                     />
-                    <EffectiveModelParametersPreview provider={effectiveProvider} config={previewConfig} />
                   </div>
                 ) : null}
 
@@ -462,6 +517,7 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
                       embeddingModelOptions={embeddingModelOptions}
                       effectiveProviderLabel={effectiveProviderLabel}
                     />
+                    <EmbeddingDefaultsSettings form={form} config={workingConfig} />
                   </div>
                 ) : null}
 
@@ -513,18 +569,32 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
                   variant="outline"
                   onClick={() => {
                     if (workingConfig && editableKeys.length) {
-                      const picked = pickFormValues(workingConfig, editableKeys);
-                      const temp = readTemperature(workingConfig);
-                      if (temp !== undefined) {
-                        picked[LLM_TEMPERATURE_KEY] = temp;
-                      }
-                      form.reset(picked);
-                      setAdditionalParameters(readAdditionalParameters(workingConfig));
+                      reloadFormFromConfig(workingConfig);
                     }
                   }}
                 >
                   {mode === "project" ? t("projectConfigRevertChanges") : t("configReload")}
                 </Button>
+                {mode === "user" ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setResetLlmDialogOpen(true)}
+                      data-testid="reset-llm-defaults-button"
+                    >
+                      {t("resetLlmDefaultsButton")}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setResetEmbeddingDialogOpen(true)}
+                      data-testid="reset-embedding-defaults-button"
+                    >
+                      {t("resetEmbeddingDefaultsButton")}
+                    </Button>
+                  </>
+                ) : null}
                 {mode === "project" ? (
                   <Button
                     type="button"
@@ -547,6 +617,56 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
                 <RagConfigAdvancedJsonPanel config={workingConfig} onApply={onAdvancedJsonApply} />
               </div>
             </details>
+            {mode === "user" ? (
+              <>
+                <Dialog open={resetLlmDialogOpen} onOpenChange={setResetLlmDialogOpen}>
+                  <DialogContent showCloseButton className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>{t("resetLlmDefaultsDialogTitle")}</DialogTitle>
+                      <DialogDescription>{t("resetDefaultsDialogDescription")}</DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                      <Button type="button" variant="outline" onClick={() => setResetLlmDialogOpen(false)}>
+                        {t("projectConfigClearDialogCancel")}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        disabled={saving}
+                        onClick={() => {
+                          confirmResetLlmDefaults().catch(() => {});
+                        }}
+                      >
+                        {t("resetLlmDefaultsDialogConfirm")}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+                <Dialog open={resetEmbeddingDialogOpen} onOpenChange={setResetEmbeddingDialogOpen}>
+                  <DialogContent showCloseButton className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>{t("resetEmbeddingDefaultsDialogTitle")}</DialogTitle>
+                      <DialogDescription>{t("resetDefaultsDialogDescription")}</DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                      <Button type="button" variant="outline" onClick={() => setResetEmbeddingDialogOpen(false)}>
+                        {t("projectConfigClearDialogCancel")}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        disabled={saving}
+                        onClick={() => {
+                          confirmResetEmbeddingDefaults().catch(() => {});
+                        }}
+                      >
+                        {t("resetEmbeddingDefaultsDialogConfirm")}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </>
+            ) : null}
             {mode === "project" ? (
               <Dialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
                 <DialogContent showCloseButton className="sm:max-w-md">

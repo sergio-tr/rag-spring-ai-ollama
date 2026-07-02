@@ -6,9 +6,17 @@ import { useState } from "react";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { ProviderAwareModelParameters } from "./ProviderAwareModelParameters";
 import { ProviderUnsupportedParametersPanel } from "./ProviderUnsupportedParametersPanel";
-import { EffectiveModelParametersPreview } from "./EffectiveModelParametersPreview";
 import type { ConfigFormValues } from "@/features/settings/lib/build-config-zod";
 import { LLM_TEMPERATURE_KEY } from "@/features/settings/lib/provider-aware-llm-parameters";
+import type { MeEffectiveLlmDefaultsResponse } from "@/types/api";
+
+const effectiveDefaults: MeEffectiveLlmDefaultsResponse = {
+  effectiveProvider: "OPENAI_COMPATIBLE",
+  chatModel: "gpt-test",
+  classifierModelId: "default",
+  temperature: 0.1,
+  additionalParameters: { think: false, topP: 1 },
+};
 
 function ParametersHarness(props: Readonly<{ provider: "OPENAI_COMPATIBLE" | "OLLAMA_NATIVE" }>) {
   const form = useForm<ConfigFormValues>({ defaultValues: { [LLM_TEMPERATURE_KEY]: 0.7 } });
@@ -28,9 +36,7 @@ function ParametersHarness(props: Readonly<{ provider: "OPENAI_COMPATIBLE" | "OL
             return next;
           });
         }}
-      />
-      <EffectiveModelParametersPreview
-        provider={props.provider}
+        effectiveDefaults={effectiveDefaults}
         config={{ llmTemperature: 0.7, llmAdditionalParameters: additional }}
       />
       <details data-testid="advanced-wrap">
@@ -45,17 +51,20 @@ function ParametersHarness(props: Readonly<{ provider: "OPENAI_COMPATIBLE" | "OL
 }
 
 describe("provider-aware model parameters UI", () => {
-  it("renders OpenAI-compatible applied parameters including top_p", () => {
+  it("renders OpenAI-compatible applied parameters including top_p with effective values in fields", () => {
     render(
       <IntlTestProvider locale="en">
         <ParametersHarness provider="OPENAI_COMPATIBLE" />
       </IntlTestProvider>,
     );
     expect(screen.getByTestId("provider-aware-model-parameters")).toBeInTheDocument();
-    expect(screen.getByTestId("model-param-field-temperature")).toBeInTheDocument();
-    expect(screen.getByTestId("model-param-field-top_p")).toBeInTheDocument();
-    expect(screen.getByTestId("effective-model-parameters-preview")).toHaveTextContent("Temperature");
-    expect(screen.getByTestId("model-param-effective-temperature")).toHaveTextContent("0.7");
+    const temperature = screen
+      .getByTestId("model-param-field-temperature")
+      .querySelector('input[type="number"]');
+    expect(temperature).toHaveValue(0.7);
+    const topP = screen.getByTestId("model-param-field-top_p").querySelector('input[type="number"]');
+    expect(topP).toHaveValue(0.9);
+    expect(screen.queryByTestId("effective-model-parameters-preview")).not.toBeInTheDocument();
   });
 
   it("hides unsupported parameters until advanced technical details is open", async () => {
@@ -83,6 +92,46 @@ describe("provider-aware model parameters UI", () => {
     );
     expect(screen.getByTestId("model-param-field-top_p")).toBeInTheDocument();
     expect(screen.getByTestId("model-param-field-num_ctx")).toBeInTheDocument();
-    expect(screen.getByTestId("model-param-effective-top_p")).toHaveTextContent("0.9");
+  });
+
+  it("shows inherited effective temperature on first load", () => {
+    function InheritedHarness() {
+      const form = useForm<ConfigFormValues>({ defaultValues: {} });
+      const [additional, setAdditional] = useState<Record<string, unknown>>({ topP: 0.9 });
+      return (
+        <ProviderAwareModelParameters
+          provider="OPENAI_COMPATIBLE"
+          form={form}
+          additionalParameters={additional}
+          onAdditionalParameterChange={(key, value) => {
+            setAdditional((prev) => {
+              const next = { ...prev };
+              if (value === undefined) delete next[key];
+              else next[key] = value;
+              return next;
+            });
+          }}
+          effectiveDefaults={effectiveDefaults}
+          config={{ llmAdditionalParameters: { topP: 0.9 } }}
+        />
+      );
+    }
+
+    render(
+      <IntlTestProvider locale="en">
+        <InheritedHarness />
+      </IntlTestProvider>,
+    );
+
+    const temperature = screen
+      .getByTestId("model-param-field-temperature")
+      .querySelector('input[type="number"]');
+    const topP = screen.getByTestId("model-param-field-top_p").querySelector('input[type="number"]');
+    if (!(temperature instanceof HTMLInputElement) || !(topP instanceof HTMLInputElement)) {
+      throw new Error("Expected numeric parameter inputs");
+    }
+
+    expect(temperature).toHaveValue(0.1);
+    expect(topP).toHaveValue(0.9);
   });
 });
