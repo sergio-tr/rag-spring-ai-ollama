@@ -72,7 +72,7 @@ public class RagRetrievalConfiguration {
         ChatClient chatClient,
         RagImplementationProperties implProps,
         EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService,
-        @Value("${spring.ai.ollama.top-k:80}") int topK,
+        @Value("${spring.ai.ollama.top-k:8}") int topK,
         @Value("${spring.ai.ollama.similarity-threshold:0.25}") double similarityThreshold,
         @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled,
         @Autowired(required = false) ObservabilitySupport observability

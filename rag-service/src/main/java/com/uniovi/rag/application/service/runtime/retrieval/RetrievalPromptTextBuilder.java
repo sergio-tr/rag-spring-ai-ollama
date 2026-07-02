@@ -27,7 +27,7 @@ public class RetrievalPromptTextBuilder {
     public RetrievalPromptTextBuilder(
             PgVectorStore vectorStore,
             ChatClient chatClient,
-            @Value("${spring.ai.ollama.top-k:10}") int defaultTopK,
+            @Value("${spring.ai.ollama.top-k:8}") int defaultTopK,
             @Value("${spring.ai.ollama.similarity-threshold:0.7}") double defaultSimilarityThreshold,
             @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled) {
         this.groupingHelper = new RetrievalChunkGroupingHelper(vectorStore, chatClient, defaultTopK, defaultSimilarityThreshold);

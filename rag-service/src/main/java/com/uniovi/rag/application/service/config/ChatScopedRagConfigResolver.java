@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.config;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
+import com.uniovi.rag.domain.config.RetrievalParameterPolicySupport;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
@@ -120,12 +121,12 @@ public class ChatScopedRagConfigResolver {
             merged.putAll(c.getConfig().getValues());
         }
         if (c.getPreset() != null && c.getPreset().getValues() != null) {
-            merged.putAll(c.getPreset().getValues());
+            RetrievalParameterPolicySupport.mergePresetLayer(merged, c.getPreset().getValues());
         } else {
             chatPresetDefaults
                     .loadDeterministicDefaultPreset()
                     .filter(p -> p.getValues() != null && !p.getValues().isEmpty())
-                    .ifPresent(p -> merged.putAll(p.getValues()));
+                    .ifPresent(p -> RetrievalParameterPolicySupport.mergePresetLayer(merged, p.getValues()));
         }
         if (c.getRuntimeOverride() != null && !c.getRuntimeOverride().isEmpty()) {
             merged.putAll(c.getRuntimeOverride());

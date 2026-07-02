@@ -8,6 +8,7 @@ import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagReasoningProperties;
 import com.uniovi.rag.domain.config.PresetProfilePayloadMerge;
 import com.uniovi.rag.domain.config.RagConfigurationMerge;
+import com.uniovi.rag.domain.config.RetrievalParameterPolicySupport;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import java.util.ArrayList;
@@ -39,7 +40,7 @@ public class ConfigResolver implements RagConfigurationResolver {
             ConfigurationSourcePort configurationSource,
             ObjectMapper objectMapper,
             LlmProperties llmProperties,
-            @Value("${spring.ai.ollama.top-k:10}") int topK,
+            @Value("${spring.ai.ollama.top-k:8}") int topK,
             @Value("${spring.ai.ollama.similarity-threshold:0.7}") double similarityThreshold) {
         this.featureConfig = featureConfig;
         this.reasoningProperties = reasoningProperties;
@@ -94,7 +95,9 @@ public class ConfigResolver implements RagConfigurationResolver {
                                     src -> {
                                         List<Map<String, Object>> payloads =
                                                 new ArrayList<>(src.orderedProfilePayloads());
-                                        return PresetProfilePayloadMerge.merge(src.presetValues(), payloads);
+                                        Map<String, Object> merged =
+                                                PresetProfilePayloadMerge.merge(src.presetValues(), payloads);
+                                        return RetrievalParameterPolicySupport.stripPresetPolicyMetadata(merged);
                                     })
                             .filter(m -> !m.isEmpty());
         }

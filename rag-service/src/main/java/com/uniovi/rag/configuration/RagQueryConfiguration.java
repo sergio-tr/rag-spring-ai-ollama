@@ -70,7 +70,7 @@ public class RagQueryConfiguration {
     @Bean
     public QuestionAnswerAdvisor questionAnswerAdvisor(
             PgVectorStore vectorStore,
-            @Value("${spring.ai.ollama.top-k:10}") int topK,
+            @Value("${spring.ai.ollama.top-k:8}") int topK,
             @Value("${spring.ai.ollama.similarity-threshold:0.7}") double similarityThreshold
     ) {
         return QuestionAnswerAdvisor.builder(vectorStore)

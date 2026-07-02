@@ -42,7 +42,7 @@ public class DenseRetrievalStrategy {
             PgVectorStore fallbackVectorStore,
             RagVectorProperties ragVectorProperties,
             EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService,
-            @Value("${spring.ai.ollama.top-k:10}") int defaultTopK,
+            @Value("${spring.ai.ollama.top-k:8}") int defaultTopK,
             @Value("${spring.ai.ollama.similarity-threshold:0.7}")
                     double defaultSimilarityThreshold) {
         this.vectorStoreRegistry = vectorStoreRegistry;
@@ -59,9 +59,13 @@ public class DenseRetrievalStrategy {
 
     public DenseRetrievalOutcome retrieveWithOutcome(RetrievalRequest req) {
         embeddingIndexCompatibilityService.assertRetrievalCompatible(req);
-        double sim = effectiveSimilarityThreshold();
+        double presetThreshold = effectiveSimilarityThreshold();
+        double searchThreshold = vectorSearchSimilarityThreshold(req, presetThreshold);
         SearchRequest.Builder searchBuilder =
-                SearchRequest.builder().query(req.queryText()).topK(req.denseFetchLimit()).similarityThreshold(sim);
+                SearchRequest.builder()
+                        .query(req.queryText())
+                        .topK(req.denseFetchLimit())
+                        .similarityThreshold(searchThreshold);
         Filter.Expression snapshotFilter = SnapshotBoundRetrievalFilter.buildForRequest(req.snapshotIds());
         if (snapshotFilter != null) {
             searchBuilder.filterExpression(snapshotFilter);
@@ -194,6 +198,18 @@ public class DenseRetrievalStrategy {
             return false;
         }
         return allowed.contains(String.valueOf(id));
+    }
+
+    /**
+     * Lab evaluation runs bind a non-default snapshot embedding (e.g. bge-m3). Preset thresholds such as P3's 0.7 are
+     * too strict for pgvector prefiltering against those indices; use the deployment default for search instead.
+     */
+    private double vectorSearchSimilarityThreshold(RetrievalRequest req, double presetThreshold) {
+        if (req.denseRetrievalEmbeddingModelId().filter(id -> id != null && !id.isBlank()).isPresent()
+                && presetThreshold > defaultSimilarityThreshold) {
+            return defaultSimilarityThreshold;
+        }
+        return presetThreshold;
     }
 
     private double effectiveSimilarityThreshold() {
