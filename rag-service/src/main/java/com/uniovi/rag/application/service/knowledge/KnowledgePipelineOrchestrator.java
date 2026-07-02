@@ -67,6 +67,7 @@ public class KnowledgePipelineOrchestrator {
     private final IndexingEmbeddingGuard indexingEmbeddingGuard;
     private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
     private final EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService;
+    private final ProjectIndexProfileResolver projectIndexProfileResolver;
     private final TransactionTemplate transactionTemplate;
     /** Joins the caller's Spring transaction (lab sync ingest); do not use {@link #transactionTemplate} here. */
     private final TransactionTemplate joinCallerTransactionTemplate;
@@ -84,6 +85,7 @@ public class KnowledgePipelineOrchestrator {
             IndexingEmbeddingGuard indexingEmbeddingGuard,
             KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
             EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService,
+            ProjectIndexProfileResolver projectIndexProfileResolver,
             PlatformTransactionManager transactionManager,
             @Autowired(required = false) MeterRegistry meterRegistry) {
         this.jdbcTemplate = jdbcTemplate;
@@ -97,6 +99,7 @@ public class KnowledgePipelineOrchestrator {
         this.indexingEmbeddingGuard = indexingEmbeddingGuard;
         this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
         this.embeddingIndexCompatibilityService = embeddingIndexCompatibilityService;
+        this.projectIndexProfileResolver = projectIndexProfileResolver;
         // Isolate ingest work so a failed inner ingest does not mark the caller transaction rollback-only.
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -105,11 +108,39 @@ public class KnowledgePipelineOrchestrator {
         this.meterRegistry = meterRegistry;
     }
 
-    private Map<String, Object> snapshotIndexProfileJsonb(ProjectIndexProfile profile) {
-        return embeddingIndexCompatibilityService.enrichIndexProfile(profile.toSnapshotJsonb());
+    private Map<String, Object> snapshotIndexProfileJsonb(
+            UUID projectId, ProjectIndexProfile profile, ProjectIndexProfileResolver.ResolvedIngestionIndexProfile ingestion) {
+        return embeddingIndexCompatibilityService.enrichIndexProfileForIngestion(
+                profile.toSnapshotJsonb(), ingestion);
+    }
+
+    private ProjectIndexProfileResolver.ResolvedIngestionIndexProfile resolveIngestionProfile(
+            UUID projectId, ProjectIndexProfile profile) {
+        return projectIndexProfileResolver.resolveForIngestion(projectId, profile);
     }
 
     private void probeAndPersistSnapshotEmbeddingDimensions(
+            ProjectIndexProfileResolver.ResolvedIngestionIndexProfile ingestionProfile,
+            MaterializationStrategy strategy,
+            KnowledgeIndexSnapshotEntity building) {
+        if (strategy == MaterializationStrategy.STRUCTURED_SEARCH) {
+            return;
+        }
+        String emb = ingestionProfile.resolvedEmbeddingModel();
+        if (emb == null || emb.isBlank()) {
+            throw new IllegalStateException(
+                    "embeddingModelId is required in the project index profile for dense/hybrid vector indexing");
+        }
+        int dims = embeddingSpaceGuard.assertFitsPhysicalVectorColumnReturning(emb.trim());
+        building.setEmbeddingDimensions(dims);
+        knowledgeIndexSnapshotRepository.save(building);
+    }
+
+    private Map<String, Object> snapshotIndexProfileJsonbForRuntimeDefaults(ProjectIndexProfile profile) {
+        return embeddingIndexCompatibilityService.enrichIndexProfile(profile.toSnapshotJsonb());
+    }
+
+    private void probeAndPersistSnapshotEmbeddingDimensionsForRuntimeDefaults(
             ProjectIndexProfile profile, MaterializationStrategy strategy, KnowledgeIndexSnapshotEntity building) {
         if (strategy == MaterializationStrategy.STRUCTURED_SEARCH) {
             return;
@@ -331,6 +362,13 @@ public class KnowledgePipelineOrchestrator {
             scopeDocs.sort(Comparator.comparing(KnowledgeDocumentEntity::getId));
         }
         ProjectIndexProfile profile = loadProfile(projectId);
+        ProjectIndexProfileResolver.ResolvedIngestionIndexProfile ingestionProfile =
+                resolveIngestionProfile(projectId, profile);
+        log.info(
+                "Knowledge ingest embedding profile projectId={} activeProfileEmbeddingModel={} resolvedEmbeddingModel={}",
+                projectId,
+                ingestionProfile.activeProfileEmbeddingModel(),
+                ingestionProfile.resolvedEmbeddingModel());
         IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null, profile);
         String indexSigHex = sig.indexSigHex();
         String snapshotSigHex = sig.snapshotSigHex();
@@ -354,11 +392,12 @@ public class KnowledgePipelineOrchestrator {
                         snapshotSigHex,
                         resolvedConfigSnapshotId,
                         resolvedConfigHash,
-                        snapshotIndexProfileJsonb(profile),
+                        snapshotIndexProfileJsonb(projectId, profile, ingestionProfile),
                         profile.profileHash());
 
         try {
-            probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
+            probeAndPersistSnapshotEmbeddingDimensions(
+                    ingestionProfile, profile.materializationStrategy(), building);
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
             deleteVectorsForScopeDocs(scopeDocs);
@@ -382,7 +421,8 @@ public class KnowledgePipelineOrchestrator {
                                     building,
                                     indexSigHex,
                                     strategy,
-                                    chunkMaxChars));
+                                    chunkMaxChars,
+                                    ingestionProfile));
                 } catch (IOException e) {
                     throw new IllegalStateException("Document indexing failed: " + e.getMessage(), e);
                 }
@@ -432,6 +472,13 @@ public class KnowledgePipelineOrchestrator {
             scopeDocs.sort(Comparator.comparing(KnowledgeDocumentEntity::getId));
         }
         ProjectIndexProfile profile = loadProfile(projectId);
+        ProjectIndexProfileResolver.ResolvedIngestionIndexProfile ingestionProfile =
+                resolveIngestionProfile(projectId, profile);
+        log.info(
+                "Knowledge ingest embedding profile projectId={} activeProfileEmbeddingModel={} resolvedEmbeddingModel={}",
+                projectId,
+                ingestionProfile.activeProfileEmbeddingModel(),
+                ingestionProfile.resolvedEmbeddingModel());
         IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null, profile);
         String indexSigHex = sig.indexSigHex();
         String snapshotSigHex = sig.snapshotSigHex();
@@ -455,11 +502,12 @@ public class KnowledgePipelineOrchestrator {
                         snapshotSigHex,
                         resolvedConfigSnapshotId,
                         resolvedConfigHash,
-                        snapshotIndexProfileJsonb(profile),
+                        snapshotIndexProfileJsonb(projectId, profile, ingestionProfile),
                         profile.profileHash());
 
         try {
-            probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
+            probeAndPersistSnapshotEmbeddingDimensions(
+                    ingestionProfile, profile.materializationStrategy(), building);
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
             deleteVectorsForScopeDocs(scopeDocs);
@@ -478,7 +526,8 @@ public class KnowledgePipelineOrchestrator {
                                     building,
                                     indexSigHex,
                                     strategy,
-                                    chunkMaxChars));
+                                    chunkMaxChars,
+                                    ingestionProfile));
                 } catch (IOException e) {
                     throw new IllegalStateException("Document indexing failed: " + e.getMessage(), e);
                 }
@@ -604,6 +653,8 @@ public class KnowledgePipelineOrchestrator {
             recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "started");
             ProjectIndexProfile profile = loadProfile(projectId);
             ProjectIndexProfile effectiveProfile = profileForProjection(profile, projection);
+            ProjectIndexProfileResolver.ResolvedIngestionIndexProfile ingestionProfile =
+                    resolveIngestionProfile(projectId, effectiveProfile);
             IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null, effectiveProfile);
             String indexSigHex = sig.indexSigHex();
             String snapshotSigHex = sig.snapshotSigHex();
@@ -633,10 +684,11 @@ public class KnowledgePipelineOrchestrator {
                             snapshotSigHex,
                             resolvedConfigSnapshotId,
                             projection.configHash(),
-                            snapshotIndexProfileJsonb(effectiveProfile),
+                            snapshotIndexProfileJsonb(projectId, effectiveProfile, ingestionProfile),
                             effectiveProfile.profileHash());
 
-            probeAndPersistSnapshotEmbeddingDimensions(effectiveProfile, effectiveProfile.materializationStrategy(), building);
+            probeAndPersistSnapshotEmbeddingDimensions(
+                    ingestionProfile, effectiveProfile.materializationStrategy(), building);
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
             if (corpusScope != CorpusScope.PROJECT_SHARED) {
@@ -656,7 +708,8 @@ public class KnowledgePipelineOrchestrator {
                                 building,
                                 indexSigHex,
                                 strategy,
-                                projection.chunkMaxChars()));
+                                projection.chunkMaxChars(),
+                                ingestionProfile));
             }
 
             knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
@@ -765,6 +818,9 @@ public class KnowledgePipelineOrchestrator {
             recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "started");
             ProjectIndexProfile profile =
                     effectiveProfile != null ? effectiveProfile : loadProfile(projectId);
+            boolean evaluationCorpusOwner = ownerType == KnowledgeSnapshotOwnerType.EVALUATION_CORPUS;
+            ProjectIndexProfileResolver.ResolvedIngestionIndexProfile ingestionProfile =
+                    evaluationCorpusOwner ? null : resolveIngestionProfile(projectId, profile);
             IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null, profile);
             String indexSigHex = sig.indexSigHex();
             String snapshotSigHex = sig.snapshotSigHex();
@@ -804,10 +860,18 @@ public class KnowledgePipelineOrchestrator {
                             snapshotSigHex,
                             resolvedConfigSnapshotId,
                             resolvedConfigHash != null ? resolvedConfigHash : "lab-auto-reindex",
-                            snapshotIndexProfileJsonb(profile),
+                            evaluationCorpusOwner
+                                    ? snapshotIndexProfileJsonbForRuntimeDefaults(profile)
+                                    : snapshotIndexProfileJsonb(projectId, profile, ingestionProfile),
                             profile.profileHash());
 
-            probeAndPersistSnapshotEmbeddingDimensions(profile, profile.materializationStrategy(), building);
+            if (evaluationCorpusOwner) {
+                probeAndPersistSnapshotEmbeddingDimensionsForRuntimeDefaults(
+                        profile, profile.materializationStrategy(), building);
+            } else {
+                probeAndPersistSnapshotEmbeddingDimensions(
+                        ingestionProfile, profile.materializationStrategy(), building);
+            }
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
             // Multi-materialization projects and evaluation corpora keep one ACTIVE snapshot per index profile hash.
@@ -831,7 +895,8 @@ public class KnowledgePipelineOrchestrator {
                                 building,
                                 indexSigHex,
                                 strategy,
-                                chunkMaxChars));
+                                chunkMaxChars,
+                                ingestionProfile));
             }
 
             knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);

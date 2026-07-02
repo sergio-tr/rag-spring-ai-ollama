@@ -19,6 +19,7 @@ import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import com.uniovi.rag.domain.knowledge.KnowledgeBuildProjection;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
+import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
@@ -56,9 +57,28 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
     @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
     @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
     @Mock private EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService;
+    @Mock private ProjectIndexProfileResolver projectIndexProfileResolver;
     @Mock private PlatformTransactionManager transactionManager;
 
     private KnowledgePipelineOrchestrator orchestrator() {
+        lenient()
+                .when(projectIndexProfileResolver.resolveForIngestion(any(UUID.class), any(ProjectIndexProfile.class)))
+                .thenAnswer(
+                        inv -> {
+                            UUID projectId = inv.getArgument(0);
+                            ProjectIndexProfile profile = inv.getArgument(1);
+                            Map<String, Object> jsonb = new LinkedHashMap<>(profile.toSnapshotJsonb());
+                            jsonb.put(IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY, profile.embeddingModelId());
+                            jsonb.put(
+                                    IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY,
+                                    LlmProvider.OPENAI_COMPATIBLE.name());
+                            return new ProjectIndexProfileResolver.ResolvedIngestionIndexProfile(
+                                    projectId,
+                                    profile.embeddingModelId(),
+                                    profile.embeddingModelId(),
+                                    LlmProvider.OPENAI_COMPATIBLE,
+                                    jsonb);
+                        });
         lenient()
                 .when(embeddingIndexCompatibilityService.enrichIndexProfile(any()))
                 .thenAnswer(
@@ -67,6 +87,21 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
                             Map<String, Object> enriched = new LinkedHashMap<>(base != null ? base : Map.of());
                             enriched.putIfAbsent("embeddingModelId", "qwen3-embedding:latest");
                             enriched.putIfAbsent("embeddingProvider", "OLLAMA_NATIVE");
+                            return enriched;
+                        });
+        lenient()
+                .when(embeddingIndexCompatibilityService.enrichIndexProfileForIngestion(any(), any()))
+                .thenAnswer(
+                        inv -> {
+                            ProjectIndexProfileResolver.ResolvedIngestionIndexProfile ingestion = inv.getArgument(1);
+                            Map<String, Object> base = inv.getArgument(0);
+                            Map<String, Object> enriched = new LinkedHashMap<>(base != null ? base : Map.of());
+                            enriched.put(
+                                    IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY,
+                                    ingestion.resolvedEmbeddingModel());
+                            enriched.put(
+                                    IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY,
+                                    ingestion.embeddingProvider().name());
                             return enriched;
                         });
         return new KnowledgePipelineOrchestrator(
@@ -81,6 +116,7 @@ class KnowledgePipelineOrchestratorProfileOverrideTest {
                 new IndexingEmbeddingGuard(new RagIndexingEmbeddingProperties(2048, 400, true, 0.85)),
                 knowledgeIndexSnapshotRepository,
                 embeddingIndexCompatibilityService,
+                projectIndexProfileResolver,
                 transactionManager,
                 null);
     }

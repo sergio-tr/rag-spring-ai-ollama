@@ -223,6 +223,9 @@ public class KnowledgeIndexingService {
             Map<String, Object> indexProfile = snapshot.getIndexProfileJsonb();
             if (snapshot.getOwnerType() == KnowledgeSnapshotOwnerType.EVALUATION_CORPUS) {
                 embeddingIndexCompatibilityService.assertIndexingCompatibleForEvaluationSnapshot(indexProfile);
+            } else if (req.ingestionProfile() != null) {
+                embeddingIndexCompatibilityService.assertIndexingCompatibleForProjectIngestion(
+                        indexProfile, req.ingestionProfile());
             } else {
                 embeddingIndexCompatibilityService.assertIndexingCompatible(indexProfile);
             }

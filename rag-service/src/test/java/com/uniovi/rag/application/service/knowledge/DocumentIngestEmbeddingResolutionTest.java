@@ -4,8 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
+
+import java.util.Optional;
 
 import com.uniovi.rag.application.port.llm.LlmClientRegistryPort;
 import com.uniovi.rag.application.port.llm.LlmEmbeddingClient;
@@ -71,6 +74,26 @@ class DocumentIngestEmbeddingResolutionTest {
 
         assertEquals(CATALOG_EMBEDDING, enriched.get(IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY));
         assertEquals(LlmProvider.OPENAI_COMPATIBLE.name(), enriched.get(IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY));
+        assertDoesNotThrow(() -> compatibilityService.assertIndexingCompatible(enriched));
+    }
+
+    @Test
+    void legacyMxbaiCatalogAliasIsCompatibleWithDeploymentDefault() {
+        when(embeddingModelCatalogResolver.resolveIfAvailable(
+                        eq(LlmProvider.OPENAI_COMPATIBLE), anyString()))
+                .thenAnswer(
+                        inv -> {
+                            String id = inv.getArgument(1, String.class).trim();
+                            if ("mxbai-embed-large:latest".equals(id) || "mxbai-embed-large".equals(id)) {
+                                return Optional.of("mxbai-embed-large");
+                            }
+                            return Optional.empty();
+                        });
+
+        Map<String, Object> enriched =
+                compatibilityService.enrichIndexProfile(projectProfileWithLegacyOllamaId());
+
+        assertEquals(CATALOG_EMBEDDING, enriched.get(IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY));
         assertDoesNotThrow(() -> compatibilityService.assertIndexingCompatible(enriched));
     }
 

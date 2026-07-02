@@ -259,6 +259,20 @@ public class KnowledgeSnapshotService {
         return rows.stream().findFirst();
     }
 
+    public boolean hasActiveProjectIndex(UUID projectId) {
+        return findActiveProjectSnapshot(projectId).map(snapshot -> snapshot.getId() != null).orElse(false);
+    }
+
+    public Optional<Map<String, Object>> findActiveProjectIndexProfile(UUID projectId) {
+        return findActiveProjectSnapshot(projectId)
+                .filter(snapshot -> snapshot.getId() != null)
+                .map(
+                        snapshot -> {
+                            Map<String, Object> profile = snapshot.getIndexProfileJsonb();
+                            return profile != null ? profile : Map.of();
+                        });
+    }
+
     public List<KnowledgeIndexSnapshotEntity> findProjectSnapshots(UUID projectId) {
         if (projectId == null) {
             return List.of();

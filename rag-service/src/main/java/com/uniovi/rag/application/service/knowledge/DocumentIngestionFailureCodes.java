@@ -14,6 +14,9 @@ public final class DocumentIngestionFailureCodes {
     public static final String DUPLICATE = "DUPLICATE";
     public static final String FAILED_GENERIC = "FAILED_GENERIC";
     public static final String FAILED_INCOMPATIBLE_INDEX = "FAILED_INCOMPATIBLE_INDEX";
+    public static final String PROJECT_INDEX_PROFILE_MISMATCH = "PROJECT_INDEX_PROFILE_MISMATCH";
+    public static final String EMBEDDING_MODEL_ALIAS_MISMATCH = "EMBEDDING_MODEL_ALIAS_MISMATCH";
+    public static final String REINDEX_REQUIRED = "REINDEX_REQUIRED";
 
     private DocumentIngestionFailureCodes() {}
 
@@ -39,6 +42,15 @@ public final class DocumentIngestionFailureCodes {
         }
         if (upper.contains("NO COMPATIBLE VECTOR INDEX")) {
             return format(FAILED_INCOMPATIBLE_INDEX, msg);
+        }
+        if (upper.contains(IngestionEmbeddingReasonCodes.PROJECT_INDEX_PROFILE_MISMATCH)) {
+            return format(PROJECT_INDEX_PROFILE_MISMATCH, msg);
+        }
+        if (upper.contains(IngestionEmbeddingReasonCodes.EMBEDDING_MODEL_ALIAS_MISMATCH)) {
+            return format(EMBEDDING_MODEL_ALIAS_MISMATCH, msg);
+        }
+        if (upper.contains(IngestionEmbeddingReasonCodes.REINDEX_REQUIRED)) {
+            return format(REINDEX_REQUIRED, msg);
         }
         if (upper.contains("EMBEDDING") || upper.contains("CONTEXT LIMIT")) {
             return format(FAILED_EMBEDDING, msg);

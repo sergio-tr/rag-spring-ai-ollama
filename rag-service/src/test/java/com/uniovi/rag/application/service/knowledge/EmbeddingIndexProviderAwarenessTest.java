@@ -87,6 +87,22 @@ class EmbeddingIndexProviderAwarenessTest {
     }
 
     @Test
+    void retrievalAcceptsBoundEvaluationSnapshotModelWhenDeploymentDefaultDiffers() {
+        ResolvedLlmConfig openAi = openAiConfig();
+        when(providerAwareEmbeddingService.resolveEffectiveConfig()).thenReturn(openAi);
+        when(providerAwareEmbeddingService.effectiveEmbeddingModelId("bge-m3")).thenReturn("bge-m3");
+
+        UUID snapshotId = UUID.randomUUID();
+        KnowledgeIndexSnapshotEntity snap =
+                snapshotWith(snapshotId, LlmProvider.OPENAI_COMPATIBLE, "bge-m3");
+        when(snapshotRepository.findById(snapshotId)).thenReturn(Optional.of(snap));
+
+        RetrievalRequest req = retrievalRequest(snapshotId, "bge-m3");
+
+        compatibilityService.assertRetrievalCompatible(req);
+    }
+
+    @Test
     void retrievalRejectsIndexBuiltWithDifferentEmbeddingProvider() {
         ResolvedLlmConfig openAi = openAiConfig();
         when(providerAwareEmbeddingService.resolveEffectiveConfig()).thenReturn(openAi);

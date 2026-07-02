@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.Embedding;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -84,6 +85,14 @@ public class ProviderAwareEmbeddingService {
     public String effectiveEmbeddingModelId(String requestedModelId) {
         ResolvedLlmConfig config = resolveEffectiveConfig();
         if (config.embeddingProvider() == LlmProvider.OPENAI_COMPATIBLE) {
+            if (requestedModelId != null && !requestedModelId.isBlank()) {
+                Optional<String> catalogModel =
+                        embeddingModelCatalogResolver.resolveIfAvailable(
+                                LlmProvider.OPENAI_COMPATIBLE, requestedModelId.trim());
+                if (catalogModel.isPresent()) {
+                    return catalogModel.get();
+                }
+            }
             return requireNonBlank(
                     config.embeddingModel(),
                     "rag.llm.openai-compatible.default-embedding-model must be set when provider is OPENAI_COMPATIBLE");
