@@ -21,7 +21,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -112,14 +111,18 @@ public class LabJobController {
     private SseEmitter openEventStream(UUID userId, UUID taskId, Long sinceEventId) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         ScheduledFuture<?>[] heartbeatHolder = new ScheduledFuture<?>[1];
-        AtomicBoolean completed = new AtomicBoolean(false);
+        AtomicBoolean closed = new AtomicBoolean(false);
 
-        Runnable finish = () -> {
-            if (completed.compareAndSet(false, true)) {
-                if (heartbeatHolder[0] != null) {
-                    heartbeatHolder[0].cancel(false);
-                }
-                labJobSseHub.complete(taskId);
+        Runnable stopHeartbeat = () -> {
+            if (heartbeatHolder[0] != null) {
+                heartbeatHolder[0].cancel(false);
+                heartbeatHolder[0] = null;
+            }
+        };
+
+        Runnable closeThisConnection = () -> {
+            if (closed.compareAndSet(false, true)) {
+                stopHeartbeat.run();
             }
         };
 
@@ -130,12 +133,17 @@ public class LabJobController {
             for (LabJobEventDto event : replay) {
                 LabJobSseHub.sendJobEvent(emitter, event);
                 if (event.terminal()) {
-                    emitter.complete();
+                    LabJobSseHub.completeEmitterQuietly(emitter);
                     return emitter;
                 }
             }
-        } catch (IOException ex) {
-            emitter.completeWithError(ex);
+        } catch (Exception ex) {
+            if (LabJobSseHub.isClientDisconnected(ex)) {
+                closeThisConnection.run();
+                LabJobSseHub.completeEmitterQuietly(emitter);
+            } else {
+                emitter.completeWithError(ex);
+            }
             return emitter;
         }
 
@@ -144,30 +152,31 @@ public class LabJobController {
                 userId,
                 emitter,
                 terminal -> {
-                    try {
-                        emitter.complete();
-                    } catch (Exception ignored) {
-                        // already closed
-                    }
-                    finish.run();
+                    LabJobSseHub.completeEmitterQuietly(emitter);
+                    closeThisConnection.run();
+                    labJobSseHub.complete(taskId);
                 });
         emitter.onCompletion(() -> {
             registration.unregister().run();
-            finish.run();
+            closeThisConnection.run();
         });
 
         heartbeatHolder[0] =
                 labJobSseExecutor.scheduleAtFixedRate(
                         () -> {
-                            if (completed.get()) {
+                            if (closed.get()) {
                                 return;
                             }
                             try {
                                 sendHeartbeat(emitter, taskId);
-                            } catch (IOException ex) {
+                            } catch (Exception ex) {
                                 registration.unregister().run();
-                                emitter.completeWithError(ex);
-                                finish.run();
+                                if (LabJobSseHub.isClientDisconnected(ex)) {
+                                    LabJobSseHub.completeEmitterQuietly(emitter);
+                                } else {
+                                    emitter.completeWithError(ex);
+                                }
+                                closeThisConnection.run();
                             }
                         },
                         SSE_HEARTBEAT_MS,
@@ -177,7 +186,7 @@ public class LabJobController {
         return emitter;
     }
 
-    private static void sendHeartbeat(SseEmitter emitter, UUID taskId) throws IOException {
+    private static void sendHeartbeat(SseEmitter emitter, UUID taskId) throws java.io.IOException {
         LabJobEventDto heartbeat = new LabJobEventDto(
                 0L,
                 taskId,
