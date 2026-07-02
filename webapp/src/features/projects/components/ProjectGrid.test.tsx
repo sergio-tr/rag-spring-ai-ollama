@@ -49,9 +49,17 @@ vi.mock("@/features/projects/lib/open-project-in-chat", () => ({
   fetchLatestConversationId: fetchLatestConversationIdMock,
 }));
 
-vi.mock("@/features/chat/hooks/use-chat-presets-catalog", () => ({
-  useChatPresetsCatalog: () => ({
-    data: { productPresets: [], experimentalPresets: [] },
+vi.mock("@/features/chat/hooks/use-project-compatible-presets", () => ({
+  useProjectCompatiblePresets: () => ({
+    data: {
+      projectId: "p1",
+      effectiveEmbeddingModelId: null,
+      hasActiveIndex: false,
+      readyDocumentCount: 0,
+      activeSnapshotCapabilities: null,
+      productPresets: [],
+      experimentalPresets: [],
+    },
     isLoading: false,
     isError: false,
   }),

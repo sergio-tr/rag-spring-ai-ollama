@@ -3,9 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import { activeProjectFromSummary, useAppStore } from "@/store/app.store";
+import { ProjectCreateError } from "@/features/projects/lib/project-create-errors";
 import {
   type CreateProjectOutcome,
   reconcileProjectAfterPostFailure,
+  reconcileProjectByName,
 } from "@/features/projects/lib/project-create-reconciliation";
 import type {
   ActivateProjectResponse,
@@ -67,6 +69,7 @@ export function useCreateProject() {
     mutationFn: async (body: CreateProjectBody): Promise<CreateProjectOutcome> => {
       let created: ProjectSummary;
       let reconciledFromList = false;
+      let responseIncomplete = false;
 
       try {
         created = await apiFetch<ProjectSummary>(apiProductPath("/projects"), {
@@ -75,16 +78,25 @@ export function useCreateProject() {
           body: JSON.stringify(body),
         });
       } catch (postErr) {
+        if (postErr instanceof ApiError && postErr.status === 401) {
+          useAppStore.getState().setActiveProject(null);
+        }
         const reconciled = await reconcileProjectAfterPostFailure(body, postErr);
         if (!reconciled) {
-          throw postErr;
+          throw new ProjectCreateError("CREATE_FAILED");
         }
         created = reconciled;
         reconciledFromList = true;
       }
 
       if (!created?.id?.trim()) {
-        throw new ApiError(500, "Create project response missing id");
+        const reconciled = await reconcileProjectByName(body);
+        if (!reconciled) {
+          throw new ProjectCreateError("PROJECT_CREATED_RESPONSE_INCOMPLETE");
+        }
+        created = reconciled;
+        responseIncomplete = true;
+        reconciledFromList = true;
       }
 
       let activateFailed = false;
@@ -100,20 +112,29 @@ export function useCreateProject() {
         }
       }
 
-      return { project: created, activateFailed, reconciledFromList };
+      prependCreatedProjectToProjectListCaches(queryClient, created);
+
+      let refreshFailed = false;
+      try {
+        await queryClient.invalidateQueries({ queryKey: projectsKey });
+        await queryClient.invalidateQueries({ queryKey: ["config", "project", created.id] });
+      } catch {
+        refreshFailed = true;
+      }
+
+      return {
+        project: created,
+        activateFailed,
+        reconciledFromList,
+        responseIncomplete,
+        refreshFailed,
+      };
     },
     onSuccess: (outcome) => {
       const created = outcome.project;
       if (!outcome.activateFailed) {
         setActiveProject(activeProjectFromSummary(created));
       }
-      prependCreatedProjectToProjectListCaches(queryClient, created);
-      void queryClient.invalidateQueries({ queryKey: projectsKey }).catch(() => {
-        /* Refetch failure must not undo a successful create. */
-      });
-      void queryClient.invalidateQueries({ queryKey: ["config", "project", created.id] }).catch(() => {
-        /* Same — config refresh is best-effort after create. */
-      });
     },
     onError: (err) => {
       if (err instanceof ApiError && err.status === 401) {

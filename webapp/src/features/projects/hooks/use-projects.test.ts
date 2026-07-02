@@ -104,6 +104,43 @@ describe("use-projects hooks", () => {
     expect(result.current.isError).toBe(false);
   });
 
+  it("useCreateProject succeeds when list refresh fails after POST", async () => {
+    apiFetch
+      .mockResolvedValueOnce(summary("new4", "Created4"))
+      .mockResolvedValueOnce({ activeProjectId: "new4" });
+    const { wrapper, qc } = createWrapper();
+    vi.spyOn(qc, "invalidateQueries").mockRejectedValueOnce(new Error("refetch down"));
+    const { result } = renderHook(() => useCreateProject(), { wrapper });
+    const outcome = await result.current.mutateAsync({ name: "Created4" });
+    expect(outcome.project.id).toBe("new4");
+    expect(outcome.refreshFailed).toBe(true);
+    expect(result.current.isError).toBe(false);
+  });
+
+  it("useCreateProject reconciles when POST body lacks id", async () => {
+    apiFetch
+      .mockResolvedValueOnce({ name: "NoId", docCount: 0, convCount: 0, updatedAt: "t" } as never)
+      .mockResolvedValueOnce({ items: [summary("rec2", "NoId")], total: 1 })
+      .mockResolvedValueOnce({ activeProjectId: "rec2" });
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCreateProject(), { wrapper });
+    const outcome = await result.current.mutateAsync({ name: "NoId" });
+    expect(outcome.project.id).toBe("rec2");
+    expect(outcome.responseIncomplete).toBe(true);
+    expect(result.current.isError).toBe(false);
+  });
+
+  it("useCreateProject throws PROJECT_CREATED_RESPONSE_INCOMPLETE when id missing and list has no match", async () => {
+    apiFetch
+      .mockResolvedValueOnce({ name: "Ghost", docCount: 0, convCount: 0, updatedAt: "t" } as never)
+      .mockResolvedValueOnce({ items: [], total: 0 });
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCreateProject(), { wrapper });
+    await expect(result.current.mutateAsync({ name: "Ghost" })).rejects.toMatchObject({
+      kind: "PROJECT_CREATED_RESPONSE_INCOMPLETE",
+    });
+  });
+
   it("useCreateProject clears active project on 401 ApiError", async () => {
     useAppStore.getState().setActiveProject({ id: "x", name: "X" });
     apiFetch.mockRejectedValueOnce(new apiClient.ApiError(401, "Unauthorized"));

@@ -364,7 +364,7 @@ if [ "$MODE" = dev ]; then
   if [ "$WITH_RAG_BACKEND" = true ]; then
     echo "  Backend:     in Docker (backend-dev) — hot reload via DevTools. Container port ${SERVER_PORT:-9000}."
     if [ "$WITH_DEV_PROXY" = true ]; then
-      _https_port="${REVERSE_PROXY_DEV_HTTPS_PORT:-8443}"
+      _https_port="${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}"
       if [ "${REVERSE_PROXY_ENFORCE_HTTPS:-0}" = "1" ]; then
         echo "               Entry: https://127.0.0.1:${_https_port}/ (self-signed; HTTP :${REVERSE_PROXY_DEV_HTTP_PORT:-8080} redirects)."
       else

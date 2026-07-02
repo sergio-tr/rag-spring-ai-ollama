@@ -4,7 +4,12 @@ import { NewProjectDialog } from "@/features/projects/components/NewProjectDialo
 import { ProjectGrid } from "@/features/projects/components/ProjectGrid";
 import { useProjectList } from "@/features/projects/hooks/use-projects";
 import { useSyncActiveProjectWithList } from "@/features/projects/hooks/use-sync-active-project";
+import {
+  projectCreateWarningMessage,
+  type ProjectCreatedDialogOutcome,
+} from "@/features/projects/lib/project-create-feedback";
 import { useTranslations } from "next-intl";
+import { useState } from "react";
 import { useAppStore } from "@/store/app.store";
 
 export default function ProjectsPage() {
@@ -12,6 +17,17 @@ export default function ProjectsPage() {
   const activeProject = useAppStore((s) => s.activeProject);
   const { data, isLoading, isError } = useProjectList(0, 24);
   const items = data?.items ?? [];
+  const [createFeedback, setCreateFeedback] = useState<{
+    success: string;
+    warning: string | null;
+  } | null>(null);
+
+  function handleProjectCreated(outcome: ProjectCreatedDialogOutcome) {
+    setCreateFeedback({
+      success: t("createSuccess", { name: outcome.project.name }),
+      warning: projectCreateWarningMessage(outcome, t),
+    });
+  }
   // Pass undefined until the first list payload exists — `[]` from `data?.items ?? []` when `data` is
   // still undefined would clear activeProject (create flow: invalidate after POST+activate).
   useSyncActiveProjectWithList(data === undefined ? undefined : items);
@@ -23,8 +39,20 @@ export default function ProjectsPage() {
           <h1 className="font-semibold text-2xl tracking-tight">{t("title")}</h1>
           <p className="text-muted-foreground text-sm">{t("subtitle")}</p>
         </div>
-        <NewProjectDialog />
+        <NewProjectDialog onCreated={handleProjectCreated} />
       </div>
+      {createFeedback ? (
+        <div className="flex flex-col gap-2" data-testid="project-create-feedback">
+          <output className="block text-sm text-emerald-700 dark:text-emerald-400">
+            {createFeedback.success}
+          </output>
+          {createFeedback.warning ? (
+            <output className="text-amber-700 block text-sm dark:text-amber-400">
+              {createFeedback.warning}
+            </output>
+          ) : null}
+        </div>
+      ) : null}
       {isLoading && (
         <p className="text-muted-foreground text-sm" aria-live="polite">
           {t("loading")}

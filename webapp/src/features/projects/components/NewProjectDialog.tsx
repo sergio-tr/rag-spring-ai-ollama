@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCreateProject } from "@/features/projects/hooks/use-projects";
+import { ProjectCreateError } from "@/features/projects/lib/project-create-errors";
+import type { ProjectCreatedDialogOutcome } from "@/features/projects/lib/project-create-feedback";
 import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { toConfigModelOptions } from "@/lib/product-model-catalog";
@@ -40,12 +42,15 @@ type NewProjectDialogProps = {
    */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Called after a project is created successfully (modal closes). */
+  onCreated?: (outcome: ProjectCreatedDialogOutcome) => void;
 };
 
 export function NewProjectDialog({
   triggerClassName,
   open: controlledOpen,
   onOpenChange,
+  onCreated,
 }: Readonly<NewProjectDialogProps>) {
   const t = useTranslations("Projects");
   const schema = useMemo(
@@ -77,17 +82,7 @@ export function NewProjectDialog({
     () => toConfigModelOptions(embeddingCatalogQ.data?.models ?? []).filter((o) => !o.disabled),
     [embeddingCatalogQ.data?.models],
   );
-  const [createWarning, setCreateWarning] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-
-  function handleOpenChange(next: boolean) {
-    if (next) {
-      reset();
-      setCreateWarning(null);
-      setSubmitError(null);
-    }
-    setOpenState(next);
-  }
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -102,11 +97,19 @@ export function NewProjectDialog({
     },
   });
 
+  function handleOpenChange(next: boolean) {
+    reset();
+    setSubmitError(null);
+    if (!next) {
+      form.reset();
+    }
+    setOpenState(next);
+  }
+
   async function onSubmit(values: FormValues) {
     if (isPending) {
       return;
     }
-    setCreateWarning(null);
     setSubmitError(null);
     try {
       const outcome = await mutateAsync({
@@ -121,6 +124,7 @@ export function NewProjectDialog({
           metadataProfile: null,
         },
       });
+      let configSaveFailed = false;
       const llmModel = values.llmModelId?.trim();
       if (llmModel) {
         try {
@@ -130,18 +134,22 @@ export function NewProjectDialog({
             body: JSON.stringify({ llmModel }),
           });
         } catch {
-          setCreateWarning(t("createConfigWarning"));
+          configSaveFailed = true;
         }
       }
-      if (outcome.activateFailed) {
-        setCreateWarning(t("createActivateWarning"));
-      } else if (outcome.reconciledFromList) {
-        setCreateWarning(t("createReconciledWarning"));
-      }
+      onCreated?.({ ...outcome, configSaveFailed });
       handleOpenChange(false);
       form.reset();
-    } catch {
-      setSubmitError(t("createError"));
+    } catch (err) {
+      if (err instanceof ProjectCreateError) {
+        if (err.kind === "PROJECT_CREATED_RESPONSE_INCOMPLETE") {
+          setSubmitError(t("createResponseIncompleteError"));
+        } else {
+          setSubmitError(t("createError"));
+        }
+      } else {
+        setSubmitError(t("createError"));
+      }
     }
   }
 
@@ -260,11 +268,6 @@ export function NewProjectDialog({
           {submitError || (isError && !isSuccess) ? (
             <p className="text-destructive text-sm" role="alert" data-testid="project-create-error">
               {submitError ?? t("createError")}
-            </p>
-          ) : null}
-          {createWarning ? (
-            <p className="text-amber-700 text-sm dark:text-amber-400" role="status" data-testid="project-create-warning">
-              {createWarning}
             </p>
           ) : null}
           <DialogFooter className="gap-2 sm:gap-0">

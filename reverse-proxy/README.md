@@ -27,9 +27,9 @@ In `webapp/.env` (or root `.env.example`):
 
 ```env
 REVERSE_PROXY_DEV_HTTP_PORT=8080
-REVERSE_PROXY_DEV_HTTPS_PORT=8443
+REVERSE_PROXY_DEV_HTTPS_PORT=8444
 REVERSE_PROXY_ENFORCE_HTTPS=0
-REVERSE_PROXY_HTTPS_PORT_SUFFIX=:8443
+REVERSE_PROXY_HTTPS_PORT_SUFFIX=:8444
 REVERSE_PROXY_SERVER_NAME=localhost
 TLS_CERT_COMMON_NAME=localhost
 TLS_CERT_DNS_1=localhost
@@ -44,15 +44,15 @@ Start: `./docker/scripts/up.sh dev --rag --proxy`
 | URL | Address |
 | --- | --- |
 | HTTP | `http://localhost:8080` |
-| HTTPS | `https://localhost:8443` (browser warns on self-signed cert) |
+| HTTPS | `https://localhost:8444` (browser warns on self-signed cert) |
 
 HTTPS-only testing:
 
 ```env
 REVERSE_PROXY_ENFORCE_HTTPS=1
-PUBLIC_APP_URL=https://localhost:8443
-PUBLIC_API_URL=https://localhost:8443/api/v5
-NEXT_PUBLIC_APP_URL=https://localhost:8443
+PUBLIC_APP_URL=https://localhost:8444
+PUBLIC_API_URL=https://localhost:8444/api/v5
+NEXT_PUBLIC_APP_URL=https://localhost:8444
 ```
 
 ## Production (university application server)
@@ -116,7 +116,7 @@ curl -k "https://localhost:8443/"
 curl "http://localhost:8080/"
 ```
 
-Adjust ports for prod (`443`) or dev (`8443`).
+Adjust ports for prod (`443`) or dev (`8444`).
 
 ## Files
 

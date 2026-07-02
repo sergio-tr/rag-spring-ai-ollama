@@ -7,6 +7,10 @@ export type CreateProjectOutcome = {
   activateFailed?: boolean;
   /** Project was matched from list after POST error (timeout / duplicate / gateway). */
   reconciledFromList?: boolean;
+  /** POST succeeded but project list refresh failed (project is still in cache). */
+  refreshFailed?: boolean;
+  /** POST body lacked id; project was matched from list by name. */
+  responseIncomplete?: boolean;
 };
 
 /** POST failed in a way where the project may still exist server-side. */
@@ -36,6 +40,18 @@ export function findProjectByName(items: ProjectSummary[], name: string): Projec
     return null;
   }
   return items.find((p) => (p.name ?? "").trim() === target) ?? null;
+}
+
+/**
+ * After POST returned without a usable id, try to find the project by name.
+ */
+export async function reconcileProjectByName(body: CreateProjectBody): Promise<ProjectSummary | null> {
+  try {
+    const items = await listProjectsForReconcile();
+    return findProjectByName(items, body.name);
+  } catch {
+    return null;
+  }
 }
 
 /**
