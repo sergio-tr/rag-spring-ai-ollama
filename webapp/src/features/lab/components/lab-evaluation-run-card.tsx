@@ -11,6 +11,15 @@ import { useEvaluationCorpus } from "@/features/lab/hooks/use-evaluation-corpus"
 import { ModelCheckboxGroup } from "@/features/lab/components/model-checkbox-group";
 import { LabBenchmarkResultsPanel } from "@/features/lab/components/lab-benchmark-results-panel";
 import { LabFailedJobResultsNotice } from "@/features/lab/components/lab-failed-job-results-notice";
+import { LabHyperparametersForm } from "@/features/lab/components/lab-hyperparameters-form";
+import { LabEmbeddingRetrievalParametersSection } from "@/features/lab/components/lab-embedding-retrieval-parameters-section";
+import { LabGenerationParametersSection } from "@/features/lab/components/lab-generation-parameters-section";
+import { LabRagIndexingMaterializationPlan } from "@/features/lab/components/lab-rag-indexing-materialization-plan";
+import { buildLabBenchmarkRuntimeParametersPayload } from "@/features/lab/lib/lab-benchmark-runtime-payload";
+import { LabModelConfigurationSection } from "@/features/lab/components/lab-model-configuration-section";
+import { RagDraftIssuesAlert } from "@/features/lab/components/rag-draft-issues-alert";
+import { computeLabDraftIssues } from "@/features/lab/lib/lab-draft-issues";
+import { resolveRagIndexReadinessDisplay } from "@/features/lab/lib/rag-index-readiness";
 import { LabJobPanel } from "@/features/lab/components/lab-job-panel";
 import { LabJobStopConfirmDialog } from "@/features/lab/components/lab-job-stop-confirm-dialog";
 import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
@@ -41,11 +50,11 @@ import {
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 import { isLabComparisonAvailabilityBlocked } from "@/features/lab/lib/lab-comparison-availability";
 import {
-  allEvalModelNames,
   compatibleEmbeddingEvalModelNames,
   defaultEmbeddingModelId,
+  defaultLlmModelId,
+  defaultSecondaryLlmModelId,
   labComparisonBlockedMessageKey,
-  labDraftInvalidModelMessageKey,
   selectableEvalModelNames,
 } from "@/features/lab/lib/lab-evaluation-models";
 import {
@@ -61,6 +70,12 @@ import {
 } from "@/features/lab/lib/lab-job-trace";
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
 import { resolveEmbeddingCampaignIndexSnapshotIds } from "@/features/lab/lib/embedding-campaign-index-snapshots";
+import {
+  isCorpusBlockingRun,
+  isDocumentCentricCorpusBenchmark,
+  selectedEmbeddingModelCount,
+  selectedLlmModelCount,
+} from "@/features/lab/lib/lab-eval-run-gating";
 import { mapKnowledgeBaseApiError } from "@/features/lab/lib/evaluation-corpus-upload";
 import { resolveDocumentCentricReadinessDisplay } from "@/features/lab/lib/evaluation-corpus-readiness-display";
 import { extractTechnicalErrorCode } from "@/lib/user-facing-error-messages";
@@ -84,7 +99,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type LabEvaluationRunCardProps = {
-  benchmarkKind: BenchmarkKind;
+  benchmarkKind: LabEvaluationDraftKind;
   sectionKey: LabJobSectionKey;
   taskTypeHint: string;
   cardTitle: string;
@@ -237,7 +252,9 @@ export function LabEvaluationRunCard({
   const abortRef = useRef<AbortController | null>(null);
   const traceDedupeRef = useRef(createLabJobTraceDedupe());
   const mountedEvalCardRef = useRef(true);
+  const cancellingRef = useRef(false);
   const latestRunAppliedRef = useRef(false);
+  const [ragBaselineEmbedding, setRagBaselineEmbedding] = useState<string | null>(null);
   const resumeNonce = useLabJobSessionStore((s) => s.resumeNonce);
   const forgetWatchNonce = useLabJobSessionStore((s) => s.forgetWatchNonce);
   const sessionRecordForSection = useLabJobSessionStore((s) => s.pickLatestForSection(sectionKey));
@@ -268,9 +285,8 @@ export function LabEvaluationRunCard({
     () => selectableEvalModelNames(chatCatalogModels),
     [chatCatalogModels],
   );
-  const allLlmModelNames = useMemo(() => allEvalModelNames(chatCatalogModels), [chatCatalogModels]);
   const availableEmbeddingModels = useMemo(
-    () => allEvalModelNames(embeddingCatalogModels),
+    () => selectableEvalModelNames(embeddingCatalogModels),
     [embeddingCatalogModels],
   );
   const compatibleEmbeddingModels = useMemo(
@@ -319,7 +335,18 @@ export function LabEvaluationRunCard({
   );
 
   const { draft, patchDraft, clearDraft, resetToRecommended, setLastEvaluationRunId, warnings, sanitizedRemovedPresets } =
-    useLabEvaluationDraft(benchmarkKind as LabEvaluationDraftKind, draftValidation);
+    useLabEvaluationDraft(benchmarkKind, draftValidation);
+
+  const selectedRagEmbeddingModels = useMemo(() => {
+    const id = draft.embeddingModelId.trim();
+    if (!id) return [];
+    return embeddingCatalogModels.filter((m) => m.modelName === id);
+  }, [draft.embeddingModelId, embeddingCatalogModels]);
+
+  const selectedEmbeddingCampaignModels = useMemo(
+    () => embeddingCatalogModels.filter((m) => draft.embeddingModelIds.includes(m.modelName)),
+    [draft.embeddingModelIds, embeddingCatalogModels],
+  );
 
   const llmComparisonAvailabilityBlocked = useMemo(() => {
     if (benchmarkKind !== "LLM_JUDGE_QA") return false;
@@ -413,6 +440,7 @@ export function LabEvaluationRunCard({
     },
     onStreamError: (e) => {
       if (!mountedEvalCardRef.current) return;
+      if (cancellingRef.current) return;
       const recoverViaPoll = async () => {
         const jobId = accepted?.jobId?.trim();
         if (!jobId) return false;
@@ -626,43 +654,58 @@ export function LabEvaluationRunCard({
     [benchmarkKind, draft.selectedExperimentalPresetCodes, experimentalPresets.data],
   );
 
-  const ragPresetConfigBlocksRun =
-    benchmarkKind === "RAG_PRESET_END_TO_END" &&
-    (draft.selectedExperimentalPresetCodes.length === 0 || invalidLabPresetSelections.length > 0);
+  const draftIssues = useMemo(
+    () =>
+      computeLabDraftIssues({
+        kind: benchmarkKind,
+        draft,
+        warnings,
+        invalidLabPresetSelections,
+        needsEvaluationCorpus,
+        corpusReadiness: evaluationCorpus.readiness,
+        availableLlmModelIds: availableLlmModels,
+        chatCatalogProvider: chatCatalog.data?.effectiveProvider,
+        embeddingCatalogProvider: embeddingCatalog.data?.effectiveProvider,
+      }),
+    [
+      benchmarkKind,
+      draft,
+      warnings,
+      invalidLabPresetSelections,
+      needsEvaluationCorpus,
+      evaluationCorpus.readiness,
+      availableLlmModels,
+      chatCatalog.data?.effectiveProvider,
+      embeddingCatalog.data?.effectiveProvider,
+    ],
+  );
 
-  const draftBlocksRun =
-    Boolean(catalogModelBlockReason) ||
-    warnings.datasetDeletedOrUnknown ||
-    warnings.datasetIncompatibleWithBenchmark ||
-    warnings.llmModelInvalid ||
-    warnings.llmModelsInvalid.length > 0 ||
-    warnings.embeddingModelInvalid ||
-    warnings.embeddingModelsInvalid.length > 0 ||
-    warnings.presetsUnknown.length > 0 ||
-    ragPresetConfigBlocksRun;
+  const draftBlocksRun = draftIssues.length > 0 || Boolean(catalogModelBlockReason);
 
   const hasEvaluationCorpus = Boolean(resolvedCorpusId);
   const corpusPrimaryBlocker = evaluationCorpus.readiness?.primaryBlocker ?? null;
-  const ragDocumentCentric = benchmarkKind === "RAG_PRESET_END_TO_END";
+  const documentCentricCorpus = isDocumentCentricCorpusBenchmark(benchmarkKind);
   const corpusSnapshotBlocker =
-    !ragDocumentCentric &&
+    !documentCentricCorpus &&
     evaluationCorpus.readiness?.snapshotBlocker &&
     !evaluationCorpus.readiness?.primaryBlocker &&
     evaluationCorpus.readiness?.reindexRequired &&
     !evaluationCorpus.readiness?.activeSnapshotId
       ? evaluationCorpus.readiness.snapshotBlocker
       : null;
-  const corpusBlocksRun =
-    needsEvaluationCorpus &&
-    (!hasEvaluationCorpus ||
-      !evaluationCorpus.corpusRunnable ||
-      evaluationCorpus.corpusProcessing ||
-      Boolean(corpusPrimaryBlocker) ||
-      (!ragDocumentCentric &&
-        (evaluationCorpus.preparingIndex ||
-          (evaluationCorpus.corpusReady && !evaluationCorpus.corpusIndexReady))));
+  const corpusBlocksRun = isCorpusBlockingRun({
+    needsEvaluationCorpus,
+    hasEvaluationCorpus,
+    corpusRunnable: evaluationCorpus.corpusRunnable,
+    corpusProcessing: evaluationCorpus.corpusProcessing,
+    corpusReady: evaluationCorpus.corpusReady,
+    corpusIndexReady: evaluationCorpus.corpusIndexReady,
+    preparingIndex: evaluationCorpus.preparingIndex,
+    primaryBlocker: corpusPrimaryBlocker,
+    documentCentricCorpus,
+  });
   const ragCorpusNotReadyMessage = useMemo(() => {
-    if (!ragDocumentCentric) {
+    if (!documentCentricCorpus) {
       return null;
     }
     const display = resolveDocumentCentricReadinessDisplay(
@@ -683,7 +726,7 @@ export function LabEvaluationRunCard({
     }
     return t(display.messageKey);
   }, [
-    ragDocumentCentric,
+    documentCentricCorpus,
     evaluationCorpus.readiness,
     evaluationCorpus.summary,
     corpusPrimaryBlocker,
@@ -704,32 +747,89 @@ export function LabEvaluationRunCard({
 
   const recommendedDraftPartial = useMemo(() => {
     const defaultEmbedding = defaultEmbeddingModelId(embeddingCatalogModels) ?? "";
-    const defaultLlm = availableLlmModels[0] ?? "";
+    const defaultLlm = defaultLlmModelId(chatCatalogModels) ?? availableLlmModels[0] ?? "";
+    const defaultSecondary =
+      defaultSecondaryLlmModelId(chatCatalogModels, defaultLlm) ?? undefined;
     return {
       datasetId: defaultDataset?.id ?? null,
       llmModelId: defaultLlm,
-      llmModelIds: [],
+      llmModelIds: benchmarkKind === "LLM_JUDGE_QA" && defaultLlm ? [defaultLlm] : [],
       embeddingModelId: defaultEmbedding,
       embeddingModelIds: defaultEmbedding ? [defaultEmbedding] : [],
+      autoReindex: true,
+      reuseCompatibleActiveSnapshot: true,
+      benchmarkRuntimeParameters: defaultSecondary
+        ? { secondaryLlmModelId: defaultSecondary }
+        : {},
     };
-  }, [availableLlmModels, defaultDataset?.id, embeddingCatalogModels]);
+  }, [availableLlmModels, benchmarkKind, chatCatalogModels, defaultDataset?.id, embeddingCatalogModels]);
 
   useEffect(() => {
     if (benchmarkKind !== "LLM_JUDGE_QA") return;
-    if (draft.llmModelId.trim() !== "") return;
-    const fromList = draft.llmModelIds.map((x) => x.trim()).filter(Boolean)[0];
-    const defaultLlm = fromList ?? availableLlmModels[0];
+    if (draft.llmModelIds.length > 0) return;
+    const fromLegacy = draft.llmModelId.trim();
+    const defaultLlm = fromLegacy || availableLlmModels[0];
     if (!defaultLlm) return;
-    patchDraft({ llmModelId: defaultLlm, llmModelIds: [] });
-  }, [benchmarkKind, draft.llmModelId, draft.llmModelIds, availableLlmModels, patchDraft]);
+    patchDraft({ llmModelIds: [defaultLlm], llmModelId: "" });
+  }, [benchmarkKind, draft.llmModelId, draft.llmModelIds.length, availableLlmModels, patchDraft]);
 
   useEffect(() => {
     if (benchmarkKind !== "EMBEDDING_RETRIEVAL" && benchmarkKind !== "RAG_PRESET_END_TO_END") return;
-    if (draft.embeddingModelId.trim() !== "") return;
     const defaultEmbedding = defaultEmbeddingModelId(embeddingCatalogModels);
     if (!defaultEmbedding) return;
-    patchDraft({ embeddingModelId: defaultEmbedding });
-  }, [benchmarkKind, draft.embeddingModelId, embeddingCatalogModels, patchDraft]);
+    const patch: Partial<typeof draft> = {};
+    if (draft.embeddingModelId.trim() === "") {
+      patch.embeddingModelId = defaultEmbedding;
+    }
+    if (benchmarkKind === "EMBEDDING_RETRIEVAL" && draft.embeddingModelIds.length === 0) {
+      patch.embeddingModelIds = [defaultEmbedding];
+    }
+    if (Object.keys(patch).length > 0) {
+      patchDraft(patch);
+    }
+  }, [
+    benchmarkKind,
+    draft.embeddingModelId,
+    draft.embeddingModelIds.length,
+    embeddingCatalogModels,
+    patchDraft,
+  ]);
+
+  useEffect(() => {
+    if (benchmarkKind !== "RAG_PRESET_END_TO_END") return;
+    const defaultLlm = defaultLlmModelId(chatCatalogModels);
+    if (!defaultLlm) return;
+    const patch: Partial<typeof draft> = {};
+    if (draft.llmModelId.trim() === "") {
+      patch.llmModelId = defaultLlm;
+    }
+    const primary = patch.llmModelId ?? draft.llmModelId.trim() ?? defaultLlm;
+    const defaultSecondary = defaultSecondaryLlmModelId(chatCatalogModels, primary);
+    if (!draft.benchmarkRuntimeParameters?.secondaryLlmModelId?.trim() && defaultSecondary) {
+      patch.benchmarkRuntimeParameters = {
+        ...draft.benchmarkRuntimeParameters,
+        secondaryLlmModelId: defaultSecondary,
+      };
+    }
+    if (Object.keys(patch).length > 0) {
+      patchDraft(patch);
+    }
+  }, [
+    benchmarkKind,
+    chatCatalogModels,
+    draft.benchmarkRuntimeParameters,
+    draft.llmModelId,
+    patchDraft,
+  ]);
+
+  let effectiveRagBaselineEmbedding = ragBaselineEmbedding;
+  if (benchmarkKind === "RAG_PRESET_END_TO_END") {
+    const current = draft.embeddingModelId.trim();
+    if (current && effectiveRagBaselineEmbedding === null) {
+      effectiveRagBaselineEmbedding = current;
+      setRagBaselineEmbedding(current);
+    }
+  }
 
   useEffect(() => {
     if (draft.datasetId != null || draft.explicitDraftClear) return;
@@ -763,8 +863,26 @@ export function LabEvaluationRunCard({
           ? (selectedDataset?.questionCounts.ragPresetQuestions ?? 0) <= 1
           : false;
   const hardBlocked = demoBlocked || tooSmallBlocked;
+  const hasSelectedEmbeddingModels =
+    benchmarkKind === "EMBEDDING_RETRIEVAL"
+      ? selectedEmbeddingModelCount(draft.embeddingModelIds, draft.embeddingModelId) > 0
+      : benchmarkKind === "RAG_PRESET_END_TO_END"
+        ? draft.embeddingModelId.trim() !== ""
+        : true;
+  const hasSelectedLlmModels =
+    benchmarkKind === "LLM_JUDGE_QA"
+      ? selectedLlmModelCount(draft.llmModelIds, draft.llmModelId) > 0
+      : benchmarkKind === "RAG_PRESET_END_TO_END"
+        ? draft.llmModelId.trim() !== ""
+        : true;
   const canStart =
-    hasCompatibleDataset && datasetIsValid && !hardBlocked && !draftBlocksRun && !corpusBlocksRun;
+    hasCompatibleDataset &&
+    datasetIsValid &&
+    !hardBlocked &&
+    !draftBlocksRun &&
+    !corpusBlocksRun &&
+    hasSelectedEmbeddingModels &&
+    hasSelectedLlmModels;
 
   const otherActiveJobExists = useMemo(() => {
     const jobs = activeJobs.data ?? [];
@@ -778,6 +896,63 @@ export function LabEvaluationRunCard({
     }
     return jobs.some((j) => !activeJobMatchesCard(j, benchmarkKind, scopeId));
   }, [accepted?.jobId, activeJobs.data, activeProject?.id, benchmarkKind]);
+
+  const runDisabledReason = useMemo(() => {
+    if (running || canStart) return null;
+    if (otherActiveJobExists) return t("evalRunDisabledJobRunning");
+    if (hardBlocked) return t("datasetBlockedDemo");
+    if (!hasCompatibleDataset) return t("evalRunDisabledNoDataset");
+    if (!datasetIsValid) return t("evalRunDisabledDatasetInvalid");
+    if (benchmarkKind === "EMBEDDING_RETRIEVAL" && !hasSelectedEmbeddingModels) {
+      return t("evalRunDisabledNoEmbeddingModel");
+    }
+    if (benchmarkKind === "RAG_PRESET_END_TO_END" && !hasSelectedEmbeddingModels) {
+      return t("evalRunDisabledNoEmbeddingModel");
+    }
+    if (benchmarkKind === "LLM_JUDGE_QA" && !hasSelectedLlmModels) {
+      return t("evalRunDisabledNoLlmModel");
+    }
+    if (benchmarkKind === "RAG_PRESET_END_TO_END" && !hasSelectedLlmModels) {
+      return t("evalRunDisabledNoLlmModel");
+    }
+    if (catalogModelBlockReason) return catalogModelBlockReason;
+    if (draftBlocksRun) return t("evalRunDisabledDraftWarnings");
+    if (needsEvaluationCorpus && !hasEvaluationCorpus) return t("evalRunDisabledNoCorpus");
+    if (corpusBlocksRun) {
+      return (
+        ragCorpusNotReadyMessage ??
+        (corpusPrimaryBlocker
+          ? t("labCorpusReadinessBlocked", {
+              reason: mapKnowledgeBaseApiError(
+                corpusPrimaryBlocker,
+                t,
+                evaluationCorpus.readiness?.primaryBlockerMessage ?? t("benchmarkCorpusNotReady"),
+              ),
+            })
+          : t("evalRunDisabledCorpusNotReady"))
+      );
+    }
+    return t("evalRunDisabledUnknown");
+  }, [
+    benchmarkKind,
+    canStart,
+    catalogModelBlockReason,
+    corpusBlocksRun,
+    corpusPrimaryBlocker,
+    datasetIsValid,
+    draftBlocksRun,
+    evaluationCorpus.readiness?.primaryBlockerMessage,
+    hardBlocked,
+    hasCompatibleDataset,
+    hasEvaluationCorpus,
+    hasSelectedEmbeddingModels,
+    hasSelectedLlmModels,
+    needsEvaluationCorpus,
+    otherActiveJobExists,
+    ragCorpusNotReadyMessage,
+    running,
+    t,
+  ]);
 
   const expectedSummary = useMemo(() => {
     if (!selectedDataset) return "";
@@ -802,11 +977,29 @@ export function LabEvaluationRunCard({
     return "";
   }, [benchmarkKind, draft.embeddingModelIds.length, draft.llmModelIds.length, draft.selectedExperimentalPresetCodes.length, selectedDataset, t]);
 
+  const ragIndexReadiness = useMemo(() => {
+    if (benchmarkKind !== "RAG_PRESET_END_TO_END") return null;
+    return resolveRagIndexReadinessDisplay({
+      selectedEmbeddingModelId: draft.embeddingModelId,
+      baselineEmbeddingModelId: effectiveRagBaselineEmbedding,
+      autoReindex: draft.autoReindex,
+      reuseCompatibleActiveSnapshot: draft.reuseCompatibleActiveSnapshot,
+      readiness: evaluationCorpus.readiness,
+      summary: evaluationCorpus.summary,
+    });
+  }, [
+    benchmarkKind,
+    draft.autoReindex,
+    draft.embeddingModelId,
+    draft.reuseCompatibleActiveSnapshot,
+    effectiveRagBaselineEmbedding,
+    evaluationCorpus.readiness,
+    evaluationCorpus.summary,
+  ]);
+
   const comparisonSelectionCount = useMemo(() => {
     if (benchmarkKind === "LLM_JUDGE_QA") {
-      const fromList = draft.llmModelIds.map((x) => x.trim()).filter(Boolean).length;
-      if (fromList > 0) return fromList;
-      return draft.llmModelId.trim() ? 1 : 0;
+      return selectedLlmModelCount(draft.llmModelIds, draft.llmModelId);
     }
     if (benchmarkKind === "EMBEDDING_RETRIEVAL") {
       return draft.embeddingModelIds.map((x) => x.trim()).filter(Boolean).length;
@@ -819,7 +1012,7 @@ export function LabEvaluationRunCard({
 
   const runButtonLabel = useMemo(() => {
     if (running) {
-      if (ragDocumentCentric) {
+      if (documentCentricCorpus) {
         return t("labEvalPreparingDocumentsAndIndexes");
       }
       return t("evalRunning");
@@ -839,7 +1032,7 @@ export function LabEvaluationRunCard({
       return t("runEvalComparisonEmbedding");
     }
     return t("runEval");
-  }, [benchmarkKind, comparisonSelectionCount, ragDocumentCentric, running, t]);
+  }, [benchmarkKind, comparisonSelectionCount, documentCentricCorpus, running, t]);
 
   const comparisonHint = useMemo(() => {
     if (comparisonSelectionCount >= 2) {
@@ -908,9 +1101,9 @@ export function LabEvaluationRunCard({
         body.experimentalPresetCodes = draft.selectedExperimentalPresetCodes;
       }
       if (benchmarkKind === "RAG_PRESET_END_TO_END") {
-        body.autoReindex = true;
+        body.autoReindex = draft.autoReindex;
         body.allowActiveSnapshotMutation = true;
-        body.reuseCompatibleActiveSnapshot = true;
+        body.reuseCompatibleActiveSnapshot = draft.reuseCompatibleActiveSnapshot;
         body.bootstrapCorpusFromClasspathDocs = true;
         body.bootstrapSkipExisting = true;
       }
@@ -960,6 +1153,14 @@ export function LabEvaluationRunCard({
       }
       if (benchmarkKind === "EMBEDDING_RETRIEVAL") {
         body.embeddingDownstreamRag = draft.embeddingDownstreamRag;
+        body.autoReindex = true;
+      }
+      const runtimeParameters = buildLabBenchmarkRuntimeParametersPayload(
+        benchmarkKind,
+        draft.benchmarkRuntimeParameters ?? {},
+      );
+      if (runtimeParameters) {
+        body.benchmarkRuntimeParameters = runtimeParameters;
       }
       const url = apiProductPath(`/lab/benchmarks/${benchmarkKind}/runs`);
       beginTraceSession();
@@ -1028,11 +1229,14 @@ export function LabEvaluationRunCard({
       abortRef.current?.abort();
       setRunning(false);
       setCancelling(false);
+      cancellingRef.current = false;
       return;
     }
     const jobId = accepted.jobId;
     setCancelling(true);
-    setWatchLive(true);
+    cancellingRef.current = true;
+    liveJob.stop();
+    setWatchLive(false);
     try {
       await apiFetch<void>(apiProductPath(`/lab/jobs/${jobId}/cancel`), { method: "POST" });
       const terminal = await pollLabJob(
@@ -1047,13 +1251,11 @@ export function LabEvaluationRunCard({
       setTaskStatus(terminal);
       useLabJobSessionStore.getState().patchLabJobFromTick(jobId, terminal);
       setRunning(false);
-      setCancelling(false);
-      setWatchLive(false);
-      liveJob.stop();
     } catch (e) {
       setUserFacingErr(e instanceof Error ? e.message : t("evalError"));
       throw e;
     } finally {
+      cancellingRef.current = false;
       setCancelling(false);
       setRunning(false);
       setWatchLive(false);
@@ -1129,7 +1331,7 @@ export function LabEvaluationRunCard({
             <LabEvaluationCorpusPanel
               corpusId={resolvedCorpusId}
               evaluationCorpus={evaluationCorpus}
-              documentCentric
+              documentCentric={documentCentricCorpus}
               optionalProjectId={null}
               disabled={running}
               onCorpusIdChange={(id) => patchDraft({ corpusId: id })}
@@ -1187,7 +1389,7 @@ export function LabEvaluationRunCard({
             </output>
           ) : null}
 
-          {running && ragDocumentCentric ? (
+          {running && documentCentricCorpus ? (
             <output
               role="status"
               data-testid="lab-eval-preparation-progress"
@@ -1217,46 +1419,7 @@ export function LabEvaluationRunCard({
             </output>
           ) : null}
 
-          {draftBlocksRun ? (
-            <output
-              role="alert"
-              data-testid="lab-evaluation-draft-warnings"
-              className="block rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-amber-800 text-sm dark:text-amber-200"
-            >
-              <p className="font-medium">{t("evalDraftWarningsTitle")}</p>
-              <ul className="mt-1 list-inside list-disc space-y-0.5">
-                {warnings.datasetDeletedOrUnknown ? (
-                  <li>{t("evalDraftWarnDatasetMissing")}</li>
-                ) : null}
-                {warnings.datasetIncompatibleWithBenchmark ? (
-                  <li>{t("evalDraftWarnDatasetIncompatible")}</li>
-                ) : null}
-                {warnings.llmModelInvalid ? (
-                  <li>{t(labDraftInvalidModelMessageKey("llm", chatCatalog.data?.effectiveProvider), { modelId: draft.llmModelId.trim() })}</li>
-                ) : null}
-                {warnings.llmModelsInvalid.length > 0 ? (
-                  <li>{t(labDraftInvalidModelMessageKey("llmList", chatCatalog.data?.effectiveProvider), { models: warnings.llmModelsInvalid.join(", ") })}</li>
-                ) : null}
-                {warnings.embeddingModelInvalid ? (
-                  <li>{t(labDraftInvalidModelMessageKey("embedding", embeddingCatalog.data?.effectiveProvider), { modelId: draft.embeddingModelId.trim() })}</li>
-                ) : null}
-                {warnings.embeddingModelsInvalid.length > 0 ? (
-                  <li>{t(labDraftInvalidModelMessageKey("embeddingList", embeddingCatalog.data?.effectiveProvider), { models: warnings.embeddingModelsInvalid.join(", ") })}</li>
-                ) : null}
-                {warnings.presetsUnknown.length > 0 ? (
-                  <li>{t("evalDraftWarnPresetsUnknown", { codes: warnings.presetsUnknown.join(", ") })}</li>
-                ) : null}
-                {invalidLabPresetSelections.length > 0 ? (
-                  <li>{t("evalDraftWarnPresetsNotLabSelectable", { codes: invalidLabPresetSelections.join(", ") })}</li>
-                ) : null}
-                {benchmarkKind === "RAG_PRESET_END_TO_END" &&
-                draft.selectedExperimentalPresetCodes.length === 0 &&
-                !corpusBlocksRun ? (
-                  <li>{t("labConfigNoPresets")}</li>
-                ) : null}
-              </ul>
-            </output>
-          ) : null}
+          <RagDraftIssuesAlert issues={draftIssues} />
 
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
             <div className="min-w-[200px] flex-1 space-y-2">
@@ -1293,6 +1456,114 @@ export function LabEvaluationRunCard({
               </Button>
             </div>
           </div>
+
+          {benchmarkKind === "LLM_JUDGE_QA" && availableLlmModels.length > 0 ? (
+            <ModelCheckboxGroup
+              id={`lab-llm-model-${sectionKey}`}
+              label={t("benchmarkLlmModelsToCompare")}
+              availableModelIds={availableLlmModels}
+              selectedIds={draft.llmModelIds}
+              disabled={running}
+              testIdPrefix="lab-benchmark-llm-models"
+              hint={t("benchmarkLlmMultiHint")}
+              onChange={(llmModelIds) => patchDraft({ llmModelIds, llmModelId: "" })}
+            />
+          ) : null}
+
+          {benchmarkKind === "EMBEDDING_RETRIEVAL" && selectableCompatibleEmbeddings.length > 0 ? (
+            <ModelCheckboxGroup
+              id={`lab-emb-model-${sectionKey}`}
+              label={t("benchmarkEmbeddingModelsToCompare")}
+              availableModelIds={selectableCompatibleEmbeddings}
+              selectedIds={draft.embeddingModelIds}
+              disabled={running}
+              testIdPrefix="lab-benchmark-embedding-models"
+              hint={t("benchmarkEmbeddingMultiHint")}
+              onChange={(embeddingModelIds) => patchDraft({ embeddingModelIds })}
+            />
+          ) : null}
+
+          {benchmarkKind === "RAG_PRESET_END_TO_END" && selectableCompatibleEmbeddings.length > 0 ? (
+            <LabModelConfigurationSection
+              sectionKey={sectionKey}
+              disabled={running}
+              embeddingModelId={draft.embeddingModelId}
+              primaryLlmModelId={draft.llmModelId}
+              secondaryLlmModelId={draft.benchmarkRuntimeParameters?.secondaryLlmModelId}
+              embeddingModelIds={selectableCompatibleEmbeddings}
+              chatModelIds={availableLlmModels}
+              selectedEmbeddingLabel={draft.embeddingModelId.trim() || undefined}
+              onEmbeddingChange={(embeddingModelId) => patchDraft({ embeddingModelId })}
+              onPrimaryLlmChange={(llmModelId) => {
+                const secondary = draft.benchmarkRuntimeParameters?.secondaryLlmModelId?.trim();
+                patchDraft({
+                  llmModelId,
+                  benchmarkRuntimeParameters:
+                    secondary === llmModelId
+                      ? {
+                          ...draft.benchmarkRuntimeParameters,
+                          secondaryLlmModelId: undefined,
+                        }
+                      : draft.benchmarkRuntimeParameters,
+                });
+              }}
+              onSecondaryLlmChange={(secondaryLlmModelId) =>
+                patchDraft({
+                  benchmarkRuntimeParameters: {
+                    ...draft.benchmarkRuntimeParameters,
+                    secondaryLlmModelId,
+                  },
+                })
+              }
+            />
+          ) : null}
+
+          {benchmarkKind === "RAG_PRESET_END_TO_END" ? (
+            <LabEmbeddingRetrievalParametersSection
+              variant="rag"
+              disabled={running}
+              value={draft.benchmarkRuntimeParameters ?? {}}
+              selectedModels={selectedRagEmbeddingModels}
+              onChange={(benchmarkRuntimeParameters) => patchDraft({ benchmarkRuntimeParameters })}
+            />
+          ) : null}
+
+          {benchmarkKind === "RAG_PRESET_END_TO_END" ? (
+            <LabGenerationParametersSection
+              disabled={running}
+              value={draft.benchmarkRuntimeParameters ?? {}}
+              onChange={(benchmarkRuntimeParameters) => patchDraft({ benchmarkRuntimeParameters })}
+            />
+          ) : null}
+
+          {benchmarkKind === "RAG_PRESET_END_TO_END" ? (
+            <LabRagIndexingMaterializationPlan
+              disabled={running}
+              selectedPresetCodes={draft.selectedExperimentalPresetCodes}
+              experimentalPresets={experimentalPresets.data}
+              autoReindex={draft.autoReindex}
+              reuseCompatibleActiveSnapshot={draft.reuseCompatibleActiveSnapshot}
+              indexReadiness={ragIndexReadiness}
+              onAutoReindexChange={(autoReindex) =>
+                patchDraft({
+                  autoReindex,
+                  reuseCompatibleActiveSnapshot: autoReindex ? draft.reuseCompatibleActiveSnapshot : false,
+                })
+              }
+              onReuseCompatibleChange={(reuseCompatibleActiveSnapshot) =>
+                patchDraft({ reuseCompatibleActiveSnapshot })
+              }
+            />
+          ) : null}
+
+          {benchmarkKind === "LLM_JUDGE_QA" || benchmarkKind === "EMBEDDING_RETRIEVAL" ? (
+            <LabHyperparametersForm
+              benchmarkKind={benchmarkKind}
+              value={draft.benchmarkRuntimeParameters ?? {}}
+              onChange={(benchmarkRuntimeParameters) => patchDraft({ benchmarkRuntimeParameters })}
+              embeddingModels={selectedEmbeddingCampaignModels}
+            />
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor={`lab-benchmark-dataset-${sectionKey}`}>{t("benchmarkDatasetLabel")}</Label>
@@ -1388,99 +1659,6 @@ export function LabEvaluationRunCard({
               </TechnicalDetails>
             </>
           ) : null}
-
-          {(benchmarkKind === "LLM_JUDGE_QA" ||
-            benchmarkKind === "RAG_PRESET_END_TO_END" ||
-            (benchmarkKind === "EMBEDDING_RETRIEVAL" && draft.embeddingDownstreamRag)) && (
-            <div className="space-y-2">
-              <Label htmlFor={`lab-llm-model-${sectionKey}`}>{t("benchmarkLlmModelOptional")}</Label>
-              <select
-                id={`lab-llm-model-${sectionKey}`}
-                data-testid="lab-benchmark-llm-model"
-                className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                value={benchmarkKind === "LLM_JUDGE_QA" ? draft.llmModelId : draft.llmModelId}
-                disabled={running || availableLlmModels.length === 0}
-                onChange={(e) =>
-                  patchDraft({
-                    llmModelId: e.target.value,
-                    llmModelIds: benchmarkKind === "LLM_JUDGE_QA" ? [] : draft.llmModelIds,
-                  })
-                }
-              >
-                <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
-                {warnings.llmModelInvalid && draft.llmModelId.trim() !== "" ? (
-                  <option value={draft.llmModelId} disabled>
-                    {draft.llmModelId}
-                  </option>
-                ) : null}
-                {allLlmModelNames.map((name) => {
-                  const row = chatCatalogModels.find((m) => m.modelName === name);
-                  const disabled = row != null && !row.evalSelectable;
-                  return (
-                    <option key={name} value={name} disabled={disabled}>
-                      {disabled && row?.blockedReason ? `${name} (${row.blockedReason})` : name}
-                    </option>
-                  );
-                })}
-              </select>
-              {availableLlmModels.length === 0 ? (
-                <output className="text-muted-foreground block text-xs">{t("noLlmModelsAvailable")}</output>
-              ) : null}
-            </div>
-          )}
-
-          {(benchmarkKind === "EMBEDDING_RETRIEVAL" || benchmarkKind === "RAG_PRESET_END_TO_END") && (
-            <div className="space-y-2">
-              {benchmarkKind === "EMBEDDING_RETRIEVAL" && selectableCompatibleEmbeddings.length > 0 ? (
-                <ModelCheckboxGroup
-                  id={`lab-emb-model-${sectionKey}`}
-                  label={t("benchmarkEmbeddingModelOptional")}
-                  availableModelIds={selectableCompatibleEmbeddings}
-                  selectedIds={draft.embeddingModelIds}
-                  disabled={running}
-                  testIdPrefix="lab-benchmark-embedding-models"
-                  hint={t("benchmarkEmbeddingMultiHint")}
-                  onChange={(embeddingModelIds) => patchDraft({ embeddingModelIds })}
-                />
-              ) : (
-                <>
-                  <Label htmlFor={`lab-emb-model-${sectionKey}`}>{t("benchmarkEmbeddingModelOptional")}</Label>
-                  <select
-                    id={`lab-emb-model-${sectionKey}`}
-                    data-testid="lab-benchmark-embedding-model"
-                    className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                    value={draft.embeddingModelId}
-                    disabled={running || selectableCompatibleEmbeddings.length === 0}
-                    onChange={(e) => patchDraft({ embeddingModelId: e.target.value })}
-                  >
-                    <option value="">{t("benchmarkEmbeddingModelPlaceholder")}</option>
-                    {warnings.embeddingModelInvalid && draft.embeddingModelId.trim() !== "" ? (
-                      <option value={draft.embeddingModelId} disabled>
-                        {draft.embeddingModelId}
-                      </option>
-                    ) : null}
-                    {embeddingCatalogModels.map((row) => (
-                      <option
-                        key={row.modelName}
-                        value={row.modelName}
-                        disabled={!row.evalSelectable}
-                        data-testid={`lab-benchmark-embedding-option-${row.modelName}`}
-                      >
-                        {!row.evalSelectable && row.blockedReason
-                          ? `${row.modelName} (${row.blockedReason})`
-                          : row.modelName}
-                      </option>
-                    ))}
-                  </select>
-                  {selectableCompatibleEmbeddings.length === 0 ? (
-                    <output className="text-muted-foreground block text-xs" data-testid="lab-eval-no-compatible-embeddings">
-                      {t("noEmbeddingModelsAvailable")}
-                    </output>
-                  ) : null}
-                </>
-              )}
-            </div>
-          )}
 
           {benchmarkKind === "RAG_PRESET_END_TO_END" ? (
             <div className="space-y-2">
@@ -1596,10 +1774,20 @@ export function LabEvaluationRunCard({
               type="button"
               data-testid={runButtonTestId}
               disabled={running || !canStart || otherActiveJobExists}
+              title={runDisabledReason ?? undefined}
               onClick={() => void run()}
             >
               {runButtonLabel}
             </Button>
+            {!running && !canStart && runDisabledReason ? (
+              <p
+                className="text-muted-foreground w-full text-xs"
+                data-testid="lab-eval-run-disabled-reason"
+                role="status"
+              >
+                {runDisabledReason}
+              </p>
+            ) : null}
             {showStopButton ? (
               <Button
                 type="button"

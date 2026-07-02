@@ -63,8 +63,14 @@ export function ClassifierRegistrySection() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-muted/50">
                   <tr>
-                    <th className="p-2 font-medium">{t("registryColName")}</th>
-                    <th className="p-2 font-medium">{t("registryColTag")}</th>
+                    <th className="p-2 font-medium">
+                      <div>{t("registryColName")}</div>
+                      <div className="text-muted-foreground font-normal">{t("registryColNameHelp")}</div>
+                    </th>
+                    <th className="p-2 font-medium">
+                      <div>{t("registryColTag")}</div>
+                      <div className="text-muted-foreground font-normal">{t("registryColTagHelp")}</div>
+                    </th>
                     <th className="p-2 font-medium">{t("registryColStatus")}</th>
                     <th className="p-2 font-medium">{t("registryColMetrics")}</th>
                     <th className="p-2 font-medium">{t("registryColActive")}</th>

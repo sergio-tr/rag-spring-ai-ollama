@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   compatibleEmbeddingEvalModelNames,
   defaultEmbeddingModelId,
+  defaultLlmModelId,
+  defaultSecondaryLlmModelId,
   labComparisonBlockedMessageKey,
   labDraftInvalidModelMessageKey,
   selectableEvalModelNames,
+  THESIS_DEFAULT_EMBEDDING_MODEL_ID,
+  THESIS_DEFAULT_PRIMARY_LLM_MODEL_ID,
+  THESIS_DEFAULT_SECONDARY_LLM_MODEL_ID,
 } from "./lab-evaluation-models";
 import type { LabEvaluationModelDto } from "@/types/api";
 
@@ -42,6 +47,77 @@ describe("lab-evaluation-models", () => {
 
   it("defaultEmbeddingModelId prefers usableAsDefault compatible model", () => {
     expect(defaultEmbeddingModelId(models)).toBe("good:latest");
+  });
+
+  it("defaultEmbeddingModelId prefers thesis default when present", () => {
+    const thesisModels: LabEvaluationModelDto[] = [
+      ...models,
+      {
+        modelName: THESIS_DEFAULT_EMBEDDING_MODEL_ID,
+        evalSelectable: true,
+        blockedReason: null,
+        blockedReasonCode: null,
+        runtimeStatus: "AVAILABLE",
+        embeddingDimensions: 1024,
+        compatibleWithCurrentVectorStore: true,
+        usableAsDefault: false,
+      },
+    ];
+    expect(defaultEmbeddingModelId(thesisModels)).toBe(THESIS_DEFAULT_EMBEDDING_MODEL_ID);
+  });
+
+  it("defaultLlmModelId prefers thesis primary when present", () => {
+    const chat: LabEvaluationModelDto[] = [
+      {
+        modelName: "other",
+        evalSelectable: true,
+        blockedReason: null,
+        blockedReasonCode: null,
+        runtimeStatus: "AVAILABLE",
+        embeddingDimensions: null,
+        compatibleWithCurrentVectorStore: null,
+        usableAsDefault: true,
+      },
+      {
+        modelName: THESIS_DEFAULT_PRIMARY_LLM_MODEL_ID,
+        evalSelectable: true,
+        blockedReason: null,
+        blockedReasonCode: null,
+        runtimeStatus: "AVAILABLE",
+        embeddingDimensions: null,
+        compatibleWithCurrentVectorStore: null,
+        usableAsDefault: false,
+      },
+    ];
+    expect(defaultLlmModelId(chat)).toBe(THESIS_DEFAULT_PRIMARY_LLM_MODEL_ID);
+  });
+
+  it("defaultSecondaryLlmModelId prefers thesis secondary and excludes primary", () => {
+    const chat: LabEvaluationModelDto[] = [
+      {
+        modelName: THESIS_DEFAULT_PRIMARY_LLM_MODEL_ID,
+        evalSelectable: true,
+        blockedReason: null,
+        blockedReasonCode: null,
+        runtimeStatus: "AVAILABLE",
+        embeddingDimensions: null,
+        compatibleWithCurrentVectorStore: null,
+        usableAsDefault: true,
+      },
+      {
+        modelName: THESIS_DEFAULT_SECONDARY_LLM_MODEL_ID,
+        evalSelectable: true,
+        blockedReason: null,
+        blockedReasonCode: null,
+        runtimeStatus: "AVAILABLE",
+        embeddingDimensions: null,
+        compatibleWithCurrentVectorStore: null,
+        usableAsDefault: false,
+      },
+    ];
+    expect(defaultSecondaryLlmModelId(chat, THESIS_DEFAULT_PRIMARY_LLM_MODEL_ID)).toBe(
+      THESIS_DEFAULT_SECONDARY_LLM_MODEL_ID,
+    );
   });
 
   it("labComparisonBlockedMessageKey is provider-aware", () => {

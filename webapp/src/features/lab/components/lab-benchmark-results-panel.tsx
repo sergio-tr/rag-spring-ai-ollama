@@ -28,7 +28,6 @@ import {
   normalizeMetadataKey,
   parseComparisonRows,
   formatComparisonScore,
-  formatSupportStatusLabel,
   isKnownOutcomeKey,
   resolveComparisonRowLabel,
   resolvePresetKeyFromComparisonRow,
@@ -50,6 +49,28 @@ import {
   readOnExecutedSummary,
 } from "@/features/lab/lib/lab-benchmark-mvp-utils";
 import { TechnicalDetails } from "@/features/lab/components/compact-lab-ui";
+import { EmbeddingComparisonTable } from "@/features/lab/components/embedding-comparison-table";
+import { LlmComparisonTable } from "@/features/lab/components/llm-comparison-table";
+import { RagComparisonTable } from "@/features/lab/components/rag-comparison-table";
+import {
+  LabComparisonTable,
+  LabComparisonTableHead,
+  LabComparisonTh,
+} from "@/features/lab/components/lab-comparison-table";
+import { enrichComparisonRowsFromItems } from "@/features/lab/lib/lab-comparison-metrics";
+import {
+  embeddingRowMatchesGoldFilter,
+  embeddingRowMatchesHitFilter,
+  embeddingRowMatchesQueryFilter,
+  formatHitIndicator,
+  recommendEmbeddingModel,
+  sortEmbeddingComparisonRows,
+  sortEmbeddingItemRows,
+  toEmbeddingItemRow,
+  type EmbeddingItemRow,
+} from "@/features/lab/lib/embedding-result-table";
+import { paginateRows, type LabTablePageSize, LAB_TABLE_DEFAULT_PAGE_SIZE } from "@/features/lab/lib/lab-table-pagination";
+import { LabTablePaginationBar } from "@/features/lab/components/lab-table-pagination";
 import { getSafeApiErrorMessage } from "@/lib/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -147,7 +168,14 @@ function toResultTableRow(row: unknown, idx: number, t: (key: string) => string)
   const rawPresetTop = typeof item?.presetCode === "string" ? item.presetCode.trim() : "";
   const rawPreset = typeof op?.presetCode === "string" && op.presetCode.trim() ? op.presetCode.trim() : rawPresetTop;
   const presetCode = rawPreset && !isMissingMetadata(rawPreset) ? rawPreset : "—";
-  const rawModelTop = typeof item?.modelLabel === "string" ? item.modelLabel.trim() : "";
+  const rawModelTop =
+    typeof item?.embeddingModelId === "string" && item.embeddingModelId.trim()
+      ? item.embeddingModelId.trim()
+      : typeof item?.llmModelId === "string" && item.llmModelId.trim()
+        ? item.llmModelId.trim()
+        : typeof item?.modelLabel === "string"
+          ? item.modelLabel.trim()
+          : "";
   const rawModel = typeof op?.modelId === "string" && op.modelId.trim() ? op.modelId.trim() : rawModelTop;
   const modelId = rawModel && !isMissingMetadata(rawModel) ? rawModel : "—";
   const presetLabelRaw = typeof item?.presetLabel === "string" ? item.presetLabel : "";
@@ -339,8 +367,32 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
   const campId = campaignId?.trim() ?? "";
   const [modelFilter, setModelFilter] = useState("ALL");
   const [presetFilter, setPresetFilter] = useState("ALL");
+  const [hitMissFilter, setHitMissFilter] = useState("ALL");
+  const [queryTextFilter, setQueryTextFilter] = useState("");
+  const [goldTextFilter, setGoldTextFilter] = useState("");
   const [errorClassFilter, setErrorClassFilter] = useState("ALL");
+  const [outcomeFilter, setOutcomeFilter] = useState("ALL");
   const [selectedComparisonKey, setSelectedComparisonKey] = useState<string | null>(null);
+  const [perItemPage, setPerItemPage] = useState(1);
+  const [perItemPageSize, setPerItemPageSize] = useState<LabTablePageSize>(LAB_TABLE_DEFAULT_PAGE_SIZE);
+  const [failedPage, setFailedPage] = useState(1);
+  const [failedPageSize, setFailedPageSize] = useState<LabTablePageSize>(LAB_TABLE_DEFAULT_PAGE_SIZE);
+  const [fallbackComparisonPage, setFallbackComparisonPage] = useState(1);
+  const [fallbackComparisonPageSize, setFallbackComparisonPageSize] =
+    useState<LabTablePageSize>(LAB_TABLE_DEFAULT_PAGE_SIZE);
+  const [campaignRunsPage, setCampaignRunsPage] = useState(1);
+  const [campaignRunsPageSize, setCampaignRunsPageSize] =
+    useState<LabTablePageSize>(LAB_TABLE_DEFAULT_PAGE_SIZE);
+
+  const paginationResetKey = `${modelFilter}:${presetFilter}:${hitMissFilter}:${queryTextFilter}:${goldTextFilter}:${errorClassFilter}:${outcomeFilter}:${runId}`;
+  const [paginationEpoch, setPaginationEpoch] = useState(paginationResetKey);
+  if (paginationEpoch !== paginationResetKey) {
+    setPaginationEpoch(paginationResetKey);
+    setPerItemPage(1);
+    setFailedPage(1);
+    setFallbackComparisonPage(1);
+    setCampaignRunsPage(1);
+  }
 
   const query = useQuery({
     queryKey: ["lab", "benchmark-mvp-results", runId, campId],
@@ -382,8 +434,20 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
     if (!campaignComparison) {
       return [] as ComparisonRow[];
     }
-    return sortComparisonRows(parseComparisonRows(campaignComparison));
-  }, [campaignComparison]);
+    const kind = query.data?.run.benchmarkKind ?? null;
+    const parsed =
+      kind === "EMBEDDING_RETRIEVAL"
+        ? sortEmbeddingComparisonRows(parseComparisonRows(campaignComparison))
+        : sortComparisonRows(parseComparisonRows(campaignComparison));
+    const campaignItemRows =
+      query.data?.campaignItemsBundle && typeof query.data.campaignItemsBundle === "object"
+        ? readMvpItems(query.data.campaignItemsBundle)
+        : [];
+    if (campaignItemRows.length === 0) {
+      return parsed;
+    }
+    return enrichComparisonRowsFromItems(parsed, campaignItemRows);
+  }, [campaignComparison, query.data]);
 
   if (!enabled) {
     return null;
@@ -426,6 +490,12 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
   const useCampaignItems = isCampaignMode && campaignItemRows.length > 0;
   const mvpRows = useCampaignItems ? campaignItemRows : readMvpItems(payload.itemsBundle);
   const tableRows = mvpRows.map((row, idx) => toResultTableRow(row, idx, t));
+  const embeddingItemRows =
+    benchmarkKind === "EMBEDDING_RETRIEVAL" ? mvpRows.map((row, idx) => toEmbeddingItemRow(row, idx)) : [];
+  const embeddingRecommendation =
+    benchmarkKind === "EMBEDDING_RETRIEVAL" && comparisonRows.length >= 2
+      ? recommendEmbeddingModel(comparisonRows)
+      : null;
   const campaignOutcomeCounts =
     comparisonRows.length > 0
       ? aggregateComparisonOutcomeCounts(comparisonRows)
@@ -449,7 +519,10 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
   const executedOutcomeCount = occ.EXECUTED ?? 0;
   const campaignExecutedTotal = campaignOutcomeCounts.EXECUTED ?? 0;
   const macroExecuted = readOnExecutedSummary(payload.rollups.globalMacro);
-  const modelOptions = sortedUnique(tableRows.map((row) => row.modelId).filter((id) => id !== "—"));
+  const modelOptions =
+    benchmarkKind === "EMBEDDING_RETRIEVAL"
+      ? sortedUnique(embeddingItemRows.map((row) => row.embeddingModelId).filter((id) => id !== "—"))
+      : sortedUnique(tableRows.map((row) => row.modelId).filter((id) => id !== "—"));
   const presetOptions = isPresetComparisonAxis(comparisonAxis) && comparisonRows.length > 0
     ? comparisonRows
         .map((row) => {
@@ -469,14 +542,46 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
     tableRows.filter(
       (row) =>
         (modelFilter === "ALL" || row.modelId === modelFilter) &&
-        (presetFilter === "ALL" || row.presetCode === presetFilter) &&
+        (benchmarkKind === "EMBEDDING_RETRIEVAL" || presetFilter === "ALL" || row.presetCode === presetFilter) &&
+        (outcomeFilter === "ALL" || row.outcome === outcomeFilter) &&
         (errorClassFilter === "ALL" ||
           (row.derivedErrorClass != null && row.derivedErrorClass === errorClassFilter)),
     ),
   );
-  const executedRows = filteredRows.filter((row) => row.outcome === "EXECUTED");
-  const failedSkippedRows = filteredRows.filter((row) => FAILED_SKIPPED_OUTCOMES.has(row.outcome));
-  const trend = trendRows(comparisonRows, filteredRows);
+  const filteredEmbeddingRows =
+    benchmarkKind === "EMBEDDING_RETRIEVAL"
+      ? sortEmbeddingItemRows(
+          embeddingItemRows.filter(
+            (row) =>
+              (modelFilter === "ALL" || row.embeddingModelId === modelFilter) &&
+              (outcomeFilter === "ALL" || row.outcome === outcomeFilter) &&
+              embeddingRowMatchesHitFilter(row, hitMissFilter) &&
+              embeddingRowMatchesQueryFilter(row, queryTextFilter) &&
+              embeddingRowMatchesGoldFilter(row, goldTextFilter),
+          ),
+        )
+      : [];
+  const executedRows =
+    benchmarkKind === "EMBEDDING_RETRIEVAL"
+      ? filteredEmbeddingRows.filter((row) => row.outcome === "EXECUTED")
+      : filteredRows.filter((row) => row.outcome === "EXECUTED");
+  const failedSkippedRows =
+    benchmarkKind === "EMBEDDING_RETRIEVAL"
+      ? filteredEmbeddingRows.filter((row) => FAILED_SKIPPED_OUTCOMES.has(row.outcome))
+      : filteredRows.filter((row) => FAILED_SKIPPED_OUTCOMES.has(row.outcome));
+  const perItemSlice =
+    benchmarkKind === "EMBEDDING_RETRIEVAL"
+      ? paginateRows(executedRows as EmbeddingItemRow[], perItemPage, perItemPageSize)
+      : paginateRows(executedRows as ResultTableRow[], perItemPage, perItemPageSize);
+  const failedSlice =
+    benchmarkKind === "EMBEDDING_RETRIEVAL"
+      ? paginateRows(failedSkippedRows as EmbeddingItemRow[], failedPage, failedPageSize)
+      : paginateRows(failedSkippedRows as ResultTableRow[], failedPage, failedPageSize);
+  const fallbackComparisonSlice = paginateRows(comparisonRows, fallbackComparisonPage, fallbackComparisonPageSize);
+  const campaignRuns = payload.campaignRuns ?? [];
+  const campaignRunsSlice = paginateRows(campaignRuns, campaignRunsPage, campaignRunsPageSize);
+  const outcomeOptions = sortedUnique(tableRows.map((row) => row.outcome).filter((value) => value !== "—"));
+  const trend = trendRows(comparisonRows, benchmarkKind === "EMBEDDING_RETRIEVAL" ? [] : filteredRows);
   const plottableTrend = trend.filter((point) => point.score != null);
   const showTrendChart = shouldShowPresetTrend(benchmarkKind, plottableTrend.length);
   const showTrendEmpty = shouldShowTrendEmptyState(benchmarkKind, mvpRows.length > 0, plottableTrend.length);
@@ -529,7 +634,7 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
               kind: formatBenchmarkKindLabel(payload.run.benchmarkKind, t),
             })}
           </p>
-          {macroExecuted && macroExecuted.n > 0 ? (
+          {macroExecuted && macroExecuted.n > 0 && benchmarkKind !== "EMBEDDING_RETRIEVAL" ? (
             <p className="text-muted-foreground text-xs">
               {t("benchmarkResultsExecutedSummary", {
                 n: macroExecuted.n,
@@ -541,11 +646,16 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             </p>
           ) : null}
           <p className="text-muted-foreground text-xs" data-testid="lab-benchmark-results-counts">
-            {t("benchmarkResultsCountsLine", {
-              items: mvpRows.length,
-              questions: uniqueQuestionIds.size,
-              presets: uniquePresetCodes.size,
-            })}
+            {benchmarkKind === "EMBEDDING_RETRIEVAL"
+              ? t("benchmarkResultsCountsLineEmbedding", {
+                  items: mvpRows.length,
+                  questions: uniqueQuestionIds.size,
+                })
+              : t("benchmarkResultsCountsLine", {
+                  items: mvpRows.length,
+                  questions: uniqueQuestionIds.size,
+                  presets: uniquePresetCodes.size,
+                })}
           </p>
           {knowledgeBaseLabel ? (
             <p className="text-muted-foreground text-xs" data-testid="lab-benchmark-knowledge-base-label">
@@ -676,22 +786,30 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
         </div>
       </div>
 
-      {effectiveCampaignId && payload.campaignRuns && payload.campaignRuns.length > 0 ? (
+      {effectiveCampaignId && campaignRuns.length > 0 ? (
         <div className="space-y-2" data-testid="lab-campaign-runs-panel">
           <span className="text-muted-foreground text-xs font-medium">{t("benchmarkCampaignRunsTitle")}</span>
           <div className="max-h-40 overflow-auto rounded-md border bg-background/40 p-2 text-xs">
             <ul className="space-y-1">
-              {payload.campaignRuns.slice(0, 40).map((r, idx) => {
+              {campaignRunsSlice.pageRows.map((r, idx) => {
                 const row = r as Record<string, unknown>;
                 const rid = typeof row.runId === "string" ? row.runId : `row-${idx}`;
                 const model =
-                  typeof row.modelLabel === "string" && row.modelLabel
-                    ? row.modelLabel
-                    : typeof row.llmModelId === "string"
+                  benchmarkKind === "EMBEDDING_RETRIEVAL" &&
+                  typeof row.embeddingModelId === "string" &&
+                  row.embeddingModelId.trim()
+                    ? displayModelId(row.embeddingModelId, t)
+                    : benchmarkKind === "LLM_JUDGE_QA" &&
+                        typeof row.llmModelId === "string" &&
+                        row.llmModelId.trim()
                       ? displayModelId(row.llmModelId, t)
-                      : typeof row.embeddingModelId === "string"
-                        ? displayModelId(row.embeddingModelId, t)
-                        : "—";
+                      : typeof row.modelLabel === "string" && row.modelLabel
+                        ? row.modelLabel
+                        : typeof row.llmModelId === "string"
+                          ? displayModelId(row.llmModelId, t)
+                          : typeof row.embeddingModelId === "string"
+                            ? displayModelId(row.embeddingModelId, t)
+                            : "—";
                 const presetCode = typeof row.presetCode === "string" ? row.presetCode.trim() : "";
                 const presetLabel = typeof row.presetLabel === "string" ? row.presetLabel.trim() : "";
                 const preset =
@@ -714,10 +832,18 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                 );
               })}
             </ul>
-            {payload.campaignRuns.length > 40 ? (
-              <p className="text-muted-foreground mt-2">{t("benchmarkCampaignRunsTruncated", { n: payload.campaignRuns.length })}</p>
-            ) : null}
           </div>
+          <LabTablePaginationBar
+            page={campaignRunsSlice.page}
+            pageSize={campaignRunsSlice.pageSize}
+            totalRows={campaignRunsSlice.totalRows}
+            totalPages={campaignRunsSlice.totalPages}
+            rangeStart={campaignRunsSlice.rangeStart}
+            rangeEnd={campaignRunsSlice.rangeEnd}
+            onPageChange={setCampaignRunsPage}
+            onPageSizeChange={setCampaignRunsPageSize}
+            testId="lab-campaign-runs-pagination"
+          />
           <p className="text-muted-foreground text-[11px]">{t("benchmarkCampaignRunsHint")}</p>
         </div>
       ) : null}
@@ -737,33 +863,66 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
               })}
             </p>
           ) : null}
-          <div className="max-h-56 overflow-auto rounded-md border">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-muted/50 sticky top-0">
+          {benchmarkKind === "EMBEDDING_RETRIEVAL" ? (
+            <EmbeddingComparisonTable
+              rows={comparisonRows}
+              comparisonAxis={comparisonAxis}
+              selectedKey={selectedComparisonKey}
+              onSelectRow={(axisValue) => {
+                const next = selectedComparisonKey === axisValue ? null : axisValue;
+                setSelectedComparisonKey(next);
+                setModelFilter(next ?? "ALL");
+              }}
+            />
+          ) : benchmarkKind === "LLM_JUDGE_QA" ? (
+            <LlmComparisonTable
+              rows={comparisonRows}
+              comparisonAxis={comparisonAxis}
+              selectedKey={selectedComparisonKey}
+              onSelectRow={(axisValue) => {
+                const next = selectedComparisonKey === axisValue ? null : axisValue;
+                setSelectedComparisonKey(next);
+                setModelFilter(next ?? "ALL");
+              }}
+            />
+          ) : benchmarkKind === "RAG_PRESET_END_TO_END" ? (
+            <RagComparisonTable
+              rows={comparisonRows}
+              comparisonAxis={comparisonAxis}
+              selectedKey={selectedComparisonKey}
+              onSelectRow={(presetKey) => {
+                const next = selectedComparisonKey === presetKey ? null : presetKey;
+                setSelectedComparisonKey(next);
+                setPresetFilter(next ?? "ALL");
+              }}
+            />
+          ) : (
+            <LabComparisonTable>
+              <LabComparisonTableHead>
                 <tr>
-                  <th className="p-2 font-medium">{t("benchmarkColComparisonLabel")}</th>
-                  <th className="p-2 font-medium">{t("benchmarkColTotal")}</th>
-                  <th className="p-2 font-medium">{t("benchmarkColExecuted")}</th>
-                  <th className="p-2 font-medium">{t("benchmarkColNotSupported")}</th>
-                  <th className="p-2 font-medium">{t("benchmarkColFailed")}</th>
-                  <th className="p-2 font-medium">{t("benchmarkColSkipped")}</th>
-                  <th
-                    className="bg-primary/5 p-2 font-semibold"
+                  <LabComparisonTh>{t("benchmarkColComparisonLabel")}</LabComparisonTh>
+                  <LabComparisonTh>{t("benchmarkColTotal")}</LabComparisonTh>
+                  <LabComparisonTh>{t("benchmarkColExecuted")}</LabComparisonTh>
+                  <LabComparisonTh>{t("benchmarkColNotSupported")}</LabComparisonTh>
+                  <LabComparisonTh>{t("benchmarkColFailed")}</LabComparisonTh>
+                  <LabComparisonTh>{t("benchmarkColSkipped")}</LabComparisonTh>
+                  <LabComparisonTh
+                    className="bg-primary/5 font-semibold"
                     title={t("benchmarkColAnswerableScoreTooltip")}
                   >
                     {t("benchmarkColAnswerableScore")}
-                  </th>
-                  <th className="p-2 font-medium" title={t("benchmarkColGlobalScoreTooltip")}>
+                  </LabComparisonTh>
+                  <LabComparisonTh title={t("benchmarkColGlobalScoreTooltip")}>
                     {t("benchmarkColGlobalScore")}
-                  </th>
-                  <th className="p-2 font-medium">{t("benchmarkColExact")}</th>
-                  <th className="p-2 font-medium">{t("benchmarkColSemantic")}</th>
-                  <th className="p-2 font-medium">{t("benchmarkColRecall")}</th>
-                  <th className="p-2 font-medium">{t("benchmarkColLatency")}</th>
+                  </LabComparisonTh>
+                  <LabComparisonTh>{t("benchmarkColExact")}</LabComparisonTh>
+                  <LabComparisonTh>{t("benchmarkColSemantic")}</LabComparisonTh>
+                  <LabComparisonTh>{t("benchmarkColRecall")}</LabComparisonTh>
+                  <LabComparisonTh>{t("benchmarkColLatency")}</LabComparisonTh>
                 </tr>
-              </thead>
+              </LabComparisonTableHead>
               <tbody>
-                {comparisonRows.slice(0, 50).map((r, idx) => {
+                {fallbackComparisonSlice.pageRows.map((r, idx) => {
                   const presetKey = resolvePresetKeyFromComparisonRow(r);
                   const label = resolveComparisonRowLabel(r, comparisonAxis);
                   const selected = presetKey.length > 0 && selectedComparisonKey === presetKey;
@@ -786,17 +945,6 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                     >
                       <td className="p-2">
                         <div>{label}</div>
-                        {formatSupportStatusLabel(
-                          typeof r.benchmarkSupportStatus === "string" ? r.benchmarkSupportStatus : undefined,
-                          t,
-                        ) ? (
-                          <div className="text-muted-foreground text-[10px]">
-                            {formatSupportStatusLabel(
-                              typeof r.benchmarkSupportStatus === "string" ? r.benchmarkSupportStatus : undefined,
-                              t,
-                            )}
-                          </div>
-                        ) : null}
                       </td>
                       <td className="p-2">{String(r.totalItems ?? "—")}</td>
                       <td className="p-2">{String(r.executed ?? "—")}</td>
@@ -817,10 +965,48 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                   );
                 })}
               </tbody>
-            </table>
-          </div>
+            </LabComparisonTable>
+          )}
+          {benchmarkKind !== "EMBEDDING_RETRIEVAL" &&
+          benchmarkKind !== "LLM_JUDGE_QA" &&
+          benchmarkKind !== "RAG_PRESET_END_TO_END" &&
+          comparisonRows.length > 0 ? (
+            <LabTablePaginationBar
+              page={fallbackComparisonSlice.page}
+              pageSize={fallbackComparisonSlice.pageSize}
+              totalRows={fallbackComparisonSlice.totalRows}
+              totalPages={fallbackComparisonSlice.totalPages}
+              rangeStart={fallbackComparisonSlice.rangeStart}
+              rangeEnd={fallbackComparisonSlice.rangeEnd}
+              onPageChange={setFallbackComparisonPage}
+              onPageSizeChange={setFallbackComparisonPageSize}
+              testId="lab-fallback-comparison-pagination"
+            />
+          ) : null}
+          {benchmarkKind === "EMBEDDING_RETRIEVAL" && embeddingRecommendation ? (
+            <div
+              className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs"
+              data-testid="lab-embedding-recommendation"
+            >
+              <p className="font-medium text-foreground">{t("benchmarkEmbeddingRecommendationTitle")}</p>
+              <p className="mt-1">
+                <span className="font-mono">{embeddingRecommendation.bestModelId}</span> —{" "}
+                {t(embeddingRecommendation.bestReasonKey)}{" "}
+                {t("benchmarkEmbeddingRecommendMetrics", embeddingRecommendation.bestMetrics)}
+              </p>
+              {embeddingRecommendation.latencyModelId && embeddingRecommendation.latencyReasonKey ? (
+                <p className="text-muted-foreground mt-1">
+                  <span className="font-mono">{embeddingRecommendation.latencyModelId}</span> —{" "}
+                  {t(embeddingRecommendation.latencyReasonKey)}
+                  {embeddingRecommendation.latencyMs ? ` (${embeddingRecommendation.latencyMs} ms)` : ""}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <p className="text-muted-foreground text-[11px]">{t("benchmarkCampaignComparisonHint")}</p>
-          <p className="text-muted-foreground text-[11px]">{t("benchmarkScoreInterpretationHint")}</p>
+          {benchmarkKind !== "EMBEDDING_RETRIEVAL" ? (
+            <p className="text-muted-foreground text-[11px]">{t("benchmarkScoreInterpretationHint")}</p>
+          ) : null}
         </div>
         ) : (
           <output className="text-muted-foreground block text-xs" data-testid="lab-campaign-comparison-empty">
@@ -903,11 +1089,21 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
       ) : null}
 
       <div
-        className={`grid gap-3 ${errorClassOptions.length > 0 ? "md:grid-cols-2 lg:grid-cols-3" : "md:grid-cols-2"}`}
+        className={`grid gap-3 ${
+          benchmarkKind === "EMBEDDING_RETRIEVAL"
+            ? "md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+            : errorClassOptions.length > 0
+              ? "md:grid-cols-2 lg:grid-cols-4"
+              : "md:grid-cols-2 lg:grid-cols-3"
+        }`}
         data-testid="lab-results-filters"
       >
         <label className="space-y-1 text-xs">
-          <span className="text-muted-foreground font-medium">{t("benchmarkFilterModel")}</span>
+          <span className="text-muted-foreground font-medium">
+            {benchmarkKind === "EMBEDDING_RETRIEVAL"
+              ? t("benchmarkFilterEmbeddingModel")
+              : t("benchmarkFilterModel")}
+          </span>
           <select
             className="bg-background w-full rounded-md border px-2 py-1"
             data-testid="lab-results-filter-model"
@@ -922,22 +1118,77 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             ))}
           </select>
         </label>
+        {benchmarkKind !== "EMBEDDING_RETRIEVAL" ? (
+          <label className="space-y-1 text-xs">
+            <span className="text-muted-foreground font-medium">{t("benchmarkFilterPreset")}</span>
+            <select
+              className="bg-background w-full rounded-md border px-2 py-1"
+              data-testid="lab-results-filter-preset"
+              value={presetFilter}
+              onChange={(event) => {
+                const value = event.target.value;
+                setPresetFilter(value);
+                setSelectedComparisonKey(value === "ALL" ? null : value);
+              }}
+            >
+              <option value="ALL">{t("benchmarkFilterAll")}</option>
+              {presetOptions.map((preset) => (
+                <option key={preset.key} value={preset.key}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {benchmarkKind === "EMBEDDING_RETRIEVAL" ? (
+          <>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground font-medium">{t("benchmarkFilterHitMiss")}</span>
+              <select
+                className="bg-background w-full rounded-md border px-2 py-1"
+                data-testid="lab-results-filter-hit-miss"
+                value={hitMissFilter}
+                onChange={(event) => setHitMissFilter(event.target.value)}
+              >
+                <option value="ALL">{t("benchmarkFilterAll")}</option>
+                <option value="HIT">{t("benchmarkFilterHit")}</option>
+                <option value="MISS">{t("benchmarkFilterMiss")}</option>
+              </select>
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground font-medium">{t("benchmarkFilterQuery")}</span>
+              <input
+                className="bg-background w-full rounded-md border px-2 py-1"
+                data-testid="lab-results-filter-query"
+                value={queryTextFilter}
+                onChange={(event) => setQueryTextFilter(event.target.value)}
+                placeholder={t("benchmarkFilterQuery")}
+              />
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground font-medium">{t("benchmarkFilterGold")}</span>
+              <input
+                className="bg-background w-full rounded-md border px-2 py-1"
+                data-testid="lab-results-filter-gold"
+                value={goldTextFilter}
+                onChange={(event) => setGoldTextFilter(event.target.value)}
+                placeholder={t("benchmarkFilterGold")}
+              />
+            </label>
+          </>
+        ) : null}
         <label className="space-y-1 text-xs">
-          <span className="text-muted-foreground font-medium">{t("benchmarkFilterPreset")}</span>
+          <span className="text-muted-foreground font-medium">{t("benchmarkFilterOutcome")}</span>
           <select
             className="bg-background w-full rounded-md border px-2 py-1"
-            data-testid="lab-results-filter-preset"
-            value={presetFilter}
-            onChange={(event) => {
-              const value = event.target.value;
-              setPresetFilter(value);
-              setSelectedComparisonKey(value === "ALL" ? null : value);
-            }}
+            data-testid="lab-results-filter-outcome"
+            value={outcomeFilter}
+            onChange={(event) => setOutcomeFilter(event.target.value)}
           >
             <option value="ALL">{t("benchmarkFilterAll")}</option>
-            {presetOptions.map((preset) => (
-              <option key={preset.key} value={preset.key}>
-                {preset.label}
+            {outcomeOptions.map((outcome) => (
+              <option key={outcome} value={outcome}>
+                {formatOutcomeLabel(outcome, t)}
               </option>
             ))}
           </select>
@@ -993,25 +1244,71 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
 
       <div className="space-y-2">
         <span className="text-muted-foreground text-xs font-medium">{t("benchmarkPerItemTitle")}</span>
-        <div className="max-h-56 overflow-auto rounded-md border">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-muted/50 sticky top-0">
+        {benchmarkKind === "EMBEDDING_RETRIEVAL" ? (
+          <LabComparisonTable maxHeightClassName="max-h-56" testId="lab-benchmark-per-item-table">
+            <LabComparisonTableHead>
               <tr>
-                <th className="p-2 font-medium">{t("benchmarkColItem")}</th>
-                <th className="p-2 font-medium">{t("benchmarkColPreset")}</th>
-                <th className="p-2 font-medium">{t("benchmarkColModel")}</th>
-                <th className="p-2 font-medium">{t("benchmarkColAnswer")}</th>
-                <th className="p-2 font-medium">{t("benchmarkColSources")}</th>
-                <th className="p-2 font-medium">{t("benchmarkColOutcome")}</th>
-                <th className="p-2 font-medium">{t("benchmarkColCorrectness")}</th>
-                <th className="p-2 font-medium">{t("benchmarkColJudge")}</th>
-                <th className="p-2 font-medium">{t("benchmarkColHallucination")}</th>
-                <th className="p-2 font-medium">{t("benchmarkColDate")}</th>
-                <th className="p-2 font-medium">{t("benchmarkColNote")}</th>
+                <LabComparisonTh>{t("benchmarkColItem")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColEmbeddingModel")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColExpectedGold")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColRetrievedTop1")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColGoldRank")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColHitAt1")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColHitAt3")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColHitAt5")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColScoreDistance")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColLatency")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColOutcome")}</LabComparisonTh>
               </tr>
-            </thead>
+            </LabComparisonTableHead>
             <tbody>
-              {executedRows.slice(0, 80).map((row) => {
+              {(perItemSlice.pageRows as EmbeddingItemRow[]).map((row) => {
+                const snippet = row.question.length > 96 ? `${row.question.slice(0, 96)}…` : row.question;
+                return (
+                  <tr key={row.id} className="border-t border-border" data-testid={`lab-item-row-${row.id}`}>
+                    <td className="p-2 align-top">{snippet || "—"}</td>
+                    <td className="p-2 align-top">{displayModelId(row.embeddingModelId, t)}</td>
+                    <td className="p-2 align-top" title={row.expectedGold}>
+                      {row.expectedGold}
+                    </td>
+                    <td className="p-2 align-top" title={row.retrievedTop1}>
+                      {row.retrievedTop1}
+                    </td>
+                    <td className="p-2 align-top font-mono">{row.goldRank == null ? "—" : String(row.goldRank)}</td>
+                    <td className="p-2 align-top font-mono">{formatHitIndicator(row.hitAt1)}</td>
+                    <td className="p-2 align-top font-mono">{formatHitIndicator(row.hitAt3)}</td>
+                    <td className="p-2 align-top font-mono">{formatHitIndicator(row.hitAt5)}</td>
+                    <td className="p-2 align-top font-mono">
+                      {row.topScore == null ? "—" : row.topScore.toFixed(4)}
+                    </td>
+                    <td className="p-2 align-top font-mono">
+                      {row.latencyMs == null ? "—" : String(Math.round(row.latencyMs))}
+                    </td>
+                    <td className="p-2 align-top">{formatOutcomeLabel(row.outcome, t)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </LabComparisonTable>
+        ) : (
+          <LabComparisonTable maxHeightClassName="max-h-56" testId="lab-benchmark-per-item-table">
+            <LabComparisonTableHead>
+              <tr>
+                <LabComparisonTh>{t("benchmarkColItem")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColPreset")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColModel")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColAnswer")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColSources")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColOutcome")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColCorrectness")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColJudge")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColHallucination")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColDate")}</LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColNote")}</LabComparisonTh>
+              </tr>
+            </LabComparisonTableHead>
+            <tbody>
+              {(perItemSlice.pageRows as ResultTableRow[]).map((row) => {
                 const snippet = row.question.length > 96 ? `${row.question.slice(0, 96)}…` : row.question;
                 return (
                   <tr key={row.id} className="border-t border-border" data-testid={`lab-item-row-${row.id}`}>
@@ -1064,55 +1361,109 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
                 );
               })}
             </tbody>
-          </table>
-        </div>
-        {filteredRows.length > 80 ? (
-          <p className="text-muted-foreground text-xs">{t("benchmarkPerItemTruncated", { n: filteredRows.length })}</p>
+          </LabComparisonTable>
+        )}
+        {benchmarkKind === "EMBEDDING_RETRIEVAL" &&
+        (perItemSlice.pageRows as EmbeddingItemRow[]).some((row) => row.hasDownstreamAnswer) ? (
+          <details className="text-xs" data-testid="lab-embedding-answer-step-details">
+            <summary className="cursor-pointer font-medium">{t("benchmarkEmbeddingAnswerStepTitle")}</summary>
+            <div className="mt-2 space-y-2">
+              {(perItemSlice.pageRows as EmbeddingItemRow[])
+                .filter((row) => row.hasDownstreamAnswer)
+                .map((row) => (
+                  <div key={`answer-${row.id}`} className="rounded-md border bg-background/40 p-2">
+                    <p className="font-mono text-[11px]">
+                      {t("benchmarkEmbeddingAnswerModel")}: {displayModelId(row.answerModelId, t)}
+                    </p>
+                    <p className="text-muted-foreground mt-1">{row.answer}</p>
+                  </div>
+                ))}
+            </div>
+          </details>
         ) : null}
+        <LabTablePaginationBar
+          page={perItemSlice.page}
+          pageSize={perItemSlice.pageSize}
+          totalRows={perItemSlice.totalRows}
+          totalPages={perItemSlice.totalPages}
+          rangeStart={perItemSlice.rangeStart}
+          rangeEnd={perItemSlice.rangeEnd}
+          onPageChange={setPerItemPage}
+          onPageSizeChange={setPerItemPageSize}
+          testId="lab-benchmark-per-item-pagination"
+        />
       </div>
 
       {failedSkippedRows.length > 0 ? (
         <div className="space-y-2" data-testid="lab-failed-skipped-section">
           <span className="text-muted-foreground text-xs font-medium">{t("benchmarkFailedSkippedTitle")}</span>
-          <div className="max-h-40 overflow-auto rounded-md border">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-muted/50 sticky top-0">
-                <tr>
-                  <th className="p-2 font-medium">{t("benchmarkColItem")}</th>
-                  <th className="p-2 font-medium">{t("benchmarkColPreset")}</th>
-                  <th className="p-2 font-medium">{t("benchmarkColModel")}</th>
-                  <th className="p-2 font-medium">{t("benchmarkColOutcome")}</th>
-                  <th className="p-2 font-medium">{t("benchmarkColNote")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {failedSkippedRows.slice(0, 40).map((row) => {
-                  const snippet = row.question.length > 72 ? `${row.question.slice(0, 72)}…` : row.question;
-                  return (
-                    <tr key={`failed-${row.id}`} className="border-t border-border">
-                      <td className="p-2 align-top">{snippet || "—"}</td>
-                      <td className="p-2 align-top">{row.presetLabel !== "—" ? row.presetLabel : "—"}</td>
-                      <td className="p-2 align-top">{displayModelId(row.modelId, t)}</td>
-                      <td className="p-2 align-top">{formatOutcomeLabel(row.outcome, t)}</td>
-                      <td className="text-muted-foreground p-2 align-top">
-                        <span>{row.note}</span>
-                        {row.technicalDetail ? (
-                          <details className="mt-1" data-testid={`lab-item-technical-${row.id}`}>
-                            <summary className="cursor-pointer text-[10px]">
-                              {t("benchmarkTechnicalDetailsSummary")}
-                            </summary>
-                            <pre className="text-muted-foreground mt-1 max-w-xs overflow-auto whitespace-pre-wrap font-mono text-[10px]">
-                              {row.technicalDetail}
-                            </pre>
-                          </details>
-                        ) : null}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <LabComparisonTable maxHeightClassName="max-h-40" testId="lab-failed-skipped-table">
+            <LabComparisonTableHead>
+              <tr>
+                <LabComparisonTh>{t("benchmarkColItem")}</LabComparisonTh>
+                {benchmarkKind !== "EMBEDDING_RETRIEVAL" ? (
+                  <LabComparisonTh>{t("benchmarkColPreset")}</LabComparisonTh>
+                ) : null}
+                <LabComparisonTh>
+                  {benchmarkKind === "EMBEDDING_RETRIEVAL"
+                    ? t("benchmarkColEmbeddingModel")
+                    : t("benchmarkColModel")}
+                </LabComparisonTh>
+                <LabComparisonTh>{t("benchmarkColOutcome")}</LabComparisonTh>
+                {benchmarkKind !== "EMBEDDING_RETRIEVAL" ? (
+                  <LabComparisonTh>{t("benchmarkColNote")}</LabComparisonTh>
+                ) : null}
+              </tr>
+            </LabComparisonTableHead>
+            <tbody>
+              {benchmarkKind === "EMBEDDING_RETRIEVAL"
+                ? (failedSlice.pageRows as unknown as EmbeddingItemRow[]).map((row) => {
+                    const snippet = row.question.length > 72 ? `${row.question.slice(0, 72)}…` : row.question;
+                    return (
+                      <tr key={`failed-${row.id}`} className="border-t border-border">
+                        <td className="p-2 align-top">{snippet || "—"}</td>
+                        <td className="p-2 align-top">{displayModelId(row.embeddingModelId, t)}</td>
+                        <td className="p-2 align-top">{formatOutcomeLabel(row.outcome, t)}</td>
+                      </tr>
+                    );
+                  })
+                : (failedSlice.pageRows as ResultTableRow[]).map((row) => {
+                    const snippet = row.question.length > 72 ? `${row.question.slice(0, 72)}…` : row.question;
+                    return (
+                      <tr key={`failed-${row.id}`} className="border-t border-border">
+                        <td className="p-2 align-top">{snippet || "—"}</td>
+                        <td className="p-2 align-top">{row.presetLabel !== "—" ? row.presetLabel : "—"}</td>
+                        <td className="p-2 align-top">{displayModelId(row.modelId, t)}</td>
+                        <td className="p-2 align-top">{formatOutcomeLabel(row.outcome, t)}</td>
+                        <td className="text-muted-foreground p-2 align-top">
+                          <span>{row.note}</span>
+                          {row.technicalDetail ? (
+                            <details className="mt-1" data-testid={`lab-item-technical-${row.id}`}>
+                              <summary className="cursor-pointer text-[10px]">
+                                {t("benchmarkTechnicalDetailsSummary")}
+                              </summary>
+                              <pre className="text-muted-foreground mt-1 max-w-xs overflow-auto whitespace-pre-wrap font-mono text-[10px]">
+                                {row.technicalDetail}
+                              </pre>
+                            </details>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+            </tbody>
+          </LabComparisonTable>
+          <LabTablePaginationBar
+            page={failedSlice.page}
+            pageSize={failedSlice.pageSize}
+            totalRows={failedSlice.totalRows}
+            totalPages={failedSlice.totalPages}
+            rangeStart={failedSlice.rangeStart}
+            rangeEnd={failedSlice.rangeEnd}
+            onPageChange={setFailedPage}
+            onPageSizeChange={setFailedPageSize}
+            testId="lab-failed-skipped-pagination"
+          />
         </div>
       ) : null}
     </div>

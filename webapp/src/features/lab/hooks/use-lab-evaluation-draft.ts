@@ -45,6 +45,9 @@ function withoutStorageVersion(stored: LabEvaluationDraftStored): Omit<LabEvalua
     followMode: stored.followMode,
     lastEvaluationRunId: stored.lastEvaluationRunId,
     corpusId: stored.corpusId,
+    autoReindex: stored.autoReindex,
+    reuseCompatibleActiveSnapshot: stored.reuseCompatibleActiveSnapshot,
+    benchmarkRuntimeParameters: stored.benchmarkRuntimeParameters,
   };
 }
 
@@ -81,6 +84,7 @@ export function useLabEvaluationDraft(
           prev,
           validation.availableLlmModelIds,
           validation.availableEmbeddingModelIds,
+          kind,
         );
         const changed =
           migrated.llmModelId !== prev.llmModelId ||
@@ -90,7 +94,7 @@ export function useLabEvaluationDraft(
         return changed ? migrated : prev;
       });
     });
-  }, [validation.availableLlmModelIds, validation.availableEmbeddingModelIds]);
+  }, [kind, validation.availableLlmModelIds, validation.availableEmbeddingModelIds]);
 
   useEffect(() => {
     saveLabEvaluationDraft(kind, draft);

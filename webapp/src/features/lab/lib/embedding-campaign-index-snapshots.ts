@@ -6,10 +6,12 @@ type ActiveSnapshotResponse = Readonly<{
 }>;
 
 function normalizeEmbeddingKey(modelId: string): string {
-  const trimmed = modelId.trim();
-  if (!trimmed) return "";
-  const colon = trimmed.indexOf(":");
-  return colon > 0 ? trimmed.slice(0, colon) : trimmed;
+  const normalized = modelId.trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized.endsWith(":latest")) {
+    return normalized.slice(0, -":latest".length);
+  }
+  return normalized;
 }
 
 function snapshotMatchesModel(snapshot: ActiveSnapshotResponse | null, modelId: string): string | null {
