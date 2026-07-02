@@ -94,6 +94,7 @@ public class BenchmarkRunOrchestrator {
     static final String AGG_KEY_CORPUS_BOOTSTRAP_POLICY = "corpusBootstrapPolicy";
     static final String AGG_KEY_CORPUS_READINESS = "corpusReadiness";
     static final String AGG_KEY_CONFIG_PREFLIGHT = "configPreflight";
+    static final String AGG_KEY_BENCHMARK_RUNTIME_PARAMETERS = "benchmarkRuntimeParameters";
 
     private final UserRepository userRepository;
     private final EvaluationDatasetRepository evaluationDatasetRepository;
@@ -430,7 +431,7 @@ public class BenchmarkRunOrchestrator {
                             request.bootstrapFailOnDocumentError(),
                             List.of(),
                             request.datasetQuestionIds(),
-                            request.goldSubsetManifestId(), request.routingQueryTypeOracleEnabled());
+                            request.goldSubsetManifestId(), request.routingQueryTypeOracleEnabled(), request.benchmarkRuntimeParameters());
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, presetCode));
@@ -525,7 +526,7 @@ public class BenchmarkRunOrchestrator {
                             request.bootstrapFailOnDocumentError(),
                             List.of(),
                             request.datasetQuestionIds(),
-                            request.goldSubsetManifestId(), request.routingQueryTypeOracleEnabled());
+                            request.goldSubsetManifestId(), request.routingQueryTypeOracleEnabled(), request.benchmarkRuntimeParameters());
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, modelId));
@@ -659,7 +660,7 @@ public class BenchmarkRunOrchestrator {
                             request.bootstrapFailOnDocumentError(),
                             List.of(),
                             request.datasetQuestionIds(),
-                            request.goldSubsetManifestId(), request.routingQueryTypeOracleEnabled());
+                            request.goldSubsetManifestId(), request.routingQueryTypeOracleEnabled(), request.benchmarkRuntimeParameters());
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, modelId));
@@ -896,7 +897,7 @@ public class BenchmarkRunOrchestrator {
                 request.indexSnapshotIds(),
                 request.datasetQuestionIds(),
                 request.goldSubsetManifestId(),
-                request.routingQueryTypeOracleEnabled());
+                request.routingQueryTypeOracleEnabled(), request.benchmarkRuntimeParameters());
     }
 
     private static boolean wantsRagPresetCampaign(StartBenchmarkRunRequest request) {
@@ -1106,7 +1107,8 @@ public class BenchmarkRunOrchestrator {
         if (!request.experimentalPresetCodes().isEmpty()
                 || request.autoReindexEffective()
                 || request.bootstrapCorpusFromClasspathDocsEffective()
-                || request.hasDatasetQuestionSubset()) {
+                || request.hasDatasetQuestionSubset()
+                || !request.benchmarkRuntimeParameters().isEmpty()) {
             Map<String, Object> agg = new LinkedHashMap<>();
             if (run.getAggregatesJson() != null && !run.getAggregatesJson().isEmpty()) {
                 agg.putAll(run.getAggregatesJson());
@@ -1129,6 +1131,9 @@ public class BenchmarkRunOrchestrator {
                 corpusPolicy.put("skipExisting", request.bootstrapSkipExistingEffective());
                 corpusPolicy.put("failOnDocumentError", request.bootstrapFailOnDocumentErrorEffective());
                 agg.put(AGG_KEY_CORPUS_BOOTSTRAP_POLICY, corpusPolicy);
+            }
+            if (!request.benchmarkRuntimeParameters().isEmpty()) {
+                agg.put(AGG_KEY_BENCHMARK_RUNTIME_PARAMETERS, request.benchmarkRuntimeParameters());
             }
             run.setAggregatesJson(Map.copyOf(agg));
         }

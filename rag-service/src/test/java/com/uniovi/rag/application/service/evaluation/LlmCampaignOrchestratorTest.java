@@ -207,7 +207,7 @@ class LlmCampaignOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         BenchmarkJobAccepted accepted = orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req);
         assertThat(accepted.campaignId()).isPresent();
@@ -318,7 +318,7 @@ class LlmCampaignOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         BenchmarkJobAccepted accepted = orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req);
         assertThat(accepted.campaignId()).isPresent();

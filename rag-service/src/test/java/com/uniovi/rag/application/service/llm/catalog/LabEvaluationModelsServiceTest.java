@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.embedding.EmbeddingCapabilityResolver;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogRuntimeStatus;
@@ -33,7 +34,7 @@ class LabEvaluationModelsServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new LabEvaluationModelsService(configResolver, evaluationModelCatalogService);
+        service = new LabEvaluationModelsService(configResolver, evaluationModelCatalogService, new EmbeddingCapabilityResolver());
         userId = UUID.randomUUID();
     }
 
@@ -148,6 +149,27 @@ class LabEvaluationModelsServiceTest {
 
         assertThat(response.models().getFirst().evalSelectable()).isTrue();
         assertThat(response.models().getFirst().runtimeStatus()).isEqualTo(LlmCatalogRuntimeStatus.UNKNOWN);
+    }
+
+    @Test
+    void deepseekR1_1_5b_inOpenAiCompatibleCatalog() {
+        when(configResolver.resolve(userId, null, null))
+                .thenReturn(openAiConfig("deepseek-r1:1.5b", "bge-m3"));
+        when(evaluationModelCatalogService.listForUser(userId, LlmModelCapability.CHAT, false))
+                .thenReturn(
+                        new LlmCatalogResponseDto(
+                                List.of(
+                                        chatRow(
+                                                LlmProvider.OPENAI_COMPATIBLE,
+                                                "deepseek-r1:1.5b",
+                                                true,
+                                                LlmCatalogRuntimeStatus.UNKNOWN,
+                                                null))));
+
+        LabEvaluationModelsResponseDto response = service.listForUser(userId, LlmModelCapability.CHAT, false);
+
+        assertThat(response.models()).extracting(LabEvaluationModelDto::modelName).contains("deepseek-r1:1.5b");
+        assertThat(response.models().getFirst().evalSelectable()).isTrue();
     }
 
     private static ResolvedLlmConfig openAiConfig(String chatModel, String embedModel) {

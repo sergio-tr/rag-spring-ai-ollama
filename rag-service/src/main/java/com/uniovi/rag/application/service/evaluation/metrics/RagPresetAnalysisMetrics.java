@@ -285,6 +285,9 @@ public final class RagPresetAnalysisMetrics {
         if (!retrievalPreset) {
             return CoverageStatus.NOT_APPLICABLE;
         }
+        if (metadataOrToolAnswerWithoutVectorContext(mp)) {
+            return CoverageStatus.HAS_CONTEXT;
+        }
         if (intVal(mp.get("sourceCount")) > 0
                 || intVal(mp.get("contextChunkCount")) > 0
                 || intVal(mp.get("promptContextCharCount")) > 0
@@ -301,7 +304,18 @@ public final class RagPresetAnalysisMetrics {
         if (!retrievalPreset) {
             return CoverageStatus.NOT_APPLICABLE;
         }
+        if (metadataOrToolAnswerWithoutVectorContext(mp)) {
+            return CoverageStatus.HAS_CONTEXT;
+        }
         return intVal(mp.get("sourceCount")) > 0 ? CoverageStatus.HAS_CONTEXT : CoverageStatus.NO_CONTEXT;
+    }
+
+    /** Deterministic metadata/tool answers do not require dense vector chunks in the prompt. */
+    private static boolean metadataOrToolAnswerWithoutVectorContext(Map<String, Object> mp) {
+        if (bool(mp.get("toolExecuted")) && bool(mp.get("toolResultUsedAsFinal"))) {
+            return true;
+        }
+        return "TOOL_FINAL".equalsIgnoreCase(str(mp.get("finalAnswerSource")));
     }
 
     private static Object sourceSupportScore(Map<String, Object> mp) {

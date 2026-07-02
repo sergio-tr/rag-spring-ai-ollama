@@ -21,7 +21,9 @@ import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Aligns {@code indexSnapshotIds} with {@code embeddingModelIds} for embedding campaigns, optionally
@@ -80,8 +82,25 @@ public class EmbeddingCampaignSnapshotAlignmentService {
             return aligned;
         }
 
+        List<IndexSnapshotEmbeddingLookup> corpusSnapshots =
+                knowledgeIndexSnapshotLookupPort.findCorpusSnapshots(corpusId);
+        List<IndexSnapshotEmbeddingLookup> projectSnapshots =
+                knowledgeIndexSnapshotLookupPort.findProjectSnapshots(alignProjectId);
+        for (int i = 0; i < modelIds.size(); i++) {
+            UUID current = aligned.get(i);
+            if (current != null && !snapshotMatchesModel(corpusSnapshots, projectSnapshots, current, modelIds.get(i))) {
+                log.warn(
+                        "embedding_campaign_snapshot_mismatch corpusId={} modelId={} snapshotId={} — rebuilding",
+                        corpusId,
+                        modelIds.get(i),
+                        current);
+                aligned.set(i, null);
+            }
+        }
+
         ExperimentalPresetCanonicalCatalog.IndexRequirements requirements =
                 ExperimentalPresetCanonicalCatalog.IndexRequirements.none();
+        List<String> buildFailures = new ArrayList<>();
         for (int i = 0; i < modelIds.size(); i++) {
             if (aligned.get(i) != null) {
                 continue;
@@ -96,7 +115,17 @@ public class EmbeddingCampaignSnapshotAlignmentService {
                         alignProjectId,
                         modelId,
                         built);
+            } else {
+                buildFailures.add(modelId);
             }
+        }
+        if (!buildFailures.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "EMBEDDING_CAMPAIGN_SNAPSHOT_ALIGN_FAILED: could not prepare evaluation-corpus index snapshots"
+                            + " for embedding models "
+                            + buildFailures
+                            + ". Check corpus documents are READY and the embedding provider is reachable.");
         }
         return aligned;
     }
@@ -115,18 +144,28 @@ public class EmbeddingCampaignSnapshotAlignmentService {
                 labIndexProfileOverrideFactory.buildEffectiveProfile(
                         effective, requirements, LabPresetRunGroupKey.CHUNK_LEVEL);
 
-        ResolvedConfigSnapshotLinkage resolved =
-                resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshotLinkage(
-                        userId, alignProjectId, Optional.empty());
-        return knowledgePipelineOrchestrator.rebuildScopeWithProfileOverride(
-                alignProjectId,
-                CorpusScope.PROJECT_SHARED,
-                null,
-                KnowledgeSnapshotOwnerType.EVALUATION_CORPUS,
-                corpusId,
-                resolved.id(),
-                resolved.configHash(),
-                effective);
+        try {
+            ResolvedConfigSnapshotLinkage resolved =
+                    resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshotLinkage(
+                            userId, alignProjectId, Optional.empty());
+            return knowledgePipelineOrchestrator.rebuildScopeWithProfileOverride(
+                    alignProjectId,
+                    CorpusScope.PROJECT_SHARED,
+                    null,
+                    KnowledgeSnapshotOwnerType.EVALUATION_CORPUS,
+                    corpusId,
+                    resolved.id(),
+                    resolved.configHash(),
+                    effective);
+        } catch (RuntimeException ex) {
+            log.error(
+                    "embedding_campaign_snapshot_build_failed corpusId={} projectId={} modelId={} reason={}",
+                    corpusId,
+                    alignProjectId,
+                    embeddingModelId,
+                    ex.getMessage());
+            return null;
+        }
     }
 
     /** Aligns snapshot ids from explicit payload, evaluation-corpus owner, then project history. */
@@ -134,12 +173,6 @@ public class EmbeddingCampaignSnapshotAlignmentService {
             UUID alignProjectId, UUID corpusId, List<String> modelIds, List<UUID> provided) {
         if (modelIds == null || modelIds.isEmpty()) {
             return List.of();
-        }
-        if (modelIds.size() > 1 && provided != null && !provided.isEmpty()) {
-            return List.copyOf(provided);
-        }
-        if (modelIds.size() == 1 && provided != null && !provided.isEmpty()) {
-            return List.of(provided.getFirst());
         }
 
         List<IndexSnapshotEmbeddingLookup> corpusSnapshots =
@@ -150,14 +183,49 @@ public class EmbeddingCampaignSnapshotAlignmentService {
                         : List.of();
 
         List<UUID> aligned = new ArrayList<>();
-        for (String modelId : modelIds) {
-            UUID matched = findMatchingSnapshot(corpusSnapshots, modelId);
+        for (int i = 0; i < modelIds.size(); i++) {
+            String modelId = modelIds.get(i);
+            UUID matched = null;
+            if (provided != null && i < provided.size() && provided.get(i) != null) {
+                matched =
+                        snapshotMatchesModel(corpusSnapshots, projectSnapshots, provided.get(i), modelId)
+                                ? provided.get(i)
+                                : null;
+            }
+            if (matched == null) {
+                matched = findMatchingSnapshot(corpusSnapshots, modelId);
+            }
             if (matched == null) {
                 matched = findMatchingSnapshot(projectSnapshots, modelId);
             }
             aligned.add(matched);
         }
         return aligned;
+    }
+
+    private static boolean snapshotMatchesModel(
+            List<IndexSnapshotEmbeddingLookup> corpusSnapshots,
+            List<IndexSnapshotEmbeddingLookup> projectSnapshots,
+            UUID snapshotId,
+            String modelId) {
+        IndexSnapshotEmbeddingLookup snap = findSnapshotById(corpusSnapshots, snapshotId);
+        if (snap == null) {
+            snap = findSnapshotById(projectSnapshots, snapshotId);
+        }
+        if (snap == null) {
+            return false;
+        }
+        return IndexProfileJsonSupport.readEmbeddingModelId(snap.indexProfileJsonb())
+                .map(
+                        prof ->
+                                IndexProfileJsonSupport.normalizeEmbeddingKey(prof)
+                                        .equals(IndexProfileJsonSupport.normalizeEmbeddingKey(modelId)))
+                .orElse(false);
+    }
+
+    private static IndexSnapshotEmbeddingLookup findSnapshotById(
+            List<IndexSnapshotEmbeddingLookup> snapshots, UUID snapshotId) {
+        return snapshots.stream().filter(s -> snapshotId.equals(s.id())).findFirst().orElse(null);
     }
 
     private static UUID findMatchingSnapshot(List<IndexSnapshotEmbeddingLookup> snapshots, String modelId) {

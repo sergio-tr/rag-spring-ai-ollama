@@ -81,7 +81,7 @@ public class EvaluationServiceFactory {
                 in != null
                         ? in
                         : new Settings(
-                                80,
+                                8,
                                 0.25,
                                 "http://localhost:8000",
                                 "default",

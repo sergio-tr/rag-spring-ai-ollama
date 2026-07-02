@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation.preset;
 
+import com.uniovi.rag.application.service.evaluation.BenchmarkRuntimeParametersSupport;
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
 import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
@@ -170,6 +171,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
         LlmExperimentalSnapshot llmSnap = experimentalSnapshotFactory.buildLlmSnapshot(run);
         EmbeddingExperimentalSnapshot embSnap = experimentalSnapshotFactory.buildEmbeddingSnapshot(run);
         PromptProfileSnapshot promptSnap = PromptProfileSnapshotFactory.baselineLabProfile();
+        Map<String, Object> benchmarkRuntimeParameters = BenchmarkRuntimeParametersSupport.readFromRun(run);
         if (evaluationRunId != null) {
             baselineRunSnapshotWriter.writeSnapshots(evaluationRunId, llmSnap, embSnap, promptSnap);
         }
@@ -358,8 +360,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 continue;
             }
 
-            // Auto-reindex and snapshot selection for index-requiring groups.
-            if (autoReindexPolicy.enabled() && gk != LabPresetRunGroupKey.NO_INDEX && gk != LabPresetRunGroupKey.DIRECT_LLM) {
+            // Snapshot selection for index-requiring groups (reuse when auto-reindex is off; build when enabled).
+            if (gk != LabPresetRunGroupKey.NO_INDEX && gk != LabPresetRunGroupKey.DIRECT_LLM) {
                 try {
                     exec = ensureGroupSnapshot(run, baseGroup, exec, autoReindexPolicy);
                     runPlan = updateGroup(runPlan, gk, mergeGroupExecution(exec));
@@ -412,8 +414,6 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     }
                     continue;
                 }
-            } else if (gk != LabPresetRunGroupKey.NO_INDEX && gk != LabPresetRunGroupKey.DIRECT_LLM) {
-                exec = exec.withReindexAction("NONE").withReindexStatus("DISABLED");
             }
 
             if (exec.errorCode() != null && !exec.errorCode().isBlank()) {
@@ -425,8 +425,14 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     RagExperimentalPresetCode preset = parsed.get();
                     RagPresetDefinition def = defByPreset.get(preset);
                     String label = def != null ? def.name() : preset.name();
+                    CorpusDiagnostics corpusDiagnostics =
+                            corpusDiagnosticsFor(run, exec.groupSnapshotId(), preset);
+                    String skipCode = corpusDiagnostics.overrideCode(exec.errorCode());
+                    String skipReason =
+                            corpusDiagnostics.overrideReason(
+                                    exec.errorReason() != null ? exec.errorReason() : exec.errorCode());
                     for (RagPresetQuestion q : questions) {
-                        bumpItem.accept("skipped", exec.errorCode());
+                        bumpItem.accept("skipped", skipCode);
                         allRows.add(
                                 skippedRow(
                                         q,
@@ -442,9 +448,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                         embSnap.model(),
                                         runPlan.strategyVersion(),
                                         exec,
-                                        exec.errorCode(),
-                                        exec.errorReason() != null ? exec.errorReason() : exec.errorCode(),
-                                        Map.of(),
+                                        skipCode,
+                                        skipReason,
+                                        corpusDiagnostics.metrics(),
                                         base));
                     }
                 }
@@ -553,13 +559,16 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 RagPresetExperimentalOverlay.Overlay overlay = RagPresetExperimentalOverlay.build(base, preset);
                 lastConfigurationMap = new LinkedHashMap<>();
                 overlay.features().getConfiguration().forEach(lastConfigurationMap::put);
+                var terminalRuntime =
+                        BenchmarkRuntimeParametersSupport.mergeRetrievalOverrides(
+                                overlay.terminalRuntimeJson(), benchmarkRuntimeParameters);
 
                 try (AutoCloseable runScope =
                                 DeterministicToolBenchmarkContext.openRun(
                                         DatasetQuestionSubsetSupport.routingOracleEnabled(run));
                         AutoCloseable ignored =
                         LabBenchmarkExecutionContext.openLab(
-                                overlay.terminalRuntimeJson(),
+                                terminalRuntime,
                                 evaluationRunId,
                                 labEvaluationSnapshotService.resolveIndexProjectId(run),
                                 resolvedSnapId != null ? List.of(resolvedSnapId) : List.of(),
@@ -844,7 +853,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
             LabPresetRunPlanModels.LabPresetRunGroup group,
             GroupExecution exec,
             LabEvaluationSnapshotService.AutoReindexPolicy policy) {
-        if (run == null || group == null || exec == null || !policy.enabled()) {
+        if (run == null || group == null || exec == null) {
             return exec;
         }
         if (run.getId() != null) {
@@ -960,7 +969,11 @@ public class TypedRagPresetBenchmarkOrchestrator {
 
         if (preset != null && ExperimentalPresetCanonicalCatalog.requiresSnapshotAssembledCorpusEvidence(preset)) {
             LabEvaluationSnapshotService.ResolvedSnapshot assembled =
-                    labEvaluationSnapshotService.resolveCompatibleSnapshot(run, req, null, groupKey);
+                    labEvaluationSnapshotService.resolveCompatibleSnapshot(
+                            run,
+                            req,
+                            run != null ? run.getEmbeddingModelId() : null,
+                            groupKey);
             boolean assembledUsable =
                     assembled.hasUsableSnapshot()
                             && (assembled.snapshotId() == null
@@ -988,7 +1001,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
         }
 
         LabEvaluationSnapshotService.ResolvedSnapshot resolved =
-                labEvaluationSnapshotService.resolveCompatibleSnapshot(run, req, null, groupKey);
+                labEvaluationSnapshotService.resolveCompatibleSnapshot(
+                        run, req, run != null ? run.getEmbeddingModelId() : null, groupKey);
         boolean hasUsableSnapshot =
                 resolved.hasUsableSnapshot()
                         && (resolved.snapshotId() == null

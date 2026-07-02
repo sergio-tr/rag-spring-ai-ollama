@@ -199,7 +199,7 @@ class RagPresetCampaignOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         BenchmarkJobAccepted accepted =
                 orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req);

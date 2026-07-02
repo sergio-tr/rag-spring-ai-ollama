@@ -184,6 +184,26 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 runtimeObservability);
     }
 
+    private void wireRunRepositoryLookups(
+            UUID runId, EvaluationRunEntity run, UUID userId, UUID projectId, UUID corpusId) {
+        run.setId(runId);
+        when(evaluationRunRepository.findByIdFetchDatasetAndCorpus(runId)).thenReturn(Optional.of(run));
+        when(evaluationRunRepository.getReferenceById(runId)).thenReturn(run);
+        when(evaluationRunRepository.findProjectIdByRunId(runId)).thenReturn(Optional.empty());
+        if (userId != null) {
+            when(evaluationRunRepository.findUserIdByRunId(runId)).thenReturn(Optional.of(userId));
+        }
+        if (corpusId != null) {
+            when(evaluationRunRepository.findCorpusIdByRunId(runId)).thenReturn(Optional.of(corpusId));
+        }
+        if (projectId != null) {
+            when(evaluationRunRepository.findEffectiveProjectIdByRunId(runId)).thenReturn(Optional.of(projectId));
+            ProjectEntity projectRef = Mockito.mock(ProjectEntity.class);
+            when(projectRef.getId()).thenReturn(projectId);
+            when(projectRepository.getReferenceById(projectId)).thenReturn(projectRef);
+        }
+    }
+
     private static EvaluationRunEntity runWithAutoReindex(ProjectEntity project, boolean enabled) {
         EvaluationRunEntity run = new EvaluationRunEntity();
         run.setProject(project);
@@ -578,13 +598,15 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
         when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any())).thenReturn(Optional.empty());
 
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         UUID documentId = UUID.randomUUID();
         ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(projectId);
         EvaluationRunEntity run = new EvaluationRunEntity();
         run.setProject(project);
-        when(evaluationRunRepository.findByIdFetchDatasetAndCorpus(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+        wireRunRepositoryLookups(runId, run, userId, projectId, null);
         when(corpusAvailabilityGate.evaluateForPreset(
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
@@ -620,7 +642,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
-                                UUID.randomUUID(),
+                                runId,
                                 new TypedBenchmarkDataset.RagPresetQuestions(
                                         List.of(sampleQuestion()), List.of(preset(RagExperimentalPresetCode.P2))),
                                 new RagFeatureConfiguration(),
@@ -651,12 +673,14 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
         when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any())).thenReturn(Optional.empty());
 
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(projectId);
         EvaluationRunEntity run = new EvaluationRunEntity();
         run.setProject(project);
-        when(evaluationRunRepository.findByIdFetchDatasetAndCorpus(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+        wireRunRepositoryLookups(runId, run, userId, projectId, null);
         when(corpusAvailabilityGate.evaluateForPreset(
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
@@ -690,7 +714,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
-                                UUID.randomUUID(),
+                                runId,
                                 new TypedBenchmarkDataset.RagPresetQuestions(
                                         List.of(sampleQuestion()), List.of(preset(RagExperimentalPresetCode.P2))),
                                 new RagFeatureConfiguration(),
@@ -711,8 +735,9 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     void p3_with_hybrid_snapshot_executes() {
         when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+        UUID snapshotId = UUID.randomUUID();
         when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any()))
-                .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "h3", UUID.randomUUID())));
+                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", false, "h3", snapshotId)));
 
         List<RagPresetQuestion> questions = List.of(sampleQuestion());
         RagPresetDefinition p3 = preset(RagExperimentalPresetCode.P3);
@@ -722,15 +747,18 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 ArgumentMatchers.eq(questions),
                 ArgumentMatchers.any()))
                 .thenReturn(EvaluationTestFixtures.ragBatchFromRowMaps(baseRowsFor(questions.size())));
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         var run = new EvaluationRunEntity();
         ProjectEntity project = Mockito.mock(ProjectEntity.class);
-        when(project.getId()).thenReturn(UUID.randomUUID());
+        UUID projectId = UUID.randomUUID();
+        when(project.getId()).thenReturn(projectId);
         run.setProject(project);
-        when(evaluationRunRepository.findByIdFetchDatasetAndCorpus(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+        wireRunRepositoryLookups(runId, run, userId, projectId, null);
 
         orchestrator()
                 .runPresetBenchmark(
-                        UUID.randomUUID(),
+                        runId,
                         new TypedBenchmarkDataset.RagPresetQuestions(questions, List.of(p3)),
                         new RagFeatureConfiguration(),
                         new RagImplementationProperties(),
@@ -881,24 +909,28 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     void noActiveIndexExceptionIsExportedAsReindexRequired() {
         when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+        UUID snapshotId = UUID.randomUUID();
         when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any()))
-                .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "hHybrid", UUID.randomUUID())));
+                .thenReturn(Optional.of(mockSnapshot("DOCUMENT_LEVEL", false, "hDoc", snapshotId)));
         when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
                         ArgumentMatchers.anyList(),
                         ArgumentMatchers.any()))
                 .thenThrow(new IllegalStateException("NO_ACTIVE_INDEX"));
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         ProjectEntity project = Mockito.mock(ProjectEntity.class);
-        when(project.getId()).thenReturn(UUID.randomUUID());
+        UUID projectId = UUID.randomUUID();
+        when(project.getId()).thenReturn(projectId);
         EvaluationRunEntity run = new EvaluationRunEntity();
         run.setProject(project);
-        when(evaluationRunRepository.findByIdFetchDatasetAndCorpus(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+        wireRunRepositoryLookups(runId, run, userId, projectId, null);
 
         RagPresetBenchmarkRunPayload out =
                 orchestrator()
                         .runPresetBenchmark(
-                                UUID.randomUUID(),
+                                runId,
                                 new TypedBenchmarkDataset.RagPresetQuestions(
                                         List.of(sampleQuestion()), List.of(preset(RagExperimentalPresetCode.P2))),
                                 new RagFeatureConfiguration(),

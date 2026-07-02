@@ -61,6 +61,13 @@ final class LlmExperimentalSnapshotConfigMapper {
         putIfPresent(merged, "maxTokens", snapshot.maxTokens());
         putIfPresent(merged, "numPredict", snapshot.numPredict());
         putIfPresent(merged, "seed", snapshot.seed());
+        putIfPresent(merged, "presencePenalty", readDouble(merged, "presencePenalty", "presence_penalty"));
+        putIfPresent(merged, "frequencyPenalty", readDouble(merged, "frequencyPenalty", "frequency_penalty"));
+        putIfPresent(merged, "think", readBoolean(merged, "think"));
+        if (snapshot.outputFormat() instanceof Map<?, ?> formatMap && !formatMap.isEmpty()) {
+            merged.put("response_format", Map.copyOf(formatMap));
+            merged.put("responseFormat", Map.copyOf(formatMap));
+        }
         if (snapshot.stopSequences() != null && !snapshot.stopSequences().isEmpty()) {
             merged.put("stop", snapshot.stopSequences());
         }
@@ -74,5 +81,37 @@ final class LlmExperimentalSnapshotConfigMapper {
         if (value != null) {
             target.put(key, value);
         }
+    }
+
+    private static Double readDouble(Map<String, Object> parameters, String... keys) {
+        if (parameters == null || parameters.isEmpty()) {
+            return null;
+        }
+        for (String key : keys) {
+            if (!parameters.containsKey(key)) {
+                continue;
+            }
+            Object raw = parameters.get(key);
+            if (raw instanceof Number number) {
+                return number.doubleValue();
+            }
+        }
+        return null;
+    }
+
+    private static Boolean readBoolean(Map<String, Object> parameters, String... keys) {
+        if (parameters == null || parameters.isEmpty()) {
+            return null;
+        }
+        for (String key : keys) {
+            if (!parameters.containsKey(key)) {
+                continue;
+            }
+            Object raw = parameters.get(key);
+            if (raw instanceof Boolean bool) {
+                return bool;
+            }
+        }
+        return null;
     }
 }

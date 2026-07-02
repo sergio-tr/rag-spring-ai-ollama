@@ -122,7 +122,8 @@ public class LabBenchmarkController {
                         List.of(),
                         List.of(),
                         null,
-                        null);
+                        null,
+                        Map.of());
         BenchmarkJobAccepted accepted =
                 benchmarkRunOrchestrator.startClassifierMetrics(
                         requireUserId(principal), principal.roleName(), meta, modelId, includeImages, file);
