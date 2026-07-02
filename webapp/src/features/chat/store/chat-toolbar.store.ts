@@ -3,9 +3,12 @@
 import { create } from "zustand";
 import type {
   ChatRuntimeStateDto,
+  CompatibleExperimentalPresetDto,
+  CompatibleProductPresetDto,
   ExperimentalPresetCatalogItemDto,
   MeSelectableLlmModelDto,
   LlmProvider,
+  ProjectCompatiblePresetsDto,
   ProjectDocumentDto,
   RagPresetDto,
 } from "@/types/api";
@@ -32,6 +35,9 @@ export type ChatToolbarApi = {
   presets: RagPresetDto[] | undefined;
   presetsError: boolean;
   presetsLoading: boolean;
+  projectCompatiblePresets: ProjectCompatiblePresetsDto | null;
+  compatibleProductPresets: CompatibleProductPresetDto[] | undefined;
+  compatibleExperimentalPresets: CompatibleExperimentalPresetDto[] | undefined;
   experimentalPresets: ExperimentalPresetCatalogItemDto[] | undefined;
   experimentalPresetsLoading: boolean;
   experimentalPresetsError: boolean;

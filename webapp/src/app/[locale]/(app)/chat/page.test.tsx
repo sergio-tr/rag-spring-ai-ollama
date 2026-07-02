@@ -230,6 +230,167 @@ let ragPresetsData: {
   updatedAt: string;
 }[] = [{ id: "pr1", name: "P", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" }];
 
+function experimentalPresetsFixture() {
+  return [
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000014",
+      code: "P4",
+      family: "S2",
+      label: "Chunk + metadata retrieval",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["USE_RETRIEVAL", "METADATA"],
+      supported: true,
+      supportStatus: "EXECUTABLE",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: false,
+      mapsToRuntimeCapabilities: { code: "P4" },
+      allowedOutcomes: ["EXECUTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: true,
+      labOnly: false,
+    },
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000016",
+      code: "P6",
+      family: "S2",
+      label: "P6 preset",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["USE_RETRIEVAL", "TOOLS"],
+      supported: true,
+      supportStatus: "EXECUTABLE",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: false,
+      mapsToRuntimeCapabilities: { code: "P6" },
+      allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: true,
+      labOnly: false,
+    },
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000018",
+      code: "P8",
+      family: "S2",
+      label: "P8 preset",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["USE_RETRIEVAL", "RANKER", "POST_RETRIEVAL"],
+      supported: true,
+      supportStatus: "EXECUTABLE",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: false,
+      mapsToRuntimeCapabilities: { code: "P8" },
+      allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: true,
+      labOnly: false,
+    },
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000023",
+      code: "P11",
+      family: "S4",
+      label: "Adaptive routing",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["ADAPTIVE_ROUTING"],
+      supported: true,
+      supportStatus: "EXECUTABLE",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: false,
+      mapsToRuntimeCapabilities: { code: "P11" },
+      allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: true,
+      labOnly: false,
+    },
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000024",
+      code: "P12",
+      family: "S4",
+      label: "Judge-enhanced",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["JUDGE"],
+      supported: true,
+      supportStatus: "EXECUTABLE",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: false,
+      mapsToRuntimeCapabilities: { code: "P12" },
+      allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: true,
+      labOnly: false,
+    },
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000021",
+      code: "P13",
+      family: "S4",
+      label: "Clarification loop",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["CLARIFICATION"],
+      supported: true,
+      supportStatus: "REQUIRES_MULTI_TURN",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: true,
+      mapsToRuntimeCapabilities: { code: "P13" },
+      allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: false,
+      labOnly: false,
+    },
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000022",
+      code: "P14",
+      family: "S4",
+      label: "Memory flow",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["MEMORY"],
+      supported: true,
+      supportStatus: "REQUIRES_MULTI_TURN",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: true,
+      mapsToRuntimeCapabilities: { code: "P14" },
+      allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: false,
+      labOnly: false,
+    },
+  ];
+}
+
+function compatiblePresetsFixture() {
+  return {
+    projectId: "p1",
+    effectiveEmbeddingModelId: "mxbai-embed-large",
+    hasActiveIndex: true,
+    readyDocumentCount: 1,
+    activeSnapshotCapabilities: {
+      materializationStrategy: "CHUNK_LEVEL",
+      supportsMetadata: false,
+      embeddingModelId: "mxbai-embed-large",
+      chunkMaxChars: 400,
+      chunkOverlap: 40,
+    },
+    productPresets: [...ragPresetsData].map((preset) => ({
+      preset,
+      indexRequirements: { requiredMaterializationStrategy: "CHUNK_LEVEL", requiresMetadataSupport: false },
+      compatibility: {
+        selectable: true,
+        disabledReasonCode: null,
+        disabledReason: null,
+        indexRequirements: { requiredMaterializationStrategy: "CHUNK_LEVEL", requiresMetadataSupport: false },
+        compatibleWithActiveIndex: true,
+      },
+    })),
+    experimentalPresets: experimentalPresetsFixture().map((preset) => ({
+      preset,
+      compatibility: {
+        selectable: preset.chatSelectable && preset.supported,
+        disabledReasonCode: null,
+        disabledReason: null,
+        indexRequirements: null,
+        compatibleWithActiveIndex: true,
+      },
+    })),
+  };
+}
+
 vi.mock("@/features/chat/hooks/use-rag-presets", () => ({
   useRagPresets: () => ({
     data: ragPresetsData,
@@ -427,128 +588,11 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
   if (method === "GET" && u.includes("/chat/presets/catalog")) {
     return Promise.resolve({
       productPresets: [...ragPresetsData],
-      experimentalPresets: [
-        {
-          productPresetId: "cafe0001-0001-4001-8001-000000000014",
-          code: "P4",
-          family: "S2",
-          label: "Chunk + metadata retrieval",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["USE_RETRIEVAL", "METADATA"],
-          supported: true,
-          supportStatus: "EXECUTABLE",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: false,
-          mapsToRuntimeCapabilities: { code: "P4" },
-          allowedOutcomes: ["EXECUTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: true,
-          labOnly: false,
-        },
-        {
-          productPresetId: "cafe0001-0001-4001-8001-000000000016",
-          code: "P6",
-          family: "S2",
-          label: "P6 preset",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["USE_RETRIEVAL", "TOOLS"],
-          supported: true,
-          supportStatus: "EXECUTABLE",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: false,
-          mapsToRuntimeCapabilities: { code: "P6" },
-          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: true,
-          labOnly: false,
-        },
-        {
-          productPresetId: "cafe0001-0001-4001-8001-000000000018",
-          code: "P8",
-          family: "S2",
-          label: "P8 preset",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["USE_RETRIEVAL", "RANKER", "POST_RETRIEVAL"],
-          supported: true,
-          supportStatus: "EXECUTABLE",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: false,
-          mapsToRuntimeCapabilities: { code: "P8" },
-          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: true,
-          labOnly: false,
-        },
-        {
-          productPresetId: "cafe0001-0001-4001-8001-000000000023",
-          code: "P11",
-          family: "S4",
-          label: "Adaptive routing",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["ADAPTIVE_ROUTING"],
-          supported: true,
-          supportStatus: "EXECUTABLE",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: false,
-          mapsToRuntimeCapabilities: { code: "P11" },
-          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: true,
-          labOnly: false,
-        },
-        {
-          productPresetId: "cafe0001-0001-4001-8001-000000000024",
-          code: "P12",
-          family: "S4",
-          label: "Judge-enhanced",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["JUDGE"],
-          supported: true,
-          supportStatus: "EXECUTABLE",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: false,
-          mapsToRuntimeCapabilities: { code: "P12" },
-          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: true,
-          labOnly: false,
-        },
-        {
-          productPresetId: "cafe0001-0001-4001-8001-000000000021",
-          code: "P13",
-          family: "S4",
-          label: "Clarification loop",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["CLARIFICATION"],
-          supported: true,
-          supportStatus: "REQUIRES_MULTI_TURN",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: true,
-          mapsToRuntimeCapabilities: { code: "P13" },
-          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: false,
-          labOnly: false,
-        },
-        {
-          productPresetId: "cafe0001-0001-4001-8001-000000000022",
-          code: "P14",
-          family: "S4",
-          label: "Memory flow",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["MEMORY"],
-          supported: true,
-          supportStatus: "REQUIRES_MULTI_TURN",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: true,
-          mapsToRuntimeCapabilities: { code: "P14" },
-          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: false,
-          labOnly: false,
-        },
-      ],
+      experimentalPresets: experimentalPresetsFixture(),
     });
+  }
+  if (method === "GET" && u.includes("/compatible-presets")) {
+    return Promise.resolve(compatiblePresetsFixture());
   }
   if (method === "GET" && u.includes("/runtime-config/capabilities")) {
     return Promise.resolve({
@@ -1558,17 +1602,16 @@ describe("ChatPage", () => {
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
   });
 
-  it("disables preset select and explains empty product catalog while still showing experimental presets", async () => {
+  it("keeps preset select enabled with experimental presets when product catalog is empty", async () => {
     ragPresetsData = [];
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Configuration profile/i });
-    expect(presetSelect).toBeDisabled();
+    expect(presetSelect).not.toBeDisabled();
     expect(screen.getAllByRole("status").some((n) => /No presets are available/i.test(n.textContent ?? ""))).toBe(true);
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
-    // Experimental group still loads from unified catalog.
     expect(screen.getByRole("option", { name: /Chunk \+ metadata retrieval/ })).toBeInTheDocument();
   });
 
@@ -2013,13 +2056,6 @@ describe("ChatPage", () => {
     vi.mocked(apiFetch).mockImplementation(async (url: string | { toString(): string }, init?: RequestInit) => {
       const u = typeof url === "string" ? url : url.toString();
       const method = (init?.method ?? "GET").toUpperCase();
-      if (u.includes("/draft")) return { content: "" };
-      if (method === "GET" && u.includes("/runtime-state")) {
-        return { validation: { valid: true, supported: true, errors: [] } };
-      }
-      if (u.includes("/conversations/c1/messages") && method === "GET") {
-        return [...chatMessagesStore];
-      }
       if (method === "POST" && u.includes("/conversations/c1/messages") && !u.includes("/retry")) {
         throw createHttpApiError({
           status: 502,
@@ -2029,7 +2065,7 @@ describe("ChatPage", () => {
           method: "POST",
         });
       }
-      return {};
+      return defaultApiFetch(url, init);
     });
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
@@ -2052,17 +2088,10 @@ describe("ChatPage", () => {
     vi.mocked(apiFetch).mockImplementation(async (url: string | { toString(): string }, init?: RequestInit) => {
       const u = typeof url === "string" ? url : url.toString();
       const method = (init?.method ?? "GET").toUpperCase();
-      if (u.includes("/draft")) return { content: "" };
-      if (method === "GET" && u.includes("/runtime-state")) {
-        return { validation: { valid: true, supported: true, errors: [] } };
-      }
-      if (u.includes("/conversations/c1/messages") && method === "GET") {
-        return [...chatMessagesStore];
-      }
       if (method === "POST" && u.includes("/conversations/c1/messages") && !u.includes("/retry")) {
         throw new ApiError(503, "The service used a direct answer fallback.", { kind: "http" });
       }
-      return {};
+      return defaultApiFetch(url, init);
     });
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));

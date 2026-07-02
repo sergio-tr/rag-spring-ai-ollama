@@ -5,6 +5,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChatConfigurationPanelContent } from "./ChatConfigurationPanelContent";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import { IntlTestProvider } from "@/test-utils/intl";
+import type {
+  CompatibleExperimentalPresetDto,
+  ExperimentalPresetCatalogItemDto,
+  ProjectCompatiblePresetsDto,
+} from "@/types/api";
 
 const hooksMock = vi.hoisted(() => ({
   useProjectIndexProfile: vi.fn(),
@@ -145,6 +150,9 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
         presets: [],
         presetsError: false,
         presetsLoading: false,
+        projectCompatiblePresets: null,
+        compatibleProductPresets: [],
+        compatibleExperimentalPresets: [],
         experimentalPresets: [],
         experimentalPresetsLoading: false,
         experimentalPresetsError: false,
@@ -345,87 +353,102 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
   });
 
   it("renders experimental preset option labels for multi-turn and not selectable presets", async () => {
+    const experimentalPresets: ExperimentalPresetCatalogItemDto[] = [
+      {
+        productPresetId: "exp-1",
+        code: "P13",
+        family: "CANONICAL",
+        label: "Multi turn",
+        description: "d",
+        indexRequirements: null,
+        requiredCapabilities: [],
+        supported: false,
+        supportStatus: "NOT_SUPPORTED",
+        reasonIfUnsupported: "requires multi turn",
+        requiresMultiTurn: true,
+        mapsToRuntimeCapabilities: {},
+        allowedOutcomes: ["NOT_SUPPORTED"],
+        chatSelectable: false,
+        labSelectable: true,
+        labOnly: true,
+      },
+      {
+        productPresetId: "exp-2",
+        code: "P0",
+        family: "CANONICAL",
+        label: "Hidden",
+        description: "d",
+        indexRequirements: null,
+        requiredCapabilities: [],
+        supported: false,
+        supportStatus: "NOT_SUPPORTED",
+        reasonIfUnsupported: "not allowed",
+        requiresMultiTurn: false,
+        mapsToRuntimeCapabilities: {},
+        allowedOutcomes: ["NOT_SUPPORTED"],
+        chatSelectable: false,
+        labSelectable: true,
+        labOnly: true,
+      },
+      {
+        productPresetId: "exp-3",
+        code: "P2",
+        family: "CANONICAL",
+        label: "Supported selectable",
+        description: "d",
+        indexRequirements: null,
+        requiredCapabilities: [],
+        supported: true,
+        supportStatus: "EXECUTABLE",
+        reasonIfUnsupported: null,
+        requiresMultiTurn: false,
+        mapsToRuntimeCapabilities: {},
+        allowedOutcomes: ["EXECUTED"],
+        chatSelectable: true,
+        labSelectable: true,
+        labOnly: true,
+      },
+      {
+        productPresetId: "exp-4",
+        code: "P3",
+        family: "CANONICAL",
+        label: "Not supported but selectable",
+        description: "d",
+        indexRequirements: null,
+        requiredCapabilities: [],
+        supported: false,
+        supportStatus: "NOT_SUPPORTED",
+        reasonIfUnsupported: "incompatible index",
+        requiresMultiTurn: false,
+        mapsToRuntimeCapabilities: {},
+        allowedOutcomes: ["NOT_SUPPORTED"],
+        chatSelectable: true,
+        labSelectable: true,
+        labOnly: true,
+      },
+    ];
     useChatToolbarStore.setState((s) => ({
       api: {
         ...s.api!,
-        experimentalPresets: [
-          {
-            productPresetId: "exp-1",
-            code: "P13",
-            family: "CANONICAL",
-            label: "Multi turn",
-            description: "d",
-            indexRequirements: null,
-            requiredCapabilities: [],
-            supported: false,
-            supportStatus: "NOT_SUPPORTED",
-            reasonIfUnsupported: "requires multi turn",
-            requiresMultiTurn: true,
-            mapsToRuntimeCapabilities: {},
-            allowedOutcomes: ["NOT_SUPPORTED"],
-            chatSelectable: false,
-            labSelectable: true,
-            labOnly: true,
-          },
-          {
-            productPresetId: "exp-2",
-            code: "P0",
-            family: "CANONICAL",
-            label: "Hidden",
-            description: "d",
-            indexRequirements: null,
-            requiredCapabilities: [],
-            supported: false,
-            supportStatus: "NOT_SUPPORTED",
-            reasonIfUnsupported: "not allowed",
-            requiresMultiTurn: false,
-            mapsToRuntimeCapabilities: {},
-            allowedOutcomes: ["NOT_SUPPORTED"],
-            chatSelectable: false,
-            labSelectable: true,
-            labOnly: true,
-          },
-          {
-            productPresetId: "exp-3",
-            code: "P2",
-            family: "CANONICAL",
-            label: "Supported selectable",
-            description: "d",
-            indexRequirements: null,
-            requiredCapabilities: [],
-            supported: true,
-            supportStatus: "EXECUTABLE",
-            reasonIfUnsupported: null,
-            requiresMultiTurn: false,
-            mapsToRuntimeCapabilities: {},
-            allowedOutcomes: ["EXECUTED"],
-            chatSelectable: true,
-            labSelectable: true,
-            labOnly: true,
-          },
-          {
-            productPresetId: "exp-4",
-            code: "P3",
-            family: "CANONICAL",
-            label: "Not supported but selectable",
-            description: "d",
-            indexRequirements: null,
-            requiredCapabilities: [],
-            supported: false,
-            supportStatus: "NOT_SUPPORTED",
-            reasonIfUnsupported: "incompatible index",
-            requiresMultiTurn: false,
-            mapsToRuntimeCapabilities: {},
-            allowedOutcomes: ["NOT_SUPPORTED"],
-            chatSelectable: true,
-            labSelectable: true,
-            labOnly: true,
-          },
-        ],
+        experimentalPresets,
+        compatibleExperimentalPresets: experimentalPresets.map(
+          (preset): CompatibleExperimentalPresetDto => ({
+            preset,
+            compatibility: {
+              selectable: preset.chatSelectable && preset.supported,
+              disabledReasonCode:
+                preset.chatSelectable && preset.supported ? null : "PRESET_NOT_SELECTABLE",
+              disabledReason: preset.reasonIfUnsupported,
+              indexRequirements: preset.indexRequirements,
+              compatibleWithActiveIndex: true,
+            },
+          }),
+        ),
       },
     }));
     renderSubject();
-    await openEditPanel();
+    const user = await openEditPanel();
+    await user.click(screen.getByTestId("chat-preset-show-incompatible"));
     expect(screen.getByText(/Multi turn \(Advanced\) \(requires multi turn\)/i)).toBeInTheDocument();
     expect(screen.getByText(/Hidden \(Fast\) \(not allowed\)/i)).toBeInTheDocument();
     expect(screen.getByText(/Supported selectable \(Fast\)/)).toBeInTheDocument();
@@ -435,6 +458,27 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
   });
 
   it("disables experimental preset when active index profile is incompatible", async () => {
+    const hybridPreset: ExperimentalPresetCatalogItemDto = {
+      productPresetId: "exp-hybrid",
+      code: "P7",
+      family: "CANONICAL",
+      label: "Hybrid preset",
+      description: "d",
+      indexRequirements: {
+        requiredMaterializationStrategy: "HYBRID",
+        requiresMetadataSupport: true,
+      },
+      requiredCapabilities: [],
+      supported: true,
+      supportStatus: "EXECUTABLE",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: false,
+      mapsToRuntimeCapabilities: {},
+      allowedOutcomes: ["EXECUTED"],
+      chatSelectable: true,
+      labSelectable: true,
+      labOnly: false,
+    };
     useChatToolbarStore.setState((s) => ({
       api: {
         ...s.api!,
@@ -458,34 +502,57 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
             compatibilityStatus: "OK",
           },
         },
-        experimentalPresets: [
+        experimentalPresets: [hybridPreset],
+        compatibleExperimentalPresets: [
           {
-            productPresetId: "exp-hybrid",
-            code: "P7",
-            family: "CANONICAL",
-            label: "Hybrid preset",
-            description: "d",
-            indexRequirements: {
-              requiredMaterializationStrategy: "HYBRID",
-              requiresMetadataSupport: true,
+            preset: hybridPreset,
+            compatibility: {
+              selectable: false,
+              disabledReasonCode: "MATERIALIZATION_NOT_SUPPORTED",
+              disabledReason: "Create or reindex the project with a compatible index profile.",
+              indexRequirements: {
+                requiredMaterializationStrategy: "HYBRID",
+                requiresMetadataSupport: true,
+              },
+              compatibleWithActiveIndex: false,
             },
-            requiredCapabilities: [],
-            supported: true,
-            supportStatus: "EXECUTABLE",
-            reasonIfUnsupported: null,
-            requiresMultiTurn: false,
-            mapsToRuntimeCapabilities: {},
-            allowedOutcomes: ["EXECUTED"],
-            chatSelectable: true,
-            labSelectable: true,
-            labOnly: false,
           },
         ],
+        projectCompatiblePresets: {
+          projectId: "p1",
+          effectiveEmbeddingModelId: "mxbai",
+          hasActiveIndex: true,
+          readyDocumentCount: 1,
+          activeSnapshotCapabilities: {
+            materializationStrategy: "CHUNK_LEVEL",
+            supportsMetadata: false,
+            embeddingModelId: "mxbai",
+            chunkMaxChars: 400,
+            chunkOverlap: null,
+          },
+          productPresets: [],
+          experimentalPresets: [
+            {
+              preset: hybridPreset,
+              compatibility: {
+                selectable: false,
+                disabledReasonCode: "MATERIALIZATION_NOT_SUPPORTED",
+                disabledReason: "Create or reindex the project with a compatible index profile.",
+                indexRequirements: {
+                  requiredMaterializationStrategy: "HYBRID",
+                  requiresMetadataSupport: true,
+                },
+                compatibleWithActiveIndex: false,
+              },
+            },
+          ],
+        } satisfies ProjectCompatiblePresetsDto,
       },
     }));
 
     renderSubject();
-    await openEditPanel();
+    const user = await openEditPanel();
+    await user.click(screen.getByTestId("chat-preset-show-incompatible"));
     const option = screen.getByRole("option", { name: /Hybrid preset/i }) as HTMLOptionElement;
     expect(option.disabled).toBe(true);
     expect(option.textContent).toMatch(/Create or reindex the project with a compatible index profile/i);

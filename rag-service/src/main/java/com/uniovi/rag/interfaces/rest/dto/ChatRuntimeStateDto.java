@@ -39,6 +39,7 @@ public record ChatRuntimeStateDto(
         PresetCompatibilityDto presetCompatibility,
         RuntimeCompatibilityDto runtimeCompatibility,
         List<DisabledRuntimeFeatureDto> disabledRuntimeFeatures,
-        String disabledPresetReason
+        String disabledPresetReason,
+        EffectiveRetrievalParametersDto effectiveRetrievalParameters
 ) {}
 

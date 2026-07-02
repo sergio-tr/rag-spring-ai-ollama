@@ -37,6 +37,14 @@ export type MeResponse = {
   emailVerifiedAt: string | null;
 };
 
+export type MeEffectiveLlmDefaultsResponse = {
+  effectiveProvider: "OPENAI_COMPATIBLE" | "OLLAMA_NATIVE";
+  chatModel: string;
+  classifierModelId: string | null;
+  temperature: number | null;
+  additionalParameters: Record<string, unknown>;
+};
+
 export type ProjectIndexProfileSummary = {
   projectId: string;
   materializationStrategy: string | null;
@@ -200,6 +208,13 @@ export type ChatRuntimeValidationDto = {
   warnings: RuntimeConfigValidationIssueDto[];
 };
 
+export type EffectiveRetrievalParametersDto = {
+  topK: number;
+  similarityThreshold: number;
+  topKSource: string;
+  similarityThresholdSource: string;
+};
+
 export type ChatRuntimeStateDto = {
   conversationId: string;
   selectedPresetId: string | null;
@@ -224,6 +239,7 @@ export type ChatRuntimeStateDto = {
   runtimeCompatibility?: RuntimeCompatibilityDto | null;
   disabledRuntimeFeatures?: DisabledRuntimeFeatureDto[];
   disabledPresetReason?: string | null;
+  effectiveRetrievalParameters?: EffectiveRetrievalParametersDto | null;
 };
 
 export type DisabledRuntimeFeatureDto = {
@@ -257,6 +273,35 @@ export type RagPresetDto = {
   system: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type CompatibleProductPresetDto = {
+  preset: RagPresetDto;
+  indexRequirements: RuntimeIndexCompatibilityDto["presetIndexRequirements"];
+  compatibility: PresetCompatibilityDto;
+};
+
+export type CompatibleExperimentalPresetDto = {
+  preset: ExperimentalPresetCatalogItemDto;
+  compatibility: PresetCompatibilityDto;
+};
+
+export type RuntimeSnapshotCapabilitiesDto = {
+  materializationStrategy: string | null;
+  supportsMetadata: boolean | null;
+  embeddingModelId: string | null;
+  chunkMaxChars: number | null;
+  chunkOverlap: number | null;
+};
+
+export type ProjectCompatiblePresetsDto = {
+  projectId: string;
+  effectiveEmbeddingModelId: string | null;
+  hasActiveIndex: boolean;
+  readyDocumentCount: number;
+  activeSnapshotCapabilities: RuntimeSnapshotCapabilitiesDto | null;
+  productPresets: CompatibleProductPresetDto[];
+  experimentalPresets: CompatibleExperimentalPresetDto[];
 };
 
 export type AdminAllowlistEntryDto = {
@@ -501,6 +546,8 @@ export type StartBenchmarkRunRequest = {
   /** RAG preset LAB: seed evaluation corpus from server classpath acta bundle when needed. */
   bootstrapCorpusFromClasspathDocs?: boolean | null;
   bootstrapSkipExisting?: boolean | null;
+  /** Optional runtime overrides sent with the benchmark request (temperature, topK, etc.). */
+  benchmarkRuntimeParameters?: Record<string, unknown> | null;
 };
 
 export type ExperimentalPresetCatalogItemDto = {
@@ -595,13 +642,7 @@ export type RuntimeIndexCompatibilityDto = {
   activeIndexProfileHash: string | null;
   activeIndexProfile: Record<string, unknown>;
   hasActiveIndex: boolean;
-  activeSnapshotCapabilities?: {
-    materializationStrategy: string | null;
-    supportsMetadata: boolean | null;
-    embeddingModelId: string | null;
-    chunkMaxChars: number | null;
-    chunkOverlap: number | null;
-  } | null;
+  activeSnapshotCapabilities?: RuntimeSnapshotCapabilitiesDto | null;
   presetIndexRequirements?: {
     requiredMaterializationStrategy: string | null;
     requiresMetadataSupport: boolean;
@@ -881,6 +922,35 @@ export type LabEvaluationModelDto = {
   embeddingDimensions: number | null;
   compatibleWithCurrentVectorStore: boolean | null;
   usableAsDefault: boolean;
+  supportsEncodingFormat?: boolean;
+  supportedEncodingFormats?: string[];
+  supportsDimensions?: boolean;
+  defaultDimensions?: number | null;
+  maxInputTokens?: number | null;
+  supportsNormalize?: boolean;
+  supportsTruncate?: boolean;
+};
+
+export type MeEffectiveEmbeddingDefaultsResponse = {
+  effectiveProvider: LlmProvider;
+  embeddingModel: string;
+  embeddingOptions: {
+    encodingFormat?: string | null;
+    dimensions?: number | null;
+    user?: string | null;
+    timeoutSeconds?: number | null;
+  };
+  retrievalOptions: {
+    topK?: number | null;
+    similarityThreshold?: number | null;
+    materializationStrategy?: string | null;
+  };
+  indexingOptions: {
+    batchSize?: number | null;
+    maxInputChars?: number | null;
+    normalize?: boolean | null;
+    truncate?: string | null;
+  };
 };
 
 export type LabEvaluationModelsResponse = {

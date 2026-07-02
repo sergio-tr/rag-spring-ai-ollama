@@ -34,7 +34,7 @@ export function ConfigScopeBadge({
   return (
     <span
       className={cn(
-        "rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
+        "rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground shrink-0",
         className,
       )}
       data-testid={`config-scope-${scope}`}

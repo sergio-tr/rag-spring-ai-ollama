@@ -9,6 +9,8 @@ import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.interfaces.rest.dto.DisabledRuntimeFeatureDto;
 import com.uniovi.rag.interfaces.rest.dto.ChatPresetSummaryDto;
 import com.uniovi.rag.interfaces.rest.dto.ChatRuntimeStateDto;
+import com.uniovi.rag.application.result.chat.EffectiveRetrievalParameters;
+import com.uniovi.rag.interfaces.rest.dto.EffectiveRetrievalParametersDto;
 import com.uniovi.rag.interfaces.rest.dto.ChatRuntimeValidationDto;
 import com.uniovi.rag.interfaces.rest.dto.ExperimentalPresetCatalogItemDto;
 import com.uniovi.rag.interfaces.rest.dto.PresetCompatibilityDto;
@@ -36,6 +38,7 @@ public class ChatRuntimeStateService {
     private final LabExperimentalPresetCatalogService experimentalPresetCatalogService;
     private final RuntimeConfigValidationService runtimeConfigValidationService;
     private final RuntimeConfigCapabilitiesService runtimeConfigCapabilitiesService;
+    private final ChatEffectiveRetrievalResolver chatEffectiveRetrievalResolver;
 
     ChatRuntimeStateService(
             ProjectAccessService projectAccessService,
@@ -47,7 +50,8 @@ public class ChatRuntimeStateService {
                 chatPresetDefaults,
                 experimentalPresetCatalogService,
                 runtimeConfigValidationService,
-                new RuntimeConfigCapabilitiesService());
+                new RuntimeConfigCapabilitiesService(),
+                new ChatEffectiveRetrievalResolver());
     }
 
     @Autowired
@@ -56,12 +60,14 @@ public class ChatRuntimeStateService {
             ChatPresetDefaults chatPresetDefaults,
             LabExperimentalPresetCatalogService experimentalPresetCatalogService,
             RuntimeConfigValidationService runtimeConfigValidationService,
-            RuntimeConfigCapabilitiesService runtimeConfigCapabilitiesService) {
+            RuntimeConfigCapabilitiesService runtimeConfigCapabilitiesService,
+            ChatEffectiveRetrievalResolver chatEffectiveRetrievalResolver) {
         this.projectAccessService = projectAccessService;
         this.chatPresetDefaults = chatPresetDefaults;
         this.experimentalPresetCatalogService = experimentalPresetCatalogService;
         this.runtimeConfigValidationService = runtimeConfigValidationService;
         this.runtimeConfigCapabilitiesService = runtimeConfigCapabilitiesService;
+        this.chatEffectiveRetrievalResolver = chatEffectiveRetrievalResolver;
     }
 
     public ChatRuntimeStateDto getRuntimeState(UUID userId, UUID conversationId) {
@@ -139,6 +145,16 @@ public class ChatRuntimeStateService {
                         effectiveConfig);
         String disabledPresetReason = presetCompatibility.disabledReason();
 
+        Map<String, Object> presetValues =
+                c.getPreset() != null && c.getPreset().getValues() != null
+                        ? c.getPreset().getValues()
+                        : Map.of();
+        EffectiveRetrievalParameters effectiveRetrieval =
+                chatEffectiveRetrievalResolver.resolve(
+                        effectiveConfig,
+                        normalized.runtimeOverride(),
+                        presetValues);
+
         return new ChatRuntimeStateDto(
                 conversationId,
                 selectedPresetId,
@@ -162,7 +178,16 @@ public class ChatRuntimeStateService {
                 presetCompatibility,
                 runtimeCompatibility,
                 disabledRuntimeFeatures,
-                disabledPresetReason);
+                disabledPresetReason,
+                toEffectiveRetrievalDto(effectiveRetrieval));
+    }
+
+    private static EffectiveRetrievalParametersDto toEffectiveRetrievalDto(EffectiveRetrievalParameters parameters) {
+        return new EffectiveRetrievalParametersDto(
+                parameters.topK(),
+                parameters.similarityThreshold(),
+                parameters.topKSource(),
+                parameters.similarityThresholdSource());
     }
 
     private static void applyConversationModelColumnsToEffective(ConversationEntity c, Map<String, Object> effectiveConfig) {

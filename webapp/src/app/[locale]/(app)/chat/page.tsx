@@ -24,7 +24,13 @@ import {
 import { useChatRuntimeState } from "@/features/chat/hooks/use-chat-runtime-state";
 import { optimisticConsumed } from "@/features/chat/lib/chat-optimistic";
 import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
-import { useChatPresetsCatalog } from "@/features/chat/hooks/use-chat-presets-catalog";
+import { useProjectCompatiblePresets } from "@/features/chat/hooks/use-project-compatible-presets";
+import {
+  compatibilityByExperimentalPresetId,
+  compatibilityByProductPresetId,
+  experimentalPresetsFromCompatible,
+  productPresetsFromCompatible,
+} from "@/features/chat/lib/chat-preset-compatibility";
 import {
   useProjectDocumentsForConversation,
   useUploadConversationOverlayDocument,
@@ -409,13 +415,24 @@ function ChatPageInner() {
     error: modelsQueryError,
     isLoading: selectableLlmModelsLoading,
   } = useMeSelectableLlmModels("CHAT");
-  const chatPresetsCatalog = useChatPresetsCatalog();
-  const presets = chatPresetsCatalog.data?.productPresets;
-  const presetsError = chatPresetsCatalog.isError;
-  const presetsLoading = chatPresetsCatalog.isLoading;
-  const experimentalPresets = chatPresetsCatalog.data?.experimentalPresets;
-  const experimentalPresetsLoading = chatPresetsCatalog.isLoading;
-  const experimentalPresetsError = chatPresetsCatalog.isError;
+  const projectCompatiblePresetsQuery = useProjectCompatiblePresets(projectId);
+  const projectCompatiblePresets = projectCompatiblePresetsQuery.data ?? null;
+  const compatibleProductPresets = projectCompatiblePresets?.productPresets;
+  const compatibleExperimentalPresets = projectCompatiblePresets?.experimentalPresets;
+  const presets = productPresetsFromCompatible(compatibleProductPresets);
+  const presetsError = projectCompatiblePresetsQuery.isError;
+  const presetsLoading = projectCompatiblePresetsQuery.isLoading;
+  const experimentalPresets = experimentalPresetsFromCompatible(compatibleExperimentalPresets);
+  const experimentalPresetsLoading = projectCompatiblePresetsQuery.isLoading;
+  const experimentalPresetsError = projectCompatiblePresetsQuery.isError;
+  const productPresetCompatibility = useMemo(
+    () => compatibilityByProductPresetId(compatibleProductPresets),
+    [compatibleProductPresets],
+  );
+  const experimentalPresetCompatibility = useMemo(
+    () => compatibilityByExperimentalPresetId(compatibleExperimentalPresets),
+    [compatibleExperimentalPresets],
+  );
 
   const activeConv = useMemo(
     () => (conversationId && convs ? convs.find((c) => c.id === conversationId) : undefined),
@@ -438,7 +455,11 @@ function ChatPageInner() {
   const limitDocsToggleNoticeEffective =
     limitDocsDisabled && !limitDocs ? t("limitDocumentsNoReadyHint") : limitDocsToggleNotice;
 
-  const presetsCatalogEmpty = !presetsError && presets?.length === 0;
+  const presetsCatalogEmpty =
+    !presetsError &&
+    !presetsLoading &&
+    (projectCompatiblePresets?.productPresets.length ?? 0) === 0 &&
+    (projectCompatiblePresets?.experimentalPresets.length ?? 0) === 0;
 
   const syntheticPresetOptionNeeded = false;
 
@@ -1047,9 +1068,17 @@ function ChatPageInner() {
         // Disabled experimental presets must be visible but never persistable in Chat.
         return;
       }
+      const productCompat = productPresetCompatibility.get(next);
+      if (productCompat && !productCompat.selectable) {
+        return;
+      }
+      const experimentalCompat = experimentalPresetCompatibility.get(next);
+      if (experimentalCompat && !experimentalCompat.selectable) {
+        return;
+      }
       patchConv.mutate({ conversationId, body: { presetId: next } });
     },
-    [conversationId, patchConv, experimentalPresets],
+    [conversationId, patchConv, experimentalPresets, productPresetCompatibility, experimentalPresetCompatibility],
   );
 
   const applyLlmModelChoice = useCallback(
@@ -1339,6 +1368,9 @@ function ChatPageInner() {
       presets,
       presetsError,
       presetsLoading,
+      projectCompatiblePresets,
+      compatibleProductPresets,
+      compatibleExperimentalPresets,
       experimentalPresets: experimentalPresets ?? [],
       experimentalPresetsLoading,
       experimentalPresetsError,
@@ -1387,6 +1419,9 @@ function ChatPageInner() {
     presets,
     presetsError,
     presetsLoading,
+    projectCompatiblePresets,
+    compatibleProductPresets,
+    compatibleExperimentalPresets,
     experimentalPresets,
     experimentalPresetsLoading,
     experimentalPresetsError,
@@ -1807,7 +1842,7 @@ function ChatPageInner() {
           ) : null}
           {isStreaming && streamingText ? (
             <div className="mr-auto max-w-[85%] min-w-0 overflow-x-hidden rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]">
-              <p className="whitespace-pre-wrap break-words">{streamingText}</p>
+              <ChatAssistantMarkdown content={streamingText} data-testid="chat-streaming-answer" />
             </div>
           ) : null}
           <div ref={bottomRef} />

@@ -1,18 +1,17 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
-import { CompactSummaryRow } from "./chat-config-compact-ui";
-import { ChatConfigurationSidePanel } from "./ChatConfigurationSidePanel";
 import { ChatConfigurationPanelContent } from "./ChatConfigurationPanelContent";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
+import type { ExperimentalPresetCatalogItemDto } from "@/types/api";
 
 const hooksMock = vi.hoisted(() => ({
   useRuntimeConfigCapabilities: vi.fn(),
   useProjectIndexProfile: vi.fn(),
   useActiveProjectSnapshot: vi.fn(),
-  useMeEffectiveEmbeddingDefaults: vi.fn(),
+  useClassifierModelsQuery: vi.fn(),
 }));
 
 vi.mock("@/features/chat/hooks/use-runtime-config-capabilities", () => ({
@@ -25,16 +24,33 @@ vi.mock("@/features/projects/hooks/use-active-project-snapshot", () => ({
   useActiveProjectSnapshot: (...args: unknown[]) => hooksMock.useActiveProjectSnapshot(...args),
 }));
 vi.mock("@/features/lab/hooks/use-classifier-registry", () => ({
-  useClassifierModelsQuery: () => ({ data: [], isError: false, isLoading: false }),
-}));
-vi.mock("@/features/settings/hooks/use-me-effective-embedding-defaults", () => ({
-  useMeEffectiveEmbeddingDefaults: (...args: unknown[]) => hooksMock.useMeEffectiveEmbeddingDefaults(...args),
+  useClassifierModelsQuery: (...args: unknown[]) => hooksMock.useClassifierModelsQuery(...args),
 }));
 
 const LONG_MODEL =
   "org.example.very-long-provider-prefix/gpt-super-long-model-name-with-version-and-quantization-suffix";
 
-function renderPanelContent() {
+const experimentalP14Preset: ExperimentalPresetCatalogItemDto = {
+  productPresetId: "exp-p14",
+  code: "P14",
+  family: "CANONICAL",
+  label: "P14 preset",
+  description: "d",
+  indexRequirements: null,
+  requiredCapabilities: [],
+  supported: true,
+  supportStatus: "EXECUTABLE",
+  reasonIfUnsupported: null,
+  requiresMultiTurn: false,
+  mapsToRuntimeCapabilities: {},
+  allowedOutcomes: ["EXECUTED"],
+  chatSelectable: true,
+  labSelectable: true,
+  labOnly: false,
+  protocolStageIndex: 14,
+};
+
+function renderSubject() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
@@ -45,59 +61,115 @@ function renderPanelContent() {
   );
 }
 
-function renderSidePanel() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
-    <QueryClientProvider client={qc}>
-      <IntlTestProvider locale="en">
-        <ChatConfigurationSidePanel open onClose={() => undefined} />
-      </IntlTestProvider>
-    </QueryClientProvider>,
-  );
-}
-
-describe("chat config layout", () => {
+describe("AssistantConfigurationLayout", () => {
   beforeEach(() => {
     hooksMock.useProjectIndexProfile.mockReturnValue({ data: null, isLoading: false, isError: false });
     hooksMock.useActiveProjectSnapshot.mockReturnValue({ data: null, isLoading: false, isError: false });
+    hooksMock.useClassifierModelsQuery.mockReturnValue({ data: [], isError: false, isLoading: false });
     hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
       data: { capabilities: [] },
       isLoading: false,
     });
-    hooksMock.useMeEffectiveEmbeddingDefaults.mockReturnValue({
-      data: { retrievalOptions: { topK: 8, similarityThreshold: 0.25, materializationStrategy: "CHUNK" } },
+  });
+
+  it("does not render forbidden evaluation preset latency warning copy", async () => {
+    const user = userEvent.setup();
+    useChatToolbarStore.setState({
+      api: {
+        projectId: "p1",
+        conversationId: "c1",
+        runtimeOverride: {},
+        runtimeState: {
+          conversationId: "c1",
+          selectedPresetId: "exp-p14",
+          effectivePresetId: "exp-p14",
+          preset: {
+            kind: "EXPERIMENTAL",
+            code: "P14",
+            label: "Research preset",
+            chatSelectable: true,
+            supported: true,
+            supportStatus: null,
+            reasonIfUnsupported: null,
+          },
+          baseEffectiveConfig: { useRetrieval: true },
+          effectiveConfig: { useRetrieval: true },
+          conversationLlmModel: null,
+          conversationClassifierModelId: null,
+          conversationModelsPinned: false,
+          runtimeOverride: {},
+          manualOverrideKeys: [],
+          isCustom: false,
+          validation: { valid: true, supported: true, errors: [], warnings: [] },
+          selectedWorkflow: null,
+          indexCompatibility: null,
+          requiresReindex: false,
+        },
+        runtimeStateLoading: false,
+        runtimeStateError: null,
+        refreshRuntimeState: vi.fn(),
+        saveRuntimeOverride: vi.fn(),
+        clearRuntimeOverride: vi.fn(),
+        openDeleteForActiveConversation: vi.fn(),
+        openMoveDialog: vi.fn(),
+        openDocumentsSheet: vi.fn(),
+        onAddDocuments: vi.fn(),
+        llmModelChoice: "",
+        setLlmModelChoice: vi.fn(),
+        classifierModelChoice: "",
+        setClassifierModelChoice: vi.fn(),
+        selectableLlmModels: [],
+        selectableLlmModelsLoading: false,
+        selectableLlmModelsEffectiveProvider: undefined,
+        modelsError: false,
+        modelsErrorMessage: "",
+        presetSelectValue: "",
+        onPresetChange: vi.fn(),
+        presets: [],
+        presetsError: false,
+        presetsLoading: false,
+        projectCompatiblePresets: null,
+        compatibleProductPresets: [],
+        compatibleExperimentalPresets: [
+          {
+            preset: experimentalP14Preset,
+            compatibility: {
+              selectable: true,
+              disabledReasonCode: null,
+              disabledReason: null,
+              indexRequirements: null,
+              compatibleWithActiveIndex: true,
+            },
+          },
+        ],
+        experimentalPresets: [experimentalP14Preset],
+        experimentalPresetsLoading: false,
+        experimentalPresetsError: false,
+        presetSelectDisabled: false,
+        syntheticPresetOptionNeeded: false,
+        presetLabelOpts: { systemSuffix: "", recommendedDefault: "", defaultConfiguration: "" },
+        limitDocs: false,
+        onLimitDocsChange: vi.fn(),
+        limitDocsDisabled: false,
+        limitDocsToggleNotice: null,
+        patchConvPending: false,
+        uploadPending: false,
+        uploadError: null,
+        uploadNotice: null,
+      },
     });
+
+    renderSubject();
+    await user.click(screen.getByTestId("chat-config-edit-button"));
+
+    expect(screen.queryByTestId("chat-preset-latency-warning")).not.toBeInTheDocument();
+    expect(screen.queryByText(/live demos/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-preset-select")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-llm-model-select")).toBeInTheDocument();
   });
 
-  it("compact summary row wraps long values", () => {
-    render(
-      <CompactSummaryRow
-        label="Model"
-        testId="layout-summary-row"
-        value={<span data-testid="layout-long-value">{LONG_MODEL}</span>}
-      />,
-    );
-
-    const row = screen.getByTestId("layout-summary-row");
-    expect(row.className).toMatch(/min-w-0/);
-    const valueWrap = row.querySelector("span.min-w-0");
-    expect(valueWrap?.className).toMatch(/break-words/);
-    expect(valueWrap?.className).toMatch(/overflow-wrap:anywhere/);
-    expect(screen.getByTestId("layout-long-value")).toHaveTextContent(LONG_MODEL);
-  });
-
-  it("config side panel constrains width and allows overflow wrap", () => {
-    renderSidePanel();
-
-    const panel = screen.getByTestId("chat-configuration-side-panel");
-    expect(panel.className).toMatch(/min-w-0/);
-    expect(panel.className).toMatch(/max-w-/);
-    const scroll = panel.querySelector(".overflow-y-auto");
-    expect(scroll?.className).toMatch(/min-w-0/);
-    expect(scroll?.className).toMatch(/overflow-x-hidden/);
-  });
-
-  it("long model names do not overflow in compact summary", () => {
+  it("keeps model selector in a width-constrained container with long model names", async () => {
+    const user = userEvent.setup();
     useChatToolbarStore.setState({
       api: {
         projectId: "p1",
@@ -138,96 +210,14 @@ describe("chat config layout", () => {
         openMoveDialog: vi.fn(),
         openDocumentsSheet: vi.fn(),
         onAddDocuments: vi.fn(),
-        llmModelChoice: "",
-        setLlmModelChoice: vi.fn(),
-        classifierModelChoice: "",
-        setClassifierModelChoice: vi.fn(),
-        selectableLlmModels: [],
-        selectableLlmModelsLoading: false,
-        selectableLlmModelsEffectiveProvider: undefined,
-        modelsError: false,
-        modelsErrorMessage: "",
-        presetSelectValue: "",
-        onPresetChange: vi.fn(),
-        presets: [],
-        presetsError: false,
-        presetsLoading: false,
-        projectCompatiblePresets: null,
-        compatibleProductPresets: [],
-        compatibleExperimentalPresets: [],
-        experimentalPresets: [],
-        experimentalPresetsLoading: false,
-        experimentalPresetsError: false,
-        presetSelectDisabled: false,
-        syntheticPresetOptionNeeded: false,
-        presetLabelOpts: { systemSuffix: "", recommendedDefault: "", defaultConfiguration: "" },
-        limitDocs: false,
-        onLimitDocsChange: vi.fn(),
-        limitDocsDisabled: false,
-        limitDocsToggleNotice: null,
-        patchConvPending: false,
-        uploadPending: false,
-        uploadError: null,
-        uploadNotice: null,
-      },
-    });
-
-    renderPanelContent();
-
-    const modelSummary = screen.getByTestId("chat-config-summary-model");
-    expect(modelSummary).toHaveTextContent(LONG_MODEL);
-    expect(modelSummary.className).toMatch(/break-words/);
-  });
-
-  it("selector shows provider-aware models from toolbar API", async () => {
-    useChatToolbarStore.setState({
-      api: {
-        projectId: "p1",
-        conversationId: "c1",
-        runtimeOverride: {},
-        runtimeState: {
-          conversationId: "c1",
-          selectedPresetId: null,
-          effectivePresetId: "preset",
-          preset: {
-            kind: "DEFAULT",
-            code: null,
-            label: "Recommended Default",
-            chatSelectable: true,
-            supported: true,
-            supportStatus: null,
-            reasonIfUnsupported: null,
-          },
-          baseEffectiveConfig: { useRetrieval: true },
-          effectiveConfig: { useRetrieval: true },
-          conversationLlmModel: null,
-          conversationClassifierModelId: null,
-          conversationModelsPinned: false,
-          runtimeOverride: {},
-          manualOverrideKeys: [],
-          isCustom: false,
-          validation: { valid: true, supported: true, errors: [], warnings: [] },
-          selectedWorkflow: null,
-          indexCompatibility: null,
-          requiresReindex: false,
-        },
-        runtimeStateLoading: false,
-        runtimeStateError: null,
-        refreshRuntimeState: vi.fn(),
-        saveRuntimeOverride: vi.fn(),
-        clearRuntimeOverride: vi.fn(),
-        openDeleteForActiveConversation: vi.fn(),
-        openMoveDialog: vi.fn(),
-        openDocumentsSheet: vi.fn(),
-        onAddDocuments: vi.fn(),
-        llmModelChoice: "",
+        llmModelChoice: LONG_MODEL,
         setLlmModelChoice: vi.fn(),
         classifierModelChoice: "",
         setClassifierModelChoice: vi.fn(),
         selectableLlmModels: [
           {
-            modelName: "gpt-oss:20b",
-            displayName: "gpt-oss:20b",
+            modelName: LONG_MODEL,
+            displayName: LONG_MODEL,
             selectable: true,
             disabledReason: null,
             disabledReasonCode: null,
@@ -264,13 +254,13 @@ describe("chat config layout", () => {
       },
     });
 
-    renderPanelContent();
-    const user = userEvent.setup();
+    renderSubject();
     await user.click(screen.getByTestId("chat-config-edit-button"));
 
     const select = screen.getByTestId("chat-llm-model-select");
-    expect(select).toHaveAttribute("data-effective-provider", "OPENAI_COMPATIBLE");
-    expect(screen.getByTestId("chat-llm-model-provider")).toHaveTextContent(/Configured model provider/i);
-    expect(screen.getByRole("option", { name: /gpt-oss:20b/i })).toBeInTheDocument();
+    expect(select.className).toMatch(/w-full/);
+    expect(select.className).toMatch(/min-w-0/);
+    expect(select).toHaveValue(LONG_MODEL);
+    expect(screen.getByTestId("chat-config-summary-model").className).toMatch(/break-words/);
   });
 });

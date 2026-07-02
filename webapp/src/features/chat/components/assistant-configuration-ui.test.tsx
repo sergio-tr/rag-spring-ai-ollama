@@ -132,6 +132,9 @@ function seedStore(overrides: Record<string, unknown> = {}) {
       presets: [],
       presetsError: false,
       presetsLoading: false,
+      projectCompatiblePresets: null,
+      compatibleProductPresets: [],
+      compatibleExperimentalPresets: [],
       experimentalPresets: [],
       experimentalPresetsLoading: false,
       experimentalPresetsError: false,
@@ -221,19 +224,93 @@ describe("Assistant configuration UI sections", () => {
     expect(screen.getByTestId("chat-config-effective-json")).toBeVisible();
   });
 
+  it("does not render evaluation preset latency warning for research presets", async () => {
+    const user = userEvent.setup();
+    const experimentalPreset = {
+      productPresetId: "exp-p12",
+      code: "P12",
+      protocolStageIndex: 12,
+      chatSelectable: true,
+      supportStatus: "EXECUTABLE",
+      reasonIfUnsupported: null,
+      indexRequirements: null,
+    };
+    seedStore({
+      runtimeState: {
+        conversationId: "c1",
+        selectedPresetId: "exp-p12",
+        effectivePresetId: "exp-p12",
+        preset: {
+          kind: "EXPERIMENTAL",
+          code: "P12",
+          label: "Research preset",
+          chatSelectable: true,
+          supported: true,
+          supportStatus: null,
+          reasonIfUnsupported: null,
+        },
+        baseEffectiveConfig: { useRetrieval: true },
+        effectiveConfig: { useRetrieval: true },
+        conversationLlmModel: null,
+        conversationClassifierModelId: null,
+        conversationModelsPinned: false,
+        runtimeOverride: {},
+        manualOverrideKeys: [],
+        isCustom: false,
+        validation: { valid: true, supported: true, errors: [], warnings: [] },
+        selectedWorkflow: null,
+        indexCompatibility: null,
+        requiresReindex: false,
+      },
+      compatibleExperimentalPresets: [
+        {
+          preset: experimentalPreset,
+          indexRequirements: null,
+          compatibility: {
+            selectable: true,
+            disabledReasonCode: null,
+            disabledReason: null,
+            indexRequirements: null,
+            compatibleWithActiveIndex: true,
+          },
+        },
+      ],
+      experimentalPresets: [experimentalPreset],
+    });
+    renderSubject();
+    await user.click(screen.getByTestId("chat-config-edit-button"));
+
+    expect(screen.queryByTestId("chat-preset-latency-warning")).not.toBeInTheDocument();
+    expect(screen.queryByText(/70 seconds or more/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/recommended production configuration/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-preset-select")).toBeInTheDocument();
+  });
+
   it("does not show Demo_ preset names in the configuration profile select", async () => {
     const user = userEvent.setup();
+    const preset = {
+      id: "pr-best",
+      name: "demo_best",
+      description: null,
+      tags: [],
+      values: {},
+      system: true,
+      createdAt: "",
+      updatedAt: "",
+    };
     seedStore({
-      presets: [
+      presets: [preset],
+      compatibleProductPresets: [
         {
-          id: "pr-best",
-          name: "demo_best",
-          description: null,
-          tags: [],
-          values: {},
-          system: true,
-          createdAt: "",
-          updatedAt: "",
+          preset,
+          indexRequirements: null,
+          compatibility: {
+            selectable: true,
+            disabledReasonCode: null,
+            disabledReason: null,
+            indexRequirements: null,
+            compatibleWithActiveIndex: true,
+          },
         },
       ],
     });
