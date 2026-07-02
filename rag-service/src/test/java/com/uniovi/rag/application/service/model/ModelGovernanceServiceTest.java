@@ -39,9 +39,10 @@ class ModelGovernanceServiceTest {
         LlmOpenAiCompatibleDefaults openAi = properties.getOpenAiCompatible();
         openAi.setDefaultBaseUrl("http://litellm:4000");
         openAi.setDefaultChatModel("gpt-oss:20b");
-        openAi.setAvailableChatModels(List.of("gpt-oss:20b", "deepseek-v2:16b", "openai-chat-b"));
+        openAi.setAvailableChatModels(List.of("gpt-oss:20b", "deepseek-v2:16b", "openai-chat-b", "deepseek-r1:1.5b"));
         openAi.setDefaultEmbeddingModel("hf.co/mixedbread-ai/mxbai-embed-large-v1:latest");
-        openAi.setAvailableEmbeddingModels(List.of("hf.co/mixedbread-ai/mxbai-embed-large-v1:latest"));
+        openAi.setAvailableEmbeddingModels(List.of(
+                "hf.co/mixedbread-ai/mxbai-embed-large-v1:latest", "mxbai-embed-large", "bge-m3", "snowflake-arctic-embed2"));
         llmModelCatalogPort = new LlmModelCatalogService(properties);
         service = new ModelGovernanceService(modelCatalogPort, llmModelCatalogPort);
         when(modelCatalogPort.blockedLlmNamesInGovernance()).thenReturn(Set.of());
@@ -94,5 +95,14 @@ class ModelGovernanceServiceTest {
         assertThat(entry).isPresent();
         assertThat(entry.get().source()).isEqualTo(LlmCatalogSource.LITELLM_CONFIGURED);
         assertThat(service.isKnownChatModel(LlmProvider.OLLAMA_NATIVE, "gpt-oss:20b")).isFalse();
+    }
+
+    @Test
+    void bgeM3_notBlockedWhenAbsentFromBlocklist() {
+        when(modelCatalogPort.blockedEmbeddingNamesInGovernance()).thenReturn(Set.of());
+
+        assertThat(service.isEmbeddingModelGovernanceAllowed(LlmProvider.OPENAI_COMPATIBLE, "bge-m3"))
+                .isTrue();
+        assertThat(service.isEmbeddingModelBlocked("bge-m3")).isFalse();
     }
 }

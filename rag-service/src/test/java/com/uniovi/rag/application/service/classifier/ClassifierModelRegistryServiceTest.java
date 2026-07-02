@@ -73,6 +73,8 @@ class ClassifierModelRegistryServiceTest {
                 .thenReturn(Optional.empty());
         UserEntity owner = mock(UserEntity.class);
         when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
+        when(classifierModelRepository.existsByOwner_IdAndNameIgnoreCase(userId, "m1")).thenReturn(false);
+        when(classifierModelRepository.existsByOwner_IdAndArtifactPath(userId, "my-tag-1")).thenReturn(false);
 
         Map<String, Object> res = Map.of("modelId", "my-tag-1", "name", "m1", "metrics", Map.of("loss", 0.1));
 
@@ -84,6 +86,20 @@ class ClassifierModelRegistryServiceTest {
         assertThat(cap.getValue().getStatus()).isEqualTo(ClassifierModelStatus.READY);
         assertThat(cap.getValue().getHyperparams()).containsEntry(ClassifierModelRegistryService.HP_SOURCE_TASK_ID, taskId.toString());
         assertThat(cap.getValue().getHyperparams()).containsEntry(ClassifierModelRegistryService.HP_OWNER_ID, userId.toString());
+    }
+
+    @Test
+    void registerAfterSuccessfulTrain_skipsWhenDuplicateNameExists() {
+        when(classifierModelRepository.findByOwnerIdAndSourceTaskId(userId, taskId.toString()))
+                .thenReturn(Optional.empty());
+        UserEntity owner = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
+        when(classifierModelRepository.existsByOwner_IdAndNameIgnoreCase(userId, "m1")).thenReturn(true);
+
+        service.registerAfterSuccessfulTrain(
+                userId, taskId, "lab", Map.of("modelId", "my-tag-1", "name", "m1"), 50, 8);
+
+        verify(classifierModelRepository, never()).save(any());
     }
 
     @Test

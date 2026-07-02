@@ -9,6 +9,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ClassifierModelEntityFactor
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.interfaces.rest.dto.ClassifierModelResponseDto;
 import com.uniovi.rag.application.service.config.UserProjectConfigurationService;
+import com.uniovi.rag.application.service.model.RegisteredModelValidation;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -98,6 +99,9 @@ public class ClassifierModelRegistryService {
             return;
         }
         String displayName = extractDisplayName(trainResult, requestedModelName);
+        if (!assertCanPersistRegisteredModel(userId, displayName, inferenceTag, false)) {
+            return;
+        }
         Map<String, Object> hp = new LinkedHashMap<>();
         hp.put(HP_SOURCE_TASK_ID, taskKey);
         hp.put(HP_OWNER_ID, userId.toString());
@@ -197,7 +201,10 @@ public class ClassifierModelRegistryService {
             if (existing.isPresent()) {
                 return;
             }
-            String name = row.get("name") != null ? row.get("name").toString() : inferenceTag;
+            String name = row.get("name") != null ? row.get("name").toString() : "System classifier";
+            if (RegisteredModelValidation.isReservedToken(name)) {
+                name = "System classifier";
+            }
             Instant trainedAt = parseInstantOrNull(row.get("createdAt"));
             if (trainedAt == null) {
                 trainedAt = Instant.now();
@@ -209,8 +216,12 @@ public class ClassifierModelRegistryService {
             if (row.get("metrics") instanceof Map<?, ?> mm) {
                 hp.put("externalMetrics", mm);
             }
+            if (!assertCanPersistRegisteredModel(userId, name, inferenceTag, true)) {
+                return;
+            }
             ClassifierModelEntity e =
-                    ClassifierModelEntityFactory.newReadyTrainingArtifact(owner, name, inferenceTag, hp, trainedAt);
+                    ClassifierModelEntityFactory.newReadyTrainingArtifact(
+                            owner, name, inferenceTag, hp, trainedAt, true);
             classifierModelRepository.save(e);
             return;
         }
@@ -278,6 +289,29 @@ public class ClassifierModelRegistryService {
             return true;
         }
         return classifierSystemInferenceTag.equals(tag);
+    }
+
+    private boolean assertCanPersistRegisteredModel(
+            UUID userId, String displayName, String inferenceTag, boolean systemCatalogRow) {
+        try {
+            RegisteredModelValidation.assertValidName(displayName);
+            RegisteredModelValidation.assertValidInferenceTag(inferenceTag, systemCatalogRow);
+            String normalizedName = RegisteredModelValidation.normalizeName(displayName);
+            String normalizedTag = RegisteredModelValidation.normalizeInferenceTag(inferenceTag);
+            RegisteredModelValidation.assertNoDuplicateName(
+                    classifierModelRepository.existsByOwner_IdAndNameIgnoreCase(userId, normalizedName));
+            RegisteredModelValidation.assertNoDuplicateInferenceTag(
+                    classifierModelRepository.existsByOwner_IdAndArtifactPath(userId, normalizedTag));
+            return true;
+        } catch (ResponseStatusException e) {
+            log.warn(
+                    "Skipping classifier_model persist for user {} name='{}' tag='{}': {}",
+                    userId,
+                    displayName,
+                    inferenceTag,
+                    e.getReason());
+            return false;
+        }
     }
 
     private static ClassifierModelResponseDto toDto(ClassifierModelEntity e) {

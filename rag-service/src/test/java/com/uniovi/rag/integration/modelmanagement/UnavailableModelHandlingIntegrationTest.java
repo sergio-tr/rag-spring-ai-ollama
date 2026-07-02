@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.application.exception.llm.LlmConfigurationException;
@@ -68,8 +69,8 @@ class UnavailableModelHandlingIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        when(modelCatalogPort.blockedLlmNamesInGovernance()).thenReturn(Set.of());
-        when(modelCatalogPort.blockedEmbeddingNamesInGovernance()).thenReturn(Set.of());
+        lenient().when(modelCatalogPort.blockedLlmNamesInGovernance()).thenReturn(Set.of());
+        lenient().when(modelCatalogPort.blockedEmbeddingNamesInGovernance()).thenReturn(Set.of());
         LlmProperties properties = catalogProperties();
         LlmModelCatalogService catalog = LlmModelCatalogTestSupport.catalogFrom(properties);
         ModelGovernanceService governanceService = new ModelGovernanceService(modelCatalogPort, catalog);
