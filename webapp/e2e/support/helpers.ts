@@ -341,6 +341,33 @@ export async function loginAsSeedUser(page: Page): Promise<void> {
   await waitForProjectsPageReady(page, loginTimeoutMs);
 }
 
+/** Logs in with dev/admin seed credentials via API and bootstraps the browser session. */
+export async function loginAsAdminUser(page: Page): Promise<void> {
+  await registerE2eLayoutPersistenceReset(page);
+  let loginRes: APIResponse | null = null;
+  let loginBody = "";
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    loginRes = await page.request.post(productApiUrl("/auth/login"), {
+      data: { email: adminEmail(), password: adminPassword() },
+      headers: { "Content-Type": "application/json" },
+    });
+    loginBody = await loginRes.text();
+    if (loginRes.ok()) break;
+    if ([502, 503, 504].includes(loginRes.status())) {
+      await page.waitForTimeout(400 + attempt * 350);
+      continue;
+    }
+    break;
+  }
+  if (!loginRes) {
+    throw new Error("admin API login request missing");
+  }
+  expect(loginRes.ok(), `admin API login failed: ${loginRes.status()} ${loginBody}`).toBeTruthy();
+  const tokens = JSON.parse(loginBody) as LoginResponse;
+  expect(tokens.accessToken, "admin API login access token").toBeTruthy();
+  await bootstrapBrowserSession(page, tokens);
+}
+
 /** Surfaces dialog role=alert errors when Create does not close the modal. */
 async function assertProjectCreateDialogClosedOrSurfaceError(dialog: Locator): Promise<void> {
   const closed = await dialog

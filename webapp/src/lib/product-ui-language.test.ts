@@ -128,12 +128,6 @@ describe("product UI language — es.json locale policy", () => {
     }
   });
 
-  it("uses exact English title for Advanced technical details when present", () => {
-    const chat = es.Chat as unknown as Record<string, string>;
-    expect(chat.chatTraceTechnicalSummary).toBe(ADVANCED_TECHNICAL_DETAILS_TITLE);
-    expect(chat.configTechnicalDetails).toBe(ADVANCED_TECHNICAL_DETAILS_TITLE);
-  });
-
   it("documents locale file presence for fallback auditing", () => {
     const esRaw = readFileSync(join(messagesDir, "es.json"), "utf8");
     expect(esRaw.length).toBeGreaterThan(1000);

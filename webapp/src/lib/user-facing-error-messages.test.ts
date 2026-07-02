@@ -201,4 +201,78 @@ describe("user-facing-error-messages", () => {
     });
     expect(explicit.primary).toBe("i18n:userError_DATASET_INVALID");
   });
+
+  it("resolveUserFacingErrorDisplay recommends index and document actions", () => {
+    const actionT = (key: string) => {
+      if (key === "userError_INDEX_ACTION") return "Rebuild the search index";
+      if (key === "userError_DOCUMENTS_ACTION") return "Review uploaded documents";
+      return `i18n:${key}`;
+    };
+    expect(
+      resolveUserFacingErrorDisplay({ raw: "REINDEX_REQUIRED", t: actionT, fallback: "fb" }).action,
+    ).toBe("Rebuild the search index");
+    expect(
+      resolveUserFacingErrorDisplay({ raw: "DOCUMENT_PROCESSING_FAILED", t: actionT, fallback: "fb" }).action,
+    ).toBe("Review uploaded documents");
+  });
+
+  it("resolveUserFacingErrorDisplay maps generic validation errors", () => {
+    const display = resolveUserFacingErrorDisplay({
+      raw: "Invalid enum value. Expected 'A' | 'B'",
+      t,
+      fallback: "fb",
+    });
+    expect(display.primary).toBe("i18n:userError_VALIDATION_GENERIC");
+    expect(display.technical).toContain("Invalid enum");
+  });
+
+  it("resolveUserFacingErrorDisplay rewrites Ollama mentions for configured API provider", () => {
+    const display = resolveUserFacingErrorDisplay({
+      raw: "Please verify Ollama is running",
+      t,
+      fallback: "fb",
+      provider: "OPENAI_COMPATIBLE",
+    });
+    expect(display.primary).toBe("i18n:userError_INFERENCE_UNAVAILABLE_OPENAI");
+  });
+
+  it("resolveUserFacingErrorDisplay keeps infrastructure failures in technical details", () => {
+    const display = resolveUserFacingErrorDisplay({
+      raw: "operator does not exist: vector <=> vector",
+      t,
+      fallback: "fb",
+    });
+    expect(display.primary).toBe("fb");
+    expect(display.technical).toContain("operator does not exist");
+  });
+
+  it("extractTechnicalErrorCode resolves embedded snapshot and materialization hints", () => {
+    expect(extractTechnicalErrorCode("wrapper SNAPSHOT_PREPARATION_FAILED detail")).toBe(
+      "SNAPSHOT_PREPARATION_FAILED",
+    );
+    expect(extractTechnicalErrorCode("upstream MATERIALIZATION_FAILED during build")).toBe(
+      "MATERIALIZATION_FAILED",
+    );
+  });
+
+  it("mapUserFacingErrorMessageEnglish resolves provider-specific model and inference copy", () => {
+    expect(mapUserFacingErrorMessageEnglish("MODEL_UNAVAILABLE", "fb", "OLLAMA_NATIVE")).toContain("local model server");
+    expect(mapUserFacingErrorMessageEnglish("LLM_UNAVAILABLE", "fb", "OPENAI_COMPATIBLE")).toContain("configured LLM API");
+  });
+
+  it("isZodLikeValidationMessage ignores messages that start with technical codes", () => {
+    expect(isZodLikeValidationMessage("NO_READY_DOCUMENTS: Too small")).toBe(false);
+    expect(isZodLikeValidationMessage("Required")).toBe(true);
+  });
+
+  it("resolveUserFacingErrorDisplay keeps human copy when explicit code has no mapped message", () => {
+    const display = resolveUserFacingErrorDisplay({
+      raw: "Human readable failure",
+      explicitCode: "SOME_UNKNOWN_CODE",
+      t,
+      fallback: "fb",
+    });
+    expect(display.primary).toBe("Human readable failure");
+    expect(display.technical).toBe("SOME_UNKNOWN_CODE");
+  });
 });

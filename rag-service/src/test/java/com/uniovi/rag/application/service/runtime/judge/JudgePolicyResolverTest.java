@@ -47,7 +47,7 @@ class JudgePolicyResolverTest {
 
     @Test
     void resolve_enabled_allowsRetry_onlyForWorkflowCandidateSource() {
-        ExecutionContext ctx = ctx(rag(true));
+        ExecutionContext ctx = ctx(rag(true), RuntimeOperationKind.LAB_PROCESS);
 
         var workflow =
                 resolver.resolve(
@@ -109,6 +109,10 @@ class JudgePolicyResolverTest {
     }
 
     private static ExecutionContext ctx(RagConfig rag) {
+        return ctx(rag, RuntimeOperationKind.CHAT_MESSAGE);
+    }
+
+    private static ExecutionContext ctx(RagConfig rag, RuntimeOperationKind operationKind) {
         UUID uid = UUID.randomUUID();
         UUID pid = UUID.randomUUID();
         UUID cid = UUID.randomUUID();
@@ -127,7 +131,7 @@ class JudgePolicyResolverTest {
                 pid,
                 cid,
                 "q",
-                RuntimeOperationKind.CHAT_MESSAGE,
+                operationKind,
                 resolved,
                 "",
                 KnowledgeSnapshotSelection.empty(),

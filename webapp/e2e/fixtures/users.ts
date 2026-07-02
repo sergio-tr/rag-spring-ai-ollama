@@ -11,9 +11,9 @@ export function seedPassword(): string {
 }
 
 export function adminEmail(): string {
-  return process.env.E2E_ADMIN_EMAIL ?? "admin@e2e.local";
+  return process.env.E2E_ADMIN_EMAIL ?? "admin@dev.local";
 }
 
 export function adminPassword(): string {
-  return process.env.E2E_ADMIN_PASSWORD ?? "e2e";
+  return process.env.E2E_ADMIN_PASSWORD ?? "dev";
 }

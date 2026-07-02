@@ -5,6 +5,7 @@ import com.uniovi.rag.application.service.runtime.document.extraction.DocumentCo
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import com.uniovi.rag.tool.ToolExecutionContext;
+import com.uniovi.rag.application.service.runtime.query.ClassifierOverrides;
 import com.uniovi.rag.tool.ToolResult;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,7 +49,7 @@ class MetadataCompareToolTest {
     @Test
     void proposalsFebVsAug_routesToCompare() {
         assertThat(
-                        com.uniovi.rag.application.service.runtime.query.ClassifierOverrides.apply(
+                        ClassifierOverrides.apply(
                                 "Compara la cantidad de propuestas presentadas en febrero y agosto.",
                                 QueryType.COUNT_DOCUMENTS))
                 .isEqualTo(QueryType.COMPARE);

@@ -49,6 +49,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -361,7 +363,7 @@ class ExecutionContextFactoryTest {
                                 60_000,
                                 null,
                                 Map.of()));
-        org.mockito.Mockito.doThrow(new IllegalArgumentException("LLM model is not allowed by governance: unknown-model"))
+        doThrow(new IllegalArgumentException("LLM model is not allowed by governance: unknown-model"))
                 .when(modelGovernanceService)
                 .assertChatModelAllowed(LlmProvider.OPENAI_COMPATIBLE, "unknown-model");
         UUID conversationId = UUID.randomUUID();

@@ -7,6 +7,8 @@ import com.uniovi.rag.domain.config.runtime.ConfigProvenance;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.config.validation.CompatibilityResult;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
+import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
@@ -92,10 +94,10 @@ class ContextPackingAdvisorTest {
 
     @Test
     void countQuery_injectsAgendaNotFooter() {
-        com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder.set(
-                new com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder.Evidence(
+        DeterministicToolEvidenceHolder.set(
+                new DeterministicToolEvidenceHolder.Evidence(
                         List.of(
-                                new com.uniovi.rag.domain.model.Minute(
+                                new Minute(
                                         "m1",
                                         "ACTA 5.pdf",
                                         "2026-02-25",
@@ -192,7 +194,7 @@ class ContextPackingAdvisorTest {
             assertTrue(packed.promptContextText().length() < 20_000);
             assertEquals("body", packed.blocks().getFirst().blockId());
         } finally {
-            com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder.clear();
+            DeterministicToolEvidenceHolder.clear();
         }
     }
 

@@ -1723,6 +1723,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
         ExecutionContextFactory factory = mock(ExecutionContextFactory.class);
         when(qu.buildPlan(any())).thenReturn(plan());
         when(factory.attachQueryPlan(any(), any())).thenAnswer(inv -> inv.getArgument(0));
+        when(factory.attachStructuredAnswerPlan(any(), any())).thenAnswer(inv -> inv.getArgument(0));
 
         ClarificationPolicyResolver clarificationPolicyResolver = mock(ClarificationPolicyResolver.class);
         when(clarificationPolicyResolver.resolve(any(), any()))
@@ -1819,6 +1820,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
         ExecutionContextFactory factory = mock(ExecutionContextFactory.class);
         when(qu.buildPlan(any())).thenReturn(queryPlan);
         when(factory.attachQueryPlan(any(), any())).thenAnswer(inv -> inv.getArgument(0));
+        when(factory.attachStructuredAnswerPlan(any(), any())).thenAnswer(inv -> inv.getArgument(0));
 
         ClarificationPolicyResolver clarificationPolicyResolver = mock(ClarificationPolicyResolver.class);
         when(clarificationPolicyResolver.resolve(any(), any()))
@@ -1937,6 +1939,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
         ExecutionContextFactory factory = mock(ExecutionContextFactory.class);
         when(qu.buildPlan(any())).thenReturn(queryPlan);
         when(factory.attachQueryPlan(any(), any())).thenAnswer(inv -> inv.getArgument(0));
+        when(factory.attachStructuredAnswerPlan(any(), any())).thenAnswer(inv -> inv.getArgument(0));
 
         ClarificationPolicyResolver clarificationPolicyResolver = mock(ClarificationPolicyResolver.class);
         when(clarificationPolicyResolver.resolve(any(), any()))
@@ -2016,6 +2019,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
         ExecutionContextFactory factory = mock(ExecutionContextFactory.class);
         when(qu.buildPlan(any())).thenReturn(queryPlan);
         when(factory.attachQueryPlan(any(), any())).thenAnswer(inv -> inv.getArgument(0));
+        when(factory.attachStructuredAnswerPlan(any(), any())).thenAnswer(inv -> inv.getArgument(0));
 
         ClarificationPolicyResolver clarificationPolicyResolver = mock(ClarificationPolicyResolver.class);
         when(clarificationPolicyResolver.resolve(any(), any()))
@@ -2092,6 +2096,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
         ExecutionContextFactory factory = mock(ExecutionContextFactory.class);
         when(qu.buildPlan(any())).thenReturn(plan());
         when(factory.attachQueryPlan(any(), any())).thenAnswer(inv -> inv.getArgument(0));
+        when(factory.attachStructuredAnswerPlan(any(), any())).thenAnswer(inv -> inv.getArgument(0));
 
         ClarificationPolicyResolver clarificationPolicyResolver = mock(ClarificationPolicyResolver.class);
         when(clarificationPolicyResolver.resolve(any(), any()))

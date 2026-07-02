@@ -142,6 +142,7 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.config.UserProjectConfigurationService", // ARCH-DEBT-RUNTIME-CONFIG
             "com.uniovi.rag.application.service.evaluation.BenchmarkDatasetCompatibility", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.BenchmarkRunOrchestrator", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.BenchmarkRuntimeParametersSupport", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabBenchmarkEvidenceValidator", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.RagBenchmarkOutcomeTally", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService", // ARCH-DEBT-LAB

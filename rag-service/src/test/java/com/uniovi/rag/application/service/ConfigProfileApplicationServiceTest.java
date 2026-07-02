@@ -127,7 +127,7 @@ class ConfigProfileApplicationServiceTest {
     @Test
     void create_rejectsModelNotInCatalog() {
         UUID userId = UUID.randomUUID();
-        when(modelGovernanceService.isKnownChatModel(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+        when(modelGovernanceService.isKnownChatModel(any(), any()))
                 .thenReturn(false);
 
         CreateConfigProfileRequest req =
