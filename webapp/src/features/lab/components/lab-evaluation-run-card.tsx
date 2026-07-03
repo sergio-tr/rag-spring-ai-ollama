@@ -13,8 +13,8 @@ import { LabBenchmarkResultsPanel } from "@/features/lab/components/lab-benchmar
 import { LabFailedJobResultsNotice } from "@/features/lab/components/lab-failed-job-results-notice";
 import { LabHyperparametersForm } from "@/features/lab/components/lab-hyperparameters-form";
 import { LabEmbeddingRetrievalParametersSection } from "@/features/lab/components/lab-embedding-retrieval-parameters-section";
-import { LabGenerationParametersSection } from "@/features/lab/components/lab-generation-parameters-section";
 import { LabRagIndexingMaterializationPlan } from "@/features/lab/components/lab-rag-indexing-materialization-plan";
+import { LabRagTaskLlmCallout } from "@/features/lab/components/lab-rag-task-llm-callout";
 import { buildLabBenchmarkRuntimeParametersPayload } from "@/features/lab/lib/lab-benchmark-runtime-payload";
 import { LabModelConfigurationSection } from "@/features/lab/components/lab-model-configuration-section";
 import { RagDraftIssuesAlert } from "@/features/lab/components/rag-draft-issues-alert";
@@ -53,7 +53,6 @@ import {
   compatibleEmbeddingEvalModelNames,
   defaultEmbeddingModelId,
   defaultLlmModelId,
-  defaultSecondaryLlmModelId,
   labComparisonBlockedMessageKey,
   selectableEvalModelNames,
 } from "@/features/lab/lib/lab-evaluation-models";
@@ -748,8 +747,6 @@ export function LabEvaluationRunCard({
   const recommendedDraftPartial = useMemo(() => {
     const defaultEmbedding = defaultEmbeddingModelId(embeddingCatalogModels) ?? "";
     const defaultLlm = defaultLlmModelId(chatCatalogModels) ?? availableLlmModels[0] ?? "";
-    const defaultSecondary =
-      defaultSecondaryLlmModelId(chatCatalogModels, defaultLlm) ?? undefined;
     return {
       datasetId: defaultDataset?.id ?? null,
       llmModelId: defaultLlm,
@@ -758,9 +755,7 @@ export function LabEvaluationRunCard({
       embeddingModelIds: defaultEmbedding ? [defaultEmbedding] : [],
       autoReindex: true,
       reuseCompatibleActiveSnapshot: true,
-      benchmarkRuntimeParameters: defaultSecondary
-        ? { secondaryLlmModelId: defaultSecondary }
-        : {},
+      benchmarkRuntimeParameters: {},
     };
   }, [availableLlmModels, benchmarkKind, chatCatalogModels, defaultDataset?.id, embeddingCatalogModels]);
 
@@ -792,33 +787,6 @@ export function LabEvaluationRunCard({
     draft.embeddingModelId,
     draft.embeddingModelIds.length,
     embeddingCatalogModels,
-    patchDraft,
-  ]);
-
-  useEffect(() => {
-    if (benchmarkKind !== "RAG_PRESET_END_TO_END") return;
-    const defaultLlm = defaultLlmModelId(chatCatalogModels);
-    if (!defaultLlm) return;
-    const patch: Partial<typeof draft> = {};
-    if (draft.llmModelId.trim() === "") {
-      patch.llmModelId = defaultLlm;
-    }
-    const primary = patch.llmModelId ?? draft.llmModelId.trim() ?? defaultLlm;
-    const defaultSecondary = defaultSecondaryLlmModelId(chatCatalogModels, primary);
-    if (!draft.benchmarkRuntimeParameters?.secondaryLlmModelId?.trim() && defaultSecondary) {
-      patch.benchmarkRuntimeParameters = {
-        ...draft.benchmarkRuntimeParameters,
-        secondaryLlmModelId: defaultSecondary,
-      };
-    }
-    if (Object.keys(patch).length > 0) {
-      patchDraft(patch);
-    }
-  }, [
-    benchmarkKind,
-    chatCatalogModels,
-    draft.benchmarkRuntimeParameters,
-    draft.llmModelId,
     patchDraft,
   ]);
 
@@ -872,9 +840,7 @@ export function LabEvaluationRunCard({
   const hasSelectedLlmModels =
     benchmarkKind === "LLM_JUDGE_QA"
       ? selectedLlmModelCount(draft.llmModelIds, draft.llmModelId) > 0
-      : benchmarkKind === "RAG_PRESET_END_TO_END"
-        ? draft.llmModelId.trim() !== ""
-        : true;
+      : true;
   const canStart =
     hasCompatibleDataset &&
     datasetIsValid &&
@@ -910,9 +876,6 @@ export function LabEvaluationRunCard({
       return t("evalRunDisabledNoEmbeddingModel");
     }
     if (benchmarkKind === "LLM_JUDGE_QA" && !hasSelectedLlmModels) {
-      return t("evalRunDisabledNoLlmModel");
-    }
-    if (benchmarkKind === "RAG_PRESET_END_TO_END" && !hasSelectedLlmModels) {
       return t("evalRunDisabledNoLlmModel");
     }
     if (catalogModelBlockReason) return catalogModelBlockReason;
@@ -1115,13 +1078,15 @@ export function LabEvaluationRunCard({
       const lmList = draft.llmModelIds.map((x) => x.trim()).filter(Boolean);
       const emList = draft.embeddingModelIds.map((x) => x.trim()).filter(Boolean);
       const presetList = draft.selectedExperimentalPresetCodes.map((x) => x.trim()).filter(Boolean);
-      if (lmList.length >= 2) {
-        body.llmModelIds = lmList;
-        body.campaignName = body.campaignName ?? `LLM campaign (${lmList.length})`;
-      } else if (lmList.length === 1) {
-        body.llmModelId = lmList[0];
-      } else if (lm) {
-        body.llmModelId = lm;
+      if (benchmarkKind !== "RAG_PRESET_END_TO_END") {
+        if (lmList.length >= 2) {
+          body.llmModelIds = lmList;
+          body.campaignName = body.campaignName ?? `LLM campaign (${lmList.length})`;
+        } else if (lmList.length === 1) {
+          body.llmModelId = lmList[0];
+        } else if (lm) {
+          body.llmModelId = lm;
+        }
       }
       if (emList.length >= 2) {
         body.embeddingModelIds = emList;
@@ -1483,38 +1448,16 @@ export function LabEvaluationRunCard({
             />
           ) : null}
 
+          {benchmarkKind === "RAG_PRESET_END_TO_END" ? <LabRagTaskLlmCallout /> : null}
+
           {benchmarkKind === "RAG_PRESET_END_TO_END" && selectableCompatibleEmbeddings.length > 0 ? (
             <LabModelConfigurationSection
               sectionKey={sectionKey}
               disabled={running}
               embeddingModelId={draft.embeddingModelId}
-              primaryLlmModelId={draft.llmModelId}
-              secondaryLlmModelId={draft.benchmarkRuntimeParameters?.secondaryLlmModelId}
               embeddingModelIds={selectableCompatibleEmbeddings}
-              chatModelIds={availableLlmModels}
               selectedEmbeddingLabel={draft.embeddingModelId.trim() || undefined}
               onEmbeddingChange={(embeddingModelId) => patchDraft({ embeddingModelId })}
-              onPrimaryLlmChange={(llmModelId) => {
-                const secondary = draft.benchmarkRuntimeParameters?.secondaryLlmModelId?.trim();
-                patchDraft({
-                  llmModelId,
-                  benchmarkRuntimeParameters:
-                    secondary === llmModelId
-                      ? {
-                          ...draft.benchmarkRuntimeParameters,
-                          secondaryLlmModelId: undefined,
-                        }
-                      : draft.benchmarkRuntimeParameters,
-                });
-              }}
-              onSecondaryLlmChange={(secondaryLlmModelId) =>
-                patchDraft({
-                  benchmarkRuntimeParameters: {
-                    ...draft.benchmarkRuntimeParameters,
-                    secondaryLlmModelId,
-                  },
-                })
-              }
             />
           ) : null}
 
@@ -1524,14 +1467,6 @@ export function LabEvaluationRunCard({
               disabled={running}
               value={draft.benchmarkRuntimeParameters ?? {}}
               selectedModels={selectedRagEmbeddingModels}
-              onChange={(benchmarkRuntimeParameters) => patchDraft({ benchmarkRuntimeParameters })}
-            />
-          ) : null}
-
-          {benchmarkKind === "RAG_PRESET_END_TO_END" ? (
-            <LabGenerationParametersSection
-              disabled={running}
-              value={draft.benchmarkRuntimeParameters ?? {}}
               onChange={(benchmarkRuntimeParameters) => patchDraft({ benchmarkRuntimeParameters })}
             />
           ) : null}

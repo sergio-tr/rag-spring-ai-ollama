@@ -42,7 +42,7 @@ export function buildBenchmarkRuntimeParametersPayload(
 ): Record<string, unknown> | undefined {
   const out: Record<string, unknown> = {};
 
-  const includeGeneration = benchmarkKind === "LLM_JUDGE_QA" || benchmarkKind === "RAG_PRESET_END_TO_END";
+  const includeGeneration = benchmarkKind === "LLM_JUDGE_QA";
   const includeRetrieval =
     benchmarkKind === "EMBEDDING_RETRIEVAL" || benchmarkKind === "RAG_PRESET_END_TO_END";
 

@@ -21,8 +21,40 @@ describe("LabHyperparametersForm", () => {
     expect(screen.getByTestId("lab-hp-top-k")).toBeInTheDocument();
     expect(screen.getByTestId("lab-hp-similarity-threshold")).toBeInTheDocument();
     expect(screen.getByTestId("embedding-evaluator-options-form")).toBeInTheDocument();
+    expect(screen.queryByText("Generation parameters")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-hp-temperature")).not.toBeInTheDocument();
   });
 
+  it("LLM shows generation parameters", () => {
+    render(
+      <IntlTestProvider>
+        <LabHyperparametersForm benchmarkKind="LLM_JUDGE_QA" value={{ temperature: 0.2 }} onChange={vi.fn()} />
+      </IntlTestProvider>,
+    );
+
+    expect(screen.getByText("Run hyperparameters")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-hp-temperature")).toBeInTheDocument();
+    expect(screen.queryByTestId("embedding-evaluator-options-form")).not.toBeInTheDocument();
+  });
+
+  it("RAG shows retrieval parameters only", () => {
+    render(
+      <IntlTestProvider>
+        <LabHyperparametersForm
+          benchmarkKind="RAG_PRESET_END_TO_END"
+          value={{ topK: 8, similarityThreshold: 0.7, temperature: 0.5 }}
+          onChange={vi.fn()}
+        />
+      </IntlTestProvider>,
+    );
+
+    expect(screen.getByText("Embedding & retrieval parameters")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-hp-top-k")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-hp-similarity-threshold")).toBeInTheDocument();
+    expect(screen.queryByText("Generation parameters")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-hp-temperature")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-emb-materialization")).not.toBeInTheDocument();
+  });
 });
 
 describe("buildBenchmarkRuntimeParametersPayload", () => {
@@ -60,7 +92,7 @@ describe("buildBenchmarkRuntimeParametersPayload", () => {
     });
   });
 
-  it("RAG run request includes generation params for the answer LLM", () => {
+  it("RAG omits generation params from generation payload builder", () => {
     expect(
       buildBenchmarkRuntimeParametersPayload("RAG_PRESET_END_TO_END", {
         ...fullGeneration,
@@ -69,17 +101,8 @@ describe("buildBenchmarkRuntimeParametersPayload", () => {
         secondaryLlmModelId: "judge-model",
       }),
     ).toEqual({
-      temperature: 0.1,
-      top_p: 1,
-      seed: 42,
-      max_tokens: 768,
-      presence_penalty: 0,
-      frequency_penalty: 0,
-      response_format: { type: "json_object" },
-      stop: ["END", "STOP"],
       topK: 8,
       similarityThreshold: 0.7,
-      secondaryLlmModelId: "judge-model",
     });
   });
 

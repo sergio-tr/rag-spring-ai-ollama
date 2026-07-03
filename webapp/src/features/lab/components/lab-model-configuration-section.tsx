@@ -7,13 +7,8 @@ export type LabModelConfigurationSectionProps = {
   sectionKey: string;
   disabled?: boolean;
   embeddingModelId: string;
-  primaryLlmModelId: string;
-  secondaryLlmModelId?: string;
   embeddingModelIds: readonly string[];
-  chatModelIds: readonly string[];
   onEmbeddingChange: (modelId: string) => void;
-  onPrimaryLlmChange: (modelId: string) => void;
-  onSecondaryLlmChange: (modelId: string | undefined) => void;
   selectedEmbeddingLabel?: string;
 };
 
@@ -64,13 +59,8 @@ export function LabModelConfigurationSection({
   sectionKey,
   disabled = false,
   embeddingModelId,
-  primaryLlmModelId,
-  secondaryLlmModelId,
   embeddingModelIds,
-  chatModelIds,
   onEmbeddingChange,
-  onPrimaryLlmChange,
-  onSecondaryLlmChange,
   selectedEmbeddingLabel,
 }: LabModelConfigurationSectionProps) {
   const t = useTranslations("Lab");
@@ -81,38 +71,17 @@ export function LabModelConfigurationSection({
       data-testid="lab-model-configuration-section"
     >
       <Label className="text-sm">{t("benchmarkModelConfigurationTitle")}</Label>
-      <p className="text-muted-foreground text-[11px]">{t("benchmarkModelConfigurationHint")}</p>
+      <p className="text-muted-foreground text-[11px]">{t("benchmarkModelConfigurationHintRag")}</p>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <ModelSelect
-          id={`lab-benchmark-embedding-model-${sectionKey}`}
-          testId="lab-benchmark-embedding-model"
-          label={t("benchmarkColEmbeddingModel")}
-          value={embeddingModelId}
-          options={embeddingModelIds}
-          disabled={disabled}
-          onChange={onEmbeddingChange}
-        />
-        <ModelSelect
-          id={`lab-benchmark-llm-model-${sectionKey}`}
-          testId="lab-benchmark-llm-model"
-          label={t("benchmarkPrimaryAnswerModel")}
-          value={primaryLlmModelId}
-          options={chatModelIds}
-          disabled={disabled}
-          onChange={onPrimaryLlmChange}
-        />
-        <ModelSelect
-          id={`lab-benchmark-secondary-llm-model-${sectionKey}`}
-          testId="lab-benchmark-secondary-llm-model"
-          label={t("benchmarkSecondarySupportModel")}
-          value={secondaryLlmModelId ?? ""}
-          options={chatModelIds.filter((id) => id !== primaryLlmModelId)}
-          disabled={disabled}
-          placeholder={t("benchmarkSecondarySupportModelNone")}
-          onChange={(next) => onSecondaryLlmChange(next.trim() || undefined)}
-        />
-      </div>
+      <ModelSelect
+        id={`lab-benchmark-embedding-model-${sectionKey}`}
+        testId="lab-benchmark-embedding-model"
+        label={t("benchmarkColEmbeddingModel")}
+        value={embeddingModelId}
+        options={embeddingModelIds}
+        disabled={disabled}
+        onChange={onEmbeddingChange}
+      />
 
       {selectedEmbeddingLabel ? (
         <p className="text-muted-foreground text-xs" data-testid="lab-rag-selected-embedding-summary">

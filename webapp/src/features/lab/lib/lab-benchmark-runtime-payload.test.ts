@@ -2,10 +2,19 @@ import { describe, expect, it } from "vitest";
 import { buildLabBenchmarkRuntimeParametersPayload } from "@/features/lab/lib/lab-benchmark-runtime-payload";
 
 describe("buildLabBenchmarkRuntimeParametersPayload", () => {
-  it("RAG merges generation and nested embedding groups without materialization override", () => {
+  it("RAG merges embedding retrieval groups without generation overrides", () => {
     expect(
       buildLabBenchmarkRuntimeParametersPayload("RAG_PRESET_END_TO_END", {
         temperature: 0.2,
+        topP: 0.9,
+        seed: 7,
+        maxTokens: 512,
+        presencePenalty: 0.1,
+        frequencyPenalty: 0.2,
+        responseFormat: "json_object",
+        stop: ["END"],
+        think: true,
+        secondaryLlmModelId: "judge-model",
         topK: 8,
         similarityThreshold: 0.7,
         encodingFormat: "float",
@@ -15,7 +24,6 @@ describe("buildLabBenchmarkRuntimeParametersPayload", () => {
         normalize: true,
       }),
     ).toEqual({
-      temperature: 0.2,
       topK: 8,
       similarityThreshold: 0.7,
       embeddingOptions: {

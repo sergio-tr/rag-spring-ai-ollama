@@ -205,46 +205,6 @@ function LabGenerationHyperparametersFields({
   );
 }
 
-function retrievalNumberField(
-  key: "topK" | "similarityThreshold",
-  value: LabBenchmarkRuntimeParameters,
-  onChange: (next: LabBenchmarkRuntimeParameters) => void,
-  label: string,
-  testId: string,
-  min: number,
-  max: number,
-  step: string,
-) {
-  const raw = value[key];
-  const display = typeof raw === "number" && Number.isFinite(raw) ? String(raw) : "";
-  return (
-    <label className="space-y-1 text-xs" data-testid={testId}>
-      <span className="text-muted-foreground font-medium">{label}</span>
-      <input
-        type="number"
-        className="bg-background w-full rounded-md border px-2 py-1 font-mono"
-        step={step}
-        min={min}
-        max={max}
-        value={display}
-        onChange={(event) => {
-          const text = event.target.value.trim();
-          const next = { ...value };
-          if (!text) {
-            delete next[key];
-          } else {
-            const parsed = Number(text);
-            if (Number.isFinite(parsed)) {
-              (next as Record<string, unknown>)[key] = clampNumber(parsed, min, max);
-            }
-          }
-          onChange(next);
-        }}
-      />
-    </label>
-  );
-}
-
 export function LabHyperparametersForm({
   benchmarkKind,
   value,
@@ -252,18 +212,26 @@ export function LabHyperparametersForm({
   embeddingModels = [],
 }: LabHyperparametersFormProps) {
   const t = useTranslations("Lab");
-  const isEmbeddingRetrieval = benchmarkKind === "EMBEDDING_RETRIEVAL";
+  const showGenerationParameters = benchmarkKind === "LLM_JUDGE_QA";
+  const showEmbeddingRetrievalParameters =
+    benchmarkKind === "EMBEDDING_RETRIEVAL" || benchmarkKind === "RAG_PRESET_END_TO_END";
+  const title = showEmbeddingRetrievalParameters
+    ? benchmarkKind === "RAG_PRESET_END_TO_END"
+      ? t("benchmarkEmbeddingRetrievalParametersTitle")
+      : t("embeddingEvaluationParametersTitle")
+    : t("benchmarkHyperparametersTitle");
+  const hint = showEmbeddingRetrievalParameters
+    ? benchmarkKind === "RAG_PRESET_END_TO_END"
+      ? t("benchmarkEmbeddingRetrievalParametersHint")
+      : t("embeddingEvaluationParametersHint")
+    : t("benchmarkHyperparametersHint");
 
   return (
     <div className="space-y-3 rounded-md border bg-muted/20 p-3" data-testid="lab-hyperparameters-form">
-      <Label className="text-sm">
-        {isEmbeddingRetrieval ? t("embeddingEvaluationParametersTitle") : t("benchmarkHyperparametersTitle")}
-      </Label>
-      <p className="text-muted-foreground text-[11px]">
-        {isEmbeddingRetrieval ? t("embeddingEvaluationParametersHint") : t("benchmarkHyperparametersHint")}
-      </p>
+      <Label className="text-sm">{title}</Label>
+      <p className="text-muted-foreground text-[11px]">{hint}</p>
 
-      {benchmarkKind === "LLM_JUDGE_QA" ? (
+      {showGenerationParameters ? (
         <div className="grid gap-3 md:grid-cols-2">
           <LabGenerationHyperparametersFields value={value} onChange={onChange} />
         </div>
@@ -278,20 +246,12 @@ export function LabHyperparametersForm({
       ) : null}
 
       {benchmarkKind === "RAG_PRESET_END_TO_END" ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          {retrievalNumberField("topK", value, onChange, t("benchmarkHyperparameterTopK"), "lab-hp-top-k", 1, 10_000, "1")}
-          {retrievalNumberField(
-            "similarityThreshold",
-            value,
-            onChange,
-            t("benchmarkHyperparameterSimilarityThreshold"),
-            "lab-hp-similarity-threshold",
-            0,
-            1,
-            "0.01",
-          )}
-          <LabGenerationHyperparametersFields value={value} onChange={onChange} />
-        </div>
+        <EmbeddingEvaluatorOptionsForm
+          value={value as LabEmbeddingRuntimeParameters}
+          onChange={onChange}
+          selectedModels={embeddingModels}
+          showMaterializationStrategy={false}
+        />
       ) : null}
     </div>
   );

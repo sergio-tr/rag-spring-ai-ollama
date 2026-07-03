@@ -327,17 +327,20 @@ describe("LabEvaluationRunCard catalog models", () => {
     );
   });
 
-  it("RAG renders editable embedding and chat model selectors with thesis defaults", async () => {
+  it("RAG renders embedding selector only with thesis defaults and settings callout", async () => {
     mockCatalog(ragChatModels, ragEmbeddingModels);
     renderRagCard();
     expect(await screen.findByTestId("lab-model-configuration-section")).toBeInTheDocument();
     expect(screen.getByTestId("lab-benchmark-embedding-model")).toHaveValue("bge-m3");
-    expect(screen.getByTestId("lab-benchmark-llm-model")).toHaveValue("gemma4:12b");
-    expect(screen.getByTestId("lab-benchmark-secondary-llm-model")).toHaveValue("qwen3.5:9b");
+    expect(screen.queryByTestId("lab-benchmark-llm-model")).not.toBeInTheDocument();
+    expect(screen.queryByText("Primary model snapshot / campaign label")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("lab-benchmark-secondary-llm-model")).not.toBeInTheDocument();
+    expect(screen.getByTestId("lab-rag-task-llm-callout")).toBeInTheDocument();
+    expect(screen.queryByTestId("lab-generation-parameters-section")).not.toBeInTheDocument();
     expect(screen.getByTestId("lab-rag-selected-embedding-summary")).toHaveTextContent("bge-m3");
   });
 
-  it("RAG replaces stale draft models silently from catalog", async () => {
+  it("RAG replaces stale draft embedding model silently from catalog and clears llm draft", async () => {
     localStorage.setItem(
       "lab:evaluation-draft:v1:RAG_PRESET_END_TO_END",
       JSON.stringify({
@@ -347,14 +350,13 @@ describe("LabEvaluationRunCard catalog models", () => {
         corpusId: "corpus-1",
         embeddingModelId: "missing-embed",
         llmModelId: "missing-llm",
-        benchmarkRuntimeParameters: { secondaryLlmModelId: "missing-secondary" },
+        benchmarkRuntimeParameters: { secondaryLlmModelId: "missing-secondary", temperature: 0.5 },
       }),
     );
     mockCatalog(ragChatModels, ragEmbeddingModels);
     renderRagCard();
     await screen.findByTestId("lab-benchmark-embedding-model");
     expect(screen.getByTestId("lab-benchmark-embedding-model")).toHaveValue("bge-m3");
-    expect(screen.getByTestId("lab-benchmark-llm-model")).toHaveValue("gemma4:12b");
-    expect(screen.getByTestId("lab-benchmark-secondary-llm-model")).toHaveValue("qwen3.5:9b");
+    expect(screen.queryByTestId("lab-benchmark-llm-model")).not.toBeInTheDocument();
   });
 });

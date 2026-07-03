@@ -1354,4 +1354,150 @@ describe("LabEvaluationRunCard", () => {
       expect(screen.queryByTestId("lab-benchmark-embedding-models-qwen3-embedding:latest")).not.toBeInTheDocument();
     });
   });
+
+  describe("evaluation route parameter visibility", () => {
+    function renderRagRouteCard() {
+      return render(
+        <LabEvalHarness>
+          <LabEvaluationRunCard
+            benchmarkKind="RAG_PRESET_END_TO_END"
+            sectionKey="evaluation-rag"
+            taskTypeHint="RAG_EVALUATION"
+            cardTitle="Run"
+            runButtonTestId="lab-rag-run"
+            radioGroupName="follow-rag-route"
+          />
+        </LabEvalHarness>,
+      );
+    }
+
+    beforeEach(() => {
+      vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+        data: [ragDataset],
+        isLoading: false,
+        isFetched: true,
+        isSuccess: true,
+      } as never);
+      localStorage.setItem(
+        "lab:evaluation-draft:v1:RAG_PRESET_END_TO_END",
+        storedRagDraft({
+          llmModelId: "llama:judge",
+          selectedExperimentalPresetCodes: ["P0"],
+          benchmarkRuntimeParameters: {
+            temperature: 0.9,
+            topP: 0.8,
+            seed: 1,
+            maxTokens: 256,
+            topK: 5,
+            similarityThreshold: 0.4,
+            secondaryLlmModelId: "llama:fast",
+          },
+        }),
+      );
+    });
+
+    it("RAG route hides generation parameters, LLM selector, and shows retrieval callout with settings link", async () => {
+      renderRagRouteCard();
+      expect(await screen.findByTestId("lab-embedding-retrieval-parameters-section")).toBeInTheDocument();
+      expect(screen.getByTestId("lab-rag-task-llm-callout")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /User settings/i })).toHaveAttribute("href", "/settings/user");
+      expect(screen.queryByText("Generation parameters")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("lab-hp-temperature")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("lab-hyperparameters-form")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("lab-generation-parameters-section")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("lab-benchmark-llm-model")).not.toBeInTheDocument();
+      expect(screen.queryByText("Primary model snapshot / campaign label")).not.toBeInTheDocument();
+      expect(screen.queryByText(/campaign label/i)).not.toBeInTheDocument();
+      expect(screen.getByTestId("lab-hp-top-k")).toBeInTheDocument();
+      expect(screen.getByTestId("lab-hp-similarity-threshold")).toBeInTheDocument();
+      expect(screen.getByTestId("lab-benchmark-embedding-model")).toBeInTheDocument();
+    });
+
+    it("LLM route still shows generation parameters", async () => {
+      render(
+        <LabEvalHarness>
+          <LabEvaluationRunCard
+            benchmarkKind="LLM_JUDGE_QA"
+            sectionKey="evaluation-llm"
+            taskTypeHint="LLM_EVALUATION"
+            cardTitle="LLM evaluation"
+            runButtonTestId="lab-llm-run"
+            radioGroupName="follow-llm-route"
+          />
+        </LabEvalHarness>,
+      );
+      expect(await screen.findByTestId("lab-hyperparameters-form")).toBeInTheDocument();
+      expect(screen.getByTestId("lab-hp-temperature")).toBeInTheDocument();
+      expect(screen.queryByText("Generation parameters")).not.toBeInTheDocument();
+    });
+
+    it("embedding route shows retrieval parameters without generation", async () => {
+      vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+        data: [embeddingDataset],
+        isLoading: false,
+        isFetched: true,
+        isSuccess: true,
+      } as never);
+      localStorage.setItem(
+        "lab:evaluation-draft:v1:EMBEDDING_RETRIEVAL",
+        storedEmbeddingDraft({ embeddingModelIds: ["mxbai-embed:latest"] }),
+      );
+      render(
+        <LabEvalHarness>
+          <LabEvaluationRunCard
+            benchmarkKind="EMBEDDING_RETRIEVAL"
+            sectionKey="evaluation-embedding"
+            taskTypeHint="EMBEDDING_EVALUATION"
+            cardTitle="Embedding evaluation"
+            runButtonTestId="lab-embedding-run"
+            radioGroupName="follow-embedding-route"
+          />
+        </LabEvalHarness>,
+      );
+      expect(await screen.findByTestId("lab-hyperparameters-form")).toBeInTheDocument();
+      expect(screen.getByTestId("lab-hp-top-k")).toBeInTheDocument();
+      expect(screen.queryByTestId("lab-hp-temperature")).not.toBeInTheDocument();
+      expect(screen.queryByText("Generation parameters")).not.toBeInTheDocument();
+    });
+
+    it("RAG POST omits generation keys and llmModelId from benchmarkRuntimeParameters", async () => {
+      const user = userEvent.setup();
+      vi.mocked(apiFetch).mockResolvedValue({
+        evaluationRunId: "run-0000-0000-0000-000000000099",
+        asyncTaskId: "job-0000-0000-0000-000000000099",
+      });
+      renderRagRouteCard();
+      await user.click(await screen.findByTestId("lab-rag-run"));
+      const call = vi.mocked(apiFetch).mock.calls.find((c) => {
+        const url = String(c[0] ?? "");
+        const method = (c[1] as RequestInit | undefined)?.method ?? "GET";
+        return url.includes("/lab/benchmarks/RAG_PRESET_END_TO_END/runs") && method === "POST";
+      });
+      expect(call).toBeTruthy();
+      const body = JSON.parse(String((call?.[1] as RequestInit | undefined)?.body ?? "{}")) as {
+        llmModelId?: string;
+        llmModelIds?: string[];
+        embeddingModelId?: string;
+        benchmarkRuntimeParameters?: Record<string, unknown>;
+      };
+      expect(body.llmModelId).toBeUndefined();
+      expect(body.llmModelIds).toBeUndefined();
+      expect(body.embeddingModelId).toBe("mxbai-embed:latest");
+      const params = body.benchmarkRuntimeParameters ?? {};
+      expect(params.temperature).toBeUndefined();
+      expect(params.top_p).toBeUndefined();
+      expect(params.topP).toBeUndefined();
+      expect(params.seed).toBeUndefined();
+      expect(params.max_tokens).toBeUndefined();
+      expect(params.maxTokens).toBeUndefined();
+      expect(params.presence_penalty).toBeUndefined();
+      expect(params.frequency_penalty).toBeUndefined();
+      expect(params.response_format).toBeUndefined();
+      expect(params.stop).toBeUndefined();
+      expect(params.think).toBeUndefined();
+      expect(params.secondaryLlmModelId).toBeUndefined();
+      expect(params.topK).toBe(5);
+      expect(params.similarityThreshold).toBe(0.4);
+    });
+  });
 });

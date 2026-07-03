@@ -177,7 +177,7 @@ describe("lab-evaluation-draft", () => {
     expect(w.datasetIncompatibleWithBenchmark).toBe(true);
   });
 
-  it("validates llmModelId for RAG only (LLM lab uses llmModelIds)", () => {
+  it("does not validate llmModelId for RAG (answer generation uses task-level settings)", () => {
     const base = defaultLabEvaluationDraft();
     const wJudge = computeLabEvaluationDraftWarnings({
       kind: "LLM_JUDGE_QA",
@@ -203,7 +203,7 @@ describe("lab-evaluation-draft", () => {
       catalogPresetCodes: ["P0"],
       presetsCatalogReady: true,
     });
-    expect(wRag.llmModelInvalid).toBe(true);
+    expect(wRag.llmModelInvalid).toBe(false);
 
     const wEmbedding = computeLabEvaluationDraftWarnings({
       kind: "EMBEDDING_RETRIEVAL",

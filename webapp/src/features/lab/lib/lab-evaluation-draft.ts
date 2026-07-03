@@ -4,7 +4,6 @@ import { sanitizeLabBenchmarkDraftPresetCodes } from "@/features/lab/lib/experim
 import {
   THESIS_DEFAULT_EMBEDDING_MODEL_ID,
   THESIS_DEFAULT_PRIMARY_LLM_MODEL_ID,
-  THESIS_DEFAULT_SECONDARY_LLM_MODEL_ID,
 } from "@/features/lab/lib/lab-evaluation-models";
 
 export type LabEvaluationDraftKind = Extract<
@@ -124,16 +123,6 @@ export function migrateLabDraftModelsFromCatalog(
     if (filteredLlmIds.length !== next.llmModelIds.length) {
       next = { ...next, llmModelIds: filteredLlmIds };
     }
-    const secondary = next.benchmarkRuntimeParameters.secondaryLlmModelId?.trim() ?? "";
-    if (secondary && !llmSet.has(secondary)) {
-      next = {
-        ...next,
-        benchmarkRuntimeParameters: {
-          ...next.benchmarkRuntimeParameters,
-          secondaryLlmModelId: undefined,
-        },
-      };
-    }
   }
 
   if (availableEmbeddingModelIds.length > 0) {
@@ -158,31 +147,17 @@ export function migrateLabDraftModelsFromCatalog(
     if (next.llmModelIds.length === 0 && firstLlm) {
       next = { ...next, llmModelIds: [firstLlm] };
     }
-  } else if (!next.llmModelId.trim() && (thesisLlm || firstLlm)) {
+  } else if (kind !== "RAG_PRESET_END_TO_END" && !next.llmModelId.trim() && (thesisLlm || firstLlm)) {
     next = { ...next, llmModelId: thesisLlm || firstLlm };
+  }
+  if (kind === "RAG_PRESET_END_TO_END") {
+    next = { ...next, llmModelId: "", llmModelIds: [] };
   }
   if (!next.embeddingModelId.trim() && (thesisEmb || firstEmb)) {
     next = { ...next, embeddingModelId: thesisEmb || firstEmb };
   }
   if (next.embeddingModelIds.length === 0 && (thesisEmb || firstEmb)) {
     next = { ...next, embeddingModelIds: [thesisEmb || firstEmb] };
-  }
-  if (kind === "RAG_PRESET_END_TO_END") {
-    const primary = next.llmModelId.trim();
-    const secondary = next.benchmarkRuntimeParameters.secondaryLlmModelId?.trim() ?? "";
-    const thesisSecondary =
-      availableLlmModelIds.find(
-        (id) => id === THESIS_DEFAULT_SECONDARY_LLM_MODEL_ID && id !== primary,
-      ) ?? "";
-    if (!secondary && thesisSecondary) {
-      next = {
-        ...next,
-        benchmarkRuntimeParameters: {
-          ...next.benchmarkRuntimeParameters,
-          secondaryLlmModelId: thesisSecondary,
-        },
-      };
-    }
   }
   return next;
 }
@@ -295,18 +270,22 @@ function migrateV1FormParsed(kind: LabEvaluationDraftKind, parsed: Record<string
 
 function finalizeLoadedDraft(kind: LabEvaluationDraftKind, stored: LabEvaluationDraftStored): LabEvaluationDraftStored {
   const stripped: LabEvaluationDraftStored = { ...stored, ...stripLegacyStaleLabModelIds(stored) };
+  const ragStripped: LabEvaluationDraftStored =
+    kind === "RAG_PRESET_END_TO_END"
+      ? { ...stripped, llmModelId: "", llmModelIds: [] }
+      : stripped;
   if (kind !== "RAG_PRESET_END_TO_END") {
-    if (draftModelFieldsChanged(stored, stripped)) {
-      saveLabEvaluationDraft(kind, stripped);
+    if (draftModelFieldsChanged(stored, ragStripped)) {
+      saveLabEvaluationDraft(kind, ragStripped);
     }
-    return stripped;
+    return ragStripped;
   }
   const { selected, removed } = sanitizeLabBenchmarkDraftPresetCodes(
-    stripped.selectedExperimentalPresetCodes,
+    ragStripped.selectedExperimentalPresetCodes,
     undefined,
     false,
   );
-  const presetSanitized: LabEvaluationDraftStored = { ...stripped, selectedExperimentalPresetCodes: selected };
+  const presetSanitized: LabEvaluationDraftStored = { ...ragStripped, selectedExperimentalPresetCodes: selected };
   if (removed.length === 0 && !draftModelFieldsChanged(stored, presetSanitized)) {
     return presetSanitized;
   }
@@ -471,6 +450,7 @@ export function computeLabEvaluationDraftWarnings(input: {
     input.draft.llmModelId.trim() !== "" &&
     input.kind !== "EMBEDDING_RETRIEVAL" &&
     input.kind !== "LLM_JUDGE_QA" &&
+    input.kind !== "RAG_PRESET_END_TO_END" &&
     !isLegacyStaleLabLlmModelId(input.draft.llmModelId)
       ? !llmSet.has(input.draft.llmModelId.trim())
       : false;

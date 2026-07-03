@@ -11,7 +11,7 @@ import { bootstrapBrowserSession, gotoWithProxyRetry, productApiUrl } from "./he
 
 export const PHASE2_EVIDENCE_ROOT = path.resolve(
   __dirname,
-  "../../../.cursor/evidence/phase-2-screenshots-and-embedding-campaign-20250701",
+  "../../../docs/evidence/phase-2-screenshots-and-embedding-campaign-20250701",
 );
 
 export const THESIS_EMBEDDING_MODEL_IDS = [

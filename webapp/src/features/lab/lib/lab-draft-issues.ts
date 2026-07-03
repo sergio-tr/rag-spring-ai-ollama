@@ -125,27 +125,6 @@ export function computeLabDraftIssues(input: ComputeLabDraftIssuesInput): LabDra
     );
   }
 
-  const secondary = draft.benchmarkRuntimeParameters?.secondaryLlmModelId?.trim() ?? "";
-  if (
-    kind === "RAG_PRESET_END_TO_END" &&
-    secondary &&
-    !isLegacyStaleLabLlmModelId(secondary) &&
-    input.availableLlmModelIds.length > 0 &&
-    !input.availableLlmModelIds.includes(secondary)
-  ) {
-    issues.push(
-      issue(
-        "STALE_SECONDARY_MODEL",
-        "error",
-        input.chatCatalogProvider === "OPENAI_COMPATIBLE"
-          ? "evalDraftWarnLlmInvalidOpenAI"
-          : "evalDraftWarnLlmInvalid",
-        { modelId: secondary },
-        "evalDraftIssueActionChooseModel",
-      ),
-    );
-  }
-
   if (warnings.presetsUnknown.length > 0) {
     issues.push(
       issue(
