@@ -106,7 +106,7 @@ function writeEvidence(recorded: RecordedCase[], conversationId: string) {
   fs.writeFileSync(path.join(EVIDENCE_DIR, "EIGHT_CASE_ACCEPTANCE_MATRIX.md"), matrixLines.join("\n"));
 
   const responseLines = [
-    "# Eight-case chat acceptance — responses",
+    "# Eight-case chat acceptance - responses",
     "",
     `**Generated:** ${generatedAt}`,
     `**Conversation:** \`${conversationId}\``,
@@ -130,7 +130,7 @@ function writeEvidence(recorded: RecordedCase[], conversationId: string) {
   fs.writeFileSync(path.join(EVIDENCE_DIR, "RESPONSES.md"), responseLines.join("\n"));
 
   const traceLines = [
-    "# Eight-case chat acceptance — traces",
+    "# Eight-case chat acceptance - traces",
     "",
     `**Generated:** ${generatedAt}`,
     `**Conversation:** \`${conversationId}\``,
@@ -142,8 +142,8 @@ function writeEvidence(recorded: RecordedCase[], conversationId: string) {
       "",
       `| Field | Value |`,
       `|-------|-------|`,
-      `| userMessageId | \`${row.userMessageId ?? "—"}\` |`,
-      `| assistantMessageId | \`${row.assistantMessageId ?? "—"}\` |`,
+      `| userMessageId | \`${row.userMessageId ?? "-"}\` |`,
+      `| assistantMessageId | \`${row.assistantMessageId ?? "-"}\` |`,
       `| jobStatus | ${row.jobStatus} |`,
       "",
       "### executionMetadata (subset)",

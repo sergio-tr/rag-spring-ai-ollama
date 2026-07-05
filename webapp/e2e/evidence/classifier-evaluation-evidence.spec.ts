@@ -40,7 +40,7 @@ test.describe("Classifier evaluation evidence @evidence", () => {
     if (await evaluateBtn.isVisible().catch(() => false)) {
       await captureEvidence(page, "classifier", "04_classifier_eval_run_clicked.png", { labPage: true });
     } else {
-      evidenceLog("classifier evaluate control unavailable — screenshot skipped for step 04");
+      evidenceLog("classifier evaluate control unavailable - screenshot skipped for step 04");
     }
 
     const registry = page.getByTestId("classifier-registry-table");

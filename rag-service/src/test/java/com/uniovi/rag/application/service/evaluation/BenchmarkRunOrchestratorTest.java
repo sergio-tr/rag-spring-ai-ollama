@@ -57,6 +57,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import com.uniovi.rag.application.service.llm.ModelPreflightService;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -120,6 +121,7 @@ class BenchmarkRunOrchestratorTest {
     @Mock private ProjectIndexProfileService projectIndexProfileService;
     @Mock private LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     @Mock private ObjectProvider<RuntimeObservability> runtimeObservability;
+    @Mock private ModelPreflightService modelPreflightService;
     private final LabPresetAxisSupport labPresetAxisSupport =
             new LabPresetAxisSupport(new EvaluationReferenceBundleLoader(evaluationWorkbookParser));
     private final LabBenchmarkDefaultModelResolver labBenchmarkDefaultModelResolver =
@@ -206,7 +208,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
         when(evaluationCorpusReadinessService.getReadiness(any(), eq(TEST_CORPUS_ID)))
                 .thenReturn(
                         new EvaluationCorpusReadinessDto(
@@ -306,7 +308,7 @@ class BenchmarkRunOrchestratorTest {
                         realPreflight,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -371,7 +373,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -502,7 +504,7 @@ class BenchmarkRunOrchestratorTest {
                 labBenchmarkConfigPreflightService,
                 labPresetAxisSupport,
                 labBenchmarkDefaultModelResolver,
-                runtimeObservability);
+                runtimeObservability, modelPreflightService);
     }
 
     @Test
@@ -580,7 +582,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -658,7 +660,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.empty());
@@ -724,7 +726,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -797,7 +799,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -882,7 +884,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -977,7 +979,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1109,7 +1111,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1256,7 +1258,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1347,7 +1349,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1496,7 +1498,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1576,7 +1578,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -1640,7 +1642,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -1704,7 +1706,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -1768,7 +1770,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -1832,7 +1834,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1950,7 +1952,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();

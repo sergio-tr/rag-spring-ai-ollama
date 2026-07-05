@@ -48,6 +48,7 @@ class NewConversationInitialRuntimeOverrideTest {
     @Mock private KnowledgeDocumentRepository knowledgeDocumentRepository;
     @Mock private PresetService presetService;
     @Mock private ChatPresetDefaults chatPresetDefaults;
+    @Mock private IndexAwareChatPresetDefaultService indexAwareChatPresetDefaultService;
     @Mock private LabExperimentalPresetCatalogService experimentalPresetCatalogService;
     @Mock private RuntimeConfigValidationService runtimeConfigValidationService;
 
@@ -56,6 +57,9 @@ class NewConversationInitialRuntimeOverrideTest {
     @BeforeEach
     void stubValidation() {
         lenient().when(chatPresetDefaults.loadDeterministicDefaultPreset()).thenReturn(Optional.empty());
+        lenient()
+                .when(indexAwareChatPresetDefaultService.resolveDefaultPresetId(any(), any()))
+                .thenReturn(Optional.of(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID));
         lenient()
                 .when(runtimeConfigValidationService.validateDraft(any(), any(), any(), any()))
                 .thenReturn(

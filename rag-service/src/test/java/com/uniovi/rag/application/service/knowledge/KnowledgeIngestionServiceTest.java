@@ -11,6 +11,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
+import com.uniovi.rag.application.service.llm.ModelPreflightService;
 import com.uniovi.rag.application.service.knowledge.document.ProjectDocumentIngestionService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import java.io.File;
@@ -53,8 +54,9 @@ class KnowledgeIngestionServiceTest {
             ResolvedLlmConfigResolver llmConfigResolver,
             EntityManager entityManager) {
         BinaryStoragePort storage = mock(BinaryStoragePort.class);
+        ModelPreflightService modelPreflight = mock(ModelPreflightService.class);
         return new KnowledgeIngestionService(
-                orchestrator, repo, ingestion, access, resolved, llmConfigResolver, entityManager, storage);
+                orchestrator, repo, ingestion, access, resolved, llmConfigResolver, entityManager, storage, modelPreflight);
     }
 
     @Test

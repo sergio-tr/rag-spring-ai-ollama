@@ -139,6 +139,19 @@ class ConversationRecallGuardTest {
         assertThat(ConversationRecallGuard.isAmbiguousActaScopedWithoutDate(query)).isFalse();
     }
 
+    @Test
+    void explicitActaPdfReference_shouldNotShortCircuitAcuerdoQuestion() {
+        ConversationHistoryLoader loader = mock(ConversationHistoryLoader.class);
+        when(loader.loadEligibleHistory(any())).thenReturn(List.of());
+        ConversationRecallGuard guard = new ConversationRecallGuard(loader);
+
+        String query = "¿Qué acuerdo se tomó sobre el ascensor en ACTA 6.pdf?";
+        ExecutionContext ctx = ctx(query, ConversationMemoryOutcome.NO_HISTORY_AVAILABLE, false);
+
+        assertThat(guard.shouldShortCircuitAmbiguousActaQuery(ctx)).isFalse();
+        assertThat(ConversationRecallGuard.isAmbiguousActaScopedWithoutDate(query)).isFalse();
+    }
+
     private static RagConfig rag(boolean memoryEnabled) {
         return new RagConfig(
                 false,

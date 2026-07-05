@@ -57,7 +57,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/** Phase 2 — RAG runtime provider wiring without live HTTP. */
+/** Phase 2 - RAG runtime provider wiring without live HTTP. */
 @ExtendWith(MockitoExtension.class)
 class RagRuntimeProviderIntegrationTest {
 

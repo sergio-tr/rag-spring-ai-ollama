@@ -40,7 +40,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
-/** Phase 2 — user-scoped selectable chat models from properties catalog. */
+/** Phase 2 - user-scoped selectable chat models from properties catalog. */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class MeSelectableLlmModelsIntegrationTest {

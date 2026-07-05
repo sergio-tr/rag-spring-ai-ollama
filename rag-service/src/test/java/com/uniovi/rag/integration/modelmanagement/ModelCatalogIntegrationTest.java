@@ -12,7 +12,7 @@ import com.uniovi.rag.testsupport.llm.LlmModelCatalogTestSupport;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** Phase 2 — catalog from configured properties (no runtime provider probes). */
+/** Phase 2 - catalog from configured properties (no runtime provider probes). */
 class ModelCatalogIntegrationTest {
 
     @Test

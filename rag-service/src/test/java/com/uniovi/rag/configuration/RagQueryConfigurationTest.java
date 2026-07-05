@@ -161,7 +161,8 @@ class RagQueryConfigurationTest {
         RagQueryConfiguration config = new RagQueryConfiguration();
         RagImplementationProperties impl = new RagImplementationProperties();
         impl.setAnalyserImpl(null);
-        QueryAnalyser analyser = config.queryAnalyser(mock(ProviderAwareSecondaryLlmExecutor.class), impl, null);
+        QueryAnalyser analyser = config.queryAnalyser(
+                mock(ProviderAwareSecondaryLlmExecutor.class), mock(ConfigurablePromptResolver.class), impl, null);
         assertInstanceOf(MinuteNERQueryAnalyser.class, analyser);
     }
 

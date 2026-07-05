@@ -16,7 +16,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
 
 /**
  * P59 T-P59-mapping-style: handler methods on FD-p59-controller-set use {@code @GetMapping} / {@code @PostMapping} /
- * {@code @PutMapping} / {@code @DeleteMapping} only — no method-level {@code @RequestMapping}.
+ * {@code @PutMapping} / {@code @DeleteMapping} only - no method-level {@code @RequestMapping}.
  */
 @AnalyzeClasses(
         packagesOf = RuntimeTraceRegressionSuiteRunController.class,

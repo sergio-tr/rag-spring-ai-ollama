@@ -32,6 +32,7 @@ import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusRead
 import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleLoader;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
+import com.uniovi.rag.application.service.llm.ModelPreflightService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.junit.jupiter.api.BeforeEach;
@@ -258,6 +259,6 @@ class RagPresetCampaignOrchestratorTest {
                 labBenchmarkConfigPreflightService,
                 labPresetAxisSupport,
                 LabBenchmarkTestSupport.stubDefaultModelResolver("gemma3:4b", "mxbai-embed-large:latest"),
-                runtimeObservability);
+                runtimeObservability, mock(ModelPreflightService.class));
     }
 }

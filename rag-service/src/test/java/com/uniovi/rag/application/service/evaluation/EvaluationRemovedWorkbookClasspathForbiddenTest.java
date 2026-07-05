@@ -20,6 +20,6 @@ class EvaluationRemovedWorkbookClasspathForbiddenTest {
                 Path.of("src/main/resources/evaluation/evaluation_dataset.xlsx").toAbsolutePath().normalize();
         assertFalse(
                 Files.exists(mainEvalRemovedWorkbook),
-                "evaluation/evaluation_dataset.xlsx must not exist under src/main/resources/evaluation — use typed templates + reference bundle only");
+                "evaluation/evaluation_dataset.xlsx must not exist under src/main/resources/evaluation - use typed templates + reference bundle only");
     }
 }

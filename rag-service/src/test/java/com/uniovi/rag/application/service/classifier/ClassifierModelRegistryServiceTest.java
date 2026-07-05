@@ -115,6 +115,51 @@ class ClassifierModelRegistryServiceTest {
     }
 
     @Test
+    void listForUserWithSync_excludesDbRowWhenArtifactRemovedFromDisk() {
+        when(classifierLabPort.isConfigured()).thenReturn(true);
+        when(classifierLabPort.listModels()).thenReturn(List.of(Map.of("id", "default", "name", "Default model")));
+
+        ClassifierModelEntity stale = new ClassifierModelEntity();
+        stale.setId(UUID.randomUUID());
+        stale.setName("gone");
+        stale.setArtifactPath("deleted-tag");
+        stale.setStatus(ClassifierModelStatus.READY);
+        stale.setHyperparams(Map.of(ClassifierModelRegistryService.HP_SOURCE_TASK_ID, "task-gone"));
+        when(classifierModelRepository.findByOwner_IdOrderByTrainedAtDesc(userId)).thenReturn(List.of(stale));
+
+        List<ClassifierModelResponseDto> list = service.listForUserWithSync(userId);
+
+        assertThat(list).extracting(ClassifierModelResponseDto::inferenceTag).containsExactly("default");
+    }
+
+    @Test
+    void listForUserWithSync_includesGlobalCustomModelsFromClassifierService() {
+        UserEntity owner = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
+        when(classifierLabPort.isConfigured()).thenReturn(true);
+        when(classifierLabPort.listModels())
+                .thenReturn(
+                        List.of(
+                                Map.of("id", "default", "name", "Default model"),
+                                Map.of(
+                                        "id",
+                                        "a1b2c3d4",
+                                        "name",
+                                        "shared-custom",
+                                        "createdAt",
+                                        "2020-01-01T00:00:00Z",
+                                        "metrics",
+                                        Map.of("accuracy", 0.9, "macro_avg_f1", 0.88))));
+        when(classifierModelRepository.findByOwner_IdAndArtifactPath(userId, "default")).thenReturn(Optional.empty());
+        when(classifierModelRepository.findByOwner_IdOrderByTrainedAtDesc(userId)).thenReturn(List.of());
+
+        List<ClassifierModelResponseDto> list = service.listForUserWithSync(userId);
+
+        assertThat(list).extracting(ClassifierModelResponseDto::inferenceTag).contains("default", "a1b2c3d4");
+        verify(classifierModelRepository, atLeastOnce()).save(any());
+    }
+
+    @Test
     void listForUserWithSync_doesNotRegisterOtherUsersDiskModelTags() {
         UserEntity owner = mock(UserEntity.class);
         when(userRepository.findById(userId)).thenReturn(Optional.of(owner));

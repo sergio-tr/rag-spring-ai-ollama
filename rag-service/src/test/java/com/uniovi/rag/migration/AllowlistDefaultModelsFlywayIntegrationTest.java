@@ -2,6 +2,8 @@ package com.uniovi.rag.migration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport;
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport.PostgresBinding;
 import java.util.List;
 import java.util.Map;
 import org.flywaydb.core.Flyway;
@@ -10,16 +12,15 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import javax.sql.DataSource;
 
 /**
- * Verifies V61 seeds the canonical LAB allowlist and demotes bge-m3.
+ * Verifies latest Flyway migrations seed the canonical LAB allowlist (V61+) and thesis re-enable bge-m3 (V73).
  */
-@EnabledIf(value = "com.uniovi.rag.testsupport.TestEnvironment#isDockerAvailable",
-        disabledReason = "Docker required for isolated Flyway verification database")
+@EnabledIf(
+        value = "com.uniovi.rag.testsupport.TestEnvironment#isIsolatedFlywayPostgresAvailable",
+        disabledReason = "Postgres admin URL or Docker required for isolated Flyway verification database")
 class AllowlistDefaultModelsFlywayIntegrationTest {
 
     private static final List<String> REQUIRED_ALLOWLIST = List.of(
@@ -30,19 +31,15 @@ class AllowlistDefaultModelsFlywayIntegrationTest {
             "mistral:7b",
             "llama3.1:8b");
 
-    private static PostgreSQLContainer<?> postgres;
+    private static PostgresBinding postgresBinding;
     private static JdbcTemplate jdbc;
 
     @BeforeAll
     static void startPostgres() {
-        postgres = new PostgreSQLContainer<>("pgvector/pgvector:0.8.2-pg16-bookworm")
-                .withDatabaseName("flyway_allowlist_verify")
-                .withUsername("test")
-                .withPassword("test")
-                .withInitScript("testcontainers-vectordb-init.sql");
-        postgres.start();
-        DataSource dataSource = new DriverManagerDataSource(
-                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+        postgresBinding =
+                PostgresIntegrationTestSupport.startIsolatedDatabase(
+                        "flyway_allowlist_verify", "testcontainers-vectordb-init.sql");
+        DataSource dataSource = postgresBinding.dataSource();
         Flyway.configure()
                 .dataSource(dataSource)
                 .locations("classpath:db/migration")
@@ -53,13 +50,13 @@ class AllowlistDefaultModelsFlywayIntegrationTest {
 
     @AfterAll
     static void stopPostgres() {
-        if (postgres != null) {
-            postgres.stop();
+        if (postgresBinding != null) {
+            postgresBinding.cleanup().run();
         }
     }
 
     @Test
-    void v61_seedsCanonicalAllowlistAndDemotesBgeM3() {
+    void latestMigrations_seedCanonicalAllowlistAndReenableBgeM3() {
         List<Map<String, Object>> active = jdbc.queryForList(
                 """
                 SELECT name, type::text AS type, in_allowlist
@@ -74,10 +71,18 @@ class AllowlistDefaultModelsFlywayIntegrationTest {
         Integer bgeEnabled = jdbc.queryForObject(
                 """
                 SELECT COUNT(*)::int FROM allowed_model
-                WHERE lower(name) IN ('bge-m3', 'bge-m3:latest') AND in_allowlist = TRUE
+                WHERE lower(name) = 'bge-m3' AND type = 'EMBEDDING' AND in_allowlist = TRUE
                 """,
                 Integer.class);
-        assertThat(bgeEnabled).isZero();
+        assertThat(bgeEnabled).isEqualTo(1);
+
+        Integer bgeLatestEnabled = jdbc.queryForObject(
+                """
+                SELECT COUNT(*)::int FROM allowed_model
+                WHERE lower(name) = 'bge-m3:latest' AND in_allowlist = TRUE
+                """,
+                Integer.class);
+        assertThat(bgeLatestEnabled).isZero();
 
         Integer qwenEmbedding = jdbc.queryForObject(
                 """

@@ -11,12 +11,19 @@ test.describe("UX surfaces smoke @smoke", () => {
     await addSmokeAccessCookie(page);
   });
 
+  test("settings general tab owns language and theme controls", async ({ page }) => {
+    await page.goto("/en/settings", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await expect(page.getByTestId("appearance-language-panel")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: /^English$/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /dark/i })).toBeVisible();
+  });
+
   test("settings user config shows form fields, not raw JSON editors", async ({ page }) => {
     await page.goto("/en/settings/user", { waitUntil: "domcontentloaded", timeout: 60_000 });
     await expect(page.getByTestId("user-rag-config-form")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("rag-config-structured-form")).toBeVisible();
-    await expect(page.getByTestId("user-account-preferences")).toBeVisible();
-    await expect(page.getByLabel(/language/i)).toBeVisible();
+    await expect(page.getByTestId("user-account-preferences")).not.toBeVisible();
+    await expect(page.getByTestId("user-pref-locale")).not.toBeVisible();
     const technicalDetails = page.getByTestId("settings-model-parameters-advanced");
     const technicalSummary = technicalDetails.locator(":scope > summary");
     await expect(technicalSummary).toBeVisible();
@@ -58,7 +65,7 @@ test.describe("UX surfaces smoke @smoke", () => {
     await expect(presetSelect).toBeVisible({ timeout: 15_000 });
     const options = await presetSelect.locator("option").allTextContents();
     expect(options.some((o) => /Chunk \+ metadata retrieval/i.test(o))).toBe(true);
-    expect(options.every((o) => !/^P\d+\s*[—-]/.test(o.trim()))).toBe(true);
+    expect(options.every((o) => !/^P\d+\s*[--]/.test(o.trim()))).toBe(true);
   });
 
   test("lab benchmark exports show primary JSON and CSV only by default", async ({ page }) => {

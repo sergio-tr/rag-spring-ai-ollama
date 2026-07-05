@@ -140,7 +140,7 @@ class ProjectCompatiblePresetsServiceTest {
                                 List.of(
                                         new PresetValidationIssue(
                                                 "MATERIALIZATION_NOT_SUPPORTED",
-                                                "Create or reindex the project with a compatible index profile."))));
+                                                "Requires HYBRID index"))));
 
         ProjectCompatiblePresetsCatalog catalog =
                 projectCompatiblePresetsService.list(userId, projectId, null);

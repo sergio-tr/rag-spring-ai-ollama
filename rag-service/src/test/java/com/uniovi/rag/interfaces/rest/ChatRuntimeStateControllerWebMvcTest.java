@@ -85,6 +85,7 @@ class ChatRuntimeStateControllerWebMvcTest {
                                 LLM_MODEL,
                                 CLASSIFIER_MODEL_ID,
                                 true,
+                                "CUSTOM",
                                 Map.of(USE_RETRIEVAL, true),
                                 List.of(USE_RETRIEVAL),
                                 true,
@@ -110,6 +111,7 @@ class ChatRuntimeStateControllerWebMvcTest {
                 .andExpect(jsonPath("$.conversationLlmModel").value(LLM_MODEL))
                 .andExpect(jsonPath("$.conversationClassifierModelId").value(CLASSIFIER_MODEL_ID))
                 .andExpect(jsonPath("$.conversationModelsPinned").value(true))
+                .andExpect(jsonPath("$.configurationMode").value("CUSTOM"))
                 .andExpect(jsonPath("$.manualOverrideKeys[0]").value(USE_RETRIEVAL))
                 .andExpect(jsonPath("$.isCustom").value(true));
 

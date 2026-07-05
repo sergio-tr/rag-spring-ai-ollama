@@ -151,11 +151,11 @@ export const FORBIDDEN_LAB_UI_PATTERNS: RegExp[] = [
   /\bcorpus and snapshot\b/i,
   /POST JSON/i,
   /canonical benchmark API/i,
-  /Lab API —/i,
+  /Lab API -/i,
   /POST \/api/i,
   /GET \/api/i,
   /Stopped watching here/i,
-  /Stopped waiting — the server job/i,
+  /Stopped waiting - the server job/i,
   /Status poll:/i,
   /Live stream:/i,
   /datasetId.*projectId.*llmModelId/i,
@@ -690,7 +690,7 @@ export async function assertLabRunStarted(page: Page): Promise<void> {
   const blockedByOtherJob = page.getByText(/Another Lab evaluation is already running/i);
   await expect(
     blockedByOtherJob,
-    "Another active Lab job blocks Run — cancel jobs (ensureNoActiveLabJobs) or run this file serially",
+    "Another active Lab job blocks Run - cancel jobs (ensureNoActiveLabJobs) or run this file serially",
   ).toHaveCount(0);
   await expect(page.getByText(/Live stream configuration error/i)).toHaveCount(0);
   await expect(page.getByTestId("lab-job-panel")).toBeVisible({ timeout: 30_000 });

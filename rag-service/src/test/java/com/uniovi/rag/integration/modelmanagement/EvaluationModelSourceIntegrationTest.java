@@ -34,7 +34,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
-/** Phase 5 — evaluation must use properties catalog, not legacy demo/preferred lists. */
+/** Phase 5 - evaluation must use properties catalog, not legacy demo/preferred lists. */
 @ExtendWith(MockitoExtension.class)
 class EvaluationModelSourceIntegrationTest {
 

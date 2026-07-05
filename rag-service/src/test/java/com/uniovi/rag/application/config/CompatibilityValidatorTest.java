@@ -63,7 +63,7 @@ class CompatibilityValidatorTest {
     }
 
     @Test
-    void metadataRequiresToolsError() {
+    void metadataWithoutTools_warningNotHardError() {
         RagFeatureConfiguration f = new RagFeatureConfiguration();
         f.setToolsEnabled(false);
         f.setMetadataEnabled(true);
@@ -73,9 +73,10 @@ class CompatibilityValidatorTest {
                 RagConfig.fromFeatureConfiguration(f, 10, 0.7, "llm", "emb", "classifier", "simple");
         CapabilitySet caps = CapabilitySet.fromRagConfig(cfg);
         CompatibilityResult r = validator.validate(caps, cfg);
-        assertFalse(r.valid());
+        assertTrue(r.valid());
         assertTrue(
-                r.errors().stream().anyMatch(v -> "REQUIRES_CAPABILITY".equals(v.code())));
+                r.warnings().stream().anyMatch(v -> "METADATA_WITHOUT_TOOLS".equals(v.code())));
+        assertTrue(r.errors().isEmpty());
     }
 
     @Test
@@ -115,5 +116,38 @@ class CompatibilityValidatorTest {
         assertTrue(
                 r.errors().stream()
                         .anyMatch(v -> "STRUCTURED_SEARCH_RETRIEVAL_UNSUPPORTED".equals(v.code())));
+    }
+
+    @Test
+    void expansionAndNerCanBothBeEnabled() throws Exception {
+        RagConfig cfg =
+                RagConfig.applyJsonOverrides(
+                        baselineFeatures(),
+                        MAPPER.readTree("{\"expansionEnabled\": true, \"nerEnabled\": true}"));
+        CapabilitySet caps = CapabilitySet.fromRagConfig(cfg);
+        CompatibilityResult r = validator.validate(caps, cfg);
+        assertTrue(r.valid());
+    }
+
+    @Test
+    void memoryAndClarificationCanBothBeEnabled() throws Exception {
+        RagConfig cfg =
+                RagConfig.applyJsonOverrides(
+                        baselineFeatures(),
+                        MAPPER.readTree("{\"memoryEnabled\": true, \"clarificationEnabled\": true}"));
+        CapabilitySet caps = CapabilitySet.fromRagConfig(cfg);
+        CompatibilityResult r = validator.validate(caps, cfg);
+        assertTrue(r.valid());
+    }
+
+    @Test
+    void rankerAndPostRetrievalRequireRetrievalButCanCombine() throws Exception {
+        RagConfig cfg =
+                RagConfig.applyJsonOverrides(
+                        baselineFeatures(),
+                        MAPPER.readTree("{\"rankerEnabled\": true, \"postRetrievalEnabled\": true}"));
+        CapabilitySet caps = CapabilitySet.fromRagConfig(cfg);
+        CompatibilityResult r = validator.validate(caps, cfg);
+        assertTrue(r.valid());
     }
 }

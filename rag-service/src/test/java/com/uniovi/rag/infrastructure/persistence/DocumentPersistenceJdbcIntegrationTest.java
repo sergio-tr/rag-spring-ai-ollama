@@ -3,21 +3,19 @@ package com.uniovi.rag.infrastructure.persistence;
 import com.uniovi.rag.infrastructure.persistence.impl.MinuteDocumentRepositoryImpl;
 import com.uniovi.rag.application.service.knowledge.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.application.service.knowledge.document.SimpleDocumentService;
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport;
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport.PostgresBinding;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import javax.sql.DataSource;
 import java.util.Map;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -32,11 +30,7 @@ import static org.mockito.Mockito.mock;
         disabledReason = "Start Postgres (e.g. .github/local/ci-like-verify.sh) or set INTEGRATION_JDBC_URL")
 class DocumentPersistenceJdbcIntegrationTest {
 
-    private static final String CI_DEFAULT_INTEGRATION_JDBC_URL = "jdbc:postgresql://localhost:5432/testdb";
-
-    private static PostgreSQLContainer<?> postgresContainer;
-
-    private static DataSource sharedDataSource;
+    private static PostgresBinding postgresBinding;
 
     private JdbcTemplate jdbcTemplate;
 
@@ -48,55 +42,19 @@ class DocumentPersistenceJdbcIntegrationTest {
 
     @BeforeAll
     static void startOrBindDatabase() {
-        String externalUrl = resolveExternalJdbcUrl();
-        if (externalUrl != null && !externalUrl.isBlank()) {
-            String user = Optional.ofNullable(System.getenv("SPRING_DATASOURCE_USERNAME")).orElse("postgres");
-            String password = Optional.ofNullable(System.getenv("SPRING_DATASOURCE_PASSWORD")).orElse("postgres");
-            sharedDataSource = new DriverManagerDataSource(externalUrl, user, password);
-            return;
-        }
-        try {
-            postgresContainer = new PostgreSQLContainer<>("pgvector/pgvector:0.8.2-pg16-bookworm")
-                    .withDatabaseName("testdb")
-                    .withUsername("test")
-                    .withPassword("test")
-                    .withInitScript("test-init.sql");
-            postgresContainer.start();
-            sharedDataSource = new DriverManagerDataSource(
-                    postgresContainer.getJdbcUrl(),
-                    postgresContainer.getUsername(),
-                    postgresContainer.getPassword()
-            );
-        } catch (Throwable t) {
-            Assumptions.abort("Postgres via Testcontainers unavailable: " + t.getMessage());
-        }
+        postgresBinding = PostgresIntegrationTestSupport.startJdbcIntegrationDatabase();
     }
 
     @AfterAll
     static void stopContainer() {
-        if (postgresContainer != null) {
-            postgresContainer.stop();
+        if (postgresBinding != null) {
+            postgresBinding.cleanup().run();
         }
-    }
-
-    /**
-     * Prefer explicit {@code INTEGRATION_JDBC_URL}; on GitHub Actions fall back to the workflow Postgres service
-     * so tests do not rely on Testcontainers when the job env is missing from the forked JVM.
-     */
-    private static String resolveExternalJdbcUrl() {
-        String explicit = System.getenv("INTEGRATION_JDBC_URL");
-        if (explicit != null && !explicit.isBlank()) {
-            return explicit;
-        }
-        if ("true".equalsIgnoreCase(System.getenv("GITHUB_ACTIONS"))) {
-            return CI_DEFAULT_INTEGRATION_JDBC_URL;
-        }
-        return null;
     }
 
     @BeforeEach
     void setUp() {
-        DataSource ds = sharedDataSource;
+        DataSource ds = postgresBinding.dataSource();
         jdbcTemplate = new JdbcTemplate(ds);
         // Shared JDBC URL (e.g. CI Postgres) may hold rows from other test classes or earlier methods.
         jdbcTemplate.update("DELETE FROM vector_store");
@@ -212,4 +170,3 @@ class DocumentPersistenceJdbcIntegrationTest {
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }
-

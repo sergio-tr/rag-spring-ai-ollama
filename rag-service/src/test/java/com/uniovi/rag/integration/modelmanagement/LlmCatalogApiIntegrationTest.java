@@ -25,7 +25,7 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** Phase 1 — properties-backed LLM catalog API service. */
+/** Phase 1 - properties-backed LLM catalog API service. */
 class LlmCatalogApiIntegrationTest {
 
     private LlmCatalogApiService apiService;

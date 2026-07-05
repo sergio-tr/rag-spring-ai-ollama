@@ -32,6 +32,8 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.auth.OauthLoginService", // ARCH-DEBT-AUTH
             "com.uniovi.rag.application.service.chat.ChatRuntimeCompatibilitySupport", // ARCH-DEBT-CHAT
             "com.uniovi.rag.application.service.chat.ChatRuntimeStateService", // ARCH-DEBT-CHAT
+            "com.uniovi.rag.application.service.chat.MaterializationFeatureGateService", // ARCH-DEBT-CHAT
+            "com.uniovi.rag.application.service.chat.PresetBaseFeatureSupport", // ARCH-DEBT-CHAT
             "com.uniovi.rag.application.service.chat.async.ChatMessageJobHandler", // ARCH-DEBT-CHAT
             "com.uniovi.rag.application.service.classifier.ClassifierModelRegistryService", // ARCH-DEBT-CLASSIFIER
             "com.uniovi.rag.application.service.evaluation.BenchmarkRunOrchestrator", // ARCH-DEBT-LAB
@@ -61,6 +63,7 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.llm.catalog.LlmModelRuntimeReasonSupport", // ARCH-DEBT-ADMIN-MODEL
             "com.uniovi.rag.application.service.llm.catalog.MeSelectableLlmModelsService", // ARCH-DEBT-ADMIN-MODEL
             "com.uniovi.rag.application.service.llm.LlmErrorComposer", // ARCH-DEBT-QUERY-RUNTIME
+            "com.uniovi.rag.application.service.llm.ModelPreflightService", // ARCH-DEBT-QUERY-RUNTIME
             "com.uniovi.rag.application.service.me.MeDocumentQueryService", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.me.MeSummaryApplicationService", // ARCH-DEBT-ME
             "com.uniovi.rag.application.service.me.UserMePersonalizationService", // ARCH-DEBT-ME

@@ -32,8 +32,8 @@ Evidence: `docs/evidence/p0-playwright-cicd-integration-20250701/`
 
 ## Layout
 
-- `fixtures/` — network/console guard + extended `test`
-- `page-objects/` — Login, Projects, Chat, Documents, Admin, Lab
-- `p0-full-application.spec.ts` — nine P0 tests
+- `fixtures/` - network/console guard + extended `test`
+- `page-objects/` - Login, Projects, Chat, Documents, Admin, Lab
+- `p0-full-application.spec.ts` - nine P0 tests
 
 Evidence: `docs/evidence/full-application-e2e-playwright-20250701/`

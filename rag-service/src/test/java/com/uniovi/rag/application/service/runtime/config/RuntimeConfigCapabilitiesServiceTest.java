@@ -54,8 +54,15 @@ class RuntimeConfigCapabilitiesServiceTest {
         assertThat(post.implemented()).isTrue();
         assertThat(post.requires()).containsExactly("useRetrieval");
 
-        // Ensure missing keys are present and engine-wired.
-        for (String k : List.of("expansionEnabled", "toolsEnabled", "functionCallingEnabled", "nerEnabled")) {
+        // expansionEnabled is wired into chat runtime as an independent feature.
+        RuntimeConfigCapability expansion = byKey.get("expansionEnabled");
+        assertThat(expansion).isNotNull();
+        assertThat(expansion.implemented()).isTrue();
+        assertThat(expansion.engineWired()).isTrue();
+        assertThat(expansion.visibleInChat()).isTrue();
+        assertThat(expansion.requires()).isEmpty();
+
+        for (String k : List.of("toolsEnabled", "functionCallingEnabled", "nerEnabled")) {
             RuntimeConfigCapability c = byKey.get(k);
             assertThat(c).as("capability present: " + k).isNotNull();
             assertThat(c.implemented()).isTrue();

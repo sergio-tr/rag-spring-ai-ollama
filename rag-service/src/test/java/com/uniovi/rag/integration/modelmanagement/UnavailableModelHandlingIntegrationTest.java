@@ -52,7 +52,7 @@ import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.document.Document;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Phase 6 — configured models stay visible; unavailable/incompatible models block with clear codes. */
+/** Phase 6 - configured models stay visible; unavailable/incompatible models block with clear codes. */
 @ExtendWith(MockitoExtension.class)
 class UnavailableModelHandlingIntegrationTest {
 

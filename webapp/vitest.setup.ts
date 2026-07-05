@@ -1,10 +1,32 @@
 import "@testing-library/jest-dom/vitest";
 import { vi } from "vitest";
 import React from "react";
+import { useLocale } from "next-intl";
+import { localizedPath } from "@/i18n/localized-path";
+import type { AppLocale } from "@/i18n/routing";
 import {
   formatConsoleArgs,
   isSuppressedTestConsoleNoise,
 } from "@/test-utils/suppress-test-console-noise";
+
+function LocaleAwareAnchor({
+  href,
+  children,
+  className,
+  ...rest
+}: {
+  href: string;
+  children: React.ReactNode;
+  className?: string;
+  [key: string]: unknown;
+}) {
+  const locale = useLocale() as AppLocale;
+  return React.createElement(
+    "a",
+    { href: localizedPath(href, locale), className, ...rest },
+    children,
+  );
+}
 
 // React 19 + RTL: mark the test env so batched updates are attributed correctly.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -25,19 +47,18 @@ console.warn = (...args: unknown[]) => {
 // Prevent Next.js Link from attempting route prefetching in unit tests.
 // Prefetch can trigger network calls against the default happy-dom origin (127.0.0.1:3000).
 vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: React.ReactNode }) =>
-    React.createElement("a", { href }, children),
+  default: LocaleAwareAnchor,
 }));
 
 // Prevent next-intl from importing Next.js navigation internals in Vitest DOM.
 vi.mock("next-intl/navigation", () => ({
   createNavigation: () => ({
-    Link: ({ href, children }: { href: string; children: React.ReactNode }) =>
-      React.createElement("a", { href }, children),
+    Link: LocaleAwareAnchor,
     redirect: vi.fn(),
     usePathname: () => "/",
     useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
-    getPathname: (args: { href: string }) => args.href,
+    getPathname: ({ locale, href }: { locale: AppLocale; href: string }) =>
+      localizedPath(href, locale),
   }),
 }));
 

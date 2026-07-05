@@ -85,7 +85,7 @@ public final class SafeTestSecretsApplicationContextInitializer
                 map.put("spring.flyway.clean-disabled", "false");
                 map.put("spring.flyway.clean-on-validation-error", "true");
             } catch (Throwable t) {
-                // Docker not available (common for @WebMvcTest on laptops) or Testcontainers failure — same JDBC
+                // Docker not available (common for @WebMvcTest on laptops) or Testcontainers failure - same JDBC
                 // fallback as CI service Postgres / local defaults.
                 log.debug("Testcontainers Postgres unavailable ({}), using env/default JDBC properties", t.toString());
                 putEnvOrDefaultJdbc(map);

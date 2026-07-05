@@ -413,7 +413,7 @@ export async function createAndActivateProject(page: Page, projectName: string):
   await assertProjectCreateDialogClosedOrSurfaceError(dialog);
   const projectCard = page.locator('[data-slot="card"]').filter({ hasText: projectName }).first();
   await expect(projectCard).toBeVisible({ timeout: 20_000 });
-  // Require the actual active marker — not "Set active only", which also contains the substring "active".
+  // Require the actual active marker - not "Set active only", which also contains the substring "active".
   await expect(projectCard.getByRole("button", { name: /^(Active|Activo)$/i })).toBeVisible({
     timeout: 20_000,
   });
@@ -832,7 +832,7 @@ export async function sendChatMessage(page: Page, message: string, options?: Sen
   }
 
   throw new Error(
-    "sendChatMessage: could not send — Send stayed disabled after refill, Enter did not clear the composer, " +
+    "sendChatMessage: could not send - Send stayed disabled after refill, Enter did not clear the composer, " +
       "and retry after starting a new conversation failed.",
   );
 }

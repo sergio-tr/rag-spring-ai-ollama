@@ -30,7 +30,7 @@ class LlmExceptionTranslatorTest {
                 LlmExceptionTranslator.translate(source, openAiConfig(), "chat", "unavailable-model");
 
         assertInstanceOf(LlmConfigurationException.class, translated);
-        assertEquals(ErrorCode.LLM_MISCONFIGURED, translated.errorCode());
+        assertEquals(ErrorCode.MODEL_CONFIG_INVALID, translated.errorCode());
     }
 
     @Test
@@ -46,7 +46,7 @@ class LlmExceptionTranslatorTest {
         LlmProviderException translated =
                 LlmExceptionTranslator.translate(source, openAiConfig(), "chat", "unknown-model");
 
-        assertEquals(ErrorCode.LLM_MISCONFIGURED, translated.errorCode());
+        assertEquals(ErrorCode.MODEL_CONFIG_INVALID, translated.errorCode());
         assertTrue(translated.publicMessage().contains("unknown-model"));
     }
 
@@ -63,7 +63,7 @@ class LlmExceptionTranslatorTest {
         LlmProviderException translated =
                 LlmExceptionTranslator.translate(source, openAiConfig(), "embedding", "gpt-oss:20b");
 
-        assertEquals(ErrorCode.LLM_MISCONFIGURED, translated.errorCode());
+        assertEquals(ErrorCode.MODEL_CONFIG_INVALID, translated.errorCode());
         assertTrue(translated.publicMessage().contains("EMBEDDING"));
     }
 
@@ -85,7 +85,7 @@ class LlmExceptionTranslatorTest {
         LlmProviderException translated =
                 LlmExceptionTranslator.translate(source, openAiConfig(), "chat", "gemma3:4b");
 
-        assertEquals(ErrorCode.LLM_MISCONFIGURED, translated.errorCode());
+        assertEquals(ErrorCode.MODEL_CONFIG_INVALID, translated.errorCode());
         assertTrue(translated.publicMessage().contains("gemma3:4b"));
     }
 
@@ -98,7 +98,7 @@ class LlmExceptionTranslatorTest {
         LlmProviderException translated = LlmExceptionTranslator.translate(source, config, "chat", "gpt-4o");
 
         assertInstanceOf(LlmConfigurationException.class, translated);
-        assertEquals(ErrorCode.LLM_MISCONFIGURED, translated.errorCode());
+        assertEquals(ErrorCode.MODEL_CONFIG_INVALID, translated.errorCode());
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, translated.httpStatus());
         assertTrue(translated.publicMessage().contains("LITELLM_API_KEY"));
     }
@@ -111,7 +111,7 @@ class LlmExceptionTranslatorTest {
         LlmProviderException translated = LlmExceptionTranslator.translate(source, config, "chat", "gpt-4o");
 
         assertEquals(LlmFailureKind.UNAUTHORIZED, translated.failureKind());
-        assertEquals(ErrorCode.LLM_UNAUTHORIZED, translated.errorCode());
+        assertEquals(ErrorCode.MODEL_AUTH_FAILED, translated.errorCode());
         assertEquals(HttpStatus.UNAUTHORIZED, translated.httpStatus());
         assertTrue(translated.publicMessage().contains("403"));
     }
@@ -125,7 +125,7 @@ class LlmExceptionTranslatorTest {
         LlmProviderException translated = LlmExceptionTranslator.translate(source, config, "chat", "gpt-4o");
 
         assertInstanceOf(LlmTimeoutException.class, translated);
-        assertEquals(ErrorCode.LLM_TIMEOUT, translated.errorCode());
+        assertEquals(ErrorCode.MODEL_TIMEOUT, translated.errorCode());
         assertEquals(HttpStatus.GATEWAY_TIMEOUT, translated.httpStatus());
     }
 
@@ -138,7 +138,7 @@ class LlmExceptionTranslatorTest {
         LlmProviderException translated = LlmExceptionTranslator.translate(source, config, "chat", "gpt-4o");
 
         assertEquals(LlmFailureKind.ENDPOINT_NOT_FOUND, translated.failureKind());
-        assertEquals(ErrorCode.LLM_PROVIDER_ERROR, translated.errorCode());
+        assertEquals(ErrorCode.MODEL_UNREACHABLE, translated.errorCode());
         assertTrue(translated.publicMessage().contains("endpoint not found"));
     }
 

@@ -159,7 +159,7 @@ class ChunkDenseMetadataWorkflowTest {
                                 List.of(
                                         dummyCandidateWithFilename(
                                                 "ACTA2.pdf", "Fecha: 25 de febrero de 2025. Presidente: Carlos.")),
-                                "ACTA2.pdf — Fecha: 25 de febrero de 2025",
+                                "ACTA2.pdf - Fecha: 25 de febrero de 2025",
                                 new CompressionOutcome(1, 1, 0, List.of()),
                                 List.of(),
                                 new RetrievalDiagnostics(
@@ -208,7 +208,7 @@ class ChunkDenseMetadataWorkflowTest {
                                 List.of(
                                         dummyCandidateWithFilename("ACTA 5.pdf", "Fecha: 25 de febrero de 2026"),
                                         dummyCandidateWithFilename("ACTA 3.pdf", "Fecha: 25/08/2025")),
-                                "ACTA 5.pdf — Fecha: 25 de febrero de 2026\nACTA 3.pdf — Fecha: 25/08/2025",
+                                "ACTA 5.pdf - Fecha: 25 de febrero de 2026\nACTA 3.pdf - Fecha: 25/08/2025",
                                 new CompressionOutcome(1, 1, 0, List.of()),
                                 List.of(),
                                 new RetrievalDiagnostics(
@@ -303,7 +303,7 @@ class ChunkDenseMetadataWorkflowTest {
                                                 "acta-24-02-2025.txt",
                                                 "Fecha: 24 de febrero de 2025. Presidente: Juan Pérez García.",
                                                 "2025-02-24")),
-                                "acta-24-02-2025.txt — Fecha: 24 de febrero de 2025",
+                                "acta-24-02-2025.txt - Fecha: 24 de febrero de 2025",
                                 new CompressionOutcome(1, 1, 0, List.of()),
                                 List.of(),
                                 new RetrievalDiagnostics(

@@ -365,7 +365,8 @@ class KnowledgeIndexingServiceTest {
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
         when(snapshot.getId()).thenReturn(snapshotId);
-        when(snapshot.getIndexProfileJsonb()).thenReturn(Map.of("embeddingModelId", "mxbai-embed-large"));
+        when(snapshot.getIndexProfileJsonb())
+                .thenReturn(Map.of("embeddingModelId", "mxbai-embed-large", "supportsMetadata", true));
         when(doc.getId()).thenReturn(UUID.randomUUID());
         when(doc.getProject().getId()).thenReturn(UUID.randomUUID());
         when(doc.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
@@ -645,6 +646,95 @@ class KnowledgeIndexingServiceTest {
                         400));
 
         verify(vectorStore, Mockito.times(2)).add(any());
+    }
+
+    @Test
+    void processDocument_skipsMetadataExtractionWhenSnapshotDoesNotSupportMetadata() throws Exception {
+        MetadataMinuteDocumentService metadataSvc = mock(MetadataMinuteDocumentService.class);
+        PgVectorStore vectorStore = mock(PgVectorStore.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
+        BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
+        DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
+
+        KnowledgeIndexingService sut =
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataSvc);
+
+        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
+        KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
+        when(snapshot.getId()).thenReturn(UUID.randomUUID());
+        when(snapshot.getIndexProfileJsonb())
+                .thenReturn(Map.of("embeddingModelId", "mxbai-embed-large", "supportsMetadata", false));
+        when(doc.getId()).thenReturn(UUID.randomUUID());
+        when(doc.getProject().getId()).thenReturn(UUID.randomUUID());
+        when(doc.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
+        when(doc.getConversation()).thenReturn(null);
+        when(doc.getFileName()).thenReturn("doc.txt");
+        when(doc.getMimeType()).thenReturn("text/plain");
+
+        Path tempFile = tempDir.resolve("doc.txt");
+        Files.writeString(tempFile, "hello world", StandardCharsets.UTF_8);
+        when(ingestionService.extractContent(any())).thenReturn("hello world");
+        when(ingestionService.splitContentIntoChunks("hello world", 400)).thenReturn(List.of("hello world"));
+
+        sut.processDocument(
+                new KnowledgeDocumentIndexingRequest(
+                        doc,
+                        tempFile,
+                        "doc.txt",
+                        "text/plain",
+                        snapshot,
+                        "abc123",
+                        MaterializationStrategy.CHUNK_LEVEL,
+                        400));
+
+        verify(metadataSvc, never()).tryExtractDeterministicMetadataForIndexing(any(), any(), any());
+    }
+
+    @Test
+    void processDocument_runsMetadataExtractionWhenSnapshotSupportsMetadata() throws Exception {
+        MetadataMinuteDocumentService metadataSvc = mock(MetadataMinuteDocumentService.class);
+        when(metadataSvc.tryExtractDeterministicMetadataForIndexing(any(), any(), any()))
+                .thenReturn(Optional.empty());
+
+        PgVectorStore vectorStore = mock(PgVectorStore.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
+        BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
+        DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
+
+        KnowledgeIndexingService sut =
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataSvc);
+
+        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
+        KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
+        when(snapshot.getId()).thenReturn(UUID.randomUUID());
+        when(snapshot.getIndexProfileJsonb())
+                .thenReturn(Map.of("embeddingModelId", "mxbai-embed-large", "supportsMetadata", true));
+        when(doc.getId()).thenReturn(UUID.randomUUID());
+        when(doc.getProject().getId()).thenReturn(UUID.randomUUID());
+        when(doc.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
+        when(doc.getConversation()).thenReturn(null);
+        when(doc.getFileName()).thenReturn("doc.txt");
+        when(doc.getMimeType()).thenReturn("text/plain");
+
+        Path tempFile = tempDir.resolve("doc.txt");
+        Files.writeString(tempFile, "hello world", StandardCharsets.UTF_8);
+        when(ingestionService.extractContent(any())).thenReturn("hello world");
+        when(ingestionService.splitContentIntoChunks("hello world", 400)).thenReturn(List.of("hello world"));
+
+        sut.processDocument(
+                new KnowledgeDocumentIndexingRequest(
+                        doc,
+                        tempFile,
+                        "doc.txt",
+                        "text/plain",
+                        snapshot,
+                        "abc123",
+                        MaterializationStrategy.CHUNK_LEVEL,
+                        400));
+
+        verify(metadataSvc).tryExtractDeterministicMetadataForIndexing(eq("hello world"), eq("doc.txt"), anyString());
     }
 
 }

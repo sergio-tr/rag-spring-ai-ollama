@@ -150,7 +150,7 @@ export function assertGlobalTurnQuality(
   return { ...base, noRawChunks, noProviderMismatch, noOllamaError, jobSucceeded };
 }
 
-/** Phase 5 — eight-case chat acceptance (exact user wording). */
+/** Phase 5 - eight-case chat acceptance (exact user wording). */
 export const EIGHT_CASE_USER_QUERIES = [
   "quienes fueron los asistentes del acta del 24 de febrero de 2025",
   "a qué hora empezó y a qué hora terminó esa acta?",
@@ -234,7 +234,7 @@ export const EIGHT_CASE_ACCEPTANCE_TURNS: TurnDefinition[] = MULTITURN_SUITE_TUR
   query: EIGHT_CASE_USER_QUERIES[idx] ?? turn.query,
 }));
 
-/** RAG Correctness Critical Suite — mandatory acceptance cases (RAG-CRIT-001..012). */
+/** RAG Correctness Critical Suite - mandatory acceptance cases (RAG-CRIT-001..012). */
 export type RagCritCaseDefinition = TurnDefinition & {
   caseId: string;
   /** When set, run in the same conversation immediately after the referenced case. */

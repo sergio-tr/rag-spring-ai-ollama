@@ -1,6 +1,6 @@
 /**
  * Known-noise patterns from RTL/React 19 and partial RQ mocks in unit tests.
- * Used by vitest.setup and vitest.config onConsoleLog — not for production.
+ * Used by vitest.setup and vitest.config onConsoleLog - not for production.
  */
 export const SUPPRESSED_TEST_CONSOLE_PATTERNS: RegExp[] = [
   /not wrapped in act\(\.\.\.\)/i,

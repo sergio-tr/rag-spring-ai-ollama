@@ -88,7 +88,7 @@ test.describe.serial("Closure classifier train evaluate activate @closure @fulls
         test.info().annotations.push({
           type: "blocked",
           description:
-            "Ollama DOWN — skipping chat send/trace assertions (LAB train/eval/activate completed). See W3-OPS-OLLAMA-UP.",
+            "Ollama DOWN - skipping chat send/trace assertions (LAB train/eval/activate completed). See W3-OPS-OLLAMA-UP.",
         });
         return;
       }

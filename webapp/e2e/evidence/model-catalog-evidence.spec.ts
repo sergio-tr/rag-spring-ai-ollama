@@ -33,7 +33,7 @@ test.describe("Model catalog evidence @evidence", () => {
       await embeddingSection.scrollIntoViewIfNeeded();
       await captureEvidence(page, "model-catalog", "02_admin_catalog_embedding.png");
     } else {
-      evidenceLog("admin embedding section not found — using models card fallback");
+      evidenceLog("admin embedding section not found - using models card fallback");
       await captureEvidence(page, "model-catalog", "02_admin_catalog_embedding.png");
     }
 

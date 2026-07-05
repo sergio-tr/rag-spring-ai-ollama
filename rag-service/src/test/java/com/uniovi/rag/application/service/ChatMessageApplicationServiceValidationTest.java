@@ -27,6 +27,7 @@ import com.uniovi.rag.application.service.async.AsyncLabTaskRunner;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.chat.async.ChatJobCancellationRegistry;
 import com.uniovi.rag.application.service.config.ChatPresetDefaults;
+import com.uniovi.rag.application.service.llm.ModelPreflightService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import java.util.List;
 import java.util.Map;
@@ -67,7 +68,8 @@ class ChatMessageApplicationServiceValidationTest {
                 mock(ChatMessageWorkService.class),
                 runtimeConfigValidationService,
                 chatPresetDefaults,
-                mock(ObjectProvider.class));
+                mock(ObjectProvider.class),
+                mock(ModelPreflightService.class));
     }
 
     @Test

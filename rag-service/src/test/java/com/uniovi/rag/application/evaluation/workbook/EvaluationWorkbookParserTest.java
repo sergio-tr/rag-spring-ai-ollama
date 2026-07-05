@@ -30,9 +30,9 @@ class EvaluationWorkbookParserTest {
     void llmBaseline_minimalValid_hasNoErrors() throws Exception {
         Workbook wb = new XSSFWorkbook();
         Sheet llm = wb.createSheet(WorkbookSheetNames.LLM_READER_QUESTIONS);
-        writeRow(llm.createRow(0), "id", "question");
+        writeRow(llm.createRow(0), "id", "question", "context_text", "expected_answer");
         for (int i = 1; i <= 10; i++) {
-            writeRow(llm.createRow(i), "q" + i, "What is RAG? " + i);
+            writeRow(llm.createRow(i), "q" + i, "What is RAG? " + i, "Context " + i, "Answer " + i);
         }
 
         WorkbookParseResult result = parse(wb, ExperimentalDatasetType.LLM_MODEL_BASELINE);
@@ -82,9 +82,9 @@ class EvaluationWorkbookParserTest {
         Workbook wb = new XSSFWorkbook();
         addChunkRegistry(wb, "c1", "d1");
         Sheet emb = wb.createSheet(WorkbookSheetNames.EMBEDDING_RETRIEVAL_QUERIES);
-        writeRow(emb.createRow(0), "id", "query", "gold_chunk_ids");
+        writeRow(emb.createRow(0), "id", "query", "expected_document_id", "gold_chunk_ids");
         for (int i = 1; i <= 20; i++) {
-            writeRow(emb.createRow(i), "e" + i, "hello " + i, "c1");
+            writeRow(emb.createRow(i), "e" + i, "hello " + i, "d1", "c1");
         }
 
         WorkbookParseResult result = parse(wb, ExperimentalDatasetType.EMBEDDING_MODEL_BASELINE);
@@ -111,9 +111,9 @@ class EvaluationWorkbookParserTest {
         Workbook wb = new XSSFWorkbook();
         addChunkRegistry(wb, "c1", "d1");
         Sheet rag = wb.createSheet(WorkbookSheetNames.RAG_PRESET_QUESTIONS_ENRICHED);
-        writeRow(rag.createRow(0), "id", "question", "query_type", "difficulty");
+        writeRow(rag.createRow(0), "id", "question", "expected_answer", "query_type", "difficulty");
         for (int i = 1; i <= 20; i++) {
-            writeRow(rag.createRow(i), "r" + i, "Summarize the policy " + i, "COUNT_DOCUMENTS", "LOW");
+            writeRow(rag.createRow(i), "r" + i, "Summarize the policy " + i, "Expected " + i, "COUNT_DOCUMENTS", "LOW");
         }
 
         WorkbookParseResult result = parse(wb, ExperimentalDatasetType.RAG_PRESET_BENCHMARK);
@@ -140,7 +140,7 @@ class EvaluationWorkbookParserTest {
                     rag.createRow(i),
                     "r" + i,
                     "Unknown future event " + i + "?",
-                    "",
+                    i == 1 ? "" : "Expected answer " + i,
                     "BOOLEAN_QUERY",
                     "LOW",
                     i == 1 ? "true" : "false",
@@ -175,6 +175,31 @@ class EvaluationWorkbookParserTest {
         WorkbookParseResult result = parse(wb, ExperimentalDatasetType.CLASSIFIER_DATASET);
         assertThat(result.validationReport().hasErrors()).isFalse();
         assertThat(result.workbook().classifierQuestions()).hasSize(1);
+    }
+
+    @Test
+    void classifierDataset_sheetWithQueryTypeAlias_hasNoErrors() throws Exception {
+        Workbook wb = new XSSFWorkbook();
+        Sheet s = wb.createSheet("classifier");
+        writeRow(s.createRow(0), "question", "query_type");
+        writeRow(s.createRow(1), "How many?", "COUNT_DOCUMENTS");
+
+        WorkbookParseResult result = parse(wb, ExperimentalDatasetType.CLASSIFIER_DATASET);
+        assertThat(result.validationReport().hasErrors()).isFalse();
+        assertThat(result.workbook().classifierQuestions()).hasSize(1);
+        assertThat(result.workbook().classifierQuestions().getFirst().queryTypeLabel()).isEqualTo("COUNT_DOCUMENTS");
+    }
+
+    @Test
+    void classifierDataset_questionWithoutQueryTypeColumn_reportsMissingSheet() throws Exception {
+        Workbook wb = new XSSFWorkbook();
+        Sheet s = wb.createSheet("classifier");
+        writeRow(s.createRow(0), "question");
+        writeRow(s.createRow(1), "How many?");
+
+        WorkbookParseResult result = parse(wb, ExperimentalDatasetType.CLASSIFIER_DATASET);
+        assertThat(result.workbook().classifierQuestions()).isEmpty();
+        assertThat(codes(result, ValidationSeverity.ERROR)).contains(ValidationIssueCode.MISSING_SHEET);
     }
 
     @Test

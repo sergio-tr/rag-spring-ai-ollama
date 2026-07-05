@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.ollama.api.OllamaApi;
 
-/** Phase 2 — provider HTTP routing with local HttpServer mocks (package access to HTTP clients). */
+/** Phase 2 - provider HTTP routing with local HttpServer mocks (package access to HTTP clients). */
 class ProviderHttpClientIntegrationTest {
 
     @Test

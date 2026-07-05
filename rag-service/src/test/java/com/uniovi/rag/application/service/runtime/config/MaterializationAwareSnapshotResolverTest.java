@@ -132,21 +132,21 @@ class MaterializationAwareSnapshotResolverTest {
     }
 
     @Test
-    void requirementsFromPresetAndRag_chunkForP0WhenCatalogNone() {
+    void requirementsFromPresetAndRag_noneForP0BaselineWithoutRuntimeFallback() {
         UUID p0 = UUID.fromString("cafe0001-0001-4001-8001-000000000010");
         var req =
                 MaterializationAwareSnapshotResolver.requirementsFromPresetAndRag(Optional.of(p0), null);
         assertThat(req.requiredMaterialization())
-                .isEqualTo(ExperimentalPresetCanonicalCatalog.RequiredMaterialization.CHUNK_LEVEL);
+                .isEqualTo(ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE);
     }
 
     @Test
-    void requirementsFromPresetAndRag_chunkForP1WhenCatalogNone() {
+    void requirementsFromPresetAndRag_noneForP1FullCorpusWithoutRuntimeFallback() {
         UUID p1 = UUID.fromString("cafe0001-0001-4001-8001-000000000011");
         var req =
                 MaterializationAwareSnapshotResolver.requirementsFromPresetAndRag(Optional.of(p1), null);
         assertThat(req.requiredMaterialization())
-                .isEqualTo(ExperimentalPresetCanonicalCatalog.RequiredMaterialization.CHUNK_LEVEL);
+                .isEqualTo(ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE);
     }
 
     @Test

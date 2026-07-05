@@ -108,7 +108,7 @@ test.describe("Embedding evaluation evidence @evidence", () => {
     await captureEvidence(page, "embedding", "07_embedding_job_in_progress.png", { labPage: true });
 
     if (!waitForCompletion() && !runCampaign) {
-      evidenceLog("STOP before terminal — EVIDENCE_WAIT_FOR_COMPLETION not set");
+      evidenceLog("STOP before terminal - EVIDENCE_WAIT_FOR_COMPLETION not set");
       return;
     }
 

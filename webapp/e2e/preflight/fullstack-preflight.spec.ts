@@ -56,7 +56,7 @@ test.describe("Fullstack E2E preflight @preflight", () => {
 
     const panel = await openChatConfigurationPanel(page);
     await expect(panel.getByTestId("chat-preset-select")).toBeVisible({ timeout: 15_000 });
-    await expect(panel.getByTestId("chat-llm-model-select")).toBeVisible({ timeout: 15_000 });
+    await expect(panel.getByTestId("chat-edit-assistant-configuration-link")).toBeVisible({ timeout: 15_000 });
     await expect(panel.getByTestId("chat-classifier-select")).toBeVisible({ timeout: 15_000 });
     await expandChatConfigurationRuntimeSection(panel);
     await expect(panel.getByTestId("chat-runtime-toggle-similarityThreshold")).toBeVisible({

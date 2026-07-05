@@ -435,6 +435,38 @@ class AdvancedRetrievalPipelineTest {
         assertThat(out.diagnostics().denseCandidateCount()).isEqualTo(1);
     }
 
+    @Test
+    void retrieve_setsEffectiveTopKAndSectionMergeReductionReasonInDiagnostics() {
+        UUID sid = UUID.randomUUID();
+        ExecutionContext ctx = executionContext(sid, false, false);
+        QueryPlan plan = minimalPlan();
+        RetrievalRequest req = retrievalRequestWithTopKAndCap(sid, RetrievalMode.DENSE_ONLY, 8, 8);
+        List<RetrievalCandidate> dense =
+                List.of(
+                        new RetrievalCandidate("c1", "x1", Map.of(), 0.1, 0.0, 1, 0, sid, 1.0),
+                        new RetrievalCandidate("c2", "x2", Map.of(), 0.2, 0.0, 2, 0, sid, 0.9),
+                        new RetrievalCandidate("c3", "x3", Map.of(), 0.3, 0.0, 3, 0, sid, 0.8),
+                        new RetrievalCandidate("c4", "x4", Map.of(), 0.4, 0.0, 4, 0, sid, 0.7),
+                        new RetrievalCandidate("c5", "x5", Map.of(), 0.5, 0.0, 5, 0, sid, 0.6),
+                        new RetrievalCandidate("c6", "x6", Map.of(), 0.6, 0.0, 6, 0, sid, 0.5),
+                        new RetrievalCandidate("c7", "x7", Map.of(), 0.7, 0.0, 7, 0, sid, 0.4),
+                        new RetrievalCandidate("c8", "x8", Map.of(), 0.8, 0.0, 8, 0, sid, 0.3));
+        List<RetrievalCandidate> merged = List.of(dense.get(0), dense.get(1), dense.get(2));
+
+        when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
+        when(denseRetrievalStrategy.retrieveWithOutcome(req)).thenReturn(denseOutcome(dense));
+        when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
+        when(retrievalContextExpander.expand(eq(req), eq(plan), eq(dense)))
+                .thenReturn(new RetrievalContextExpander.ExpansionResult(merged, merged.size(), List.of("section_expand:8->3")));
+        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+
+        var out = pipeline.retrieve(ctx, plan, "ChunkDenseMetadataWorkflow");
+
+        assertThat(out.diagnostics().retrievalEffectiveTopK()).contains(8);
+        assertThat(out.diagnostics().retrievalContextReductionReason()).contains("section_merge");
+        assertThat(out.diagnostics().afterCompressionCount()).isEqualTo(3);
+    }
+
     private static ExecutionContext executionContext(UUID snapshotId) {
         return executionContext(snapshotId, false);
     }
@@ -601,6 +633,29 @@ class AdvancedRetrievalPipelineTest {
                 UUID.randomUUID(),
                 Optional.empty(),
                 List.of("all"), true, Optional.empty());
+    }
+
+    private static RetrievalRequest retrievalRequestWithTopKAndCap(
+            UUID snapshotId, RetrievalMode mode, int topK, int postFusionCap) {
+        return new RetrievalRequest(
+                "q",
+                Map.of(),
+                List.of(),
+                List.of(),
+                EntityExtractionResult.emptyWithNote(""),
+                mode,
+                topK,
+                topK,
+                2 * topK,
+                postFusionCap,
+                24_000,
+                RetrievalPolicy.denseFetchLimit(topK),
+                List.of(snapshotId),
+                UUID.randomUUID(),
+                Optional.empty(),
+                List.of("all"),
+                true,
+                Optional.empty());
     }
 
     private static QueryPlan planWithDate(String date) {

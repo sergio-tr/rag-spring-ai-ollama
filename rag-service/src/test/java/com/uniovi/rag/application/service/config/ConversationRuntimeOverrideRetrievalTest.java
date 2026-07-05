@@ -82,4 +82,49 @@ class ConversationRuntimeOverrideRetrievalTest {
         assertEquals(5, out.topK());
         assertEquals(0.9, out.similarityThreshold());
     }
+
+    @Test
+    void assistantDefaultsMode_usesUserLayerDespitePreset() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID presetId = UUID.randomUUID();
+        when(configurationSource.loadUserDefault(userId))
+                .thenReturn(Optional.of(Map.of("topK", 12, "similarityThreshold", 0.4)));
+        when(configurationSource.loadPresetProfileCompositionSources(userId, presetId))
+                .thenReturn(
+                        Optional.of(
+                                new PresetProfileCompositionSources(
+                                        Map.of("topK", 5, "similarityThreshold", 0.9),
+                                        List.of(),
+                                        List.of())));
+        JsonNode conversationOverride = objectMapper.readTree("{\"retrievalOverrideMode\":\"assistant_defaults\"}");
+
+        RagConfig out = resolver.resolve(userId, null, presetId, conversationOverride, null);
+
+        assertEquals(12, out.topK());
+        assertEquals(0.4, out.similarityThreshold());
+    }
+
+    @Test
+    void projectSettingsMode_usesProjectLayerWithUserFallback() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID presetId = UUID.randomUUID();
+        when(configurationSource.loadUserDefault(userId))
+                .thenReturn(Optional.of(Map.of("topK", 12, "similarityThreshold", 0.4)));
+        when(configurationSource.loadProject(userId, projectId))
+                .thenReturn(Optional.of(Map.of("topK", 15)));
+        when(configurationSource.loadPresetProfileCompositionSources(userId, presetId))
+                .thenReturn(
+                        Optional.of(
+                                new PresetProfileCompositionSources(
+                                        Map.of("topK", 5, "similarityThreshold", 0.9),
+                                        List.of(),
+                                        List.of())));
+        JsonNode conversationOverride = objectMapper.readTree("{\"retrievalOverrideMode\":\"project_settings\"}");
+
+        RagConfig out = resolver.resolve(userId, projectId, presetId, conversationOverride, null);
+
+        assertEquals(15, out.topK());
+        assertEquals(0.4, out.similarityThreshold());
+    }
 }

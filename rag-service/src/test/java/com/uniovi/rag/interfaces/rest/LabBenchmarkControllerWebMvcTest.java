@@ -315,9 +315,9 @@ class LabBenchmarkControllerWebMvcTest {
                         240,
                         List.of(
                                 new CampaignChildRunSummaryDto(
-                                        runId, "P0", "Direct LLM", "P0 — Direct LLM", "gemma3:4b", "DONE", 60),
+                                        runId, "P0", "Direct LLM", "P0 - Direct LLM", "gemma3:4b", "DONE", 60),
                                 new CampaignChildRunSummaryDto(
-                                        UUID.randomUUID(), "P1", "Full corpus", "P1 — Full corpus", "gemma3:4b", "DONE", 60)));
+                                        UUID.randomUUID(), "P1", "Full corpus", "P1 - Full corpus", "gemma3:4b", "DONE", 60)));
         when(labEvaluationRunService.getRun(userId, runId)).thenReturn(dto);
 
         mockMvc.perform(get(path("/lab/runs/") + runId))

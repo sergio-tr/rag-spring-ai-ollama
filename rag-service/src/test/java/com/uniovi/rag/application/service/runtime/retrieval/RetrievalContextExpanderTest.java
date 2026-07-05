@@ -55,6 +55,69 @@ class RetrievalContextExpanderTest {
     }
 
     @Test
+    void expand_scopedAttendeeCountQuery_loadsHeaderSection() {
+        UUID snap = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        String doc = UUID.randomUUID().toString();
+        RetrievalCandidate participantsHit =
+                new RetrievalCandidate(
+                        "p1",
+                        "Beatriz Suárez Aguilar (Presidente)",
+                        Map.of(
+                                "projectDocumentId",
+                                doc,
+                                "sectionType",
+                                ActaSectionChunk.SECTION_PARTICIPANTS,
+                                "chunkIndex",
+                                1),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0.8);
+        RetrievalCandidate header =
+                new RetrievalCandidate(
+                        "h1",
+                        "Asistentes: 18 propietarios",
+                        Map.of("projectDocumentId", doc, "sectionType", ActaSectionChunk.SECTION_HEADER, "chunkIndex", 0),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0);
+
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_PARTICIPANTS), anyInt()))
+                .thenReturn(List.of(participantsHit));
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_HEADER), anyInt()))
+                .thenReturn(List.of(header));
+
+        QueryPlan plan = mock(QueryPlan.class);
+        when(plan.queryIntent()).thenReturn(QueryIntent.COUNT);
+        when(plan.expectedAnswerShape()).thenReturn(ExpectedAnswerShape.SCALAR_COUNT);
+
+        RetrievalRequest req = mock(RetrievalRequest.class);
+        when(req.projectId()).thenReturn(projectId);
+        when(req.queryText())
+                .thenReturn("¿Cuántos propietarios asistieron a la reunión del 25 de agosto de 2025 (ACTA 3.pdf)?");
+        when(req.postFusionCap()).thenReturn(8);
+
+        var result = expander.expand(req, plan, List.of(participantsHit));
+
+        assertThat(result.candidates()).extracting(RetrievalCandidate::candidateId).contains("h1");
+        assertThat(RetrievalContextExpander.isScopedAttendeeCountQuery(req.queryText())).isTrue();
+    }
+
+    @Test
+    void isScopedAttendeeCountQuery_falseForCorpusWideCount() {
+        assertThat(RetrievalContextExpander.isScopedAttendeeCountQuery("¿Cuántos propietarios asistieron en total?"))
+                .isFalse();
+    }
+
+    @Test
     void expand_listQuery_mergesSectionSiblingsInBatch() {
         UUID snap = UUID.randomUUID();
         String doc = UUID.randomUUID().toString();
@@ -149,5 +212,98 @@ class RetrievalContextExpanderTest {
         var result = expander.expand(req, plan, List.of(agendaHit));
 
         assertThat(result.candidates()).extracting(RetrievalCandidate::candidateId).contains("h1");
+    }
+
+    @Test
+    void expand_listQuery_mergesEightChunksIntoThreeSectionCandidates() {
+        UUID snap = UUID.randomUUID();
+        String doc = UUID.randomUUID().toString();
+        List<RetrievalCandidate> seeds =
+                List.of(
+                        sectionCandidate("p0", "Ana", doc, ActaSectionChunk.SECTION_PARTICIPANTS, 0, snap, 0.95),
+                        sectionCandidate("p1", "Luis", doc, ActaSectionChunk.SECTION_PARTICIPANTS, 1, snap, 0.90),
+                        sectionCandidate("p2", "Marta", doc, ActaSectionChunk.SECTION_PARTICIPANTS, 2, snap, 0.85),
+                        sectionCandidate("a0", "Punto 1", doc, ActaSectionChunk.SECTION_AGENDA, 3, snap, 0.80),
+                        sectionCandidate("a1", "Punto 2", doc, ActaSectionChunk.SECTION_AGENDA, 4, snap, 0.75),
+                        sectionCandidate("a2", "Punto 3", doc, ActaSectionChunk.SECTION_AGENDA, 5, snap, 0.70),
+                        sectionCandidate("s0", "Se aprueba", doc, ActaSectionChunk.SECTION_AGREEMENTS, 6, snap, 0.65),
+                        sectionCandidate("s1", "Se cierra", doc, ActaSectionChunk.SECTION_AGREEMENTS, 7, snap, 0.60));
+
+        QueryPlan plan = mock(QueryPlan.class);
+        when(plan.queryIntent()).thenReturn(QueryIntent.LIST);
+        when(plan.expectedAnswerShape()).thenReturn(ExpectedAnswerShape.LIST);
+
+        RetrievalRequest req = mock(RetrievalRequest.class);
+        when(req.projectId()).thenReturn(null);
+        when(req.postFusionCap()).thenReturn(8);
+
+        var result = expander.expand(req, plan, seeds);
+
+        assertThat(result.candidates()).hasSize(3);
+        assertThat(result.notes()).anyMatch(n -> n.startsWith("section_expand:8->3"));
+    }
+
+    @Test
+    void expand_appliesPostFusionCapAfterExpansion() {
+        UUID snap = UUID.randomUUID();
+        List<RetrievalCandidate> seeds =
+                List.of(
+                        candidate("c0", snap, 1.0),
+                        candidate("c1", snap, 0.95),
+                        candidate("c2", snap, 0.90),
+                        candidate("c3", snap, 0.85),
+                        candidate("c4", snap, 0.80),
+                        candidate("c5", snap, 0.75),
+                        candidate("c6", snap, 0.70),
+                        candidate("c7", snap, 0.65),
+                        candidate("c8", snap, 0.60),
+                        candidate("c9", snap, 0.55));
+
+        QueryPlan plan = mock(QueryPlan.class);
+        when(plan.queryIntent()).thenReturn(QueryIntent.FIND);
+        when(plan.expectedAnswerShape()).thenReturn(ExpectedAnswerShape.UNKNOWN);
+
+        RetrievalRequest req = mock(RetrievalRequest.class);
+        when(req.projectId()).thenReturn(null);
+        when(req.postFusionCap()).thenReturn(8);
+        when(req.queryText()).thenReturn("buscar acuerdos");
+
+        var result = expander.expand(req, plan, seeds);
+
+        assertThat(result.candidates()).hasSize(8);
+        assertThat(result.notes()).anyMatch(n -> n.startsWith("post_fusion_cap:10->8"));
+    }
+
+    private static RetrievalCandidate sectionCandidate(
+            String id,
+            String content,
+            String doc,
+            String sectionType,
+            int chunkIndex,
+            UUID snap,
+            double score) {
+        return new RetrievalCandidate(
+                id,
+                content,
+                Map.of("projectDocumentId", doc, "sectionType", sectionType, "chunkIndex", chunkIndex),
+                0,
+                0,
+                0,
+                0,
+                snap,
+                score);
+    }
+
+    private static RetrievalCandidate candidate(String id, UUID snap, double score) {
+        return new RetrievalCandidate(
+                id,
+                "content-" + id,
+                Map.of("chunkIndex", Integer.parseInt(id.substring(1))),
+                0,
+                0,
+                0,
+                0,
+                snap,
+                score);
     }
 }

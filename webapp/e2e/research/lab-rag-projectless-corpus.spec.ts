@@ -12,7 +12,7 @@ import {
 } from "../support/lab-helpers";
 
 /**
- * LAB closure: RAG evaluation without active project — evaluation corpus panel + run.
+ * LAB closure: RAG evaluation without active project - evaluation corpus panel + run.
  */
 test.describe("LAB RAG projectless corpus @fullstack", () => {
   test.beforeEach(async ({ page }) => {
@@ -56,7 +56,7 @@ test.describe("LAB RAG projectless corpus @fullstack", () => {
     await expect(page.getByText(/Stopped waiting/i)).toHaveCount(0);
 
     const outcome = await pollLabTerminalOutcome(page, 150_000);
-    test.skip(outcome === "job_running", "Job still running after timeout — stack slow or Ollama unavailable.");
+    test.skip(outcome === "job_running", "Job still running after timeout - stack slow or Ollama unavailable.");
     expect(["results", "job_done", "comparison"]).toContain(outcome);
   });
 });

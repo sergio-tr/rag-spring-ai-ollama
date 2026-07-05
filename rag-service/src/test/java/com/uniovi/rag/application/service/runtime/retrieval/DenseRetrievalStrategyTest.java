@@ -210,11 +210,12 @@ class DenseRetrievalStrategyTest {
         RetrievalRequest req = baseRequest(sid, 5);
         when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
 
-        denseRetrievalStrategy.retrieve(req);
+        DenseRetrievalOutcome outcome = denseRetrievalStrategy.retrieveWithOutcome(req);
 
         ArgumentCaptor<SearchRequest> cap = ArgumentCaptor.forClass(SearchRequest.class);
         verify(vectorStore).similaritySearch(cap.capture());
         assertThat(cap.getValue().getSimilarityThreshold()).isEqualTo(0.88);
+        assertThat(outcome.similarityThresholdUsed()).isEqualTo(0.88);
     }
 
     @Test

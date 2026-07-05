@@ -60,4 +60,13 @@ class ActaFieldAnchorHeuristicsTest {
         assertThat(ActaFieldAnchorHeuristics.isCorpusWideAggregate(query.toLowerCase()))
                 .isTrue();
     }
+
+    @Test
+    void explicitActaPdfReference_detected() {
+        assertThat(ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference(
+                        "¿Qué acuerdo se tomó sobre el ascensor en ACTA 6.pdf?"))
+                .isTrue();
+        assertThat(ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference("presidente del acta 2"))
+                .isFalse();
+    }
 }

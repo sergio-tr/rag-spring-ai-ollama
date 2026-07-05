@@ -40,7 +40,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/** Phase 2 — knowledge ingest embedding provider routing. */
+/** Phase 2 - knowledge ingest embedding provider routing. */
 @ExtendWith(MockitoExtension.class)
 class KnowledgeIngestionProviderIntegrationTest {
 

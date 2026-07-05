@@ -72,6 +72,37 @@ class UserProjectConfigurationServiceTest {
     }
 
     @Test
+    void putUserConfig_emptyPatchPreservesStoredRetrieval() {
+        UUID uid = UUID.randomUUID();
+        when(configResolverProvider.getObject()).thenReturn(configResolver);
+        var user = mock(UserEntity.class);
+        when(userRepository.findById(uid)).thenReturn(Optional.of(user));
+
+        RagConfigurationEntity row = mock(RagConfigurationEntity.class);
+        when(row.getValues()).thenReturn(new LinkedHashMap<>(Map.of("topK", 12, "similarityThreshold", 0.1)));
+        when(ragConfigurationRepository.findFirstByUser_IdAndLevelAndProjectIsNullAndActiveIsTrue(
+                        uid, RagConfigurationLevel.USER_DEFAULT))
+                .thenReturn(Optional.of(row));
+
+        when(configResolver.resolve(uid, null, null))
+                .thenReturn(
+                        RagConfig.fromFeatureConfiguration(
+                                new RagFeatureConfiguration(),
+                                12,
+                                0.1,
+                                "a",
+                                "b",
+                                "c",
+                                "SIMPLE"));
+
+        service.putUserConfig(uid, Map.of());
+
+        ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
+        verify(row).setValues(cap.capture());
+        assertThat(cap.getValue()).containsEntry("topK", 12).containsEntry("similarityThreshold", 0.1);
+    }
+
+    @Test
     void putUserConfig_updatesExistingRow() {
         UUID uid = UUID.randomUUID();
         when(configResolverProvider.getObject()).thenReturn(configResolver);
@@ -79,6 +110,7 @@ class UserProjectConfigurationServiceTest {
         when(userRepository.findById(uid)).thenReturn(Optional.of(user));
 
         RagConfigurationEntity row = mock(RagConfigurationEntity.class);
+        when(row.getValues()).thenReturn(new LinkedHashMap<>());
         when(ragConfigurationRepository.findFirstByUser_IdAndLevelAndProjectIsNullAndActiveIsTrue(
                         uid, RagConfigurationLevel.USER_DEFAULT))
                 .thenReturn(Optional.of(row));

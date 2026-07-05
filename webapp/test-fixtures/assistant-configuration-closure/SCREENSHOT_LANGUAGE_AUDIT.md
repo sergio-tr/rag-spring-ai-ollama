@@ -23,21 +23,21 @@ Locale: `/en/` | Theme: light | Viewport: 1440×900
 
 | Forbidden term | Found? | Screenshot | Action |
 |----------------|--------|------------|--------|
-| Demo_Best | No | — | — |
-| Demo_Worst | No | — | — |
-| Demo_NaiveFullCorpus | No | — | — |
-| P0 / P1 / P15 | No | — | — |
-| preset code | No | — | — |
-| experimental preset | No | — | — |
-| snapshot | No | — | — |
-| profile hash | No | — | — |
-| prompt bundle hash | No | — | — |
-| runtime override | No | — | — |
-| resolved config | No | — | — |
-| deterministic tool | No | — | — |
-| function calling takes precedence | No | — | — |
-| internal route | No | — | — |
-| OpenAI-compatible (primary label) | No | Uses "Configured model provider" / "Configured API catalog" | — |
+| Demo_Best | No | - | - |
+| Demo_Worst | No | - | - |
+| Demo_NaiveFullCorpus | No | - | - |
+| P0 / P1 / P15 | No | - | - |
+| preset code | No | - | - |
+| experimental preset | No | - | - |
+| snapshot | No | - | - |
+| profile hash | No | - | - |
+| prompt bundle hash | No | - | - |
+| runtime override | No | - | - |
+| resolved config | No | - | - |
+| deterministic tool | No | - | - |
+| function calling takes precedence | No | - | - |
+| internal route | No | - | - |
+| OpenAI-compatible (primary label) | No | Uses "Configured model provider" / "Configured API catalog" | - |
 
 ## 3. Product terminology check
 

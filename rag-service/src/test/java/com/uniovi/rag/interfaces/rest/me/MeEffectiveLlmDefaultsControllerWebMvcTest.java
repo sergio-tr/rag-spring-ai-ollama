@@ -91,6 +91,7 @@ class MeEffectiveLlmDefaultsControllerWebMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.effectiveProvider").value("OPENAI_COMPATIBLE"))
                 .andExpect(jsonPath("$.chatModel").value("gpt"))
+                .andExpect(jsonPath("$.classifierModelId").value("default"))
                 .andExpect(jsonPath("$.temperature").value(0.1))
                 .andExpect(jsonPath("$.additionalParameters.think").value(false));
     }

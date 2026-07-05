@@ -98,10 +98,10 @@ cd webapp && PLAYWRIGHT_SKIP_WEBSERVER=1 npx playwright test --project=chromium 
 
 ## 12. Final thesis figure list
 
-See `THESIS_FIGURE_LIST.md` — 10 principal figures + 1 appendix.
+See `THESIS_FIGURE_LIST.md` - 10 principal figures + 1 appendix.
 
 ## 13. Recommended next step
 
 **RAG correctness closure**
 
-Evidence package is sufficient for thesis figures on configurable assistant product surfaces. Remaining gap is live API acceptance document generation (`ProviderRuntimeAcceptance` Maven gate), best addressed in a CI-like environment with unrestricted Maven execution—not a product change.
+Evidence package is sufficient for thesis figures on configurable assistant product surfaces. Remaining gap is live API acceptance document generation (`ProviderRuntimeAcceptance` Maven gate), best addressed in a CI-like environment with unrestricted Maven execution-not a product change.

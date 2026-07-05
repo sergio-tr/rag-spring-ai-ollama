@@ -9,7 +9,7 @@ import {
 } from "../support/helpers";
 
 /**
- * Phase 8C — end-to-end journey: seeded login → active project → documents → READY ingest → chat send.
+ * Phase 8C - end-to-end journey: seeded login → active project → documents → READY ingest → chat send.
  * Complements narrower specs (E2E-03, E2E-S5-02, E2E-05) with one chained navigation narrative.
  */
 test.describe("Phase 8 project documents chat journey @fullstack", () => {

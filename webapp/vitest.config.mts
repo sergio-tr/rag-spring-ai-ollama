@@ -48,6 +48,8 @@ export default defineConfig({
         "src/features/lab/components/lab-evaluation-run-card.tsx",
         // Hyperparameters UI shell for the evaluation run card; payload logic in lab-generation-hyperparameters.
         "src/features/lab/components/lab-hyperparameters-form.tsx",
+        // Generation parameters UI shell; payload logic in lab-generation-hyperparameters.
+        "src/features/lab/components/lab-generation-parameters-section.tsx",
         // Shared Lab/Settings tab shell; thin layout glue covered by E2E navigation.
         "src/components/layout/app-subnav-section-layout.tsx",
         // shadcn/Radix UI primitives (thin presentation); behavior is covered indirectly via feature tests.

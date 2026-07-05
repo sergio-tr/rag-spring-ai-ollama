@@ -54,7 +54,7 @@ class MinuteNERQueryAnalyserProviderAwareTest {
         when(taskLlmConfigResolver.resolveSecondaryCall(
                         ArgumentMatchers.isNull(),
                         ArgumentMatchers.isNull(),
-                        ArgumentMatchers.eq("ner"),
+                        ArgumentMatchers.eq("ner-extraction"),
                         ArgumentMatchers.isNull(),
                         ArgumentMatchers.isNull()))
                 .thenReturn(new TaskLlmConfigResolver.SecondaryCallConfig(config, config.chatModel(), 0.0, false));

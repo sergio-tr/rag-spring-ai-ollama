@@ -29,7 +29,7 @@ export async function loginAndGetTokens(
 }
 
 /**
- * POST {product}/auth/login — returns JWT access token or throws if login fails.
+ * POST {product}/auth/login - returns JWT access token or throws if login fails.
  */
 export async function loginAndGetToken(
   request: APIRequestContext,

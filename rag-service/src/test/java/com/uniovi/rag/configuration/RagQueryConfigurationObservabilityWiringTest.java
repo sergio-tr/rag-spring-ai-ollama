@@ -73,7 +73,11 @@ class RagQueryConfigurationObservabilityWiringTest {
 
         RagImplementationProperties implProps = new RagImplementationProperties();
         implProps.setAnalyserImpl("no-op");
-        QueryAnalyser analyser = config.queryAnalyser(mock(ProviderAwareSecondaryLlmExecutor.class), implProps, observability);
+        QueryAnalyser analyser = config.queryAnalyser(
+                mock(ProviderAwareSecondaryLlmExecutor.class),
+                mock(ConfigurablePromptResolver.class),
+                implProps,
+                observability);
         assertInstanceOf(TracedQueryAnalyser.class, analyser);
 
         var retriever = mock(ContextRetriever.class);

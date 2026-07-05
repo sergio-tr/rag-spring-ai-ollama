@@ -64,7 +64,7 @@ test.describe("LLM evaluation evidence @evidence", () => {
     await captureEvidence(page, "llm", "06_llm_run_clicked.png", { labPage: true });
 
     if (shouldRunCampaigns() && !screenshotsOnly()) {
-      evidenceLog("SKIP LLM campaign — blocked by Phase 2 scope (screenshot-only for LLM)");
+      evidenceLog("SKIP LLM campaign - blocked by Phase 2 scope (screenshot-only for LLM)");
     }
     evidenceLog("PASS llm-evidence screenshots-only");
   });

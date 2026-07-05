@@ -1,5 +1,5 @@
 /**
- * P0 full-application E2E suite — validates main product phases from the UI.
+ * P0 full-application E2E suite - validates main product phases from the UI.
  *
  * Requires live stack (Spring profile `e2e` recommended). Run:
  *   npm run test:e2e:p0

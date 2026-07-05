@@ -78,7 +78,7 @@ test.describe("RAG evaluation evidence @evidence", () => {
     await captureEvidence(page, "rag", "06_rag_run_clicked.png", { labPage: true });
 
     if (shouldRunCampaigns() && !screenshotsOnly()) {
-      evidenceLog("SKIP RAG campaign — blocked by Phase 2 scope (screenshot-only for RAG)");
+      evidenceLog("SKIP RAG campaign - blocked by Phase 2 scope (screenshot-only for RAG)");
     }
     evidenceLog("PASS rag-evidence screenshots-only");
   });

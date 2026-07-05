@@ -5,6 +5,7 @@ import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import com.uniovi.rag.domain.llm.TaskLlmRoleDefaults;
 import com.uniovi.rag.domain.llm.TaskLlmTask;
 import com.uniovi.rag.domain.config.prompt.PromptOverrideKeys;
 import java.util.LinkedHashMap;
@@ -30,6 +31,7 @@ class TaskLlmConfigResolverTest {
     @Mock private ConfigurationSourcePort configurationSource;
     @Mock private ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     @Mock private RagRuntimeProperties ragRuntimeProperties;
+    @Mock private SystemTaskLlmDefaultsProvider systemTaskLlmDefaultsProvider;
 
     private TaskLlmConfigResolver resolver;
     private UUID userId;
@@ -37,9 +39,16 @@ class TaskLlmConfigResolverTest {
 
     @BeforeEach
     void setUp() {
+        lenient()
+                .when(systemTaskLlmDefaultsProvider.baselineFor(any(TaskLlmTask.class)))
+                .thenAnswer(inv -> TaskLlmRoleDefaults.forTask(inv.getArgument(0)));
         resolver =
                 new TaskLlmConfigResolver(
-                        configurationSource, resolvedLlmConfigResolver, new ObjectMapper(), ragRuntimeProperties);
+                        configurationSource,
+                        resolvedLlmConfigResolver,
+                        new ObjectMapper(),
+                        ragRuntimeProperties,
+                        systemTaskLlmDefaultsProvider);
         userId = UUID.randomUUID();
         projectId = UUID.randomUUID();
     }
