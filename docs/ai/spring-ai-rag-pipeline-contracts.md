@@ -34,5 +34,5 @@ flowchart TB
 
 ## Related
 
-- [`rag-service/README.md`](../../rag-service/README.md) — execution order and advanced retrieval summary
+- [`rag-service/README.md`](../../rag-service/README.md) - execution order and advanced retrieval summary
 - [`docs/adr/0005-target-rag-architecture-and-runtime-center.md`](../adr/0005-target-rag-architecture-and-runtime-center.md)

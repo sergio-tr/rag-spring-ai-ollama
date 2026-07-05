@@ -1,6 +1,6 @@
 # Python micro-benchmarks (RAG)
 
-**Purpose:** small-sample latency and **estimated** token metrics — **not** load testing (use **Gatling** for RPS / stress).
+**Purpose:** small-sample latency and **estimated** token metrics - **not** load testing (use **Gatling** for RPS / stress).
 
 ## Scripts
 
@@ -8,10 +8,10 @@
 | --- | --- |
 | `retrieval_benchmark.py` | Main runner for `product_chat` (JWT + project + conversation). Historical `GET …/query` remains available only for old-baseline comparison. Schema `benchmark-report-v1` (see `schema/`). |
 | `llm_benchmark.py` | Wrapper with `--family llm` default (same HTTP behaviour; report emphasizes token/cost lines). |
-| `infra_probe.py` | Simple GET probe (default `/actuator/health`) — infra cold/warm, not RAG. |
+| `infra_probe.py` | Simple GET probe (default `/actuator/health`) - infra cold/warm, not RAG. |
 | `final_performance_smoke.py` | Final-scope bounded smoke: health/metrics plus optional document, Chat job, and Lab run start/status when `PERF_*` inputs are provided. |
-| `performance_baseline.py` | **Deprecated** — forwards to `retrieval_benchmark.py`. |
-| `actuator_latency_baseline.py` | **Deprecated** — forwards to `infra_probe.py`. |
+| `performance_baseline.py` | **Deprecated** - forwards to `retrieval_benchmark.py`. |
+| `actuator_latency_baseline.py` | **Deprecated** - forwards to `infra_probe.py`. |
 
 ## Dependencies
 
@@ -65,11 +65,11 @@ python tests/performance/infra_probe.py \
 
 Requires:
 
-- `BENCHMARK_BEARER_TOKEN` — JWT (`Authorization: Bearer`)
-- `BENCHMARK_PROJECT_ID` — UUID
-- `BENCHMARK_CONVERSATION_ID` — UUID
+- `BENCHMARK_BEARER_TOKEN` - JWT (`Authorization: Bearer`)
+- `BENCHMARK_PROJECT_ID` - UUID
+- `BENCHMARK_CONVERSATION_ID` - UUID
 
-Optional prelude: scenario `product_chat.rag_config` is sent with `PUT {product}/config/project/{projectId}` before each run (once per process — script runs prelude once at start).
+Optional prelude: scenario `product_chat.rag_config` is sent with `PUT {product}/config/project/{projectId}` before each run (once per process - script runs prelude once at start).
 
 Example:
 
@@ -87,8 +87,8 @@ Historical `GET .../query` scenarios are retained for historical comparison and 
 ## Audit & schema
 
 - JSON field paths: [API_RESPONSE_AUDIT.md](API_RESPONSE_AUDIT.md)
-- Report JSON Schema: [schema/benchmark-report-v1.schema.json](schema/benchmark-report-v1.schema.json) — see [schema/README.md](schema/README.md)
-- Scenario YAML: [scenarios/](scenarios/) — see [scenarios/README.md](scenarios/README.md)
+- Report JSON Schema: [schema/benchmark-report-v1.schema.json](schema/benchmark-report-v1.schema.json) - see [schema/README.md](schema/README.md)
+- Scenario YAML: [scenarios/](scenarios/) - see [scenarios/README.md](scenarios/README.md)
 
 ## Optional cost line
 
@@ -100,4 +100,4 @@ python retrieval_benchmark.py --pricing-yaml pricing.example.yaml --scenario bas
 
 ## CI
 
-Optional workflow: [.github/workflows/micro-benchmark.yml](../../.github/workflows/micro-benchmark.yml) (`workflow_dispatch` + weekly). **No PR gates** — observation only; upload JSON artifact when configured.
+Optional workflow: [.github/workflows/micro-benchmark.yml](../../.github/workflows/micro-benchmark.yml) (`workflow_dispatch` + weekly). **No PR gates** - observation only; upload JSON artifact when configured.

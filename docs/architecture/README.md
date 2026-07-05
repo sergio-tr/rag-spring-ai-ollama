@@ -4,7 +4,7 @@
 
 ## Diagrams and publication
 
-- **[diagram-export.md](diagram-export.md)** — how to export `.mmd` to PNG/SVG with `mmdc`, batch tips, caption pattern.
+- **[diagram-export.md](diagram-export.md)** - how to export `.mmd` to PNG/SVG with `mmdc`, batch tips, caption pattern.
 - Diagram sources are plain text: version them in git; generate bitmaps locally into `export/` (ignored) for Word/LaTeX.
 
 ## Diagram catalogue
@@ -72,7 +72,7 @@ Review higher-priority diagrams first when runtime or Compose behaviour changes.
 
 ## Backend refactoring governance
 
-Incremental refactors of `rag-service` (naming, layers, statics, ArchUnit gates, slice template): **[`docs/backend/refactoring-governance.md`](../backend/refactoring-governance.md)** — formal pointer [ADR 0012](../adr/0012-backend-refactoring-governance.md).
+Incremental refactors of `rag-service` (naming, layers, statics, ArchUnit gates, slice template): **[`docs/backend/refactoring-governance.md`](../backend/refactoring-governance.md)** - formal pointer [ADR 0012](../adr/0012-backend-refactoring-governance.md).
 
 ## Narrative pages (short, link out)
 
@@ -100,7 +100,7 @@ Incremental refactors of `rag-service` (naming, layers, statics, ArchUnit gates,
 ## How to render Mermaid
 
 - **GitHub / VS Code:** open `.mmd` or paste into a fenced `mermaid` block.
-- **Print quality:** `@mermaid-js/mermaid-cli` — see [diagram-export.md](diagram-export.md).
+- **Print quality:** `@mermaid-js/mermaid-cli` - see [diagram-export.md](diagram-export.md).
 
 ## Related
 

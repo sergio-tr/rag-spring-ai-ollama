@@ -30,7 +30,7 @@ cd rag-service
 
 **Artifacts:**
 
-- `rag-service/target/site/jacoco/jacoco.xml` — consumed by Sonar Cloud ([`sonar-project.properties`](../../sonar-project.properties)).
+- `rag-service/target/site/jacoco/jacoco.xml` - consumed by Sonar Cloud ([`sonar-project.properties`](../../sonar-project.properties)).
 - Surefire XML: `rag-service/target/surefire-reports/`.
 
 **CI equivalence:** `core_backend` job runs `./mvnw verify` with Postgres service env (see workflow file).
@@ -49,9 +49,9 @@ python3 -m pytest tests/ -v
 
 **Artifacts:**
 
-- `classifier-service/coverage.xml` — pytest-cov (`pytest.ini` / `.coveragerc`; `fail_under = 80`).
+- `classifier-service/coverage.xml` - pytest-cov (`pytest.ini` / `.coveragerc`; `fail_under = 80`).
 
-**CI equivalence:** [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) `core_classifier`. The **Sonar** job may run a **subset** of pytest for speed — see [`docs/quality/README.md`](../quality/README.md) (pytest markers row).
+**CI equivalence:** [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) `core_classifier`. The **Sonar** job may run a **subset** of pytest for speed - see [`docs/quality/README.md`](../quality/README.md) (pytest markers row).
 
 ---
 
@@ -62,7 +62,7 @@ python3 -m pytest tests/ -v
 ```bash
 cd webapp
 npm ci
-npm run lint          # ESLint; warnings-only may still exit 0 — treat new errors as regressions
+npm run lint          # ESLint; warnings-only may still exit 0 - treat new errors as regressions
 npm run typecheck     # tsc --noEmit
 npm run test:coverage # Vitest + v8 thresholds (see vitest.config.ts)
 npm run build         # next build
@@ -70,7 +70,7 @@ npm run build         # next build
 
 **Artifacts:**
 
-- `webapp/coverage/lcov.info` — uploaded when Sonar scan runs.
+- `webapp/coverage/lcov.info` - uploaded when Sonar scan runs.
 
 **CI equivalence:** `core_webapp` / Sonar prep steps in [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml).
 

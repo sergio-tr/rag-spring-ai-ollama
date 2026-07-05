@@ -2,7 +2,7 @@
 
 **Normative rule:** No comparative row is executed until its **hypothesis id**, **IV deltas**, **DV definitions**, and **accept/reject rules** are written in this table. Maximum **three** independent factors may change per comparative wave; all others stay frozen per [`protocol-reproducibility.md`](protocol-reproducibility.md).
 
-**Scenario ladder reference (terminology only):** [`docs/adr/0010-rag-scenario-ladder-s0-to-s4.md`](../adr/0010-rag-scenario-ladder-s0-to-s4.md) — map each run to the **actual** benchmark kind and config fields used, not the label alone.
+**Scenario ladder reference (terminology only):** [`docs/adr/0010-rag-scenario-ladder-s0-to-s4.md`](../adr/0010-rag-scenario-ladder-s0-to-s4.md) - map each run to the **actual** benchmark kind and config fields used, not the label alone.
 
 ---
 
@@ -17,7 +17,7 @@ Replace RQ1/RQ2 with project-specific questions if needed; keep them stable for 
 
 ---
 
-## 2. Hypotheses (template — replace `…` with measurable predictions)
+## 2. Hypotheses (template - replace `…` with measurable predictions)
 
 | ID | Hypothesis | Linked RQ |
 | --- | --- | --- |
@@ -35,10 +35,10 @@ Replace RQ1/RQ2 with project-specific questions if needed; keep them stable for 
 | `IV-BENCH` | Benchmark kind | `LLM_JUDGE_QA`, `EMBEDDING_RETRIEVAL`, `RAG_PRESET_END_TO_END` | Lab `POST …/lab/benchmarks/{kind}/runs` |
 | `IV-SNAP` | Resolved configuration | snapshot id `resolved_config_snapshot_id` | `POST {product}/config/resolved-snapshots` then pin in RAG benchmark body per README |
 | `IV-MODEL` | Generator / embedder | chat model tag, embedding model tag | env / Spring AI properties |
-| `IV-RETR` | Retrieval breadth | e.g. `k ∈ {3, 5, 10}` | only via fields exposed in project RAG JSON / preset — **do not** claim changes not represented in resolved config |
+| `IV-RETR` | Retrieval breadth | e.g. `k ∈ {3, 5, 10}` | only via fields exposed in project RAG JSON / preset - **do not** claim changes not represented in resolved config |
 | `IV-DATA` | Evaluation items | subset id `D-pilot`, full `D-full` | dataset upload + manifest |
 
-**Constraint:** `IV-BENCH`, `IV-SNAP`, `IV-MODEL`, `IV-RETR`, `IV-DATA` — at most **three** may differ across rows inside one **comparative** wave; document frozen levels for the others in the wave header.
+**Constraint:** `IV-BENCH`, `IV-SNAP`, `IV-MODEL`, `IV-RETR`, `IV-DATA` - at most **three** may differ across rows inside one **comparative** wave; document frozen levels for the others in the wave header.
 
 ---
 
@@ -93,7 +93,7 @@ Reject or downgrade claims when any of the following holds:
 1. **Mixed SHA / model / dataset** between rows without a repeated `B-REF` on the new anchor.
 2. **Infrastructure failures** counted as quality outcomes.
 3. **Dataset items changed** mid-wave without restarting the matrix.
-4. **p95 latency** above budget `L` on **B-REF** — fix infra or adjust `L` in a **new** wave; do not compare quality across violated latency gates.
+4. **p95 latency** above budget `L` on **B-REF** - fix infra or adjust `L` in a **new** wave; do not compare quality across violated latency gates.
 
 ---
 

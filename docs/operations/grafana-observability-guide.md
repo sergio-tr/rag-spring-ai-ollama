@@ -1,4 +1,4 @@
-# Operator guide — Grafana, Jaeger, and Loki (observability stack)
+# Operator guide - Grafana, Jaeger, and Loki (observability stack)
 
 This guide is for **operators** who need to move from **metrics → traces → logs** when debugging the RAG pipeline. It assumes the stack was started with observability as described in [`observability/README.md`](../../observability/README.md) and [`docker/README.md`](../../docker/README.md).
 
@@ -16,7 +16,7 @@ This guide is for **operators** who need to move from **metrics → traces → l
    - **RAG query duration (p50/p95/p99):** end-to-end generation latency from Micrometer histogram `rag_query_generate_seconds`.
    - **RAG query rate:** request rate from the same histogram’s `_count` series.
    - **Classifier calls:** `rag_classifier_calls_total` with `status` in `success` or `null_result` (low cardinality; no per-model UUID label).
-   - **Retrieval document count:** `rag_retrieval_documents_total` summed by `bucket` (`0`, `1_4`, `5_19`, `20_plus`) and `operation` — shows how many documents fell into each band after retrieval, not raw per-query IDs.
+   - **Retrieval document count:** `rag_retrieval_documents_total` summed by `bucket` (`0`, `1_4`, `5_19`, `20_plus`) and `operation` - shows how many documents fell into each band after retrieval, not raw per-query IDs.
 
 If a panel shows **No data**, confirm Prometheus is scraping `backend:.../actuator/prometheus`, that you issued at least one RAG request, and that the time range includes that traffic.
 

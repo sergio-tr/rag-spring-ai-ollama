@@ -16,14 +16,14 @@ Blocking checks are defined in **[`docs/devops/README.md`](../devops/README.md)*
 ## Sonar Cloud (organization gate)
 
 - **Quality Gate** on **new code** is the primary **cross-language** merge contract for teams using Sonar for PRs.
-- **Fix** or **resolve** Security **Hotspots** per org policy — do not rely on JaCoCo bundle green alone.
+- **Fix** or **resolve** Security **Hotspots** per org policy - do not rely on JaCoCo bundle green alone.
 
 ## Explicit reject conditions (even if “it compiles”)
 
 - **`verify` red** but merge “by exception” without a logged waiver.
 - **New** `rag-service` JaCoCo or Sonar coverage excludes **without** updating the exclusion matrix + [jacoco ledger](../coverage/jacoco-coverage-target-ledger.md) / [maven-jacoco-inventory.md](maven-jacoco-inventory.md).
-- **New** tests that depend on **real** Ollama/classifier URLs by default — see [external-mocks-policy.md](external-mocks-policy.md).
-- **New** scattered **`/api/vN`** literals in tests — see [api-path-policy.md](api-path-policy.md).
+- **New** tests that depend on **real** Ollama/classifier URLs by default - see [external-mocks-policy.md](external-mocks-policy.md).
+- **New** scattered **`/api/vN`** literals in tests - see [api-path-policy.md](api-path-policy.md).
 
 ## Release candidate (optional hardening)
 

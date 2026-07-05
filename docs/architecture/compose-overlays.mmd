@@ -1,6 +1,6 @@
-%% Conceptual layering: docker-compose.yml + profiles + thin overlays — see docker/README.md
+%% Conceptual layering: docker-compose.yml + profiles + thin overlays - see docker/README.md
 flowchart TB
-  ROOT["docker-compose.yml — core + profiles: observability, logs, infra, ollama, cadvisor"]
+  ROOT["docker-compose.yml - core + profiles: observability, logs, infra, ollama, cadvisor"]
 
   ROOT --> P1[compose.dev.yml hot reload backend-dev classifier]
   ROOT --> P3[compose.dev-proxy.yml nginx in dev + profile proxy]

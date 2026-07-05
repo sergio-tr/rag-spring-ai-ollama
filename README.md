@@ -1,7 +1,7 @@
 # RAG Spring AI Ollama
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     BADGES — selected GitHub Actions (native badge.svg, default branch)
+     BADGES - selected GitHub Actions (native badge.svg, default branch)
      ═══════════════════════════════════════════════════════════════════════════ -->
 
 [![CI](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml)
@@ -32,7 +32,7 @@ RAG (Retrieval-Augmented Generation) system built with **Spring Boot**, **Spring
 
 **Documentation:** global architecture, domain, and governance live in **[`docs/README.md`](docs/README.md)** (policy layers and non-canonical areas: [`docs/development/documentation-governance-strategy.md`](docs/development/documentation-governance-strategy.md)). Per-module setup and commands live in each folder’s **README** (see table below).
 
-**Quality baseline:** canonical commands + CI parity — [`docs/testing/baseline-runbook.md`](docs/testing/baseline-runbook.md); hub (exclusions, policies, Sonar links) — [`docs/quality/README.md`](docs/quality/README.md).
+**Quality baseline:** canonical commands + CI parity - [`docs/testing/baseline-runbook.md`](docs/testing/baseline-runbook.md); hub (exclusions, policies, Sonar links) - [`docs/quality/README.md`](docs/quality/README.md).
 
 **CI pull requests, job gates, Docker/Compose pins:** [`docs/devops/README.md`](docs/devops/README.md).
 
@@ -106,7 +106,7 @@ Prefix is **configurable**. Spring: `rag.api.product-base-path` (`RAG_API_PRODUC
 | `GET` | `{product}/lab/status` | Lab capability stub (authenticated) |
 | `GET` | `{product}/admin/health` | Admin health (`403` unless JWT role `ADMIN`) |
 
-**Ollama URL:** set `SPRING_AI_OLLAMA_BASE_URL` (alias `OLLAMA_BASE_URL`) to the Ollama HTTP API — for example `http://127.0.0.1:11434` on the host. See [docs/operations/environments.md](docs/operations/environments.md) and [rag-service/README.md](rag-service/README.md) for more details.
+**Ollama URL:** set `SPRING_AI_OLLAMA_BASE_URL` (alias `OLLAMA_BASE_URL`) to the Ollama HTTP API - for example `http://127.0.0.1:11434` on the host. See [docs/operations/environments.md](docs/operations/environments.md) and [rag-service/README.md](rag-service/README.md) for more details.
 
 **Generated docs:** Javadoc: `cd rag-service && ./mvnw javadoc:javadoc` → `rag-service/target/site/apidocs`. OpenAPI: `/v3/api-docs` when springdoc is enabled; export with [`rag-service/scripts/export-openapi.sh`](rag-service/scripts/export-openapi.sh). CI may write `openapi.json` during `verify` when a Postgres datasource is available. TypeDoc: `cd webapp && npm run doc` → `webapp/docs/api`. See [docs/README.md](docs/README.md) (auto-generated API docs).
 
@@ -118,7 +118,7 @@ Classifier endpoints: `POST /classify`, `GET /models`, `POST /train`, `POST /eva
 
 Analysis is driven by [`sonar-project.properties`](sonar-project.properties) and [`.github/workflows/sonar.yml`](.github/workflows/sonar.yml). Set `sonar.projectKey` and `sonar.organization` to match your SonarCloud project, and add a **`SONAR_TOKEN`** repository secret (SonarCloud → *My Account → Security*).
 
-**Local scan (same steps as CI):** [`docs/development/sonar-local-analysis.md`](docs/development/sonar-local-analysis.md) — script [`.github/local/sonar-local.sh`](.github/local/sonar-local.sh). Requires Postgres + Docker for the scanner image; set `SONAR_TOKEN` in the environment.
+**Local scan (same steps as CI):** [`docs/development/sonar-local-analysis.md`](docs/development/sonar-local-analysis.md) - script [`.github/local/sonar-local.sh`](.github/local/sonar-local.sh). Requires Postgres + Docker for the scanner image; set `SONAR_TOKEN` in the environment.
 
 **Branches:** pushes and PRs to `main` / `dev` trigger analysis. In SonarCloud, set the main branch to `main` (*Project → Administration → Branches and Pull Requests*) so **New Code** is computed correctly.
 
@@ -203,8 +203,8 @@ The system is deployed inside the **University of Oviedo** network. External acc
 
 | Item | Value |
 | --- | --- |
-| Production application URL | TODO — set after DNS/TLS |
-| Backend API URL | TODO — same-origin via reverse proxy when applicable |
+| Production application URL | TODO - set after DNS/TLS |
+| Backend API URL | TODO - same-origin via reverse proxy when applicable |
 | Privacy Policy | `{FRONTEND_PUBLIC_URL}/en/privacy-policy` |
 | Terms of Use | `{FRONTEND_PUBLIC_URL}/en/terms` |
 | GitHub Pages documentation | [https://sergio-tr.github.io/rag-spring-ai-ollama/](https://sergio-tr.github.io/rag-spring-ai-ollama/) |

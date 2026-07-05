@@ -1,4 +1,4 @@
-# ADR 0011 — Knowledge system artefacts, snapshots, and materialization
+# ADR 0011 - Knowledge system artefacts, snapshots, and materialization
 
 ## Status
 

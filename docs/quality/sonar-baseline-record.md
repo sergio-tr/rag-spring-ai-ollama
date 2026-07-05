@@ -34,12 +34,12 @@ Copy from the Sonar Cloud **Projects → your project → main branch** (or PR *
 
 | Metric | Snapshot value | Date (UTC) | Notes |
 | -------- | ------------------ | ------------ | -------- |
-| Quality Gate | e.g. **Passed** / Failed | — | Org-level gate; see Sonar docs. |
-| Coverage on **new code** | e.g. **\_%** | — | PR / leak period; not the same as JaCoCo bundle. |
-| Bugs | \_ | — | |
-| Vulnerabilities | \_ | — | |
-| Security hotspots (open) | \_ | — | |
-| Duplications (new code) | optional | — | |
+| Quality Gate | e.g. **Passed** / Failed | - | Org-level gate; see Sonar docs. |
+| Coverage on **new code** | e.g. **\_%** | - | PR / leak period; not the same as JaCoCo bundle. |
+| Bugs | \_ | - | |
+| Vulnerabilities | \_ | - | |
+| Security hotspots (open) | \_ | - | |
+| Duplications (new code) | optional | - | |
 
 **Procedure:** open the dashboard link above → record **Overview** / **Measures** relevant to your team’s merge contract → paste into this table or into a linked release note.
 

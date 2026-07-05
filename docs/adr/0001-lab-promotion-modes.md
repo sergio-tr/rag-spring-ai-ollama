@@ -1,4 +1,4 @@
-# ADR 0001 — Research Lab impact on production (promotion modes)
+# ADR 0001 - Research Lab impact on production (promotion modes)
 
 ## Status
 
@@ -12,13 +12,13 @@ The three modes below match the product expectation that Lab work must not silen
 
 ## Decision
 
-1. **Mode A — Report-only (default)**  
+1. **Mode A - Report-only (default)**  
    Lab runs produce metrics and stored experiment artifacts. **No** automatic write to user/project configuration, presets, or classifier selection.
 
-2. **Mode B — Guided promotion (optional)**  
+2. **Mode B - Guided promotion (optional)**  
    Applying a Lab outcome to production requires an **explicit** user or ADMIN action (e.g. create a **RagPreset** or update **PROJECT** `rag_configuration` from a frozen snapshot).
 
-3. **Mode C — Classifier rollout (optional)**  
+3. **Mode C - Classifier rollout (optional)**  
    Activating a trained classifier artifact requires an **explicit** policy action (ADMIN or documented scope), not completion of a Lab job alone.
 
 **Rule:** Only **A** may happen without a dedicated promotion step. **B** and **C** are never silent side effects of asynchronous Lab jobs.
@@ -31,6 +31,6 @@ The three modes below match the product expectation that Lab work must not silen
 
 ## References
 
-- [ADR 0003 — evaluation async, project scope, dataset dedup](0003-evaluation-async-project-scope-and-dataset-dedup.md)
+- [ADR 0003 - evaluation async, project scope, dataset dedup](0003-evaluation-async-project-scope-and-dataset-dedup.md)
 - [architecture/integration-flows.md](../architecture/integration-flows.md)
 - OpenAPI: `/v3/api-docs` (when enabled) or `rag-service/scripts/export-openapi.sh`

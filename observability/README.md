@@ -2,21 +2,21 @@
 
 Stack configuration and Dockerfiles. **Ports and credentials are defined in one place:** `observability/.env` (template: `.env.example`).
 
-**See also:** [RUNBOOK.md](RUNBOOK.md) (traces, classifier down, readiness). [Grafana observability guide](../docs/operations/grafana-observability-guide.md) — dashboards, traces, and operator walkthrough aligned with this stack.
+**See also:** [RUNBOOK.md](RUNBOOK.md) (traces, classifier down, readiness). [Grafana observability guide](../docs/operations/grafana-observability-guide.md) - dashboards, traces, and operator walkthrough aligned with this stack.
 
 **Target architecture (frozen model):** [Platform & Ops](../docs/architecture/target-architecture.md).
 
 ## Production / VM (where to read what)
 
-**Rule:** Observability **procedures, ports, and dashboards** stay in **this file** and the linked Grafana/Jaeger/Loki guide. **Deploy, SSH, GitHub Actions gates, and VM env layout** belong under **`docs/operations/`** — do not duplicate them here.
+**Rule:** Observability **procedures, ports, and dashboards** stay in **this file** and the linked Grafana/Jaeger/Loki guide. **Deploy, SSH, GitHub Actions gates, and VM env layout** belong under **`docs/operations/`** - do not duplicate them here.
 
 | Topic | Canonical doc |
 | --- | --- |
-| VM deploy, `compose.prod.yml`, rollback, `deploy.yml` secrets | [Runbook — Docker VM](../docs/operations/runbook-docker-vm.md), [Deploy workflow audit](../docs/operations/deploy-workflow-audit.md) |
+| VM deploy, `compose.prod.yml`, rollback, `deploy.yml` secrets | [Runbook - Docker VM](../docs/operations/runbook-docker-vm.md), [Deploy workflow audit](../docs/operations/deploy-workflow-audit.md) |
 | Optional observability on the same host | This README (Compose overlays: `compose.obs.yml`, `compose.prod-obs.yml` if used) + [docker/README.md](../docker/README.md) |
 | Operator walkthrough (metrics → traces → logs) | [Grafana / Jaeger / Loki operator guide](../docs/operations/grafana-observability-guide.md) |
 
-**Minimum post-deploy check (obs):** With `docker,infra` and collector reachable, issue a RAG request and confirm a trace in Jaeger and movement on the RAG Overview dashboard — see **Telemetry validation checklist** below.
+**Minimum post-deploy check (obs):** With `docker,infra` and collector reachable, issue a RAG request and confirm a trace in Jaeger and movement on the RAG Overview dashboard - see **Telemetry validation checklist** below.
 
 ## Create `observability/.env`
 
@@ -131,9 +131,9 @@ With `compose.obs.yml`, backend and classifier receive `OTEL_EXPORTER_OTLP_ENDPO
       - `rate(rag_query_generate_seconds_count{job="backend"}[5m])`
       - `histogram_quantile(0.95, rate(rag_query_generate_seconds_bucket{job="backend"}[5m]))`
   - `rag_classifier_calls_total` (counter):
-    - labels: `status` (`success` when a query type string is returned, `null_result` when the client yields null/blank — bounded cardinality, **no per-model UUID label**)
+    - labels: `status` (`success` when a query type string is returned, `null_result` when the client yields null/blank - bounded cardinality, **no per-model UUID label**)
   - `rag_retrieval_documents_total` (counter):
-    - labels: `operation` (`retrieve` / `retrieveWithMetadataFilters` / `createContext`), `bucket` (`0`, `1_4`, `5_19`, `20_plus`) — document count **bands**, not raw counts as label values
+    - labels: `operation` (`retrieve` / `retrieveWithMetadataFilters` / `createContext`), `bucket` (`0`, `1_4`, `5_19`, `20_plus`) - document count **bands**, not raw counts as label values
   - Generic HTTP metrics:
     - `http_server_requests_seconds_*` (Spring Boot)
 
@@ -208,11 +208,11 @@ After issuing authenticated product traffic (e.g. `GET {product}/config/schema`)
    - Service `rag-backend` should appear.
    - Open a trace produced after the `curl` above.
 3. Inside the trace, check domain span names and attributes:
-   - `rag.query.classify` (classifier in the pipeline) — expect `rag.query.type`
-   - `rag.query.expand` (if expansion is on) — expect `rag.query.expanded`
-   - `rag.documents.search` — expect `rag.top_k`, `rag.docs.count`
+   - `rag.query.classify` (classifier in the pipeline) - expect `rag.query.type`
+   - `rag.query.expand` (if expansion is on) - expect `rag.query.expanded`
+   - `rag.documents.search` - expect `rag.top_k`, `rag.docs.count`
    - `rag.documents.load`
-   - `rag.evaluation.run` (if you hit an evaluation endpoint) — expect `rag.evaluation.id` when applicable
+   - `rag.evaluation.run` (if you hit an evaluation endpoint) - expect `rag.evaluation.id` when applicable
 4. Conventions:
    - Domain spans use the `rag.` prefix.
    - Relevant attributes use the `rag.*` namespace.

@@ -24,6 +24,6 @@ Export for documentation: [diagram-export.md](diagram-export.md).
 
 ## Related
 
-- [deployment-model.md](deployment-model.md) — deployment patterns
-- [integration-flows.md](integration-flows.md) — auth and RAG integration
+- [deployment-model.md](deployment-model.md) - deployment patterns
+- [integration-flows.md](integration-flows.md) - auth and RAG integration
 - Hub: [../README.md](../README.md)

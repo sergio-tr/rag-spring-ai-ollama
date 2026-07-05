@@ -18,9 +18,9 @@ Normative guide for **mocking and stubbing** external dependencies in `rag-servi
 
 **Anti-patterns**
 
-- Stubs that cannot simulate failure (always success) — hide bugs.
+- Stubs that cannot simulate failure (always success) - hide bugs.
 - Real `http://localhost:11434` or classifier `localhost:8000` in default test paths.
-- Hardcoded product API prefix `/api/v5` in new helpers — use [`RagApiTestPaths`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/RagApiTestPaths.java).
+- Hardcoded product API prefix `/api/v5` in new helpers - use [`RagApiTestPaths`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/RagApiTestPaths.java).
 
 ---
 
@@ -42,16 +42,16 @@ JaCoCo excludes many packages that **eventually** depend on the stack below. Thi
 
 | Artifact | Role |
 | ---------- | ------ |
-| [`TestAiStubConfiguration`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/TestAiStubConfiguration.java) | `@TestConfiguration` `@Profile("test")`: `@Primary` `ChatModel`, `EmbeddingModel`, `OllamaApiClient.noHttpStub` — **no** outbound Ollama |
+| [`TestAiStubConfiguration`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/TestAiStubConfiguration.java) | `@TestConfiguration` `@Profile("test")`: `@Primary` `ChatModel`, `EmbeddingModel`, `OllamaApiClient.noHttpStub` - **no** outbound Ollama |
 | [`ChatClientTestSupport`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/ChatClientTestSupport.java) | Mockito deep stubs for `ChatClient` fluent API in **unit** tests |
-| `OllamaConnectivityChecker` | **Mock** in service/WebMvc tests that inject it — no live ping |
+| `OllamaConnectivityChecker` | **Mock** in service/WebMvc tests that inject it - no live ping |
 
 **When to use what**
 
 - **`@SpringBootTest` + profile `test`:** `@Import(TestAiStubConfiguration.class)` (pattern used by Postgres ITs).
 - **Pure unit tests** (no context): `ChatClientTestSupport.mockForUserPromptChain()` + `stubUserPromptReturns` / `stubSystemUserPromptReturns` / `stubUserPromptThrows`.
 
-**`ChatClient` bean:** Full context usually builds `ChatClient` from auto-configuration + stubbed `ChatModel`; if a slice fails for missing `ChatClient`, add a `@MockBean` or import minimal AI config — do not point to a real Ollama.
+**`ChatClient` bean:** Full context usually builds `ChatClient` from auto-configuration + stubbed `ChatModel`; if a slice fails for missing `ChatClient`, add a `@MockBean` or import minimal AI config - do not point to a real Ollama.
 
 ---
 
@@ -117,13 +117,13 @@ Not replaced by this harness; **reference** only:
 - [`TestcontainersDatasourceConfiguration`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/TestcontainersDatasourceConfiguration.java)
 - `@EnabledIf(com.uniovi.rag.testsupport.TestEnvironment#…)` for Docker/CI matrix
 
-Use **`@SpringBootTest` + Flyway** for schema-realistic ITs; prefer **`@WebMvcTest`** with [`RagWebMvcTestApplication`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/webmvc/RagWebMvcTestApplication.java) when testing controllers without DB (excludes DataSource, Flyway, Security auto-config — **does not** add Ollama).
+Use **`@SpringBootTest` + Flyway** for schema-realistic ITs; prefer **`@WebMvcTest`** with [`RagWebMvcTestApplication`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/webmvc/RagWebMvcTestApplication.java) when testing controllers without DB (excludes DataSource, Flyway, Security auto-config - **does not** add Ollama).
 
 ---
 
 ## 6. API paths in tests
 
-Use [`RagApiTestPaths`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/RagApiTestPaths.java) and `src/test/resources/application.properties` `rag.api.product-base-path`. Slices with **`@TestPropertySource`** overriding the base path must use a **local** `PRODUCT_BASE` constant — not `RagApiTestPaths` (it reads classpath `application.properties`, not the slice `Environment`).
+Use [`RagApiTestPaths`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/RagApiTestPaths.java) and `src/test/resources/application.properties` `rag.api.product-base-path`. Slices with **`@TestPropertySource`** overriding the base path must use a **local** `PRODUCT_BASE` constant - not `RagApiTestPaths` (it reads classpath `application.properties`, not the slice `Environment`).
 
 ---
 

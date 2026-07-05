@@ -1,4 +1,4 @@
-# Audit: `deploy.yml` — self-hosted runner, gates, and configuration
+# Audit: `deploy.yml` - self-hosted runner, gates, and configuration
 
 **Workflow:** [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)  
 **Triggers:** `push` to `main`, `workflow_dispatch`.
@@ -42,7 +42,7 @@ Optional documentation variables: `PRODUCTION_BASE_URL`, `FRONTEND_PUBLIC_URL`, 
 | `VM_USER` | Obsolete |
 | `VM_SSH_KEY` | Obsolete |
 | `VM_DEPLOY_DIR` | Replaced by Variable `DEPLOY_DIR` |
-| `GHCR_TOKEN` | Optional — only if switching to prebuilt GHCR images instead of `--build` on server |
+| `GHCR_TOKEN` | Optional - only if switching to prebuilt GHCR images instead of `--build` on server |
 
 Application secrets (database, JWT, LiteLLM API key, OAuth, SMTP) belong in **server `.env` files**, not in GitHub, unless your ops model centralizes them in GitHub Environments.
 

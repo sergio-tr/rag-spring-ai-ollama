@@ -1,4 +1,4 @@
-# ADR 0007 — Capability groups and compatibility rules
+# ADR 0007 - Capability groups and compatibility rules
 
 ## Status
 

@@ -53,11 +53,11 @@ Equivalent flags: `--server` merges `compose.prod-server.yml` (no public backend
 
 ## 4. Verify after deploy
 
-1. **Containers:** `docker compose ps` (from `docker/` with the same `-f` chain) — services `running`.
+1. **Containers:** `docker compose ps` (from `docker/` with the same `-f` chain) - services `running`.
 2. **Health:** `curl -fsS "$DEPLOY_HEALTH_URL"` (same URL as GitHub Variable).
 3. **Reverse proxy:** browser entry on `REVERSE_PROXY_HTTP_PORT` (default `80`).
 4. **Readiness:** `chatProvider` = `OPENAI_COMPATIBLE` in actuator readiness (no Ollama probe).
-5. **OAuth / SMTP / legal routes** — see post-deployment checklist in [`.env.example`](../../.env.example).
+5. **OAuth / SMTP / legal routes** - see post-deployment checklist in [`.env.example`](../../.env.example).
 
 ---
 
@@ -87,4 +87,4 @@ See [../../observability/README.md](../../observability/README.md).
 | ------ | ---- |
 | `push` to `main` or `workflow_dispatch` on `deploy.yml` | Standard production deploy (self-hosted runner) |
 | `workflow_dispatch` on `self-hosted-runner-check.yml` | Validate runner, Docker, and Compose config |
-| Manual on server | Hotfix rollback when Actions is unavailable — same compose command as above |
+| Manual on server | Hotfix rollback when Actions is unavailable - same compose command as above |

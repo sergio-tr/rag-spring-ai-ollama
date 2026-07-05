@@ -1,4 +1,4 @@
-# ADR 0009 — Unified product and Lab execution engine
+# ADR 0009 - Unified product and Lab execution engine
 
 ## Status
 

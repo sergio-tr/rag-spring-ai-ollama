@@ -7,13 +7,13 @@ Query-type classification service for the RAG backend. It exposes an HTTP API us
 
 ## Architecture
 
-- **Domain models** (`app/models/`): `ClassificationResult`, `ModelMetadata`, `TrainingResult`, `ErrorDetail` — value objects for responses and errors.
+- **Domain models** (`app/models/`): `ClassificationResult`, `ModelMetadata`, `TrainingResult`, `ErrorDetail` - value objects for responses and errors.
 - **Exceptions** (`app/exceptions.py`): `ValidationError` (400), `ModelNotFoundError` (404), `ClassificationError` (503), `TrainingError` (500).
 - **Inference** (`app/inference/`): `ModelLoader` (loads and caches sklearn or Keras model + labels per `metadata.json`), `InferenceEngine` (runs prediction).
 - **Registry** (`app/registry/`): `ModelRegistry` (list models, resolve paths, register trained models).
 - **Training** (`app/training/`): `TrainingPipeline` (Excel → train → save → register).
 - **Evaluation** (`app/evaluation/`): `EvaluationPipeline` (metrics + classification report and confusion matrix PNGs), `EvaluationResult`.
-- **Services** (`app/services/`): `ClassificationService`, `ModelRegistryService`, `TrainingService`, `EvaluationService` — orchestration; routes call these only.
+- **Services** (`app/services/`): `ClassificationService`, `ModelRegistryService`, `TrainingService`, `EvaluationService` - orchestration; routes call these only.
 - **Routes** (`app/routes.py`): Thin HTTP layer; delegates to services and maps exceptions to structured error responses.
 
 All code comments are in English.
@@ -40,8 +40,8 @@ Error responses use a consistent shape: `{"code": "...", "message": "...", "deta
 
 Default datasets are under `data/`:
 
-- `basic_dataset_qa_clasificacion.xlsx` — training dataset (`Pregunta`/`Question`, `QueryType`).
-- `evaluation_dataset.xlsx` — default evaluation dataset used by `/evaluate` when no file is uploaded (`Pregunta`/`Question`, `QueryType`).
+- `basic_dataset_qa_clasificacion.xlsx` - training dataset (`Pregunta`/`Question`, `QueryType`).
+- `evaluation_dataset.xlsx` - default evaluation dataset used by `/evaluate` when no file is uploaded (`Pregunta`/`Question`, `QueryType`).
 
 These were moved from `rag-service/src/main/resources/python/` and are the single source of truth here.
 
@@ -63,7 +63,7 @@ docker compose -f docker/docker-compose.yml up -d classifier-service
 
 The **default** image uses `python:3.10-slim-bookworm` and `requirements-runtime.txt` only (sklearn 1.7 + FastAPI, **no TensorFlow**). It is about **600 MiB** and builds in under a minute on a typical CI runner.
 
-The default `model.joblib` (sklearn C3) is trained with **scikit-learn 1.7.x** on Python 3.10 — no Python 3.11 or CUDA base is required for serving.
+The default `model.joblib` (sklearn C3) is trained with **scikit-learn 1.7.x** on Python 3.10 - no Python 3.11 or CUDA base is required for serving.
 
 The previous default (`nvidia/cuda` base + `tensorflow[and-cuda]`) pulled **~10 GiB** because CUDA was installed twice (OS image + pip wheels) even though the production default model is **sklearn** (`models/default/model.joblib`).
 
@@ -96,9 +96,9 @@ The RAG backend is configured via `RAG_CLASSIFIER_SERVICE_URL` (default `http://
 
 ## Tests
 
-- **`tests/unit/`** — unit tests (model, inference, config, isolated services).
-- **`tests/test_api.py`** — API tests with `TestClient` (no external network).
-- **`tests/regression/`** — manual regression against a running HTTP service (`capture_baseline.py` / `check_baseline.py`) and pytest for harness logic (`test_baseline_lib.py`). See `tests/regression/README.md` and **Manual regression testing** below.
+- **`tests/unit/`** - unit tests (model, inference, config, isolated services).
+- **`tests/test_api.py`** - API tests with `TestClient` (no external network).
+- **`tests/regression/`** - manual regression against a running HTTP service (`capture_baseline.py` / `check_baseline.py`) and pytest for harness logic (`test_baseline_lib.py`). See `tests/regression/README.md` and **Manual regression testing** below.
 
 ```bash
 pytest tests/ -v

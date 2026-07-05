@@ -1,4 +1,4 @@
-# ADR 0005 — Target RAG architecture and runtime center
+# ADR 0005 - Target RAG architecture and runtime center
 
 ## Status
 
@@ -11,7 +11,7 @@ The system combines a **product API**, a **webapp**, **Lab/benchmark** flows, co
 ## Decision
 
 1. The **RAG Runtime Engine** described in [rag-runtime-architecture.md](../architecture/rag-runtime-architecture.md) is the **normative centre** of the platform’s execution story.
-2. Other subsystems in [target-architecture.md](../architecture/target-architecture.md) exist to **feed**, **configure**, **observe**, or **govern** that runtime — not to duplicate competing orchestration semantics.
+2. Other subsystems in [target-architecture.md](../architecture/target-architecture.md) exist to **feed**, **configure**, **observe**, or **govern** that runtime - not to duplicate competing orchestration semantics.
 3. Product and Lab must align to the **same** runtime vocabulary ([ADR 0009](0009-unified-product-and-lab-execution-engine.md)).
 
 ## Consequences

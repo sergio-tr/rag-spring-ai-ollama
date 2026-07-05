@@ -16,8 +16,8 @@ For **export** to PNG/SVG, see [diagram-export.md](diagram-export.md).
 
 ## Environments (narrative)
 
-- **Developer hybrid:** parts of the stack in Docker (often Postgres) while **Spring** and/or **Next.js** run on the host — fast feedback, fewer images.
-- **Full Compose:** backend-dev, webapp, classifier, optional Ollama, observability, Loki stack, node-exporter — driven by `docker/scripts` flags and compose overlays under `docker/`.
+- **Developer hybrid:** parts of the stack in Docker (often Postgres) while **Spring** and/or **Next.js** run on the host - fast feedback, fewer images.
+- **Full Compose:** backend-dev, webapp, classifier, optional Ollama, observability, Loki stack, node-exporter - driven by `docker/scripts` flags and compose overlays under `docker/`.
 - **Prod-local:** reverse proxy and hardened exposure; still a **local** pattern for integration testing, not a cloud reference architecture.
 
 Exact **flags**, **env files**, and **profiles** live in module documentation:

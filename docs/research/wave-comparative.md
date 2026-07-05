@@ -1,16 +1,16 @@
-# Comparative wave — W-COMP-001
+# Comparative wave - W-COMP-001
 
 **Objective:** Execute the ablation matrix in [`experimental-design-matrix.md`](experimental-design-matrix.md) §5 with **frozen** anchors (git SHA, models, dataset manifest) and mandatory **B-REF** / **B-SUB-X** baselines.
 
-**Code freeze (normative):** Git SHA `7098c40d975803a2ddb30fe897d8d8b8d98d8100` — **no** application code changes between matrix rows except documented hotfixes (which **restart** the wave with new `wave_id`).
+**Code freeze (normative):** Git SHA `7098c40d975803a2ddb30fe897d8d8b8d98d8100` - **no** application code changes between matrix rows except documented hotfixes (which **restart** the wave with new `wave_id`).
 
-**Dataset freeze:** `EVAL-XLSX-CLASSPATH-V1` at SHA256 `4b525f4341cf57fb6275e709555dd6030318e516ade60abef420cee4f97b5b3d` — or replace with project upload id **before** freezing; record manifest in run sheet.
+**Dataset freeze:** `EVAL-XLSX-CLASSPATH-V1` at SHA256 `4b525f4341cf57fb6275e709555dd6030318e516ade60abef420cee4f97b5b3d` - or replace with project upload id **before** freezing; record manifest in run sheet.
 
 **IV freeze policy for this wave:** At most **three** of (`IV-BENCH`, `IV-SNAP`, `IV-RETR`, `IV-MODEL`, `IV-DATA`) may differ across rows. Default for W-COMP-001 template: vary **`IV-BENCH`** and **`IV-RETR`** only; keep `IV-SNAP`, `IV-MODEL`, `IV-DATA` fixed.
 
 ---
 
-## Gate — RUN-COMP-G-BUILD-001
+## Gate - RUN-COMP-G-BUILD-001
 
 | Field | Value |
 | --- | --- |
@@ -30,7 +30,7 @@ Fill `evaluation_run.id`, export path, and primary DV after each row.
 | Row id | Hypothesis | IV-BENCH | IV-RETR | `evaluation_run.id` | Primary DV | `outcome` | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A2 | H1 | `LLM_JUDGE_QA` | n/a | `TBD` | `TBD` | `PLANNED` | B-SUB (no retrieval path for RAG claim). |
-| A1 | H1 | `RAG_PRESET_END_TO_END` | frozen | `TBD` | `TBD` | `PLANNED` | B-REF — requires `resolved_config_snapshot_id` in run sheet. |
+| A1 | H1 | `RAG_PRESET_END_TO_END` | frozen | `TBD` | `TBD` | `PLANNED` | B-REF - requires `resolved_config_snapshot_id` in run sheet. |
 | A3 | H2 | `EMBEDDING_RETRIEVAL` | `k=k1` | `TBD` | `TBD` | `PLANNED` | |
 | A4 | H2 | `EMBEDDING_RETRIEVAL` | `k=k2` | `TBD` | `TBD` | `PLANNED` | |
 

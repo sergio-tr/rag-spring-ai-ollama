@@ -60,7 +60,7 @@ Env bootstrap (optional): `./docker/scripts/up.sh dev … --env all` or **`--env
 
 1. **Install and run Ollama on the host** (outside Docker). Pull models the backend expects (defaults in Compose / `rag-service/.env.example`): e.g. **`gemma3:4b`** (chat), **`mxbai-embed-large`** (embeddings).
 2. **Configure the backend** via **`rag-service/.env`**:
-   - **`OLLAMA_BASE_URL`** and **`SPRING_AI_OLLAMA_BASE_URL`** — HTTP base for Ollama’s API (must include port **`11434`** unless customized).
+   - **`OLLAMA_BASE_URL`** and **`SPRING_AI_OLLAMA_BASE_URL`** - HTTP base for Ollama’s API (must include port **`11434`** unless customized).
 3. **Docker → host reachability**
    - **`backend-dev`** adds **`extra_hosts: host.docker.internal:host-gateway`** ([`docker/compose.dev.yml`](../../docker/compose.dev.yml)), so **`http://host.docker.internal:11434`** works on **Linux** with modern Docker.
    - **Docker Desktop** (Windows/macOS): **`host.docker.internal`** is the usual choice.
@@ -82,12 +82,12 @@ Defaults vary with **`webapp/.env`**, **`observability/.env`**, and **`REVERSE_P
 | --- | --- |
 | Reverse-proxy HTTP | **`http://127.0.0.1`** or **`http://127.0.0.1:${REVERSE_PROXY_DEV_HTTP_PORT:-80}`** |
 | Reverse-proxy HTTPS | **`https://127.0.0.1:${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}`** (self-signed cert baked in image; browser warnings expected) |
-| Webapp direct | **`http://127.0.0.1:${WEBAPP_HTTP_PORT:-80}`** when ports published; with **`--proxy`**, check **`docker compose ps`** — often **`8081`** → **`3000`** if `WEBAPP_HTTP_PORT=8081` |
+| Webapp direct | **`http://127.0.0.1:${WEBAPP_HTTP_PORT:-80}`** when ports published; with **`--proxy`**, check **`docker compose ps`** - often **`8081`** → **`3000`** if `WEBAPP_HTTP_PORT=8081` |
 | Backend direct | **`http://127.0.0.1:${BACKEND_PORT:-9000}`** when published |
 | API base (same-origin behind proxy) | **`http://127.0.0.1/api/v5`** (matches **`NEXT_PUBLIC_RAG_API_PREFIX`**) |
 | Classifier | **`http://127.0.0.1:8000`** (host port from **`CLASSIFIER_SERVICE_PORT`**) |
 | Postgres | **`localhost:${POSTGRES_PORT:-5432}`** |
-| Swagger UI (springdoc; dev profile) | Usually **`http://127.0.0.1:9000/swagger-ui/index.html`** on backend — nginx **does not** expose arbitrary `/swagger-ui/**` on port 80 unless you extend nginx |
+| Swagger UI (springdoc; dev profile) | Usually **`http://127.0.0.1:9000/swagger-ui/index.html`** on backend - nginx **does not** expose arbitrary `/swagger-ui/**` on port 80 unless you extend nginx |
 | OpenAPI JSON | **`http://127.0.0.1:9000/v3/api-docs`** (when enabled) |
 | Grafana | **`http://127.0.0.1:${GRAFANA_PORT:-3000}`** |
 | Jaeger UI | **`http://127.0.0.1:${JAEGER_UI_PORT:-16686}`** |
@@ -104,7 +104,7 @@ Defaults vary with **`webapp/.env`**, **`observability/.env`**, and **`REVERSE_P
 - **Reverse-proxy image** ([`reverse-proxy/Dockerfile`](../../reverse-proxy/Dockerfile)) generates a **self-signed** certificate at **build time** (`tls.crt` / `tls.key` under `/etc/nginx/certs/`).
 - **nginx** listens on **443** with TLS ([`reverse-proxy/nginx.conf`](../../reverse-proxy/nginx.conf)).
 - **Dev proxy**: [`docker/compose.dev-proxy.yml`](../../docker/compose.dev-proxy.yml) publishes **`${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}:443`**. **`REVERSE_PROXY_ENFORCE_HTTPS`** defaults to **`0`** in dev proxy env (no forced redirect to HTTPS unless you set **`1`**).
-- **Prod-local**: [`docker/compose.prod.yml`](../../docker/compose.prod.yml) uses **`${REVERSE_PROXY_HTTPS_PORT:-8443}:443`** and **`REVERSE_PROXY_ENFORCE_HTTPS` defaults to `1`** — HTTP may redirect to HTTPS.
+- **Prod-local**: [`docker/compose.prod.yml`](../../docker/compose.prod.yml) uses **`${REVERSE_PROXY_HTTPS_PORT:-8443}:443`** and **`REVERSE_PROXY_ENFORCE_HTTPS` defaults to `1`** - HTTP may redirect to HTTPS.
 
 **Browser trust:** Accept the certificate warning for the baked-in self-signed cert, or terminate TLS with **mkcert** / your own CA and mount certs by extending the reverse-proxy service with a **local-only** compose override (paths **gitignored**; never commit private keys).
 
@@ -112,7 +112,7 @@ Defaults vary with **`webapp/.env`**, **`observability/.env`**, and **`REVERSE_P
 
 | Change | Action |
 | --- | --- |
-| **`NEXT_PUBLIC_*`**, **`WEBAPP_NEXT_PUBLIC_*`** in **`webapp/.env`** | **Rebuild webapp image** (`build.sh …` or `docker compose build webapp`) and **recreate** the container — values are **build-args** ([`docker/docker-compose.yml`](../../docker/docker-compose.yml)). |
+| **`NEXT_PUBLIC_*`**, **`WEBAPP_NEXT_PUBLIC_*`** in **`webapp/.env`** | **Rebuild webapp image** (`build.sh …` or `docker compose build webapp`) and **recreate** the container - values are **build-args** ([`docker/docker-compose.yml`](../../docker/docker-compose.yml)). |
 | **`reverse-proxy/nginx.conf`** or **`reverse-proxy/Dockerfile`** | **`docker compose build reverse-proxy`** (or **`build.sh`** with same `-f` chain). |
 | Backend Java / **`pom.xml`** | Rebuild **`backend`** / **`backend-dev`** image or rely on **`backend-dev`** bind-mount + DevTools as appropriate. |
 | **Dockerfiles / compose build args** | **`./docker/scripts/build.sh`** with the **same** mode and flags as **`up`**. |
@@ -123,12 +123,12 @@ Defaults vary with **`webapp/.env`**, **`observability/.env`**, and **`REVERSE_P
 | --- | --- |
 | **Google OAuth CTA missing** | **`NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED`** not **`true`** at **build** time; rebuild webapp. Check [`webapp/README.md`](../../webapp/README.md). |
 | **`redirect_uri_mismatch`** | Google Console must list **`RAG_AUTH_BACKEND_BASE_URL` + `RAG_AUTH_OAUTH_GOOGLE_REDIRECT_PATH`** exactly; see [`rag-service/README.md`](../../rag-service/README.md), [`rag-service/.env.example`](../../rag-service/.env.example). |
-| **Register logs in immediately** | Email confirmation disabled — **`RAG_AUTH_EMAIL_CONFIRMATION_ENABLED`** not **`true`** in **`rag-service/.env`**. |
+| **Register logs in immediately** | Email confirmation disabled - **`RAG_AUTH_EMAIL_CONFIRMATION_ENABLED`** not **`true`** in **`rag-service/.env`**. |
 | **No verification / reset email** | Enable **`--mail`** (or set **`SPRING_MAIL_HOST=mailpit`** manually). Check **`RAG_AUTH_PASSWORD_RESET_ENABLED`**, **`RAG_AUTH_MAIL_ENABLED`**, and **`RAG_AUTH_WEBAPP_BASE_URL`**. Invalid real SMTP creds can make **readiness** fail when mail health is in the readiness group. |
 | **Backend cannot reach Ollama** | Wrong **`SPRING_AI_OLLAMA_BASE_URL`**; host firewall; models not pulled. Use **`host.docker.internal:11434`** on Docker Desktop or Linux with **`extra_hosts`** (see §D). |
 | **502 from nginx** | Upstream down or **readiness** failing; check **`docker compose ps`** and **`docker logs`** for **`backend-dev`** / **`webapp`**. |
-| **Stale `NEXT_PUBLIC_*`** | Rebuild webapp image; restart container — see §G. |
-| **DB / migration issues** | Postgres logs; **`postgres-collation-bootstrap`** job; volume corruption — only then consider **`down … -v`** (destructive). |
+| **Stale `NEXT_PUBLIC_*`** | Rebuild webapp image; restart container - see §G. |
+| **DB / migration issues** | Postgres logs; **`postgres-collation-bootstrap`** job; volume corruption - only then consider **`down … -v`** (destructive). |
 | **`/actuator/health` = 503`** | Overall readiness **DOWN** (e.g. **ollama**, **mail**, disk). **`/actuator/health/liveness`** may still be **200**. |
 
 ## Do not commit

@@ -36,7 +36,7 @@ Record `content_sha256` per run sheet (see § Dataset manifest in [`protocol-rep
 - Synthetic acta metadata: workbook sheet `corpus_documents` (5 documents).
 - Gold chunks: `chunk_registry` (30 rows).
 - Runtime evaluation corpus is user-bound via Lab **evaluation corpus** + **index snapshot**; readiness gated by `EvaluationCorpusReadinessService` / `CorpusAvailabilityGate`.
-- Reindex is **per embedding model / snapshot** when vector rows are missing — not a global gate operation.
+- Reindex is **per embedding model / snapshot** when vector rows are missing - not a global gate operation.
 
 ---
 
@@ -52,10 +52,10 @@ Record `content_sha256` per run sheet (see § Dataset manifest in [`protocol-rep
 
 **Documented limitations (not blocking protocol definition):**
 
-- `citationAccuracy` — **FUTURE_WORK** (not implemented as named export metric).
-- `abstentionAccuracy` — exported as `abstentionCorrectness` / `abstentionScore` / `abstentionReason`.
-- `precision@k` — `precision_at_k` in legacy aggregation; not consistently in MVP flat CSV as `precision@k`.
-- `completeness` — not a named Lab rollup metric.
+- `citationAccuracy` - **FUTURE_WORK** (not implemented as named export metric).
+- `abstentionAccuracy` - exported as `abstentionCorrectness` / `abstentionScore` / `abstentionReason`.
+- `precision@k` - `precision_at_k` in legacy aggregation; not consistently in MVP flat CSV as `precision@k`.
+- `completeness` - not a named Lab rollup metric.
 
 ---
 
@@ -144,9 +144,9 @@ Record `content_sha256` per run sheet (see § Dataset manifest in [`protocol-rep
 
 | Deployable model | Held-out macro-F1 | Accepted for production routing? |
 | --- | ---: | --- |
-| Keras `models/default` (train-only C1) | **0.013** | **No** — experimental only |
-| Legacy Keras (train+eval leaked) | 0.369 | **No** — invalid inflated score |
-| Offline sklearn C3 (char_wb + LinearSVC) | 0.797 | **No** — not served; research candidate |
+| Keras `models/default` (train-only C1) | **0.013** | **No** - experimental only |
+| Legacy Keras (train+eval leaked) | 0.369 | **No** - invalid inflated score |
+| Offline sklearn C3 (char_wb + LinearSVC) | 0.797 | **No** - not served; research candidate |
 
 **Campaign rule:** Embedding and LLM layers may proceed classifier-independently. RAG preset rows must disable, bypass, use deterministic-only routing, or explicitly document weak C1. No final RAG claim may attribute improvements to classifier until an accepted-model classifier campaign.
 
@@ -164,7 +164,7 @@ docker exec docker-backend-dev-1 sh -c 'cd /app && ./mvnw test \
 cd webapp && npm test -- --run src/features/lab src/features/settings src/features/admin
 ```
 
-**Lab async benchmarks (campaign — not run in readiness gate):**
+**Lab async benchmarks (campaign - not run in readiness gate):**
 
 - `POST {product}/lab/benchmarks/LLM_JUDGE_QA/runs`
 - `POST {product}/lab/benchmarks/EMBEDDING_RETRIEVAL/runs`
@@ -194,7 +194,7 @@ cd webapp && npm test -- --run src/features/lab src/features/settings src/featur
 | **CONDITIONAL_PASS** | Readiness **known** but at least one **campaign blocker** documented (e.g. classifier train/eval overlap) |
 | **FAIL** | Unknown readiness, broken exports, or uninventoried datasets |
 
-**Current gate verdict (2026-06-29):** **Classifier status freeze PASS** — embeddings and LLMs may proceed under [`classifier-status-freeze.md`](classifier-status-freeze.md) constraints. Classifier comparison campaign **postponed**.
+**Current gate verdict (2026-06-29):** **Classifier status freeze PASS** - embeddings and LLMs may proceed under [`classifier-status-freeze.md`](classifier-status-freeze.md) constraints. Classifier comparison campaign **postponed**.
 
 ---
 
@@ -203,10 +203,10 @@ cd webapp && npm test -- --run src/features/lab src/features/settings src/featur
 1. Multiturn evaluation is **chat E2E only**; no Lab multiturn benchmark harness.
 2. `citationAccuracy` not implemented.
 3. Embedding prefix/normalization not captured in experimental snapshots.
-4. Deployable classifier macro-F1 **0.013** on held-out eval — not production-quality (see classifier status freeze).
+4. Deployable classifier macro-F1 **0.013** on held-out eval - not production-quality (see classifier status freeze).
 5. Dataset expansion planned (`proposed_train_expansion.json`) but **not applied**.
 6. Live Lab dry-run against running stack was not executed for readiness gate (export proven via unit tests in container).
 
 ---
 
-*Updated through Evaluation Readiness Gate and Classifier Status Freeze — audit/documentation only, no campaigns.*
+*Updated through Evaluation Readiness Gate and Classifier Status Freeze - audit/documentation only, no campaigns.*

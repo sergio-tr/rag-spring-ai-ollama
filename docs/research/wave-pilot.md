@@ -1,4 +1,4 @@
-# Pilot wave — W-PILOT-001
+# Pilot wave - W-PILOT-001
 
 **Objective:** Validate **traceability** end-to-end (anchors recorded, artefacts locatable) on a **small** surface before scaling to comparative loads. Success is **operational**, not maximum benchmark scores.
 
@@ -18,7 +18,7 @@
 
 ---
 
-## Run record — RUN-PILOT-G-BUILD-001
+## Run record - RUN-PILOT-G-BUILD-001
 
 | Field | Value |
 | --- | --- |
@@ -28,7 +28,7 @@
 | `operator` | repository automation / maintainer |
 | `started_at_utc` | 2026-04-19 (session) |
 | `finished_at_utc` | 2026-04-19 (session) |
-| `hypothesis_ids` | *(methodology gate — no hypothesis test)* |
+| `hypothesis_ids` | *(methodology gate - no hypothesis test)* |
 | `benchmark_kind` | `MAVEN_VERIFY` (methodology analogue to G-build) |
 
 **Environment**
@@ -55,7 +55,7 @@
 
 ---
 
-## Run record — RUN-PILOT-LAB-001 (pre-execution checklist)
+## Run record - RUN-PILOT-LAB-001 (pre-execution checklist)
 
 **Purpose:** Single Lab smoke run on **subset** or full classpath-derived evaluation once stack is up. All **required** fields are filled; Lab-specific ids remain **TBD** until execution.
 
@@ -65,7 +65,7 @@
 | `wave_id` | W-PILOT-001 |
 | `git_sha_full` | `7098c40d975803a2ddb30fe897d8d8b8d98d8100` |
 | `operator` | *(assign before run)* |
-| `benchmark_kind` | `LLM_JUDGE_QA` *(recommended first smoke — no retrieval dependency)* or `RAG_PRESET_END_TO_END` if snapshot already created |
+| `benchmark_kind` | `LLM_JUDGE_QA` *(recommended first smoke - no retrieval dependency)* or `RAG_PRESET_END_TO_END` if snapshot already created |
 
 **Dataset manifest**
 
@@ -73,7 +73,7 @@
 | --- | --- |
 | `dataset_id` | EVAL-XLSX-CLASSPATH-V1 |
 | `content_sha256` | `4b525f4341cf57fb6275e709555dd6030318e516ade60abef420cee4f97b5b3d` |
-| `domain_notes` | Minutes-style items; language and domain bias per workbook content — declare in external write-ups. |
+| `domain_notes` | Minutes-style items; language and domain bias per workbook content - declare in external write-ups. |
 
 **Execution identifiers (fill on run)**
 
@@ -94,10 +94,10 @@
 ## Reproducibility lessons (pilot)
 
 1. **Anchor first:** Recording `git_sha_full` and dataset `content_sha256` before running Lab avoids post-hoc confusion when branches move.
-2. **Separate quality gates from science metrics:** `mvn verify` success does not imply Lab success — keep run ids distinct (**RUN-PILOT-G-BUILD-001** vs **RUN-PILOT-LAB-001**).
-3. **Ollama readiness:** Compose readiness vs liveness — document which probe you waited on (`rag-service/README.md` notes `readiness` vs `liveness`).
+2. **Separate quality gates from science metrics:** `mvn verify` success does not imply Lab success - keep run ids distinct (**RUN-PILOT-G-BUILD-001** vs **RUN-PILOT-LAB-001**).
+3. **Ollama readiness:** Compose readiness vs liveness - document which probe you waited on (`rag-service/README.md` notes `readiness` vs `liveness`).
 4. **Stochasticity:** If the pilot uses a non-deterministic chat model, set **N≥3** on the first real Lab execution or mark results exploratory only.
-5. **Export preservation:** Keep `#META:` header line with CSV exports — external appendices should store immutable copies.
+5. **Export preservation:** Keep `#META:` header line with CSV exports - external appendices should store immutable copies.
 
 ---
 

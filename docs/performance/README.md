@@ -14,7 +14,7 @@ This document states **goals and entry points**. Tool-specific commands, environ
 | --- | --- | --- |
 | **Gatling** | JVM scenarios, HTML reports, smoke / load / stress, **mixed realistic** workloads | [../../tests/gatling/README.md](../../tests/gatling/README.md) |
 | **Python micro-benchmarks** | Low-concurrency product Chat latency + **estimated** tokens (schema v1 JSON); **not** load | [../../tests/performance/README.md](../../tests/performance/README.md) |
-| **Python infra probe** | Simple GET KPIs (e.g. `/actuator/health`) — cold/warm infra | `tests/performance/infra_probe.py` |
+| **Python infra probe** | Simple GET KPIs (e.g. `/actuator/health`) - cold/warm infra | `tests/performance/infra_probe.py` |
 
 Gatling coverage and related pointers: [../testing/traceability-retired-tools.md](../testing/traceability-retired-tools.md).
 
@@ -22,17 +22,17 @@ Gatling coverage and related pointers: [../testing/traceability-retired-tools.md
 
 | Concern | Prefer |
 | --- | --- |
-| RPS ramps, HTML reports, mixed traffic, authenticated flows | **Gatling** — `gatling.yml` when `GATLING_BASE_URL` is set |
-| Single-host product Chat latency samples, product baselines, **estimated** tokens | **Python** — `micro-benchmark.yml` (optional; no PR gates) |
+| RPS ramps, HTML reports, mixed traffic, authenticated flows | **Gatling** - `gatling.yml` when `GATLING_BASE_URL` is set |
+| Single-host product Chat latency samples, product baselines, **estimated** tokens | **Python** - `micro-benchmark.yml` (optional; no PR gates) |
 
 The Gatling workflow **skips** when `GATLING_BASE_URL` is unset.
 
 ### Python micro-benchmarks (analysis only)
 
 - **Scripts:** `tests/performance/retrieval_benchmark.py` (`product_chat` with JWT + project + conversation; optional historical `GET …/query` baseline when explicitly labelled in scenario YAML), `llm_benchmark.py` (wrapper, `--family llm` default), `infra_probe.py` (non-RAG GET probe). See `tests/performance/` for any additional helper scripts.
-- **Report:** JSON `schemaVersion: "1.0"` — see `tests/performance/schema/benchmark-report-v1.schema.json` and `tests/performance/API_RESPONSE_AUDIT.md` (no tokenizer fields in API responses; benchmarks use a **chars/4** heuristic, `estimated: true`).
-- **Scenarios:** `tests/performance/scenarios/*.yaml` — final evidence should use `product_chat` (PUT project RAG config + chat job polling) when `BENCHMARK_BEARER_TOKEN`, `BENCHMARK_PROJECT_ID`, `BENCHMARK_CONVERSATION_ID` are set. `transport: historical_query` (use `historical_query` transport key) is for explicitly labelled pre-product `/query` comparisons only.
-- **CI:** [.github/workflows/micro-benchmark.yml](../../.github/workflows/micro-benchmark.yml) — `workflow_dispatch` + weekly schedule; requires repository variable `BENCHMARK_BASE_URL` (or dispatch input). **No gates** — artifacts for observation only. Does **not** run on every commit.
+- **Report:** JSON `schemaVersion: "1.0"` - see `tests/performance/schema/benchmark-report-v1.schema.json` and `tests/performance/API_RESPONSE_AUDIT.md` (no tokenizer fields in API responses; benchmarks use a **chars/4** heuristic, `estimated: true`).
+- **Scenarios:** `tests/performance/scenarios/*.yaml` - final evidence should use `product_chat` (PUT project RAG config + chat job polling) when `BENCHMARK_BEARER_TOKEN`, `BENCHMARK_PROJECT_ID`, `BENCHMARK_CONVERSATION_ID` are set. `transport: historical_query` (use `historical_query` transport key) is for explicitly labelled pre-product `/query` comparisons only.
+- **CI:** [.github/workflows/micro-benchmark.yml](../../.github/workflows/micro-benchmark.yml) - `workflow_dispatch` + weekly schedule; requires repository variable `BENCHMARK_BASE_URL` (or dispatch input). **No gates** - artifacts for observation only. Does **not** run on every commit.
 
 ## Evidence Labels
 
@@ -45,8 +45,8 @@ Do not cite an `INFRA_ONLY` run as product Chat/LAB performance evidence.
 
 | Profile | Ollama / LLM | Typical execution |
 | --- | --- | --- |
-| **smoke**, **load** | Real Ollama allowed — use a **small model** and **conservative** backend settings in CI. | CI / dispatch with low VUs when `GATLING_BASE_URL` is configured. |
-| **stress**, **spike** | Real Ollama — expect saturation; assertions are **more lenient** on failures/latency. | **Manual** (or dedicated perf env). |
+| **smoke**, **load** | Real Ollama allowed - use a **small model** and **conservative** backend settings in CI. | CI / dispatch with low VUs when `GATLING_BASE_URL` is configured. |
+| **stress**, **spike** | Real Ollama - expect saturation; assertions are **more lenient** on failures/latency. | **Manual** (or dedicated perf env). |
 | **soak** | High cumulative cost | **Manual only**, long runner timeout, not default in GitHub Actions `timeout-minutes`. |
 
 **Chat load:** Gatling `ChatSseSimulation` accepts **200 or 202** on `POST …/messages` (streaming vs async job). Mixed simulations use product auth/admin routes; use Chat-specific simulations for product Chat evidence.
@@ -60,7 +60,7 @@ Do not cite an `INFRA_ONLY` run as product Chat/LAB performance evidence.
 
 ## Caution
 
-Load against **real LLM** endpoints is environment-dependent. For **comparable** numbers across runs, pin model, max tokens, and concurrency on Ollama. **Stub / e2e** profiles are documented in the backend README for functional tests — Gatling mixed scenarios may still hit historical query simulations when `GATLING_MIX_RAG_PCT` &gt; 0; product evidence uses Chat/job routes.
+Load against **real LLM** endpoints is environment-dependent. For **comparable** numbers across runs, pin model, max tokens, and concurrency on Ollama. **Stub / e2e** profiles are documented in the backend README for functional tests - Gatling mixed scenarios may still hit historical query simulations when `GATLING_MIX_RAG_PCT` &gt; 0; product evidence uses Chat/job routes.
 
 ## Related
 

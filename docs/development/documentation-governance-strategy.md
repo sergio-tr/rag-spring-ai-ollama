@@ -25,7 +25,7 @@
 
 Root [`README.md`](../../README.md), `rag-service/`, `webapp/`, `docker/`, etc. remain the right place for **commands, env, ports** per [documentation-guidelines.md](documentation-guidelines.md).
 
-**Gap:** Occasional long narrative in README vs `docs/` — acceptable if “how” stays in README and “why / system role” stays in `docs/`.
+**Gap:** Occasional long narrative in README vs `docs/` - acceptable if “how” stays in README and “why / system role” stays in `docs/`.
 
 ---
 
@@ -41,7 +41,7 @@ docs/
   adr/
   development/              # Contributor + governance (guidelines, this strategy)
   testing/                  # README + topic pages (e.g. retired tool traceability)
-  performance/              # README — load / micro-benchmark overview
+  performance/              # README - load / micro-benchmark overview
   coverage/
 ```
 
@@ -54,7 +54,7 @@ docs/
 | Topic | Rule |
 | ------- | ------ |
 | **Canonical topic** | Exactly one **official** home in `docs/` **or** one module README, not both with full detail. |
-| **Cross-cutting “what/why”** | `docs/` — short narrative + link to module README for “how”. |
+| **Cross-cutting “what/why”** | `docs/` - short narrative + link to module README for “how”. |
 | **Commands / env / ports** | Module `README.md` only. |
 | **ADRs** | Structural decisions → `docs/adr/`. |
 | **API** | Contract: OpenAPI (`/v3/api-docs` or export scripts) plus integration tests; prefer linking generated artifacts over duplicating paths. |
@@ -123,7 +123,7 @@ This section fixes **where** content lives and **what must not** appear in offic
 ### 8.3 `docs/adr/`
 
 **May include:** ADRs with context / decision / consequences for **structural** choices.  
-**Must not include:** transient experiment write-ups — use issues or non-canonical areas per [documentation-guidelines.md](documentation-guidelines.md).
+**Must not include:** transient experiment write-ups - use issues or non-canonical areas per [documentation-guidelines.md](documentation-guidelines.md).
 
 ### 8.4 Forbidden in canonical docs (outside `docs/enhancement/`)
 

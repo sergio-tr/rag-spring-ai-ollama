@@ -1,4 +1,4 @@
-# ADR 0008 — System prompt stack and composition
+# ADR 0008 - System prompt stack and composition
 
 ## Status
 
@@ -13,7 +13,7 @@ Effective LLM behaviour depends on **system** and **user** inputs. Without a fro
 1. At the architectural level, each call uses **`effective system prompt` + `user query`**.
 2. The **`effective system prompt`** is composed of **four** layers: **base**, **account-level**, **project-level**, **workflow/preset** ([configuration-resolution-model.md](../architecture/configuration-resolution-model.md)).
 3. The **effective system prompt** is part of **resolved runtime configuration** semantics, not a UX-only concern; **`SystemPromptComposer`** is the conceptual composer.
-4. **Phase-I** studies may treat prompt layers as **experimental variables**; **later RAG studies** may fix a **stabilized** system prompt as a **baseline** while varying retrieval, judges, or routing — without changing the four-layer architecture.
+4. **Phase-I** studies may treat prompt layers as **experimental variables**; **later RAG studies** may fix a **stabilized** system prompt as a **baseline** while varying retrieval, judges, or routing - without changing the four-layer architecture.
 
 ## Consequences
 

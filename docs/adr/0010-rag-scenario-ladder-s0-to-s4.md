@@ -1,4 +1,4 @@
-# ADR 0010 — RAG scenario ladder S0 to S4
+# ADR 0010 - RAG scenario ladder S0 to S4
 
 ## Status
 

@@ -1,7 +1,7 @@
 # Smoke and load tooling (reference)
 
-**Canonical HTTP smoke (operators):** Playwright API tests — `webapp/e2e/api`, `npm run test:api`.  
-**Load / stress:** Gatling — `tests/gatling/` (see [`tests/gatling/README.md`](../../tests/gatling/README.md), [`gatling.yml`](../../.github/workflows/gatling.yml)).  
+**Canonical HTTP smoke (operators):** Playwright API tests - `webapp/e2e/api`, `npm run test:api`.  
+**Load / stress:** Gatling - `tests/gatling/` (see [`tests/gatling/README.md`](../../tests/gatling/README.md), [`gatling.yml`](../../.github/workflows/gatling.yml)).  
 **Stack HTTP integration (depth):** `tests/integration/` (pytest).
 
 ## Where to look
@@ -23,6 +23,6 @@
 
 ## Related documentation
 
-- [../testing/README.md](../testing/README.md) — testing matrix
-- [../performance/README.md](../performance/README.md) — Gatling + Python micro-benchmarks
-- [../../webapp/e2e/api/README.md](../../webapp/e2e/api/README.md) — Playwright API smoke
+- [../testing/README.md](../testing/README.md) - testing matrix
+- [../performance/README.md](../performance/README.md) - Gatling + Python micro-benchmarks
+- [../../webapp/e2e/api/README.md](../../webapp/e2e/api/README.md) - Playwright API smoke

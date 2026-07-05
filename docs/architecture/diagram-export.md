@@ -65,7 +65,7 @@ done
 
 ## Captions
 
-Suggested pattern for documentation: **Figure N —** short title; one sentence in the body referencing this repo path (`docs/architecture/<file>.mmd`) for reproducibility.
+Suggested pattern for documentation: **Figure N -** short title; one sentence in the body referencing this repo path (`docs/architecture/<file>.mmd`) for reproducibility.
 
 ## Related
 

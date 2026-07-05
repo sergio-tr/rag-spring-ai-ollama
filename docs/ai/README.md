@@ -1,6 +1,6 @@
 # Spring AI and RAG documentation
 
-Normative pointers for **Action Plan — Spring AI and RAG Modernization**. Operational commands stay in [`rag-service/README.md`](../../rag-service/README.md).
+Normative pointers for **Action Plan - Spring AI and RAG Modernization**. Operational commands stay in [`rag-service/README.md`](../../rag-service/README.md).
 
 | Document | Purpose |
 | ---------- | --------- |

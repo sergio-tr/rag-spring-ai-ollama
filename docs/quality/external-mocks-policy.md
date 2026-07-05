@@ -15,7 +15,7 @@ Relevant keys in `application-test.properties`:
 
 ## Classifier HTTP
 
-- **Default:** `rag.classifier.service.url=` (**empty**) in `application-test.properties` → client is a **no-op** unless the test overrides the URL and uses **MockRestServiceServer** (or equivalent) — see harness doc.
+- **Default:** `rag.classifier.service.url=` (**empty**) in `application-test.properties` → client is a **no-op** unless the test overrides the URL and uses **MockRestServiceServer** (or equivalent) - see harness doc.
 - **Reject** accidental coupling to **`http://localhost:8000`** for unit tests unless the test **starts** a mock server or WireMock fixture.
 
 Also set:

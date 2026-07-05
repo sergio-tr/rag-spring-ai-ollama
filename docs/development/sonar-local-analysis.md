@@ -21,12 +21,12 @@ Configuration lives in the repo root [`sonar-project.properties`](../../sonar-pr
 
 Defaults match `sonar.yml` unless you export overrides:
 
-- `SPRING_DATASOURCE_URL` — default `jdbc:postgresql://localhost:5432/vectordb`
-- `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` — default `postgres`
-- `RAG_JWT_SECRET` — long test secret (required for Spring tests)
+- `SPRING_DATASOURCE_URL` - default `jdbc:postgresql://localhost:5432/vectordb`
+- `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` - default `postgres`
+- `RAG_JWT_SECRET` - long test secret (required for Spring tests)
 - `RAG_TEST_USE_TESTCONTAINERS_DATASOURCE=false`
-- `INTEGRATION_JDBC_URL` — default `jdbc:postgresql://localhost:5432/testdb`
-- `MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED=false` — avoids empty OTLP URL issues during tests
+- `INTEGRATION_JDBC_URL` - default `jdbc:postgresql://localhost:5432/testdb`
+- `MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED=false` - avoids empty OTLP URL issues during tests
 
 ## Start Postgres (example with Docker)
 
@@ -132,7 +132,7 @@ Adjust `JAVA_HOME` if `ls /usr/lib/jvm` lists a different directory (e.g. `java-
 | --------- | ---------------- |
 | *Project not found* | Missing or wrong `SONAR_TOKEN`, or `sonar.organization` / `sonar.projectKey` in `sonar-project.properties` does not match your SonarCloud project. |
 | Java analysis noise / unresolved types | Run `mvnw dependency:copy-dependencies` so `rag-service/target/dependency` is populated (the `sonar-local` scripts do this). |
-| *CI analysis while Automatic Analysis is enabled* | In SonarCloud: *Project → Administration → Analysis Method* — use **CI-based** analysis only. |
+| *CI analysis while Automatic Analysis is enabled* | In SonarCloud: *Project → Administration → Analysis Method* - use **CI-based** analysis only. |
 
 ## Related
 

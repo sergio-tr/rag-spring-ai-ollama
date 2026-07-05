@@ -4,7 +4,7 @@ Use for annotated tags (e.g. `v0.x.y`). Paste into GitHub **Release** descriptio
 
 ---
 
-## VERSION — SHORT_TITLE
+## VERSION - SHORT_TITLE
 
 **Commit / tag:** `SHA_OR_TAG`  
 **Date:** YYYY-MM-DD
