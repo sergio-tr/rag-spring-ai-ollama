@@ -1,5 +1,5 @@
 name: ner_off
-description: nerEnabled=false — requires product_chat + BENCHMARK_* env.
+description: nerEnabled=false - requires product_chat + BENCHMARK_* env.
 transport: product_chat
 product_chat:
   product_base_path: /api/v5

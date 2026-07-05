@@ -12,14 +12,14 @@ Observability (Jaeger, Prometheus, OTEL collector, Grafana):
   - INTEGRATION_CHECK_OBS=0: skip all observability tests.
 
 Classifier (CI split):
-  - PR job ``integration``: Spring only — classifier tests **skip** when :8000 is down (INTEGRATION_STRICT still applies to backend/auth).
-  - Job ``integration_classifier_required``: sets INTEGRATION_REQUIRE_CLASSIFIER=1 and starts uvicorn — classifier connectivity failures **fail** the run.
+  - PR job ``integration``: Spring only - classifier tests **skip** when :8000 is down (INTEGRATION_STRICT still applies to backend/auth).
+  - Job ``integration_classifier_required``: sets INTEGRATION_REQUIRE_CLASSIFIER=1 and starts uvicorn - classifier connectivity failures **fail** the run.
 
 API path drift (aligned with Spring `rag.api.*`):
   - INTEGRATION_RAG_PRODUCT_BASE_PATH (default `/api/v5`) for JWT product tests.
-  - INTEGRATION_LOGIN_EMAIL / INTEGRATION_LOGIN_PASSWORD — seed user for `POST {product}/auth/login` flows
+  - INTEGRATION_LOGIN_EMAIL / INTEGRATION_LOGIN_PASSWORD - seed user for `POST {product}/auth/login` flows
     (default matches Flyway V16: dev@local.test / dev).
-  - INTEGRATION_ADMIN_EMAIL / INTEGRATION_ADMIN_PASSWORD — optional; enables admin API **200** tests when an
+  - INTEGRATION_ADMIN_EMAIL / INTEGRATION_ADMIN_PASSWORD - optional; enables admin API **200** tests when an
     ADMIN user exists (profile e2e: admin@e2e.local / e2e via E2eAdminUserSeeder).
 
 Usage:
@@ -195,7 +195,7 @@ _LAB_CORPUS_FIXTURE_PATH = (
     / "bootstrap-acta.txt"
 )
 _LAB_CORPUS_FIXTURE_BYTES = """\
-ACTA — 24 de febrero de 2025
+ACTA - 24 de febrero de 2025
 
 Fecha: 24 de febrero de 2025.
 Presidente: Juan Pérez García.
@@ -944,7 +944,7 @@ class TestBackendProductApi:
 
 
 class TestBackendAccountExportApi:
-    """Account export async contract (Phase 7 UX — backend poll/download paths)."""
+    """Account export async contract (Phase 7 UX - backend poll/download paths)."""
 
     def test_export_post_returns_202_json_not_html(
         self,
@@ -983,7 +983,7 @@ class TestBackendAccountExportApi:
 
 
 class TestBackendOpenApi:
-    """springdoc OpenAPI JSON at /v3/api-docs (permitAll — no JWT)."""
+    """springdoc OpenAPI JSON at /v3/api-docs (permitAll - no JWT)."""
 
     def test_v3_api_docs_lists_product_auth_and_admin_paths(
         self,
@@ -1087,7 +1087,7 @@ class TestBackendLabJobs:
         if not token:
             pytest.skip("Admin login did not return a token (check INTEGRATION_ADMIN_* / e2e seeder).")
         headers = _lab_auth_headers(token)
-        # V42__seed_reference_evaluation_dataset.sql — REFERENCE_BUNDLE, SYSTEM_DATASET (ADMIN scope).
+        # V42__seed_reference_evaluation_dataset.sql - REFERENCE_BUNDLE, SYSTEM_DATASET (ADMIN scope).
         reference_dataset_id = "00000000-0000-7000-8000-000000000001"
         try:
             corpus_id = _lab_create_evaluation_corpus_with_document(

@@ -1,4 +1,4 @@
-# P0 full-application Playwright suite — nightly + manual on self-hosted runner (Ollama / LiteLLM on host).
+# P0 full-application Playwright suite - nightly + manual on self-hosted runner (Ollama / LiteLLM on host).
 # Requires live demo stack at https://127.0.0.1:8444 (HTTPS reverse-proxy; see scripts/ci/e2e-stack-env.defaults.sh).
 name: E2E P0 Playwright (full application)
 

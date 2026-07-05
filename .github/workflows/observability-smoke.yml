@@ -1,5 +1,5 @@
 # Obsolete compose filename regression + schedule. Full compose validation: docker-compose-ci.yml.
-# Schedule / manual — does not block PR merges by default.
+# Schedule / manual - does not block PR merges by default.
 name: Observability smoke
 
 on:
@@ -23,7 +23,7 @@ jobs:
           set -euo pipefail
           for f in compose.ollama-gpu.yml compose.ollama-local-gpu.yml compose.ollama-local-gpu.dev.yml compose.logs.yml compose.infra.yml compose.dev-web.yml; do
             if [ -f "docker/$f" ]; then
-              echo "::error::Unexpected docker/$f — use docker-compose.yml and Compose profiles."
+              echo "::error::Unexpected docker/$f - use docker-compose.yml and Compose profiles."
               exit 1
             fi
           done

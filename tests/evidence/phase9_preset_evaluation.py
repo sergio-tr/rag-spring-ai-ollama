@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 9 — preset evaluation evidence collector (API-backed)."""
+"""Phase 9 - preset evaluation evidence collector (API-backed)."""
 
 from __future__ import annotations
 

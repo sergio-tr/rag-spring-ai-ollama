@@ -17,7 +17,7 @@ jobs:
   sonar:
     name: SonarCloud Scan
     runs-on: ubuntu-latest
-    # Same Postgres setup as ci.yml — required for @SpringBootTest and JDBC integration tests during mvn verify.
+    # Same Postgres setup as ci.yml - required for @SpringBootTest and JDBC integration tests during mvn verify.
     services:
       postgres:
         # Do NOT use `env.*` in `services.<id>.image` (context may be unsupported).
@@ -44,7 +44,7 @@ jobs:
 
     steps:
       # ─── Checkout ─────────────────────────────────────────────────────────
-      # fetch-depth: 0 is REQUIRED by SonarCloud — it needs the full git history
+      # fetch-depth: 0 is REQUIRED by SonarCloud - it needs the full git history
       # to compute blame (new code attribution) and blame-based deduplication.
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -83,7 +83,7 @@ jobs:
         working-directory: rag-service
         run: ./mvnw -B clean verify --no-transfer-progress
         env:
-          # Do not set OTEL_EXPORTER_OTLP_ENDPOINT to "" — Spring resolves ${OTEL:default} to empty and breaks OTLP URLs.
+          # Do not set OTEL_EXPORTER_OTLP_ENDPOINT to "" - Spring resolves ${OTEL:default} to empty and breaks OTLP URLs.
           MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "false"
 
       # ─── Java: copy dependencies for SonarCloud type resolution ───────────
@@ -102,7 +102,7 @@ jobs:
 
       # ─── Python: tests + coverage ─────────────────────────────────────────
       # pytest.ini already sets addopts with --cov=app --cov-report=xml:coverage.xml.
-      # Do NOT duplicate those flags here — they are applied by pytest.ini automatically.
+      # Do NOT duplicate those flags here - they are applied by pytest.ini automatically.
       # Only pass test paths and marker filters; pytest.ini handles the rest.
       # Output: classifier-service/coverage.xml  (referenced in sonar-project.properties)
       - name: Run classifier tests with coverage
@@ -143,11 +143,11 @@ jobs:
       # Path (approx.): SonarCloud project → Administration → Analysis Method → CI / disable Auto.
       #
       # Required secrets (GitHub → Settings → Secrets and variables → Actions):
-      #   SONAR_TOKEN — SonarCloud → My Account → Security → Generate token
+      #   SONAR_TOKEN - SonarCloud → My Account → Security → Generate token
       #
       # If SONAR_TOKEN is empty, the scanner fails with "Project not found" (misleading).
       # Common causes: secret not added, or PR from a fork (secrets are not passed to
-      # workflows triggered by forks unless you use pull_request_target — use with care).
+      # workflows triggered by forks unless you use pull_request_target - use with care).
       - name: Require SONAR_TOKEN for SonarCloud
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

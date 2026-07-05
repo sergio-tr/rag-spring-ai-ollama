@@ -1,4 +1,4 @@
-# Manual fullstack lane — mirrors reusable-ci-core.yml job e2e_fullstack (preflight + @critical only).
+# Manual fullstack lane - mirrors reusable-ci-core.yml job e2e_fullstack (preflight + @critical only).
 # Authoritative PR gate: ci.yml → reusable-ci-core.yml.
 name: E2E fullstack (Playwright + API)
 

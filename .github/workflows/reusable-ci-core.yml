@@ -236,7 +236,7 @@ jobs:
       INTEGRATION_FAIL_ON_UNREACHABLE: "1"
       INTEGRATION_LOGIN_EMAIL: dev@local.test
       INTEGRATION_LOGIN_PASSWORD: dev
-      # Spring env wins over application-e2e.properties — force CI-friendly health when profile e2e runs without Ollama/classifier.
+      # Spring env wins over application-e2e.properties - force CI-friendly health when profile e2e runs without Ollama/classifier.
       RAG_LLM_DEFAULT_PROVIDER: OLLAMA_NATIVE
       RAG_LLM_OLLAMA_DEFAULT_EMBEDDING_MODEL: mxbai-embed-large:latest
       RAG_HEALTH_OLLAMA_ENABLED: "false"

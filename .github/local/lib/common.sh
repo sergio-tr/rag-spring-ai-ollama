@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Canonical pinned PostgreSQL image — must match .github/ci/postgres-service-image.env, docker-compose, and CI services.
+# Canonical pinned PostgreSQL image - must match .github/ci/postgres-service-image.env, docker-compose, and CI services.
 # shellcheck shell=bash
 _LOCAL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 if [[ -f "${_LOCAL_ROOT}/.github/local/.env.local" ]]; then

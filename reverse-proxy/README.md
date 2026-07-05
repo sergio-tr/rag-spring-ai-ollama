@@ -95,7 +95,7 @@ RAG_CORS_ALLOWED_ORIGINS=https://uniovi.es
 | `OPENSSL_CONFIG` | `/etc/nginx/openssl-san.cnf` | Base path (generated config: `.generated`) |
 | `TLS_CERT_DAYS` | `365` | Validity period |
 | `TLS_CERT_COMMON_NAME` | `localhost` | Certificate CN |
-| `TLS_CERT_DNS_1`…`4` | — | DNS SAN entries |
+| `TLS_CERT_DNS_1`…`4` | - | DNS SAN entries |
 | `TLS_CERT_IP_1`, `2` | `127.0.0.1` | IP SAN entries |
 | `TLS_CERT_FORCE_REGENERATE` | `0` | Set `1` to replace existing cert |
 

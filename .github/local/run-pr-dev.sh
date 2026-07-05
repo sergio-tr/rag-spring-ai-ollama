@@ -9,7 +9,7 @@ echo "==> run-integration"
 echo "==> run-e2e-fullstack"
 "${D}/run-e2e-fullstack.sh"
 if [[ -z "${SONAR_TOKEN:-}" ]]; then
-  echo "WARN: SONAR_TOKEN unset — skipping run-sonar.sh (required in CI)."
+  echo "WARN: SONAR_TOKEN unset - skipping run-sonar.sh (required in CI)."
 else
   echo "==> run-sonar"
   "${D}/run-sonar.sh"
