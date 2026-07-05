@@ -209,8 +209,6 @@ services:
       dockerfile: Dockerfile
       args:
         LOKI_BASE_IMAGE: ${LOKI_BASE_IMAGE:-grafana/loki:2.9.6}
-    volumes:
-      - ../observability/loki/config.yml.template:/config.yml.template:ro
     entrypoint: ["/bin/sh", "-c"]
     command:
       - sed "s/__LOKI_HTTP_PORT__/${OBS_INTERNAL_LOKI_HTTP:-3100}/g" /config.yml.template > /tmp/loki.yml && exec /usr/bin/loki -config.file=/tmp/loki.yml
@@ -227,7 +225,6 @@ services:
       args:
         PROMTAIL_BASE_IMAGE: ${PROMTAIL_BASE_IMAGE:-grafana/promtail:2.9.6}
     volumes:
-      - ../observability/promtail/config.yml.template:/config.yml.template:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -305,8 +302,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-vectordb}
-    volumes:
-      - ../db/scripts/ensure-postgres-monitor-role.sh:/ensure.sh:ro
     entrypoint: ["/bin/sh", "/ensure.sh"]
     restart: "no"
 
