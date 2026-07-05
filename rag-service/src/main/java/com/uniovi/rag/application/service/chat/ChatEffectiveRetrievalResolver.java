@@ -15,15 +15,32 @@ public class ChatEffectiveRetrievalResolver {
             Map<String, Object> effectiveConfig,
             Map<String, Object> runtimeOverride,
             Map<String, Object> presetValues) {
+        return resolve(effectiveConfig, runtimeOverride, presetValues, null, null);
+    }
+
+    public EffectiveRetrievalParameters resolve(
+            Map<String, Object> effectiveConfig,
+            Map<String, Object> runtimeOverride,
+            Map<String, Object> presetValues,
+            Map<String, Object> projectValues,
+            Map<String, Object> userValues) {
         int topK = readInt(effectiveConfig, RetrievalParameterKeys.TOP_K, 8);
         double threshold =
                 readDouble(effectiveConfig, RetrievalParameterKeys.SIMILARITY_THRESHOLD, 0.25);
         RetrievalParameterPolicy topKSource =
                 RetrievalParameterPolicySupport.sourceForKey(
-                        RetrievalParameterKeys.TOP_K, runtimeOverride, presetValues);
+                        RetrievalParameterKeys.TOP_K,
+                        runtimeOverride,
+                        presetValues,
+                        projectValues,
+                        userValues);
         RetrievalParameterPolicy thresholdSource =
                 RetrievalParameterPolicySupport.sourceForKey(
-                        RetrievalParameterKeys.SIMILARITY_THRESHOLD, runtimeOverride, presetValues);
+                        RetrievalParameterKeys.SIMILARITY_THRESHOLD,
+                        runtimeOverride,
+                        presetValues,
+                        projectValues,
+                        userValues);
         return new EffectiveRetrievalParameters(
                 topK, threshold, topKSource.name(), thresholdSource.name());
     }

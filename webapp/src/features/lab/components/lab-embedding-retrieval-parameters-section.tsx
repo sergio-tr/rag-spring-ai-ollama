@@ -11,7 +11,7 @@ export type LabEmbeddingRetrievalParametersSectionProps = {
   onChange: (next: LabEmbeddingRuntimeParameters) => void;
   selectedModels: LabEvaluationModelDto[];
   disabled?: boolean;
-  /** RAG runs derive materialization from preset groups — hide the global dropdown. */
+  /** RAG runs derive materialization from preset groups - hide the global dropdown. */
   variant: "embedding" | "rag";
 };
 

@@ -18,6 +18,7 @@ import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateRequest;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeCompatibilityDto;
+import com.uniovi.rag.application.port.ConfigurationSourcePort;
 import com.uniovi.rag.application.service.config.ChatPresetDefaults;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import java.util.LinkedHashMap;
@@ -39,6 +40,7 @@ public class ChatRuntimeStateService {
     private final RuntimeConfigValidationService runtimeConfigValidationService;
     private final RuntimeConfigCapabilitiesService runtimeConfigCapabilitiesService;
     private final ChatEffectiveRetrievalResolver chatEffectiveRetrievalResolver;
+    private final ConfigurationSourcePort configurationSourcePort;
 
     ChatRuntimeStateService(
             ProjectAccessService projectAccessService,
@@ -51,7 +53,8 @@ public class ChatRuntimeStateService {
                 experimentalPresetCatalogService,
                 runtimeConfigValidationService,
                 new RuntimeConfigCapabilitiesService(),
-                new ChatEffectiveRetrievalResolver());
+                new ChatEffectiveRetrievalResolver(),
+                null);
     }
 
     @Autowired
@@ -61,13 +64,15 @@ public class ChatRuntimeStateService {
             LabExperimentalPresetCatalogService experimentalPresetCatalogService,
             RuntimeConfigValidationService runtimeConfigValidationService,
             RuntimeConfigCapabilitiesService runtimeConfigCapabilitiesService,
-            ChatEffectiveRetrievalResolver chatEffectiveRetrievalResolver) {
+            ChatEffectiveRetrievalResolver chatEffectiveRetrievalResolver,
+            ConfigurationSourcePort configurationSourcePort) {
         this.projectAccessService = projectAccessService;
         this.chatPresetDefaults = chatPresetDefaults;
         this.experimentalPresetCatalogService = experimentalPresetCatalogService;
         this.runtimeConfigValidationService = runtimeConfigValidationService;
         this.runtimeConfigCapabilitiesService = runtimeConfigCapabilitiesService;
         this.chatEffectiveRetrievalResolver = chatEffectiveRetrievalResolver;
+        this.configurationSourcePort = configurationSourcePort;
     }
 
     public ChatRuntimeStateDto getRuntimeState(UUID userId, UUID conversationId) {
@@ -92,13 +97,13 @@ public class ChatRuntimeStateService {
         Map<String, Object> baseEffectiveConfig =
                 baseVr.effectiveConfig() != null ? Map.copyOf(baseVr.effectiveConfig()) : Map.of();
 
-        Map<String, Object> persistedForNormalize =
-                ChatRuntimeCompatibilitySupport.copyWithoutNonRuntimeOverrideKeys(
+        Map<String, Object> persistedSnapshot =
+                ConversationConfigurationSupport.sanitizeSnapshot(
                         c.getRuntimeOverride() != null && !c.getRuntimeOverride().isEmpty()
                                 ? new LinkedHashMap<>(c.getRuntimeOverride())
                                 : new LinkedHashMap<>());
-        RuntimeOverrideNormalizer.NormalizedOverride normalized =
-                RuntimeOverrideNormalizer.normalize(persistedForNormalize, baseEffectiveConfig);
+        String configurationMode = ConversationConfigurationSupport.configurationMode(persistedSnapshot);
+        List<String> manualOverrideKeys = ConversationConfigurationSupport.manualOverrideKeys(persistedSnapshot);
 
         RuntimeConfigValidateResponse effectiveVr =
                 runtimeConfigValidationService.validate(
@@ -107,7 +112,7 @@ public class ChatRuntimeStateService {
                                 conversationId,
                                 effectivePresetId != null ? effectivePresetId.toString() : null,
                                 null,
-                                normalized.runtimeOverride()));
+                                persistedSnapshot));
 
         Map<String, Object> effectiveConfig =
                 effectiveVr.effectiveConfig() != null ? new LinkedHashMap<>(effectiveVr.effectiveConfig()) : new LinkedHashMap<>();
@@ -116,7 +121,8 @@ public class ChatRuntimeStateService {
         String conversationLlmModel = blankToNull(c.getLlmModel());
         String conversationClassifierModelId = blankToNull(c.getClassifierModelId());
         boolean conversationModelsPinned = conversationLlmModel != null || conversationClassifierModelId != null;
-        boolean isCustom = !normalized.manualOverrideKeys().isEmpty() || conversationModelsPinned;
+        boolean isCustom =
+                ConversationConfigurationSupport.MODE_CUSTOM.equals(configurationMode) || conversationModelsPinned;
 
         ChatPresetSummaryDto presetSummary = presetSummary(selectedPresetId, c.getPreset());
 
@@ -142,18 +148,32 @@ public class ChatRuntimeStateService {
                         runtimeConfigCapabilitiesService.getCapabilities().capabilities().stream()
                                 .map(RuntimeConfigRestMapper::toCapabilityDto)
                                 .toList(),
-                        effectiveConfig);
+                        effectiveConfig,
+                        effectiveVr.indexCompatibility(),
+                        baseEffectiveConfig);
         String disabledPresetReason = presetCompatibility.disabledReason();
 
         Map<String, Object> presetValues =
                 c.getPreset() != null && c.getPreset().getValues() != null
                         ? c.getPreset().getValues()
                         : Map.of();
+        Map<String, Object> projectValues =
+                configurationSourcePort != null
+                        ? configurationSourcePort
+                                .loadProject(userId, projectId)
+                                .orElse(Map.of())
+                        : Map.of();
+        Map<String, Object> userValues =
+                configurationSourcePort != null
+                        ? configurationSourcePort.loadUserDefault(userId).orElse(Map.of())
+                        : Map.of();
         EffectiveRetrievalParameters effectiveRetrieval =
                 chatEffectiveRetrievalResolver.resolve(
                         effectiveConfig,
-                        normalized.runtimeOverride(),
-                        presetValues);
+                        persistedSnapshot,
+                        presetValues,
+                        projectValues,
+                        userValues);
 
         return new ChatRuntimeStateDto(
                 conversationId,
@@ -165,8 +185,9 @@ public class ChatRuntimeStateService {
                 conversationLlmModel,
                 conversationClassifierModelId,
                 conversationModelsPinned,
-                normalized.runtimeOverride(),
-                normalized.manualOverrideKeys(),
+                configurationMode,
+                persistedSnapshot,
+                manualOverrideKeys,
                 isCustom,
                 validation,
                 blockingIssues.isEmpty(),
@@ -274,6 +295,6 @@ public class ChatRuntimeStateService {
         return preset.getTags().stream().anyMatch(t -> t != null && t.trim().equalsIgnoreCase("experimental"));
     }
 
-    // Override normalization lives in RuntimeOverrideNormalizer (shared with PATCH validation).
+    // Conversation configuration snapshot semantics live in ConversationConfigurationSupport.
 }
 

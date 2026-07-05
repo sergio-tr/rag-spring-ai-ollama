@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { LlmCatalogModelDto } from "@/types/api";
 import { cn } from "@/lib/utils";
@@ -39,13 +40,8 @@ type AdminCatalogTranslations = CatalogAdminLabels & {
   catalogVectorCompatibleYes: string;
   catalogVectorCompatibleNo: string;
   catalogVectorCompatibleNa: string;
-  catalogGovernanceAllowed: string;
-  catalogGovernanceAllowedYes: string;
-  catalogGovernanceAllowedNo: string;
-  catalogGovernanceAllowedNa: string;
+  catalogGovernanceBlocked: string;
   catalogRuntimeNotProbedNote: string;
-  modelAvailable: string;
-  modelMissing: string;
 };
 
 function CatalogField({
@@ -100,6 +96,7 @@ export function AdminLlmCatalogSection({
             const incompatible = isCatalogVectorIncompatible(row);
             const indexingDisabled = isCatalogIndexingDisabled(row);
             const configured = isCatalogConfigured(row);
+            const isRemoteCatalogRow = row.provider === "OPENAI_COMPATIBLE";
             const rowKey = catalogRowKey(row);
             const vectorCompatibleLabel =
               row.compatibleWithCurrentVectorStore == null
@@ -107,12 +104,7 @@ export function AdminLlmCatalogSection({
                 : row.compatibleWithCurrentVectorStore
                   ? t.catalogVectorCompatibleYes
                   : t.catalogVectorCompatibleNo;
-            const governanceLabel =
-              row.governanceAllowed == null
-                ? t.catalogGovernanceAllowedNa
-                : row.governanceAllowed
-                  ? t.catalogGovernanceAllowedYes
-                  : t.catalogGovernanceAllowedNo;
+            const governanceBlocked = row.capability === "CHAT" && row.governanceAllowed === false;
             return (
               <li
                 key={rowKey}
@@ -125,13 +117,24 @@ export function AdminLlmCatalogSection({
                 )}
               >
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium break-words [overflow-wrap:anywhere]">{catalogDisplayName(row)}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-medium break-words [overflow-wrap:anywhere]">{catalogDisplayName(row)}</div>
+                    {governanceBlocked ? (
+                      <Badge
+                        variant="destructive"
+                        className="shrink-0"
+                        data-testid={`admin-catalog-governance-blocked-${row.modelName}`}
+                      >
+                        {t.catalogGovernanceBlocked}
+                      </Badge>
+                    ) : null}
+                  </div>
                   <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
                     <CatalogField
                       label={t.catalogProvider}
                       value={
                         productProviderLabel(row.provider, productProviderLabelsFromAdmin((key) => t[key])) ??
-                        "—"
+                        "-"
                       }
                       testId={`admin-catalog-provider-${row.modelName}`}
                     />
@@ -142,16 +145,20 @@ export function AdminLlmCatalogSection({
                       testId={`admin-catalog-model-name-${row.modelName}`}
                       mono
                     />
-                    <CatalogField
-                      label={t.catalogDisplayName}
-                      value={catalogDisplayName(row)}
-                      testId={`admin-catalog-display-name-${row.modelName}`}
-                    />
-                    <CatalogField
-                      label={t.catalogConfigured}
-                      value={configured ? t.catalogConfiguredYes : t.catalogConfiguredNo}
-                      testId={`admin-catalog-configured-${row.modelName}`}
-                    />
+                    {!isRemoteCatalogRow ? (
+                      <CatalogField
+                        label={t.catalogDisplayName}
+                        value={catalogDisplayName(row)}
+                        testId={`admin-catalog-display-name-${row.modelName}`}
+                      />
+                    ) : null}
+                    {!isRemoteCatalogRow ? (
+                      <CatalogField
+                        label={t.catalogConfigured}
+                        value={configured ? t.catalogConfiguredYes : t.catalogConfiguredNo}
+                        testId={`admin-catalog-configured-${row.modelName}`}
+                      />
+                    ) : null}
                     <CatalogField
                       label={t.catalogRuntimeStatus}
                       value={catalogRuntimeStatusLabel(row.runtimeStatus, row.provider, t)}
@@ -171,20 +178,15 @@ export function AdminLlmCatalogSection({
                         testId={`admin-catalog-vector-compatible-${row.modelName}`}
                       />
                     ) : null}
-                    {row.capability === "CHAT" ? (
+                    {!isRemoteCatalogRow ? (
                       <CatalogField
-                        label={t.catalogGovernanceAllowed}
-                        value={governanceLabel}
-                        testId={`admin-catalog-governance-${row.modelName}`}
+                        label={t.catalogSource}
+                        value={catalogSourceLabel(row.source, t)}
+                        testId={`admin-catalog-source-${row.modelName}`}
                       />
                     ) : null}
-                    <CatalogField
-                      label={t.catalogSource}
-                      value={catalogSourceLabel(row.source, t)}
-                      testId={`admin-catalog-source-${row.modelName}`}
-                    />
                   </dl>
-                  {notProbed && !unavailable ? (
+                  {notProbed && !unavailable && !isRemoteCatalogRow ? (
                     <p
                       className="text-muted-foreground mt-2 text-xs"
                       data-testid={`admin-catalog-not-probed-${row.modelName}`}

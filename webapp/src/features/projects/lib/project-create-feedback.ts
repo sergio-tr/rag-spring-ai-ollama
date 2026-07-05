@@ -1,8 +1,6 @@
 import type { CreateProjectOutcome } from "@/features/projects/lib/project-create-reconciliation";
 
-export type ProjectCreatedDialogOutcome = CreateProjectOutcome & {
-  configSaveFailed?: boolean;
-};
+export type ProjectCreatedDialogOutcome = CreateProjectOutcome;
 
 type TranslateProjects = (key: string) => string;
 
@@ -11,9 +9,6 @@ export function projectCreateWarningMessage(
   outcome: ProjectCreatedDialogOutcome,
   t: TranslateProjects,
 ): string | null {
-  if (outcome.configSaveFailed) {
-    return t("createConfigWarning");
-  }
   if (outcome.activateFailed) {
     return t("createActivateWarning");
   }

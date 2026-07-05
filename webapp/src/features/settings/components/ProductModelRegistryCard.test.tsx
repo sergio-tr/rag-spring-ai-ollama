@@ -147,6 +147,42 @@ describe("ProductModelRegistryCard", () => {
     expect(screen.queryByText(/Ollama is unreachable/i)).not.toBeInTheDocument();
   });
 
+  it("hides pull and verify controls when effective provider is OpenAI-compatible", async () => {
+    useMeSelectableLlmModelsMock.mockReturnValue({
+      data: { effectiveProvider: "OPENAI_COMPATIBLE", models: [] },
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useMeSelectableLlmModels>);
+    apiFetch.mockResolvedValue(registryResponse());
+
+    render(<ProductModelRegistryCard />, { wrapper: Wrapper });
+
+    await screen.findByText("qwen:latest");
+    expect(screen.getByText("Configured models")).toBeInTheDocument();
+    expect(
+      screen.getByText(/configured in the LiteLLM\/OpenAI-compatible catalog/i),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Configured")).toHaveLength(2);
+    expect(screen.queryByTestId("model-registry-verify-qwen:latest")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("model-registry-pull-qwen:latest")).not.toBeInTheDocument();
+  });
+
+  it("shows Available badge and local actions when effective provider is Ollama-native", async () => {
+    useMeSelectableLlmModelsMock.mockReturnValue({
+      data: { effectiveProvider: "OLLAMA_NATIVE", models: [] },
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useMeSelectableLlmModels>);
+    apiFetch.mockResolvedValue(registryResponse());
+
+    render(<ProductModelRegistryCard />, { wrapper: Wrapper });
+
+    await screen.findByText("qwen:latest");
+    expect(screen.getAllByText("Available")).toHaveLength(2);
+    expect(screen.getByTestId("model-registry-verify-qwen:latest")).toBeInTheDocument();
+    expect(screen.getByTestId("model-registry-pull-qwen:latest")).toBeInTheDocument();
+  });
+
   it("verifies a model through the user-safe check endpoint", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(registryResponse());

@@ -86,22 +86,6 @@ export function EmbeddingDefaultsSettings({ form, config }: EmbeddingDefaultsSet
       type: "number",
     },
     {
-      key: "topK" as keyof ConfigFormValues,
-      label: t("embeddingDefaultsTopK"),
-      type: "number",
-    },
-    {
-      key: "similarityThreshold" as keyof ConfigFormValues,
-      label: t("embeddingDefaultsSimilarityThreshold"),
-      type: "number",
-    },
-    {
-      key: "materializationStrategy" as keyof ConfigFormValues,
-      label: t("embeddingDefaultsMaterializationStrategy"),
-      type: "select",
-      options: ["CHUNK_LEVEL", "DOCUMENT_LEVEL", "HYBRID"],
-    },
-    {
       key: "embeddingBatchSize" as keyof ConfigFormValues,
       label: t("embeddingDefaultsBatchSize"),
       type: "number",
@@ -132,7 +116,7 @@ export function EmbeddingDefaultsSettings({ form, config }: EmbeddingDefaultsSet
     <div className="min-w-0 max-w-full space-y-3 rounded-md border bg-muted/20 p-3" data-testid="embedding-defaults-settings">
       <Label className="text-sm">{t("embeddingDefaultsTitle")}</Label>
       <p className="text-muted-foreground text-xs">{t("embeddingDefaultsHint")}</p>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="flex flex-wrap gap-3">
         {fields.map((field) => {
           const configured = form.watch(field.key);
           const effectiveValue = readEffectiveEmbeddingField(config, effective, String(field.key));
@@ -142,7 +126,7 @@ export function EmbeddingDefaultsSettings({ form, config }: EmbeddingDefaultsSet
           if (field.type === "select") {
             const selectValue = formatFieldValue(displayValue);
             return (
-              <div key={String(field.key)} className="space-y-1" data-testid={`embedding-default-${String(field.key)}`}>
+              <div key={String(field.key)} className="min-w-[220px] flex-1 space-y-1" data-testid={`embedding-default-${String(field.key)}`}>
                 <Label htmlFor={`embedding-default-${String(field.key)}`}>{field.label}</Label>
                 <select
                   id={`embedding-default-${String(field.key)}`}
@@ -178,7 +162,7 @@ export function EmbeddingDefaultsSettings({ form, config }: EmbeddingDefaultsSet
           if (field.type === "checkbox") {
             const checked = displayValue === true;
             return (
-              <div key={String(field.key)} className="space-y-1" data-testid={`embedding-default-${String(field.key)}`}>
+              <div key={String(field.key)} className="min-w-[220px] flex-1 space-y-1" data-testid={`embedding-default-${String(field.key)}`}>
                 <Label>{field.label}</Label>
                 <div className="flex items-center gap-2">
                   <input
@@ -206,7 +190,7 @@ export function EmbeddingDefaultsSettings({ form, config }: EmbeddingDefaultsSet
           }
 
           return (
-            <div key={String(field.key)} className="space-y-1" data-testid={`embedding-default-${String(field.key)}`}>
+            <div key={String(field.key)} className="min-w-[220px] flex-1 space-y-1" data-testid={`embedding-default-${String(field.key)}`}>
               <Label htmlFor={`embedding-default-${String(field.key)}`}>{field.label}</Label>
               <Input
                 id={`embedding-default-${String(field.key)}`}

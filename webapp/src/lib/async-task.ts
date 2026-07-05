@@ -5,13 +5,13 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Local watchdog expiry while polling — the server job may still be running. */
+/** Local watchdog expiry while polling - the server job may still be running. */
 export class LabJobPollTimeoutError extends Error {
   override readonly name = "LabJobPollTimeoutError";
   readonly lastStatus: AsyncTaskStatusDto | null;
 
   constructor(lastStatus: AsyncTaskStatusDto | null, message?: string) {
-    super(message ?? "Stopped watching — job may still be running on the server.");
+    super(message ?? "Stopped watching - job may still be running on the server.");
     this.lastStatus = lastStatus;
   }
 }
@@ -45,14 +45,14 @@ async function pollUntilTerminal(
       return s;
     }
     if (maxWaitMs != null && Date.now() - startedAt >= maxWaitMs) {
-      throw new LabJobPollTimeoutError(s, "Stopped watching — job may still be running on the server.");
+      throw new LabJobPollTimeoutError(s, "Stopped watching - job may still be running on the server.");
     }
     await sleep(intervalMs);
   }
 }
 
 /**
- * Polls GET `{product}/me/account/jobs/{id}` (export/deletion jobs — not Lab).
+ * Polls GET `{product}/me/account/jobs/{id}` (export/deletion jobs - not Lab).
  */
 export async function pollAccountJob(
   jobId: string,
@@ -61,7 +61,7 @@ export async function pollAccountJob(
     intervalMs?: number;
     signal?: AbortSignal;
     throwOnFailed?: boolean;
-    /** Caps local polling — server job may still run ({@link LabJobPollTimeoutError}). */
+    /** Caps local polling - server job may still run ({@link LabJobPollTimeoutError}). */
     maxWaitMs?: number;
   },
 ): Promise<AsyncTaskStatusDto> {

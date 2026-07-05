@@ -48,7 +48,7 @@ describe("effective-config-form-values", () => {
     expect(merged.formValues.topK).toBe(4);
   });
 
-  it("omits inherited values from save payload", () => {
+  it("omits inherited values from save patch when nothing stored", () => {
     const keys = ["llmTemperature", "topK"];
     const payload = buildSavePayloadRespectingEffectiveDefaults(
       {},
@@ -59,15 +59,29 @@ describe("effective-config-form-values", () => {
       embeddingEffective,
       "OPENAI_COMPATIBLE",
     );
-    expect(payload.llmTemperature).toBeUndefined();
-    expect(payload.topK).toBeUndefined();
+    expect(payload).toEqual({});
+  });
+
+  it("repeated save keeps stored retrieval overrides in patch semantics", () => {
+    const keys = ["topK", "similarityThreshold"];
+    const stored = { topK: 12, similarityThreshold: 0.15 };
+    const payload = buildSavePayloadRespectingEffectiveDefaults(
+      stored,
+      { topK: 12, similarityThreshold: 0.15 },
+      {},
+      keys,
+      llmEffective,
+      embeddingEffective,
+      "OPENAI_COMPATIBLE",
+    );
+    expect(payload).toEqual({});
   });
 
   it("persists values that differ from effective defaults", () => {
-    const keys = ["llmTemperature", "topK"];
+    const keys = ["llmTemperature", "topK", "similarityThreshold"];
     const payload = buildSavePayloadRespectingEffectiveDefaults(
       {},
-      { llmTemperature: 0.7, topK: 12 },
+      { llmTemperature: 0.7, topK: 12, similarityThreshold: 0.15 },
       {},
       keys,
       llmEffective,
@@ -76,6 +90,7 @@ describe("effective-config-form-values", () => {
     );
     expect(payload.llmTemperature).toBe(0.7);
     expect(payload.topK).toBe(12);
+    expect(payload.similarityThreshold).toBe(0.15);
   });
 
   it("clears only requested override keys", () => {

@@ -343,7 +343,7 @@ public final class ConversationFollowUpResolver {
         return distinct;
     }
 
-    /** Visible for runtime tests — most recent user turn carrying an explicit date. */
+    /** Visible for runtime tests - most recent user turn carrying an explicit date. */
     static Optional<String> findMostRecentUserStatedDate(List<ConversationMemoryTurn> history) {
         return findMostRecentDateInRole(history, MessageRole.USER);
     }

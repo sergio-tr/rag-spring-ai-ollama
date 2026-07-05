@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { NewConversationDialog } from "./NewConversationDialog";
+import { P0_PRESET_ID, P3_PRESET_ID } from "@/features/chat/lib/preset-product-selection";
 
 const hooksMock = vi.hoisted(() => ({
   useProjectCompatiblePresets: vi.fn(),
@@ -68,10 +69,16 @@ describe("NewConversationInitialPresetCompatibility", () => {
         effectiveEmbeddingModelId: "mxbai",
         hasActiveIndex: true,
         readyDocumentCount: 1,
-        activeSnapshotCapabilities: null,
+        activeSnapshotCapabilities: {
+          materializationStrategy: "CHUNK_LEVEL",
+          supportsMetadata: false,
+          embeddingModelId: "mxbai",
+          chunkMaxChars: 400,
+          chunkOverlap: 40,
+        },
         productPresets: [
           {
-            preset: { id: "chunk-preset", name: "Chunk preset", system: true },
+            preset: { id: P3_PRESET_ID, name: "Chunk preset", system: true },
             indexRequirements: null,
             compatibility: {
               selectable: true,
@@ -129,10 +136,20 @@ describe("NewConversationInitialPresetCompatibility", () => {
         effectiveEmbeddingModelId: null,
         hasActiveIndex: true,
         readyDocumentCount: 1,
-        activeSnapshotCapabilities: null,
+        activeSnapshotCapabilities: {
+          materializationStrategy: "CHUNK_LEVEL",
+          supportsMetadata: false,
+          embeddingModelId: "mxbai",
+          chunkMaxChars: 400,
+          chunkOverlap: 40,
+        },
         productPresets: [
           {
-            preset: { id: `${projectId}-preset`, name: `${projectId} preset`, system: false },
+            preset: {
+              id: projectId === "p1" ? P3_PRESET_ID : P0_PRESET_ID,
+              name: `${projectId} preset`,
+              system: false,
+            },
             indexRequirements: null,
             compatibility: {
               selectable: true,

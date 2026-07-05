@@ -93,7 +93,7 @@ describe("preset-display", () => {
   });
 
   it("resolvePresetDisplayName strips code prefix from catalog labels", () => {
-    const p = preset({ code: "P4", label: "P4 — Chunk metadata", protocolStageIndex: 4 });
+    const p = preset({ code: "P4", label: "P4 - Chunk metadata", protocolStageIndex: 4 });
     expect(resolvePresetDisplayName(p)).toBe("Chunk metadata");
   });
 

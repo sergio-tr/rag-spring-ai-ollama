@@ -36,14 +36,29 @@ function messageMetadataBool(message: MessageDto, key: string): boolean {
   return coerceBool(message.executionMetadata?.[key]);
 }
 
+function messageMetadataNumber(message: MessageDto, key: string): number | null {
+  const value = message.executionMetadata?.[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
 function hasRuntimeTraceMetadata(message: MessageDto): boolean {
   const meta = message.executionMetadata ?? {};
   return [
     "traceId",
     "workflowName",
     "selectedSnapshotIds",
+    "retrievalEffectiveTopK",
+    "retrievalEffectiveSimilarityThreshold",
+    "retrievalDenseFetchLimit",
     "retrievalDenseCandidateCount",
+    "retrievalAfterFilterCount",
     "retrievalAfterCompressionCount",
+    "retrievalContextReductionReason",
     "requestedDate",
     "dateMismatchDetected",
     "groundingPolicyApplied",
@@ -235,6 +250,27 @@ export function ChatAssistantMessageExtras({ message }: Readonly<{ message: Mess
   const showTrace =
     hasRuntimeTraceMetadata(message) || Boolean(messageMetadataString(message, "abstentionReason"));
   const requestedDate = messageMetadataString(message, "requestedDate");
+  const effectiveTopK = messageMetadataNumber(message, "retrievalEffectiveTopK");
+  const threshold = messageMetadataNumber(message, "retrievalEffectiveSimilarityThreshold");
+  const denseCandidates = messageMetadataNumber(message, "retrievalDenseCandidateCount");
+  const afterFilter = messageMetadataNumber(message, "retrievalAfterFilterCount");
+  const afterCompression = messageMetadataNumber(message, "retrievalAfterCompressionCount");
+  const reductionReason = messageMetadataString(message, "retrievalContextReductionReason");
+  const showReductionReason =
+    effectiveTopK != null &&
+    afterCompression != null &&
+    afterCompression < effectiveTopK &&
+    Boolean(reductionReason);
+  const reductionReasonLabel =
+    reductionReason === "fewer_dense_hits"
+      ? t("chatTraceReductionReason.fewer_dense_hits")
+      : reductionReason === "threshold_or_scope"
+        ? t("chatTraceReductionReason.threshold_or_scope")
+        : reductionReason === "section_merge"
+          ? t("chatTraceReductionReason.section_merge")
+          : reductionReason === "compression_drop"
+            ? t("chatTraceReductionReason.compression_drop")
+            : t("chatTraceReductionReason.context_budget_or_dedup");
 
   return (
     <details className="group mt-2" data-testid="chat-message-metadata">
@@ -379,10 +415,24 @@ export function ChatAssistantMessageExtras({ message }: Readonly<{ message: Mess
                   </dd>
                 </div>
               ) : null}
-              {message.executionMetadata?.retrievalAfterCompressionCount != null ? (
+              {afterCompression != null ? (
                 <div className="flex justify-between gap-2">
                   <dt className="text-muted-foreground">{t("chatTraceFieldRetrieval")}</dt>
-                  <dd>{String(message.executionMetadata.retrievalAfterCompressionCount)} context chunks</dd>
+                  <dd>
+                    {t("chatTraceRetrievalSummary", {
+                      effectiveTopK: effectiveTopK != null ? String(effectiveTopK) : "?",
+                      threshold: threshold != null ? String(threshold) : "?",
+                      dense: denseCandidates != null ? String(denseCandidates) : "?",
+                      filtered: afterFilter != null ? String(afterFilter) : "?",
+                      final: String(afterCompression),
+                    })}
+                  </dd>
+                </div>
+              ) : null}
+              {showReductionReason ? (
+                <div className="col-span-full" data-testid="chat-trace-reduction-reason">
+                  <dt className="text-muted-foreground">{t("chatTraceFieldContextReductionReason")}</dt>
+                  <dd>{reductionReasonLabel}</dd>
                 </div>
               ) : null}
               {messageMetadataString(message, "groundingPolicyApplied") ? (

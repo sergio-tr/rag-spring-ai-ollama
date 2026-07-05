@@ -1176,7 +1176,7 @@ export function LabEvaluationRunCard({
           e.message.includes("EMBEDDING_CAMPAIGN_REQUIRES_ALIGNED_INDEX_SNAPSHOT_IDS"))
       ) {
         if (!mountedEvalCardRef.current) return;
-        setErr(t("embeddingCampaignMissingSnapshots", { models: "—" }));
+        setErr(t("embeddingCampaignMissingSnapshots", { models: "-" }));
         setRunning(false);
         setWatchLive(false);
       } else {

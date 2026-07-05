@@ -51,7 +51,7 @@ public final class ConnectivityFailureDetector {
                 return true;
             }
             if (cur instanceof IOException && !(cur instanceof FileNotFoundException)) {
-                // Generic I/O to remote — often broken pipe / reset
+                // Generic I/O to remote - often broken pipe / reset
                 String m = cur.getMessage();
                 if (m != null && (m.contains("Connection reset") || m.contains("Broken pipe"))) {
                     return true;

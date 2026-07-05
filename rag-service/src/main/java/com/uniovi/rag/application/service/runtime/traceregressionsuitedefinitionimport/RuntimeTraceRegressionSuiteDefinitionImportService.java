@@ -19,7 +19,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * P39: ZIP import adapter (non-owning) — validates a P38-shaped ZIP, maps {@link RuntimeTraceRegressionSuiteDefinitionDetailDto}
+ * P39: ZIP import adapter (non-owning) - validates a P38-shaped ZIP, maps {@link RuntimeTraceRegressionSuiteDefinitionDetailDto}
  * to {@link CreateDefinitionCommand} via {@link RuntimeTraceRegressionSuiteDefinitionDetailDto#toCreateDefinitionCommand()}, then
  * delegates {@link RuntimeTraceRegressionSuiteDefinitionService#create(UUID, CreateDefinitionCommand)} only.
  */

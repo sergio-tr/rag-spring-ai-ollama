@@ -170,7 +170,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             relevantMinutes = byMinCount;
         }
 
-        // Step 3.6c: Place enumeration — route to place field, not topic filter
+        // Step 3.6c: Place enumeration - route to place field, not topic filter
         if (StructuredMinuteMetadataSupport.isPlaceListQuery(query)) {
             Optional<String> placeAnswer =
                     StructuredMinuteMetadataSupport.formatPlaceListAnswer(query, relevantMinutes);
@@ -189,7 +189,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         }
 
         // Step 3.7: Additional filtering by topic + person if query requires it (AND logic)
-        // Do NOT apply when query is only "when/where did [person] attend" (e.g. Alejandro Torres) — would zero out valid results
+        // Do NOT apply when query is only "when/where did [person] attend" (e.g. Alejandro Torres) - would zero out valid results
         if (requiresTopicAndPersonFilter(query) && !isAttendeeListQuery(query)) {
             List<Minute> topicPersonFiltered =
                     filterMinutesByTopicAndPerson(query, relevantMinutes, ner, evidenceByKey);
@@ -664,7 +664,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     }
     
     /**
-     * Filters minutes by topic AND person (both conditions must be met — AND logic).
+     * Filters minutes by topic AND person (both conditions must be met - AND logic).
      * Example: attendees at meetings that discussed a topic and were chaired by a named person.
      */
     private List<Minute> filterMinutesByTopicAndPerson(

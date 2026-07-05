@@ -45,9 +45,9 @@ function Harness() {
 }
 
 describe("SettingsRetrievalDefaults", () => {
-  it("shows deployment-aligned default topK of 8 in retrieval settings", () => {
+  it("does not expose materialization strategy in embedding defaults settings", () => {
     render(<Harness />);
-    expect(screen.getByLabelText(/^Top K$/i)).toHaveValue(8);
-    expect(screen.getByLabelText(/^Similarity threshold$/i)).toHaveValue(0.25);
+    expect(screen.queryByLabelText(/^Materialization strategy$/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("embedding-default-embeddingBatchSize")).toBeInTheDocument();
   });
 });

@@ -15,6 +15,8 @@ import com.uniovi.rag.infrastructure.llm.ollama.OllamaApiClient;
 import com.uniovi.rag.infrastructure.llm.openaicompat.OpenAiCompatibleLlmChatClient;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -49,6 +51,25 @@ public class LlmManualHealthCheckService {
     }
 
     public LlmHealthCheckResult checkResolved(ResolvedLlmConfig config) {
+        return checkResolvedWithTimeout(config, null);
+    }
+
+    /**
+     * Lightweight chat probe for fail-fast preflight. Uses {@code max_tokens=1} style health prompts.
+     *
+     * @param timeoutMs when null, uses resolved config timeout (capped by caller)
+     */
+    public LlmHealthCheckResult probeChatWithTimeout(UUID userId, String chatModelOverride, int timeoutMs) {
+        Optional<String> override =
+                chatModelOverride != null && !chatModelOverride.isBlank()
+                        ? Optional.of(chatModelOverride.trim())
+                        : Optional.empty();
+        ResolvedLlmConfig config =
+                configResolver.resolveForOrchestratedExecute(userId, null, null, null, override);
+        return checkResolvedWithTimeout(config, timeoutMs);
+    }
+
+    private LlmHealthCheckResult checkResolvedWithTimeout(ResolvedLlmConfig config, Integer timeoutOverrideMs) {
         String operation = "health-check";
         long startedAt = System.nanoTime();
         LlmSafeOperationLogger.logStarted(
@@ -57,7 +78,7 @@ public class LlmManualHealthCheckService {
             LlmHealthCheckResult result =
                     switch (config.provider()) {
                         case OLLAMA_NATIVE -> checkOllama(config, startedAt);
-                        case OPENAI_COMPATIBLE -> checkOpenAiCompatible(config, startedAt);
+                        case OPENAI_COMPATIBLE -> checkOpenAiCompatible(config, startedAt, timeoutOverrideMs);
                     };
             LlmSafeOperationLogger.logCompleted(
                     log,
@@ -98,9 +119,15 @@ public class LlmManualHealthCheckService {
     }
 
     private LlmHealthCheckResult checkOpenAiCompatible(ResolvedLlmConfig config, long startedAt) {
+        return checkOpenAiCompatible(config, startedAt, null);
+    }
+
+    private LlmHealthCheckResult checkOpenAiCompatible(
+            ResolvedLlmConfig config, long startedAt, Integer timeoutOverrideMs) {
         llmClientResolver.resolveChatClient(config);
         LlmChatClient client = clientRegistry.createOpenAiCompatibleChatClient(config);
-        int timeoutMs = config.timeoutMs() != null && config.timeoutMs() > 0 ? config.timeoutMs() : 60_000;
+        int configured = config.timeoutMs() != null && config.timeoutMs() > 0 ? config.timeoutMs() : 60_000;
+        int timeoutMs = timeoutOverrideMs != null && timeoutOverrideMs > 0 ? timeoutOverrideMs : configured;
         LlmChatRequest probe =
                 LlmChatRequest.of(
                         config.chatModel(),

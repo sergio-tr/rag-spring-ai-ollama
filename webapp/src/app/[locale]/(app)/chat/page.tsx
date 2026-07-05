@@ -49,9 +49,7 @@ import {
 import { chatFailureHintForCode, normalizeChatFailureCode, resolveChatJobFailureUserHint } from "@/features/chat/lib/chat-job-errors";
 import {
   readProjectClassifierModelPreference,
-  readProjectLlmModelPreference,
   writeProjectClassifierModelPreference,
-  writeProjectLlmModelPreference,
 } from "@/features/chat/lib/chat-model-persistence";
 import { followLabJob } from "@/lib/lab-job-follow";
 import { beginTraceSession, endTraceSession } from "@/lib/trace-session";
@@ -247,6 +245,19 @@ function scheduleHydrateComposerFromDraft(
   }, 0);
 }
 
+const CHAT_MESSAGE_ROW = "chat-message-row rounded-lg px-3 py-2 text-sm";
+const CHAT_MESSAGE_USER = cn(CHAT_MESSAGE_ROW, "chat-message-user bg-primary text-primary-foreground");
+const CHAT_MESSAGE_ASSISTANT = cn(CHAT_MESSAGE_ROW, "chat-message-assistant border bg-background");
+const CHAT_MESSAGE_ASSISTANT_CLARIFICATION = cn(
+  CHAT_MESSAGE_ROW,
+  "chat-message-assistant border border-amber-500/55 bg-amber-500/10",
+);
+const CHAT_MESSAGE_ASSISTANT_STREAMING = cn(
+  CHAT_MESSAGE_ROW,
+  "chat-message-assistant overflow-x-hidden border border-dashed bg-muted/20",
+);
+const CHAT_MESSAGE_ASSISTANT_STATUS = cn(CHAT_MESSAGE_ROW, "chat-message-assistant w-full");
+
 function ChatPageInner() {
   const t = useTranslations("Chat");
   const tHelp = useTranslations("Help");
@@ -269,14 +280,9 @@ function ChatPageInner() {
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendFailureCode, setSendFailureCode] = useState<string | null>(null);
-  const llmPreferenceAppliedRef = useRef<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [editingUserMessageId, setEditingUserMessageId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
-  /** Empty string = backend default model. Scoped to the conversation edited locally. */
-  const [llmModelChoiceDraft, setLlmModelChoiceDraft] = useState<{ conversationId: string | null; value: string }>(
-    { conversationId: null, value: "" },
-  );
   /** Empty string = no per-conversation classifier override (project RAG JSON applies). */
   const [classifierModelChoiceDraft, setClassifierModelChoiceDraft] = useState<{
     conversationId: string | null;
@@ -440,8 +446,10 @@ function ChatPageInner() {
   );
   const conversationNotFound = Boolean(conversationId && convs && !activeConv);
 
-  const llmModelChoice =
-    llmModelChoiceDraft.conversationId === activeConv?.id ? llmModelChoiceDraft.value : (activeConv?.llmModel ?? "");
+  const runtimeStateQuery = useChatRuntimeState(conversationId);
+  const runtimeState = runtimeStateQuery.data ?? null;
+
+  const llmModelChoice = useMemo(() => activeConv?.llmModel?.trim() ?? "", [activeConv?.llmModel]);
   const classifierModelChoice =
     classifierModelChoiceDraft.conversationId === activeConv?.id
       ? classifierModelChoiceDraft.value
@@ -468,44 +476,28 @@ function ChatPageInner() {
 
   useEffect(() => {
     patchConv.reset();
-    llmPreferenceAppliedRef.current = null;
   }, [conversationId]); /* eslint-disable-line react-hooks/exhaustive-deps -- reset patch mutation only when switching chats */
 
   useEffect(() => {
     if (!activeConv?.id) return;
-    const fromConv = activeConv.llmModel?.trim() ?? "";
-    const fromProject = projectId ? readProjectLlmModelPreference(projectId) : "";
     const clfConv = activeConv.classifierModelId?.trim() ?? "";
     const clfProject = projectId ? readProjectClassifierModelPreference(projectId) : "";
     const syncTimer = setTimeout(() => {
-      setLlmModelChoiceDraft({
-        conversationId: activeConv.id,
-        value: fromConv || fromProject,
-      });
       setClassifierModelChoiceDraft({
         conversationId: activeConv.id,
         value: clfConv || clfProject,
       });
     }, 0);
     return () => clearTimeout(syncTimer);
-  }, [activeConv?.id, activeConv?.llmModel, activeConv?.classifierModelId, projectId]);
+  }, [activeConv?.id, activeConv?.classifierModelId, projectId]);
 
-  useEffect(() => {
-    if (!conversationId || !projectId || !activeConv) return;
-    const pref = readProjectLlmModelPreference(projectId);
-    if (!pref || activeConv.llmModel?.trim()) return;
-    if (llmPreferenceAppliedRef.current === conversationId) return;
-    llmPreferenceAppliedRef.current = conversationId;
-    patchConv.mutate({ conversationId, body: { llmModel: pref } });
-  }, [conversationId, projectId, activeConv, patchConv]);
+  // Legacy conversation llmModel auto-seed removed (A1): final_answer model comes from Assistant Configuration.
 
   useEffect(() => {
     const syncTimer = setTimeout(() => setTitleDraft(activeConv?.title ?? ""), 0);
     return () => clearTimeout(syncTimer);
   }, [activeConv?.id, activeConv?.title]);
 
-  const runtimeStateQuery = useChatRuntimeState(conversationId);
-  const runtimeState = runtimeStateQuery.data ?? null;
   const presetSelectValue = runtimeState?.selectedPresetId ?? "";
   const runtimeBlockingMessage = firstRuntimeBlockingUserMessage(runtimeState, t);
   const runtimeBlockingCode = firstRuntimeBlockingCode(runtimeState);
@@ -793,7 +785,6 @@ function ChatPageInner() {
     setAssistantPhase("sending");
     const body: PostMessageBody = {
       content: text,
-      llmModel: llmModelChoice.trim() ? llmModelChoice.trim() : null,
     };
     let targetConversationId = conversationId;
     setIsSending(true);
@@ -874,7 +865,6 @@ function ChatPageInner() {
     input,
     isSending,
     isStreaming,
-    llmModelChoice,
     refetchMessages,
     runChatJob,
     runtimeBlockingCode,
@@ -955,7 +945,6 @@ function ChatPageInner() {
       );
       const postBody: PostMessageBody = {
         content: text,
-        llmModel: llmModelChoice.trim() ? llmModelChoice.trim() : null,
         continueAfterUserMessageId: userMsgId,
       };
 
@@ -1006,7 +995,6 @@ function ChatPageInner() {
     editBody,
     editingUserMessageId,
     isSending,
-    llmModelChoice,
     queryClient,
     refetchMessages,
     runChatJob,
@@ -1084,26 +1072,13 @@ function ChatPageInner() {
   const applyLlmModelChoice = useCallback(
     (v: string) => {
       if (!conversationId) return;
-      setLlmModelChoiceDraft({ conversationId, value: v });
-      const persistOnSuccess = () => {
-        if (projectId) writeProjectLlmModelPreference(projectId, v);
-      };
-      const revertOnError = () => {
-        setLlmModelChoiceDraft({ conversationId, value: activeConv?.llmModel ?? "" });
-      };
       if (!v.trim()) {
-        patchConv.mutate(
-          { conversationId, body: { clearLlmModel: true } },
-          { onSuccess: persistOnSuccess, onError: revertOnError },
-        );
+        patchConv.mutate({ conversationId, body: { clearLlmModel: true } });
         return;
       }
-      patchConv.mutate(
-        { conversationId, body: { llmModel: v.trim() } },
-        { onSuccess: persistOnSuccess, onError: revertOnError },
-      );
+      patchConv.mutate({ conversationId, body: { llmModel: v.trim() } });
     },
-    [activeConv?.llmModel, conversationId, patchConv, projectId],
+    [conversationId, patchConv],
   );
 
   const applyClassifierModelChoice = useCallback(
@@ -1541,20 +1516,19 @@ function ChatPageInner() {
       )}
       <div
         data-testid="chat-main-workspace"
-        data-chat-layout-mode={desktopConfigSplit ? "split" : "centered"}
-        className={cn(
-          "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row md:flex-nowrap md:gap-3",
-          !desktopConfigSplit && "md:justify-center",
-        )}
+        data-chat-layout-mode={desktopConfigSplit ? "split" : "expanded"}
+        className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden md:flex-row md:flex-nowrap"
       >
         <div
           data-testid="chat-readable-column"
           className={cn(
-            "flex w-full min-h-0 min-w-0 flex-col gap-3 px-2 sm:px-3 md:px-5",
-            desktopConfigSplit
-              ? "md:min-w-0 md:flex-[7] md:basis-[70%] md:max-w-[70%]"
-              : "md:mx-auto md:w-full md:max-w-[min(50%,48rem)] md:flex-none",
+            "flex min-h-0 min-w-0 w-full flex-1 flex-col",
+            desktopConfigSplit && "md:min-w-0",
           )}
+        >
+        <div
+          data-testid="chat-thread-shell"
+          className="chat-thread-shell flex min-h-0 min-w-0 flex-1 flex-col gap-3"
         >
         {conversationId && active ? (
           <header className="flex flex-wrap items-end gap-3 gap-y-2 border-border border-b pb-3">
@@ -1713,13 +1687,10 @@ function ChatPageInner() {
               data-message-seq={typeof m.seq === "number" ? String(m.seq) : undefined}
               className={
                 m.role === "USER"
-                  ? "ml-auto max-w-[85%] min-w-0 rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed [overflow-wrap:anywhere]"
-                  : cn(
-                      "mr-auto max-w-[85%] min-w-0 rounded-lg border px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]",
-                      isAssistantClarificationTurn(m)
-                        ? "border-amber-500/55 bg-amber-500/10"
-                        : "bg-background",
-                    )
+                  ? CHAT_MESSAGE_USER
+                  : isAssistantClarificationTurn(m)
+                    ? CHAT_MESSAGE_ASSISTANT_CLARIFICATION
+                    : CHAT_MESSAGE_ASSISTANT
               }
             >
               {m.role === "USER" &&
@@ -1827,13 +1798,13 @@ function ChatPageInner() {
             <article
               aria-label={t("optimisticUserAria")}
               data-testid="chat-optimistic-user"
-              className="ml-auto max-w-[85%] min-w-0 rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed [overflow-wrap:anywhere]"
+              className={CHAT_MESSAGE_USER}
             >
               <p className="whitespace-pre-wrap break-words">{optimisticUserContent}</p>
             </article>
           ) : null}
           {showAssistantPipelineRow && assistantPipelineLabel ? (
-            <div className="mr-auto max-w-[85%] w-full min-w-0">
+            <div className={CHAT_MESSAGE_ASSISTANT_STATUS}>
               <InlineHelpStatus
                 status={assistantPipelineTraceStatus}
                 label={assistantPipelineLabel}
@@ -1841,7 +1812,7 @@ function ChatPageInner() {
             </div>
           ) : null}
           {isStreaming && streamingText ? (
-            <div className="mr-auto max-w-[85%] min-w-0 overflow-x-hidden rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]">
+            <div className={CHAT_MESSAGE_ASSISTANT_STREAMING}>
               <ChatAssistantMarkdown content={streamingText} data-testid="chat-streaming-answer" />
             </div>
           ) : null}
@@ -1979,6 +1950,7 @@ function ChatPageInner() {
               {t("send")}
             </Button>
           </div>
+        </div>
         </div>
         </div>
         <ChatConfigurationSidePanel

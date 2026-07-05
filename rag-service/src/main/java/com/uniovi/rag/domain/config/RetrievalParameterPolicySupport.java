@@ -58,11 +58,41 @@ public final class RetrievalParameterPolicySupport {
             String key,
             Map<String, Object> runtimeOverride,
             Map<String, Object> presetValues) {
+        return sourceForKey(key, runtimeOverride, presetValues, null, null);
+    }
+
+    public static RetrievalParameterPolicy sourceForKey(
+            String key,
+            Map<String, Object> runtimeOverride,
+            Map<String, Object> presetValues,
+            Map<String, Object> projectValues,
+            Map<String, Object> userValues) {
+        String mode = RetrievalOverrideModeSupport.readMode(runtimeOverride);
+        if (RetrievalOverrideModeSupport.CUSTOM.equals(mode)) {
+            if (runtimeOverride != null && runtimeOverride.containsKey(key)) {
+                return RetrievalParameterPolicy.CONVERSATION_CUSTOM;
+            }
+        }
+        if (RetrievalOverrideModeSupport.ASSISTANT_DEFAULTS.equals(mode)) {
+            return RetrievalParameterPolicy.USER_DEFAULTS;
+        }
+        if (RetrievalOverrideModeSupport.PROJECT_SETTINGS.equals(mode)) {
+            if (projectValues != null && projectValues.containsKey(key)) {
+                return RetrievalParameterPolicy.PROJECT_DEFAULTS;
+            }
+            if (userValues != null && userValues.containsKey(key)) {
+                return RetrievalParameterPolicy.USER_DEFAULTS;
+            }
+            return RetrievalParameterPolicy.USER_DEFAULTS;
+        }
         if (runtimeOverride != null && runtimeOverride.containsKey(key)) {
             return RetrievalParameterPolicy.CONVERSATION_CUSTOM;
         }
         if (presetValues != null && presetValues.containsKey(key)) {
             return RetrievalParameterPolicy.PRESET_LOCKED;
+        }
+        if (projectValues != null && projectValues.containsKey(key)) {
+            return RetrievalParameterPolicy.PROJECT_DEFAULTS;
         }
         return RetrievalParameterPolicy.USER_DEFAULTS;
     }

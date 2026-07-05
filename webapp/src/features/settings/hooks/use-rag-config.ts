@@ -28,17 +28,33 @@ export function useConfigSchemaQuery() {
 
 export function useUserRagConfigQuery() {
   return useQuery({
-    queryKey: ["config", "user"],
+    queryKey: ["config", "user", "effective"],
     queryFn: () => apiFetch<Record<string, unknown>>(apiProductPath("/config/user")),
+  });
+}
+
+export function useUserStoredRagConfigQuery() {
+  return useQuery({
+    queryKey: ["config", "user", "stored"],
+    queryFn: () => apiFetch<Record<string, unknown>>(apiProductPath("/config/user/stored")),
   });
 }
 
 export function useProjectRagConfigQuery(projectId: string | undefined) {
   return useQuery({
-    queryKey: ["config", "project", projectId],
+    queryKey: ["config", "project", projectId, "effective"],
     enabled: Boolean(projectId),
     queryFn: () =>
       apiFetch<Record<string, unknown>>(apiProductPath(`/config/project/${projectId}`)),
+  });
+}
+
+export function useProjectStoredRagConfigQuery(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["config", "project", projectId, "stored"],
+    enabled: Boolean(projectId),
+    queryFn: () =>
+      apiFetch<Record<string, unknown>>(apiProductPath(`/config/project/${projectId}/stored`)),
   });
 }
 

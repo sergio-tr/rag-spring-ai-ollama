@@ -19,7 +19,7 @@ export function labEvaluationDraftStorageKey(kind: LabEvaluationDraftKind): stri
 
 const V1_FORM_STORAGE_PREFIX = "rag-lab-form-v1:";
 
-/** Legacy constant removed — embedding defaults come from catalog API (`usableAsDefault`). */
+/** Legacy constant removed - embedding defaults come from catalog API (`usableAsDefault`). */
 export const LAB_DEFAULT_EMBEDDING_MODEL_ID = "";
 
 import { parseEmbeddingBenchmarkRuntimeParameters } from "@/features/lab/lib/lab-embedding-hyperparameters";
@@ -64,7 +64,7 @@ export type LabEvaluationDraftStored = {
   benchmarkRuntimeParameters: LabBenchmarkRuntimeParameters;
 };
 
-/** Legacy Ollama-only defaults removed from product catalog — cleared on load without warnings. */
+/** Legacy Ollama-only defaults removed from product catalog - cleared on load without warnings. */
 export const LEGACY_STALE_LLM_MODEL_IDS = new Set(["gemma3:4b", "mistral:7b", "llama3.1:8b"]);
 export const LEGACY_STALE_EMBEDDING_MODEL_IDS = new Set(["mxbai-embed-large:latest", "mxbai-embed-large"]);
 
@@ -384,7 +384,7 @@ export function loadLabEvaluationDraft(kind: LabEvaluationDraftKind): LabEvaluat
       return finalizeLoadedDraft(kind, stored);
     }
   } catch {
-    // corrupted storage — fall through
+    // corrupted storage - fall through
   }
   return { v: 1, ...defaultLabEvaluationDraft() };
 }

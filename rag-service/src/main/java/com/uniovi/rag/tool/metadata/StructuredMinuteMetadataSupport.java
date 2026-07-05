@@ -182,7 +182,7 @@ public final class StructuredMinuteMetadataSupport {
 
     /**
      * Returns {@code dd/MM/yyyy} only when the source date can be parsed reliably.
-     * Never invents a date — returns empty when conversion is not possible.
+     * Never invents a date - returns empty when conversion is not possible.
      */
     public static String resolveCanonicalSlashDate(Minute minute) {
         if (minute == null) {
@@ -449,7 +449,7 @@ public final class StructuredMinuteMetadataSupport {
         return Optional.empty();
     }
 
-    /** Corpus-wide place enumeration — metadata place field, not topic filter. */
+    /** Corpus-wide place enumeration - metadata place field, not topic filter. */
     public static boolean isPlaceListQuery(String query) {
         if (query == null || query.isBlank()) {
             return false;
@@ -775,7 +775,7 @@ public final class StructuredMinuteMetadataSupport {
     }
 
     /**
-     * Deterministic answer for “which actas start at HH:mm?” — count, ACTA ids, slash dates, sources.
+     * Deterministic answer for “which actas start at HH:mm?” - count, ACTA ids, slash dates, sources.
      */
     public static String formatStartTimeListAnswer(String query, List<Minute> matching, String targetTime) {
         boolean spanish = querySeemsSpanish(query);
@@ -829,7 +829,7 @@ public final class StructuredMinuteMetadataSupport {
     }
 
     /**
-     * Deterministic answer for “which acta dates ended after HH:mm?” — slash dates and ACTA labels.
+     * Deterministic answer for “which acta dates ended after HH:mm?” - slash dates and ACTA labels.
      */
     public static String formatEndTimeAfterListAnswer(
             String query, List<Minute> matching, String thresholdTime) {
@@ -858,7 +858,7 @@ public final class StructuredMinuteMetadataSupport {
     }
 
   /**
-   * FD-CD-03: year-only COUNT_DOCUMENTS negative — corpus-scoped wording (no generic date template).
+   * FD-CD-03: year-only COUNT_DOCUMENTS negative - corpus-scoped wording (no generic date template).
    */
   public static String formatYearOnlyActaCorpusAbsence(String year) {
       return "No existen actas correspondientes al año " + year + " en el corpus.";
@@ -882,7 +882,7 @@ public final class StructuredMinuteMetadataSupport {
   }
 
     /**
-     * Deterministic answer for “how many meetings in year Y?” — count, ACTA ids, slash dates, sources.
+     * Deterministic answer for “how many meetings in year Y?” - count, ACTA ids, slash dates, sources.
      */
     public static String formatYearMeetingCountAnswer(String query, List<Minute> matching, String year) {
         boolean spanish = querySeemsSpanish(query);
@@ -932,7 +932,7 @@ public final class StructuredMinuteMetadataSupport {
     }
 
     /**
-     * Deterministic answer for “how many actas mention topic X?” — canonical labels and slash dates.
+     * Deterministic answer for “how many actas mention topic X?” - canonical labels and slash dates.
      */
     public static String formatTopicMeetingCountAnswer(String query, List<Minute> matching, String topic) {
         boolean spanish = querySeemsSpanish(query);
@@ -1439,7 +1439,7 @@ public final class StructuredMinuteMetadataSupport {
     }
 
     /**
-     * Whether an acta substantively discusses a topic (agenda item, topics, decisions) — not lexical
+     * Whether an acta substantively discusses a topic (agenda item, topics, decisions) - not lexical
      * chunk frequency.
      */
     public static boolean minuteDiscussesTopicForOccurrence(Minute minute, String topic) {

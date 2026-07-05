@@ -6,7 +6,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 /**
  * Records Micrometer counters around classifier inference (optional; no behavior change vs delegate).
  * Uses {@code rag_classifier_calls_total} with {@code status} only (success vs null_result) to keep
- * cardinality bounded — no raw model UUIDs.
+ * cardinality bounded - no raw model UUIDs.
  */
 public final class ClassifierInferenceMetricsDecorator implements QueryClassifier {
 

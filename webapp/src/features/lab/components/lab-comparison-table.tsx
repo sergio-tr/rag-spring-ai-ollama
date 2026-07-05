@@ -36,14 +36,43 @@ export function LabComparisonTh({
   children,
   className = "",
   title,
+  sortKey,
+  sortState,
+  onSort,
 }: {
   children: ReactNode;
   className?: string;
   title?: string;
+  sortKey?: string;
+  sortState?: import("@/features/lab/lib/lab-table-sort").TableSortState;
+  onSort?: (key: string) => void;
 }) {
+  const sortable = sortKey != null && onSort != null;
+  const indicator =
+    sortable && sortState?.key === sortKey ? (sortState.direction === "asc" ? " ▲" : " ▼") : "";
+  if (!sortable) {
+    return (
+      <th className={`bg-background p-2 font-medium ${className}`} title={title}>
+        {children}
+      </th>
+    );
+  }
   return (
     <th className={`bg-background p-2 font-medium ${className}`} title={title}>
-      {children}
+      <button
+        type="button"
+        className="hover:text-foreground inline-flex items-center gap-0.5 text-left font-medium"
+        data-testid={`lab-sort-header-${sortKey}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSort(sortKey);
+        }}
+      >
+        <span>
+          {children}
+          {indicator}
+        </span>
+      </button>
     </th>
   );
 }

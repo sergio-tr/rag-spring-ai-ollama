@@ -4,6 +4,11 @@ import type {
   PresetCompatibilityDto,
   ProjectCompatiblePresetsDto,
 } from "@/types/api";
+import {
+  classifyPresetProductTier,
+  isPresetVisibleInSelector,
+  type ProjectIndexCaps,
+} from "@/features/chat/lib/preset-product-selection";
 
 export function isPresetCompatibilitySelectable(compatibility: PresetCompatibilityDto | null | undefined): boolean {
   return compatibility?.selectable === true;
@@ -34,13 +39,52 @@ export function filterCompatibleExperimentalPresets(
   return list.filter((item) => isPresetCompatibilitySelectable(item.compatibility));
 }
 
+export function filterProductPresetsForSelector(
+  items: CompatibleProductPresetDto[] | undefined,
+  projectIndex: ProjectIndexCaps | null | undefined,
+  showIncompatiblePresets: boolean,
+): CompatibleProductPresetDto[] {
+  return (items ?? []).filter((item) =>
+    isPresetVisibleInSelector(
+      item.preset.id,
+      projectIndex,
+      item.compatibility.selectable,
+      showIncompatiblePresets,
+    ),
+  );
+}
+
+export function filterExperimentalPresetsForSelector(
+  items: CompatibleExperimentalPresetDto[] | undefined,
+  projectIndex: ProjectIndexCaps | null | undefined,
+  showIncompatiblePresets: boolean,
+): CompatibleExperimentalPresetDto[] {
+  return (items ?? []).filter((item) =>
+    isPresetVisibleInSelector(
+      item.preset.productPresetId,
+      projectIndex,
+      item.compatibility.selectable,
+      showIncompatiblePresets,
+    ),
+  );
+}
+
 export function projectCompatiblePresetsEmptyState(
   catalog: ProjectCompatiblePresetsDto | null | undefined,
   showIncompatible: boolean,
+  projectIndex: ProjectIndexCaps | null | undefined = catalog?.activeSnapshotCapabilities ?? null,
 ): "no-compatible" | "no-index" | null {
-  if (!catalog || showIncompatible) return null;
-  const compatibleProduct = filterCompatibleProductPresets(catalog.productPresets, false);
-  const compatibleExperimental = filterCompatibleExperimentalPresets(catalog.experimentalPresets, false);
+  if (!catalog) return null;
+  const compatibleProduct = filterProductPresetsForSelector(
+    catalog.productPresets,
+    projectIndex,
+    showIncompatible,
+  );
+  const compatibleExperimental = filterExperimentalPresetsForSelector(
+    catalog.experimentalPresets,
+    projectIndex,
+    showIncompatible,
+  );
   if (compatibleProduct.length > 0 || compatibleExperimental.length > 0) return null;
   if (!catalog.hasActiveIndex && catalog.readyDocumentCount === 0) {
     return "no-index";
@@ -78,4 +122,13 @@ export function compatibilityByExperimentalPresetId(
     map.set(item.preset.productPresetId, item.compatibility);
   }
   return map;
+}
+
+export function presetProductTierLabel(
+  _presetId: string,
+  _projectIndex: ProjectIndexCaps | null | undefined,
+  _selectable: boolean,
+  _t: (key: string) => string,
+): string | null {
+  return null;
 }

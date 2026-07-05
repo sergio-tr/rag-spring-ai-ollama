@@ -110,7 +110,7 @@ public final class ActaFieldAnchorHeuristics {
         return countParticipants || (actaMeetingField && (participants || q.contains("presidente")));
     }
 
-    /** FD-CE-02: corpus-wide exact attendee listing — not acta-scoped clarification. */
+    /** FD-CE-02: corpus-wide exact attendee listing - not acta-scoped clarification. */
     public static boolean isCorpusWideExactAttendeeCountListing(String normalizedText) {
         if (normalizedText == null || normalizedText.isBlank()) {
             return false;
@@ -162,7 +162,7 @@ public final class ActaFieldAnchorHeuristics {
                 || isCorpusWideExactAttendeeCountListing(q);
     }
 
-    /** FD-FL-03: month + topic + attendee threshold listing — corpus-wide filter, not acta-scoped clarification. */
+    /** FD-FL-03: month + topic + attendee threshold listing - corpus-wide filter, not acta-scoped clarification. */
     public static boolean isCompoundMonthTopicAttendeeFilter(String q) {
         if (q == null || q.isBlank()) {
             return false;
@@ -223,6 +223,14 @@ public final class ActaFieldAnchorHeuristics {
                 || q.matches(".*\\bdel\\s+año\\s+\\d{4}\\b.*")
                 || q.matches(".*\\ben\\s+20\\d{2}\\b.*")
                 || hasMonthNameInText(q);
+    }
+
+    /** True when the query names a canonical uploaded acta file (e.g. {@code ACTA 6.pdf}). */
+    public static boolean hasExplicitActaDocumentReference(String normalizedText) {
+        if (normalizedText == null || normalizedText.isBlank()) {
+            return false;
+        }
+        return normalizedText.matches("(?i).*\\bacta\\s+\\d+\\.pdf\\b.*");
     }
 
     /** Slash-date resumen (e.g. hazme un resumen del 25/02/26) must not trigger acta-anchor clarification. */

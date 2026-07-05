@@ -8,6 +8,7 @@ import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagReasoningProperties;
 import com.uniovi.rag.domain.config.PresetProfilePayloadMerge;
 import com.uniovi.rag.domain.config.RagConfigurationMerge;
+import com.uniovi.rag.domain.config.RetrievalOverrideModeSupport;
 import com.uniovi.rag.domain.config.RetrievalParameterPolicySupport;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
@@ -102,14 +103,20 @@ public class ConfigResolver implements RagConfigurationResolver {
                             .filter(m -> !m.isEmpty());
         }
 
-        return RagConfigurationMerge.mergeCascade(
-                base,
-                system,
-                user,
-                project,
-                presetProfileLayer,
+        return RetrievalOverrideModeSupport.applyModeAwareRetrieval(
+                RagConfigurationMerge.mergeCascade(
+                        base,
+                        system,
+                        user,
+                        project,
+                        presetProfileLayer,
+                        conversationRuntimeOverride,
+                        requestRuntimeOverride,
+                        objectMapper),
                 conversationRuntimeOverride,
                 requestRuntimeOverride,
-                objectMapper);
+                system.orElse(Map.of()),
+                user.orElse(Map.of()),
+                project.orElse(Map.of()));
     }
 }

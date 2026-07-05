@@ -246,6 +246,7 @@ public final class EvaluationWorkbookParser {
             }
             String ctx = ExcelCellSupport.cellString(row, hi, "context_text", r + 1, false);
             String exp = ExcelCellSupport.cellString(row, hi, "expected_answer", r + 1, false);
+            String evalNotes = ExcelCellSupport.cellString(row, hi, "evaluation_notes", r + 1, false);
             Optional<QueryType> qt = parseQueryType(
                     ExcelCellSupport.cellString(row, hi, "query_type", r + 1, false),
                     WorkbookSheetNames.LLM_READER_QUESTIONS,
@@ -268,6 +269,9 @@ public final class EvaluationWorkbookParser {
             boolean unanswerable =
                     ExcelCellSupport.parseBooleanCell(ExcelCellSupport.cellString(row, hi, "unanswerable", r + 1, false));
             String evalMethod = ExcelCellSupport.cellString(row, hi, "evaluation_method", r + 1, false);
+            if ((evalMethod == null || evalMethod.isBlank()) && evalNotes != null && !evalNotes.isBlank()) {
+                evalMethod = evalNotes;
+            }
             list.add(new LlmReaderQuestion(
                     id.trim(),
                     question,
@@ -328,12 +332,25 @@ public final class EvaluationWorkbookParser {
                     report);
             Optional<DifficultyLevel> diff = DifficultyLevel.tryParse(
                     ExcelCellSupport.cellString(row, hi, "difficulty", r + 1, false));
+            String expectedContent = ExcelCellSupport.cellString(row, hi, "expected_content", r + 1, false);
             String expected = ExcelCellSupport.cellString(row, hi, "expected_answer", r + 1, false);
-            List<String> gDocs = splitIds(ExcelCellSupport.cellString(row, hi, "gold_document_ids", r + 1, false));
-            List<String> gChunks = splitIds(ExcelCellSupport.cellString(row, hi, "gold_chunk_ids", r + 1, false));
+            if ((expected == null || expected.isBlank()) && expectedContent != null && !expectedContent.isBlank()) {
+                expected = expectedContent;
+            }
+            List<String> gDocs =
+                    mergeIdLists(
+                            ExcelCellSupport.cellString(row, hi, "gold_document_ids", r + 1, false),
+                            ExcelCellSupport.cellString(row, hi, "expected_document_id", r + 1, false));
+            List<String> gChunks =
+                    mergeIdLists(
+                            ExcelCellSupport.cellString(row, hi, "gold_chunk_ids", r + 1, false),
+                            ExcelCellSupport.cellString(row, hi, "expected_chunk_id", r + 1, false),
+                            ExcelCellSupport.cellString(row, hi, "expected_relevant_chunk_ids", r + 1, false));
             String any = ExcelCellSupport.cellString(row, hi, "must_retrieve_any", r + 1, false);
             String all = ExcelCellSupport.cellString(row, hi, "must_retrieve_all", r + 1, false);
-            String notes = ExcelCellSupport.cellString(row, hi, "notes", r + 1, false);
+            String notes = firstNonBlank(
+                    ExcelCellSupport.cellString(row, hi, "evaluation_notes", r + 1, false),
+                    ExcelCellSupport.cellString(row, hi, "notes", r + 1, false));
             list.add(new EmbeddingRetrievalQuery(
                     id.trim(),
                     query,
@@ -387,6 +404,7 @@ public final class EvaluationWorkbookParser {
                 continue;
             }
             String exp = ExcelCellSupport.cellString(row, hi, "expected_answer", r + 1, false);
+            String contextText = ExcelCellSupport.cellString(row, hi, "context_text", r + 1, false);
             Optional<QueryType> qt = parseQueryType(
                     ExcelCellSupport.cellString(row, hi, "query_type", r + 1, false),
                     WorkbookSheetNames.RAG_PRESET_QUESTIONS_ENRICHED,
@@ -395,7 +413,10 @@ public final class EvaluationWorkbookParser {
             Optional<DifficultyLevel> diff = DifficultyLevel.tryParse(
                     ExcelCellSupport.cellString(row, hi, "difficulty", r + 1, false));
             String answerMode = ExcelCellSupport.cellString(row, hi, "answer_mode", r + 1, false);
-            List<String> gDocs = splitIds(ExcelCellSupport.cellString(row, hi, "gold_document_ids", r + 1, false));
+            List<String> gDocs =
+                    mergeIdLists(
+                            ExcelCellSupport.cellString(row, hi, "gold_document_ids", r + 1, false),
+                            ExcelCellSupport.cellString(row, hi, "expected_sources", r + 1, false));
             List<String> gChunks = splitIds(ExcelCellSupport.cellString(row, hi, "gold_chunk_ids", r + 1, false));
             String evc = ExcelCellSupport.cellString(row, hi, "expected_evidence_count", r + 1, false);
             boolean unanswerableDeclared = hi.containsKey("unanswerable");
@@ -416,7 +437,12 @@ public final class EvaluationWorkbookParser {
                     ExcelCellSupport.cellString(row, hi, "requires_aggregation", r + 1, false));
             boolean rxe = ExcelCellSupport.parseBooleanCell(
                     ExcelCellSupport.cellString(row, hi, "requires_exact_entities", r + 1, false));
-            String notes = ExcelCellSupport.cellString(row, hi, "notes", r + 1, false);
+            String notes = firstNonBlank(
+                    ExcelCellSupport.cellString(row, hi, "evaluation_notes", r + 1, false),
+                    ExcelCellSupport.cellString(row, hi, "notes", r + 1, false));
+            if ((notes == null || notes.isBlank()) && contextText != null && !contextText.isBlank()) {
+                notes = "context_text=" + contextText.trim();
+            }
             list.add(new RagPresetQuestion(
                     id.trim(),
                     question,
@@ -674,7 +700,7 @@ public final class EvaluationWorkbookParser {
         b.summaryCounts(list);
     }
 
-    /** Classifier: first sheet whose headers include Question + QueryType (case-insensitive). */
+    /** Classifier: first sheet whose headers include Question + query_type or legacy querytype. */
     private static void parseClassifierIfPresent(Workbook wb, EvaluationWorkbook.Builder b, ValidationReport report) {
         for (int i = 0; i < wb.getNumberOfSheets(); i++) {
             Sheet sheet = wb.getSheetAt(i);
@@ -683,7 +709,11 @@ public final class EvaluationWorkbookParser {
                 continue;
             }
             Map<String, Integer> hi = ExcelCellSupport.headerIndexMap(h);
-            if (!hi.containsKey("question") || !hi.containsKey("querytype")) {
+            if (!hi.containsKey("question")) {
+                continue;
+            }
+            String queryTypeHeader = resolveClassifierQueryTypeHeader(hi);
+            if (queryTypeHeader == null) {
                 continue;
             }
             List<ClassifierQuestionRow> rows = new ArrayList<>();
@@ -694,7 +724,7 @@ public final class EvaluationWorkbookParser {
                     continue;
                 }
                 String q = ExcelCellSupport.cellString(row, hi, "question", r + 1, true);
-                String qt = ExcelCellSupport.cellString(row, hi, "querytype", r + 1, false);
+                String qt = ExcelCellSupport.cellString(row, hi, queryTypeHeader, r + 1, false);
                 if (q == null || q.isBlank()) {
                     continue;
                 }
@@ -703,6 +733,17 @@ public final class EvaluationWorkbookParser {
             b.classifierQuestions(rows);
             return;
         }
+    }
+
+    /** Prefer canonical {@code query_type}; accept legacy {@code querytype} for backward compatibility. */
+    private static String resolveClassifierQueryTypeHeader(Map<String, Integer> hi) {
+        if (hi.containsKey("query_type")) {
+            return "query_type";
+        }
+        if (hi.containsKey("querytype")) {
+            return "querytype";
+        }
+        return null;
     }
 
     private static Map<String, String> extraColumns(Row row, Map<String, Integer> hi, String... knownHeaders) {
@@ -756,6 +797,34 @@ public final class EvaluationWorkbookParser {
             }
         }
         return out;
+    }
+
+    private static List<String> mergeIdLists(String... rawValues) {
+        List<String> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        if (rawValues == null) {
+            return out;
+        }
+        for (String raw : rawValues) {
+            for (String id : splitIds(raw)) {
+                if (seen.add(id)) {
+                    out.add(id);
+                }
+            }
+        }
+        return out;
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String v : values) {
+            if (v != null && !v.isBlank()) {
+                return v;
+            }
+        }
+        return "";
     }
 
     private static void requireCols(ValidationReport report, String sheet, Map<String, Integer> hi, String... cols) {

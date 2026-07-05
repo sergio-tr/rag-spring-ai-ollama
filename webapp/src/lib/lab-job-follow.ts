@@ -16,7 +16,7 @@ export async function followLabJob(
     intervalMs?: number;
     /** When false, terminal FAILED returns without throwing (e.g. chat assistant error persisted on message). */
     throwOnFailed?: boolean;
-    /** Polling mode only — caps local watch duration; server job may continue. */
+    /** Polling mode only - caps local watch duration; server job may continue. */
     maxWaitMs?: number;
     /** SSE resume cursor for reconnect (`?since=eventId`). */
     sinceEventId?: number | null;

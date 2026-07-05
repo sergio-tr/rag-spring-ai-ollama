@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * P30 suite request — ordered entries (max size enforced by suite service).
+ * P30 suite request - ordered entries (max size enforced by suite service).
  */
 public record RuntimeTraceRegressionSuiteRequest(UUID userId, List<RuntimeTraceRegressionSuiteEntry> entries) {
 

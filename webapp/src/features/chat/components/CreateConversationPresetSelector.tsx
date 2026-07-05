@@ -6,14 +6,20 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useProjectCompatiblePresets } from "@/features/chat/hooks/use-project-compatible-presets";
 import {
-  filterCompatibleExperimentalPresets,
-  filterCompatibleProductPresets,
+  filterExperimentalPresetsForSelector,
+  filterProductPresetsForSelector,
   presetCompatibilityDisabledReason,
+  presetProductTierLabel,
   projectCompatiblePresetsEmptyState,
 } from "@/features/chat/lib/chat-preset-compatibility";
+import { formatChatExperimentalPresetOptionLabel } from "@/lib/product-copy";
+import {
+  formatProductPresetOptionTitle,
+  isDemoBestPresetId,
+} from "@/features/chat/lib/preset-latency-tier";
 import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
 import { createPresetCopyFn } from "@/lib/preset-copy-i18n";
-import { formatChatExperimentalPresetOptionLabel } from "@/lib/product-copy";
+import { resolveIndexAwareDefaultPreset } from "@/features/chat/lib/resolve-index-aware-default-preset";
 
 export type CreateConversationPresetSelectorProps = Readonly<{
   projectId: string;
@@ -45,25 +51,40 @@ export function CreateConversationPresetSelector({
   const catalog = useProjectCompatiblePresets(trimmedProjectId || null, { enabled });
 
   const catalogData = catalog.isSuccess ? catalog.data : undefined;
+  const projectIndex = catalogData?.activeSnapshotCapabilities ?? null;
+  const isStructuredSearchProject =
+    (projectIndex?.materializationStrategy ?? "").trim().toUpperCase() === "STRUCTURED_SEARCH";
   const visibleProductPresets = useMemo(
-    () => filterCompatibleProductPresets(catalogData?.productPresets, showIncompatiblePresets),
-    [catalogData?.productPresets, showIncompatiblePresets],
+    () => filterProductPresetsForSelector(catalogData?.productPresets, projectIndex, showIncompatiblePresets),
+    [catalogData?.productPresets, projectIndex, showIncompatiblePresets],
   );
   const visibleExperimentalPresets = useMemo(
-    () => filterCompatibleExperimentalPresets(catalogData?.experimentalPresets, showIncompatiblePresets),
-    [catalogData?.experimentalPresets, showIncompatiblePresets],
+    () =>
+      filterExperimentalPresetsForSelector(
+        catalogData?.experimentalPresets,
+        projectIndex,
+        showIncompatiblePresets,
+      ),
+    [catalogData?.experimentalPresets, projectIndex, showIncompatiblePresets],
   );
   const emptyState = useMemo(
-    () => projectCompatiblePresetsEmptyState(catalogData ?? null, showIncompatiblePresets),
-    [catalogData, showIncompatiblePresets],
+    () => projectCompatiblePresetsEmptyState(catalogData ?? null, showIncompatiblePresets, projectIndex),
+    [catalogData, showIncompatiblePresets, projectIndex],
+  );
+  const defaultSelection = useMemo(
+    () => resolveIndexAwareDefaultPreset(catalogData ?? null),
+    [catalogData],
   );
   const selectedValue = useMemo(() => {
-    if (!value) return "";
-    const stillVisible =
-      visibleProductPresets.some((item) => item.preset.id === value) ||
-      visibleExperimentalPresets.some((item) => item.preset.productPresetId === value);
-    return stillVisible ? value : "";
-  }, [value, visibleProductPresets, visibleExperimentalPresets]);
+    if (value.trim()) {
+      const trimmed = value.trim();
+      const stillVisible =
+        visibleProductPresets.some((item) => item.preset.id === trimmed) ||
+        visibleExperimentalPresets.some((item) => item.preset.productPresetId === trimmed);
+      return stillVisible ? trimmed : defaultSelection.presetId ?? "";
+    }
+    return defaultSelection.presetId ?? "";
+  }, [value, visibleProductPresets, visibleExperimentalPresets, defaultSelection.presetId]);
 
   const missingProject = !trimmedProjectId;
   const loadFailed = catalog.isError;
@@ -87,6 +108,14 @@ export function CreateConversationPresetSelector({
           {t("presetShowIncompatible")}
         </label>
       </div>
+      {isStructuredSearchProject ? (
+        <p
+          className="text-muted-foreground text-xs"
+          data-testid="chat-new-conversation-preset-structured-search-warning"
+        >
+          {t("structuredSearchLegacyProjectWarning")}
+        </p>
+      ) : null}
       <select
         id={id}
         data-testid={selectTestId}
@@ -95,19 +124,31 @@ export function CreateConversationPresetSelector({
         disabled={selectorDisabled}
         onChange={(e) => onChange(e.target.value)}
       >
-        <option value="">{t("presetServerDefault")}</option>
+        {showOptions && !selectedValue ? (
+          <option value="" disabled>
+            {t("presetNoCompatibleAvailable")}
+          </option>
+        ) : null}
         {showOptions
           ? visibleProductPresets.map((item) => {
               const reason = presetCompatibilityDisabledReason(item.compatibility);
+              const baselineLabel = presetProductTierLabel(
+                item.preset.id,
+                projectIndex,
+                item.compatibility.selectable,
+                t,
+              );
               const label = toProductPresetDisplayName(item.preset.name);
+              const display = baselineLabel ? `${label} — ${baselineLabel}` : label;
+              const optionTitle = formatProductPresetOptionTitle(item.preset, t);
               return (
                 <option
                   key={item.preset.id}
                   value={item.preset.id}
                   disabled={Boolean(reason)}
-                  title={reason ?? undefined}
+                  title={reason ?? optionTitle}
                 >
-                  {label}
+                  {display}
                   {item.preset.system ? ` (${t("presetSystem")})` : ""}
                   {reason ? ` (${reason})` : ""}
                 </option>
@@ -117,7 +158,14 @@ export function CreateConversationPresetSelector({
         {showOptions
           ? visibleExperimentalPresets.map((item) => {
               const reason = presetCompatibilityDisabledReason(item.compatibility);
+              const baselineLabel = presetProductTierLabel(
+                item.preset.productPresetId,
+                projectIndex,
+                item.compatibility.selectable,
+                t,
+              );
               const label = formatChatExperimentalPresetOptionLabel(item.preset, presetCopyT);
+              const display = baselineLabel ? `${label} — ${baselineLabel}` : label;
               return (
                 <option
                   key={item.preset.productPresetId}
@@ -125,13 +173,24 @@ export function CreateConversationPresetSelector({
                   disabled={Boolean(reason)}
                   title={reason ?? undefined}
                 >
-                  {label}
+                  {display}
                   {reason ? ` (${reason})` : ""}
                 </option>
               );
             })
           : null}
       </select>
+      {selectedValue && isDemoBestPresetId(selectedValue) ? (
+        <p className="text-muted-foreground text-xs" data-testid="chat-new-conversation-demo-best-description">
+          {t("presetDemoBestDescription")}
+        </p>
+      ) : null}
+      {defaultSelection.demoBestIncompatible && defaultSelection.presetId ? (
+        <p className="text-muted-foreground text-xs" data-testid="chat-new-conversation-default-preset-hint">
+          {t("presetDefaultFallbackHint")}
+          {defaultSelection.demoBestDisabledReason ? ` (${defaultSelection.demoBestDisabledReason})` : null}
+        </p>
+      ) : null}
       {missingProject ? (
         <p className="text-destructive text-xs" role="alert" data-testid="chat-new-conversation-preset-project-error">
           {t("presetCompatibilityProjectRequired")}
@@ -176,12 +235,15 @@ export function resolveCreateConversationPresetSelection(
   showIncompatiblePresets: boolean,
 ) {
   const catalogData = catalog.isSuccess ? catalog.data : undefined;
-  const visibleProductPresets = filterCompatibleProductPresets(
+  const projectIndex = catalogData?.activeSnapshotCapabilities ?? null;
+  const visibleProductPresets = filterProductPresetsForSelector(
     catalogData?.productPresets,
+    projectIndex,
     showIncompatiblePresets,
   );
-  const visibleExperimentalPresets = filterCompatibleExperimentalPresets(
+  const visibleExperimentalPresets = filterExperimentalPresetsForSelector(
     catalogData?.experimentalPresets,
+    projectIndex,
     showIncompatiblePresets,
   );
   const trimmed = selectedPresetValue.trim();

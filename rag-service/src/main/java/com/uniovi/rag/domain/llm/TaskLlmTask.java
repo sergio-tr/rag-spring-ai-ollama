@@ -15,6 +15,7 @@ public enum TaskLlmTask {
     FACTUAL_VERIFIER("factual_verifier", "Factual verifier", false),
     LLM_RANKER("llm_ranker", "LLM ranker", false),
     METADATA_REASONING("metadata_reasoning", "Metadata reasoning", false),
+    NER_EXTRACTION("ner_extraction", "NER extraction", false),
     EVALUATION_JUDGE("evaluation_judge", "Evaluation judge", true),
     LLM_BASELINE_EVALUATION("llm_baseline_evaluation", "LLM baseline evaluation", true);
 
@@ -50,6 +51,7 @@ public enum TaskLlmTask {
             case FACTUAL_VERIFIER -> "factual-revision";
             case LLM_RANKER -> "llm-ranker";
             case METADATA_REASONING -> "metadata-reasoning";
+            case NER_EXTRACTION -> "ner-extraction";
             case EVALUATION_JUDGE -> "evaluation-judge";
             case LLM_BASELINE_EVALUATION -> "llm-baseline-evaluation";
         };
@@ -91,6 +93,7 @@ public enum TaskLlmTask {
             case "function-calling" -> Optional.of(FINAL_ANSWER);
             case "llm-baseline-evaluation" -> Optional.of(LLM_BASELINE_EVALUATION);
             case "evaluation-judge" -> Optional.of(EVALUATION_JUDGE);
+            case "ner", "ner-extraction" -> Optional.of(NER_EXTRACTION);
             default -> op.startsWith("metadata-") ? Optional.of(METADATA_REASONING) : Optional.empty();
         };
     }

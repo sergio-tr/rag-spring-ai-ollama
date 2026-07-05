@@ -155,6 +155,11 @@ public class EvaluationJudgeLlmExecutor {
         }
     }
 
+    /** Exposed for Lab/chat preflight (fail-fast before long-running judge work). */
+    public String resolveJudgeModelIdForPreflight(UUID userId) {
+        return resolveJudgeModelId(userId);
+    }
+
     String resolveJudgeModelId(UUID userId) {
         String explicit =
                 EvaluationJudgeExecutionScope.currentJudgeModelOverride()

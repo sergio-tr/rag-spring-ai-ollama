@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChatConfigurationPanelContent } from "./ChatConfigurationPanelContent";
@@ -100,6 +100,7 @@ describe("ChatConfigurationPanelContent retrieval dependency", () => {
           conversationLlmModel: null,
           conversationClassifierModelId: null,
           conversationModelsPinned: false,
+          configurationMode: "PRESET" as const,
           runtimeOverride: {},
           manualOverrideKeys: [],
           isCustom: false,
@@ -171,9 +172,6 @@ describe("ChatConfigurationPanelContent retrieval dependency", () => {
 
     const ranker = screen.getByTestId("chat-runtime-toggle-rankerEnabled");
     expect(ranker).toBeDisabled();
-    const rankerRow = ranker.closest(".flex.flex-col");
-    expect(rankerRow).not.toBeNull();
-    await user.click(within(rankerRow as HTMLElement).getByRole("button", { name: /^Disabled$/i }));
-    expect(await screen.findByText(/Requires useRetrieval/i)).toBeInTheDocument();
+    expect(screen.getByTestId("chat-runtime-disable-tip-rankerEnabled")).toHaveTextContent("Requires retrieval");
   });
 });

@@ -97,16 +97,32 @@ public class AdvancedRetrievalPipeline {
 
         long tBuild = System.nanoTime();
         RetrievalRequest req = retrievalRequestBuilder.build(ctx, plan);
-        traces.add(stage("retrieval_build_request", tBuild, ExecutionStageOutcome.SUCCESS, ""));
+        double configuredSimilarityThreshold = effectiveSimilarityThreshold(ctx);
+        traces.add(
+                stage(
+                        "retrieval_build_request",
+                        tBuild,
+                        ExecutionStageOutcome.SUCCESS,
+                        "effectiveTopK="
+                                + req.postFusionCap()
+                                + " threshold="
+                                + configuredSimilarityThreshold
+                                + " denseFetchLimit="
+                                + req.denseFetchLimit()));
 
         RetrievedContextSet retrieved;
         Optional<SparseRetrievalTelemetry> sparseTelemetry = Optional.empty();
         Optional<FusionTelemetry> fusionTelemetry = Optional.empty();
         Optional<MetadataFilterTelemetry> metadataFilterTelemetry = Optional.empty();
+        double runtimeSimilarityThresholdUsed = configuredSimilarityThreshold;
         if (req.mode() == RetrievalMode.DENSE_ONLY) {
             long tDense = System.nanoTime();
             DenseRetrievalOutcome denseOutcome = denseRetrievalStrategy.retrieveWithOutcome(req);
             List<RetrievalCandidate> dense = denseOutcome.candidates();
+            runtimeSimilarityThresholdUsed =
+                    Double.isFinite(denseOutcome.similarityThresholdUsed())
+                            ? denseOutcome.similarityThresholdUsed()
+                            : configuredSimilarityThreshold;
             traces.add(
                     stage(
                             "retrieval_dense",
@@ -119,7 +135,11 @@ public class AdvancedRetrievalPipeline {
                                     + " postSnapshot="
                                     + denseOutcome.postSnapshotCandidateCount()
                                     + " postProject="
-                                    + denseOutcome.postProjectCandidateCount()));
+                                    + denseOutcome.postProjectCandidateCount()
+                                    + " effectiveTopK="
+                                    + req.postFusionCap()
+                                    + " threshold="
+                                    + runtimeSimilarityThresholdUsed));
             traces.add(skipped("retrieval_sparse", "mode=DENSE_ONLY"));
             traces.add(skipped("retrieval_fuse", "mode=DENSE_ONLY"));
             retrieved =
@@ -257,9 +277,11 @@ public class AdvancedRetrievalPipeline {
         }
 
         long tExpand = System.nanoTime();
+        int afterFilterCount = filteredFinal.size();
         RetrievalContextExpander.ExpansionResult expansion =
                 retrievalContextExpander.expand(req, plan, filteredFinal);
         filteredFinal = expansion.candidates();
+        int afterExpandCount = filteredFinal.size();
         dedupedDocumentCount = expansion.dedupedDocumentCount();
         traceNotes.addAll(expansion.notes());
         traces.add(
@@ -343,6 +365,16 @@ public class AdvancedRetrievalPipeline {
             traceNotes.add("rerank_no_order_change");
         }
         int hybridCandidateCount = retrieved.denseInputCount() + retrieved.sparseInputCount();
+        Optional<String> reductionReason =
+                resolveContextReductionReason(
+                        req,
+                        retrieved.denseInputCount(),
+                        rerankResult.candidates().size(),
+                        afterFilterCount,
+                        afterExpandCount,
+                        compressed.candidates().size(),
+                        droppedByCompression,
+                        expansion.notes());
         RetrievalDiagnostics diagnostics =
                 new RetrievalDiagnostics(
                         req.mode(),
@@ -353,7 +385,7 @@ public class AdvancedRetrievalPipeline {
                         retrieved.fusedCount(),
                         rerankResult.candidates().size(),
                         rerankResult.candidates().size(),
-                        filteredFinal.size(),
+                        afterFilterCount,
                         compressed.candidates().size(),
                         protectedCount,
                         droppedByCompression,
@@ -367,7 +399,11 @@ public class AdvancedRetrievalPipeline {
                         dedupedDocumentCount > 0 ? dedupedDocumentCount : retrieved.fusedCount(),
                         sparseTelemetry,
                         fusionTelemetry,
-                        metadataFilterTelemetry);
+                        metadataFilterTelemetry,
+                        Optional.of(req.postFusionCap()),
+                        Optional.of(runtimeSimilarityThresholdUsed),
+                        Optional.of(req.denseFetchLimit()),
+                        reductionReason);
 
         return new CuratedContextSet(
                 compressed.candidates(),
@@ -566,6 +602,43 @@ public class AdvancedRetrievalPipeline {
             }
         }
         return n;
+    }
+
+    private static double effectiveSimilarityThreshold(ExecutionContext ctx) {
+        if (ctx == null || ctx.resolved() == null || ctx.resolved().toRagConfig() == null) {
+            return 0.0;
+        }
+        return ctx.resolved().toRagConfig().similarityThreshold();
+    }
+
+    private static Optional<String> resolveContextReductionReason(
+            RetrievalRequest req,
+            int denseCandidateCount,
+            int rerankCount,
+            int afterFilterCount,
+            int afterExpandCount,
+            int afterCompressionCount,
+            int droppedByCompression,
+            List<String> expansionNotes) {
+        int effectiveTopK = req != null ? Math.max(0, req.postFusionCap()) : 0;
+        if (effectiveTopK <= 0 || afterCompressionCount >= effectiveTopK) {
+            return Optional.empty();
+        }
+        if (denseCandidateCount < effectiveTopK) {
+            return Optional.of("fewer_dense_hits");
+        }
+        if (afterFilterCount < rerankCount) {
+            return Optional.of("threshold_or_scope");
+        }
+        if (afterExpandCount < afterFilterCount
+                && expansionNotes != null
+                && expansionNotes.stream().anyMatch(n -> n != null && n.startsWith("section_expand:"))) {
+            return Optional.of("section_merge");
+        }
+        if (afterCompressionCount < afterExpandCount || droppedByCompression > 0) {
+            return Optional.of("compression_drop");
+        }
+        return Optional.of("context_budget_or_dedup");
     }
 
     private CuratedContextSet curatedFromToolEvidence(

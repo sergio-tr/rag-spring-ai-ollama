@@ -143,7 +143,8 @@ describe("LabOverviewPage", () => {
     expect(screen.getAllByText(/DEMO/i).length).toBeGreaterThanOrEqual(1);
   });
 
-  it("shows typed reference workbook counts when backend reports dataset kinds ready", () => {
+  it("shows typed reference workbook counts inside developer diagnostics when expanded", async () => {
+    const user = userEvent.setup();
     vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
       data: {
         datasetKindsReady: true,
@@ -170,8 +171,11 @@ describe("LabOverviewPage", () => {
         </IntlTestProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getByText(/LLM rows: 12/i)).toBeInTheDocument();
-    expect(screen.queryByText(/obsolete fallback/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("lab-overview-uploaded-datasets")).toBeInTheDocument();
+    expect(screen.getByText(/LLM rows: 12/i)).not.toBeVisible();
+    await user.click(screen.getByText(/Advanced technical details/i));
+    await user.click(screen.getByText(/Developer diagnostics/i));
+    expect(screen.getByText(/LLM rows: 12/i)).toBeVisible();
     expect(screen.getAllByText(/Internal reference workbook/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Packaged workbook present/i)).toBeInTheDocument();
   });
@@ -346,14 +350,15 @@ describe("LabOverviewPage", () => {
         </IntlTestProvider>
       </QueryClientProvider>,
     );
-    expect(screen.queryByText(/Lab API —/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Lab API -/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/POST \/api/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/canonical benchmarks/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Status poll:/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Live stream:/i)).not.toBeInTheDocument();
   });
 
-  it("does not surface compose observability filenames in the Lab overview cards", () => {
+  it("does not surface compose observability filenames in developer diagnostics", async () => {
+    const user = userEvent.setup();
     vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
       data: {
         datasetKindsReady: true,
@@ -375,8 +380,60 @@ describe("LabOverviewPage", () => {
       </QueryClientProvider>,
     );
     expect(screen.getByTestId("lab-overview-compact")).toBeInTheDocument();
-    expect(screen.getByText("LLM & RAG evaluations")).toBeInTheDocument();
+    expect(screen.getByText("LLM & RAG evaluations")).not.toBeVisible();
+    await user.click(screen.getByText(/Advanced technical details/i));
+    await user.click(screen.getByText(/Developer diagnostics/i));
+    expect(screen.getByText("LLM & RAG evaluations")).toBeVisible();
     expect(screen.queryByText(/compose\.obs\.yml/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps uploaded evaluation workbooks visible without expanding technical details", () => {
+    vi.mocked(useLabStatus).mockReturnValue(queryMock<LabStatusResponse>({
+      data: {
+        datasetKindsReady: true,
+        datasets: { enabled: true, datasetKindsReady: true },
+        evaluations: { llm: true, rag: true, classifierProxy: false, asyncJobs: true },
+        classifier: { configured: true, train: true, evaluate: true },
+        message: "",
+      },
+      isError: false,
+      isLoading: false,
+      refetch: vi.fn(),
+    }));
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue(queryMock<ExperimentalDatasetListItemDto[]>({
+      data: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440001",
+          name: "My upload",
+          experimentalDatasetType: "LLM_MODEL_BASELINE",
+          readOnly: false,
+          datasetType: "LLM",
+          validationStatus: "VALID",
+          questionCounts: { llmReaderQuestions: 10, embeddingQueries: 0, ragPresetQuestions: 0, presetCatalog: 0, chunkRegistry: 0 },
+          isReferenceBundle: false,
+          isDemoDataset: false,
+          canRunLlmBaseline: true,
+          canRunEmbeddingBaseline: false,
+          canRunRagPresetBenchmark: false,
+          validationIssues: [],
+          uploadedAt: "",
+          description: null,
+        },
+      ],
+      isLoading: false,
+      isError: false,
+    }));
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <IntlTestProvider>
+          <LabOverviewPage />
+        </IntlTestProvider>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText("Uploaded evaluation workbooks")).toBeVisible();
+    expect(screen.getByTestId("lab-dataset-overview-table")).toHaveTextContent("My upload");
+    expect(screen.getByText("Evaluation dataset")).not.toBeVisible();
+    expect(screen.getByText("Classifier service")).not.toBeVisible();
   });
 
   it("shows loading copy when status is loading", () => {

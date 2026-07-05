@@ -81,6 +81,17 @@ describe("use-rag-config hooks", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["config", "user"] });
   });
 
+  it("useUserStoredRagConfigQuery loads stored user config", async () => {
+    const cfg = { topK: 4 };
+    apiFetch.mockResolvedValueOnce(cfg);
+    const { wrapper } = createWrapper();
+    const { useUserStoredRagConfigQuery } = await import("./use-rag-config");
+    const { result } = renderHook(() => useUserStoredRagConfigQuery(), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual(cfg);
+    expect(apiFetch).toHaveBeenCalledWith(expect.stringMatching(/\/config\/user\/stored$/));
+  });
+
   it("usePutProjectRagConfig puts and invalidates project config query", async () => {
     apiFetch.mockResolvedValueOnce({ ok: true });
     const { wrapper, qc } = createWrapper();

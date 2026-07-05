@@ -65,7 +65,7 @@ public class LlmProperties {
         return defaultProvider;
     }
 
-    /** Default chat model for {@link #getEffectiveDefaultChatProvider()} only — never cross-fallback to the other provider. */
+    /** Default chat model for {@link #getEffectiveDefaultChatProvider()} only - never cross-fallback to the other provider. */
     public String effectiveDefaultChatModel() {
         if (getEffectiveDefaultChatProvider() == LlmProvider.OPENAI_COMPATIBLE) {
             return openAiCompatible.getDefaultChatModel();

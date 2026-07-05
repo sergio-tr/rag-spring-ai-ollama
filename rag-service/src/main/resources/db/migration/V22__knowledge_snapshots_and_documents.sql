@@ -1,6 +1,6 @@
 -- Logical index snapshots, document artifacts, reindex events, extended project_documents.
 
--- (1) knowledge_index_snapshot — no incoming FK from project_documents yet.
+-- (1) knowledge_index_snapshot - no incoming FK from project_documents yet.
 CREATE TABLE knowledge_index_snapshot (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     signature_hash VARCHAR(128) NOT NULL,

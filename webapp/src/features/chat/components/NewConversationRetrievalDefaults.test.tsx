@@ -6,26 +6,24 @@ import { IntlTestProvider } from "@/test-utils/intl";
 
 const mutateAsync = vi.fn();
 
-vi.mock("@/features/chat/hooks/use-project-compatible-presets", () => ({
-  useProjectCompatiblePresets: () => ({
-    data: { productPresets: [], experimentalPresets: [] },
-    isError: false,
-    isLoading: false,
-  }),
-}));
+vi.mock("@/features/chat/hooks/use-project-compatible-presets", async () => {
+  const { compatiblePresetsQueryMock } = await import("@/test-utils/compatible-presets-mock");
+  return {
+    useProjectCompatiblePresets: () => compatiblePresetsQueryMock,
+  };
+});
 vi.mock("@/features/documents/hooks/use-project-documents", () => ({
   useProjectDocuments: () => ({ data: [] }),
 }));
 vi.mock("@/features/chat/hooks/use-conversations", () => ({
   useCreateConversation: () => ({ mutateAsync, isPending: false }),
 }));
-vi.mock("@/features/settings/hooks/use-me-effective-embedding-defaults", () => ({
-  useMeEffectiveEmbeddingDefaults: () => ({
-    data: {
-      retrievalOptions: { topK: 8, similarityThreshold: 0.25, materializationStrategy: "CHUNK" },
-    },
-  }),
-}));
+vi.mock("@/features/settings/hooks/use-me-effective-embedding-defaults", async () => {
+  const { effectiveEmbeddingDefaultsMock } = await import("@/test-utils/compatible-presets-mock");
+  return {
+    useMeEffectiveEmbeddingDefaults: () => effectiveEmbeddingDefaultsMock,
+  };
+});
 
 function renderDialog() {
   const client = new QueryClient();
@@ -54,7 +52,9 @@ describe("NewConversationRetrievalDefaults", () => {
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({
-          initialRuntimeOverride: { topK: 8, similarityThreshold: 0.25 },
+          initialRuntimeOverride: {
+            retrievalOverrideMode: "assistant_defaults",
+          },
         }),
       );
     });

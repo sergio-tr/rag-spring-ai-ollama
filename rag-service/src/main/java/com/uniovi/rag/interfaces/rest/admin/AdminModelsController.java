@@ -3,6 +3,8 @@ package com.uniovi.rag.interfaces.rest.admin;
 import com.uniovi.rag.application.service.admin.model.AdminModelsService;
 import com.uniovi.rag.application.service.async.AsyncTaskService;
 import com.uniovi.rag.configuration.RagApiPathProperties;
+import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import com.uniovi.rag.interfaces.rest.admin.dto.AdminModelCheckRequest;
 import com.uniovi.rag.interfaces.rest.admin.dto.AdminModelCheckResponse;
 import com.uniovi.rag.interfaces.rest.admin.dto.AdminModelDeleteResponse;
@@ -27,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Product-scoped admin model endpoints (v5): check/pull + allowlist persistence.
@@ -38,14 +41,17 @@ public class AdminModelsController {
     private final AdminModelsService adminModelsService;
     private final AsyncTaskService asyncTaskService;
     private final RagApiPathProperties apiPathProperties;
+    private final LlmProperties llmProperties;
 
     public AdminModelsController(
             AdminModelsService adminModelsService,
             AsyncTaskService asyncTaskService,
-            RagApiPathProperties apiPathProperties) {
+            RagApiPathProperties apiPathProperties,
+            LlmProperties llmProperties) {
         this.adminModelsService = adminModelsService;
         this.asyncTaskService = asyncTaskService;
         this.apiPathProperties = apiPathProperties;
+        this.llmProperties = llmProperties;
     }
 
     @GetMapping
@@ -89,6 +95,10 @@ public class AdminModelsController {
     public ResponseEntity<LabJobAcceptedDto> pull(
             @AuthenticationPrincipal RagPrincipal principal,
             @Valid @RequestBody PullOllamaModelRequest body) {
+        if (llmProperties.getEffectiveDefaultChatProvider() != LlmProvider.OLLAMA_NATIVE) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "PULL_ONLY_SUPPORTED_FOR_LOCAL_MODEL_SERVER");
+        }
         UUID jobId = asyncTaskService.submitOllamaPull(principal.userId(), body.model().trim());
         String base = apiPathProperties.getProductBasePath() + "/lab/jobs/" + jobId;
         return ResponseEntity.status(HttpStatus.ACCEPTED)

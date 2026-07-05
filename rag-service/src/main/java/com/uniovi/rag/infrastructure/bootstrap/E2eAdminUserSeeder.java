@@ -16,7 +16,7 @@ import java.util.UUID;
 
 /**
  * Ensures an ADMIN user exists for Playwright admin scenarios when profile {@code e2e} is active.
- * Credentials are for CI/local demo only — never enable this profile in production.
+ * Credentials are for CI/local demo only - never enable this profile in production.
  *
  * <p>Uses JDBC upsert instead of JPA so startup stays deterministic under DevTools restarts and
  * concurrent runners (GitHub Actions / local): Hibernate/JPA races produced partial failures where
@@ -32,7 +32,7 @@ public class E2eAdminUserSeeder implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(E2eAdminUserSeeder.class);
 
-    // NOSONAR S2068 — SQL includes column name password_hash; secrets come from rag.e2e.admin-password only.
+    // NOSONAR S2068 - SQL includes column name password_hash; secrets come from rag.e2e.admin-password only.
     private static final String SQL_UPDATE_E2E_ADMIN =
             """
             UPDATE users SET

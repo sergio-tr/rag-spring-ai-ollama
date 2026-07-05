@@ -140,7 +140,7 @@ export function formatMetricCell(
 ): { display: string; title: string | undefined } {
   if (value == null || isNotAvailable(value)) {
     const reasonKey = metricUnavailableReasonKey(metricKey, benchmarkKind, outcome);
-    return { display: "—", title: t(reasonKey) };
+    return { display: "-", title: t(reasonKey) };
   }
   if (typeof value === "number" && Number.isFinite(value)) {
     return { display: value.toFixed(3), title: undefined };
@@ -148,7 +148,7 @@ export function formatMetricCell(
   const text = String(value).trim();
   if (!text || isNotAvailable(text)) {
     const reasonKey = metricUnavailableReasonKey(metricKey, benchmarkKind, outcome);
-    return { display: "—", title: t(reasonKey) };
+    return { display: "-", title: t(reasonKey) };
   }
   return { display: text, title: undefined };
 }
@@ -202,14 +202,14 @@ const INTERNAL_STATUS_LABELS: Record<string, string> = {
 
 export function formatComparisonScore(value: unknown): string {
   if (value == null || value === NOT_AVAILABLE || value === "NOT_AVAILABLE") {
-    return "—";
+    return "-";
   }
   if (typeof value === "number" && Number.isFinite(value)) {
     return value.toFixed(3);
   }
   const text = String(value).trim();
   if (!text || text === NOT_AVAILABLE) {
-    return "—";
+    return "-";
   }
   return text;
 }
@@ -278,7 +278,7 @@ export function resolveComparisonRowLabel(
   const presetKey = resolvePresetKeyFromComparisonRow(row);
   if (isPresetComparisonAxis(comparisonAxis)) {
     if (presetLabel) {
-      return presetLabel.includes("—") ? presetLabel : formatPresetDisplay(presetKey, presetLabel);
+      return presetLabel.includes("-") ? presetLabel : formatPresetDisplay(presetKey, presetLabel);
     }
     if (presetKey) {
       return presetKey;

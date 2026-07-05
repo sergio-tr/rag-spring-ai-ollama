@@ -16,7 +16,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * P44: synchronous {@code POST} run ZIP import — delegates only to {@link RuntimeTraceRegressionSuiteRunImportService}.
+ * P44: synchronous {@code POST} run ZIP import - delegates only to {@link RuntimeTraceRegressionSuiteRunImportService}.
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}")

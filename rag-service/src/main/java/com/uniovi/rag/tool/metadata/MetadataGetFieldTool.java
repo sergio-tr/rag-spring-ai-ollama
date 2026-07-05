@@ -768,7 +768,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
     }
 
     /**
-     * Deterministic attendee listing — avoids LLM truncation of long participant lists.
+     * Deterministic attendee listing - avoids LLM truncation of long participant lists.
      */
     private String formatAttendeesFieldAnswer(String query, List<FieldResult> results) {
         FieldResult best = results.get(0);

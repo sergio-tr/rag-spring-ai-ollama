@@ -35,17 +35,18 @@ export function AssistantInstructionsFields({
       return <p className="text-muted-foreground text-sm">{t("configLoading")}</p>;
     }
     return (
-      <div className="flex flex-col gap-2" data-testid="assistant-answer-instructions-field">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
+      <div className="flex min-w-0 max-w-full flex-col gap-2" data-testid="assistant-answer-instructions-field">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 basis-full sm:basis-auto">
             <Label htmlFor="assistant-global-persona">{t("instructionsAnswerLabel")}</Label>
-            <p className="text-muted-foreground text-xs">{t("instructionsAnswerHint")}</p>
+            <p className="text-muted-foreground break-words text-xs">{t("instructionsAnswerHint")}</p>
           </div>
           {globalPersonaPrompt.trim() && onResetAnswerInstructions ? (
             <Button
               type="button"
               variant="outline"
               size="sm"
+              className="max-w-full shrink-0 whitespace-normal"
               data-testid="assistant-reset-answer-instructions"
               onClick={onResetAnswerInstructions}
             >
@@ -70,17 +71,18 @@ export function AssistantInstructionsFields({
   }
 
   return (
-    <div className="flex flex-col gap-2" data-testid="assistant-source-usage-instructions-field">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
+    <div className="flex min-w-0 max-w-full flex-col gap-2" data-testid="assistant-source-usage-instructions-field">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1 basis-full sm:basis-auto">
           <Label htmlFor="assistant-project-prompt">{t("instructionsSourceUsageLabel")}</Label>
-          <p className="text-muted-foreground text-xs">{t("instructionsSourceUsageHint")}</p>
+          <p className="text-muted-foreground break-words text-xs">{t("instructionsSourceUsageHint")}</p>
         </div>
         {projectPrompt.trim() && onResetSourceUsageInstructions ? (
           <Button
             type="button"
             variant="outline"
             size="sm"
+            className="max-w-full shrink-0 whitespace-normal"
             data-testid="assistant-reset-source-usage-instructions"
             onClick={onResetSourceUsageInstructions}
           >

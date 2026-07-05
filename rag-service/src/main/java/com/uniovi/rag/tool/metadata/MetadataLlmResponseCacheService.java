@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 /**
  * Holds {@link Cacheable} LLM calls so they are invoked through the Spring proxy (not {@code this}).
  * Resolves {@link LlmChatClient} via {@link LlmClientResolver} from the effective {@link ResolvedLlmConfig}
- * (orchestration scope when bound, otherwise application defaults) — never the Spring default Ollama {@code ChatClient}.
+ * (orchestration scope when bound, otherwise application defaults) - never the Spring default Ollama {@code ChatClient}.
  */
 @Service
 public class MetadataLlmResponseCacheService {

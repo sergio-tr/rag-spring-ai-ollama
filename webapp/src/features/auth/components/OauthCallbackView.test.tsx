@@ -15,9 +15,37 @@ vi.mock("@/navigation", () => ({
   useRouter: () => router,
 }));
 
-const commitSessionCookie = vi.fn();
+const commitSessionCookie = vi.fn().mockResolvedValue(undefined);
 vi.mock("@/features/auth/lib/session-client", () => ({
   commitSessionCookie: (...a: unknown[]) => commitSessionCookie(...a),
+}));
+
+vi.mock("@tanstack/react-query", async (orig) => {
+  const mod = await orig<typeof import("@tanstack/react-query")>();
+  return {
+    ...mod,
+    useQueryClient: () => new mod.QueryClient(),
+  };
+});
+
+const setStoredUserRole = vi.fn();
+vi.mock("@/lib/user-role", () => ({
+  setStoredUserRole: (...a: unknown[]) => setStoredUserRole(...a),
+}));
+
+const resetRegisteredClientSessionState = vi.fn();
+vi.mock("@/lib/client-session-reset", async (orig) => {
+  const mod = await orig<typeof import("@/lib/client-session-reset")>();
+  return {
+    ...mod,
+    resetRegisteredClientSessionState: (...a: unknown[]) =>
+      resetRegisteredClientSessionState(...a),
+  };
+});
+
+const hardNavigate = vi.fn();
+vi.mock("@/lib/hard-navigation", () => ({
+  hardNavigate: (...a: unknown[]) => hardNavigate(...a),
 }));
 
 let mockSearch = "";
@@ -31,10 +59,14 @@ import { OauthCallbackView } from "./OauthCallbackView";
 describe("OauthCallbackView", () => {
   beforeEach(() => {
     mockSearch = "";
+    sessionStorage.clear();
     vi.mocked(apiFetch).mockReset();
     commitSessionCookie.mockReset();
+    commitSessionCookie.mockResolvedValue(undefined);
+    resetRegisteredClientSessionState.mockReset();
+    setStoredUserRole.mockReset();
     replace.mockReset();
-    refresh.mockReset();
+    hardNavigate.mockReset();
   });
 
   it("shows missing code message when code is absent", async () => {
@@ -52,7 +84,11 @@ describe("OauthCallbackView", () => {
 
   it("still exchanges when state is present alongside code", async () => {
     mockSearch = "code=c1&state=csrf";
-    vi.mocked(apiFetch).mockResolvedValueOnce({ accessToken: "a", refreshToken: "r" });
+    vi.mocked(apiFetch).mockResolvedValue({
+      accessToken: "a",
+      refreshToken: "r",
+      user: { id: "u1", email: "u@u.com", name: "U", role: "USER" },
+    });
 
     render(
       <IntlTestProvider>
@@ -73,7 +109,11 @@ describe("OauthCallbackView", () => {
 
   it("exchanges code and redirects on success", async () => {
     mockSearch = "code=c1";
-    vi.mocked(apiFetch).mockResolvedValueOnce({ accessToken: "a", refreshToken: "r" });
+    vi.mocked(apiFetch).mockResolvedValue({
+      accessToken: "a",
+      refreshToken: "r",
+      user: { id: "u1", email: "u@test.com", name: "U", role: "ADMIN" },
+    });
 
     render(
       <IntlTestProvider>
@@ -83,21 +123,17 @@ describe("OauthCallbackView", () => {
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(authApiPath("/oauth/exchange"), expect.any(Object));
-      expect(apiFetch).toHaveBeenCalledWith(
-        "/api/v5/auth/oauth/exchange",
-        expect.objectContaining({
-          method: "POST",
-        }),
-      );
+      expect(resetRegisteredClientSessionState).toHaveBeenCalled();
       expect(commitSessionCookie).toHaveBeenCalledWith({ accessToken: "a", refreshToken: "r" });
-      expect(replace).toHaveBeenCalledWith("/projects");
-      expect(refresh).toHaveBeenCalled();
+      expect(setStoredUserRole).toHaveBeenCalledWith("ADMIN");
+      expect(sessionStorage.getItem("rag_last_user_id")).toBe("u1");
+      expect(hardNavigate).toHaveBeenCalledWith("/projects", "en");
     });
   });
 
   it("shows distinct copy on ApiError 404", async () => {
     mockSearch = "code=c1";
-    vi.mocked(apiFetch).mockRejectedValueOnce(new ApiError(404, "nope"));
+    vi.mocked(apiFetch).mockRejectedValue(new ApiError(404, "nope"));
 
     render(
       <IntlTestProvider>
@@ -115,7 +151,7 @@ describe("OauthCallbackView", () => {
 
   it("shows generic OAuth failure on non-404 ApiError", async () => {
     mockSearch = "code=c1";
-    vi.mocked(apiFetch).mockRejectedValueOnce(new ApiError(401, "bad"));
+    vi.mocked(apiFetch).mockRejectedValue(new ApiError(401, "bad"));
 
     render(
       <IntlTestProvider>
@@ -131,7 +167,7 @@ describe("OauthCallbackView", () => {
 
   it("shows network error on non-ApiError failure", async () => {
     mockSearch = "code=c1";
-    vi.mocked(apiFetch).mockRejectedValueOnce(new Error("offline"));
+    vi.mocked(apiFetch).mockRejectedValue(new Error("offline"));
 
     render(
       <IntlTestProvider>

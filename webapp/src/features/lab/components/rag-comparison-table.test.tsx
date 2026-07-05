@@ -11,7 +11,7 @@ describe("RagComparisonTable", () => {
       {
         presetKey: "P3",
         presetLabel: "Chunk-level dense retrieval",
-        comparisonLabel: "P3 — Chunk-level dense retrieval",
+        comparisonLabel: "P3 - Chunk-level dense retrieval",
         totalItems: 7,
         executed: 7,
         noContextCount: 1,
@@ -22,7 +22,7 @@ describe("RagComparisonTable", () => {
       {
         presetKey: "P8",
         presetLabel: "Advanced retrieval",
-        comparisonLabel: "P8 — Advanced retrieval",
+        comparisonLabel: "P8 - Advanced retrieval",
         totalItems: 7,
         executed: 5,
         noContextCount: 2,
@@ -54,7 +54,7 @@ describe("RagComparisonTable", () => {
     const manyRows: ComparisonRow[] = Array.from({ length: 30 }, (_, index) => ({
       presetKey: `P${index + 1}`,
       presetLabel: `Preset ${index + 1}`,
-      comparisonLabel: `P${index + 1} — Preset ${index + 1}`,
+      comparisonLabel: `P${index + 1} - Preset ${index + 1}`,
       totalItems: 7,
       executed: 7,
       noContextCount: 0,
@@ -71,9 +71,9 @@ describe("RagComparisonTable", () => {
         />
       </IntlTestProvider>,
     );
-    expect(screen.getByText("P1 — Preset 1")).toBeInTheDocument();
-    expect(screen.queryByText("P30 — Preset 30")).not.toBeInTheDocument();
+    expect(screen.getByText("P1 - Preset 1")).toBeInTheDocument();
+    expect(screen.queryByText("P30 - Preset 30")).not.toBeInTheDocument();
     await user.click(screen.getByTestId("lab-rag-comparison-pagination-next"));
-    expect(screen.getByText("P30 — Preset 30")).toBeInTheDocument();
+    expect(screen.getByText("P30 - Preset 30")).toBeInTheDocument();
   });
 });

@@ -7,10 +7,12 @@ import com.uniovi.rag.interfaces.rest.dto.me.embedding.MeEffectiveEmbeddingDefau
 import com.uniovi.rag.security.RagPrincipal;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -30,13 +32,15 @@ public class MeEffectiveEmbeddingDefaultsController {
     }
 
     @GetMapping("/effective-defaults")
-    public MeEffectiveEmbeddingDefaultsResponseDto get(@AuthenticationPrincipal RagPrincipal principal) {
+    public MeEffectiveEmbeddingDefaultsResponseDto get(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @RequestParam(required = false) UUID projectId) {
         if (principal == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
         }
-        ResolvedLlmConfig resolved = resolvedLlmConfigResolver.resolve(principal.userId(), null, null);
+        ResolvedLlmConfig resolved = resolvedLlmConfigResolver.resolve(principal.userId(), projectId, null);
         EmbeddingDefaultsResolver.EffectiveEmbeddingDefaults defaults =
-                embeddingDefaultsResolver.resolve(principal.userId(), null, Map.of());
+                embeddingDefaultsResolver.resolve(principal.userId(), projectId, Map.of());
         return new MeEffectiveEmbeddingDefaultsResponseDto(
                 resolved.embeddingProvider(),
                 defaults.embeddingModel(),

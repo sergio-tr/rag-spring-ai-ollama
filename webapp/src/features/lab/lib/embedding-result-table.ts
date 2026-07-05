@@ -99,21 +99,21 @@ function formatGoldLabel(chunkIds: string[], documentIds: string[]): string {
     const preview = documentIds.slice(0, 2).join(", ");
     return documentIds.length > 2 ? `${preview} (+${documentIds.length - 2})` : preview;
   }
-  return "—";
+  return "-";
 }
 
 function readTopRetrieved(mp: Record<string, unknown>, chunkIds: string[], documentIds: string[]): string {
-  if (chunkIds.length > 0) return chunkIds[0] ?? "—";
-  if (documentIds.length > 0) return documentIds[0] ?? "—";
+  if (chunkIds.length > 0) return chunkIds[0] ?? "-";
+  if (documentIds.length > 0) return documentIds[0] ?? "-";
   const retrieved = mp.retrieved;
   if (Array.isArray(retrieved) && retrieved.length > 0) {
     const first = asRecord(retrieved[0]);
     const chunkId = typeof first?.chunk_id === "string" ? first.chunk_id : "";
     const documentId = typeof first?.document_id === "string" ? first.document_id : "";
-    return firstNonBlank(chunkId, documentId) || "—";
+    return firstNonBlank(chunkId, documentId) || "-";
   }
   const topDoc = typeof mp.top_document_id === "string" ? mp.top_document_id.trim() : "";
-  return topDoc || "—";
+  return topDoc || "-";
 }
 
 function readTopScore(mp: Record<string, unknown>): number | null {
@@ -139,7 +139,7 @@ export function toEmbeddingItemRow(row: unknown, idx: number): EmbeddingItemRow 
       ? op.outcome.trim()
       : typeof mp.item_outcome === "string" && mp.item_outcome.trim()
         ? mp.item_outcome.trim()
-        : outcomeFromStatus || "—";
+        : outcomeFromStatus || "-";
 
   const embeddingModelId = firstNonBlank(
     typeof op?.embeddingModelId === "string" ? op.embeddingModelId : "",
@@ -187,7 +187,7 @@ export function toEmbeddingItemRow(row: unknown, idx: number): EmbeddingItemRow 
         : typeof mp.dataset_question_id === "string"
           ? mp.dataset_question_id
           : "",
-    embeddingModelId: embeddingModelId || "—",
+    embeddingModelId: embeddingModelId || "-",
     expectedGold: formatGoldLabel(chunkIds, documentIds),
     retrievedTop1: readTopRetrieved(mp, retrievedChunks, retrievedDocs),
     goldRank,

@@ -49,6 +49,11 @@ describe("productPresetLabel", () => {
     expect(productPresetDescription("P99", t)).toBe("");
   });
 
+  it("productPresetDescription maps Demo_Best to accurate capability copy", () => {
+    expect(productPresetDescription("Demo_Best")).toContain("Hybrid retrieval");
+    expect(productPresetDescription("Demo_Best")).toContain("Memory, judge, and extended reasoning");
+  });
+
   it("productPresetInternalCodeChip exposes P-codes only for experimental presets", () => {
     expect(productPresetInternalCodeChip("P4")).toBe("P4");
     expect(productPresetInternalCodeChip("demo_best")).toBeNull();

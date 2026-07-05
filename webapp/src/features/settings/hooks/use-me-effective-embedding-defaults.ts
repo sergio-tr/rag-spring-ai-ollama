@@ -6,11 +6,16 @@ import type { MeEffectiveEmbeddingDefaultsResponse } from "@/types/api";
 
 export const meEffectiveEmbeddingDefaultsQueryKey = ["me", "embedding", "effective-defaults"] as const;
 
-export function useMeEffectiveEmbeddingDefaults() {
+export function useMeEffectiveEmbeddingDefaults(projectId?: string | null) {
+  const scopedProjectId = projectId ?? undefined;
   return useQuery({
-    queryKey: meEffectiveEmbeddingDefaultsQueryKey,
-    queryFn: () =>
-      apiFetch<MeEffectiveEmbeddingDefaultsResponse>(apiProductPath("/me/embedding/effective-defaults")),
+    queryKey: [...meEffectiveEmbeddingDefaultsQueryKey, scopedProjectId ?? "user"] as const,
+    queryFn: () => {
+      const query = scopedProjectId ? `?projectId=${encodeURIComponent(scopedProjectId)}` : "";
+      return apiFetch<MeEffectiveEmbeddingDefaultsResponse>(
+        apiProductPath(`/me/embedding/effective-defaults${query}`),
+      );
+    },
     staleTime: 30_000,
   });
 }

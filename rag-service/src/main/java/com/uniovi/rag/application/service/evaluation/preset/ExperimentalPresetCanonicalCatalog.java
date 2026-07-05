@@ -24,6 +24,9 @@ import java.util.Optional;
  *
  * <p>Presets are cumulative by design: each preset defines its parent and a runtime delta map.
  * The effective runtime config for a code is {@code parentEffective + delta}.
+ *
+ * <p>Chat product defaults may diverge from this ladder via {@link com.uniovi.rag.application.service.config.ChatProductPresetAlignment}
+ * and {@code V78__chat_product_preset_defaults_alignment.sql}; Lab benchmarks always use this catalog.
  */
 public final class ExperimentalPresetCanonicalCatalog {
 
@@ -491,7 +494,7 @@ public final class ExperimentalPresetCanonicalCatalog {
         for (RagExperimentalPresetCode c : RagExperimentalPresetCode.values()) {
             CanonicalPreset p = require(c);
             IndexRequirements eff = effectiveIndexRequirements(c);
-            String parent = p.parent() != null ? p.parent().name() : "—";
+            String parent = p.parent() != null ? p.parent().name() : "-";
             String mat =
                     eff.requiredMaterialization() != null ? eff.requiredMaterialization().name() : RequiredMaterialization.NONE.name();
             sb.append("| P")

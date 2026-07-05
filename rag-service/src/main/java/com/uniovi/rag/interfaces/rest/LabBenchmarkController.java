@@ -69,7 +69,7 @@ public class LabBenchmarkController {
         if (bk == BenchmarkKind.CLASSIFIER_METRICS) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Classifier metrics benchmarks require a spreadsheet upload — use the classifier evaluation"
+                    "Classifier metrics benchmarks require a spreadsheet upload - use the classifier evaluation"
                             + " form with an Excel file instead of a JSON request.");
         }
         BenchmarkJobAccepted accepted =

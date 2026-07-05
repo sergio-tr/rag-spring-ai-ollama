@@ -65,6 +65,7 @@ function baseToolbarApi(overrides: Partial<ChatToolbarApi> = {}): ChatToolbarApi
       conversationLlmModel: null,
       conversationClassifierModelId: null,
       conversationModelsPinned: false,
+      configurationMode: "PRESET" as const,
       runtimeOverride: {},
       manualOverrideKeys: [],
       isCustom: false,
@@ -79,7 +80,7 @@ function baseToolbarApi(overrides: Partial<ChatToolbarApi> = {}): ChatToolbarApi
         compatibleWithPreset: true,
         compatibilityStatus: "COMPATIBLE",
         activeSnapshotCapabilities: {
-          materializationStrategy: "CHUNK",
+          materializationStrategy: "CHUNK_LEVEL",
           supportsMetadata: false,
           embeddingModelId: "mxbai-embed-large",
           chunkMaxChars: 400,
@@ -139,7 +140,7 @@ function baseToolbarApi(overrides: Partial<ChatToolbarApi> = {}): ChatToolbarApi
 
 describe("AssistantConfigurationEffectiveRetrievalValues", () => {
   beforeEach(() => {
-    hooksMock.useProjectIndexProfile.mockReturnValue({ data: { materializationStrategy: "CHUNK" } });
+    hooksMock.useProjectIndexProfile.mockReturnValue({ data: { materializationStrategy: "CHUNK_LEVEL" } });
     hooksMock.useActiveProjectSnapshot.mockReturnValue({ data: { id: "snap-1" } });
     hooksMock.useClassifierModelsQuery.mockReturnValue({ data: { models: [] } });
     hooksMock.useRuntimeConfigCapabilities.mockReturnValue({

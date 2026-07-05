@@ -1,4 +1,4 @@
-/** Forbidden phrases in normal user-facing copy (not code identifiers). Client-safe — no Node APIs. */
+/** Forbidden phrases in normal user-facing copy (not code identifiers). Client-safe - no Node APIs. */
 export const FORBIDDEN_PRODUCT_VISIBLE_PATTERNS: ReadonlyArray<{
   readonly id: string;
   readonly pattern: RegExp;

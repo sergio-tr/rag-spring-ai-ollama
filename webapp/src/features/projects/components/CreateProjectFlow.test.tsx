@@ -11,8 +11,6 @@ const createHook = vi.hoisted(() => ({
   mutateAsync: vi.fn(),
   reset: vi.fn(),
   isPending: false,
-  isError: false,
-  isSuccess: false,
 }));
 
 vi.mock("@/features/projects/hooks/use-projects", () => ({
@@ -20,9 +18,11 @@ vi.mock("@/features/projects/hooks/use-projects", () => ({
     mutateAsync: createHook.mutateAsync,
     reset: createHook.reset,
     isPending: createHook.isPending,
-    isError: createHook.isError,
-    isSuccess: createHook.isSuccess,
   }),
+}));
+
+vi.mock("@/features/projects/hooks/use-project-create-feedback-notifier", () => ({
+  useProjectCreateFeedbackNotifier: () => vi.fn(),
 }));
 
 vi.mock("@/features/chat/hooks/use-me-selectable-llm-models", () => ({
@@ -61,8 +61,6 @@ describe("CreateProjectFlow", () => {
   beforeEach(() => {
     createHook.mutateAsync.mockReset();
     createHook.isPending = false;
-    createHook.isError = false;
-    createHook.isSuccess = false;
     apiMock.apiFetch.mockClear();
   });
 

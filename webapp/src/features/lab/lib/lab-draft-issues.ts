@@ -1,8 +1,5 @@
 import type { LabEvaluationDraftKind, LabEvaluationDraftStored } from "@/features/lab/lib/lab-evaluation-draft";
-import {
-  isLegacyStaleLabLlmModelId,
-  type LabEvaluationDraftWarnings,
-} from "@/features/lab/lib/lab-evaluation-draft";
+import type { LabEvaluationDraftWarnings } from "@/features/lab/lib/lab-evaluation-draft";
 import type { EvaluationCorpusReadinessDto } from "@/types/api";
 
 export type LabDraftIssueCode =

@@ -24,6 +24,7 @@ public class ConfigurationSchemaProvider {
                         field("topK", "integer", 1, 100, true),
                         field("similarityThreshold", "number", 0.0, 1.0, true),
                         field("materializationStrategy", "string", null, null, true),
+                        field("classifierModelId", "string", null, null, true),
                         field("llmModel", "string", null, null, true),
                         field("llmTemperature", "number", 0.0, 2.0, true),
                         field("embeddingModel", "string", null, null, false),

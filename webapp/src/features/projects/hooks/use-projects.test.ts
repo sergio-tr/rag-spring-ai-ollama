@@ -49,7 +49,10 @@ describe("use-projects hooks", () => {
     const { result } = renderHook(() => useProjectList(1, 10), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(body);
-    expect(apiFetch).toHaveBeenCalledWith(expect.stringMatching(/page=1&size=10/));
+    expect(apiFetch).toHaveBeenCalledWith(
+      expect.stringMatching(/page=1&size=10/),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("useCreateProject posts, activates, updates store and invalidates projects", async () => {

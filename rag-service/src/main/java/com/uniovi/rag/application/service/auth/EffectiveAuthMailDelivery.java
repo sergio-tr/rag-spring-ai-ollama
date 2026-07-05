@@ -10,7 +10,7 @@ public record EffectiveAuthMailDelivery(
         boolean javaMailSenderAvailable) {
 
     public enum ResolvedMode {
-        /** {@code rag.auth.mail.enabled=false} — no outbox rows for auth emails. */
+        /** {@code rag.auth.mail.enabled=false} - no outbox rows for auth emails. */
         DISABLED,
         /** Rows are queued; SMTP sweep is off (dev / e2e). */
         OUTBOX_ONLY,

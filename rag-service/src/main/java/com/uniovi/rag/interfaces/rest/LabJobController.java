@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -186,7 +187,7 @@ public class LabJobController {
         return emitter;
     }
 
-    private static void sendHeartbeat(SseEmitter emitter, UUID taskId) throws java.io.IOException {
+    private static void sendHeartbeat(SseEmitter emitter, UUID taskId) throws IOException {
         LabJobEventDto heartbeat = new LabJobEventDto(
                 0L,
                 taskId,

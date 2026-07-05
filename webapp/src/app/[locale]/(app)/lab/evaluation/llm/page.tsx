@@ -11,6 +11,9 @@ export default function LabLlmEvalPage() {
   return (
     <div className="space-y-3" data-testid="lab-llm-eval-page">
       <RunSummaryCard title={t("llmEvalTitle")} summary={t("llmEvalTagline")} />
+      <p className="text-muted-foreground text-xs" data-testid="lab-llm-eval-prompt-hint">
+        {t("evaluationPromptAssistantConfigurationHint")}
+      </p>
       <LabEvaluationSteps kind="LLM_JUDGE_QA" />
       <LabEvaluationRunCard
         benchmarkKind="LLM_JUDGE_QA"

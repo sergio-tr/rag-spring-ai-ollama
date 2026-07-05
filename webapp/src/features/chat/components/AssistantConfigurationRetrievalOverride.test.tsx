@@ -11,6 +11,7 @@ const hooksMock = vi.hoisted(() => ({
   useActiveProjectSnapshot: vi.fn(),
   useClassifierModelsQuery: vi.fn(),
   useMeEffectiveEmbeddingDefaults: vi.fn(),
+  useProjectStoredRagConfigQuery: vi.fn(),
 }));
 
 vi.mock("@/features/chat/hooks/use-runtime-config-capabilities", () => ({
@@ -24,6 +25,9 @@ vi.mock("@/features/projects/hooks/use-active-project-snapshot", () => ({
 }));
 vi.mock("@/features/lab/hooks/use-classifier-registry", () => ({
   useClassifierModelsQuery: (...args: unknown[]) => hooksMock.useClassifierModelsQuery(...args),
+}));
+vi.mock("@/features/settings/hooks/use-rag-config", () => ({
+  useProjectStoredRagConfigQuery: (...args: unknown[]) => hooksMock.useProjectStoredRagConfigQuery(...args),
 }));
 vi.mock("@/features/settings/hooks/use-me-effective-embedding-defaults", () => ({
   useMeEffectiveEmbeddingDefaults: (...args: unknown[]) => hooksMock.useMeEffectiveEmbeddingDefaults(...args),
@@ -47,8 +51,9 @@ describe("AssistantConfigurationRetrievalOverride", () => {
     hooksMock.useClassifierModelsQuery.mockReturnValue({ data: [], isError: false });
     hooksMock.useRuntimeConfigCapabilities.mockReturnValue({ data: { capabilities: [] } });
     hooksMock.useMeEffectiveEmbeddingDefaults.mockReturnValue({
-      data: { retrievalOptions: { topK: 8, similarityThreshold: 0.25, materializationStrategy: "CHUNK" } },
+      data: { retrievalOptions: { topK: 8, similarityThreshold: 0.25, materializationStrategy: "CHUNK_LEVEL" } },
     });
+    hooksMock.useProjectStoredRagConfigQuery.mockReturnValue({ data: null });
 
     useChatToolbarStore.setState({
       api: {
@@ -79,6 +84,7 @@ describe("AssistantConfigurationRetrievalOverride", () => {
           conversationLlmModel: null,
           conversationClassifierModelId: null,
           conversationModelsPinned: false,
+          configurationMode: "PRESET" as const,
           runtimeOverride: {},
           manualOverrideKeys: [],
           isCustom: false,
@@ -141,7 +147,9 @@ describe("AssistantConfigurationRetrievalOverride", () => {
     fireEvent.click(screen.getByTestId("chat-config-edit-button"));
     fireEvent.click(screen.getByTestId("chat-retrieval-mode-assistant-defaults"));
 
-    expect(saveRuntimeOverride).toHaveBeenCalledWith({ topK: 8, similarityThreshold: 0.25 });
+    expect(saveRuntimeOverride).toHaveBeenCalledWith({
+      retrievalOverrideMode: "assistant_defaults",
+    });
   });
 
   it("clears retrieval override keys for preset recommended mode", () => {
@@ -152,7 +160,11 @@ describe("AssistantConfigurationRetrievalOverride", () => {
         saveRuntimeOverride,
         runtimeState: {
           ...s.api!.runtimeState!,
-          runtimeOverride: { topK: 8, similarityThreshold: 0.25 },
+          runtimeOverride: {
+            retrievalOverrideMode: "assistant_defaults",
+            topK: 8,
+            similarityThreshold: 0.25,
+          },
         },
       },
     }));
@@ -161,6 +173,34 @@ describe("AssistantConfigurationRetrievalOverride", () => {
     fireEvent.click(screen.getByTestId("chat-config-edit-button"));
     fireEvent.click(screen.getByTestId("chat-retrieval-mode-preset"));
 
-    expect(saveRuntimeOverride).toHaveBeenCalledWith({});
+    expect(saveRuntimeOverride).toHaveBeenCalledWith({ retrievalOverrideMode: "preset" });
+  });
+
+  it("selects custom mode even when values match assistant defaults", () => {
+    const saveRuntimeOverride = vi.fn();
+    useChatToolbarStore.setState((s) => ({
+      api: {
+        ...s.api!,
+        saveRuntimeOverride,
+        runtimeState: {
+          ...s.api!.runtimeState!,
+          runtimeOverride: {
+            retrievalOverrideMode: "assistant_defaults",
+            topK: 8,
+            similarityThreshold: 0.25,
+          },
+        },
+      },
+    }));
+
+    renderSubject();
+    fireEvent.click(screen.getByTestId("chat-config-edit-button"));
+    fireEvent.click(screen.getByTestId("chat-retrieval-mode-custom"));
+
+    expect(saveRuntimeOverride).toHaveBeenCalledWith({
+      retrievalOverrideMode: "custom",
+      topK: 8,
+      similarityThreshold: 0.25,
+    });
   });
 });

@@ -180,8 +180,8 @@ export function formatRoleSummary(role: TaskModelRoleForm): string {
   const parts = [
     role.role,
     role.inheritModel ? "inherits model" : role.modelId,
-    `temp ${role.parameters.temperature ?? "—"}`,
-    `max ${role.parameters.maxTokens ?? "—"}`,
+    `temp ${role.parameters.temperature ?? "-"}`,
+    `max ${role.parameters.maxTokens ?? "-"}`,
     role.parameters.responseFormat ?? "text",
   ];
   return parts.join(" · ");

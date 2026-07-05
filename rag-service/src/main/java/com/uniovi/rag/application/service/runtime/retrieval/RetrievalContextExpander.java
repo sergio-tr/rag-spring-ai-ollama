@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
 import com.uniovi.rag.application.service.knowledge.document.ActaSectionChunk;
+import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
 import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
 import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
@@ -54,6 +55,15 @@ public class RetrievalContextExpander {
             }
         }
 
+        // Keep highest scored context first, then apply the runtime post-fusion cap.
+        working.sort(Comparator.comparingDouble(RetrievalCandidate::fusedRrfScore).reversed());
+        int cap = req != null ? Math.max(0, req.postFusionCap()) : 0;
+        if (cap > 0 && working.size() > cap) {
+            int beforeCap = working.size();
+            working = new ArrayList<>(working.subList(0, cap));
+            notes.add("post_fusion_cap:" + beforeCap + "->" + working.size());
+        }
+
         return new ExpansionResult(List.copyOf(working), working.size(), List.copyOf(notes));
     }
 
@@ -68,6 +78,9 @@ public class RetrievalContextExpander {
     private static boolean shouldExpandContext(QueryPlan plan, RetrievalRequest req) {
         if (plan == null) {
             return false;
+        }
+        if (isScopedAttendeeCountQuery(req != null ? req.queryText() : null)) {
+            return true;
         }
         if (plan.queryIntent() == QueryIntent.COUNT
                 || plan.expectedAnswerShape() == ExpectedAnswerShape.SCALAR_COUNT) {
@@ -89,6 +102,7 @@ public class RetrievalContextExpander {
         String lower = query.toLowerCase(Locale.ROOT);
         return lower.contains("particip")
                 || lower.contains("asistent")
+                || lower.contains("propietarios")
                 || lower.contains("orden del día")
                 || lower.contains("orden del dia")
                 || lower.contains("agenda")
@@ -143,6 +157,14 @@ public class RetrievalContextExpander {
                     byId.putIfAbsent(h.candidateId(), h);
                 }
             }
+            if (isScopedAttendeeCountQuery(req != null ? req.queryText() : null)) {
+                List<RetrievalCandidate> participants =
+                        neighborLoader.loadSectionSiblings(
+                                projectId, snapshotId, docId, ActaSectionChunk.SECTION_PARTICIPANTS, 0);
+                for (RetrievalCandidate p : participants) {
+                    byId.putIfAbsent(p.candidateId(), p);
+                }
+            }
         }
 
         List<RetrievalCandidate> merged = mergeInBatchSectionSiblings(new ArrayList<>(byId.values()));
@@ -158,7 +180,28 @@ public class RetrievalContextExpander {
             return false;
         }
         String lower = q.toLowerCase(Locale.ROOT);
+        if (isScopedAttendeeCountQuery(q)) {
+            return true;
+        }
         return lower.contains("resum") || lower.contains("duración") || lower.contains("duracion");
+    }
+
+    /** Attendee totals live in the acta header section; expand when the query is scoped to one acta. */
+    static boolean isScopedAttendeeCountQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String lower = query.toLowerCase(Locale.ROOT);
+        boolean asksCount =
+                (lower.contains("cuántos") || lower.contains("cuantos") || lower.contains("cuántas") || lower.contains("cuantas"))
+                        && (lower.contains("propietarios")
+                                || lower.contains("asistentes")
+                                || lower.contains("participantes"));
+        if (!asksCount) {
+            return false;
+        }
+        return ActaFieldAnchorHeuristics.hasExplicitDateInText(lower)
+                || ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference(lower);
     }
 
     private static List<RetrievalCandidate> mergeInBatchSectionSiblings(List<RetrievalCandidate> candidates) {

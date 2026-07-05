@@ -15,6 +15,28 @@ public enum ErrorCode {
     LLM_UNAUTHORIZED,
     /** LLM provider returned an error (endpoint, model, HTTP). */
     LLM_PROVIDER_ERROR,
+    /** Model provider is unreachable or not serving requests. */
+    MODEL_PROVIDER_UNAVAILABLE,
+    /** Network/connection failure reaching the model provider. */
+    MODEL_UNREACHABLE,
+    /** Configured model id is not available on the provider. */
+    MODEL_NOT_FOUND,
+    /** Provider rejected credentials (HTTP 401/403). */
+    MODEL_AUTH_FAILED,
+    /** Model call exceeded the configured timeout. */
+    MODEL_TIMEOUT,
+    /** Model/provider configuration is invalid or incomplete. */
+    MODEL_CONFIG_INVALID,
+    /** Embedding model is unavailable for the operation. */
+    EMBEDDING_MODEL_UNAVAILABLE,
+    /** Chat model is unavailable for the operation. */
+    CHAT_MODEL_UNAVAILABLE,
+    /** Judge/secondary LLM is unavailable for the operation. */
+    JUDGE_MODEL_UNAVAILABLE,
+    /** Task-specific secondary LLM is unavailable. */
+    SECONDARY_MODEL_UNAVAILABLE,
+    /** Embedding output dimensions do not match the vector index. */
+    MODEL_DIMENSION_MISMATCH,
     /** Embedding is not supported for the resolved provider. */
     UNSUPPORTED_EMBEDDING_PROVIDER,
     UNSUPPORTED_RUNTIME_CONFIGURATION,

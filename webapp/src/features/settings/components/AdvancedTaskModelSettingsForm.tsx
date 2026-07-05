@@ -55,7 +55,7 @@ function BoundedNumberField({
 }) {
   const display = typeof value === "number" && Number.isFinite(value) ? String(value) : "";
   return (
-    <label className="space-y-1 text-xs" data-testid={testId}>
+    <label className="min-w-[220px] flex-1 space-y-1 text-xs" data-testid={testId}>
       <span className="text-muted-foreground font-medium">{label}</span>
       <input
         type="number"
@@ -100,7 +100,7 @@ function RoleParameterFields({
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2" data-testid={`task-role-parameters-${role.roleId}`}>
+    <div className="flex min-w-0 max-w-full flex-wrap gap-3" data-testid={`task-role-parameters-${role.roleId}`}>
       <BoundedNumberField
         label={t("taskLlmTemperatureLabel")}
         testId={`task-hp-temperature-${role.roleId}`}
@@ -161,7 +161,7 @@ function RoleParameterFields({
         disabled={disabled || role.inheritParameters}
         onCommit={(frequencyPenalty) => patchParams({ ...params, frequencyPenalty })}
       />
-      <label className="space-y-1 text-xs" data-testid={`task-hp-response-format-${role.roleId}`}>
+      <label className="min-w-[220px] flex-1 space-y-1 text-xs" data-testid={`task-hp-response-format-${role.roleId}`}>
         <span className="text-muted-foreground font-medium">{t("taskLlmResponseFormatLabel")}</span>
         <select
           className="bg-background w-full rounded-md border px-2 py-1 text-sm disabled:opacity-50"
@@ -189,7 +189,7 @@ function RoleParameterFields({
         disabled={disabled || role.inheritParameters}
         onCommit={(timeoutSeconds) => patchParams({ ...params, timeoutSeconds })}
       />
-      <label className="space-y-1 text-xs md:col-span-2" data-testid={`task-hp-stop-${role.roleId}`}>
+      <label className="min-w-0 w-full space-y-1 text-xs [flex-basis:100%]" data-testid={`task-hp-stop-${role.roleId}`}>
         <span className="text-muted-foreground font-medium">{t("taskLlmStopLabel")}</span>
         <textarea
           className="bg-background min-h-[4rem] w-full rounded-md border px-2 py-1 text-sm disabled:opacity-50"
@@ -202,9 +202,9 @@ function RoleParameterFields({
           }}
         />
       </label>
-      <label className="space-y-1 text-xs md:col-span-2" data-testid={`task-hp-think-${role.roleId}`}>
+      <label className="min-w-0 w-full space-y-1 text-xs [flex-basis:100%]" data-testid={`task-hp-think-${role.roleId}`}>
         <span className="text-muted-foreground font-medium">{t("taskLlmThinkLabel")}</span>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             type="checkbox"
             disabled={disabled || role.inheritParameters}
@@ -278,14 +278,15 @@ export function AdvancedTaskModelSettingsForm({
   return (
     <div className="flex min-w-0 max-w-full flex-col gap-4" data-testid="advanced-task-model-settings">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <h4 className="text-sm font-medium">{t("taskLlmSettingsTitle")}</h4>
-          <p className="text-muted-foreground mt-1 text-xs">{t("taskLlmSettingsDescription")}</p>
+          <p className="text-muted-foreground mt-1 break-words text-xs">{t("taskLlmSettingsDescription")}</p>
         </div>
         <Button
           type="button"
           variant="outline"
           size="sm"
+          className="max-w-full shrink-0 whitespace-normal"
           data-testid="task-model-reset-all"
           onClick={() => setResetAllOpen(true)}
         >
@@ -296,10 +297,10 @@ export function AdvancedTaskModelSettingsForm({
       {roles.map((role) => (
         <details
           key={role.roleId}
-          className="rounded-md border bg-muted/20 p-3"
+          className="min-w-0 max-w-full overflow-hidden rounded-md border bg-muted/20 p-3"
           data-testid={`task-llm-row-${role.roleId}`}
         >
-          <summary className="cursor-pointer list-none text-sm font-medium min-w-0">
+          <summary className="min-w-0 cursor-pointer list-none text-sm font-medium">
             <span
               className="block truncate"
               title={formatRoleSummary(role)}
@@ -308,16 +309,17 @@ export function AdvancedTaskModelSettingsForm({
               {formatRoleSummary(role)}
             </span>
           </summary>
-          <div className="mt-3 space-y-4">
-            <p className="text-muted-foreground text-xs">
+          <div className="mt-3 min-w-0 space-y-4">
+            <p className="text-muted-foreground break-words text-xs">
               {role.inheritModel ? t("taskLlmInheritsMainModel") : t("taskLlmCustomModel")}
               {role.inheritParameters ? ` · ${t("taskLlmInheritsMainParameters")}` : ""}
             </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="flex items-center gap-2 text-xs">
+            <div className="flex min-w-0 flex-wrap gap-3">
+              <div className="flex min-w-[220px] flex-1 items-start gap-2 text-xs">
                 <input
                   id={`inherit-model-${role.roleId}`}
                   type="checkbox"
+                  className="mt-0.5 shrink-0"
                   checked={role.inheritModel}
                   onChange={(e) =>
                     patchRole(role.roleId, {
@@ -328,23 +330,28 @@ export function AdvancedTaskModelSettingsForm({
                     })
                   }
                 />
-                <Label htmlFor={`inherit-model-${role.roleId}`}>{t("taskLlmInheritModelLabel")}</Label>
+                <Label htmlFor={`inherit-model-${role.roleId}`} className="min-w-0 break-words leading-snug">
+                  {t("taskLlmInheritModelLabel")}
+                </Label>
               </div>
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex min-w-[220px] flex-1 items-start gap-2 text-xs">
                 <input
                   id={`inherit-params-${role.roleId}`}
                   type="checkbox"
+                  className="mt-0.5 shrink-0"
                   checked={role.inheritParameters}
                   onChange={(e) => patchRole(role.roleId, { inheritParameters: e.target.checked })}
                 />
-                <Label htmlFor={`inherit-params-${role.roleId}`}>{t("taskLlmInheritParametersLabel")}</Label>
+                <Label htmlFor={`inherit-params-${role.roleId}`} className="min-w-0 break-words leading-snug">
+                  {t("taskLlmInheritParametersLabel")}
+                </Label>
               </div>
-              <div className="flex flex-col gap-1 sm:col-span-2">
+              <div className="flex w-full min-w-[220px] flex-[1_1_100%] flex-col gap-1">
                 <Label htmlFor={`task-model-${role.roleId}`}>{t("taskLlmModelLabel")}</Label>
                 <select
                   id={`task-model-${role.roleId}`}
                   data-testid={`task-llm-model-select-${role.roleId}`}
-                  className="border-input bg-background h-10 w-full rounded-md border px-3 py-2 text-sm"
+                  className="border-input bg-background h-10 w-full min-w-0 rounded-md border px-3 py-2 text-sm"
                   value={role.modelId}
                   disabled={modelsQ.isLoading || role.inheritModel}
                   onChange={(e) =>

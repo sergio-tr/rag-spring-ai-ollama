@@ -5,7 +5,7 @@ import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
 import type { RagPresetDto } from "@/types/api";
 
-/** Shared with settings/presets — list visible RAG presets for the product API. */
+/** Shared with settings/presets - list visible RAG presets for the product API. */
 export const ragPresetsQueryKey = ["presets"] as const;
 
 export function useRagPresets() {

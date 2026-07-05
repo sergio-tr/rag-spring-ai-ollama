@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 /**
- * Polymorphic suite definition entry (P34 JSON) — discriminated by {@code entryKind}.
+ * Polymorphic suite definition entry (P34 JSON) - discriminated by {@code entryKind}.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "entryKind", include = JsonTypeInfo.As.EXISTING_PROPERTY, visible = true)
 @JsonSubTypes({

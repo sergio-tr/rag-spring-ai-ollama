@@ -55,6 +55,7 @@ function baseChatToolbarApi(overrides: Partial<ChatToolbarApi> = {}): ChatToolba
       conversationLlmModel: null,
       conversationClassifierModelId: null,
       conversationModelsPinned: false,
+      configurationMode: "PRESET" as const,
       runtimeOverride: {},
       isCustom: false,
       validation: { valid: true, supported: true, errors: [], warnings: [] },
@@ -172,7 +173,7 @@ async function openChatAdvancedTechnical(user: ReturnType<typeof userEvent.setup
   return advanced;
 }
 
-describe("Advanced technical details visibility — chat configuration", () => {
+describe("Advanced technical details visibility - chat configuration", () => {
   beforeEach(() => {
     hooksMock.useProjectIndexProfile.mockReturnValue({ data: null, isLoading: false, isError: false });
     hooksMock.useActiveProjectSnapshot.mockReturnValue({
@@ -249,7 +250,7 @@ describe("Advanced technical details visibility — chat configuration", () => {
   });
 });
 
-describe("Advanced technical details visibility — assistant message trace", () => {
+describe("Advanced technical details visibility - assistant message trace", () => {
   const message: MessageDto = {
     id: "m1",
     role: "ASSISTANT",

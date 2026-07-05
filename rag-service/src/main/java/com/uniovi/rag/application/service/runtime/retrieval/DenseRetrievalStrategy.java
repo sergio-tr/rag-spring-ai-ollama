@@ -110,7 +110,13 @@ public class DenseRetrievalStrategy {
                 break;
             }
         }
-        return new DenseRetrievalOutcome(out, rawCount, postSnapshot.size(), filtered.size());
+        return new DenseRetrievalOutcome(
+                out,
+                rawCount,
+                postSnapshot.size(),
+                filtered.size(),
+                searchThreshold,
+                req.denseFetchLimit());
     }
 
     private PgVectorStore resolveVectorStore(RetrievalRequest req) {

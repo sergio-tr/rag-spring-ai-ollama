@@ -45,6 +45,22 @@ export type MeEffectiveLlmDefaultsResponse = {
   additionalParameters: Record<string, unknown>;
 };
 
+export type MeEffectiveRuntimeResponse = {
+  projectId: string;
+  conversationId: string;
+  effectiveConfig: Record<string, unknown>;
+  taskRoles: Array<Record<string, unknown>>;
+  classifierModelId: string | null;
+  snapshotEmbeddingModelId: string | null;
+  presetId: string | null;
+  effectivePresetId?: string | null;
+  presetName?: string | null;
+  presetSource?: string | null;
+  retrievalTopK: number | null;
+  retrievalSimilarityThreshold: number | null;
+  materializationStrategy: string | null;
+};
+
 export type ProjectIndexProfileSummary = {
   projectId: string;
   materializationStrategy: string | null;
@@ -136,7 +152,7 @@ export type EvaluationCorpusSummaryDto = {
   updatedAt: string;
 };
 
-/** GET /lab/evaluation-corpora/{id}/readiness — corpus + snapshot preflight for Lab benchmarks. */
+/** GET /lab/evaluation-corpora/{id}/readiness - corpus + snapshot preflight for Lab benchmarks. */
 export type EvaluationCorpusReadinessDto = {
   corpusId: string;
   indexProjectId: string | null;
@@ -181,7 +197,7 @@ export type ConversationDto = {
   classifierModelId?: string | null;
   /** Project document UUIDs limiting retrieval; empty = all documents in the project. */
   documentFilter?: string[];
-  /** Conversation-scoped runtime override keys (merged on top of preset + project config). */
+  /** Full custom conversation configuration snapshot (merged on PATCH). */
   runtimeOverride?: Record<string, unknown>;
   /** Populated when returned from POST create after validation preview; omitted or empty on list. */
   effectiveRuntimePreview?: Record<string, unknown>;
@@ -225,6 +241,8 @@ export type ChatRuntimeStateDto = {
   conversationLlmModel: string | null;
   conversationClassifierModelId: string | null;
   conversationModelsPinned: boolean;
+  configurationMode: "PRESET" | "CUSTOM";
+  /** Full custom conversation configuration snapshot when mode is CUSTOM. */
   runtimeOverride: Record<string, unknown>;
   manualOverrideKeys: string[];
   isCustom: boolean;
@@ -429,7 +447,7 @@ export type ActiveLabJobDto = {
   cancellable: boolean;
 };
 
-/** GET /lab/benchmarks/{kind}/runs/latest — Lab recovery when no active job. */
+/** GET /lab/benchmarks/{kind}/runs/latest - Lab recovery when no active job. */
 export type LatestLabRunRecoveryDto = {
   evaluationRunId: string;
   jobId: string | null;
@@ -830,7 +848,7 @@ export type PatchConversationBody = {
   classifierModelId?: string | null;
 };
 
-/** GET `{product}/models` — allowlist vs Ollama tags. */
+/** GET `{product}/models` - allowlist vs Ollama tags. */
 export type ModelsCatalogAllowlistEntry = {
   name: string;
   type: "LLM" | "EMBEDDING";
@@ -844,7 +862,7 @@ export type ModelsCatalogResponse = {
   allowlist: ModelsCatalogAllowlistEntry[];
 };
 
-/** GET `{product}/models?type=LLM|EMBEDDING` — filtered selectable models. */
+/** GET `{product}/models?type=LLM|EMBEDDING` - filtered selectable models. */
 export type SelectableModelDto = {
   modelId: string;
   displayName: string | null;
@@ -854,7 +872,7 @@ export type SelectableModelDto = {
   lastCheckedAt: string | null;
 };
 
-/** GET `{product}/me/llm/selectable-models` — user-scoped chat models from properties catalog. */
+/** GET `{product}/me/llm/selectable-models` - user-scoped chat models from properties catalog. */
 export type LlmCatalogRuntimeStatus =
   | "UNKNOWN"
   | "CONFIGURED"
@@ -881,7 +899,7 @@ export type MeSelectableLlmModelsResponse = {
   models: MeSelectableLlmModelDto[];
 };
 
-/** GET `{product}/llm/catalog` — properties-backed model catalog with optional runtime status. */
+/** GET `{product}/llm/catalog` - properties-backed model catalog with optional runtime status. */
 export type LlmCatalogSource =
   | "PROPERTIES"
   | "CONFIGURED_CATALOG"
@@ -912,7 +930,7 @@ export type LlmCatalogResponse = {
   models: LlmCatalogModelDto[];
 };
 
-/** GET `{product}/lab/evaluation-models` — Lab evaluation model picker from properties catalog. */
+/** GET `{product}/lab/evaluation-models` - Lab evaluation model picker from properties catalog. */
 export type LabEvaluationModelDto = {
   modelName: string;
   evalSelectable: boolean;
@@ -983,7 +1001,7 @@ export type ModelRegistryCheckRequest = {
   probeEmbedding?: boolean | null;
 };
 
-/** POST `{product}/model-registry/pull` — only curated ids; returns lab job envelope. */
+/** POST `{product}/model-registry/pull` - only curated ids; returns lab job envelope. */
 export type ModelRegistryPullRequest = {
   modelId: string;
 };
@@ -1006,7 +1024,7 @@ export type ActivateClassifierModelBody = {
   projectId: string;
 };
 
-/** GET `{product}/lab/dataset-templates/{kind}` — Excel template for Lab uploads. */
+/** GET `{product}/lab/dataset-templates/{kind}` - Excel template for Lab uploads. */
 export type ExperimentalDatasetTemplateKind =
   | "llm-model-baseline"
   | "embedding-baseline"
@@ -1070,7 +1088,7 @@ export type ExperimentalDatasetListItemDto = {
   description: string | null;
 };
 
-/** GET `{product}/lab/runs/{runId}/items` — one evaluated row. */
+/** GET `{product}/lab/runs/{runId}/items` - one evaluated row. */
 export type EvaluationResultItemDto = {
   id: string;
   questionText: string;

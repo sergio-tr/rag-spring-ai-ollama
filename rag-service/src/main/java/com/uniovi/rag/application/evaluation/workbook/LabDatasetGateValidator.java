@@ -62,14 +62,15 @@ public final class LabDatasetGateValidator {
                 if (wb.embeddingRetrievalQueries().size() < 20) {
                     report.add(tooSmall(WorkbookSheetNames.EMBEDDING_RETRIEVAL_QUERIES, 0, "EMBEDDING_RETRIEVAL requires at least 20 queries for uploads"));
                 }
-                if (wb.chunkRegistry().isEmpty()) {
+                if (wb.chunkRegistry().isEmpty()
+                        && wb.embeddingRetrievalQueries().stream().anyMatch(q -> q.goldChunkIds() != null && !q.goldChunkIds().isEmpty())) {
                     report.add(new ValidationIssue(
                             ValidationSeverity.ERROR,
                             ValidationIssueCode.MISSING_SHEET,
                             WorkbookSheetNames.CHUNK_REGISTRY,
                             0,
                             "",
-                            "chunk_registry must not be empty for EMBEDDING_MODEL_BASELINE"));
+                            "chunk_registry must not be empty when expected_chunk_id or expected_relevant_chunk_ids are used"));
                 }
             }
             case RAG_PRESET_BENCHMARK -> {
@@ -131,14 +132,15 @@ public final class LabDatasetGateValidator {
             report.add(tooSmall(WorkbookSheetNames.EMBEDDING_RETRIEVAL_QUERIES, 0,
                     "Dataset too small for " + kind.name() + ": got " + n + ", need >= " + min + (isReference ? " for REFERENCE_BUNDLE" : "")));
         }
-        if (wb.chunkRegistry().isEmpty()) {
+        if (wb.chunkRegistry().isEmpty()
+                && wb.embeddingRetrievalQueries().stream().anyMatch(q -> q.goldChunkIds() != null && !q.goldChunkIds().isEmpty())) {
             report.add(new ValidationIssue(
                     ValidationSeverity.ERROR,
                     ValidationIssueCode.MISSING_SHEET,
                     WorkbookSheetNames.CHUNK_REGISTRY,
                     0,
                     "",
-                    "chunk_registry must not be empty for " + kind.name()));
+                    "chunk_registry must not be empty when gold_chunk_ids are referenced"));
         }
     }
 

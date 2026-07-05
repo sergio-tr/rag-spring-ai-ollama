@@ -97,6 +97,7 @@ describe("AssistantConfigurationLayout", () => {
           conversationLlmModel: null,
           conversationClassifierModelId: null,
           conversationModelsPinned: false,
+          configurationMode: "PRESET" as const,
           runtimeOverride: {},
           manualOverrideKeys: [],
           isCustom: false,
@@ -165,10 +166,10 @@ describe("AssistantConfigurationLayout", () => {
     expect(screen.queryByTestId("chat-preset-latency-warning")).not.toBeInTheDocument();
     expect(screen.queryByText(/live demos/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-preset-select")).toBeInTheDocument();
-    expect(screen.getByTestId("chat-llm-model-select")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-edit-assistant-configuration-link")).toBeInTheDocument();
   });
 
-  it("keeps model selector in a width-constrained container with long model names", async () => {
+  it("keeps assistant configuration link in models section", async () => {
     const user = userEvent.setup();
     useChatToolbarStore.setState({
       api: {
@@ -193,6 +194,7 @@ describe("AssistantConfigurationLayout", () => {
           conversationLlmModel: LONG_MODEL,
           conversationClassifierModelId: null,
           conversationModelsPinned: false,
+          configurationMode: "PRESET" as const,
           runtimeOverride: {},
           manualOverrideKeys: [],
           isCustom: false,
@@ -257,10 +259,7 @@ describe("AssistantConfigurationLayout", () => {
     renderSubject();
     await user.click(screen.getByTestId("chat-config-edit-button"));
 
-    const select = screen.getByTestId("chat-llm-model-select");
-    expect(select.className).toMatch(/w-full/);
-    expect(select.className).toMatch(/min-w-0/);
-    expect(select).toHaveValue(LONG_MODEL);
+    expect(screen.getByTestId("chat-edit-assistant-configuration-link")).toBeInTheDocument();
     expect(screen.getByTestId("chat-config-summary-model").className).toMatch(/break-words/);
   });
 });

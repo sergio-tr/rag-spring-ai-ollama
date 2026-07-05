@@ -96,7 +96,7 @@ public class LabPresetAxisSupport {
         if (label.isBlank() || label.equalsIgnoreCase(code)) {
             return code;
         }
-        return code + " — " + label;
+        return code + " - " + label;
     }
 
     public Map<String, Object> ragPresetChildAggregates(String presetCode) {
@@ -159,7 +159,7 @@ public class LabPresetAxisSupport {
         if (label.isEmpty() || label.equalsIgnoreCase(code)) {
             return code;
         }
-        return code + " — " + label;
+        return code + " - " + label;
     }
 
     public static String parsePresetFromRunName(String runName) {

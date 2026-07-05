@@ -8,7 +8,7 @@ import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
  */
 export const CHAT_DETERMINISTIC_DEFAULT_PRESET_ID = "cafe0001-0001-4001-8001-000000000003";
 
-/** UUID string always suitable for `<select value>` — never empty / "None". */
+/** UUID string always suitable for `<select value>` - never empty / "None". */
 export function resolveConversationPresetSelectValue(conversation: ConversationDto | undefined): string {
   if (!conversation) return CHAT_DETERMINISTIC_DEFAULT_PRESET_ID;
   const persisted = conversation.presetId?.trim();
@@ -53,7 +53,7 @@ export type PresetSelectLabels = {
   systemSuffix: string;
   /** Configured default id present in schema but not in loaded catalog row yet. */
   recommendedDefault: string;
-  /** Catalog successfully loaded with zero presets — controlled empty state. */
+  /** Catalog successfully loaded with zero presets - controlled empty state. */
   defaultConfiguration: string;
 };
 

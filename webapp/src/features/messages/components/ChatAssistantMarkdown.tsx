@@ -35,7 +35,7 @@ export function ChatAssistantMarkdown({
     <div
       data-testid={testId}
       className={cn(
-        "chat-assistant-markdown min-w-0 max-w-full break-words [overflow-wrap:anywhere]",
+        "chat-assistant-markdown min-w-0 max-w-full break-words leading-[1.6] [overflow-wrap:anywhere]",
         "[&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0",
         "[&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5",
         "[&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5",

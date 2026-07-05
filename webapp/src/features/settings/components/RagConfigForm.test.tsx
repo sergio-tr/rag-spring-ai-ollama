@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
@@ -65,8 +65,8 @@ vi.mock("@/lib/api-client", () => ({
 
 vi.mock("@/features/settings/hooks/use-rag-config", () => ({
   useConfigSchemaQuery: () => mockSchemaState,
-  useUserRagConfigQuery: () => mockUserState,
-  useProjectRagConfigQuery: () => mockProjectState,
+  useUserStoredRagConfigQuery: () => mockUserState,
+  useProjectStoredRagConfigQuery: () => mockProjectState,
   usePutUserRagConfig: () => ({
     mutateAsync: putUser,
     isPending: mutateState.putUserPending,
@@ -100,10 +100,6 @@ vi.mock("@/features/chat/hooks/use-me-selectable-llm-models", () => ({
     isLoading: false,
     isError: false,
   }),
-}));
-
-vi.mock("@/features/settings/components/UserAccountPreferencesSection", () => ({
-  UserAccountPreferencesSection: () => <div data-testid="user-account-preferences" />,
 }));
 
 vi.mock("@/features/settings/components/InternalPromptConfigurationSection", () => ({
@@ -167,20 +163,47 @@ vi.mock("@/features/lab/hooks/use-lab-evaluation-models", () => ({
   }),
 }));
 
+vi.mock("@/features/lab/hooks/use-classifier-registry", () => ({
+  useClassifierModelsQuery: () => ({
+    data: [{ id: "c1", name: "Default classifier", inferenceTag: "default", status: "READY", active: true }],
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
+vi.mock("@/features/projects/hooks/use-project-index-profile", () => ({
+  useProjectIndexProfile: () => ({
+    data: {
+      projectId: "p1",
+      embeddingModelId: "nomic-embed-text",
+      materializationStrategy: "CHUNK_LEVEL",
+      metadataEnabled: true,
+      metadataProfile: null,
+      chunkMaxChars: 2048,
+      chunkOverlap: 128,
+      profileHash: "abc",
+      createdAt: "",
+      updatedAt: "",
+    },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 import { RagConfigForm } from "./RagConfigForm";
 
-function topKInput(): HTMLInputElement {
-  const field = screen.getByTestId("embedding-default-topK");
+function batchSizeInput(): HTMLInputElement {
+  const field = screen.getByTestId("embedding-default-embeddingBatchSize");
   const input = field.querySelector('input[type="number"]');
   if (!(input instanceof HTMLInputElement)) {
-    throw new Error("Top K number input not found");
+    throw new Error("Batch size number input not found");
   }
   return input;
 }
 
-async function waitForTopKInput(): Promise<HTMLInputElement> {
-  await screen.findByTestId("embedding-default-topK");
-  return topKInput();
+async function waitForBatchSizeInput(): Promise<HTMLInputElement> {
+  await screen.findByTestId("embedding-default-embeddingBatchSize");
+  return batchSizeInput();
 }
 
 function renderWithProviders(ui: React.ReactElement) {
@@ -222,25 +245,20 @@ describe("RagConfigForm", () => {
 
   it("submits user config form when schema has editable fields", async () => {
     mockSchemaState.data = {
-      fields: [
-        { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
-        { key: "embeddingModel", type: "string", userEditable: true },
-      ],
+      fields: [{ key: "embeddingModel", type: "string", userEditable: true }],
     };
-    mockUserState.data = { topK: 5, embeddingModel: "nomic-embed-text" };
+    mockUserState.data = { embeddingModel: "nomic-embed-text", embeddingBatchSize: 16 };
     putUser.mockResolvedValueOnce({});
 
-    const user = userEvent.setup();
     renderWithProviders(<RagConfigForm mode="user" />);
 
-    const topK = await waitForTopKInput();
-    await waitFor(() => expect(topK).toHaveValue(5));
-    await user.tripleClick(topK);
-    await user.keyboard("7");
+    const batchSize = await waitForBatchSizeInput();
+    await waitFor(() => expect(batchSize).toHaveValue(16));
     fireEvent.submit(screen.getByTestId("rag-config-structured-form"));
 
     await waitFor(() => expect(putUser).toHaveBeenCalled());
-    expect(putUser).toHaveBeenCalledWith(expect.objectContaining({ topK: 7 }));
+    const payload = putUser.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload).toEqual({});
   });
 
   it("shows loading state", () => {
@@ -263,16 +281,27 @@ describe("RagConfigForm", () => {
 
   it("shows product-oriented project description without removed HTTP copy in the card body", async () => {
     mockSchemaState.data = {
-      fields: [
-        { key: "embeddingModel", type: "string", userEditable: true },
-        { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
-      ],
+      fields: [{ key: "llmSystemPrompt", type: "text", userEditable: true, max: 50_000 }],
     };
-    mockProjectState.data = { topK: 3 };
+    mockProjectState.data = { llmSystemPrompt: "Project instructions" };
     renderWithProviders(<RagConfigForm mode="project" projectId="p1" />);
-    await waitFor(() => expect(screen.getByTestId("embedding-default-topK")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("settings-collapsible-index-profile")).toBeInTheDocument());
     expect(screen.queryByText(/Project overrides from GET/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/These values apply only while this project is selected/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Configure the project prompt and review the fixed index profile/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("assistant-behavior-section")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("settings-preview-configuration")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("settings-retrieval-feature-toggle")).not.toBeInTheDocument();
+  });
+
+  it("does not render language or theme controls in user Assistant Configuration", () => {
+    mockSchemaState.data = {
+      fields: [{ key: "embeddingModel", type: "string", userEditable: true }],
+    };
+    renderWithProviders(<RagConfigForm mode="user" />);
+    expect(screen.queryByTestId("user-account-preferences")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("user-pref-locale")).not.toBeInTheDocument();
   });
 
   it("shows human technical reference copy without REST path literals", async () => {
@@ -289,12 +318,9 @@ describe("RagConfigForm", () => {
 
   it("confirms before clearing project overrides and preserves DELETE semantics", async () => {
     mockSchemaState.data = {
-      fields: [
-        { key: "llmModel", type: "string", userEditable: true },
-        { key: "llmTemperature", type: "number", userEditable: true, min: 0, max: 2 },
-      ],
+      fields: [{ key: "llmSystemPrompt", type: "text", userEditable: true, max: 50_000 }],
     };
-    mockProjectState.data = { llmTemperature: 0.4 };
+    mockProjectState.data = { llmSystemPrompt: "Project instructions" };
     delProject.mockResolvedValueOnce({});
     const user = userEvent.setup();
     renderWithProviders(<RagConfigForm mode="project" projectId="p1" />);
@@ -307,55 +333,42 @@ describe("RagConfigForm", () => {
     });
   });
 
-  it("merges unknown keys into project PUT payload like before", async () => {
+  it("does not re-send unchanged project overrides on save", async () => {
+    mockSchemaState.data = {
+      fields: [{ key: "llmSystemPrompt", type: "text", userEditable: true, max: 50_000 }],
+    };
+    mockProjectState.data = { llmSystemPrompt: "Keep me", futureClientFlag: true };
+    putProject.mockResolvedValueOnce({});
+    renderWithProviders(<RagConfigForm mode="project" projectId="p9" />);
+
+    await screen.findByTestId("config-field-llmSystemPrompt");
+    fireEvent.submit(screen.getByTestId("rag-config-structured-form"));
+
+    await waitFor(() => expect(putProject).toHaveBeenCalled());
+    expect(putProject).toHaveBeenCalledWith({});
+  });
+
+  it("does not render global provider-aware model parameters in user Assistant Configuration", async () => {
     mockSchemaState.data = {
       fields: [
         { key: "embeddingModel", type: "string", userEditable: true },
         { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
-      ],
-    };
-    mockProjectState.data = { topK: 4, futureClientFlag: true, embeddingModel: "nomic-embed-text" };
-    putProject.mockResolvedValueOnce({});
-    const user = userEvent.setup();
-    renderWithProviders(<RagConfigForm mode="project" projectId="p9" />);
-
-    const input = await waitForTopKInput();
-    await waitFor(() => expect(input).toHaveValue(4));
-    await user.tripleClick(input);
-    await user.keyboard("6");
-    fireEvent.submit(screen.getByTestId("rag-config-structured-form"));
-
-    await waitFor(() => expect(putProject).toHaveBeenCalled());
-    expect(putProject).toHaveBeenCalledWith(
-      expect.objectContaining({ topK: 6, futureClientFlag: true }),
-    );
-  });
-
-  it("shows provider-aware model parameters and does not render applied parameters preview", async () => {
-    mockSchemaState.data = {
-      fields: [
-        { key: "llmModel", type: "string", userEditable: true },
-        { key: "llmTemperature", type: "number", userEditable: true, min: 0, max: 2 },
+        { key: "similarityThreshold", type: "number", userEditable: true, min: 0, max: 1 },
       ],
     };
     renderWithProviders(<RagConfigForm mode="user" />);
-    expect(await screen.findByTestId("config-effective-provider")).toHaveTextContent(/Configured model provider/i);
-    expect(screen.getByTestId("provider-aware-model-parameters")).toBeInTheDocument();
-    expect(screen.getByTestId("model-param-field-temperature")).toBeInTheDocument();
-    const temperature = screen
-      .getByTestId("model-param-field-temperature")
-      .querySelector('input[type="number"]');
-    expect(temperature).toHaveValue(0.1);
-    const unsupported = screen.queryByTestId("provider-unsupported-model-parameters");
-    if (unsupported) {
-      expect(unsupported).not.toBeVisible();
-    }
-    expect(screen.queryByTestId("effective-model-parameters-preview")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("settings-collapsible-task-models")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-collapsible-classifier")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-collapsible-retrieval")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-retrieval-defaults")).toBeInTheDocument();
+    expect(screen.queryByTestId("provider-aware-model-parameters")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("assistant-instructions-preview")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("assistant-configuration-effective-summary")).not.toBeInTheDocument();
   });
 
   it("uses the exact Advanced technical details label on the collapsed wrapper", () => {
     mockSchemaState.data = {
-      fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }],
+      fields: [{ key: "embeddingModel", type: "string", userEditable: true }],
     };
     renderWithProviders(<RagConfigForm mode="user" />);
     const advancedWrapper = screen.getByTestId("settings-model-parameters-advanced");
@@ -365,7 +378,7 @@ describe("RagConfigForm", () => {
 
   it("renders structured form before collapsed advanced JSON in user mode", () => {
     mockSchemaState.data = {
-      fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }],
+      fields: [{ key: "embeddingModel", type: "string", userEditable: true }],
     };
     renderWithProviders(<RagConfigForm mode="user" />);
     const structured = screen.getByTestId("rag-config-structured-form");
@@ -377,60 +390,109 @@ describe("RagConfigForm", () => {
 
   it("renders structured form before collapsed advanced JSON in project mode", async () => {
     mockSchemaState.data = {
-      fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }],
+      fields: [{ key: "llmSystemPrompt", type: "text", userEditable: true, max: 50_000 }],
     };
-    mockProjectState.data = { topK: 3 };
+    mockProjectState.data = { llmSystemPrompt: "Project scope" };
     renderWithProviders(<RagConfigForm mode="project" projectId="p1" />);
     await waitFor(() => expect(screen.getByTestId("rag-config-structured-form")).toBeInTheDocument());
     const advancedWrapper = screen.getByTestId("settings-model-parameters-advanced");
     expect(advancedWrapper).not.toHaveAttribute("open");
   });
 
-  it("shows warning when selected chat model is unavailable in catalog", async () => {
+  it("shows warning when selected embedding model is unavailable in catalog", async () => {
     mockSchemaState.data = {
-      fields: [
-        { key: "llmModel", type: "string", userEditable: true },
-        { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
-      ],
+      fields: [{ key: "embeddingModel", type: "string", userEditable: true }],
     };
-    mockUserState.data = { llmModel: "ghost-model", topK: 5 };
+    mockUserState.data = { embeddingModel: "ghost-model" };
     renderWithProviders(<RagConfigForm mode="user" />);
     expect(await screen.findByTestId("rag-config-model-warnings")).toHaveTextContent(/ghost-model/i);
     expect(screen.getByTestId("rag-config-model-warnings")).toHaveTextContent(/no longer available/i);
   });
 
-  it("renders assistant profile and behavior sections when llmSystemPrompt is in schema", async () => {
+  it("renders prompt configuration before task models in user mode", async () => {
     mockSchemaState.data = {
       fields: [
         { key: "llmSystemPrompt", type: "text", userEditable: true, max: 50_000 },
-        { key: "llmModel", type: "string", userEditable: true },
         { key: "embeddingModel", type: "string", userEditable: true },
         { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
       ],
     };
     renderWithProviders(<RagConfigForm mode="user" />);
-    expect(await screen.findByTestId("assistant-profile-section")).toBeInTheDocument();
+    const promptSection = await screen.findByTestId("settings-collapsible-prompt");
+    const taskSection = screen.getByTestId("settings-collapsible-task-models");
+    expect(promptSection.compareDocumentPosition(taskSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByTestId("settings-preview-configuration")).not.toBeInTheDocument();
+  });
+
+  it("renders assistant configuration sections as collapsible wrappers", async () => {
+    mockSchemaState.data = {
+      fields: [
+        { key: "llmSystemPrompt", type: "text", userEditable: true, max: 50_000 },
+        { key: "embeddingModel", type: "string", userEditable: true },
+        { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
+        { key: "similarityThreshold", type: "number", userEditable: true, min: 0, max: 1 },
+      ],
+    };
+    renderWithProviders(<RagConfigForm mode="user" />);
     expect(await screen.findByTestId("assistant-instructions-editor")).toBeInTheDocument();
-    expect(screen.getByTestId("assistant-system-instructions-field")).toBeInTheDocument();
-    expect(screen.getByTestId("assistant-answer-instructions-field")).toBeInTheDocument();
-    expect(screen.getByTestId("assistant-instructions-preview")).toBeInTheDocument();
-    expect(await screen.findByTestId("settings-model-configuration-section")).toBeInTheDocument();
-    expect(screen.getByTestId("settings-embedding-model-section")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-collapsible-prompt")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-collapsible-task-models")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-collapsible-embedding")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-collapsible-retrieval")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-collapsible-classifier")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-retrieval-defaults")).toBeInTheDocument();
     expect(screen.getByTestId("embedding-defaults-settings")).toBeInTheDocument();
-    expect(screen.getByTestId("embedding-default-topK")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Assistant instructions/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Model & retrieval settings/i })).toBeInTheDocument();
-    expect(screen.getByTestId("assistant-behavior-section")).toBeInTheDocument();
-    expect(screen.getByTestId("config-field-llmSystemPrompt")).toBeInTheDocument();
-    expect(screen.getByTestId("assistant-answer-instructions-field")).toBeInTheDocument();
+    expect(screen.queryByTestId("assistant-instructions-preview")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("assistant-configuration-effective-summary")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("assistant-behavior-section")).not.toBeInTheDocument();
+  });
+
+  it("renders project configuration with retrieval settings only (no feature toggles)", async () => {
+    mockSchemaState.data = {
+      fields: [
+        { key: "llmSystemPrompt", type: "text", userEditable: true, max: 50_000 },
+        { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
+        { key: "similarityThreshold", type: "number", userEditable: true, min: 0, max: 1 },
+        { key: "expansionEnabled", type: "boolean", userEditable: true },
+        { key: "toolsEnabled", type: "boolean", userEditable: true },
+        { key: "metadataEnabled", type: "boolean", userEditable: true },
+      ],
+    };
+    renderWithProviders(<RagConfigForm mode="project" projectId="p1" />);
+    expect(await screen.findByTestId("settings-collapsible-retrieval")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-retrieval-defaults")).toBeInTheDocument();
+    expect(screen.queryByTestId("config-field-expansionEnabled")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("config-field-toolsEnabled")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("config-field-metadataEnabled")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("assistant-instructions-preview")).not.toBeInTheDocument();
   });
 
   it("shows project prompt field in project mode", async () => {
     mockSchemaState.data = {
-      fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }],
+      fields: [{ key: "llmSystemPrompt", type: "text", userEditable: true, max: 50_000 }],
     };
     renderWithProviders(<RagConfigForm mode="project" projectId="p1" />);
     expect(await screen.findByTestId("assistant-source-usage-instructions-field")).toBeInTheDocument();
+    expect(screen.getByTestId("project-index-profile-section")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-collapsible-index-profile")).toBeInTheDocument();
+  });
+
+  it("persists user retrieval settings on save", async () => {
+    mockSchemaState.data = {
+      fields: [
+        { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
+        { key: "similarityThreshold", type: "number", userEditable: true, min: 0, max: 1 },
+      ],
+    };
+    mockUserState.data = {};
+    putUser.mockResolvedValueOnce({});
+    renderWithProviders(<RagConfigForm mode="user" />);
+    await screen.findByTestId("config-field-topK");
+    fireEvent.change(screen.getByTestId("config-field-topK"), { target: { value: "12" } });
+    fireEvent.change(screen.getByTestId("config-field-similarityThreshold"), { target: { value: "0.15" } });
+    fireEvent.submit(screen.getByTestId("rag-config-structured-form"));
+    await waitFor(() => expect(putUser).toHaveBeenCalled());
+    expect(putUser).toHaveBeenCalledWith(expect.objectContaining({ topK: 12, similarityThreshold: 0.15 }));
   });
 
   it("saves supported system and answer instructions on submit", async () => {
@@ -467,28 +529,43 @@ describe("RagConfigForm", () => {
 
   it("reset LLM defaults clears only LLM override keys on confirm", async () => {
     mockSchemaState.data = {
-      fields: [
-        { key: "llmModel", type: "string", userEditable: true },
-        { key: "llmTemperature", type: "number", userEditable: true, min: 0, max: 2 },
-        { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
-      ],
+      fields: [{ key: "embeddingModel", type: "string", userEditable: true }],
     };
-    mockUserState.data = { llmModel: "custom-model", llmTemperature: 0.8, topK: 7 };
+    mockUserState.data = { llmModel: "custom-model", llmTemperature: 0.8, embeddingBatchSize: 7 };
     putUser.mockResolvedValueOnce({});
     const user = userEvent.setup();
     renderWithProviders(<RagConfigForm mode="user" />);
     await user.click(await screen.findByTestId("reset-llm-defaults-button"));
     await user.click(screen.getByRole("button", { name: /^Reset LLM defaults$/i }));
     await waitFor(() => expect(putUser).toHaveBeenCalled());
-    expect(putUser).toHaveBeenCalledWith(expect.objectContaining({ topK: 7 }));
-    expect(putUser).toHaveBeenCalledWith(expect.not.objectContaining({ llmModel: "custom-model" }));
+    const payload = putUser.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(payload.llmModel).toBeNull();
+    expect(payload.embeddingBatchSize).toBeUndefined();
   });
 
   it("shows save error when mutate hook is in error state", () => {
     mutateState.putUserError = true;
-    mockSchemaState.data = { fields: [{ key: "topK", type: "integer", userEditable: true }] };
+    mockSchemaState.data = { fields: [{ key: "embeddingModel", type: "string", userEditable: true }] };
     renderWithProviders(<RagConfigForm mode="user" />);
     expect(screen.getByRole("alert")).toHaveTextContent(/could not save/i);
+  });
+
+  it("applies overflow-safe layout classes on the form root and action row", () => {
+    mockSchemaState.data = {
+      fields: [{ key: "embeddingModel", type: "string", userEditable: true }],
+    };
+    renderWithProviders(<RagConfigForm mode="user" />);
+
+    const formCard = screen.getByTestId("user-rag-config-form");
+    expect(formCard.className).toMatch(/min-w-0/);
+    expect(formCard.className).toMatch(/max-w-full/);
+    expect(formCard.className).toMatch(/overflow-hidden/);
+
+    const structuredForm = screen.getByTestId("rag-config-structured-form");
+    expect(structuredForm.className).toMatch(/min-w-0/);
+
+    const saveButton = screen.getByRole("button", { name: /save/i });
+    expect(saveButton.className).toMatch(/whitespace-normal|inline-flex/);
   });
 });
 

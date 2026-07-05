@@ -122,7 +122,7 @@ public class MailOutboxDeliveryService {
         }
     }
 
-    /** Domain part only — avoids logging full recipient addresses in operational logs. */
+    /** Domain part only - avoids logging full recipient addresses in operational logs. */
     static String recipientDomain(@Nullable String recipient) {
         if (recipient == null || recipient.isBlank()) {
             return "<unknown>";

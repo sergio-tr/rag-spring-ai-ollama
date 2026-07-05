@@ -90,7 +90,7 @@ public class EmbeddingCampaignSnapshotAlignmentService {
             UUID current = aligned.get(i);
             if (current != null && !snapshotMatchesModel(corpusSnapshots, projectSnapshots, current, modelIds.get(i))) {
                 log.warn(
-                        "embedding_campaign_snapshot_mismatch corpusId={} modelId={} snapshotId={} — rebuilding",
+                        "embedding_campaign_snapshot_mismatch corpusId={} modelId={} snapshotId={} - rebuilding",
                         corpusId,
                         modelIds.get(i),
                         current);

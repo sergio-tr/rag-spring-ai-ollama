@@ -95,7 +95,7 @@ public class RuntimeConfigResolutionService {
             CapabilitySet baselineCapability) {
         Set<ConfigProfileType> touched =
                 touchedProfileTypes == null ? Set.of() : Set.copyOf(touchedProfileTypes);
-        // Delegate to resolver (same as {@link #preview(RuntimeConfigResolutionInput)}) — avoids internal overload call.
+        // Delegate to resolver (same as {@link #preview(RuntimeConfigResolutionInput)}) - avoids internal overload call.
         return configResolverService.preview(
                 new RuntimeConfigResolutionInput(
                         userId,

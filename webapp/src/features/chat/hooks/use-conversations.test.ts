@@ -94,6 +94,34 @@ describe("use-conversations hooks", () => {
     expect(cleared.classifierModelId).toBeNull();
   });
 
+  it("mergeConversationPatchOptimistic merges partial runtimeOverride into existing snapshot", () => {
+    const row = {
+      id: "c1",
+      title: "t",
+      updatedAt: "",
+      presetId: null as string | null,
+      effectivePresetId: CHAT_DETERMINISTIC_DEFAULT_PRESET_ID,
+      documentFilter: [] as string[],
+      runtimeOverride: { expansionEnabled: true, nerEnabled: true } as Record<string, unknown>,
+    };
+    const next = mergeConversationPatchOptimistic(row, { runtimeOverride: { nerEnabled: false } });
+    expect(next.runtimeOverride).toEqual({ expansionEnabled: true, nerEnabled: false });
+  });
+
+  it("mergeConversationPatchOptimistic clears runtimeOverride when clearRuntimeOverride is set", () => {
+    const row = {
+      id: "c1",
+      title: "t",
+      updatedAt: "",
+      presetId: null as string | null,
+      effectivePresetId: CHAT_DETERMINISTIC_DEFAULT_PRESET_ID,
+      documentFilter: [] as string[],
+      runtimeOverride: { expansionEnabled: true } as Record<string, unknown>,
+    };
+    const next = mergeConversationPatchOptimistic(row, { clearRuntimeOverride: true });
+    expect(next.runtimeOverride).toEqual({});
+  });
+
   beforeEach(() => {
     apiFetch.mockReset();
     setActiveProject.mockReset();

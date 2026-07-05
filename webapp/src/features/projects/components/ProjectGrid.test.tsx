@@ -49,21 +49,19 @@ vi.mock("@/features/projects/lib/open-project-in-chat", () => ({
   fetchLatestConversationId: fetchLatestConversationIdMock,
 }));
 
-vi.mock("@/features/chat/hooks/use-project-compatible-presets", () => ({
-  useProjectCompatiblePresets: () => ({
-    data: {
-      projectId: "p1",
-      effectiveEmbeddingModelId: null,
-      hasActiveIndex: false,
-      readyDocumentCount: 0,
-      activeSnapshotCapabilities: null,
-      productPresets: [],
-      experimentalPresets: [],
-    },
-    isLoading: false,
-    isError: false,
-  }),
-}));
+vi.mock("@/features/chat/hooks/use-project-compatible-presets", async () => {
+  const { compatiblePresetsQueryMock } = await import("@/test-utils/compatible-presets-mock");
+  return {
+    useProjectCompatiblePresets: () => compatiblePresetsQueryMock,
+  };
+});
+
+vi.mock("@/features/settings/hooks/use-me-effective-embedding-defaults", async () => {
+  const { effectiveEmbeddingDefaultsMock } = await import("@/test-utils/compatible-presets-mock");
+  return {
+    useMeEffectiveEmbeddingDefaults: () => effectiveEmbeddingDefaultsMock,
+  };
+});
 
 vi.mock("@/features/chat/hooks/use-conversations", () => ({
   useConversations: (projectId?: string) => {

@@ -18,7 +18,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * P40: ZIP import preview adapter (non-owning) — validates a P38-strict ZIP and deserializes {@code definition.json} to
+ * P40: ZIP import preview adapter (non-owning) - validates a P38-strict ZIP and deserializes {@code definition.json} to
  * {@link RuntimeTraceRegressionSuiteDefinitionDetailDto} without persisting or delegating to definition or import services.
  */
 @Service

@@ -43,7 +43,7 @@ public class ConversationRecallGuard {
 
     /**
      * Blocks corpus retrieval for acta-scoped follow-ups when this conversation has no local date/meeting anchor
-     * (FD-ISO-01). Applies when clarification did not already ask — including presets with clarification disabled.
+     * (FD-ISO-01). Applies when clarification did not already ask - including presets with clarification disabled.
      */
     public boolean shouldShortCircuitAmbiguousActaQuery(ExecutionContext ctx) {
         Objects.requireNonNull(ctx, "ctx");
@@ -132,7 +132,9 @@ public class ConversationRecallGuard {
         if (ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(q)) {
             return false;
         }
-        if (ActaFieldAnchorHeuristics.hasExplicitDateInText(q) || ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)) {
+        if (ActaFieldAnchorHeuristics.hasExplicitDateInText(q)
+                || ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference(q)
+                || ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)) {
             return false;
         }
         boolean participants =
@@ -186,7 +188,8 @@ public class ConversationRecallGuard {
 
     private boolean hasLocalConversationActaAnchor(ExecutionContext ctx) {
         String effective = effectiveQueryForActaGuard(ctx);
-        if (hasExplicitDateInText(effective)) {
+        if (hasExplicitDateInText(effective)
+                || ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference(effective)) {
             return true;
         }
         List<ConversationMemoryTurn> history = historyLoader.loadEligibleHistory(ctx);

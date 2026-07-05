@@ -14,7 +14,7 @@ if [ -f mvnw ]; then
   chmod +x mvnw
 fi
 
-# Any .class under target/classes (classpath check — not sufficient alone)
+# Any .class under target/classes (classpath check - not sufficient alone)
 has_compiled_classes() {
   [ -d target/classes ] || return 1
   test -n "$(find target/classes -type f -name '*.class' 2>/dev/null | head -n 1)"
@@ -44,14 +44,14 @@ elif [ "${RAG_DEV_SKIP_INITIAL_COMPILE:-}" = "1" ] || [ "${RAG_DEV_SKIP_INITIAL_
   if has_healthy_compile_tree; then
     need_initial_compile=false
   else
-    echo "[rag-service docker-dev] RAG_DEV_SKIP_INITIAL_COMPILE but compile tree looks incomplete — compiling once."
+    echo "[rag-service docker-dev] RAG_DEV_SKIP_INITIAL_COMPILE but compile tree looks incomplete - compiling once."
   fi
 elif has_healthy_compile_tree; then
   need_initial_compile=false
 elif has_boot_application_class; then
-  echo "[rag-service docker-dev] Application.class present but only $(compiled_class_count) .class files — partial target/classes; compiling."
+  echo "[rag-service docker-dev] Application.class present but only $(compiled_class_count) .class files - partial target/classes; compiling."
 elif has_compiled_classes; then
-  echo "[rag-service docker-dev] target/classes has .class files but com/uniovi/Application.class is missing — compiling."
+  echo "[rag-service docker-dev] target/classes has .class files but com/uniovi/Application.class is missing - compiling."
 fi
 
 if [ "$need_initial_compile" = true ]; then

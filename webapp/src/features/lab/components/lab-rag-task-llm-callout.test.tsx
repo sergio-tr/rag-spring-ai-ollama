@@ -12,6 +12,6 @@ describe("LabRagTaskLlmCallout", () => {
     );
     expect(screen.getByTestId("lab-rag-task-llm-callout")).toBeInTheDocument();
     expect(screen.getByText("Task-level LLM settings")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "User settings" })).toHaveAttribute("href", "/settings/user");
+    expect(screen.getByRole("link", { name: "Open Assistant Configuration" })).toHaveAttribute("href", "/en/settings/user");
   });
 });

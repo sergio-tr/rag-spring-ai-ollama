@@ -24,7 +24,7 @@ import java.util.Map;
 
 /**
  * Stable SHA-256 fingerprint over frozen and runtime prompt sources for evaluation reproducibility.
- * Exports hashes and group ids only — never full prompt text.
+ * Exports hashes and group ids only - never full prompt text.
  */
 public final class PromptBundleFingerprint {
 

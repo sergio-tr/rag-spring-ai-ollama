@@ -8,9 +8,25 @@ public record DenseRetrievalOutcome(
         List<RetrievalCandidate> candidates,
         int rawCandidateCount,
         int postSnapshotCandidateCount,
-        int postProjectCandidateCount) {
+        int postProjectCandidateCount,
+        double similarityThresholdUsed,
+        int denseFetchLimitUsed) {
 
     public DenseRetrievalOutcome {
         candidates = candidates != null ? List.copyOf(candidates) : List.of();
+    }
+
+    public DenseRetrievalOutcome(
+            List<RetrievalCandidate> candidates,
+            int rawCandidateCount,
+            int postSnapshotCandidateCount,
+            int postProjectCandidateCount) {
+        this(
+                candidates,
+                rawCandidateCount,
+                postSnapshotCandidateCount,
+                postProjectCandidateCount,
+                Double.NaN,
+                0);
     }
 }

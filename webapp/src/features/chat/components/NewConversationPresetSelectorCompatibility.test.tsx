@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { NewConversationDialog } from "./NewConversationDialog";
+import { P3_PRESET_ID } from "@/features/chat/lib/preset-product-selection";
 
 const hooksMock = vi.hoisted(() => ({
   useProjectCompatiblePresets: vi.fn(),
@@ -64,7 +65,7 @@ describe("NewConversationPresetSelectorCompatibility", () => {
         },
         productPresets: [
           {
-            preset: { id: "chunk-preset", name: "Chunk preset", system: true },
+            preset: { id: P3_PRESET_ID, name: "Chunk preset", system: true },
             indexRequirements: { requiredMaterializationStrategy: "CHUNK_LEVEL", requiresMetadataSupport: false },
             compatibility: {
               selectable: true,

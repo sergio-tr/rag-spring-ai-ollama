@@ -25,7 +25,7 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
- * Provider-aware secondary LLM calls (NER, error composer, rewrite, condense). Uses {@link LlmClientResolver} —
+ * Provider-aware secondary LLM calls (NER, error composer, rewrite, condense). Uses {@link LlmClientResolver} -
  * never the Spring AI default Ollama {@code ChatClient} bean.
  */
 @Service

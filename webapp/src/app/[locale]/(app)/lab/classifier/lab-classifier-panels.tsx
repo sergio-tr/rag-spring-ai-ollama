@@ -40,6 +40,49 @@ function classifierTrainApiPath(trainSync: boolean, projectId: string | undefine
   return `/lab/classifier/train${querySuffix}`;
 }
 
+function formatTrainApiError(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    return getSafeApiErrorMessage(err);
+  }
+  return err instanceof Error ? err.message : fallback;
+}
+
+function TrainResultSummary(props: Readonly<{ result: unknown; translate: (key: string, values?: Record<string, string>) => string }>) {
+  const { result, translate } = props;
+  if (result == null || typeof result !== "object") {
+    return null;
+  }
+  const row = result as Record<string, unknown>;
+  const modelId = row.modelId ?? row.model_id;
+  const name = row.name;
+  const metrics = row.metrics;
+  if (modelId == null && name == null) {
+    return null;
+  }
+  return (
+    <div className="bg-muted/40 space-y-1 rounded-md border p-3 text-xs" data-testid="lab-classifier-train-result">
+      {modelId != null ? (
+        <p>
+          <span className="font-medium">{translate("classifierTrainResultModelId")}: </span>
+          <code>{String(modelId)}</code>
+        </p>
+      ) : null}
+      {name != null ? (
+        <p>
+          <span className="font-medium">{translate("classifierTrainResultName")}: </span>
+          {String(name)}
+        </p>
+      ) : null}
+      {metrics != null ? (
+        <p>
+          <span className="font-medium">{translate("classifierTrainResultMetrics")}: </span>
+          <code>{JSON.stringify(metrics)}</code>
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function handleClassifierTrainFollowCatch(
   err: unknown,
   opts: Readonly<{
@@ -67,7 +110,7 @@ function handleClassifierTrainFollowCatch(
     opts.setTrainErr(opts.translate("jobRecoveryStaleShort"));
     return;
   }
-  opts.setTrainErr(err instanceof Error ? err.message : opts.translate("evalError"));
+  opts.setTrainErr(formatTrainApiError(err, opts.translate("evalError")));
 }
 
 function handleClassifierEvalFollowCatch(
@@ -392,9 +435,12 @@ export function LabClassifierTrainPanel(
           />
         ) : null}
         {trainOut === null ? null : (
-          <pre className="bg-muted/40 max-h-[240px] overflow-auto rounded-md border p-3 text-xs">
-            {JSON.stringify(trainOut, null, 2)}
-          </pre>
+          <>
+            <TrainResultSummary result={trainOut} translate={t} />
+            <pre className="bg-muted/40 max-h-[240px] overflow-auto rounded-md border p-3 text-xs">
+              {JSON.stringify(trainOut, null, 2)}
+            </pre>
+          </>
         )}
       </CardContent>
     </Card>

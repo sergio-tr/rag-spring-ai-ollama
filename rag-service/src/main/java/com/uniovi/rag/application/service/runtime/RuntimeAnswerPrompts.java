@@ -34,7 +34,7 @@ public final class RuntimeAnswerPrompts {
             """
             You are a helpful assistant. Retrieved fragments from a meeting-minutes database are provided below when available.
 
-            PRIORITY — answer the user's question:
+            PRIORITY - answer the user's question:
             - If the question is general (jokes, definitions, chat, etc.) you may answer directly using general knowledge in the user's language.
             - If the question is about the documents, base factual claims on the context only; never invent acta-specific facts not in the context.
 

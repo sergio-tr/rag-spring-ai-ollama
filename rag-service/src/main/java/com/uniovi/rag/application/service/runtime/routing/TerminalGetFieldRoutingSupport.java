@@ -14,7 +14,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Terminal routing for dated metadata GET_FIELD queries — avoids workflow RAG overwriting deterministic answers.
+ * Terminal routing for dated metadata GET_FIELD queries - avoids workflow RAG overwriting deterministic answers.
  */
 public final class TerminalGetFieldRoutingSupport {
 

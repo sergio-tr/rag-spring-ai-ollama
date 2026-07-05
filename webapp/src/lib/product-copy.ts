@@ -120,7 +120,7 @@ export const FORBIDDEN_PRIMARY_UI_PATTERNS: RegExp[] = [
   /\bFUTURE_MULTI_TURN_NOT_SELECTABLE\b/,
   /\bREQUIRES_MULTI_TURN\b/,
   /POST JSON/i,
-  /Lab API —/i,
+  /Lab API -/i,
   /POST \/api/i,
   /\bcorpus\b/i,
   /Missing preferred/i,

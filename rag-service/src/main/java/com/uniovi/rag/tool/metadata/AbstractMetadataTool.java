@@ -2683,7 +2683,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
 
-        // Use literal topic when question explicitly mentions it (avoids LLM substituting heating for pool HVAC, etc.) — item 38
+        // Use literal topic when question explicitly mentions it (avoids LLM substituting heating for pool HVAC, etc.) - item 38
         String queryLower = query.toLowerCase().trim();
         if (queryLower.contains("calefacción") || queryLower.contains("calefaccion")) {
             log().info("Extracted topic from query (literal): calefacción");
@@ -5508,7 +5508,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 return minutes;
             }
             log().info(
-                    "Date filtering removed all minutes — no match for target dates {}. Query: {}",
+                    "Date filtering removed all minutes - no match for target dates {}. Query: {}",
                     targetDates,
                     query);
             return List.of();

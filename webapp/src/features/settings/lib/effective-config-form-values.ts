@@ -5,12 +5,8 @@ import {
   appliedModelParameters,
   type LlmProviderKind,
 } from "@/features/settings/lib/provider-aware-llm-parameters";
-import {
-  mergeAdditionalParametersIntoPayload,
-  readAdditionalParameters,
-  readTemperature,
-} from "@/features/settings/lib/llm-additional-parameters";
-import { mergePayload, pickFormValues } from "@/features/settings/lib/rag-config-values";
+import { readAdditionalParameters, readTemperature } from "@/features/settings/lib/llm-additional-parameters";
+import { pickFormValues } from "@/features/settings/lib/rag-config-values";
 import type {
   MeEffectiveEmbeddingDefaultsResponse,
   MeEffectiveLlmDefaultsResponse,
@@ -25,20 +21,35 @@ export const LLM_RESET_TOP_LEVEL_KEYS = [
   LLM_ADDITIONAL_PARAMETERS_KEY,
 ] as const;
 
-/** Top-level keys cleared by Reset embedding defaults. */
+/** Top-level keys cleared by Reset embedding defaults (retrieval params have dedicated keys). */
 export const EMBEDDING_RESET_TOP_LEVEL_KEYS = [
   "embeddingModel",
   "embeddingEncodingFormat",
   "embeddingDimensions",
   "embeddingTimeoutSeconds",
-  "topK",
-  "similarityThreshold",
-  "materializationStrategy",
   "embeddingBatchSize",
   "embeddingMaxInputChars",
   "embeddingNormalize",
   "embeddingTruncate",
 ] as const;
+
+/** Top-level keys cleared by Reset retrieval defaults. */
+export const RETRIEVAL_RESET_TOP_LEVEL_KEYS = ["topK", "similarityThreshold"] as const;
+
+export type SettingsSaveMode = "user" | "project";
+
+export type SettingsSaveContext = {
+  mode: SettingsSaveMode;
+  stored: Record<string, unknown>;
+  values: ConfigFormValues;
+  additionalParameters: Record<string, unknown>;
+  editableKeys: string[];
+  llmEffective: MeEffectiveLlmDefaultsResponse | undefined;
+  embeddingEffective: MeEffectiveEmbeddingDefaultsResponse | undefined;
+  /** User stored overrides — inheritance baseline for project-mode saves. */
+  userStored?: Record<string, unknown>;
+  provider: LlmProviderKind | null;
+};
 
 export type EffectiveFormMergeResult = {
   formValues: ConfigFormValues;
@@ -163,7 +174,7 @@ export function mergeEffectiveIntoFormValues(
     }
   }
 
-  for (const key of EMBEDDING_RESET_TOP_LEVEL_KEYS) {
+  for (const key of [...EMBEDDING_RESET_TOP_LEVEL_KEYS, ...RETRIEVAL_RESET_TOP_LEVEL_KEYS]) {
     if (!editableKeys.includes(key)) continue;
     const effectiveValue = readEffectiveEmbeddingField(config, embeddingEffective, key);
     if (isBlank(picked[key]) && !isBlank(effectiveValue)) {
@@ -181,6 +192,168 @@ export function mergeEffectiveIntoFormValues(
   return { formValues: picked, additionalParameters: additional };
 }
 
+function readInheritanceBaseline(
+  key: string,
+  mode: SettingsSaveMode,
+  userStored: Record<string, unknown> | undefined,
+  embeddingEffective: MeEffectiveEmbeddingDefaultsResponse | undefined,
+  llmEffective: MeEffectiveLlmDefaultsResponse | undefined,
+  provider: LlmProviderKind | null,
+): unknown {
+  if (mode === "project" && userStored && !isBlank(userStored[key])) {
+    return userStored[key];
+  }
+  if (RETRIEVAL_RESET_TOP_LEVEL_KEYS.includes(key as (typeof RETRIEVAL_RESET_TOP_LEVEL_KEYS)[number])
+    || EMBEDDING_RESET_TOP_LEVEL_KEYS.includes(key as (typeof EMBEDDING_RESET_TOP_LEVEL_KEYS)[number])) {
+    return readEffectiveEmbeddingField(undefined, embeddingEffective, key);
+  }
+  if (key === LLM_TEMPERATURE_KEY || key === "temperature") {
+    return llmEffective?.temperature;
+  }
+  if (key === "llmModel") {
+    return llmEffective?.chatModel;
+  }
+  if (key === "classifierModelId") {
+    return llmEffective?.classifierModelId;
+  }
+  for (const def of appliedModelParameters(provider)) {
+    if (def.storage === "additional" && def.configKey === key) {
+      return readEffectiveAdditional(llmEffective, key);
+    }
+  }
+  return undefined;
+}
+
+/** Builds a merge patch for stored overrides only (null removes a key). */
+export function buildStoredOverridesPatch(ctx: SettingsSaveContext): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  const { stored, values, editableKeys, mode, userStored, embeddingEffective, llmEffective, provider } = ctx;
+
+  const retrievalKeys = RETRIEVAL_RESET_TOP_LEVEL_KEYS.filter((key) => editableKeys.includes(key));
+  if (retrievalKeys.length === RETRIEVAL_RESET_TOP_LEVEL_KEYS.length) {
+    const topK = values.topK;
+    const threshold = values.similarityThreshold;
+    if (typeof topK === "number" && typeof threshold === "number") {
+      const matchesStored =
+        valuesEqual(topK, stored.topK) && valuesEqual(threshold, stored.similarityThreshold);
+      if (matchesStored) {
+        // unchanged — do not clear overrides that happen to match inheritance baseline
+      } else {
+        const baselineTopK = readInheritanceBaseline(
+          "topK",
+          mode,
+          userStored,
+          embeddingEffective,
+          llmEffective,
+          provider,
+        );
+        const baselineThreshold = readInheritanceBaseline(
+          "similarityThreshold",
+          mode,
+          userStored,
+          embeddingEffective,
+          llmEffective,
+          provider,
+        );
+        const matchesBaseline =
+          valuesEqual(topK, baselineTopK) && valuesEqual(threshold, baselineThreshold);
+        if (matchesBaseline) {
+          if (!isBlank(stored.topK)) {
+            patch.topK = null;
+          }
+          if (!isBlank(stored.similarityThreshold)) {
+            patch.similarityThreshold = null;
+          }
+        } else {
+          patch.topK = topK;
+          patch.similarityThreshold = threshold;
+        }
+      }
+    }
+  }
+
+  for (const key of editableKeys) {
+    if (key === LLM_ADDITIONAL_PARAMETERS_KEY) {
+      continue;
+    }
+    if (RETRIEVAL_RESET_TOP_LEVEL_KEYS.includes(key as (typeof RETRIEVAL_RESET_TOP_LEVEL_KEYS)[number])) {
+      continue;
+    }
+    const submitted = values[key];
+    if (submitted === undefined) {
+      continue;
+    }
+    const storedValue = stored[key];
+    if (valuesEqual(submitted, storedValue)) {
+      continue;
+    }
+    const baseline = readInheritanceBaseline(
+      key,
+      mode,
+      userStored,
+      embeddingEffective,
+      llmEffective,
+      provider,
+    );
+    if (valuesEqual(submitted, baseline)) {
+      if (!isBlank(storedValue)) {
+        patch[key] = null;
+      }
+      continue;
+    }
+    if (typeof submitted === "string" && submitted.trim() === "") {
+      if (!isBlank(storedValue)) {
+        patch[key] = null;
+      }
+      continue;
+    }
+    patch[key] = submitted;
+  }
+
+  const cleanedAdditional: Record<string, unknown> = {};
+  for (const def of appliedModelParameters(provider)) {
+    if (def.storage !== "additional") continue;
+    const submitted = ctx.additionalParameters[def.configKey];
+    const effectiveValue = readEffectiveAdditional(llmEffective, def.configKey);
+    const storedAdditional = readAdditionalParameters(stored)[def.configKey];
+    if (isBlank(submitted)) {
+      if (!isBlank(storedAdditional)) {
+        cleanedAdditional[def.configKey] = null;
+      }
+      continue;
+    }
+    if (valuesEqual(submitted, storedAdditional)) {
+      continue;
+    }
+    if (valuesEqual(submitted, effectiveValue)) {
+      if (!isBlank(storedAdditional)) {
+        cleanedAdditional[def.configKey] = null;
+      }
+      continue;
+    }
+    cleanedAdditional[def.configKey] = submitted;
+  }
+
+  if (editableKeys.includes(LLM_ADDITIONAL_PARAMETERS_KEY) && Object.keys(cleanedAdditional).length > 0) {
+    const mergedAdditional = { ...readAdditionalParameters(stored) };
+    for (const [k, v] of Object.entries(cleanedAdditional)) {
+      if (v === null) {
+        delete mergedAdditional[k];
+      } else {
+        mergedAdditional[k] = v;
+      }
+    }
+    if (Object.keys(mergedAdditional).length === 0) {
+      patch[LLM_ADDITIONAL_PARAMETERS_KEY] = null;
+    } else {
+      patch[LLM_ADDITIONAL_PARAMETERS_KEY] = mergedAdditional;
+    }
+  }
+
+  return patch;
+}
+
+/** @deprecated Use buildStoredOverridesPatch with SettingsSaveContext. */
 export function buildSavePayloadRespectingEffectiveDefaults(
   base: Record<string, unknown> | undefined,
   values: ConfigFormValues,
@@ -189,49 +362,20 @@ export function buildSavePayloadRespectingEffectiveDefaults(
   llmEffective: MeEffectiveLlmDefaultsResponse | undefined,
   embeddingEffective: MeEffectiveEmbeddingDefaultsResponse | undefined,
   provider: LlmProviderKind | null,
+  mode: SettingsSaveMode = "user",
+  userStored?: Record<string, unknown>,
 ): Record<string, unknown> {
-  let payload = mergePayload(base, values, editableKeys);
-
-  const temp = values[LLM_TEMPERATURE_KEY];
-  const effectiveTemp = llmEffective?.temperature;
-  if (temp === undefined || valuesEqual(temp, effectiveTemp)) {
-    delete payload[LLM_TEMPERATURE_KEY];
-    delete payload.temperature;
-  }
-
-  for (const key of EMBEDDING_RESET_TOP_LEVEL_KEYS) {
-    if (!editableKeys.includes(key)) continue;
-    const submitted = values[key];
-    const effectiveValue = readEffectiveEmbeddingField(base, embeddingEffective, key);
-    if (submitted === undefined || valuesEqual(submitted, effectiveValue)) {
-      delete payload[key];
-    }
-  }
-
-  if (editableKeys.includes("llmModel")) {
-    const submitted = values.llmModel;
-    if (submitted === undefined || valuesEqual(submitted, llmEffective?.chatModel)) {
-      delete payload.llmModel;
-    }
-  }
-  if (editableKeys.includes("classifierModelId")) {
-    const submitted = values.classifierModelId;
-    if (submitted === undefined || valuesEqual(submitted, llmEffective?.classifierModelId)) {
-      delete payload.classifierModelId;
-    }
-  }
-
-  const cleanedAdditional: Record<string, unknown> = {};
-  for (const def of appliedModelParameters(provider)) {
-    if (def.storage !== "additional") continue;
-    const submitted = additionalParameters[def.configKey];
-    const effectiveValue = readEffectiveAdditional(llmEffective, def.configKey);
-    if (!isBlank(submitted) && !valuesEqual(submitted, effectiveValue)) {
-      cleanedAdditional[def.configKey] = submitted;
-    }
-  }
-  payload = mergeAdditionalParametersIntoPayload(payload, cleanedAdditional);
-  return payload;
+  return buildStoredOverridesPatch({
+    mode,
+    stored: base ?? {},
+    values,
+    additionalParameters,
+    editableKeys,
+    llmEffective,
+    embeddingEffective,
+    userStored,
+    provider,
+  });
 }
 
 export function clearConfigOverrideKeys(

@@ -50,7 +50,7 @@ public final class RagConfigValueSanitizer {
             PromptOverrideKeys.OVERRIDES_MAP_KEY,
             PromptOverrideKeys.TASK_LLM_OVERRIDES_MAP_KEY);
 
-    /** Keys that must never be persisted — use {@link LlmConfigurationKeys#API_KEY_ENV} or {@link LlmConfigurationKeys#SECRET_NAME}. */
+    /** Keys that must never be persisted - use {@link LlmConfigurationKeys#API_KEY_ENV} or {@link LlmConfigurationKeys#SECRET_NAME}. */
     public static final Set<String> FORBIDDEN_SECRET_KEYS = Set.of(
             "apiKey",
             "llmApiKey",

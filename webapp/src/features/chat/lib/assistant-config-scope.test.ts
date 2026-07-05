@@ -12,6 +12,12 @@ describe("resolveFieldScope", () => {
     ).toBe("conversation");
   });
 
+  it("marks pinned conversation classifier as conversation scope", () => {
+    expect(
+      resolveFieldScope("classifierModelId", [], { conversationClassifierKey: "clf-1" }),
+    ).toBe("conversation");
+  });
+
   it("defaults to project scope for inherited effective values", () => {
     expect(resolveFieldScope("similarityThreshold", [])).toBe("project");
   });

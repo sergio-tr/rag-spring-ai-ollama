@@ -34,7 +34,13 @@ public final class PresetCatalogCompatibility {
         } else if (!indexOk) {
             disabledReasonCode =
                     draft.compatibilityStatus() != null ? draft.compatibilityStatus() : "INDEX_INCOMPATIBLE";
-            disabledReason = "Create or reindex the project with a compatible index profile.";
+            if (!blocking.isEmpty()) {
+                PresetValidationIssue first = blocking.getFirst();
+                disabledReasonCode = first.code() != null ? first.code() : disabledReasonCode;
+                disabledReason = first.message();
+            } else {
+                disabledReason = materializationRequiredMessage(draft.indexRequirements());
+            }
         } else if (!blocking.isEmpty()) {
             PresetValidationIssue first = blocking.getFirst();
             disabledReasonCode = first.code();
@@ -48,5 +54,13 @@ public final class PresetCatalogCompatibility {
                 disabledReason,
                 draft.indexRequirements(),
                 indexOk);
+    }
+
+    private static String materializationRequiredMessage(RuntimePresetIndexRequirements requirements) {
+        if (requirements == null) {
+            return "Requires a compatible index profile";
+        }
+        return IndexCompatibilityMessages.forRequiredMaterializationStrategy(
+                requirements.requiredMaterializationStrategy());
     }
 }

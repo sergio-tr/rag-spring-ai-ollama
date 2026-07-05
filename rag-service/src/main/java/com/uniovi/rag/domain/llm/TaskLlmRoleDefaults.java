@@ -69,6 +69,11 @@ public final class TaskLlmRoleDefaults {
                         "qwen3.5:9b",
                         params(0.0, 1.0, null, 512, 0.0, 0.0, "json_object", false, null)));
         map.put(
+                TaskLlmTask.NER_EXTRACTION,
+                new RoleDefault(
+                        "qwen3.5:9b",
+                        params(0.0, 1.0, null, 1024, 0.0, 0.0, "json_object", false, null)));
+        map.put(
                 TaskLlmTask.EVALUATION_JUDGE,
                 new RoleDefault(
                         "gemma4:12b",

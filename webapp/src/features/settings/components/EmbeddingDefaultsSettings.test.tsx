@@ -69,7 +69,7 @@ describe("EmbeddingDefaultsSettings", () => {
 
   it("shows effective values in editable fields instead of server default label", () => {
     render(<Harness />);
-    expect(screen.getByLabelText(/^Top K$/i)).toHaveValue(10);
+    expect(screen.queryByLabelText(/^Materialization strategy$/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Server default")).not.toBeInTheDocument();
     expect(screen.getAllByText(/Inherited from system default/i).length).toBeGreaterThan(0);
   });
@@ -96,10 +96,10 @@ describe("EmbeddingDefaultsSettings", () => {
     await user.selectOptions(encodingSelect, "float");
     expect(encodingSelect).toHaveValue("float");
 
-    const topK = screen.getByLabelText(/^Top K$/i);
-    await user.tripleClick(topK);
+    const batchSize = screen.getByLabelText(/indexing batch size/i);
+    await user.tripleClick(batchSize);
     await user.keyboard("12");
-    expect(topK).toHaveValue(12);
+    expect(batchSize).toHaveValue(12);
 
     const normalize = screen
       .getByTestId("embedding-default-embeddingNormalize")
@@ -109,10 +109,6 @@ describe("EmbeddingDefaultsSettings", () => {
     }
     await user.click(normalize);
     expect(normalize).toBeChecked();
-
-    const materialization = screen.getByLabelText(/materialization strategy/i);
-    await user.selectOptions(materialization, "DOCUMENT_LEVEL");
-    expect(materialization).toHaveValue("DOCUMENT_LEVEL");
   });
 
   it("shows false for inherited normalize when effective default is false", () => {

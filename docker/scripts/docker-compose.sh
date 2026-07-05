@@ -7,7 +7,7 @@
 #
 #   down: second arg defaults to prod if omitted (compat with old down.sh).
 #
-# Env (optional; runs before compose up/build — not before dev down):
+# Env (optional; runs before compose up/build - not before dev down):
 #   --env <name>     create-env-* (repeatable): db, obs, rag, classifier, ollama, webapp, all
 #   --no-env-prompt  skip interactive set-env.sh question
 #
@@ -25,7 +25,7 @@
 #
 # prod:
 #   [--server] [--all] [--obs] [--obs-private] [--gpu] [--ollama] [--classifier-gpu] [--ollama-remote] [--logs] [--infra] [--mail] [--volumes]
-#   --server: university/production VM — merges compose.prod-server.yml (no host backend/classifier ports); implies --ollama-remote.
+#   --server: university/production VM - merges compose.prod-server.yml (no host backend/classifier ports); implies --ollama-remote.
 #   --volumes only applies to "down prod".
 #   --all  = --obs --gpu --logs --infra (and for down: removes volumes)
 #
@@ -362,7 +362,7 @@ if [ "$MODE" = dev ]; then
     echo "  Classifier:  cd classifier-service && uvicorn uvicorn_entry:app --reload --reload-dir app --port 8000"
   fi
   if [ "$WITH_RAG_BACKEND" = true ]; then
-    echo "  Backend:     in Docker (backend-dev) — hot reload via DevTools. Container port ${SERVER_PORT:-9000}."
+    echo "  Backend:     in Docker (backend-dev) - hot reload via DevTools. Container port ${SERVER_PORT:-9000}."
     if [ "$WITH_DEV_PROXY" = true ]; then
       _https_port="${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}"
       if [ "${REVERSE_PROXY_ENFORCE_HTTPS:-0}" = "1" ]; then
@@ -372,7 +372,7 @@ if [ "$MODE" = dev ]; then
       fi
       echo "               API + BFF via nginx (NEXT_PUBLIC_API_BASE_URL empty = same-origin ${NEXT_PUBLIC_RAG_API_PREFIX:-/api/v5})."
     else
-      echo "               API on host: http://127.0.0.1:${BACKEND_PORT:-9000} — set WEBAPP_NEXT_PUBLIC_API_BASE_URL accordingly in webapp/.env for the browser."
+      echo "               API on host: http://127.0.0.1:${BACKEND_PORT:-9000} - set WEBAPP_NEXT_PUBLIC_API_BASE_URL accordingly in webapp/.env for the browser."
     fi
     if [ "$WITH_GPU" = true ] && [ "$WITH_OLLAMA_REMOTE" != true ]; then
       echo "               Ollama: container at http://ollama:11434 (profile ollama). Set OLLAMA_BASE_URL in rag-service/.env to match."

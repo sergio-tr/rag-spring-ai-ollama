@@ -5,6 +5,7 @@ import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
 import AdminHomePage from "./page";
 import type { LlmCatalogModelDto, LlmCatalogResponse } from "@/types/api";
+import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
 
 const apiFetch = vi.fn();
 
@@ -16,6 +17,16 @@ vi.mock("@/lib/api-client", () => ({
 vi.mock("@/lib/async-task", () => ({
   pollLabJob: vi.fn(),
 }));
+
+vi.mock("@/features/chat/hooks/use-me-selectable-llm-models", () => ({
+  useMeSelectableLlmModels: vi.fn(() => ({
+    data: { effectiveProvider: "OPENAI_COMPATIBLE", models: [] },
+    isLoading: false,
+    isError: false,
+  })),
+}));
+
+const useMeSelectableLlmModelsMock = vi.mocked(useMeSelectableLlmModels);
 
 const LEGACY_MODEL_IDS = ["gemma3:4b", "mistral:7b", "llama3.1:8b"] as const;
 
@@ -76,6 +87,11 @@ describe("AdminHomePage catalog", () => {
 
   beforeEach(() => {
     apiFetch.mockReset();
+    useMeSelectableLlmModelsMock.mockReturnValue({
+      data: { effectiveProvider: "OPENAI_COMPATIBLE", models: [] },
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useMeSelectableLlmModels>);
     apiFetch.mockImplementation(async (path: string) => {
       if (path === CATALOG_PATH) {
         return catalogResponse;
@@ -98,22 +114,44 @@ describe("AdminHomePage catalog", () => {
     renderPage();
     expect(await screen.findByText("Configured model catalog")).toBeInTheDocument();
     expect(await screen.findByTestId("admin-catalog-row-OPENAI_COMPATIBLE-CHAT-gpt-oss:20b")).toBeInTheDocument();
-    expect(await screen.findByTestId("admin-catalog-display-name-gpt-oss:20b")).toHaveTextContent("GPT OSS 20B");
+    expect(screen.queryByTestId("admin-catalog-display-name-gpt-oss:20b")).not.toBeInTheDocument();
     expect(apiFetch).toHaveBeenCalledWith(CATALOG_PATH);
   });
 
-  it("shows governance status for chat models", async () => {
+  it("shows blocked governance chip only for blocked chat models", async () => {
     renderPage();
-    expect(await screen.findByTestId("admin-catalog-governance-gpt-oss:20b")).toHaveTextContent("Yes");
-    expect(screen.getByTestId("admin-catalog-governance-deepseek-v2:16b")).toHaveTextContent("No");
+    expect(await screen.findByTestId("admin-catalog-governance-blocked-deepseek-v2:16b")).toHaveTextContent(
+      /Blocked/i,
+    );
+    expect(screen.queryByTestId("admin-catalog-governance-blocked-gpt-oss:20b")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("admin-catalog-governance-gpt-oss:20b")).not.toBeInTheDocument();
   });
 
-  it("provider and capability are shown", async () => {
+  it("provider and capability are shown without redundant remote fields", async () => {
     renderPage();
     expect(await screen.findByTestId("admin-catalog-provider-gpt-oss:20b")).toHaveTextContent("Configured API catalog");
     expect(screen.getByTestId("admin-catalog-capability-gpt-oss:20b")).toHaveTextContent("CHAT");
-    expect(screen.getByTestId("admin-catalog-source-gpt-oss:20b")).toHaveTextContent("Properties file");
+    expect(screen.queryByTestId("admin-catalog-source-gpt-oss:20b")).not.toBeInTheDocument();
     expect(screen.getByTestId("admin-catalog-runtime-status-gpt-oss:20b")).toHaveTextContent("Available");
+  });
+
+  it("hides local pull card when effective provider is OpenAI-compatible", async () => {
+    renderPage();
+    await screen.findByTestId("admin-catalog-row-OPENAI_COMPATIBLE-CHAT-gpt-oss:20b");
+    expect(screen.queryByTestId("admin-pull-card")).not.toBeInTheDocument();
+    expect(screen.queryByText("Download local model")).not.toBeInTheDocument();
+  });
+
+  it("shows local pull card when effective provider is Ollama-native", async () => {
+    useMeSelectableLlmModelsMock.mockReturnValue({
+      data: { effectiveProvider: "OLLAMA_NATIVE", models: [] },
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useMeSelectableLlmModels>);
+    renderPage();
+    await screen.findByTestId("admin-catalog-row-OPENAI_COMPATIBLE-CHAT-gpt-oss:20b");
+    expect(screen.getByTestId("admin-pull-card")).toBeInTheDocument();
+    expect(screen.getByText("Download local model")).toBeInTheDocument();
   });
 
   it("unavailable model visible with warning", async () => {

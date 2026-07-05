@@ -1,6 +1,6 @@
 import type { MessageDto } from "@/types/api";
 
-/** Stable logical sequence for ordering (never use updatedAt — messages have no updatedAt). */
+/** Stable logical sequence for ordering (never use updatedAt - messages have no updatedAt). */
 export function messageSeq(message: MessageDto, fallbackIndex = 0): number {
   if (typeof message.seq === "number" && Number.isFinite(message.seq)) {
     return message.seq;

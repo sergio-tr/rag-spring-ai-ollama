@@ -195,19 +195,19 @@ export function enrichComparisonRowsFromItems(
 }
 
 export function formatRatioPercent(numerator: number, denominator: number): string {
-  if (denominator <= 0) return "—";
+  if (denominator <= 0) return "-";
   return `${((numerator / denominator) * 100).toFixed(1)}%`;
 }
 
 export function formatMetricNumber(value: unknown, digits = 3): string {
-  if (value == null || value === "NOT_AVAILABLE") return "—";
+  if (value == null || value === "NOT_AVAILABLE") return "-";
   if (typeof value === "number" && Number.isFinite(value)) return value.toFixed(digits);
   const text = String(value).trim();
-  return text.length > 0 ? text : "—";
+  return text.length > 0 ? text : "-";
 }
 
 export function formatLatencyMs(value: unknown): string {
-  if (value == null || value === "NOT_AVAILABLE") return "—";
+  if (value == null || value === "NOT_AVAILABLE") return "-";
   if (typeof value === "number" && Number.isFinite(value)) return `${Math.round(value)}`;
-  return "—";
+  return "-";
 }

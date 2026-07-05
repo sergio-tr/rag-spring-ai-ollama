@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.config;
 
 import com.uniovi.rag.application.config.PromptTemplateValidator;
 import com.uniovi.rag.domain.RagConfigurationLevel;
+import com.uniovi.rag.domain.config.SettingsConfigurationMerge;
 import com.uniovi.rag.domain.config.prompt.PromptOverrideKeys;
 import com.uniovi.rag.domain.llm.LlmConfigurationKeys;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
@@ -48,6 +49,29 @@ public class UserProjectConfigurationService {
     }
 
     @Transactional(readOnly = true)
+    public Map<String, Object> getStoredUserConfig(UUID userId) {
+        return ragConfigurationRepository
+                .findFirstByUser_IdAndLevelAndProjectIsNullAndActiveIsTrue(
+                        userId, RagConfigurationLevel.USER_DEFAULT)
+                .map(RagConfigurationEntity::getValues)
+                .filter(v -> v != null && !v.isEmpty())
+                .map(Map::copyOf)
+                .orElse(Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getStoredProjectConfig(UUID userId, UUID projectId) {
+        projectAccessService.requireOwnedProject(userId, projectId);
+        return ragConfigurationRepository
+                .findFirstByUser_IdAndProject_IdAndLevelAndActiveIsTrue(
+                        userId, projectId, RagConfigurationLevel.PROJECT)
+                .map(RagConfigurationEntity::getValues)
+                .filter(v -> v != null && !v.isEmpty())
+                .map(Map::copyOf)
+                .orElse(Map.of());
+    }
+
+    @Transactional(readOnly = true)
     public Map<String, Object> getEffectiveUserConfig(UUID userId) {
         RagConfig c = configResolverProvider.getObject().resolve(userId, null, null);
         Map<String, Object> result = new LinkedHashMap<>(c.toValueMap());
@@ -63,7 +87,9 @@ public class UserProjectConfigurationService {
     @Transactional
     public Map<String, Object> putUserConfig(UUID userId, Map<String, Object> body) {
         UserEntity user = userRepository.findById(userId).orElseThrow();
-        Map<String, Object> sanitized = RagConfigValueSanitizer.sanitize(body);
+        Map<String, Object> merged =
+                SettingsConfigurationMerge.mergePatch(getStoredUserConfig(userId), body != null ? body : Map.of());
+        Map<String, Object> sanitized = UserAssistantConfigurationSanitizer.sanitizeForUserSave(merged);
         promptTemplateValidator.validateOverrides(sanitized);
         Optional<RagConfigurationEntity> existing =
                 ragConfigurationRepository.findFirstByUser_IdAndLevelAndProjectIsNullAndActiveIsTrue(
@@ -74,7 +100,7 @@ public class UserProjectConfigurationService {
             e.setValues(sanitized);
             e.setUpdatedAt(now);
             ragConfigurationRepository.save(e);
-        } else {
+        } else if (!sanitized.isEmpty()) {
             ragConfigurationRepository.save(RagConfigurationEntityFactory.newUserDefault(user, sanitized, now));
         }
         return getEffectiveUserConfig(userId);
@@ -98,7 +124,10 @@ public class UserProjectConfigurationService {
     public Map<String, Object> putProjectConfig(UUID userId, UUID projectId, Map<String, Object> body) {
         ProjectEntity project = projectAccessService.requireOwnedProject(userId, projectId);
         UserEntity user = userRepository.findById(userId).orElseThrow();
-        Map<String, Object> sanitized = RagConfigValueSanitizer.sanitize(body);
+        Map<String, Object> merged =
+                SettingsConfigurationMerge.mergePatch(
+                        getStoredProjectConfig(userId, projectId), body != null ? body : Map.of());
+        Map<String, Object> sanitized = RagConfigValueSanitizer.sanitize(merged);
         promptTemplateValidator.validateOverrides(sanitized);
         Optional<RagConfigurationEntity> existing =
                 ragConfigurationRepository.findFirstByUser_IdAndProject_IdAndLevelAndActiveIsTrue(
@@ -106,10 +135,14 @@ public class UserProjectConfigurationService {
         Instant now = Instant.now();
         if (existing.isPresent()) {
             RagConfigurationEntity e = existing.get();
-            e.setValues(sanitized);
-            e.setUpdatedAt(now);
-            ragConfigurationRepository.save(e);
-        } else {
+            if (sanitized.isEmpty()) {
+                ragConfigurationRepository.delete(e);
+            } else {
+                e.setValues(sanitized);
+                e.setUpdatedAt(now);
+                ragConfigurationRepository.save(e);
+            }
+        } else if (!sanitized.isEmpty()) {
             ragConfigurationRepository.save(
                     RagConfigurationEntityFactory.newProjectScoped(user, project, sanitized, now));
         }

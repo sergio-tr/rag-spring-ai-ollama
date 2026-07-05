@@ -33,7 +33,7 @@ describe("RagDraftIssuesAlert", () => {
       </IntlTestProvider>,
     );
 
-    expect(screen.getByText("Saved Lab draft issues — fix before running")).toBeInTheDocument();
+    expect(screen.getByText("Saved Lab draft issues - fix before running")).toBeInTheDocument();
     expect(screen.getByTestId("lab-evaluation-draft-warnings-list")).toBeInTheDocument();
     expect(screen.getByTestId("lab-evaluation-draft-warnings-issue-MISSING_PRESET")).toBeInTheDocument();
   });

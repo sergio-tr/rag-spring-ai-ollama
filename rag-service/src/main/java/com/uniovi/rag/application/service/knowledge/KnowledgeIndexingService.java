@@ -18,6 +18,7 @@ import com.uniovi.rag.application.service.knowledge.document.MetadataMinuteDocum
 import com.uniovi.rag.application.service.knowledge.document.ProjectDocumentIngestionService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationGoldChunkMetadataSupport;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationGoldCorpusFilenameSupport;
+import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -105,9 +106,15 @@ public class KnowledgeIndexingService {
         parsed.put("mimeType", ct != null ? ct : "");
         saveArtifact(doc, DocumentArtifactType.PARSED, parsed, now);
 
+        Map<String, Object> indexProfile =
+                snapshot.getIndexProfileJsonb() != null ? snapshot.getIndexProfileJsonb() : Map.of();
+        boolean metadataCapable =
+                Boolean.TRUE.equals(IndexSnapshotCapabilities.fromIndexProfile(indexProfile).supportsMetadata());
         Optional<Map<String, Object>> structuredActa =
-                metadataMinuteDocumentService.tryExtractDeterministicMetadataForIndexing(
-                        content, name, doc.getId().toString());
+                metadataCapable
+                        ? metadataMinuteDocumentService.tryExtractDeterministicMetadataForIndexing(
+                                content, name, doc.getId().toString())
+                        : Optional.empty();
         Map<String, Object> meta = buildMetadataPayload(effectiveStrategy, content, name, structuredActa);
         saveArtifact(doc, DocumentArtifactType.METADATA, meta, now);
 
@@ -220,7 +227,9 @@ public class KnowledgeIndexingService {
         }
 
         if (!vectorDocs.isEmpty()) {
-            Map<String, Object> indexProfile = snapshot.getIndexProfileJsonb();
+            if (snapshot.getIndexProfileJsonb() != null) {
+                indexProfile = snapshot.getIndexProfileJsonb();
+            }
             if (snapshot.getOwnerType() == KnowledgeSnapshotOwnerType.EVALUATION_CORPUS) {
                 embeddingIndexCompatibilityService.assertIndexingCompatibleForEvaluationSnapshot(indexProfile);
             } else if (req.ingestionProfile() != null) {
@@ -246,7 +255,7 @@ public class KnowledgeIndexingService {
             int updated =
                     backfillVectorStoreProjectIdForDocument(projectId, doc.getId(), snapshotId, indexSigHex);
             if (updated == 0) {
-                // Retry without indexSignatureHash — Spring AI metadata shape can omit or alter the hash key.
+                // Retry without indexSignatureHash - Spring AI metadata shape can omit or alter the hash key.
                 updated = backfillVectorStoreProjectIdForDocument(projectId, doc.getId(), snapshotId, null);
             }
             if (updated == 0) {

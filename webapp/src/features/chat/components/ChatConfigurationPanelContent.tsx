@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@/navigation";
 import { useTranslations } from "next-intl";
-import { formatProductPresetOptionLabel } from "@/features/chat/lib/preset-latency-tier";
+import { formatProductPresetOptionLabel, formatProductPresetOptionTitle } from "@/features/chat/lib/preset-latency-tier";
 import { formatChatExperimentalPresetOptionLabel, formatPresetSupportMessage } from "@/lib/product-copy";
 import { createPresetCopyFn } from "@/lib/preset-copy-i18n";
 import {
@@ -14,18 +15,19 @@ import {
 import { mapUserFacingErrorMessage } from "@/lib/user-facing-error-messages";
 import { buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useRuntimeConfigCapabilities } from "@/features/chat/hooks/use-runtime-config-capabilities";
 import { useClassifierModelsQuery } from "@/features/lab/hooks/use-classifier-registry";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import {
   compatibilityByExperimentalPresetId,
   compatibilityByProductPresetId,
-  filterCompatibleExperimentalPresets,
-  filterCompatibleProductPresets,
+  filterExperimentalPresetsForSelector,
+  filterProductPresetsForSelector,
   presetCompatibilityDisabledReason,
+  presetProductTierLabel,
   projectCompatiblePresetsEmptyState,
 } from "@/features/chat/lib/chat-preset-compatibility";
+import { formatPresetCompatibilityDisabledReason } from "@/features/chat/lib/preset-compatibility-reason";
 import { useActiveProjectSnapshot } from "@/features/projects/hooks/use-active-project-snapshot";
 import { useProjectIndexProfile } from "@/features/projects/hooks/use-project-index-profile";
 import {
@@ -33,9 +35,16 @@ import {
 } from "@/features/chat/components/chat-config-compact-ui";
 import { chatFailureHintForCode, normalizeChatFailureCode } from "@/features/chat/lib/chat-job-errors";
 import {
+  formatAdvancedTechnicalValidationIssue,
   formatRuntimeValidationIssueMessage,
   isAdvancedTechnicalValidationIssue,
 } from "@/features/chat/lib/runtime-validation-copy";
+import { formatDisabledRuntimeFeatureTip, clientSideDisableTip } from "@/features/chat/lib/runtime-feature-disable-copy";
+import {
+  isPresetBaseFeature,
+  isPresetControlledOffFeature,
+} from "@/features/chat/lib/preset-base-feature-locking";
+import type { DisabledRuntimeFeatureDto } from "@/types/api";
 import { cn } from "@/lib/utils";
 import { productProviderLabel, productProviderLabelsFromSettings } from "@/lib/product-provider-labels";
 import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
@@ -48,14 +57,25 @@ import {
 } from "@/features/chat/lib/assistant-config-product-labels";
 import { ConfigScopeBadge, resolveFieldScope, type AssistantConfigScope } from "@/features/chat/lib/assistant-config-scope";
 import { useMeEffectiveEmbeddingDefaults } from "@/features/settings/hooks/use-me-effective-embedding-defaults";
+import { useProjectStoredRagConfigQuery } from "@/features/settings/hooks/use-rag-config";
+import { meEffectiveRuntimeQueryKey } from "@/features/settings/hooks/use-me-effective-runtime";
+import { ChatEffectiveRuntimeSummary } from "@/features/chat/components/ChatEffectiveRuntimeSummary";
 import { retrievalParameterSourceLabelKey } from "@/features/chat/lib/retrieval-parameter-source";
 import {
-  buildRuntimeOverrideForRetrievalMode,
+  buildRetrievalModePatch,
   inferRetrievalOverrideMode,
+  RETRIEVAL_OVERRIDE_MODE_KEY,
+  sanitizeRuntimeOverridePatch,
   toRetrievalDefaults,
   type RetrievalOverrideMode,
 } from "@/features/chat/lib/retrieval-override-mode";
+import { useConversationConfigurationDraft } from "@/features/chat/hooks/use-conversation-configuration-draft";
+import { useRetrievalFieldDrafts } from "@/features/chat/hooks/use-retrieval-field-drafts";
+import { RetrievalNumericField } from "@/features/chat/components/RetrievalNumericField";
 import type { RuntimeConfigValidationIssueDto } from "@/types/api";
+
+const RETRIEVAL_TOP_K_CONSTRAINTS = { min: 1, max: 100 } as const;
+const RETRIEVAL_SIMILARITY_CONSTRAINTS = { min: 0, max: 1 } as const;
 
 function Section({
   title,
@@ -99,28 +119,92 @@ function MenuHint({ children }: Readonly<{ children: React.ReactNode }>) {
   );
 }
 
-function DisabledReason({
-  reason,
-  id,
+function FeatureDisableTip({ tip, testId }: Readonly<{ tip: string; testId: string }>) {
+  return (
+    <span
+      data-testid={testId}
+      className="text-muted-foreground mt-0.5 block min-w-0 text-[11px] font-normal leading-snug"
+    >
+      {tip}
+    </span>
+  );
+}
+
+function LabelWithScopeBadge({
   label,
+  scope,
+  scopeLabelText,
 }: Readonly<{
-  reason: string;
-  id: string;
-  label: string;
+  label: ReactNode;
+  scope: AssistantConfigScope;
+  scopeLabelText: string;
 }>) {
   return (
-    <Popover>
-      <PopoverTrigger
-        aria-describedby={id}
-        className="text-muted-foreground hover:text-foreground inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium"
-        type="button"
-      >
-        {label}
-      </PopoverTrigger>
-      <PopoverContent id={id} className="w-80 text-xs">
-        <p className="text-muted-foreground text-xs leading-relaxed">{reason}</p>
-      </PopoverContent>
-    </Popover>
+    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="min-w-0 break-words">{label}</span>
+      <ConfigScopeBadge scope={scope} label={scopeLabelText} className="shrink-0" />
+    </span>
+  );
+}
+
+function RuntimeCheckboxFeatureRow({
+  testId,
+  checked,
+  disabled,
+  onChange,
+  label,
+  scope,
+  scopeLabelText,
+  multiTurn = false,
+  multiTurnHint,
+  disabledReasonNode,
+  presetBadge,
+  fieldIssue,
+  describedById,
+}: Readonly<{
+  testId: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+  label: ReactNode;
+  scope: AssistantConfigScope;
+  scopeLabelText: string;
+  multiTurn?: boolean;
+  multiTurnHint?: ReactNode;
+  disabledReasonNode?: ReactNode;
+  presetBadge?: ReactNode;
+  fieldIssue?: ReactNode;
+  describedById?: string;
+}>) {
+  return (
+    <div className="flex min-w-0 items-start gap-2">
+      <input
+        id={testId}
+        type="checkbox"
+        data-testid={testId}
+        className="border-input mt-1 size-4 shrink-0 rounded"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        aria-describedby={describedById}
+      />
+      <div className="min-w-0 flex-1">
+        <label
+          htmlFor={testId}
+          className="flex min-w-0 cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 text-sm"
+        >
+          <span className="min-w-0 break-words">{label}</span>
+          {presetBadge}
+          {multiTurn ? (
+            <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">Multi-turn</span>
+          ) : null}
+          <ConfigScopeBadge scope={scope} label={scopeLabelText} className="shrink-0" />
+        </label>
+        {disabledReasonNode}
+        {fieldIssue ? <MenuHint>{fieldIssue}</MenuHint> : null}
+        {multiTurn && multiTurnHint ? <MenuHint>{multiTurnHint}</MenuHint> : null}
+      </div>
+    </div>
   );
 }
 
@@ -141,6 +225,7 @@ function actionableIssueCode(issue: RuntimeConfigValidationIssueDto): string | n
  * 4) Runtime configuration
  */
 export function ChatConfigurationPanelContent() {
+  const queryClient = useQueryClient();
   const t = useTranslations("SectionActions");
   const tChat = useTranslations("Chat");
   const tSettings = useTranslations("Settings");
@@ -165,14 +250,18 @@ export function ChatConfigurationPanelContent() {
 
   const needsProject = !api?.projectId;
   const needsConversation = !api?.conversationId;
-  const hasCustomOverride = Boolean(api?.runtimeState?.isCustom);
+  const hasCustomOverride =
+    api?.runtimeState?.configurationMode === "CUSTOM" || Boolean(api?.runtimeState?.isCustom);
 
   const effectiveRetrieval = api?.runtimeState?.effectiveRetrievalParameters ?? null;
   const effectiveConfig = api?.runtimeState?.effectiveConfig ?? null;
-  const activeLlmModel =
-    api?.llmModelChoice?.trim() ||
-    api?.runtimeState?.conversationLlmModel?.trim() ||
-    "";
+  const activeLlmModel = useMemo(() => {
+    if (effectiveConfig && typeof effectiveConfig === "object") {
+      const model = (effectiveConfig as Record<string, unknown>).llmModel;
+      if (typeof model === "string" && model.trim()) return model.trim();
+    }
+    return api?.runtimeState?.conversationLlmModel?.trim() ?? "";
+  }, [effectiveConfig, api?.runtimeState?.conversationLlmModel]);
   const indexProfileQuery = useProjectIndexProfile(api?.projectId);
   const activeSnapQuery = useActiveProjectSnapshot(api?.projectId);
 
@@ -180,7 +269,7 @@ export function ChatConfigurationPanelContent() {
   const effectiveError = api?.runtimeStateError ?? null;
   const patchPending = Boolean(api?.patchConvPending);
 
-  const selectedLlmModel = api?.llmModelChoice?.trim() ?? "";
+  const selectedLlmModel = activeLlmModel;
   const selectableModelNames = useMemo(
     () => new Set((api?.selectableLlmModels ?? []).map((m) => m.modelName)),
     [api?.selectableLlmModels],
@@ -243,9 +332,9 @@ export function ChatConfigurationPanelContent() {
     return m;
   }, [blockingIssues]);
   const disabledRuntimeFeatureByKey = useMemo(() => {
-    const m = new Map<string, string>();
+    const m = new Map<string, DisabledRuntimeFeatureDto>();
     for (const item of api?.runtimeState?.disabledRuntimeFeatures ?? []) {
-      if (item.key) m.set(item.key, item.reason);
+      if (item.key) m.set(item.key, item);
     }
     return m;
   }, [api?.runtimeState?.disabledRuntimeFeatures]);
@@ -257,7 +346,9 @@ export function ChatConfigurationPanelContent() {
       (c) =>
         (c.category === "RUNTIME_HOT_SWAPPABLE" || c.category === "ADVANCED_RUNTIME") &&
         c.visibleInChat === true &&
-        c.configurableInChat === true,
+        c.configurableInChat === true &&
+        c.implemented === true &&
+        c.engineWired === true,
     );
     filtered.sort((a, b) => a.displayOrder - b.displayOrder);
     return filtered;
@@ -343,37 +434,90 @@ export function ChatConfigurationPanelContent() {
     return v === true || v === "true";
   }
 
-  const disabledReason = (key: string): string | null => {
-    const backendReason = disabledRuntimeFeatureByKey.get(key);
-    if (backendReason) return backendReason;
-    const issue = issueByField.get(key);
-    if (issue?.message) {
-      return formatRuntimeValidationIssueMessage(issue, tChat);
+  const presetBaseEffectiveConfig = useMemo(
+    () =>
+      api?.runtimeState?.baseEffectiveConfig && typeof api.runtimeState.baseEffectiveConfig === "object"
+        ? (api.runtimeState.baseEffectiveConfig as Record<string, unknown>)
+        : null,
+    [api],
+  );
+
+  const disabledTip = (key: string): string | null => {
+    const backendDisabled = disabledRuntimeFeatureByKey.get(key);
+    if (backendDisabled) {
+      const tip = formatDisabledRuntimeFeatureTip(backendDisabled, tChat);
+      if (tip) return tip;
     }
-    const c = capByKey.get(key);
-    if (!c) return null;
-    if (c.reasonIfDisabled) return c.reasonIfDisabled;
-    if (!c.configurableInChat) return "Not configurable in Chat.";
-    if (!c.implemented || !c.engineWired) return c.reasonIfNotImplemented ?? "Not implemented.";
-    if (c.requires?.length) {
-      for (const reqKey of c.requires) {
-        if (!coerceBool(mergedRuntimeFlagValues[reqKey])) {
-          return `Requires ${reqKey}=true (e.g. turn on “Use retrieval” first).`;
-        }
-      }
+    const cap = capByKey.get(key);
+    const clientTip = clientSideDisableTip(key, cap, mergedRuntimeFlagValues, tChat);
+    if (clientTip) return clientTip;
+    if (isPresetBaseFeature(key, presetBaseEffectiveConfig)) {
+      const tip = tChat("chatFeatureTipEnabledByPreset");
+      return tip !== "chatFeatureTipEnabledByPreset" ? tip : null;
     }
-    if (c.excludes?.length) {
-      for (const exKey of c.excludes) {
-        if (coerceBool(mergedRuntimeFlagValues[exKey])) {
-          return `Cannot be enabled with ${exKey}=true.`;
-        }
-      }
+    if (isPresetControlledOffFeature(key, presetBaseEffectiveConfig)) {
+      const tip = tChat("chatFeatureTipPresetControlled");
+      return tip !== "chatFeatureTipPresetControlled" ? tip : null;
+    }
+    if (cap?.visibleInChat === true && (!cap.configurableInChat || !cap.implemented || !cap.engineWired)) {
+      const unavailable = tChat("chatFeatureTipNotAvailableInChat");
+      return unavailable !== "chatFeatureTipNotAvailableInChat" ? unavailable : null;
     }
     return null;
   };
 
+  const isToggleDisabled = (key: string): boolean => {
+    if (patchPending) return true;
+    if (disabledTip(key) != null) return true;
+    if (isPresetBaseFeature(key, presetBaseEffectiveConfig)) return true;
+    if (isPresetControlledOffFeature(key, presetBaseEffectiveConfig)) return true;
+    const cap = capByKey.get(key);
+    if (!cap || cap.visibleInChat !== true) return false;
+    if (!cap.configurableInChat || !cap.implemented || !cap.engineWired) return true;
+    for (const reqKey of cap.requires ?? []) {
+      if (!coerceBool(mergedRuntimeFlagValues[reqKey])) return true;
+    }
+    for (const exKey of cap.excludes ?? []) {
+      if (coerceBool(mergedRuntimeFlagValues[exKey])) return true;
+    }
+    if (
+      key === "metadataEnabled" &&
+      coerceBool(mergedRuntimeFlagValues.metadataEnabled) &&
+      !coerceBool(mergedRuntimeFlagValues.toolsEnabled)
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  function presetFeatureBadge(key: string): ReactNode {
+    if (!isPresetBaseFeature(key, presetBaseEffectiveConfig)) return null;
+    return (
+      <span
+        className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium"
+        data-testid={`chat-runtime-preset-badge-${key}`}
+      >
+        {tChat("chatFeatureTipEnabledByPreset")}
+      </span>
+    );
+  }
+
+  function hybridMaterializationHint(key: string): string | null {
+    if (key !== "rankerEnabled" && key !== "postRetrievalEnabled") return null;
+    if (!coerceBool(mergedRuntimeFlagValues.useRetrieval)) return null;
+    const activeMat =
+      indexProfileQuery.data?.materializationStrategy ??
+      activeSnapshotCapabilities?.materializationStrategy ??
+      null;
+    if (!activeMat || activeMat === "HYBRID") return null;
+    return key === "rankerEnabled"
+      ? tChat("chatConfigRankerRequiresHybrid")
+      : tChat("chatConfigPostRetrievalRequiresHybrid");
+  }
+
   const runtimeSelectedPresetId = api?.runtimeState?.selectedPresetId ?? null;
-  const selectedPresetValue = runtimeSelectedPresetId ? runtimeSelectedPresetId : "";
+  const effectivePresetId = api?.runtimeState?.effectivePresetId ?? null;
+  const selectedPresetValue = runtimeSelectedPresetId ?? effectivePresetId ?? "";
   const selectedInProduct = !!api?.presets?.some((p) => p.id === runtimeSelectedPresetId);
   const selectedExperimental = (Array.isArray(api?.experimentalPresets) ? api?.experimentalPresets : []).find(
     (p) => p.productPresetId === runtimeSelectedPresetId,
@@ -509,25 +653,48 @@ export function ChatConfigurationPanelContent() {
     () => compatibilityByExperimentalPresetId(api?.compatibleExperimentalPresets),
     [api?.compatibleExperimentalPresets],
   );
+  const projectIndexCaps = useMemo(
+    () => api?.projectCompatiblePresets?.activeSnapshotCapabilities ?? null,
+    [api?.projectCompatiblePresets?.activeSnapshotCapabilities],
+  );
   const visibleProductPresets = useMemo(
-    () => filterCompatibleProductPresets(api?.compatibleProductPresets, showIncompatiblePresets),
-    [api?.compatibleProductPresets, showIncompatiblePresets],
+    () =>
+      filterProductPresetsForSelector(
+        api?.compatibleProductPresets,
+        projectIndexCaps,
+        showIncompatiblePresets,
+      ),
+    [api?.compatibleProductPresets, projectIndexCaps, showIncompatiblePresets],
   );
   const visibleExperimentalItems = useMemo(
     () =>
-      filterCompatibleExperimentalPresets(api?.compatibleExperimentalPresets, showIncompatiblePresets).filter(
-        (item) => !productIds.has(item.preset.productPresetId),
-      ),
-    [api?.compatibleExperimentalPresets, showIncompatiblePresets, productIds],
+      filterExperimentalPresetsForSelector(
+        api?.compatibleExperimentalPresets,
+        projectIndexCaps,
+        showIncompatiblePresets,
+      ).filter((item) => !productIds.has(item.preset.productPresetId)),
+    [
+      api?.compatibleExperimentalPresets,
+      projectIndexCaps,
+      showIncompatiblePresets,
+      productIds,
+    ],
   );
   const experimentalUnique = useMemo(
     () => sortPresetsByRank(visibleExperimentalItems.map((item) => item.preset)),
     [visibleExperimentalItems],
   );
   const presetEmptyState = useMemo(
-    () => projectCompatiblePresetsEmptyState(api?.projectCompatiblePresets ?? null, showIncompatiblePresets),
-    [api?.projectCompatiblePresets, showIncompatiblePresets],
+    () =>
+      projectCompatiblePresetsEmptyState(
+        api?.projectCompatiblePresets ?? null,
+        showIncompatiblePresets,
+        projectIndexCaps,
+      ),
+    [api?.projectCompatiblePresets, showIncompatiblePresets, projectIndexCaps],
   );
+  const isStructuredSearchProject =
+    (projectIndexCaps?.materializationStrategy ?? "").trim().toUpperCase() === "STRUCTURED_SEARCH";
 
   function presetIndexDisabledReason(p: {
     chatSelectable: boolean;
@@ -547,7 +714,9 @@ export function ChatConfigurationPanelContent() {
           ? productPresetCompatibility.get(p.id)
           : undefined) ?? null;
     const fromBackend = presetCompatibilityDisabledReason(backendReason);
-    if (fromBackend) return fromBackend;
+    if (fromBackend) {
+      return formatPresetCompatibilityDisabledReason(backendReason, tChat) ?? fromBackend;
+    }
 
     if (!p.chatSelectable) {
       return formatPresetSupportMessage(p.supportStatus, p.reasonIfUnsupported, presetCopyT, "chatPresetNotSelectable");
@@ -557,7 +726,7 @@ export function ChatConfigurationPanelContent() {
     const idx = api?.runtimeState?.indexCompatibility;
     const caps = idx?.activeSnapshotCapabilities;
     if (!idx?.hasActiveIndex || !caps) {
-      return tChat("chatPresetRequiresCompatibleIndex");
+      return tChat("chatPresetCompatNoActiveIndex");
     }
     const activeMat = caps.materializationStrategy;
     const requiredMat = req.requiredMaterializationStrategy;
@@ -566,10 +735,16 @@ export function ChatConfigurationPanelContent() {
       activeMat === requiredMat ||
       (activeMat === "HYBRID" && requiredMat === "CHUNK_LEVEL");
     if (!matOk) {
+      if (activeMat === "STRUCTURED_SEARCH") {
+        return tChat("chatPresetCompatStructuredSearchNoRetrieval");
+      }
+      if (requiredMat === "DOCUMENT_LEVEL") return tChat("chatPresetCompatRequiresDocumentLevel");
+      if (requiredMat === "CHUNK_LEVEL") return tChat("chatPresetCompatRequiresChunkLevel");
+      if (requiredMat === "HYBRID") return tChat("chatPresetCompatRequiresHybrid");
       return tChat("chatPresetRequiresCompatibleIndex");
     }
     if (req.requiresMetadataSupport && caps.supportsMetadata !== true) {
-      return tChat("chatPresetRequiresMetadata");
+      return tChat("chatPresetCompatRequiresMetadata");
     }
     return null;
   }
@@ -581,10 +756,51 @@ export function ChatConfigurationPanelContent() {
     return coerceBool(effectiveConfig ? (effectiveConfig as Record<string, unknown>)[key] : undefined);
   };
 
+  const assistantRetrievalDefaults = useMemo(
+    () => toRetrievalDefaults(effectiveEmbeddingDefaults.data?.retrievalOptions),
+    [effectiveEmbeddingDefaults.data?.retrievalOptions],
+  );
+
+  const projectStoredRagConfigQuery = useProjectStoredRagConfigQuery(api?.projectId);
+  const projectRetrievalDefaults = useMemo(() => {
+    const fromProject = toRetrievalDefaults(projectStoredRagConfigQuery.data);
+    if (fromProject) {
+      return fromProject;
+    }
+    return assistantRetrievalDefaults;
+  }, [assistantRetrievalDefaults, projectStoredRagConfigQuery.data]);
+
+  const persistedRuntimeOverride = useMemo(
+    () => (api?.runtimeState?.runtimeOverride ?? api?.runtimeOverride ?? {}) as Record<string, unknown>,
+    [api?.runtimeState?.runtimeOverride, api?.runtimeOverride],
+  );
+
+  const conversationConfigDraft = useConversationConfigurationDraft(
+    persistedRuntimeOverride,
+    api?.conversationId,
+    patchPending,
+  );
+
+  const [pendingRetrievalMode, setPendingRetrievalMode] = useState<RetrievalOverrideMode | null>(null);
+
+  useEffect(() => {
+    if (!patchPending) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear optimistic mode after PATCH settles
+      setPendingRetrievalMode(null);
+    }
+  }, [patchPending, persistedRuntimeOverride, api?.conversationId]);
+
+  const saveConversationPatch = (patch: Record<string, unknown>) => {
+    if (!api?.saveRuntimeOverride) {
+      return;
+    }
+    api.saveRuntimeOverride(
+      sanitizeRuntimeOverridePatch(patch, getBooleanValue("useRetrieval")),
+    );
+  };
+
   const setOverrideBoolean = (key: string, next: boolean) => {
-    const current = (api?.runtimeState?.runtimeOverride ?? api?.runtimeOverride ?? {}) as Record<string, unknown>;
-    const updated = { ...current, [key]: next };
-    api?.saveRuntimeOverride(updated);
+    saveConversationPatch(conversationConfigDraft.applyBooleanPatch(key, next));
   };
 
   const getNumberValue = (key: string, fallback: number): number => {
@@ -592,41 +808,102 @@ export function ChatConfigurationPanelContent() {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
   };
 
-  const setOverrideNumber = (key: string, next: number) => {
-    if (!Number.isFinite(next)) return;
-    const current = (api?.runtimeState?.runtimeOverride ?? api?.runtimeOverride ?? {}) as Record<string, unknown>;
-    api?.saveRuntimeOverride({ ...current, [key]: next });
-  };
+  const retrievalOverrideMode = useMemo(() => {
+    if (pendingRetrievalMode) {
+      return pendingRetrievalMode;
+    }
+    return inferRetrievalOverrideMode(
+      persistedRuntimeOverride,
+      assistantRetrievalDefaults,
+      projectRetrievalDefaults,
+    );
+  }, [
+    assistantRetrievalDefaults,
+    pendingRetrievalMode,
+    persistedRuntimeOverride,
+    projectRetrievalDefaults,
+  ]);
 
-  const assistantRetrievalDefaults = useMemo(
-    () => toRetrievalDefaults(effectiveEmbeddingDefaults.data?.retrievalOptions),
-    [effectiveEmbeddingDefaults.data?.retrievalOptions],
+  const committedTopK = getNumberValue("topK", effectiveRetrieval?.topK ?? 8);
+  const committedSimilarity = getNumberValue(
+    "similarityThreshold",
+    effectiveRetrieval?.similarityThreshold ?? 0,
   );
 
-  const persistedRuntimeOverride = useMemo(
-    () => (api?.runtimeState?.runtimeOverride ?? api?.runtimeOverride ?? {}) as Record<string, unknown>,
-    [api?.runtimeState?.runtimeOverride, api?.runtimeOverride],
-  );
-
-  const retrievalOverrideMode = useMemo(
-    () => inferRetrievalOverrideMode(persistedRuntimeOverride, assistantRetrievalDefaults),
-    [assistantRetrievalDefaults, persistedRuntimeOverride],
-  );
-
-  const setRetrievalOverrideMode = (mode: RetrievalOverrideMode) => {
+  const ensureCustomRetrievalMode = () => {
+    const snapshot = conversationConfigDraft.getSnapshot();
+    if (snapshot[RETRIEVAL_OVERRIDE_MODE_KEY] === "custom") {
+      return;
+    }
     const seed =
       effectiveRetrieval != null
         ? { topK: effectiveRetrieval.topK, similarityThreshold: effectiveRetrieval.similarityThreshold }
         : assistantRetrievalDefaults;
-    api?.saveRuntimeOverride(
-      buildRuntimeOverrideForRetrievalMode(
-        persistedRuntimeOverride,
-        mode,
-        assistantRetrievalDefaults,
-        seed,
+    saveConversationPatch(
+      conversationConfigDraft.applyPatch(
+        seed
+          ? {
+              [RETRIEVAL_OVERRIDE_MODE_KEY]: "custom",
+              topK: seed.topK,
+              similarityThreshold: seed.similarityThreshold,
+            }
+          : { [RETRIEVAL_OVERRIDE_MODE_KEY]: "custom" },
       ),
     );
   };
+
+  const commitRetrievalTopK = (next: number) => {
+    saveConversationPatch(
+      conversationConfigDraft.applyPatch({
+        [RETRIEVAL_OVERRIDE_MODE_KEY]: "custom",
+        topK: next,
+        similarityThreshold: committedSimilarity,
+      }),
+    );
+  };
+
+  const commitRetrievalSimilarity = (next: number) => {
+    saveConversationPatch(
+      conversationConfigDraft.applyPatch({
+        [RETRIEVAL_OVERRIDE_MODE_KEY]: "custom",
+        topK: committedTopK,
+        similarityThreshold: next,
+      }),
+    );
+  };
+
+  const retrievalFieldDrafts = useRetrievalFieldDrafts({
+    committedTopK,
+    committedSimilarity,
+    retrievalOverrideMode,
+    conversationId: api?.conversationId,
+    patchPending,
+    topKConstraints: RETRIEVAL_TOP_K_CONSTRAINTS,
+    similarityConstraints: RETRIEVAL_SIMILARITY_CONSTRAINTS,
+    onEnsureCustomMode: ensureCustomRetrievalMode,
+    onCommitTopK: commitRetrievalTopK,
+    onCommitSimilarity: commitRetrievalSimilarity,
+  });
+
+  const setRetrievalOverrideMode = (mode: RetrievalOverrideMode) => {
+    setPendingRetrievalMode(mode);
+    const seed =
+      effectiveRetrieval != null
+        ? { topK: effectiveRetrieval.topK, similarityThreshold: effectiveRetrieval.similarityThreshold }
+        : projectRetrievalDefaults ?? assistantRetrievalDefaults;
+    saveConversationPatch(
+      conversationConfigDraft.applyPatch(
+        buildRetrievalModePatch(
+          mode,
+          conversationConfigDraft.getSnapshot(),
+          seed,
+          assistantRetrievalDefaults,
+        ),
+      ),
+    );
+  };
+
+  const retrievalFieldsEditable = retrievalFieldDrafts.displayRetrievalMode === "custom";
 
   const exportEffectiveConfig = () => {
     if (!effectiveConfig || typeof effectiveConfig !== "object") return;
@@ -651,8 +928,12 @@ export function ChatConfigurationPanelContent() {
     return Object.entries(base as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
   }, [api?.runtimeState?.baseEffectiveConfig]);
 
-  const retrievalEnabled = getBooleanValue("useRetrieval");
   const displayModelLabel = activeLlmModel.trim() || tChat("modelDefault");
+  const conversationLlmOverride = api?.runtimeState?.conversationLlmModel?.trim() ?? "";
+  const finalAnswerModelSource = conversationLlmOverride
+    ? tChat("chatFinalAnswerModelSourceConversationOverride")
+    : tChat("chatFinalAnswerModelSourceAssistantConfiguration");
+  const retrievalEnabled = getBooleanValue("useRetrieval");
   const displayEmbeddingModel = formatIndexBoundCapabilityValue("embeddingModel");
   const llmProviderLabel = formatLlmProviderLabel(api?.selectableLlmModelsEffectiveProvider);
   const displayPresetLabel =
@@ -683,7 +964,10 @@ export function ChatConfigurationPanelContent() {
   ]);
 
   return (
-    <div className="flex min-w-0 max-w-full flex-col gap-6 break-words [overflow-wrap:anywhere]" data-testid="chat-assistant-configuration-surface">
+    <div
+      className="@container/chat-config flex min-w-0 max-w-full flex-col gap-6 break-words [overflow-wrap:anywhere]"
+      data-testid="chat-assistant-configuration-surface"
+    >
       {blockingIssues.length > 0 ? (
         <div data-testid="chat-error">
           <div
@@ -694,21 +978,23 @@ export function ChatConfigurationPanelContent() {
             <p className="font-medium text-destructive">{tChat("chatConfigInvalidTitle")}</p>
             <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
               {blockingIssues.map((issue) => (
-                <li key={`${issue.code}-${issue.field ?? "global"}`}>
-                  <span className="font-mono text-destructive" data-testid={`chat-error-code-${actionableIssueCode(issue) ?? "UNKNOWN"}`}>
-                    {actionableIssueCode(issue) ?? "UNKNOWN"}
-                  </span>
-                  <span>
-                    {" "}
-                    —{" "}
-                    {chatFailureHintForCode(issue.code, tChat) ??
-                      formatRuntimeValidationIssueMessage(issue, tChat)}
-                  </span>
+                <li key={`${issue.code}-${issue.field ?? "global"}`} data-testid="chat-runtime-blocking-issue">
+                  {formatRuntimeValidationIssueMessage(issue, tChat)}
                 </li>
               ))}
             </ul>
           </div>
         </div>
+      ) : null}
+
+      {isStructuredSearchProject ? (
+        <p
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100"
+          data-testid="chat-structured-search-legacy-warning"
+          role="status"
+        >
+          {tChat("structuredSearchLegacyProjectWarning")}
+        </p>
       ) : null}
 
       {normalWarningIssues.length > 0 ? (
@@ -732,6 +1018,20 @@ export function ChatConfigurationPanelContent() {
             value={
               <span className="break-words [overflow-wrap:anywhere]" data-testid="chat-config-summary-model">
                 {displayModelLabel}
+                <span className="text-muted-foreground ml-1 text-[11px]" data-testid="chat-config-summary-model-source">
+                  ({finalAnswerModelSource})
+                </span>
+              </span>
+            }
+          />
+          <CompactSummaryRow
+            label={tChat("configCompactPreset")}
+            value={
+              <span data-testid="chat-config-summary-preset">
+                {displayPresetLabel}
+                {presetKindBadge ? (
+                  <span className="text-muted-foreground ml-1 text-[11px]">({presetKindBadge})</span>
+                ) : null}
               </span>
             }
           />
@@ -745,10 +1045,6 @@ export function ChatConfigurationPanelContent() {
               }
             />
           ) : null}
-          <CompactSummaryRow
-            label={tChat("configCompactPreset")}
-            value={<span data-testid="chat-config-summary-preset">{displayPresetLabel}</span>}
-          />
           <CompactSummaryRow
             label={tChat("configCompactDocSearch")}
             value={
@@ -908,7 +1204,7 @@ export function ChatConfigurationPanelContent() {
                         className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium"
                         data-testid="chat-custom-state"
                       >
-                        Custom
+                        {tChat("conversationConfigurationModeCustom")}
                       </span>
                     ) : null}
                     {presetSupportBadge ? (
@@ -922,7 +1218,7 @@ export function ChatConfigurationPanelContent() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-col gap-2">
                   <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
                     <input
                       type="checkbox"
@@ -934,6 +1230,15 @@ export function ChatConfigurationPanelContent() {
                     {tChat("presetShowIncompatible")}
                   </label>
                 </div>
+
+                {isStructuredSearchProject ? (
+                  <p
+                    className="text-muted-foreground text-xs"
+                    data-testid="chat-preset-structured-search-warning"
+                  >
+                    {tChat("structuredSearchLegacyProjectWarning")}
+                  </p>
+                ) : null}
 
                 <select
                   id={presetSelectId}
@@ -947,7 +1252,6 @@ export function ChatConfigurationPanelContent() {
                   disabled={needsProject || needsConversation || !!api?.presetSelectDisabled}
                   aria-label={tChat("presetLabel")}
                 >
-                  <option value="">{tChat("presetRecommendedDefault")}</option>
                   {runtimeSelectedPresetId &&
                   !selectedInProduct &&
                   !selectedExperimental &&
@@ -959,16 +1263,25 @@ export function ChatConfigurationPanelContent() {
                   <optgroup label={tChat("presetGroupProduct")}>
                     {visibleProductPresets.map((item) => {
                       const reason = presetCompatibilityDisabledReason(item.compatibility);
+                      const baselineLabel = presetProductTierLabel(
+                        item.preset.id,
+                        projectIndexCaps,
+                        item.compatibility.selectable,
+                        tChat,
+                      );
                       const optionLabel =
                         reason != null
                           ? `${formatProductPresetOptionLabel(item.preset, tChat)} (${reason})`
-                          : formatProductPresetOptionLabel(item.preset, tChat);
+                          : baselineLabel
+                            ? `${formatProductPresetOptionLabel(item.preset, tChat)} — ${baselineLabel}`
+                            : formatProductPresetOptionLabel(item.preset, tChat);
+                      const optionTitle = formatProductPresetOptionTitle(item.preset, tChat);
                       return (
                         <option
                           key={item.preset.id}
                           value={item.preset.id}
                           disabled={Boolean(reason)}
-                          title={reason ?? undefined}
+                          title={reason ?? optionTitle}
                         >
                           {optionLabel}
                         </option>
@@ -978,9 +1291,16 @@ export function ChatConfigurationPanelContent() {
                   <optgroup label={tChat("presetGroupExperimental")}>
                     {experimentalUnique.map((p) => {
                       const reason = presetIndexDisabledReason({ ...p, productPresetId: p.productPresetId });
-                      const optionLabel =
-                        reason
-                          ? `${formatChatExperimentalPresetOptionLabel(p, presetCopyT)} (${reason})`
+                      const baselineLabel = presetProductTierLabel(
+                        p.productPresetId,
+                        projectIndexCaps,
+                        experimentalPresetCompatibility.get(p.productPresetId)?.selectable ?? true,
+                        tChat,
+                      );
+                      const optionLabel = reason
+                        ? `${formatChatExperimentalPresetOptionLabel(p, presetCopyT)} (${reason})`
+                        : baselineLabel
+                          ? `${formatChatExperimentalPresetOptionLabel(p, presetCopyT)} — ${baselineLabel}`
                           : formatChatExperimentalPresetOptionLabel(p, presetCopyT);
                       return (
                         <option
@@ -1011,8 +1331,8 @@ export function ChatConfigurationPanelContent() {
                   <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
                     <p className="break-words font-medium text-destructive">{selectedPresetDisabledReason}</p>
                     {api?.runtimeState?.requiresReindex ? (
-                      <p className="mt-1 break-words text-muted-foreground">
-                        Create or reindex project with compatible profile.
+                      <p className="text-muted-foreground mt-1 break-words" data-testid="chat-preset-incompatible-fixed-index-hint">
+                        {tChat("chatPresetIncompatibleFixedIndexHint")}
                       </p>
                     ) : null}
                   </div>
@@ -1032,115 +1352,31 @@ export function ChatConfigurationPanelContent() {
       <Section title={tChat("configSectionModels")}>
         <Box>
           <div className="space-y-3">
-            <div className="flex flex-col gap-1">
-              <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <Label htmlFor={modelSelectId} className="shrink-0 text-xs">
-                  {tChat("modelLabel")}
-                </Label>
-                <ConfigScopeBadge
-                  scope={scopeForRuntimeKey("llmModel")}
-                  label={scopeLabel(scopeForRuntimeKey("llmModel"))}
-                />
-              </div>
-              <select
-                id={modelSelectId}
-                data-testid="chat-llm-model-select"
-                data-effective-provider={api?.selectableLlmModelsEffectiveProvider ?? undefined}
-                className={cn(
-                  "border-input bg-background h-9 min-w-0 max-w-full w-full rounded-md border px-2 text-sm",
-                  (api?.modelsError || llmSelectionInvalid) && "border-destructive",
-                )}
-                value={api?.llmModelChoice ?? ""}
-                onChange={(e) => api?.setLlmModelChoice(e.target.value)}
-                disabled={
-                  needsProject ||
-                  needsConversation ||
-                  !!api?.modelsError ||
-                  api?.selectableLlmModelsLoading ||
-                  patchPending
-                }
-                aria-label={tChat("modelLabel")}
-              >
-                <option value="">{tChat("modelDefault")}</option>
-                {api?.selectableLlmModelsLoading ? (
-                  <option value="" disabled>
-                    {tChat("modelsLoading")}
-                  </option>
-                ) : null}
-                {llmSelectionInvalid ? (
-                  <option value={selectedLlmModel} data-testid="chat-llm-model-invalid-option">
-                    {selectedLlmModel}
-                  </option>
-                ) : null}
-                {[...(api?.selectableLlmModels ?? [])]
-                  .sort((a, b) => a.modelName.localeCompare(b.modelName))
-                  .map((m) => (
-                    <option
-                      key={m.modelName}
-                      value={m.modelName}
-                      disabled={!m.selectable}
-                      title={m.disabledReason ?? undefined}
-                    >
-                      {m.displayName || m.modelName}
-                      {!m.selectable ? ` (${tChat("modelUnavailable")})` : ""}
-                    </option>
-                  ))}
-              </select>
-              {llmProviderLabel ? (
-                <p
-                  className="text-muted-foreground text-xs break-words [overflow-wrap:anywhere]"
-                  data-testid="chat-llm-model-provider"
+            <div className="flex flex-col gap-2" data-testid="chat-llm-configuration-hint">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <MenuHint>{tChat("chatLlmModelsAssistantConfigurationHint")}</MenuHint>
+                <Link
+                  href="/settings/user"
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
                 >
-                  {tChat("chatLlmCatalogProvider", { provider: llmProviderLabel })}
-                </p>
-              ) : null}
-              {api?.selectableLlmModelsLoading ? (
-                <output className="text-muted-foreground text-xs" data-testid="chat-llm-models-loading">
-                  {tChat("modelsLoading")}
-                </output>
-              ) : null}
-              {!api?.selectableLlmModelsLoading &&
-              !api?.modelsError &&
-              (api?.selectableLlmModels?.length ?? 0) === 0 ? (
-                <output className="text-muted-foreground text-xs" data-testid="chat-llm-model-catalog-empty">
-                  {tChat("modelsCatalogEmpty")}
-                </output>
-              ) : null}
-              {llmSelectionInvalid ? (
-                <output className="text-destructive text-xs" data-testid="chat-llm-model-selection-invalid">
-                  {tChat("modelSelectionInvalid", { modelId: selectedLlmModel })}
-                </output>
-              ) : null}
-              {api?.modelsError ? (
-                <output className="text-destructive text-xs" data-testid="chat-error-code-MODEL_UNAVAILABLE">
-                  {api.modelsErrorMessage || tChat("chatJobFailure_MODEL_UNAVAILABLE")}
-                </output>
-              ) : null}
-              {!api?.modelsError &&
-              !api?.selectableLlmModelsLoading &&
-              (api?.selectableLlmModels ?? []).some((m) => !m.selectable && m.disabledReason) ? (
-                <ul className="text-muted-foreground space-y-1 text-xs" data-testid="chat-llm-model-unavailable-hints">
-                  {(api?.selectableLlmModels ?? [])
-                    .filter((m) => !m.selectable && m.disabledReason)
-                    .map((m) => (
-                      <li key={m.modelName}>
-                        {m.modelName}: {m.disabledReason}
-                      </li>
-                    ))}
-                </ul>
-              ) : null}
+                  <span data-testid="chat-edit-assistant-configuration-link">
+                    {tChat("chatOpenAssistantConfigurationAction")}
+                  </span>
+                </Link>
+              </div>
+              <CompactSummaryRow label={tChat("modelLabel")} value={displayModelLabel} />
             </div>
 
             <div className="flex flex-col gap-1">
-              <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <Label htmlFor={classifierSelectId} className="shrink-0 text-xs">
-                  {tChat("classifierLabel")}
-                </Label>
-                <ConfigScopeBadge
-                  scope={scopeForRuntimeKey("classifierModelId")}
-                  label={scopeLabel(scopeForRuntimeKey("classifierModelId"))}
-                />
-              </div>
+              <LabelWithScopeBadge
+                label={
+                  <Label htmlFor={classifierSelectId} className="text-xs">
+                    {tChat("classifierLabel")}
+                  </Label>
+                }
+                scope={scopeForRuntimeKey("classifierModelId")}
+                scopeLabelText={scopeLabel(scopeForRuntimeKey("classifierModelId"))}
+              />
               <select
                 id={classifierSelectId}
                 data-testid="chat-classifier-select"
@@ -1167,12 +1403,52 @@ export function ChatConfigurationPanelContent() {
               ) : null}
             </div>
 
+            <div
+              className="flex flex-col gap-1 border-t pt-3"
+              data-testid="chat-final-answer-model-override"
+            >
+              <LabelWithScopeBadge
+                label={
+                  <Label htmlFor={modelSelectId} className="text-xs">
+                    {tChat("chatFinalAnswerModelOverrideLabel")}
+                  </Label>
+                }
+                scope="conversation"
+                scopeLabelText={scopeLabel("conversation")}
+              />
+              <MenuHint>{tChat("chatFinalAnswerModelOverrideHint")}</MenuHint>
+              <select
+                id={modelSelectId}
+                data-testid="chat-final-answer-model-select"
+                className={cn(
+                  "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
+                  (api?.modelsError || llmSelectionInvalid) && "border-destructive",
+                )}
+                value={conversationLlmOverride}
+                onChange={(e) => api?.setLlmModelChoice(e.target.value)}
+                disabled={needsProject || needsConversation || patchPending || api?.selectableLlmModelsLoading}
+                aria-label={tChat("chatFinalAnswerModelOverrideLabel")}
+              >
+                <option value="">{tChat("chatFinalAnswerModelOverrideDefault")}</option>
+                {(api?.selectableLlmModels ?? []).map((m) => (
+                  <option key={m.modelName} value={m.modelName}>
+                    {m.modelName}
+                    {llmProviderLabel ? ` (${llmProviderLabel})` : ""}
+                  </option>
+                ))}
+              </select>
+              {llmSelectionInvalid ? (
+                <output className="text-destructive text-xs">{tChat("chatFinalAnswerModelOverrideInvalid")}</output>
+              ) : null}
+            </div>
+
             {embeddingIndexBoundCap ? (
               <div className="flex min-w-0 flex-col gap-1 border-t pt-3" data-testid="chat-embedding-model-readonly">
-                <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <Label className="shrink-0 text-xs">{tChat("chatEmbeddingModelLabel")}</Label>
-                  <ConfigScopeBadge scope="project" label={scopeLabel("project")} />
-                </div>
+                <LabelWithScopeBadge
+                  label={<Label className="text-xs">{tChat("chatEmbeddingModelLabel")}</Label>}
+                  scope="project"
+                  scopeLabelText={scopeLabel("project")}
+                />
                 <div
                   className="border-input bg-muted/30 min-w-0 break-words rounded-md border px-2 py-2 text-sm [overflow-wrap:anywhere]"
                   data-testid="chat-embedding-model-value"
@@ -1188,130 +1464,6 @@ export function ChatConfigurationPanelContent() {
         </Box>
       </Section>
 
-      <Section title={tChat("configSectionRetrievalSettings")}>
-        <Box>
-          <div className="space-y-4" data-testid="chat-retrieval-settings-section">
-            <fieldset className="space-y-2 rounded-md border bg-background/50 p-3" data-testid="chat-retrieval-override-mode">
-              <legend className="px-1 text-xs font-medium">{tChat("retrievalOverrideModeLegend")}</legend>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="chat-retrieval-override-mode"
-                  data-testid="chat-retrieval-mode-preset"
-                  checked={retrievalOverrideMode === "preset"}
-                  disabled={patchPending}
-                  onChange={() => setRetrievalOverrideMode("preset")}
-                />
-                {tChat("retrievalOverrideModePreset")}
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="chat-retrieval-override-mode"
-                  data-testid="chat-retrieval-mode-assistant-defaults"
-                  checked={retrievalOverrideMode === "assistant_defaults"}
-                  disabled={patchPending || !assistantRetrievalDefaults}
-                  onChange={() => setRetrievalOverrideMode("assistant_defaults")}
-                />
-                {tChat("retrievalOverrideModeAssistantDefaults")}
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="chat-retrieval-override-mode"
-                  data-testid="chat-retrieval-mode-custom"
-                  checked={retrievalOverrideMode === "custom"}
-                  disabled={patchPending}
-                  onChange={() => setRetrievalOverrideMode("custom")}
-                />
-                {tChat("retrievalOverrideModeCustom")}
-              </label>
-            </fieldset>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="flex items-center justify-between gap-2">
-                  {tChat("configRetrievalTopKLabel")}
-                  <ConfigScopeBadge
-                    scope={scopeForRuntimeKey("topK")}
-                    label={scopeLabel(scopeForRuntimeKey("topK"))}
-                  />
-                </span>
-                <input
-                  data-testid="chat-runtime-toggle-topK"
-                  type="number"
-                  min={1}
-                  max={100}
-                  className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
-                  value={getNumberValue("topK", effectiveRetrieval?.topK ?? 8)}
-                  disabled={patchPending}
-                  onChange={(e) => setOverrideNumber("topK", Number(e.target.value))}
-                />
-                {effectiveRetrieval ? (
-                  <span className="text-muted-foreground text-[11px]" data-testid="chat-retrieval-topk-source">
-                    {tChat(retrievalParameterSourceLabelKey(effectiveRetrieval.topKSource))}
-                  </span>
-                ) : null}
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="flex items-center justify-between gap-2">
-                  {tChat("configRetrievalSimilarityLabel")}
-                  <ConfigScopeBadge
-                    scope={scopeForRuntimeKey("similarityThreshold")}
-                    label={scopeLabel(scopeForRuntimeKey("similarityThreshold"))}
-                  />
-                </span>
-                <input
-                  data-testid="chat-runtime-toggle-similarityThreshold"
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
-                  value={getNumberValue("similarityThreshold", effectiveRetrieval?.similarityThreshold ?? 0)}
-                  disabled={patchPending}
-                  onChange={(e) => setOverrideNumber("similarityThreshold", Number(e.target.value))}
-                />
-                {effectiveRetrieval ? (
-                  <span className="text-muted-foreground text-[11px]" data-testid="chat-retrieval-threshold-source">
-                    {tChat(retrievalParameterSourceLabelKey(effectiveRetrieval.similarityThresholdSource))}
-                  </span>
-                ) : null}
-              </label>
-            </div>
-            <div className="grid grid-cols-1 gap-3">
-              {retrievalRuntimeToggles.map((cap) => {
-                const key = cap.key;
-                const reason = disabledReason(key);
-                const fieldIssue = issueByField.get(key);
-                const rid = `disabled-${key}`;
-                const labelKey = chatRuntimeLabelKey(key);
-                const label = tChat(labelKey) !== labelKey ? tChat(labelKey) : cap.label ?? key;
-                return (
-                  <div key={key} className="flex flex-col gap-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <label className="flex cursor-pointer items-center gap-3 text-sm">
-                        <input
-                          type="checkbox"
-                          data-testid={`chat-runtime-toggle-${key}`}
-                          className="border-input size-4 rounded"
-                          checked={getBooleanValue(key)}
-                          disabled={!!reason || patchPending}
-                          onChange={(e) => setOverrideBoolean(key, e.target.checked)}
-                          aria-describedby={reason ? rid : undefined}
-                        />
-                        <span>{label}</span>
-                      </label>
-                      <ConfigScopeBadge scope={scopeForRuntimeKey(key)} label={scopeLabel(scopeForRuntimeKey(key))} />
-                    </div>
-                    {fieldIssue ? <MenuHint>{fieldIssue.message}</MenuHint> : null}
-                    {reason ? <DisabledReason id={rid} reason={reason} label={tChat("configDisabledLabel")} /> : null}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </Box>
-      </Section>
 
       <Section title={tChat("configSectionPrompts")}>
         <Box>
@@ -1346,63 +1498,241 @@ export function ChatConfigurationPanelContent() {
         </Box>
       </Section>
 
+      <Section title={tChat("configSectionRetrievalSettings")}>
+        <Box>
+          <div className="space-y-4" data-testid="chat-retrieval-settings-section">
+            {!retrievalEnabled ? (
+              <p
+                className="text-muted-foreground text-xs"
+                data-testid="chat-retrieval-settings-not-applicable"
+                role="status"
+              >
+                {tChat("chatRetrievalSettingsNotApplicable")}
+              </p>
+            ) : (
+              <>
+            <fieldset className="space-y-2 rounded-md border bg-background/50 p-3" data-testid="chat-retrieval-override-mode">
+              <legend className="px-1 text-xs font-medium">{tChat("retrievalOverrideModeLegend")}</legend>
+              <label className="flex min-w-0 cursor-pointer items-start gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="chat-retrieval-override-mode"
+                  className="mt-0.5 shrink-0"
+                  data-testid="chat-retrieval-mode-preset"
+                  checked={retrievalFieldDrafts.displayRetrievalMode === "preset"}
+                  disabled={patchPending}
+                  onChange={() => setRetrievalOverrideMode("preset")}
+                />
+                <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                  {tChat("retrievalOverrideModePreset")}
+                </span>
+              </label>
+              <label className="flex min-w-0 cursor-pointer items-start gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="chat-retrieval-override-mode"
+                  className="mt-0.5 shrink-0"
+                  data-testid="chat-retrieval-mode-project-settings"
+                  checked={retrievalFieldDrafts.displayRetrievalMode === "project_settings"}
+                  disabled={patchPending}
+                  onChange={() => setRetrievalOverrideMode("project_settings")}
+                />
+                <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                  {tChat("retrievalOverrideModeProjectSettings")}
+                </span>
+              </label>
+              <label className="flex min-w-0 cursor-pointer items-start gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="chat-retrieval-override-mode"
+                  className="mt-0.5 shrink-0"
+                  data-testid="chat-retrieval-mode-assistant-defaults"
+                  checked={retrievalFieldDrafts.displayRetrievalMode === "assistant_defaults"}
+                  disabled={patchPending || !assistantRetrievalDefaults}
+                  onChange={() => setRetrievalOverrideMode("assistant_defaults")}
+                />
+                <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                  {tChat("retrievalOverrideModeAssistantDefaults")}
+                </span>
+              </label>
+              <label className="flex min-w-0 cursor-pointer items-start gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="chat-retrieval-override-mode"
+                  className="mt-0.5 shrink-0"
+                  data-testid="chat-retrieval-mode-custom"
+                  checked={retrievalFieldDrafts.displayRetrievalMode === "custom"}
+                  disabled={patchPending}
+                  onChange={() => setRetrievalOverrideMode("custom")}
+                />
+                <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                  {tChat("retrievalOverrideModeCustom")}
+                </span>
+              </label>
+            </fieldset>
+            <div className="flex flex-wrap gap-3">
+              <RetrievalNumericField
+                testId="chat-runtime-toggle-topK"
+                inputMode="numeric"
+                disabled={patchPending || !retrievalFieldsEditable}
+                draft={retrievalFieldDrafts.topKDraft}
+                focused={retrievalFieldDrafts.topKFocused}
+                touched={retrievalFieldDrafts.topKTouched}
+                onFocus={retrievalFieldDrafts.handleTopKFocus}
+                onBlur={retrievalFieldDrafts.handleTopKBlur}
+                onDraftChange={retrievalFieldDrafts.handleTopKChange}
+                errorMessages={{
+                  invalid: tChat("retrievalTopKInvalid"),
+                  range: tChat("retrievalTopKRange", RETRIEVAL_TOP_K_CONSTRAINTS),
+                  required: tChat("retrievalTopKRequired"),
+                }}
+                label={
+                  <LabelWithScopeBadge
+                    label={tChat("configRetrievalTopKLabel")}
+                    scope={scopeForRuntimeKey("topK")}
+                    scopeLabelText={scopeLabel(scopeForRuntimeKey("topK"))}
+                  />
+                }
+                sourceHint={
+                  effectiveRetrieval ? (
+                    <span className="text-muted-foreground text-[11px]" data-testid="chat-retrieval-topk-source">
+                      {tChat(retrievalParameterSourceLabelKey(effectiveRetrieval.topKSource))}
+                    </span>
+                  ) : null
+                }
+              />
+              <RetrievalNumericField
+                testId="chat-runtime-toggle-similarityThreshold"
+                inputMode="decimal"
+                disabled={patchPending || !retrievalFieldsEditable}
+                draft={retrievalFieldDrafts.similarityDraft}
+                focused={retrievalFieldDrafts.similarityFocused}
+                touched={retrievalFieldDrafts.similarityTouched}
+                onFocus={retrievalFieldDrafts.handleSimilarityFocus}
+                onBlur={retrievalFieldDrafts.handleSimilarityBlur}
+                onDraftChange={retrievalFieldDrafts.handleSimilarityChange}
+                errorMessages={{
+                  invalid: tChat("retrievalSimilarityInvalid"),
+                  range: tChat("retrievalSimilarityRange", RETRIEVAL_SIMILARITY_CONSTRAINTS),
+                  required: tChat("retrievalSimilarityRequired"),
+                }}
+                label={
+                  <LabelWithScopeBadge
+                    label={tChat("configRetrievalSimilarityLabel")}
+                    scope={scopeForRuntimeKey("similarityThreshold")}
+                    scopeLabelText={scopeLabel(scopeForRuntimeKey("similarityThreshold"))}
+                  />
+                }
+                sourceHint={
+                  effectiveRetrieval ? (
+                    <span className="text-muted-foreground text-[11px]" data-testid="chat-retrieval-threshold-source">
+                      {tChat(retrievalParameterSourceLabelKey(effectiveRetrieval.similarityThresholdSource))}
+                    </span>
+                  ) : null
+                }
+              />
+            </div>
+              </>
+            )}
+            <div className="grid grid-cols-1 gap-3">
+              {retrievalRuntimeToggles.map((cap) => {
+                const key = cap.key;
+                const tip = disabledTip(key);
+                const hybridHint = hybridMaterializationHint(key);
+                const labelKey = chatRuntimeLabelKey(key);
+                const label = tChat(labelKey) !== labelKey ? tChat(labelKey) : cap.label ?? key;
+                return (
+                  <div key={key} className="flex flex-col gap-1">
+                    <RuntimeCheckboxFeatureRow
+                      testId={`chat-runtime-toggle-${key}`}
+                      checked={getBooleanValue(key)}
+                      disabled={isToggleDisabled(key)}
+                      onChange={(next) => setOverrideBoolean(key, next)}
+                      label={label}
+                      scope={scopeForRuntimeKey(key)}
+                      scopeLabelText={scopeLabel(scopeForRuntimeKey(key))}
+                      presetBadge={presetFeatureBadge(key)}
+                      disabledReasonNode={
+                        tip ? (
+                          <FeatureDisableTip tip={tip} testId={`chat-runtime-disable-tip-${key}`} />
+                        ) : null
+                      }
+                    />
+                    {hybridHint ? (
+                      <span className="pl-6" data-testid={`chat-runtime-hybrid-hint-${key}`}>
+                        <MenuHint>{hybridHint}</MenuHint>
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Box>
+      </Section>
+
       {(memoryRuntimeCap || clarificationRuntimeCap) ? (
         <Section title={tChat("configSectionMemoryAndClarification")}>
           <Box className="space-y-4" data-testid="chat-memory-clarification-section">
-            {memoryRuntimeCap ? (
-              <div data-testid="chat-conversation-memory-section">
-                <label className="flex min-w-0 cursor-pointer flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
-                  <span className="flex min-w-0 items-center gap-3">
-                    <input
-                      type="checkbox"
-                      data-testid="chat-runtime-toggle-memoryEnabled"
-                      className="border-input size-4 rounded"
-                      checked={getBooleanValue(MEMORY_FEATURE_KEY)}
-                      disabled={!!disabledReason(MEMORY_FEATURE_KEY) || patchPending}
-                      onChange={(e) => setOverrideBoolean(MEMORY_FEATURE_KEY, e.target.checked)}
-                    />
-                    <span>{tChat("runtimeFeatureMemoryEnabled")}</span>
-                    {memoryRuntimeCap.supportMode === "MULTI_TURN_REQUIRED" ? (
-                      <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">Multi-turn</span>
-                    ) : null}
-                  </span>
-                  <ConfigScopeBadge
+            {memoryRuntimeCap ? (() => {
+              const memoryTip = disabledTip(MEMORY_FEATURE_KEY);
+              return (
+                <div data-testid="chat-conversation-memory-section">
+                  <RuntimeCheckboxFeatureRow
+                    testId="chat-runtime-toggle-memoryEnabled"
+                    checked={getBooleanValue(MEMORY_FEATURE_KEY)}
+                    disabled={isToggleDisabled(MEMORY_FEATURE_KEY)}
+                    onChange={(next) => setOverrideBoolean(MEMORY_FEATURE_KEY, next)}
+                    label={tChat("runtimeFeatureMemoryEnabled")}
                     scope={scopeForRuntimeKey(MEMORY_FEATURE_KEY)}
-                    label={scopeLabel(scopeForRuntimeKey(MEMORY_FEATURE_KEY))}
+                    scopeLabelText={scopeLabel(scopeForRuntimeKey(MEMORY_FEATURE_KEY))}
+                    presetBadge={presetFeatureBadge(MEMORY_FEATURE_KEY)}
+                    multiTurn={memoryRuntimeCap.supportMode === "MULTI_TURN_REQUIRED"}
+                    multiTurnHint={
+                      memoryRuntimeCap.supportMode === "MULTI_TURN_REQUIRED"
+                        ? tChat("runtimeMultiTurnHint")
+                        : undefined
+                    }
+                    disabledReasonNode={
+                      memoryTip ? (
+                        <FeatureDisableTip tip={memoryTip} testId="chat-runtime-disable-tip-memoryEnabled" />
+                      ) : null
+                    }
                   />
-                </label>
-                {memoryRuntimeCap.supportMode === "MULTI_TURN_REQUIRED" ? (
-                  <MenuHint>{tChat("runtimeMultiTurnHint")}</MenuHint>
-                ) : null}
-              </div>
-            ) : null}
-            {clarificationRuntimeCap ? (
-              <div data-testid="chat-clarification-section">
-                <label className="flex min-w-0 cursor-pointer flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
-                  <span className="flex min-w-0 items-center gap-3">
-                    <input
-                      type="checkbox"
-                      data-testid="chat-runtime-toggle-clarificationEnabled"
-                      className="border-input size-4 rounded"
-                      checked={getBooleanValue(CLARIFICATION_FEATURE_KEY)}
-                      disabled={!!disabledReason(CLARIFICATION_FEATURE_KEY) || patchPending}
-                      onChange={(e) => setOverrideBoolean(CLARIFICATION_FEATURE_KEY, e.target.checked)}
-                    />
-                    <span>{tChat("runtimeFeatureClarificationEnabled")}</span>
-                    {clarificationRuntimeCap.supportMode === "MULTI_TURN_REQUIRED" ? (
-                      <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">Multi-turn</span>
-                    ) : null}
-                  </span>
-                  <ConfigScopeBadge
+                </div>
+              );
+            })() : null}
+            {clarificationRuntimeCap ? (() => {
+              const clarificationTip = disabledTip(CLARIFICATION_FEATURE_KEY);
+              return (
+                <div data-testid="chat-clarification-section">
+                  <RuntimeCheckboxFeatureRow
+                    testId="chat-runtime-toggle-clarificationEnabled"
+                    checked={getBooleanValue(CLARIFICATION_FEATURE_KEY)}
+                    disabled={isToggleDisabled(CLARIFICATION_FEATURE_KEY)}
+                    onChange={(next) => setOverrideBoolean(CLARIFICATION_FEATURE_KEY, next)}
+                    label={tChat("runtimeFeatureClarificationEnabled")}
                     scope={scopeForRuntimeKey(CLARIFICATION_FEATURE_KEY)}
-                    label={scopeLabel(scopeForRuntimeKey(CLARIFICATION_FEATURE_KEY))}
+                    scopeLabelText={scopeLabel(scopeForRuntimeKey(CLARIFICATION_FEATURE_KEY))}
+                    presetBadge={presetFeatureBadge(CLARIFICATION_FEATURE_KEY)}
+                    multiTurn={clarificationRuntimeCap.supportMode === "MULTI_TURN_REQUIRED"}
+                    multiTurnHint={
+                      clarificationRuntimeCap.supportMode === "MULTI_TURN_REQUIRED"
+                        ? tChat("runtimeMultiTurnHint")
+                        : undefined
+                    }
+                    disabledReasonNode={
+                      clarificationTip ? (
+                        <FeatureDisableTip
+                          tip={clarificationTip}
+                          testId="chat-runtime-disable-tip-clarificationEnabled"
+                        />
+                      ) : null
+                    }
                   />
-                </label>
-                {clarificationRuntimeCap.supportMode === "MULTI_TURN_REQUIRED" ? (
-                  <MenuHint>{tChat("runtimeMultiTurnHint")}</MenuHint>
-                ) : null}
-              </div>
-            ) : null}
+                </div>
+              );
+            })() : null}
           </Box>
         </Section>
       ) : null}
@@ -1412,93 +1742,49 @@ export function ChatConfigurationPanelContent() {
           <Box className="space-y-4">
             {answerQualityRuntimeCap ? (
               <div data-testid="chat-answer-quality-section">
-                <label className="flex min-w-0 cursor-pointer flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
-                  <span className="flex min-w-0 items-center gap-3">
-                    <input
-                      type="checkbox"
-                      data-testid="chat-runtime-toggle-judgeEnabled"
-                      className="border-input size-4 rounded"
-                      checked={getBooleanValue(ANSWER_QUALITY_FEATURE_KEY)}
-                      disabled={!!disabledReason(ANSWER_QUALITY_FEATURE_KEY) || patchPending}
-                      onChange={(e) => setOverrideBoolean(ANSWER_QUALITY_FEATURE_KEY, e.target.checked)}
-                    />
-                    <span>{tChat("runtimeFeatureAnswerQualityChecks")}</span>
-                  </span>
-                  <ConfigScopeBadge
-                    scope={scopeForRuntimeKey(ANSWER_QUALITY_FEATURE_KEY)}
-                    label={scopeLabel(scopeForRuntimeKey(ANSWER_QUALITY_FEATURE_KEY))}
-                  />
-                </label>
+                <RuntimeCheckboxFeatureRow
+                  testId="chat-runtime-toggle-judgeEnabled"
+                  checked={getBooleanValue(ANSWER_QUALITY_FEATURE_KEY)}
+                  disabled={isToggleDisabled(ANSWER_QUALITY_FEATURE_KEY)}
+                  onChange={(next) => setOverrideBoolean(ANSWER_QUALITY_FEATURE_KEY, next)}
+                  label={tChat("runtimeFeatureAnswerQualityChecks")}
+                  scope={scopeForRuntimeKey(ANSWER_QUALITY_FEATURE_KEY)}
+                  scopeLabelText={scopeLabel(scopeForRuntimeKey(ANSWER_QUALITY_FEATURE_KEY))}
+                  presetBadge={presetFeatureBadge(ANSWER_QUALITY_FEATURE_KEY)}
+                />
               </div>
             ) : null}
 
             <div className="grid grid-cols-1 gap-3">
               {advancedRuntimeToggles.map((cap) => {
                 const key = cap.key;
-                const reason = disabledReason(key);
-                const fieldIssue = issueByField.get(key);
-                const rid = `disabled-${key}`;
+                const tip = disabledTip(key);
                 const showMultiTurn = cap.supportMode === "MULTI_TURN_REQUIRED";
                 const labelKey = chatRuntimeLabelKey(key);
                 const label = tChat(labelKey) !== labelKey ? tChat(labelKey) : cap.label ?? key;
                 return (
-                  <div key={key} className="flex flex-col gap-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <label className="flex cursor-pointer items-center gap-3 text-sm">
-                        <input
-                          type="checkbox"
-                          data-testid={`chat-runtime-toggle-${key}`}
-                          className="border-input size-4 rounded"
-                          checked={getBooleanValue(key)}
-                          disabled={!!reason || patchPending}
-                          onChange={(e) => setOverrideBoolean(key, e.target.checked)}
-                          aria-describedby={reason ? rid : undefined}
-                        />
-                        <span>{label}</span>
-                      </label>
-                      <div className="flex items-center gap-2">
-                        {showMultiTurn ? (
-                          <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">
-                            Multi-turn
-                          </span>
-                        ) : null}
-                        {reason ? <DisabledReason id={rid} reason={reason} label={tChat("configDisabledLabel")} /> : null}
-                      </div>
-                    </div>
-                    {fieldIssue ? <MenuHint>{fieldIssue.message}</MenuHint> : null}
-                    {showMultiTurn ? <MenuHint>{tChat("runtimeMultiTurnHint")}</MenuHint> : null}
-                  </div>
+                  <RuntimeCheckboxFeatureRow
+                    key={key}
+                    testId={`chat-runtime-toggle-${key}`}
+                    checked={getBooleanValue(key)}
+                    disabled={isToggleDisabled(key)}
+                    onChange={(next) => setOverrideBoolean(key, next)}
+                    label={label}
+                    scope={scopeForRuntimeKey(key)}
+                    scopeLabelText={scopeLabel(scopeForRuntimeKey(key))}
+                    presetBadge={presetFeatureBadge(key)}
+                    multiTurn={showMultiTurn}
+                    multiTurnHint={showMultiTurn ? tChat("runtimeMultiTurnHint") : undefined}
+                    disabledReasonNode={
+                      tip ? (
+                        <FeatureDisableTip tip={tip} testId={`chat-runtime-disable-tip-${key}`} />
+                      ) : null
+                    }
+                  />
                 );
               })}
             </div>
 
-            <div className="flex items-start justify-between gap-3 border-t pt-3">
-              <button
-                type="button"
-                data-testid="chat-config-runtime-collapsible"
-                className="hover:bg-muted inline-flex items-center gap-2 rounded-md px-2 py-1 text-left text-sm font-medium"
-                aria-expanded={runtimeOpen}
-                onClick={() => setRuntimeOpen((p) => !p)}
-              >
-                <span>{tChat("configAdvancedSection")}</span>
-                <span className="text-muted-foreground text-xs font-normal">
-                  {runtimeOpen ? tChat("configHide") : tChat("configShow")}
-                </span>
-              </button>
-              <button
-                type="button"
-                data-testid="chat-config-runtime-refresh-effective"
-                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-                disabled={needsProject || needsConversation || effectiveLoading}
-                onClick={() => api?.refreshRuntimeState()}
-              >
-                {effectiveLoading ? tChat("configLoadingShort") : tChat("configRefresh")}
-              </button>
-            </div>
-
-            {runtimeOpen ? (
-              <p className="text-muted-foreground text-xs">{tChat("runtimeEffectiveCollapsedHint")}</p>
-            ) : null}
 
             {advancedError ? (
               <p className="text-destructive text-xs" role="alert">
@@ -1524,6 +1810,18 @@ export function ChatConfigurationPanelContent() {
         </summary>
         <div className="mt-3 space-y-3" data-testid="chat-config-current-settings">
           <p className="text-muted-foreground text-xs">{tChat("runtimeEffectiveCollapsedHint")}</p>
+          {blockingIssues.length > 0 ? (
+            <div
+              className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground font-mono"
+              data-testid="chat-config-advanced-blocking-issues"
+            >
+              {blockingIssues.map((issue) => (
+                <p key={`adv-block-${issue.code}-${issue.field ?? "global"}`}>
+                  {formatAdvancedTechnicalValidationIssue(issue)}
+                </p>
+              ))}
+            </div>
+          ) : null}
           <div className="space-y-2">
               {advancedTechnicalWarningIssues.length > 0 ? (
                 <div
@@ -1685,6 +1983,12 @@ export function ChatConfigurationPanelContent() {
                     {effectiveError}
                   </p>
                 ) : null}
+                <div className="mt-3">
+                  <ChatEffectiveRuntimeSummary
+                    projectId={api?.projectId}
+                    conversationId={api?.conversationId ?? undefined}
+                  />
+                </div>
                 {api?.runtimeState ? (
                   <div className="mt-2 space-y-2 text-[11px]">
                     <p className="text-muted-foreground font-medium uppercase tracking-wide">{tChat("runtimeLayersTitle")}</p>
@@ -1734,7 +2038,7 @@ export function ChatConfigurationPanelContent() {
                     setAdvancedValidationText("Cleared.");
                   }}
                 >
-                  Clear
+                  {tChat("resetConversationConfigurationToPreset")}
                 </button>
               </div>
 

@@ -14,7 +14,7 @@ public final class EvaluationExportV1Schema {
 
     public static final String MANIFEST_SCHEMA_VERSION = "1";
 
-    /** Summary CSV column cap — human pivot table, not full MVP flat export. */
+    /** Summary CSV column cap - human pivot table, not full MVP flat export. */
     public static final List<String> SUMMARY_CSV_COLUMNS =
             List.of(
                     "itemId",

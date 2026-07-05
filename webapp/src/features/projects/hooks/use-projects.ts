@@ -18,46 +18,85 @@ import type {
 
 export type { CreateProjectOutcome };
 
+import { getClientSessionEpoch } from "@/lib/client-session-epoch";
+
 const projectsKey = ["projects"] as const;
+
+function projectsListQueryKey(page: number, size: number) {
+  return [...projectsKey, getClientSessionEpoch(), page, size] as const;
+}
+
+function projectDetailQueryKey(projectId: string | undefined) {
+  return [...projectsKey, getClientSessionEpoch(), "detail", projectId] as const;
+}
+
+function isProjectListPageQueryKey(queryKey: readonly unknown[]): boolean {
+  if (queryKey[0] !== "projects") {
+    return false;
+  }
+  // Current: ["projects", sessionEpoch, page, size]
+  if (
+    queryKey.length === 4 &&
+    typeof queryKey[2] === "number" &&
+    typeof queryKey[3] === "number"
+  ) {
+    return true;
+  }
+  // Legacy: ["projects", page, size]
+  return (
+    queryKey.length === 3 &&
+    typeof queryKey[1] === "number" &&
+    typeof queryKey[2] === "number"
+  );
+}
 
 /** Merge POST /projects result into cached list pages before refetch (avoids clearing active via stale rows). */
 function prependCreatedProjectToProjectListCaches(
   queryClient: ReturnType<typeof useQueryClient>,
   created: ProjectSummary,
 ): void {
-  queryClient.setQueriesData<ProjectListResponse>({ queryKey: projectsKey }, (old) => {
-    if (!old) {
-      return { items: [created], total: 1 };
-    }
-    if (old.items.some((p) => p.id === created.id)) {
-      return old;
-    }
-    return {
-      ...old,
-      items: [created, ...old.items],
-      total: old.total + 1,
-    };
-  });
+  queryClient.setQueriesData<ProjectListResponse>(
+    {
+      queryKey: projectsKey,
+      predicate: (query) => isProjectListPageQueryKey(query.queryKey),
+    },
+    (old) => {
+      if (!old?.items) {
+        return { items: [created], total: 1 };
+      }
+      if (old.items.some((p) => p.id === created.id)) {
+        return old;
+      }
+      return {
+        ...old,
+        items: [created, ...old.items],
+        total: (old.total ?? old.items.length) + 1,
+      };
+    },
+  );
 }
 
 export function useProjectList(page = 0, size = 24) {
   return useQuery({
-    queryKey: [...projectsKey, page, size],
-    queryFn: async () => {
+    queryKey: projectsListQueryKey(page, size),
+    queryFn: async ({ signal }) => {
       const search = new URLSearchParams({
         page: String(page),
         size: String(size),
       });
-      return apiFetch<ProjectListResponse>(apiProductPath(`/projects?${search.toString()}`));
+      return apiFetch<ProjectListResponse>(apiProductPath(`/projects?${search.toString()}`), {
+        signal,
+      });
     },
   });
 }
 
 export function useProject(projectId: string | undefined) {
   return useQuery({
-    queryKey: [...projectsKey, "detail", projectId],
+    queryKey: projectDetailQueryKey(projectId),
     enabled: Boolean(projectId),
-    queryFn: () => apiFetch<ProjectSummary>(apiProductPath(`/projects/${projectId}`)),
+    queryFn: ({ signal }) =>
+      apiFetch<ProjectSummary>(apiProductPath(`/projects/${projectId}`), { signal }),
   });
 }
 
@@ -105,7 +144,7 @@ export function useCreateProject() {
           method: "PUT",
         });
       } catch (activateErr) {
-        // POST succeeded — never surface activate/refetch issues as "could not create project".
+        // POST succeeded - never surface activate/refetch issues as "could not create project".
         activateFailed = true;
         if (activateErr instanceof ApiError && activateErr.status === 401) {
           useAppStore.getState().setActiveProject(null);

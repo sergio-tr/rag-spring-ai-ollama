@@ -6,7 +6,7 @@ import type { ActiveLabJobDto } from "@/types/api";
 
 export const activeLabJobsQueryKey = ["lab", "jobs", "active"] as const;
 
-/** Active job list — refetched on mount, focus, and reconnect for Lab recovery. */
+/** Active job list - refetched on mount, focus, and reconnect for Lab recovery. */
 export function useActiveLabJobs() {
   return useQuery({
     queryKey: activeLabJobsQueryKey,

@@ -86,11 +86,11 @@ export function ClassifierRegistrySection() {
                       </td>
                       <td className="p-2">{m.status}</td>
                       <td className="p-2 text-muted-foreground">
-                        {m.accuracy != null ? `acc ${m.accuracy.toFixed(4)}` : "—"}
+                        {m.accuracy != null ? `acc ${m.accuracy.toFixed(4)}` : "-"}
                         {m.f1Macro != null ? ` · f1 ${m.f1Macro.toFixed(4)}` : ""}
                       </td>
                       <td className="p-2">
-                        {m.active ? <Badge>{t("registryBadgeActive")}</Badge> : "—"}
+                        {m.active ? <Badge>{t("registryBadgeActive")}</Badge> : "-"}
                       </td>
                       <td className="p-2">
                         <Button

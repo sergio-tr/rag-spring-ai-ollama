@@ -29,4 +29,28 @@ describe("LlmComparisonTable", () => {
     await user.click(screen.getByTestId("lab-llm-comparison-pagination-next"));
     expect(screen.getByText("llm-30")).toBeInTheDocument();
   });
+
+  it("clicking correctness header reorders rows", async () => {
+    const user = userEvent.setup();
+    const rows: ComparisonRow[] = [
+      { axisValue: "low", llmModelId: "low", meanCorrectness: 0.2, executed: 1 },
+      { axisValue: "high", llmModelId: "high", meanCorrectness: 0.9, executed: 1 },
+    ];
+    render(
+      <IntlTestProvider>
+        <LlmComparisonTable
+          rows={rows}
+          comparisonAxis="LLM_MODEL"
+          selectedKey={null}
+          onSelectRow={() => undefined}
+        />
+      </IntlTestProvider>,
+    );
+    const bodyText = () => screen.getByTestId("lab-llm-comparison-table").textContent ?? "";
+    expect(bodyText()).toMatch(/high[\s\S]*low|low[\s\S]*high/);
+    await user.click(screen.getByTestId("lab-sort-header-correctness"));
+    expect(bodyText().indexOf("high")).toBeLessThan(bodyText().indexOf("low"));
+    await user.click(screen.getByTestId("lab-sort-header-correctness"));
+    expect(bodyText().indexOf("low")).toBeLessThan(bodyText().indexOf("high"));
+  });
 });

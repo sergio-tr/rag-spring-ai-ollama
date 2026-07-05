@@ -66,13 +66,53 @@ public class LlmProviderException extends RuntimeException {
     }
 
     public ErrorCode errorCode() {
+        return operationAwareErrorCode(failureKind, operation);
+    }
+
+    /** Whether the client may retry after fixing transient provider issues. */
+    public boolean retryable() {
         return switch (failureKind) {
-            case CONFIGURATION -> ErrorCode.LLM_MISCONFIGURED;
-            case UNSUPPORTED_EMBEDDING -> ErrorCode.UNSUPPORTED_EMBEDDING_PROVIDER;
-            case TIMEOUT -> ErrorCode.LLM_TIMEOUT;
-            case UNAUTHORIZED -> ErrorCode.LLM_UNAUTHORIZED;
-            case UNAVAILABLE, CONNECTION_FAILED -> ErrorCode.LLM_UNAVAILABLE;
-            case ENDPOINT_NOT_FOUND, INVALID_MODEL, REMOTE_HTTP -> ErrorCode.LLM_PROVIDER_ERROR;
+            case TIMEOUT, CONNECTION_FAILED, UNAVAILABLE, REMOTE_HTTP -> true;
+            case CONFIGURATION, UNSUPPORTED_EMBEDDING, UNAUTHORIZED, ENDPOINT_NOT_FOUND, INVALID_MODEL ->
+                    false;
+        };
+    }
+
+    static ErrorCode operationAwareErrorCode(LlmFailureKind kind, String operation) {
+        String op = operation != null ? operation.toLowerCase() : "";
+        boolean embeddingOp = op.contains("embedding") || op.contains("indexing");
+        boolean judgeOp = op.contains("judge");
+        boolean chatOp = op.contains("chat") || op.contains("benchmark-llm") || op.contains("benchmark-rag");
+        return switch (kind) {
+            case CONFIGURATION, UNSUPPORTED_EMBEDDING -> ErrorCode.MODEL_CONFIG_INVALID;
+            case TIMEOUT -> ErrorCode.MODEL_TIMEOUT;
+            case UNAUTHORIZED -> ErrorCode.MODEL_AUTH_FAILED;
+            case UNAVAILABLE, CONNECTION_FAILED -> ErrorCode.MODEL_PROVIDER_UNAVAILABLE;
+            case ENDPOINT_NOT_FOUND -> ErrorCode.MODEL_UNREACHABLE;
+            case INVALID_MODEL -> {
+                if (embeddingOp) {
+                    yield ErrorCode.EMBEDDING_MODEL_UNAVAILABLE;
+                }
+                if (judgeOp) {
+                    yield ErrorCode.JUDGE_MODEL_UNAVAILABLE;
+                }
+                if (chatOp) {
+                    yield ErrorCode.CHAT_MODEL_UNAVAILABLE;
+                }
+                yield ErrorCode.MODEL_NOT_FOUND;
+            }
+            case REMOTE_HTTP -> {
+                if (embeddingOp) {
+                    yield ErrorCode.EMBEDDING_MODEL_UNAVAILABLE;
+                }
+                if (judgeOp) {
+                    yield ErrorCode.JUDGE_MODEL_UNAVAILABLE;
+                }
+                if (chatOp) {
+                    yield ErrorCode.CHAT_MODEL_UNAVAILABLE;
+                }
+                yield ErrorCode.LLM_PROVIDER_ERROR;
+            }
         };
     }
 

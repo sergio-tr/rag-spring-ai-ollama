@@ -74,7 +74,7 @@ function indexBoundCap(key: string, label: string, displayOrder: number) {
     excludes: [] as string[],
     requiresIndexSnapshot: true,
     requiresReindexWhenChanged: true,
-    reasonIfDisabled: "Index snapshot compatibility; changing requires reindex.",
+    reasonIfDisabled: "Index settings are fixed at project creation.",
     reasonIfNotImplemented: null,
   };
 }
@@ -119,6 +119,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
           conversationLlmModel: null,
           conversationClassifierModelId: null,
           conversationModelsPinned: false,
+          configurationMode: "PRESET" as const,
           runtimeOverride: {},
           manualOverrideKeys: [],
           isCustom: false,
@@ -212,7 +213,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     expect(within(advanced).getByText("h1")).toBeInTheDocument();
   });
 
-  it("renders preset requirements + compatibility and shows reindex-required callout", async () => {
+  it("renders preset requirements + compatibility and shows fixed-index callout", async () => {
     useChatToolbarStore.setState((s) => ({
       api: {
         ...s.api!,
@@ -240,7 +241,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     expect(within(details).getByText(/Index requirements for selected profile/i)).toBeInTheDocument();
     expect(within(details).getByText("HYBRID")).toBeInTheDocument();
     expect(within(details).getByText("INCOMPATIBLE")).toBeInTheDocument();
-    expect(within(details).getByText(/Reindex required for this configuration profile/i)).toBeInTheDocument();
+    expect(within(details).getByText(/Index profile incompatible with selected configuration/i)).toBeInTheDocument();
   });
 
   it("falls back to effectiveConfig values when project index profile is not loaded", async () => {
@@ -330,7 +331,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     }));
     renderSubject();
     await openEditPanel();
-    expect(screen.getByText("Custom")).toBeInTheDocument();
+    expect(screen.getByText("Custom configuration for this conversation")).toBeInTheDocument();
   });
 
   it("shows synthetic selected preset option when selectedPresetId is not in catalogs", async () => {
@@ -509,7 +510,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
             compatibility: {
               selectable: false,
               disabledReasonCode: "MATERIALIZATION_NOT_SUPPORTED",
-              disabledReason: "Create or reindex the project with a compatible index profile.",
+              disabledReason: "Requires HYBRID index.",
               indexRequirements: {
                 requiredMaterializationStrategy: "HYBRID",
                 requiresMetadataSupport: true,
@@ -537,7 +538,7 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
               compatibility: {
                 selectable: false,
                 disabledReasonCode: "MATERIALIZATION_NOT_SUPPORTED",
-                disabledReason: "Create or reindex the project with a compatible index profile.",
+                disabledReason: "Requires HYBRID index.",
                 indexRequirements: {
                   requiredMaterializationStrategy: "HYBRID",
                   requiresMetadataSupport: true,
@@ -555,10 +556,10 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
     await user.click(screen.getByTestId("chat-preset-show-incompatible"));
     const option = screen.getByRole("option", { name: /Hybrid preset/i }) as HTMLOptionElement;
     expect(option.disabled).toBe(true);
-    expect(option.textContent).toMatch(/Create or reindex the project with a compatible index profile/i);
+    expect(option.textContent).toMatch(/Requires HYBRID index/i);
   });
 
-  it("shows blocking issue banner and selected preset reindex CTA from runtime-state", async () => {
+  it("shows blocking issue banner and fixed-index hint when preset incompatible", async () => {
     useChatToolbarStore.setState((s) => ({
       api: {
         ...s.api!,
@@ -570,30 +571,35 @@ describe("ChatConfigurationPanelContent index capabilities", () => {
             {
               code: "MATERIALIZATION_NOT_SUPPORTED",
               field: "presetId",
-              message: "This preset requires a HYBRID index.",
+              message: "Requires HYBRID index.",
               severity: "ERROR",
             },
           ],
           presetCompatibility: {
             selectable: false,
             disabledReasonCode: "MATERIALIZATION_NOT_SUPPORTED",
-            disabledReason: "This preset requires a HYBRID index.",
+            disabledReason: "Requires HYBRID index.",
             indexRequirements: {
               requiredMaterializationStrategy: "HYBRID",
               requiresMetadataSupport: false,
             },
             compatibleWithActiveIndex: false,
           },
-          disabledPresetReason: "This preset requires a HYBRID index.",
+          disabledPresetReason: "Requires HYBRID index.",
         },
       },
     }));
 
     renderSubject();
-    expect(screen.getByTestId("chat-runtime-blocking-banner")).toHaveTextContent("This preset requires a HYBRID index.");
+    expect(screen.getByTestId("chat-runtime-blocking-banner")).toHaveTextContent(
+      /compatible index profile for the selected preset/i,
+    );
     await openEditPanel();
     expect(screen.getByTestId("chat-preset-select")).toBeInTheDocument();
-    expect(screen.getByText(/Create or reindex project with compatible profile/i)).toBeInTheDocument();
+    expect(screen.getByTestId("chat-preset-incompatible-fixed-index-hint")).toHaveTextContent(
+      /Index settings are fixed after project creation/i,
+    );
+    expect(screen.queryByTestId("chat-preset-incompatible-fixed-index-hint")?.textContent ?? "").not.toMatch(/reindex/i);
   });
 
   it("shows preset catalog empty message when presets are loaded and empty", async () => {

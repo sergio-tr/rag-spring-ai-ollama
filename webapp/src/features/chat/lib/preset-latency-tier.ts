@@ -1,5 +1,5 @@
 import type { ExperimentalPresetCatalogItemDto, RagPresetDto } from "@/types/api";
-import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
+import { toProductPresetDisplayName, productPresetDescription } from "@/lib/product-preset-labels";
 
 export type PresetLatencyTier = "fast" | "standard" | "advanced" | "research";
 
@@ -64,4 +64,20 @@ export function formatProductPresetOptionLabel(
   const recommended = isDemoBestPresetId(preset.id) ? ` · ${t("presetRecommendedForDemo")}` : "";
   const display = toProductPresetDisplayName(preset.name);
   return `${display} (${tier})${recommended}`;
+}
+
+/** Tooltip / title text for product preset select options. */
+export function formatProductPresetOptionTitle(
+  preset: RagPresetDto,
+  t: (key: string) => string,
+): string | undefined {
+  if (isDemoBestPresetId(preset.id)) {
+    const fromI18n = t("presetDemoBestDescription");
+    if (fromI18n !== "presetDemoBestDescription" && fromI18n.trim()) {
+      return fromI18n.trim();
+    }
+    return productPresetDescription(preset.name);
+  }
+  const desc = productPresetDescription(preset.name, t);
+  return desc.trim() || undefined;
 }

@@ -85,9 +85,9 @@ describe("lab-benchmark-labels product display", () => {
       display: "0.457",
       title: undefined,
     });
-    expect(formatMetricCell(null, "recallAt1", "EMBEDDING_RETRIEVAL", "FAILED", t).display).toBe("—");
+    expect(formatMetricCell(null, "recallAt1", "EMBEDDING_RETRIEVAL", "FAILED", t).display).toBe("-");
     expect(isNotAvailable("NOT_AVAILABLE")).toBe(true);
-    expect(formatComparisonScore(null)).toBe("—");
+    expect(formatComparisonScore(null)).toBe("-");
     expect(formatComparisonScore(1.2)).toBe("1.200");
   });
 
@@ -140,8 +140,8 @@ describe("lab-benchmark-labels product display", () => {
 
   it("formatPresetDisplay handles missing metadata and raw codes", () => {
     expect(formatPresetDisplay(null, null)).toBe("");
-    expect(formatPresetDisplay("P6", "P6")).toBe("Reasoning-assisted retrieval");
-    expect(formatPresetDisplay("P6", "Custom label")).toBe("Reasoning-assisted retrieval");
+    expect(formatPresetDisplay("P6", "P6")).toBe("Metadata query intelligence");
+    expect(formatPresetDisplay("P6", "Custom label")).toBe("Metadata query intelligence");
   });
 
   it("formatGroupLabel returns normalized values for non-preset groups", () => {
@@ -153,7 +153,7 @@ describe("lab-benchmark-labels product display", () => {
       display: "0.812",
       title: undefined,
     });
-    expect(formatMetricCell("NOT_AVAILABLE", "latencyMs", "LLM_JUDGE_QA", "EXECUTED", t).display).toBe("—");
+    expect(formatMetricCell("NOT_AVAILABLE", "latencyMs", "LLM_JUDGE_QA", "EXECUTED", t).display).toBe("-");
     expect(metricUnavailableReasonKey("latencyMs", "RAG_PRESET_END_TO_END", "FAILED")).toBe(
       "benchmarkMetricReasonRunFailed",
     );
@@ -161,8 +161,8 @@ describe("lab-benchmark-labels product display", () => {
 
   it("resolveComparisonRowLabel keeps em dash labels and axis fallbacks", () => {
     expect(
-      resolveComparisonRowLabel({ presetLabel: "P4 — Chunk metadata" }, "PRESET_CODE"),
-    ).toBe("P4 — Chunk metadata");
+      resolveComparisonRowLabel({ presetLabel: "P4 - Chunk metadata" }, "PRESET_CODE"),
+    ).toBe("P4 - Chunk metadata");
     expect(resolveComparisonRowLabel({ axisValue: "axis-1" }, "LLM_MODEL")).toBe("axis-1");
     expect(resolvePresetKeyFromComparisonRow({ groupValue: "P11" })).toBe("P11");
   });
@@ -174,11 +174,11 @@ describe("lab-benchmark-labels product display", () => {
   });
 
   it("formatComparisonScore and formatPresetDisplay cover remaining branches", () => {
-    expect(formatComparisonScore("NOT_AVAILABLE")).toBe("—");
+    expect(formatComparisonScore("NOT_AVAILABLE")).toBe("-");
     expect(formatComparisonScore("plain")).toBe("plain");
     expect(formatPresetDisplay("demo_worst", "demo_worst")).toBe("Basic baseline configuration");
     expect(
       formatMetricCell("", "recallAt1", "EMBEDDING_RETRIEVAL", "EXECUTED", t).display,
-    ).toBe("—");
+    ).toBe("-");
   });
 });

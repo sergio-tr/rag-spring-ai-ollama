@@ -23,7 +23,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * P38: ZIP export adapter (non-owning) — builds {@code manifest.json} + {@code definition.json} after
+ * P38: ZIP export adapter (non-owning) - builds {@code manifest.json} + {@code definition.json} after
  * {@link RuntimeTraceRegressionSuiteDefinitionService#loadByIdForUser(UUID, UUID)}; does not own persisted-definition reads.
  */
 @Service

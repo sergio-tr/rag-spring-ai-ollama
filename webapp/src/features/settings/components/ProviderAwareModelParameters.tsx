@@ -59,7 +59,7 @@ function ParameterInput(props: Readonly<{
       : String(value);
 
   return (
-    <div className="flex flex-col gap-2" data-testid={`model-param-field-${def.id}`}>
+    <div className="flex min-w-[220px] flex-1 flex-col gap-2" data-testid={`model-param-field-${def.id}`}>
       <Label htmlFor={`model-param-${def.id}`}>{t(def.labelKey as never)}</Label>
       <Input
         id={`model-param-${def.id}`}
@@ -95,7 +95,7 @@ function BooleanParameterInput(props: Readonly<{
   const checked = value === true;
 
   return (
-    <div className="flex flex-col gap-2" data-testid={`model-param-field-${def.id}`}>
+    <div className="flex min-w-[220px] flex-1 flex-col gap-2" data-testid={`model-param-field-${def.id}`}>
       <Label>{t(def.labelKey as never)}</Label>
       <div className="flex items-center gap-2">
         <input
@@ -140,7 +140,7 @@ export function ProviderAwareModelParameters({
     configuredTemperature === undefined && effectiveTemperature !== undefined && effectiveTemperature !== null;
 
   return (
-    <div className="grid min-w-0 max-w-full grid-cols-1 gap-3 sm:grid-cols-2" data-testid="provider-aware-model-parameters">
+      <div className="flex min-w-0 max-w-full flex-wrap gap-3" data-testid="provider-aware-model-parameters">
       {applied.map((def) => {
         if (def.storage === "topLevel" && def.configKey === LLM_TEMPERATURE_KEY) {
           return (

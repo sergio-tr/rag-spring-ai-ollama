@@ -16,7 +16,10 @@ import {
   formatMetricNumber,
 } from "@/features/lab/lib/lab-comparison-metrics";
 import { paginateRows } from "@/features/lab/lib/lab-table-pagination";
+import { sortComparisonRowsByKey } from "@/features/lab/lib/result-table-row";
+import { toggleTableSort, type TableSortState } from "@/features/lab/lib/lab-table-sort";
 import { useTranslations } from "next-intl";
+import { useMemo, useState } from "react";
 
 export type EmbeddingComparisonTableProps = {
   rows: ComparisonRow[];
@@ -32,27 +35,50 @@ export function EmbeddingComparisonTable({
   onSelectRow,
 }: EmbeddingComparisonTableProps) {
   const t = useTranslations("Lab");
+  const [sort, setSort] = useState<TableSortState>(null);
+  const sortedRows = useMemo(() => sortComparisonRowsByKey(rows, sort, comparisonAxis), [rows, sort, comparisonAxis]);
   const pagination = useLabTablePagination({
-    rowCount: rows.length,
-    resetKey: `${comparisonAxis}:${rows.length}`,
+    rowCount: sortedRows.length,
+    resetKey: `${comparisonAxis}:${sortedRows.length}:${sort?.key ?? "default"}:${sort?.direction ?? ""}`,
   });
-  const slice = paginateRows(rows, pagination.page, pagination.pageSize);
+  const slice = paginateRows(sortedRows, pagination.page, pagination.pageSize);
+  const onSort = (key: string) => setSort((current) => toggleTableSort(current, key));
 
   return (
     <div className="space-y-2">
       <LabComparisonTable testId="lab-embedding-comparison-table">
         <LabComparisonTableHead>
           <tr>
-            <LabComparisonTh>{t("benchmarkColEmbeddingModel")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColRecallAt1")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColRecallAt3")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColRecallAt5")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColMrr")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColNdcgAt5")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColMeanLatency")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColP95Latency")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColErrors")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColExecutedItems")}</LabComparisonTh>
+            <LabComparisonTh sortKey="embeddingModel" sortState={sort} onSort={onSort}>
+              {t("benchmarkColEmbeddingModel")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="recallAt1" sortState={sort} onSort={onSort}>
+              {t("benchmarkColRecallAt1")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="recallAt3" sortState={sort} onSort={onSort}>
+              {t("benchmarkColRecallAt3")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="recallAt5" sortState={sort} onSort={onSort}>
+              {t("benchmarkColRecallAt5")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="mrr" sortState={sort} onSort={onSort}>
+              {t("benchmarkColMrr")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="ndcgAt5" sortState={sort} onSort={onSort}>
+              {t("benchmarkColNdcgAt5")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="meanLatency" sortState={sort} onSort={onSort}>
+              {t("benchmarkColMeanLatency")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="p95Latency" sortState={sort} onSort={onSort}>
+              {t("benchmarkColP95Latency")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="errors" sortState={sort} onSort={onSort}>
+              {t("benchmarkColErrors")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="executed" sortState={sort} onSort={onSort}>
+              {t("benchmarkColExecutedItems")}
+            </LabComparisonTh>
           </tr>
         </LabComparisonTableHead>
         <tbody>
@@ -103,7 +129,7 @@ export function EmbeddingComparisonTable({
                 <td className="p-2 font-mono">{formatLatencyMs(row.meanLatencyMs)}</td>
                 <td className="p-2 font-mono">{formatLatencyMs(row.p95LatencyMs)}</td>
                 <td className="p-2 font-mono">{String(errors)}</td>
-                <td className="p-2 font-mono">{String(row.executed ?? "—")}</td>
+                <td className="p-2 font-mono">{String(row.executed ?? "-")}</td>
               </tr>
             );
           })}

@@ -7,7 +7,7 @@ import org.json.JSONObject;
 import org.springframework.ai.document.Document;
 
 /**
- * Direct acta lookup by {@code date_iso} — bypasses semantic ranking for terminal metadata field queries.
+ * Direct acta lookup by {@code date_iso} - bypasses semantic ranking for terminal metadata field queries.
  */
 public final class MinuteMetadataLookup {
 

@@ -165,15 +165,15 @@ describe("lab-comparison-metrics", () => {
   });
 
   it("format helpers handle empty and invalid values", () => {
-    expect(formatRatioPercent(1, 0)).toBe("—");
+    expect(formatRatioPercent(1, 0)).toBe("-");
     expect(formatRatioPercent(1, 4)).toBe("25.0%");
-    expect(formatMetricNumber(null)).toBe("—");
-    expect(formatMetricNumber("NOT_AVAILABLE")).toBe("—");
+    expect(formatMetricNumber(null)).toBe("-");
+    expect(formatMetricNumber("NOT_AVAILABLE")).toBe("-");
     expect(formatMetricNumber(0.12345, 2)).toBe("0.12");
     expect(formatMetricNumber("  ok ")).toBe("ok");
-    expect(formatMetricNumber("   ")).toBe("—");
-    expect(formatLatencyMs(null)).toBe("—");
+    expect(formatMetricNumber("   ")).toBe("-");
+    expect(formatLatencyMs(null)).toBe("-");
     expect(formatLatencyMs(12.6)).toBe("13");
-    expect(formatLatencyMs("x")).toBe("—");
+    expect(formatLatencyMs("x")).toBe("-");
   });
 });

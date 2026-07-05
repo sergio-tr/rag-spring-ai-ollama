@@ -16,7 +16,10 @@ import {
   formatMetricNumber,
 } from "@/features/lab/lib/lab-comparison-metrics";
 import { paginateRows } from "@/features/lab/lib/lab-table-pagination";
+import { sortComparisonRowsByKey } from "@/features/lab/lib/result-table-row";
+import { toggleTableSort, type TableSortState } from "@/features/lab/lib/lab-table-sort";
 import { useTranslations } from "next-intl";
+import { useMemo, useState } from "react";
 
 export type LlmComparisonTableProps = {
   rows: ComparisonRow[];
@@ -32,29 +35,56 @@ export function LlmComparisonTable({
   onSelectRow,
 }: LlmComparisonTableProps) {
   const t = useTranslations("Lab");
+  const [sort, setSort] = useState<TableSortState>(null);
+  const sortedRows = useMemo(() => sortComparisonRowsByKey(rows, sort, comparisonAxis), [rows, sort, comparisonAxis]);
   const pagination = useLabTablePagination({
-    rowCount: rows.length,
-    resetKey: `${comparisonAxis}:${rows.length}`,
+    rowCount: sortedRows.length,
+    resetKey: `${comparisonAxis}:${sortedRows.length}:${sort?.key ?? "default"}:${sort?.direction ?? ""}`,
   });
-  const slice = paginateRows(rows, pagination.page, pagination.pageSize);
+  const slice = paginateRows(sortedRows, pagination.page, pagination.pageSize);
+  const onSort = (key: string) => setSort((current) => toggleTableSort(current, key));
 
   return (
     <div className="space-y-2">
       <LabComparisonTable testId="lab-llm-comparison-table">
         <LabComparisonTableHead>
           <tr>
-            <LabComparisonTh>{t("benchmarkColLlmModel")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColGroup")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColCorrectness")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColFaithfulness")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColContainsExpected")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColHallucination")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColEmptyContent")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColTimeout")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColMeanLatency")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColP95Latency")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColErrors")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColExecutedItems")}</LabComparisonTh>
+            <LabComparisonTh sortKey="llmModel" sortState={sort} onSort={onSort}>
+              {t("benchmarkColLlmModel")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="group" sortState={sort} onSort={onSort}>
+              {t("benchmarkColGroup")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="correctness" sortState={sort} onSort={onSort}>
+              {t("benchmarkColCorrectness")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="faithfulness" sortState={sort} onSort={onSort}>
+              {t("benchmarkColFaithfulness")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="containsExpected" sortState={sort} onSort={onSort} title={t("benchmarkColContainsExpectedTooltip")}>
+              {t("benchmarkColContainsExpected")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="hallucinationRate" sortState={sort} onSort={onSort} title={t("benchmarkColHallucinationTooltip")}>
+              {t("benchmarkColHallucination")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="emptyContent" sortState={sort} onSort={onSort}>
+              {t("benchmarkColEmptyContent")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="timeout" sortState={sort} onSort={onSort}>
+              {t("benchmarkColTimeout")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="meanLatency" sortState={sort} onSort={onSort}>
+              {t("benchmarkColMeanLatency")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="p95Latency" sortState={sort} onSort={onSort}>
+              {t("benchmarkColP95Latency")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="errors" sortState={sort} onSort={onSort}>
+              {t("benchmarkColErrors")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="executed" sortState={sort} onSort={onSort}>
+              {t("benchmarkColExecutedItems")}
+            </LabComparisonTh>
           </tr>
         </LabComparisonTableHead>
         <tbody>
@@ -98,7 +128,7 @@ export function LlmComparisonTable({
                   ) : null}
                 </td>
                 <td className="text-muted-foreground p-2 font-mono text-[10px]">
-                  {typeof row.groupValue === "string" && row.groupValue.trim() ? row.groupValue : "—"}
+                  {typeof row.groupValue === "string" && row.groupValue.trim() ? row.groupValue : "-"}
                 </td>
                 <td className="p-2 font-mono">
                   {formatMetricNumber(row.meanCorrectness ?? row.meanExactMatch)}
@@ -111,7 +141,7 @@ export function LlmComparisonTable({
                 <td className="p-2 font-mono">{formatLatencyMs(row.meanLatencyMs)}</td>
                 <td className="p-2 font-mono">{formatLatencyMs(row.p95LatencyMs)}</td>
                 <td className="p-2 font-mono">{String(errors)}</td>
-                <td className="p-2 font-mono">{String(row.executed ?? "—")}</td>
+                <td className="p-2 font-mono">{String(row.executed ?? "-")}</td>
               </tr>
             );
           })}

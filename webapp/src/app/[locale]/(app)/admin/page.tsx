@@ -5,6 +5,7 @@ import { pollLabJob } from "@/lib/async-task";
 import { AdminLlmCatalogSection } from "@/features/admin/components/AdminLlmCatalogSection";
 import { useLlmCatalog, llmCatalogQueryKey } from "@/features/admin/hooks/use-llm-catalog";
 import { catalogRowKey, groupCatalogByCapability } from "@/features/admin/lib/llm-catalog-admin";
+import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,8 @@ export default function AdminHomePage() {
   const tLab = useTranslations("Lab");
   const qc = useQueryClient();
   const catalogQ = useLlmCatalog(true, "OPENAI_COMPATIBLE");
+  const selectableModelsQ = useMeSelectableLlmModels("CHAT");
+  const showPullCard = selectableModelsQ.data?.effectiveProvider === "OLLAMA_NATIVE";
   const [rowMessage, setRowMessage] = useState<string | null>(null);
   const [rowErr, setRowErr] = useState<string | null>(null);
   const [busyRowKey, setBusyRowKey] = useState<string | null>(null);
@@ -70,12 +73,7 @@ export default function AdminHomePage() {
     catalogVectorCompatibleYes: t("catalogVectorCompatibleYes"),
     catalogVectorCompatibleNo: t("catalogVectorCompatibleNo"),
     catalogVectorCompatibleNa: t("catalogVectorCompatibleNa"),
-    catalogGovernanceAllowed: t("catalogGovernanceAllowed"),
-    catalogGovernanceAllowedYes: t("catalogGovernanceAllowedYes"),
-    catalogGovernanceAllowedNo: t("catalogGovernanceAllowedNo"),
-    catalogGovernanceAllowedNa: t("catalogGovernanceAllowedNa"),
-    modelAvailable: t("modelAvailable"),
-    modelMissing: t("modelMissing"),
+    catalogGovernanceBlocked: t("catalogGovernanceBlocked"),
   };
 
   const invalidateCatalog = () => void qc.invalidateQueries({ queryKey: llmCatalogQueryKey });
@@ -191,33 +189,35 @@ export default function AdminHomePage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("pullTitle")}</CardTitle>
-          <CardDescription>{t("pullDescription")}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          <Label htmlFor="pullm">{t("pullModel")}</Label>
-          <Input id="pullm" value={pullModel} onChange={(e) => setPullModel(e.target.value)} />
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" disabled={!pullModel.trim() || pullRunning} onClick={() => void runGlobalPull()}>
-              {pullRunning ? tLab("evalRunning") : t("pullSubmit")}
-            </Button>
-            {pullRunning ? (
-              <Button type="button" variant="outline" onClick={() => pullAbortRef.current?.abort()}>
-                {tLab("jobCancel")}
+      {showPullCard ? (
+        <Card data-testid="admin-pull-card">
+          <CardHeader>
+            <CardTitle>{t("pullTitle")}</CardTitle>
+            <CardDescription>{t("pullDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            <Label htmlFor="pullm">{t("pullModel")}</Label>
+            <Input id="pullm" value={pullModel} onChange={(e) => setPullModel(e.target.value)} />
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" disabled={!pullModel.trim() || pullRunning} onClick={() => void runGlobalPull()}>
+                {pullRunning ? tLab("evalRunning") : t("pullSubmit")}
               </Button>
+              {pullRunning ? (
+                <Button type="button" variant="outline" onClick={() => pullAbortRef.current?.abort()}>
+                  {tLab("jobCancel")}
+                </Button>
+              ) : null}
+            </div>
+            {pullErr ? <p className="text-destructive text-sm">{pullErr}</p> : null}
+            {pullProgress != null && pullProgress !== "" ? (
+              <pre className="bg-muted/40 max-h-[120px] overflow-auto rounded-md border p-3 text-xs whitespace-pre-wrap">
+                {pullProgress}
+              </pre>
             ) : null}
-          </div>
-          {pullErr ? <p className="text-destructive text-sm">{pullErr}</p> : null}
-          {pullProgress != null && pullProgress !== "" ? (
-            <pre className="bg-muted/40 max-h-[120px] overflow-auto rounded-md border p-3 text-xs whitespace-pre-wrap">
-              {pullProgress}
-            </pre>
-          ) : null}
-          {pullOk ? <p className="text-muted-foreground text-sm">{pullOk}</p> : null}
-        </CardContent>
-      </Card>
+            {pullOk ? <p className="text-muted-foreground text-sm">{pullOk}</p> : null}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

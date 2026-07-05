@@ -11,7 +11,8 @@ export function useClassifierModelsQuery(enabled: boolean) {
     queryKey: classifierModelsQueryKey,
     queryFn: () => apiFetch<ClassifierModelRegistryEntryDto[]>(apiProductPath("/lab/classifier/models")),
     enabled,
-    staleTime: 15_000,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
   });
 }
 

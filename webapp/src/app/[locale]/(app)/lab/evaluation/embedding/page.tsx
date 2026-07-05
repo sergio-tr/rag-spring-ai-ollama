@@ -11,6 +11,9 @@ export default function LabEmbeddingEvalPage() {
   return (
     <div className="space-y-3" data-testid="lab-embedding-eval-page">
       <RunSummaryCard title={t("embeddingEvalTitle")} summary={t("embeddingEvalTagline")} />
+      <p className="text-muted-foreground text-xs" data-testid="lab-embedding-eval-hint">
+        {t("embeddingEvaluationDeterministicHint")}
+      </p>
       <LabEvaluationSteps kind="EMBEDDING_RETRIEVAL" />
       <LabEvaluationRunCard
         benchmarkKind="EMBEDDING_RETRIEVAL"

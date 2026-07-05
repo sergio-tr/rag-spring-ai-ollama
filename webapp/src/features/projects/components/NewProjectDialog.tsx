@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -18,13 +18,19 @@ import {
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useProjectCreateFeedbackNotifier } from "@/features/projects/hooks/use-project-create-feedback-notifier";
 import { useCreateProject } from "@/features/projects/hooks/use-projects";
 import { ProjectCreateError } from "@/features/projects/lib/project-create-errors";
 import type { ProjectCreatedDialogOutcome } from "@/features/projects/lib/project-create-feedback";
+import { getProjectCreateIndexCombinationFeedback } from "@/features/projects/lib/project-create-index-validation";
+import {
+  isAdvancedStructuredSearchIndexingEnabled,
+  listSelectableProjectMaterializationStrategies,
+  type ProjectMaterializationStrategy,
+} from "@/features/projects/lib/project-materialization-strategies";
 import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
-import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { toConfigModelOptions } from "@/lib/product-model-catalog";
-import Link from "next/link";
+import { Link } from "@/navigation";
 
 const indexProfileSchema = z.object({
   materializationStrategy: z.enum(["CHUNK_LEVEL", "DOCUMENT_LEVEL", "HYBRID", "STRUCTURED_SEARCH"]).optional(),
@@ -60,7 +66,6 @@ export function NewProjectDialog({
         description: z.string().max(2000).optional(),
         materializationStrategy: indexProfileSchema.shape.materializationStrategy,
         metadataEnabled: z.boolean().optional(),
-        llmModelId: z.string().max(128).optional(),
         embeddingModelId: z.string().max(128).optional(),
         chunkMaxChars: z.number().int().min(50).max(5000).optional(),
       }),
@@ -71,17 +76,15 @@ export function NewProjectDialog({
   const controlled = controlledOpen !== undefined && onOpenChange !== undefined;
   const open = controlled ? controlledOpen : uncontrolledOpen;
   const setOpenState = controlled ? onOpenChange! : setUncontrolledOpen;
-  const { mutateAsync, reset, isPending, isError, isSuccess } = useCreateProject();
-  const chatCatalogQ = useMeSelectableLlmModels("CHAT");
+  const { mutateAsync, reset, isPending } = useCreateProject();
+  const notifyCreated = useProjectCreateFeedbackNotifier();
   const embeddingCatalogQ = useMeSelectableLlmModels("EMBEDDING");
-  const chatOptions = useMemo(
-    () => toConfigModelOptions(chatCatalogQ.data?.models ?? []).filter((o) => !o.disabled),
-    [chatCatalogQ.data?.models],
-  );
   const embeddingOptions = useMemo(
     () => toConfigModelOptions(embeddingCatalogQ.data?.models ?? []).filter((o) => !o.disabled),
     [embeddingCatalogQ.data?.models],
   );
+  const selectableStrategies = useMemo(() => listSelectableProjectMaterializationStrategies(), []);
+  const advancedStructuredSearchEnabled = isAdvancedStructuredSearchIndexingEnabled();
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const form = useForm<FormValues>({
@@ -91,23 +94,39 @@ export function NewProjectDialog({
       description: "",
       materializationStrategy: "CHUNK_LEVEL",
       metadataEnabled: false,
-      llmModelId: "",
       embeddingModelId: "",
       chunkMaxChars: 400,
     },
   });
 
+  const selectedStrategy = useWatch({ control: form.control, name: "materializationStrategy" }) ?? "CHUNK_LEVEL";
+  const metadataEnabled = useWatch({ control: form.control, name: "metadataEnabled" }) ?? false;
+  const indexCombinationFeedback = getProjectCreateIndexCombinationFeedback(
+    selectedStrategy,
+    metadataEnabled,
+  );
+  const materializationHelpKey = `materializationStrategyHelp_${selectedStrategy as ProjectMaterializationStrategy}` as
+    | "materializationStrategyHelp_DOCUMENT_LEVEL"
+    | "materializationStrategyHelp_CHUNK_LEVEL"
+    | "materializationStrategyHelp_HYBRID"
+    | "materializationStrategyHelp_STRUCTURED_SEARCH";
+
   function handleOpenChange(next: boolean) {
     reset();
     setSubmitError(null);
-    if (!next) {
-      form.reset();
-    }
+    form.reset();
     setOpenState(next);
   }
 
   async function onSubmit(values: FormValues) {
     if (isPending) {
+      return;
+    }
+    const feedback = getProjectCreateIndexCombinationFeedback(
+      values.materializationStrategy ?? "CHUNK_LEVEL",
+      values.metadataEnabled ?? false,
+    );
+    if (feedback.blocked) {
       return;
     }
     setSubmitError(null);
@@ -124,22 +143,8 @@ export function NewProjectDialog({
           metadataProfile: null,
         },
       });
-      let configSaveFailed = false;
-      const llmModel = values.llmModelId?.trim();
-      if (llmModel) {
-        try {
-          await apiFetch(apiProductPath(`/config/project/${outcome.project.id}`), {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ llmModel }),
-          });
-        } catch {
-          configSaveFailed = true;
-        }
-      }
-      onCreated?.({ ...outcome, configSaveFailed });
+      (onCreated ?? notifyCreated)(outcome);
       handleOpenChange(false);
-      form.reset();
     } catch (err) {
       if (err instanceof ProjectCreateError) {
         if (err.kind === "PROJECT_CREATED_RESPONSE_INCOMPLETE") {
@@ -178,11 +183,24 @@ export function NewProjectDialog({
           <div className="flex flex-col gap-2">
             <Label htmlFor="proj-desc">{t("description")}</Label>
             <Input id="proj-desc" {...form.register("description")} />
+            <p className="text-muted-foreground text-xs" data-testid="project-create-description-hint">
+              {t("descriptionHelper")}
+            </p>
           </div>
 
           <div className="rounded-lg border p-3">
             <p className="text-sm font-medium">{t("indexCapabilitiesSectionTitle")}</p>
             <p className="text-muted-foreground mt-1 text-xs">{t("indexCapabilitiesDisclaimer")}</p>
+            <p className="text-muted-foreground mt-2 text-xs">
+              {t("projectCreateDefaultsFromAssistantHint")}{" "}
+              <Link href="/settings/user" className="text-primary underline-offset-4 hover:underline">
+                {t("projectCreateAssistantConfigurationLink")}
+              </Link>
+              .
+            </p>
+            <p className="text-muted-foreground mt-1 text-xs" data-testid="project-create-indexing-fixed-hint">
+              {t("projectCreateIndexingFixedHint")}
+            </p>
             <div className="mt-3 grid grid-cols-1 gap-3">
               <div className="flex flex-col gap-1">
                 <Label htmlFor="proj-strategy" className="text-xs">
@@ -190,43 +208,64 @@ export function NewProjectDialog({
                 </Label>
                 <select
                   id="proj-strategy"
+                  data-testid="project-create-materialization-strategy"
                   className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
                   {...form.register("materializationStrategy")}
                 >
-                  <option value="CHUNK_LEVEL">CHUNK_LEVEL</option>
-                  <option value="DOCUMENT_LEVEL">DOCUMENT_LEVEL</option>
-                  <option value="HYBRID">HYBRID</option>
-                  <option value="STRUCTURED_SEARCH">STRUCTURED_SEARCH</option>
-                </select>
-              </div>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" className="border-input size-4 rounded" {...form.register("metadataEnabled")} />
-                <span>{t("metadataIndexLabel")}</span>
-              </label>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="proj-llm" className="text-xs">
-                  {t("chatModelLabel")}
-                </Label>
-                <select
-                  id="proj-llm"
-                  data-testid="project-create-chat-model"
-                  className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
-                  disabled={chatCatalogQ.isLoading}
-                  {...form.register("llmModelId")}
-                >
-                  <option value="">{t("chatModelDefaultOption")}</option>
-                  {chatOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
+                  {selectableStrategies.map((strategy) => (
+                    <option key={strategy} value={strategy}>
+                      {strategy}
                     </option>
                   ))}
                 </select>
-                {chatCatalogQ.isError ? (
-                  <p className="text-destructive text-xs" role="alert">
-                    {t("chatCatalogLoadError")}
+                {advancedStructuredSearchEnabled && selectedStrategy === "STRUCTURED_SEARCH" ? (
+                  <p
+                    className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-950 dark:text-amber-100"
+                    data-testid="project-create-structured-search-advanced-warning"
+                    role="status"
+                  >
+                    {t("structuredSearchAdvancedCreateWarning")}
                   </p>
                 ) : null}
+                <p
+                  className="text-muted-foreground text-xs"
+                  data-testid="project-create-materialization-help"
+                >
+                  {t(materializationHelpKey)}
+                </p>
               </div>
+              <div className="flex flex-col gap-1">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="border-input size-4 rounded"
+                    data-testid="project-create-metadata-capability"
+                    {...form.register("metadataEnabled")}
+                  />
+                  <span>{t("metadataIndexLabel")}</span>
+                </label>
+                <p className="text-muted-foreground text-xs" data-testid="project-create-metadata-helper">
+                  {t("metadataIndexHelper")}
+                </p>
+              </div>
+              {indexCombinationFeedback.blocked && indexCombinationFeedback.blockMessageKey ? (
+                <p
+                  className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive"
+                  data-testid="project-create-index-combination-blocked"
+                  role="alert"
+                >
+                  {t(indexCombinationFeedback.blockMessageKey)}
+                </p>
+              ) : null}
+              {!indexCombinationFeedback.blocked && indexCombinationFeedback.warningMessageKey ? (
+                <p
+                  className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-950 dark:text-amber-100"
+                  data-testid="project-create-index-combination-warning"
+                  role="status"
+                >
+                  {t(indexCombinationFeedback.warningMessageKey)}
+                </p>
+              ) : null}
               <div className="flex flex-col gap-1">
                 <Label htmlFor="proj-embed" className="text-xs">
                   {t("embeddingModelLabel")}
@@ -265,16 +304,16 @@ export function NewProjectDialog({
               {t("configurePromptsAfterCreateAction")}
             </Link>
           </p>
-          {submitError || (isError && !isSuccess) ? (
+          {submitError ? (
             <p className="text-destructive text-sm" role="alert" data-testid="project-create-error">
-              {submitError ?? t("createError")}
+              {submitError}
             </p>
           ) : null}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               {t("cancel")}
             </Button>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending || indexCombinationFeedback.blocked}>
               {t("createSubmit")}
             </Button>
           </DialogFooter>

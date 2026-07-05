@@ -44,7 +44,7 @@ public class ModelBaselineLlmRunner {
     }
 
     /**
-     * Build user turn text (no system prompt here — caller passes composed effective system).
+     * Build user turn text (no system prompt here - caller passes composed effective system).
      */
     public String generateAnswer(
             BenchmarkEvaluationProtocol protocol,
@@ -157,7 +157,7 @@ public class ModelBaselineLlmRunner {
                         ? truncation.note()
                         : "No truncation metadata.";
         return """
-                DOCUMENT CONTEXT (possibly truncated — see TRUNCATION_NOTE):
+                DOCUMENT CONTEXT (possibly truncated - see TRUNCATION_NOTE):
                 %s
 
                 TRUNCATION_NOTE:

@@ -139,7 +139,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
      */
     public void loadDataWithConfiguration(RagFeatureConfiguration config) {
         if (LabBenchmarkExecutionContext.currentLabRuntimeContext().isPresent()) {
-            log().debug("Skipping evaluation document reload — Lab evaluation corpus is already bound");
+            log().debug("Skipping evaluation document reload - Lab evaluation corpus is already bound");
             dataLoaded = true;
             return;
         }

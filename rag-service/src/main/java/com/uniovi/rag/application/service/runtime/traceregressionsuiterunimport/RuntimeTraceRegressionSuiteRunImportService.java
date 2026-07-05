@@ -21,7 +21,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * P44: ZIP import adapter (non-owning) — validates a P43-shaped ZIP, maps {@link RuntimeTraceRegressionSuiteRunDetailDto} to
+ * P44: ZIP import adapter (non-owning) - validates a P43-shaped ZIP, maps {@link RuntimeTraceRegressionSuiteRunDetailDto} to
  * {@link RuntimeTraceRegressionSuiteResult} via {@link RuntimeTraceRegressionSuiteRunDetailDto#toRuntimeTraceRegressionSuiteResultForImport()},
  * then delegates {@link RuntimeTraceRegressionSuiteRunPersistenceService#createRun} only.
  */

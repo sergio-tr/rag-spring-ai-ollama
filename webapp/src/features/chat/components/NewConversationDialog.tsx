@@ -24,6 +24,7 @@ import { retrievalParameterSourceLabelKey } from "@/features/chat/lib/retrieval-
 import { buildInitialRuntimeOverrideForNewConversation, toRetrievalDefaults } from "@/features/chat/lib/retrieval-override-mode";
 import { useProjectDocuments } from "@/features/documents/hooks/use-project-documents";
 import type { ConversationDto } from "@/types/api";
+import { resolveIndexAwareDefaultPreset } from "@/features/chat/lib/resolve-index-aware-default-preset";
 import { getSafeApiErrorMessage } from "@/lib/api-client";
 
 export type NewConversationDialogProps = {
@@ -88,11 +89,17 @@ export function NewConversationDialog({
         return;
       }
     }
+    const resolvedDefault = resolveIndexAwareDefaultPreset(catalog.data);
+    const effectivePresetInput = presetValue.trim() || resolvedDefault.presetId || "";
     const { selectedValue, compatibility } = resolveCreateConversationPresetSelection(
       catalog,
-      presetValue,
+      effectivePresetInput,
       showIncompatiblePresets,
     );
+    if (!selectedValue) {
+      setLocalError(t("presetNoCompatibleAvailable"));
+      return;
+    }
     if (compatibility && !compatibility.selectable) {
       setLocalError(compatibility.disabledReason ?? t("presetsLoadError"));
       return;
@@ -106,7 +113,7 @@ export function NewConversationDialog({
       const created = await createConv.mutateAsync({
         title: title.trim() ? title.trim() : undefined,
         documentFilter: filter,
-        initialPresetId: selectedValue || undefined,
+        initialPresetId: selectedValue,
         initialRuntimeOverride,
       });
       handleOpenChange(false);

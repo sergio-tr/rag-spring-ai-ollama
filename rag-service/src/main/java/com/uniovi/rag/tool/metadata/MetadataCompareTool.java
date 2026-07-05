@@ -333,7 +333,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
 
     /**
      * Filters documents to those whose date matches any of the given date candidates (OR).
-     * Used when the query compares two specific dates (e.g. which meeting was longer on date A vs date B) — item 53.
+     * Used when the query compares two specific dates (e.g. which meeting was longer on date A vs date B) - item 53.
      */
     private List<Document> filterDocumentsByAnyOfDates(List<Document> docs, List<String> dateCandidates) {
         if (docs == null || docs.isEmpty() || dateCandidates == null || dateCandidates.isEmpty()) {
@@ -379,7 +379,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 && (q.contains(" o ") || q.contains(" or "));
     }
 
-    /** Spanish/English month tokens or "month" / "mes" — used by rule-based comparison detection. */
+    /** Spanish/English month tokens or "month" / "mes" - used by rule-based comparison detection. */
     private static boolean monthComparisonCueInQuery(String queryLower) {
         return queryLower.contains("febrero") || queryLower.contains("february")
                 || queryLower.contains("abril") || queryLower.contains("april")
@@ -398,7 +398,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         
         String queryLower = query.toLowerCase();
         
-        // More attendees in month A or B (e.g. "más asistentes en agosto o en febrero") — compare by month
+        // More attendees in month A or B (e.g. "más asistentes en agosto o en febrero") - compare by month
         if ((queryLower.contains("asistentes") || queryLower.contains("attendees") || queryLower.contains("asistencia"))
                 && monthComparisonCueInQuery(queryLower)) {
             log().info("Detected attendees comparison by month");

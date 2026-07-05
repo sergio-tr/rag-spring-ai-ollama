@@ -23,7 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Read-only configured model registry with optional Ollama presence checks.
- * Recommended models are derived from the properties-backed LLM catalog — not hardcoded demo enums.
+ * Recommended models are derived from the properties-backed LLM catalog - not hardcoded demo enums.
  */
 @Service
 public class ModelRegistryService {

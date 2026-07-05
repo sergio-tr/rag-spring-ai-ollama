@@ -39,6 +39,17 @@ export const LAB_USER_ERROR_I18N_KEYS: Record<string, string> = {
   MODEL_UNAVAILABLE: "userError_MODEL_UNAVAILABLE",
   LLM_UNAVAILABLE: "userError_INFERENCE_UNAVAILABLE",
   OLLAMA_UNAVAILABLE: "userError_INFERENCE_UNAVAILABLE",
+  MODEL_PROVIDER_UNAVAILABLE: "userError_INFERENCE_UNAVAILABLE",
+  MODEL_UNREACHABLE: "userError_INFERENCE_UNAVAILABLE",
+  MODEL_NOT_FOUND: "userError_MODEL_UNAVAILABLE",
+  MODEL_AUTH_FAILED: "userError_MODEL_AUTH_FAILED",
+  MODEL_TIMEOUT: "userError_MODEL_TIMEOUT",
+  MODEL_CONFIG_INVALID: "userError_MODEL_CONFIG_INVALID",
+  EMBEDDING_MODEL_UNAVAILABLE: "userError_EMBEDDING_MODEL_UNAVAILABLE",
+  CHAT_MODEL_UNAVAILABLE: "userError_CHAT_MODEL_UNAVAILABLE",
+  JUDGE_MODEL_UNAVAILABLE: "userError_JUDGE_MODEL_UNAVAILABLE",
+  SECONDARY_MODEL_UNAVAILABLE: "userError_SECONDARY_MODEL_UNAVAILABLE",
+  MODEL_DIMENSION_MISMATCH: "userError_EMBEDDING_DIMENSION_MISMATCH",
   DATASET_INVALID: "userError_DATASET_INVALID",
   EXPERIMENTAL_DATASET_INVALID: "userError_DATASET_INVALID",
   DUPLICATE_FILE: "labKbDuplicateFile",
@@ -103,6 +114,17 @@ export const USER_FACING_ERROR_MESSAGES_EN: Record<string, string> = {
     "The AI service is unavailable. Check that the local model server is running and models are installed, then try again.",
   INFERENCE_UNAVAILABLE_OPENAI:
     "The AI inference service is unavailable. Check that the configured LLM API is reachable, then try again.",
+  MODEL_AUTH_FAILED:
+    "Model provider rejected the API credentials. Verify your API key and proxy settings.",
+  MODEL_TIMEOUT: "The model provider did not respond in time. Try again after checking availability.",
+  MODEL_CONFIG_INVALID:
+    "Model provider configuration is invalid or incomplete. Check settings and environment variables.",
+  EMBEDDING_MODEL_UNAVAILABLE:
+    "Embedding model is unavailable. Document indexing cannot start until the provider serves this model.",
+  CHAT_MODEL_UNAVAILABLE:
+    "Selected chat model is not available in the configured provider.",
+  JUDGE_MODEL_UNAVAILABLE: "Judge model is unavailable. Evaluation cannot start.",
+  SECONDARY_MODEL_UNAVAILABLE: "A required secondary model is unavailable for this operation.",
   VALIDATION_TOO_SHORT: "This value is too short.",
   VALIDATION_GENERIC: "Check this field and try again.",
   DATASET_INVALID: "The dataset is not valid. Check the template.",
@@ -226,7 +248,7 @@ function resolveLabI18nKey(code: string, provider?: LlmProviderKind | null): str
   if (code === "MODEL_UNAVAILABLE") {
     return providerSpecificKey("userError_MODEL_UNAVAILABLE", provider);
   }
-  if (code === "LLM_UNAVAILABLE" || code === "OLLAMA_UNAVAILABLE") {
+  if (code === "LLM_UNAVAILABLE" || code === "OLLAMA_UNAVAILABLE" || code === "MODEL_PROVIDER_UNAVAILABLE" || code === "MODEL_UNREACHABLE") {
     return providerSpecificKey("userError_INFERENCE_UNAVAILABLE", provider);
   }
   if (code === "BLOCKED_BY_MODEL_AVAILABILITY") {
@@ -291,7 +313,7 @@ function englishForCode(code: string, provider?: LlmProviderKind | null): string
     const key = providerSpecificKey("MODEL_UNAVAILABLE", provider);
     return USER_FACING_ERROR_MESSAGES_EN[key] ?? USER_FACING_ERROR_MESSAGES_EN.MODEL_UNAVAILABLE ?? null;
   }
-  if (code === "LLM_UNAVAILABLE" || code === "OLLAMA_UNAVAILABLE") {
+  if (code === "LLM_UNAVAILABLE" || code === "OLLAMA_UNAVAILABLE" || code === "MODEL_PROVIDER_UNAVAILABLE" || code === "MODEL_UNREACHABLE") {
     const key = providerSpecificKey("INFERENCE_UNAVAILABLE", provider);
     return USER_FACING_ERROR_MESSAGES_EN[key] ?? USER_FACING_ERROR_MESSAGES_EN.INFERENCE_UNAVAILABLE ?? null;
   }

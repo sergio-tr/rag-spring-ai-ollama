@@ -4,11 +4,11 @@
  * Set E2E_SKIP_STACK_PREFLIGHT=1 to skip (offline UI-only runs).
  *
  * Demo stack (reverse-proxy): set PLAYWRIGHT_BASE_URL=https://127.0.0.1:8444 (or rely on defaults).
- * Health probes use {origin}/actuator/health — not /api/v5/actuator/health (that path requires JWT).
+ * Health probes use {origin}/actuator/health - not /api/v5/actuator/health (that path requires JWT).
  */
 import { actuatorHealthUrl, productBasePath, resolveE2eBases } from "./e2e-bases.mjs";
 
-/** Exit code when the stack is offline or missing seed fixtures — Playwright must not start. */
+/** Exit code when the stack is offline or missing seed fixtures - Playwright must not start. */
 export const E2E_STACK_NOT_READY_EXIT_CODE = 2;
 
 const MAX_WALL_MS = Number.parseInt(process.env.E2E_STACK_PREFLIGHT_MAX_MS ?? "120000", 10);

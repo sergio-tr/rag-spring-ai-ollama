@@ -207,7 +207,7 @@ public class AsyncTaskMutationService {
         String classification = strValue(closureMap.get("classification"));
         if ("COMPLETED_WITH_FAILURES".equals(classification)
                 || "COMPLETED_WITH_UNSUPPORTED".equals(classification)) {
-            return "Finished with warnings — executed="
+            return "Finished with warnings - executed="
                     + executed
                     + ", failed="
                     + failed
@@ -218,14 +218,14 @@ public class AsyncTaskMutationService {
                     + ".";
         }
         if ("COMPLETED_WITH_NO_EXECUTED_ITEMS".equals(classification) || executed <= 0) {
-            return "Finished without executed items — skipped="
+            return "Finished without executed items - skipped="
                     + skipped
                     + ", notSupported="
                     + notSupported
                     + ".";
         }
         if (executed > 0) {
-            return "Finished — executed="
+            return "Finished - executed="
                     + executed
                     + " item(s)"
                     + (failed > 0 || skipped > 0 || notSupported > 0

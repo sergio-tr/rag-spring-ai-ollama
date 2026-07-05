@@ -13,7 +13,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * Resolves project document ingestion embedding from the persisted project index profile — never from global/user LLM
+ * Resolves project document ingestion embedding from the persisted project index profile - never from global/user LLM
  * defaults when the profile names an explicit model.
  */
 @Service

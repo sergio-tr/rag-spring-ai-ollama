@@ -30,16 +30,19 @@ public class TaskLlmConfigResolver {
     private final ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     private final ObjectMapper objectMapper;
     private final RagRuntimeProperties ragRuntimeProperties;
+    private final SystemTaskLlmDefaultsProvider systemTaskLlmDefaultsProvider;
 
     public TaskLlmConfigResolver(
             ConfigurationSourcePort configurationSource,
             ResolvedLlmConfigResolver resolvedLlmConfigResolver,
             ObjectMapper objectMapper,
-            RagRuntimeProperties ragRuntimeProperties) {
+            RagRuntimeProperties ragRuntimeProperties,
+            SystemTaskLlmDefaultsProvider systemTaskLlmDefaultsProvider) {
         this.configurationSource = configurationSource;
         this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
         this.objectMapper = objectMapper;
         this.ragRuntimeProperties = ragRuntimeProperties;
+        this.systemTaskLlmDefaultsProvider = systemTaskLlmDefaultsProvider;
     }
 
     public record EffectiveTaskLlmConfig(
@@ -190,8 +193,8 @@ public class TaskLlmConfigResolver {
         return merged.get(task.id());
     }
 
-    static String resolveEffectiveModel(ResolvedLlmConfig base, TaskLlmTask task, @Nullable TaskLlmOverride override) {
-        TaskLlmRoleDefaults.RoleDefault roleDefault = TaskLlmRoleDefaults.forTask(task);
+    private String resolveEffectiveModel(ResolvedLlmConfig base, TaskLlmTask task, @Nullable TaskLlmOverride override) {
+        TaskLlmRoleDefaults.RoleDefault systemBaseline = systemTaskLlmDefaultsProvider.baselineFor(task);
         if (override != null && override.isActive()) {
             if (override.effectiveInheritModel(task)) {
                 return base.chatModel();
@@ -203,16 +206,16 @@ public class TaskLlmConfigResolver {
         if (task.inheritsMainModelByDefault()) {
             return base.chatModel();
         }
-        return roleDefault.modelId();
+        return systemBaseline.modelId();
     }
 
-    static TaskLlmGenerationParameters resolveEffectiveParameters(
+    private TaskLlmGenerationParameters resolveEffectiveParameters(
             ResolvedLlmConfig base, TaskLlmTask task, @Nullable TaskLlmOverride override) {
-        TaskLlmRoleDefaults.RoleDefault roleDefault = TaskLlmRoleDefaults.forTask(task);
+        TaskLlmRoleDefaults.RoleDefault systemBaseline = systemTaskLlmDefaultsProvider.baselineFor(task);
         if (override != null && override.isActive() && override.effectiveInheritParameters()) {
             return parametersFromBaseConfig(base);
         }
-        TaskLlmGenerationParameters effective = roleDefault.parameters();
+        TaskLlmGenerationParameters effective = systemBaseline.parameters();
         if (override != null && override.isActive()) {
             effective = effective.mergeOverlay(override.parameterOverlay());
         }

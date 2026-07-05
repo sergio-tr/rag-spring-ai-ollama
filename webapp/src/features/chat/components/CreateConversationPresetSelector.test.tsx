@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { CreateConversationPresetSelector } from "./CreateConversationPresetSelector";
+import { P3_PRESET_ID } from "@/features/chat/lib/preset-product-selection";
 
 const hooksMock = vi.hoisted(() => ({
   useProjectCompatiblePresets: vi.fn(),
@@ -51,7 +52,7 @@ const compatibleCatalog = {
     },
     productPresets: [
       {
-        preset: { id: "chunk-preset", name: "Chunk preset", system: true },
+        preset: { id: P3_PRESET_ID, name: "Chunk preset", system: true },
         indexRequirements: { requiredMaterializationStrategy: "CHUNK_LEVEL", requiresMetadataSupport: false },
         compatibility: {
           selectable: true,
@@ -89,6 +90,146 @@ describe("CreateConversationPresetSelector", () => {
   it("requests project-scoped compatible presets for the given projectId", () => {
     renderSelector("project-42");
     expect(hooksMock.useProjectCompatiblePresets).toHaveBeenCalledWith("project-42", { enabled: true });
+  });
+
+  it("does not show Server default as a selectable option", () => {
+    renderSelector();
+    expect(screen.queryByRole("option", { name: /Server default/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Production assistant configuration/i })).not.toBeInTheDocument();
+  });
+
+  it("preselects a concrete compatible preset", () => {
+    hooksMock.useProjectCompatiblePresets.mockReturnValue({
+      ...compatibleCatalog,
+      data: {
+        ...compatibleCatalog.data,
+        activeSnapshotCapabilities: {
+          materializationStrategy: "HYBRID",
+          supportsMetadata: true,
+          embeddingModelId: "mxbai",
+          chunkMaxChars: 400,
+          chunkOverlap: 40,
+        },
+        productPresets: [
+          {
+            preset: { id: "cafe0001-0001-4001-8001-000000000003", name: "Demo_Best", system: true },
+            indexRequirements: { requiredMaterializationStrategy: "HYBRID", requiresMetadataSupport: true },
+            compatibility: {
+              selectable: true,
+              disabledReasonCode: null,
+              disabledReason: null,
+              indexRequirements: null,
+              compatibleWithActiveIndex: true,
+            },
+          },
+          ...compatibleCatalog.data.productPresets,
+        ],
+      },
+    });
+    renderSelector();
+    const select = screen.getByTestId("chat-new-conversation-preset") as HTMLSelectElement;
+    expect(select.value).toBe("cafe0001-0001-4001-8001-000000000003");
+  });
+
+  it("shows fallback hint when Demo_Best is incompatible", () => {
+    hooksMock.useProjectCompatiblePresets.mockReturnValue({
+      ...compatibleCatalog,
+      data: {
+        ...compatibleCatalog.data,
+        productPresets: [
+          {
+            preset: { id: "cafe0001-0001-4001-8001-000000000003", name: "Demo_Best", system: true },
+            indexRequirements: null,
+            compatibility: {
+              selectable: false,
+              disabledReasonCode: "MATERIALIZATION_NOT_SUPPORTED",
+              disabledReason: "Requires HYBRID",
+              indexRequirements: null,
+              compatibleWithActiveIndex: false,
+            },
+          },
+          compatibleCatalog.data.productPresets[0]!,
+        ],
+      },
+    });
+    renderSelector();
+    expect(screen.getByTestId("chat-new-conversation-default-preset-hint")).toBeInTheDocument();
+  });
+
+  it("does not render Show baseline presets toggle", () => {
+    renderSelector();
+    expect(screen.queryByTestId("chat-new-conversation-show-baseline")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Show baseline presets/i)).not.toBeInTheDocument();
+  });
+
+  it("hides metadata-required presets on CHUNK_LEVEL index without metadata support", () => {
+    hooksMock.useProjectCompatiblePresets.mockReturnValue({
+      ...compatibleCatalog,
+      data: {
+        ...compatibleCatalog.data,
+        productPresets: [
+          ...compatibleCatalog.data.productPresets,
+          {
+            preset: { id: "cafe0001-0001-4001-8001-000000000014", name: "Metadata preset", system: true },
+            indexRequirements: { requiredMaterializationStrategy: "CHUNK_LEVEL", requiresMetadataSupport: true },
+            compatibility: {
+              selectable: true,
+              disabledReasonCode: null,
+              disabledReason: null,
+              indexRequirements: null,
+              compatibleWithActiveIndex: true,
+            },
+          },
+        ],
+      },
+    });
+    renderSelector();
+    expect(screen.queryByRole("option", { name: /Metadata preset/i })).not.toBeInTheDocument();
+  });
+
+  it("STRUCTURED_SEARCH shows warning and only direct/non-retrieval presets by default", () => {
+    hooksMock.useProjectCompatiblePresets.mockReturnValue({
+      ...compatibleCatalog,
+      data: {
+        ...compatibleCatalog.data,
+        activeSnapshotCapabilities: {
+          materializationStrategy: "STRUCTURED_SEARCH",
+          supportsMetadata: true,
+          embeddingModelId: "mxbai",
+          chunkMaxChars: 400,
+          chunkOverlap: 40,
+        },
+        productPresets: [
+          {
+            preset: { id: "cafe0001-0001-4001-8001-000000000010", name: "Direct LLM", system: true },
+            indexRequirements: null,
+            compatibility: {
+              selectable: true,
+              disabledReasonCode: null,
+              disabledReason: null,
+              indexRequirements: null,
+              compatibleWithActiveIndex: true,
+            },
+          },
+          {
+            preset: { id: "cafe0001-0001-4001-8001-000000000003", name: "Demo_Best", system: true },
+            indexRequirements: { requiredMaterializationStrategy: "HYBRID", requiresMetadataSupport: true },
+            compatibility: {
+              selectable: false,
+              disabledReasonCode: "STRUCTURED_SEARCH_RETRIEVAL_UNSUPPORTED",
+              disabledReason: "Structured-search projects do not support vector retrieval or retrieval-based RAG presets.",
+              indexRequirements: null,
+              compatibleWithActiveIndex: false,
+            },
+          },
+        ],
+        experimentalPresets: [],
+      },
+    });
+    renderSelector();
+    expect(screen.getByTestId("chat-new-conversation-preset-structured-search-warning")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Direct LLM/i })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Demo_Best/i })).not.toBeInTheDocument();
   });
 
   it("shows only compatible presets by default", () => {

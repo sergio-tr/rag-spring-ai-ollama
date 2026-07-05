@@ -7,6 +7,14 @@ const SYSTEM_PRESET_DISPLAY: Record<string, string> = {
   demo_naivefullcorpus: "Full-context baseline",
 };
 
+/** Capability-aligned descriptions for seeded system presets (override stale DB copy). */
+const SYSTEM_PRESET_DESCRIPTION: Record<string, string> = {
+  demo_best:
+    "Hybrid retrieval with expansion, metadata tools, function calling, advisor, and clarification. Memory, judge, and extended reasoning are off for interactive latency.",
+  demo_worst: "Plain LLM only: no retrieval, tools, or query understanding.",
+  demo_naivefullcorpus: "Full corpus injected into the prompt without semantic retrieval.",
+};
+
 /**
  * Capability-aligned fallback labels for experimental preset codes P0–P15.
  * i18n keys under `Chat.presetDisplay.*` take precedence when resolved.
@@ -18,7 +26,7 @@ export const EXPERIMENTAL_PRESET_BUILTIN_DISPLAY: Record<string, string> = {
   P3: "Chunk-level retrieval",
   P4: "Chunk retrieval with metadata",
   P5: "Query understanding retrieval",
-  P6: "Reasoning-assisted retrieval",
+  P6: "Metadata query intelligence",
   P7: "Retrieval with deterministic tools",
   P8: "Hybrid retrieval with reranking",
   P9: "Hybrid retrieval with function calling",
@@ -37,7 +45,7 @@ export const EXPERIMENTAL_PRESET_BUILTIN_DESCRIPTION: Record<string, string> = {
   P3: "Dense retrieval at chunk granularity.",
   P4: "Chunk-level retrieval enriched with document metadata.",
   P5: "Retrieval with query expansion and named-entity signals.",
-  P6: "Retrieval stack with extended reasoning enabled.",
+  P6: "Chunk metadata retrieval with query expansion and NER; tools and extended reasoning deferred to higher presets.",
   P7: "Chunk retrieval plus deterministic metadata tools.",
   P8: "Hybrid retrieval with ranker and post-retrieval processing.",
   P9: "Hybrid stack with backend function calling.",
@@ -82,7 +90,22 @@ export function productPresetLabel(code: string, t?: PresetCopyFn): string {
 
 /** Short capability description for tooltips and advanced surfaces. */
 export function productPresetDescription(code: string, t?: PresetCopyFn): string {
-  const normalized = normalizePresetCode(code);
+  const trimmed = code.trim();
+  const demoMapped = SYSTEM_PRESET_DESCRIPTION[trimmed.toLowerCase()];
+  if (demoMapped) {
+    if (t) {
+      const i18nKey = "presetDisplay.DEMO_BESTDescription";
+      if (trimmed.toLowerCase() === "demo_best") {
+        const translated = t(i18nKey);
+        if (isResolvedI18n(i18nKey, translated)) {
+          return translated.trim();
+        }
+      }
+    }
+    return demoMapped;
+  }
+
+  const normalized = normalizePresetCode(trimmed);
   if (t) {
     const i18nKey = `presetDisplay.${normalized}Description`;
     const translated = t(i18nKey);

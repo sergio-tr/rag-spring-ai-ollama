@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChatConfigurationPanelContent } from "./ChatConfigurationPanelContent";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import { IntlTestProvider } from "@/test-utils/intl";
+import { compatiblePresetsQueryMock } from "@/test-utils/compatible-presets-mock";
+import { P3_PRESET_ID } from "@/features/chat/lib/preset-product-selection";
 
 const hooksMock = vi.hoisted(() => ({
   useProjectIndexProfile: vi.fn(),
@@ -65,6 +67,7 @@ describe("ChatPresetSelectorCompatibility", () => {
           conversationLlmModel: null,
           conversationClassifierModelId: null,
           conversationModelsPinned: false,
+          configurationMode: "PRESET" as const,
           runtimeOverride: {},
           manualOverrideKeys: [],
           isCustom: false,
@@ -96,10 +99,10 @@ describe("ChatPresetSelectorCompatibility", () => {
         presets: [],
         presetsError: false,
         presetsLoading: false,
-        projectCompatiblePresets: null,
+        projectCompatiblePresets: compatiblePresetsQueryMock.data,
         compatibleProductPresets: [
           {
-            preset: { id: "chunk-preset", name: "Chunk preset", system: true, description: null, tags: [], values: {}, createdAt: "", updatedAt: "" },
+            preset: { id: P3_PRESET_ID, name: "Chunk preset", system: true, description: null, tags: [], values: {}, createdAt: "", updatedAt: "" },
             indexRequirements: { requiredMaterializationStrategy: "CHUNK_LEVEL", requiresMetadataSupport: false },
             compatibility: {
               selectable: true,
@@ -115,7 +118,7 @@ describe("ChatPresetSelectorCompatibility", () => {
             compatibility: {
               selectable: false,
               disabledReasonCode: "MATERIALIZATION_NOT_SUPPORTED",
-              disabledReason: "Create or reindex the project with a compatible index profile.",
+              disabledReason: "Requires HYBRID index",
               indexRequirements: { requiredMaterializationStrategy: "HYBRID", requiresMetadataSupport: true },
               compatibleWithActiveIndex: false,
             },
@@ -148,6 +151,14 @@ describe("ChatPresetSelectorCompatibility", () => {
     expect(screen.queryByRole("option", { name: /Hybrid preset/i })).not.toBeInTheDocument();
   });
 
+  it("does not render Show baseline presets toggle", async () => {
+    renderSubject();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("chat-config-edit-button"));
+    expect(screen.queryByTestId("chat-preset-show-baseline")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Show baseline presets/i)).not.toBeInTheDocument();
+  });
+
   it("shows incompatible presets disabled in advanced mode", async () => {
     renderSubject();
     const user = userEvent.setup();
@@ -155,6 +166,6 @@ describe("ChatPresetSelectorCompatibility", () => {
     await user.click(screen.getByTestId("chat-preset-show-incompatible"));
     const option = screen.getByRole("option", { name: /Hybrid preset/i }) as HTMLOptionElement;
     expect(option.disabled).toBe(true);
-    expect(option.textContent).toMatch(/compatible index profile/i);
+    expect(option.textContent).toMatch(/Requires HYBRID index/i);
   });
 });

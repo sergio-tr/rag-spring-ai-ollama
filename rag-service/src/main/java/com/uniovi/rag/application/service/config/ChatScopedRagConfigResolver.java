@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
  *
  * <p><b>Conversation terminal merge order</b> (each step overwrites keys on collision):
  * linked conversation {@code RagConfigurationEntity} values → preset values (or deterministic chat default preset)
- * → {@code runtime_override_jsonb} (diff keys; do not persist {@code llmModel} / {@code classifierModelId} here — use
+ * → {@code runtime_override_jsonb} (diff keys; do not persist {@code llmModel} / {@code classifierModelId} here - use
  * conversation columns). When stale JSON still contains those keys, column values applied afterward win.
  * → {@code conversations.llm_model} column → {@code conversations.classifier_model_id} column.
  * Request-scoped JSON (e.g. per-message {@code llmModel}) is merged later in {@link com.uniovi.rag.domain.config.RagConfigurationMerge}

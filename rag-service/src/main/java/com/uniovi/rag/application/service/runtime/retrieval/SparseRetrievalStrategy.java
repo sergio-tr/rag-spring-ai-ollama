@@ -117,7 +117,7 @@ public class SparseRetrievalStrategy {
         }
         if (transactionManager != null && !this.savepointsSupported) {
             log.warn(
-                    "JPA dialect does not support savepoints — sparse retrieval SQL runs in REQUIRES_NEW"
+                    "JPA dialect does not support savepoints - sparse retrieval SQL runs in REQUIRES_NEW"
                             + " transactions with controlled fallback (dense/metadata retrieval continues)");
         }
     }
@@ -308,7 +308,7 @@ public class SparseRetrievalStrategy {
         String queryText = SparseTsQuerySanitizer.sanitizeStageQuery(stage.queryText(), orMode);
         if (queryText == null || queryText.isBlank()) {
             log.debug(
-                    "Skipping sparse stage {} — query empty or invalid after sanitization (raw='{}')",
+                    "Skipping sparse stage {} - query empty or invalid after sanitization (raw='{}')",
                     stage.stage(),
                     truncateForLog(stage.queryText(), 120));
             return List.of();
@@ -462,7 +462,7 @@ public class SparseRetrievalStrategy {
                         }
                     } catch (TransactionException ex) {
                         log.warn(
-                                "Sparse retrieval savepoint failed — falling back to nested transaction: {}",
+                                "Sparse retrieval savepoint failed - falling back to nested transaction: {}",
                                 ex.getMessage());
                         return executeQueryInNestedTransaction(sql, p);
                     }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
@@ -867,5 +868,115 @@ describe("LabBenchmarkResultsPanel", () => {
     fireEvent.change(modelSelect, { target: { value: "bge-m3" } });
     await waitFor(() => expect(screen.getByText(/Question A/i)).toBeInTheDocument());
     expect(screen.queryByText(/Question B/i)).not.toBeInTheDocument();
+  });
+
+  it("LLM per-item table omits Preset and shows Expected answer, Actual answer and Context", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue(baseRun);
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 1 }, onExecuted: { n: 1, meanNormalizedExactMatch: 0.8 } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "llm-1",
+          questionText: "What is the policy?",
+          expectedAnswer: "Policy text",
+          actualAnswer: "Generated policy answer",
+          contextText: "Supporting context paragraph",
+          mvp: {
+            generation: { correctness: 0.9, llmJudgeScore: 0.8, hallucinationRate: 0.1 },
+            operational: { outcome: "EXECUTED", modelId: "gemma3:4b" },
+          },
+        },
+      ],
+    });
+
+    renderPanel({ evaluationRunId: baseRun.id });
+
+    await waitFor(() => expect(screen.getByTestId("lab-benchmark-per-item-table")).toBeInTheDocument());
+    expect(screen.queryByText("Preset")).not.toBeInTheDocument();
+    expect(screen.getByText("Expected answer")).toBeInTheDocument();
+    expect(screen.getByText("Actual answer")).toBeInTheDocument();
+    expect(screen.getByText("Context")).toBeInTheDocument();
+    expect(screen.getByText("Policy text")).toBeInTheDocument();
+    expect(screen.getByText("Generated policy answer")).toBeInTheDocument();
+    expect(screen.getByText("Supporting context paragraph")).toBeInTheDocument();
+  });
+
+  it("RAG per-item table keeps Preset and shows Expected answer and Actual answer", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      benchmarkKind: "RAG_PRESET_END_TO_END",
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 1 }, onExecuted: { n: 1, meanNormalizedExactMatch: 0.7 } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "rag-1",
+          questionText: "Summarize acta",
+          expectedAnswer: "Expected summary",
+          actualAnswer: "Actual summary",
+          presetCode: "P2",
+          presetLabel: "Dense retrieval",
+          metricsPayload: { retrieved_document_ids: "DOC_1;DOC_2" },
+          mvp: {
+            generation: { correctness: 0.7 },
+            operational: { outcome: "EXECUTED", presetCode: "P2", modelId: "gemma3:4b" },
+          },
+        },
+      ],
+    });
+
+    renderPanel({ evaluationRunId: baseRun.id });
+
+    await waitFor(() => expect(screen.getByTestId("lab-benchmark-per-item-table")).toBeInTheDocument());
+    expect(screen.getByText("Preset")).toBeInTheDocument();
+    expect(screen.getByText("Expected answer")).toBeInTheDocument();
+    expect(screen.getByText("Actual answer")).toBeInTheDocument();
+    expect(screen.getByText("Expected summary")).toBeInTheDocument();
+    expect(screen.getByText("Actual summary")).toBeInTheDocument();
+    expect(screen.getByText("2 doc(s)")).toBeInTheDocument();
+  });
+
+  it("per-item correctness header toggles sort order", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue(baseRun);
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 2 }, onExecuted: { n: 2, meanNormalizedExactMatch: 0.5 } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "low",
+          questionText: "Low score question",
+          expectedAnswer: "A",
+          actualAnswer: "B",
+          mvp: { generation: { correctness: 0.2 }, operational: { outcome: "EXECUTED", modelId: "m1" } },
+        },
+        {
+          itemId: "high",
+          questionText: "High score question",
+          expectedAnswer: "C",
+          actualAnswer: "D",
+          mvp: { generation: { correctness: 0.9 }, operational: { outcome: "EXECUTED", modelId: "m1" } },
+        },
+      ],
+    });
+
+    renderPanel({ evaluationRunId: baseRun.id });
+    await waitFor(() => expect(screen.getByTestId("lab-sort-header-correctness")).toBeInTheDocument());
+
+    const rows = () =>
+      Array.from(screen.getByTestId("lab-benchmark-per-item-table").querySelectorAll("tbody tr")).map(
+        (row) => row.textContent ?? "",
+      );
+
+    expect(rows()[0]).toMatch(/High score question/);
+    await user.click(screen.getByTestId("lab-sort-header-correctness"));
+    expect(rows()[0]).toMatch(/High score question/);
+    await user.click(screen.getByTestId("lab-sort-header-correctness"));
+    expect(rows()[0]).toMatch(/Low score question/);
   });
 });

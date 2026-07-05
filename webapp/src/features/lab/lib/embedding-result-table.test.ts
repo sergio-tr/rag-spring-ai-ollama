@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ComparisonRow } from "@/features/lab/lib/lab-benchmark-labels";
 import {
+  embeddingRowMatchesGoldFilter,
   embeddingRowMatchesHitFilter,
+  embeddingRowMatchesQueryFilter,
+  formatHitIndicator,
   recommendEmbeddingModel,
   sortEmbeddingComparisonRows,
+  sortEmbeddingItemRows,
   toEmbeddingItemRow,
 } from "@/features/lab/lib/embedding-result-table";
 
@@ -107,5 +111,102 @@ describe("embedding-result-table", () => {
     const recommendation = recommendEmbeddingModel(rows);
     expect(recommendation?.bestModelId).toBe("slow-best");
     expect(recommendation?.latencyModelId).toBe("fast-good");
+  });
+
+  it("formatHitIndicator distinguishes hit, miss, and partial scores", () => {
+    expect(formatHitIndicator(null)).toBe("Miss");
+    expect(formatHitIndicator(0)).toBe("Miss");
+    expect(formatHitIndicator(1)).toBe("Hit");
+    expect(formatHitIndicator(0.75)).toBe("0.75");
+  });
+
+  it("embeddingRowMatchesGoldFilter and embeddingRowMatchesQueryFilter", () => {
+    const row = toEmbeddingItemRow(
+      {
+        itemId: "q-42",
+        questionText: "Find heating notes",
+        mvp: { operational: { outcome: "EXECUTED" }, datasetQuestionId: "dq-1" },
+        metricsPayload: { gold_chunk_ids: ["ACTA_5_HEATING"], retrieved_chunk_ids: ["ACTA_5_HEATING"] },
+      },
+      0,
+    );
+    expect(embeddingRowMatchesGoldFilter(row, "heating")).toBe(true);
+    expect(embeddingRowMatchesGoldFilter(row, "")).toBe(true);
+    expect(embeddingRowMatchesQueryFilter(row, "find")).toBe(true);
+    expect(embeddingRowMatchesQueryFilter(row, "dq-1")).toBe(true);
+    expect(embeddingRowMatchesQueryFilter(row, "missing")).toBe(false);
+  });
+
+  it("sortEmbeddingItemRows orders by hitAt1 then goldRank", () => {
+    const low = toEmbeddingItemRow(
+      { mvp: { operational: { outcome: "EXECUTED" }, retrieval: { recallAt1: 0 } }, metricsPayload: { recall_at_1: 0 } },
+      0,
+    );
+    const high = toEmbeddingItemRow(
+      {
+        mvp: { operational: { outcome: "EXECUTED" }, retrieval: { recallAt1: 1, firstRelevantRank: 1 } },
+        metricsPayload: { recall_at_1: 1, first_relevant_rank: 1 },
+      },
+      1,
+    );
+    const sorted = sortEmbeddingItemRows([low, high]);
+    expect(sorted[0]?.hitAt1).toBe(1);
+  });
+
+  it("toEmbeddingItemRow reads JSON gold lists and document fallbacks", () => {
+    const row = toEmbeddingItemRow(
+      {
+        status: "EXECUTED",
+        metricsPayload: {
+          gold_document_ids: '["DOC_A","DOC_B","DOC_C"]',
+          retrieved_document_ids: "DOC_A;DOC_B",
+          retrieved: [{ document_id: "DOC_A", score: 0.88 }],
+        },
+        mvp: {
+          operational: { outcome: "EXECUTED" },
+          retrieval: { goldFound: false },
+        },
+      },
+      0,
+    );
+    expect(row.expectedGold).toContain("DOC_A");
+    expect(row.retrievedTop1).toBe("DOC_A");
+    expect(row.goldRank).toBe(0);
+    expect(row.topScore).toBeCloseTo(0.88);
+  });
+
+  it("recommendEmbeddingModel returns null when no executed candidates", () => {
+    expect(recommendEmbeddingModel([])).toBeNull();
+    expect(
+      recommendEmbeddingModel([
+        { embeddingModelId: "x", comparisonLabel: "x", executed: 0, meanRecallAt1: 0.5 },
+      ]),
+    ).toBeNull();
+  });
+
+  it("recommendEmbeddingModel omits latency alternative when recall is too low", () => {
+    const rows: ComparisonRow[] = [
+      {
+        embeddingModelId: "best",
+        comparisonLabel: "best",
+        executed: 10,
+        meanRecallAt1: 0.8,
+        meanMrr: 0.7,
+        meanNdcgAt5: 0.6,
+        meanLatencyMs: 900,
+      },
+      {
+        embeddingModelId: "weak-fast",
+        comparisonLabel: "weak-fast",
+        executed: 10,
+        meanRecallAt1: 0.1,
+        meanMrr: 0.05,
+        meanNdcgAt5: 0.02,
+        meanLatencyMs: 50,
+      },
+    ];
+    const recommendation = recommendEmbeddingModel(rows);
+    expect(recommendation?.bestModelId).toBe("best");
+    expect(recommendation?.latencyModelId).toBeNull();
   });
 });

@@ -28,6 +28,60 @@ const FORCE_STRUCTURED_KEYS = new Set<string>(["embeddingModel"]);
 
 export const ASSISTANT_INSTRUCTION_FIELD_KEYS = new Set(["llmSystemPrompt"]);
 
+/** Keys excluded from structured Assistant Configuration (/settings/user) - per A1 architecture. */
+export const USER_ASSISTANT_CONFIGURATION_EXCLUDED_KEYS = new Set([
+  "llmModel",
+  "llmTemperature",
+  "temperature",
+  "materializationStrategy",
+  "expansionEnabled",
+  "nerEnabled",
+  "toolsEnabled",
+  "metadataEnabled",
+  "classifierModelId",
+]);
+
+/** Index-bound keys excluded from project structured form - shown in index profile section instead. */
+export const PROJECT_INDEX_BOUND_EXCLUDED_KEYS = new Set([
+  "embeddingModel",
+  "embeddingEncodingFormat",
+  "embeddingDimensions",
+  "embeddingTimeoutSeconds",
+  "embeddingBatchSize",
+  "embeddingMaxInputChars",
+  "embeddingNormalize",
+  "embeddingTruncate",
+  "materializationStrategy",
+  "llmModel",
+  "llmTemperature",
+  "temperature",
+]);
+
+/** RAG feature toggles excluded from project settings UI (Phase 2.1 — retrieval params only). */
+export const PROJECT_RETRIEVAL_FEATURE_TOGGLE_EXCLUDED_KEYS = new Set([
+  "expansionEnabled",
+  "nerEnabled",
+  "toolsEnabled",
+  "metadataEnabled",
+]);
+
+export const RETRIEVAL_PARAMETER_FIELD_KEYS = new Set(["topK", "similarityThreshold"]);
+
+export function structuredConfigFieldsForMode(
+  fields: ConfigSchemaField[],
+  mode: "user" | "project",
+): ConfigSchemaField[] {
+  const structured = structuredConfigFields(fields);
+  if (mode === "user") {
+    return structured.filter((f) => !USER_ASSISTANT_CONFIGURATION_EXCLUDED_KEYS.has(f.key));
+  }
+  return structured.filter(
+    (f) =>
+      !PROJECT_INDEX_BOUND_EXCLUDED_KEYS.has(f.key) &&
+      !PROJECT_RETRIEVAL_FEATURE_TOGGLE_EXCLUDED_KEYS.has(f.key),
+  );
+}
+
 export function partitionConfigFields(fields: ConfigSchemaField[]): {
   instructionFields: ConfigSchemaField[];
   behaviorFields: ConfigSchemaField[];

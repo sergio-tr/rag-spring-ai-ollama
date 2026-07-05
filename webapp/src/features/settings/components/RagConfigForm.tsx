@@ -26,18 +26,18 @@ import { usePatchProject, useProject } from "@/features/projects/hooks/use-proje
 import {
   useConfigSchemaQuery,
   useDeleteProjectRagConfig,
-  useProjectRagConfigQuery,
+  useProjectStoredRagConfigQuery,
   usePutProjectRagConfig,
   usePutUserRagConfig,
-  useUserRagConfigQuery,
+  useUserStoredRagConfigQuery,
 } from "@/features/settings/hooks/use-rag-config";
 import { buildConfigValuesSchema, type ConfigFormValues } from "@/features/settings/lib/build-config-zod";
 import { labelConfigField } from "@/features/settings/lib/config-field-copy";
 import { buildPersonalizationPutPayload } from "@/features/settings/lib/me-canonical-user-config";
-import { partitionConfigFields, structuredConfigFields } from "@/features/settings/lib/rag-config-structured-fields";
+import { partitionConfigFields, RETRIEVAL_PARAMETER_FIELD_KEYS, structuredConfigFieldsForMode } from "@/features/settings/lib/rag-config-structured-fields";
 import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
 import {
-  buildSavePayloadRespectingEffectiveDefaults,
+  buildStoredOverridesPatch,
   clearConfigOverrideKeys,
   EMBEDDING_RESET_TOP_LEVEL_KEYS,
   LLM_RESET_TOP_LEVEL_KEYS,
@@ -47,25 +47,25 @@ import {
   readAdditionalParameters,
 } from "@/features/settings/lib/llm-additional-parameters";
 import {
-  LLM_TEMPERATURE_KEY,
   normalizeLlmProvider,
 } from "@/features/settings/lib/provider-aware-llm-parameters";
-import { ADVANCED_TECHNICAL_DETAILS_TITLE } from "@/lib/product-provider-labels";
+import { AssistantConfigurationClassifierSection } from "@/features/settings/components/AssistantConfigurationClassifierSection";
+import { ProjectIndexProfileSection } from "@/features/settings/components/ProjectIndexProfileSection";
 import { AssistantInstructionsEditor } from "@/features/settings/components/AssistantInstructionsEditor";
+import { SettingsCollapsibleSection } from "@/features/settings/components/ConfigurationScopeSections";
 import { InternalPromptConfigurationSection } from "@/features/settings/components/InternalPromptConfigurationSection";
 import { TaskLlmSettingsSection } from "@/features/settings/components/TaskLlmSettingsSection";
+import { SettingsRetrievalDefaults } from "@/features/settings/components/SettingsRetrievalDefaults";
 import { ConfigSchemaFieldRows } from "@/features/settings/components/config-schema-field-rows";
 import { EmbeddingDefaultsSettings } from "@/features/settings/components/EmbeddingDefaultsSettings";
-import { ProviderAwareModelParameters } from "@/features/settings/components/ProviderAwareModelParameters";
 import { ProviderUnsupportedParametersPanel } from "@/features/settings/components/ProviderUnsupportedParametersPanel";
 import { RagConfigAdvancedJsonPanel } from "@/features/settings/components/RagConfigAdvancedJsonPanel";
 import { RagConfigModelWarnings } from "@/features/settings/components/RagConfigModelWarnings";
-import { UserAccountPreferencesSection } from "@/features/settings/components/UserAccountPreferencesSection";
 import { apiFetch, apiProductPath, ApiError, getSafeApiErrorMessage } from "@/lib/api-client";
 import type { MePersonalizationResponse } from "@/types/api";
 
 import { toConfigModelOptions, selectableCatalogModelIds } from "@/lib/product-model-catalog";
-import { productProviderLabel, productProviderLabelsFromSettings } from "@/lib/product-provider-labels";
+import { productProviderLabel, productProviderLabelsFromSettings, ADVANCED_TECHNICAL_DETAILS_TITLE } from "@/lib/product-provider-labels";
 
 type Mode = "user" | "project";
 
@@ -94,50 +94,30 @@ function resolveConfigSaveError(error: unknown, genericLabel: string): string {
 export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   const t = useTranslations("Settings");
   const schemaQ = useConfigSchemaQuery();
-  const userQ = useUserRagConfigQuery();
-  const projectQ = useProjectRagConfigQuery(mode === "project" ? projectId : undefined);
+  const userStoredQ = useUserStoredRagConfigQuery();
+  const projectStoredQ = useProjectStoredRagConfigQuery(mode === "project" ? projectId : undefined);
   const selectableModelsQ = useMeSelectableLlmModels("CHAT");
   const selectableEmbeddingQ = useMeSelectableLlmModels("EMBEDDING");
   const llmEffectiveQ = useMeEffectiveLlmDefaults();
-  const embeddingEffectiveQ = useMeEffectiveEmbeddingDefaults();
+  const embeddingEffectiveQ = useMeEffectiveEmbeddingDefaults(mode === "project" ? projectId : null);
 
-  const configData = mode === "user" ? userQ.data : projectQ.data;
-  const configLoading = mode === "user" ? userQ.isLoading : projectQ.isLoading;
-  const configError = mode === "user" ? userQ.isError : projectQ.isError;
+  const configData = mode === "user" ? userStoredQ.data : projectStoredQ.data;
+  const configLoading = mode === "user" ? userStoredQ.isLoading : projectStoredQ.isLoading;
+  const configError = mode === "user" ? userStoredQ.isError : projectStoredQ.isError;
 
   const schemaFields = schemaQ.data?.fields;
-  const fields = useMemo(() => structuredConfigFields(schemaFields ?? []), [schemaFields]);
+  const fields = useMemo(() => structuredConfigFieldsForMode(schemaFields ?? [], mode), [schemaFields, mode]);
+  const isAssistantConfiguration = mode === "user";
   const { instructionFields, behaviorFields } = useMemo(
     () => partitionConfigFields(fields),
     [fields],
-  );
-  const modelConfigurationFields = useMemo(
-    () => behaviorFields.filter((f) => f.key === "llmModel"),
-    [behaviorFields],
   );
   const embeddingModelFields = useMemo(
     () => behaviorFields.filter((f) => f.key === "embeddingModel"),
     [behaviorFields],
   );
-  const retrievalSettingsFields = useMemo(
-    () =>
-      behaviorFields.filter(
-        (f) =>
-          f.key !== "llmModel" &&
-          f.key !== LLM_TEMPERATURE_KEY &&
-          f.key !== "temperature" &&
-          f.key !== "embeddingModel" &&
-          f.key !== "topK" &&
-          f.key !== "similarityThreshold" &&
-          f.key !== "materializationStrategy" &&
-          f.key !== "embeddingEncodingFormat" &&
-          f.key !== "embeddingDimensions" &&
-          f.key !== "embeddingTimeoutSeconds" &&
-          f.key !== "embeddingBatchSize" &&
-          f.key !== "embeddingMaxInputChars" &&
-          f.key !== "embeddingNormalize" &&
-          f.key !== "embeddingTruncate",
-      ),
+  const retrievalParameterFields = useMemo(
+    () => behaviorFields.filter((f) => RETRIEVAL_PARAMETER_FIELD_KEYS.has(f.key)),
     [behaviorFields],
   );
   const editableKeys = useMemo(() => fields.map((f) => f.key), [fields]);
@@ -253,11 +233,6 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   const [resetLlmDialogOpen, setResetLlmDialogOpen] = useState(false);
   const [resetEmbeddingDialogOpen, setResetEmbeddingDialogOpen] = useState(false);
 
-  const llmModelOptions = useMemo(
-    () => toConfigModelOptions(selectableModelsQ.data?.models ?? []),
-    [selectableModelsQ.data?.models],
-  );
-
   const embeddingModelOptions = useMemo(
     () => toConfigModelOptions(selectableEmbeddingQ.data?.models ?? []),
     [selectableEmbeddingQ.data?.models],
@@ -277,15 +252,17 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
 
   async function onSubmit() {
     const values = form.getValues();
-    const payload = buildSavePayloadRespectingEffectiveDefaults(
-      workingConfig,
+    const payload = buildStoredOverridesPatch({
+      mode,
+      stored: workingConfig,
       values,
       additionalParameters,
       editableKeys,
-      llmEffectiveQ.data,
-      embeddingEffectiveQ.data,
-      effectiveProvider,
-    );
+      llmEffective: llmEffectiveQ.data,
+      embeddingEffective: embeddingEffectiveQ.data,
+      userStored: mode === "project" ? userStoredQ.data : undefined,
+      provider: effectiveProvider,
+    });
     if (mode === "user") {
       await putUser.mutateAsync(payload);
       if (globalPersonaPrompt.trim() !== initialGlobalPersona.trim()) {
@@ -326,25 +303,31 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
     }
   }
 
+  function buildClearPatch(keys: readonly string[]): Record<string, unknown> {
+    return Object.fromEntries(keys.map((key) => [key, null]));
+  }
+
   async function confirmResetLlmDefaults() {
-    const cleared = clearConfigOverrideKeys(workingConfig, LLM_RESET_TOP_LEVEL_KEYS);
+    const patch = buildClearPatch(LLM_RESET_TOP_LEVEL_KEYS);
     if (mode === "user") {
-      await putUser.mutateAsync(cleared);
+      await putUser.mutateAsync(patch);
     } else if (projectId) {
-      await putProject.mutateAsync(cleared);
+      await putProject.mutateAsync(patch);
     }
+    const cleared = clearConfigOverrideKeys(workingConfig, LLM_RESET_TOP_LEVEL_KEYS);
     setWorkingConfig(cleared);
     setAdditionalParameters(readAdditionalParameters(cleared));
     setResetLlmDialogOpen(false);
   }
 
   async function confirmResetEmbeddingDefaults() {
-    const cleared = clearConfigOverrideKeys(workingConfig, EMBEDDING_RESET_TOP_LEVEL_KEYS);
+    const patch = buildClearPatch(EMBEDDING_RESET_TOP_LEVEL_KEYS);
     if (mode === "user") {
-      await putUser.mutateAsync(cleared);
+      await putUser.mutateAsync(patch);
     } else if (projectId) {
-      await putProject.mutateAsync(cleared);
+      await putProject.mutateAsync(patch);
     }
+    const cleared = clearConfigOverrideKeys(workingConfig, EMBEDDING_RESET_TOP_LEVEL_KEYS);
     setWorkingConfig(cleared);
     setResetEmbeddingDialogOpen(false);
   }
@@ -407,10 +390,13 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   );
 
   return (
-    <Card className="min-w-0 max-w-full overflow-hidden" data-testid={mode === "user" ? "user-rag-config-form" : "project-rag-config-form"}>
+    <Card
+      className="@container/rag-config min-w-0 max-w-full overflow-hidden"
+      data-testid={mode === "user" ? "user-rag-config-form" : "project-rag-config-form"}
+    >
       <CardHeader>
         <CardTitle>{mode === "user" ? t("userConfigTitle") : t("projectConfigTitle")}</CardTitle>
-        <CardDescription>
+        <CardDescription className="break-words">
           {mode === "user" ? t("userConfigFormDescription") : t("projectConfigFormDescription")}
         </CardDescription>
         {mode === "project" && projectId ? (
@@ -420,7 +406,7 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
           </details>
         ) : null}
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex min-w-0 max-w-full flex-col gap-4">
         {(schemaQ.isLoading || configLoading) && (
           <p className="text-muted-foreground text-sm">{t("configLoading")}</p>
         )}
@@ -435,113 +421,201 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
         {!loadError && fields.length > 0 && (
           <>
             <form
-              className="flex flex-col gap-6"
+              className="flex min-w-0 max-w-full flex-col gap-4"
               data-testid="rag-config-structured-form"
               onSubmit={form.handleSubmit(onSubmit, () => undefined)}
             >
-              <section className="flex flex-col gap-4" data-testid="assistant-profile-section">
-                <div>
-                  <h3 className="text-sm font-medium">{t("assistantProfileSectionTitle")}</h3>
-                  <p className="text-muted-foreground mt-1 text-xs">{t("assistantProfileSectionDescription")}</p>
-                </div>
-                <AssistantInstructionsEditor
-                  mode={mode}
-                  form={form}
-                  instructionFields={instructionFields}
-                  fieldLabel={fieldLabel}
-                  globalPersonaPrompt={globalPersonaPrompt}
-                  projectPrompt={projectPrompt}
-                  onGlobalPersonaPromptChange={setGlobalPersonaPrompt}
-                  onProjectPromptChange={setProjectPrompt}
-                  personaLoading={personaLoading}
-                  projectPromptLoading={mode === "project" && projectDetailQ.isLoading}
-                />
-                <InternalPromptConfigurationSection
-                  configValues={workingConfig}
-                  onChange={setWorkingConfig}
-                />
-              </section>
+              {isAssistantConfiguration ? (
+                <>
+                  <SettingsCollapsibleSection
+                    title={t("settingsSectionPromptConfiguration")}
+                    description={t("assistantProfileSectionDescription")}
+                    testId="settings-collapsible-prompt"
+                  >
+                    <AssistantInstructionsEditor
+                      mode={mode}
+                      form={form}
+                      instructionFields={instructionFields}
+                      fieldLabel={fieldLabel}
+                      globalPersonaPrompt={globalPersonaPrompt}
+                      projectPrompt={projectPrompt}
+                      onGlobalPersonaPromptChange={setGlobalPersonaPrompt}
+                      onProjectPromptChange={setProjectPrompt}
+                      personaLoading={personaLoading}
+                    />
+                    <InternalPromptConfigurationSection
+                      configValues={workingConfig}
+                      onChange={setWorkingConfig}
+                    />
+                  </SettingsCollapsibleSection>
 
-              <section className="flex flex-col gap-4 border-t pt-4" data-testid="task-llm-settings-section">
-                <details className="rounded-md border bg-muted/20 p-3 text-sm">
-                  <summary className="cursor-pointer font-medium">{t("taskLlmSettingsSummary")}</summary>
-                  <div className="mt-3">
+                  <SettingsCollapsibleSection
+                    title={t("taskLlmSettingsTitle")}
+                    description={t("taskLlmSettingsDescription")}
+                    testId="settings-collapsible-task-models"
+                  >
                     <TaskLlmSettingsSection configValues={workingConfig} onChange={setWorkingConfig} />
-                  </div>
-                </details>
-              </section>
+                  </SettingsCollapsibleSection>
 
-              <section className="flex flex-col gap-4 border-t pt-4" data-testid="assistant-behavior-section">
-                <div>
-                  <h3 className="text-sm font-medium">{t("assistantBehaviorSectionTitle")}</h3>
-                  <p className="text-muted-foreground mt-1 text-xs">{t("assistantBehaviorSectionDescription")}</p>
-                  <p className="text-muted-foreground mt-2 text-xs" data-testid="settings-config-scope-hint">
-                    {mode === "user" ? t("settingsScopeAccountDefault") : t("settingsScopeProjectSetting")}
-                  </p>
-                </div>
+                  <SettingsCollapsibleSection
+                    title={t("settingsSectionEmbeddingModel")}
+                    description={t("assistantConfigurationNewProjectDefaultsDescription")}
+                    testId="settings-collapsible-embedding"
+                  >
+                    <p
+                      className="text-muted-foreground break-words text-xs"
+                      data-testid="settings-config-scope-hint"
+                    >
+                      {t("settingsScopeAccountDefault")}
+                    </p>
+                    {embeddingModelFields.length > 0 ? (
+                      <>
+                        <ConfigSchemaFieldRows
+                          fields={embeddingModelFields}
+                          form={form}
+                          labelFor={fieldLabel}
+                          inputIdPrefix="cfg"
+                          embeddingModelOptions={embeddingModelOptions}
+                          effectiveProviderLabel={effectiveProviderLabel}
+                        />
+                        <EmbeddingDefaultsSettings form={form} config={workingConfig} />
+                      </>
+                    ) : null}
+                  </SettingsCollapsibleSection>
 
-                {modelConfigurationFields.length > 0 ? (
-                  <div className="space-y-3" data-testid="settings-model-configuration-section">
-                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {t("settingsSectionModelConfiguration")}
-                    </h4>
-                    <ConfigSchemaFieldRows
-                      fields={modelConfigurationFields}
+                  <SettingsCollapsibleSection
+                    title={t("settingsSectionRetrievalSettings")}
+                    testId="settings-collapsible-retrieval"
+                  >
+                    <SettingsRetrievalDefaults
                       form={form}
-                      labelFor={fieldLabel}
-                      inputIdPrefix="cfg"
-                      llmModelOptions={llmModelOptions}
-                      effectiveProviderLabel={effectiveProviderLabel}
+                      fields={retrievalParameterFields}
+                      storedOverrides={workingConfig}
+                      mode="user"
                     />
-                    <ProviderAwareModelParameters
-                      provider={effectiveProvider}
-                      form={form}
-                      additionalParameters={additionalParameters}
-                      onAdditionalParameterChange={onAdditionalParameterChange}
-                      effectiveDefaults={llmEffectiveQ.data}
-                      config={workingConfig}
-                    />
-                  </div>
-                ) : null}
+                  </SettingsCollapsibleSection>
 
-                {embeddingModelFields.length > 0 ? (
-                  <div className="space-y-3" data-testid="settings-embedding-model-section">
-                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {t("settingsSectionEmbeddingModel")}
-                    </h4>
-                    <ConfigSchemaFieldRows
-                      fields={embeddingModelFields}
-                      form={form}
-                      labelFor={fieldLabel}
-                      inputIdPrefix="cfg"
-                      embeddingModelOptions={embeddingModelOptions}
-                      effectiveProviderLabel={effectiveProviderLabel}
+                  <SettingsCollapsibleSection
+                    title={t("assistantConfigurationClassifierTitle")}
+                    description={t("assistantConfigurationClassifierDescription")}
+                    testId="settings-collapsible-classifier"
+                  >
+                    <AssistantConfigurationClassifierSection
+                      value={
+                        typeof workingConfig.classifierModelId === "string" ? workingConfig.classifierModelId : ""
+                      }
+                      effectiveClassifierModelId={llmEffectiveQ.data?.classifierModelId}
+                      onChange={(classifierModelId) => {
+                        setWorkingConfig((prev) => {
+                          const next = { ...prev };
+                          if (classifierModelId.trim()) {
+                            next.classifierModelId = classifierModelId.trim();
+                          } else {
+                            delete next.classifierModelId;
+                          }
+                          return next;
+                        });
+                      }}
                     />
-                    <EmbeddingDefaultsSettings form={form} config={workingConfig} />
-                  </div>
-                ) : null}
+                  </SettingsCollapsibleSection>
+                </>
+              ) : mode === "project" ? (
+                <>
+                  {projectId ? (
+                    <SettingsCollapsibleSection
+                      title={t("projectIndexProfileTitle")}
+                      description={t("projectIndexProfileDescription")}
+                      testId="settings-collapsible-index-profile"
+                    >
+                      <ProjectIndexProfileSection projectId={projectId} />
+                    </SettingsCollapsibleSection>
+                  ) : null}
 
-                {retrievalSettingsFields.length > 0 ? (
-                  <div className="space-y-3" data-testid="settings-retrieval-settings-section">
-                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {t("settingsSectionRetrievalSettings")}
-                    </h4>
-                    <ConfigSchemaFieldRows
-                      fields={retrievalSettingsFields}
+                  <SettingsCollapsibleSection
+                    title={t("settingsSectionRetrievalSettings")}
+                    description={t("projectRetrievalSettingsDescription")}
+                    testId="settings-collapsible-retrieval"
+                  >
+                    <SettingsRetrievalDefaults
                       form={form}
-                      labelFor={fieldLabel}
-                      inputIdPrefix="cfg"
+                      fields={retrievalParameterFields}
+                      storedOverrides={workingConfig}
+                      mode="project"
                     />
-                  </div>
-                ) : null}
-              </section>
+                  </SettingsCollapsibleSection>
+
+                  <SettingsCollapsibleSection
+                    title={t("settingsSectionPromptConfiguration")}
+                    description={t("assistantProfileSectionDescription")}
+                    testId="settings-collapsible-prompt"
+                  >
+                    <AssistantInstructionsEditor
+                      mode={mode}
+                      form={form}
+                      instructionFields={instructionFields}
+                      fieldLabel={fieldLabel}
+                      globalPersonaPrompt={globalPersonaPrompt}
+                      projectPrompt={projectPrompt}
+                      onGlobalPersonaPromptChange={setGlobalPersonaPrompt}
+                      onProjectPromptChange={setProjectPrompt}
+                      projectPromptLoading={projectDetailQ.isLoading}
+                    />
+                    <InternalPromptConfigurationSection
+                      configValues={workingConfig}
+                      onChange={setWorkingConfig}
+                    />
+                  </SettingsCollapsibleSection>
+
+                  <SettingsCollapsibleSection
+                    title={t("taskLlmSettingsTitle")}
+                    description={t("taskLlmSettingsDescription")}
+                    testId="settings-collapsible-task-models"
+                  >
+                    <TaskLlmSettingsSection configValues={workingConfig} onChange={setWorkingConfig} />
+                  </SettingsCollapsibleSection>
+
+                  <SettingsCollapsibleSection
+                    title={t("settingsSectionEmbeddingModel")}
+                    description={t("projectEmbeddingSettingsDescription")}
+                    testId="settings-collapsible-embedding"
+                  >
+                    <p className="text-muted-foreground break-words text-xs" data-testid="project-embedding-index-bound-note">
+                      {t("projectEmbeddingSettingsIndexBoundNote")}
+                    </p>
+                  </SettingsCollapsibleSection>
+
+                  <SettingsCollapsibleSection
+                    title={t("assistantConfigurationClassifierTitle")}
+                    description={t("assistantConfigurationClassifierDescription")}
+                    testId="settings-collapsible-classifier"
+                  >
+                    <AssistantConfigurationClassifierSection
+                      value={
+                        typeof workingConfig.classifierModelId === "string" ? workingConfig.classifierModelId : ""
+                      }
+                      effectiveClassifierModelId={llmEffectiveQ.data?.classifierModelId}
+                      onChange={(classifierModelId) => {
+                        setWorkingConfig((prev) => {
+                          const next = { ...prev };
+                          if (classifierModelId.trim()) {
+                            next.classifierModelId = classifierModelId.trim();
+                          } else {
+                            delete next.classifierModelId;
+                          }
+                          return next;
+                        });
+                      }}
+                    />
+                  </SettingsCollapsibleSection>
+                </>
+              ) : null}
+
               <RagConfigModelWarnings
                 llmModel={selectedLlmModel}
                 embeddingModel={selectedEmbeddingModel}
                 llmCatalogIds={llmCatalogIds}
                 embeddingCatalogIds={embeddingCatalogIds}
               />
-              {mode === "user" ? <UserAccountPreferencesSection /> : null}
               {Object.keys(form.formState.errors).length > 0 && (
                 <p className="text-destructive text-sm" role="alert">
                   {t("configValidationError")}
@@ -560,7 +634,7 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
                   {t("configDeleteError")}
                 </p>
               )}
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 [&>button]:max-w-full [&>button]:whitespace-normal">
                 <Button type="submit" disabled={saving}>
                   {t("configSave")}
                 </Button>
@@ -608,11 +682,11 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
               </div>
             </form>
             <details
-              className="rounded-md border border-border p-3"
+              className="min-w-0 max-w-full overflow-hidden rounded-md border border-border p-3"
               data-testid="settings-model-parameters-advanced"
             >
-              <summary className="cursor-pointer text-sm font-medium">{ADVANCED_TECHNICAL_DETAILS_TITLE}</summary>
-              <div className="mt-3 space-y-4">
+              <summary className="cursor-pointer break-words text-sm font-medium">{ADVANCED_TECHNICAL_DETAILS_TITLE}</summary>
+              <div className="mt-3 min-w-0 space-y-4">
                 <ProviderUnsupportedParametersPanel provider={effectiveProvider} config={workingConfig} />
                 <RagConfigAdvancedJsonPanel config={workingConfig} onApply={onAdvancedJsonApply} />
               </div>

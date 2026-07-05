@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Per-row MVP metrics for exports — computed from persisted {@link EvaluationResultEntity} (+ run fallbacks).
+ * Per-row MVP metrics for exports - computed from persisted {@link EvaluationResultEntity} (+ run fallbacks).
  */
 public final class BenchmarkMvpMetricsCalculator {
 

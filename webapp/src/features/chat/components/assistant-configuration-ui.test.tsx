@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChatConfigurationPanelContent } from "./ChatConfigurationPanelContent";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import { IntlTestProvider } from "@/test-utils/intl";
+import { DEMO_BEST_PRESET_ID } from "@/features/chat/lib/preset-product-selection";
 
 const hooksMock = vi.hoisted(() => ({
   useProjectIndexProfile: vi.fn(),
@@ -101,6 +102,7 @@ function seedStore(overrides: Record<string, unknown> = {}) {
         conversationLlmModel: null,
         conversationClassifierModelId: null,
         conversationModelsPinned: false,
+        configurationMode: "PRESET" as const,
         runtimeOverride: {},
         manualOverrideKeys: [],
         isCustom: false,
@@ -254,6 +256,7 @@ describe("Assistant configuration UI sections", () => {
         conversationLlmModel: null,
         conversationClassifierModelId: null,
         conversationModelsPinned: false,
+        configurationMode: "PRESET" as const,
         runtimeOverride: {},
         manualOverrideKeys: [],
         isCustom: false,
@@ -289,7 +292,7 @@ describe("Assistant configuration UI sections", () => {
   it("does not show Demo_ preset names in the configuration profile select", async () => {
     const user = userEvent.setup();
     const preset = {
-      id: "pr-best",
+      id: DEMO_BEST_PRESET_ID,
       name: "demo_best",
       description: null,
       tags: [],
@@ -298,26 +301,68 @@ describe("Assistant configuration UI sections", () => {
       createdAt: "",
       updatedAt: "",
     };
+    const compatibleItem = {
+      preset,
+      indexRequirements: null,
+      compatibility: {
+        selectable: true,
+        disabledReasonCode: null,
+        disabledReason: null,
+        indexRequirements: null,
+        compatibleWithActiveIndex: true,
+      },
+    };
     seedStore({
       presets: [preset],
-      compatibleProductPresets: [
-        {
-          preset,
-          indexRequirements: null,
-          compatibility: {
-            selectable: true,
-            disabledReasonCode: null,
-            disabledReason: null,
-            indexRequirements: null,
-            compatibleWithActiveIndex: true,
-          },
+      presetSelectValue: DEMO_BEST_PRESET_ID,
+      compatibleProductPresets: [compatibleItem],
+      projectCompatiblePresets: {
+        projectId: "p1",
+        effectiveEmbeddingModelId: "mxbai-embed-large",
+        hasActiveIndex: true,
+        readyDocumentCount: 1,
+        activeSnapshotCapabilities: {
+          materializationStrategy: "HYBRID",
+          supportsMetadata: true,
+          embeddingModelId: "mxbai-embed-large",
+          chunkMaxChars: 400,
+          chunkOverlap: 40,
         },
-      ],
+        productPresets: [compatibleItem],
+        experimentalPresets: [],
+      },
+      runtimeState: {
+        conversationId: "c1",
+        selectedPresetId: DEMO_BEST_PRESET_ID,
+        effectivePresetId: DEMO_BEST_PRESET_ID,
+        preset: {
+          kind: "PRODUCT",
+          code: null,
+          label: "Production assistant configuration",
+          chatSelectable: true,
+          supported: true,
+          supportStatus: null,
+          reasonIfUnsupported: null,
+        },
+        baseEffectiveConfig: { useRetrieval: true },
+        effectiveConfig: { useRetrieval: true },
+        conversationLlmModel: null,
+        conversationClassifierModelId: null,
+        conversationModelsPinned: false,
+        configurationMode: "PRESET" as const,
+        runtimeOverride: {},
+        manualOverrideKeys: [],
+        isCustom: false,
+        validation: { valid: true, supported: true, errors: [], warnings: [] },
+        selectedWorkflow: null,
+        indexCompatibility: null,
+        requiresReindex: false,
+      },
     });
     renderSubject();
     await user.click(screen.getByTestId("chat-config-edit-button"));
     const select = screen.getByTestId("chat-preset-select");
     expect(select.textContent ?? "").not.toMatch(/demo_best/i);
-    expect(select.textContent ?? "").toMatch(/Production assistant configuration/);
+    expect(screen.getByRole("option", { name: /Production assistant configuration/i })).toBeInTheDocument();
   });
 });

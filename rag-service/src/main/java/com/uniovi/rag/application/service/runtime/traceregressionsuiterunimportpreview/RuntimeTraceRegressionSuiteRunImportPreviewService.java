@@ -22,11 +22,11 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * P45: ZIP run import preview adapter (non-owning) — validates a P43-shaped ZIP and deserializes {@code run.json} to
+ * P45: ZIP run import preview adapter (non-owning) - validates a P43-shaped ZIP and deserializes {@code run.json} to
  * {@link RuntimeTraceRegressionSuiteRunDetailDto} without persistence, storage, or delegating to the P44 import workflow.
  *
  * <p>P55: {@link #previewImportZipForDefinition} validates a P53-shaped manifest (definition-scoped export) with the same
- * non-owning guarantees — no persistence, no {@code RuntimeTraceRegressionSuiteRunImportService}.
+ * non-owning guarantees - no persistence, no {@code RuntimeTraceRegressionSuiteRunImportService}.
  */
 @Service
 public class RuntimeTraceRegressionSuiteRunImportPreviewService {
@@ -86,7 +86,7 @@ public class RuntimeTraceRegressionSuiteRunImportPreviewService {
     }
 
     /**
-     * P55: P53-shaped ZIP preview for a path {@code definitionId} — no persistence.
+     * P55: P53-shaped ZIP preview for a path {@code definitionId} - no persistence.
      */
     public RuntimeTraceRegressionSuiteRunImportPreviewResponseDto previewImportZipForDefinition(
             byte[] body, UUID definitionId) {

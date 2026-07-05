@@ -20,7 +20,7 @@ vi.mock("@/features/chat/hooks/use-conversations", () => ({
 vi.mock("@/features/settings/hooks/use-me-effective-embedding-defaults", () => ({
   useMeEffectiveEmbeddingDefaults: () => ({
     data: {
-      retrievalOptions: { topK: 8, similarityThreshold: 0.25, materializationStrategy: "CHUNK" },
+      retrievalOptions: { topK: 8, similarityThreshold: 0.25, materializationStrategy: "CHUNK_LEVEL" },
     },
   }),
 }));

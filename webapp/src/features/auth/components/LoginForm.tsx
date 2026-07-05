@@ -1,13 +1,16 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
-import { Link, useRouter } from "@/navigation";
+import { Link } from "@/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { ApiError, apiFetch, authApiPath } from "@/lib/api-client";
 import { commitSessionCookie } from "@/features/auth/lib/session-client";
+import { LAST_USER_ID_KEY, resetRegisteredClientSessionState } from "@/lib/client-session-reset";
+import { hardNavigate } from "@/lib/hard-navigation";
 import { setStoredUserRole } from "@/lib/user-role";
 import { AuthEmailPasswordFields } from "@/features/auth/components/AuthEmailPasswordFields";
 import { GoogleOAuthButton } from "@/features/auth/components/GoogleOAuthButton";
@@ -41,13 +44,19 @@ function isEmailNotVerifiedApiError(error: ApiError): boolean {
   }
 }
 
-export function LoginForm() {
+type LoginFormProps = {
+  /** Resolved on the server from runtime env; falls back to build-time flag in tests. */
+  oauthGoogleEnabled?: boolean;
+};
+
+export function LoginForm({ oauthGoogleEnabled: oauthGoogleEnabledProp }: LoginFormProps = {}) {
   const t = useTranslations("Auth");
   const locale = useLocale();
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
-  const oauthGoogleEnabled = process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === "true";
+  const oauthGoogleEnabled =
+    oauthGoogleEnabledProp ?? process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === "true";
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(createLoginSchema(t)),
@@ -67,13 +76,15 @@ export function LoginForm() {
           password: values.password,
         }),
       });
+      const nextUserId = data.user.id;
+      await resetRegisteredClientSessionState({ queryClient });
       await commitSessionCookie({
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
       });
+      sessionStorage.setItem(LAST_USER_ID_KEY, nextUserId);
       setStoredUserRole(data.user.role);
-      router.push("/projects");
-      router.refresh();
+      hardNavigate("/projects", locale);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         setFormError(t("invalidCredentials"));

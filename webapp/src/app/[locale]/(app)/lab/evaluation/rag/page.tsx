@@ -11,6 +11,9 @@ export default function LabRagEvalPage() {
   return (
     <div className="space-y-3" data-testid="lab-rag-eval-page">
       <RunSummaryCard title={t("ragEvalTitle")} summary={t("ragEvalTagline")} />
+      <p className="text-muted-foreground text-xs" data-testid="lab-rag-eval-prompt-hint">
+        {t("evaluationPromptAssistantConfigurationHint")}
+      </p>
       <CompactHelp summary={t("ragPresetHelpSummary")} testId="lab-rag-preset-help">
         <ul className="text-muted-foreground list-disc space-y-1 pl-4 text-xs">
           <li>{t("ragPresetExplainerCore")}</li>

@@ -19,7 +19,10 @@ import {
   formatRatioPercent,
 } from "@/features/lab/lib/lab-comparison-metrics";
 import { paginateRows } from "@/features/lab/lib/lab-table-pagination";
+import { sortComparisonRowsByKey } from "@/features/lab/lib/result-table-row";
+import { toggleTableSort, type TableSortState } from "@/features/lab/lib/lab-table-sort";
 import { useTranslations } from "next-intl";
+import { useMemo, useState } from "react";
 
 export type RagComparisonTableProps = {
   rows: ComparisonRow[];
@@ -35,31 +38,62 @@ export function RagComparisonTable({
   onSelectRow,
 }: RagComparisonTableProps) {
   const t = useTranslations("Lab");
+  const [sort, setSort] = useState<TableSortState>(null);
+  const sortedRows = useMemo(() => sortComparisonRowsByKey(rows, sort, comparisonAxis), [rows, sort, comparisonAxis]);
   const pagination = useLabTablePagination({
-    rowCount: rows.length,
-    resetKey: `${comparisonAxis}:${rows.length}`,
+    rowCount: sortedRows.length,
+    resetKey: `${comparisonAxis}:${sortedRows.length}:${sort?.key ?? "default"}:${sort?.direction ?? ""}`,
   });
-  const slice = paginateRows(rows, pagination.page, pagination.pageSize);
+  const slice = paginateRows(sortedRows, pagination.page, pagination.pageSize);
+  const onSort = (key: string) => setSort((current) => toggleTableSort(current, key));
 
   return (
     <div className="space-y-2">
       <LabComparisonTable testId="lab-rag-comparison-table" maxHeightClassName="max-h-72">
         <LabComparisonTableHead>
           <tr>
-            <LabComparisonTh>{t("benchmarkColPreset")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColPlanned")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColExecuted")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColNoContext")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColCoverage")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColGlobalScore")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColCorrectness")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColFaithfulness")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColHallucination")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColRecallAt5")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColMrr")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColNdcgAt5")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColMeanLatency")}</LabComparisonTh>
-            <LabComparisonTh>{t("benchmarkColErrors")}</LabComparisonTh>
+            <LabComparisonTh sortKey="preset" sortState={sort} onSort={onSort}>
+              {t("benchmarkColPreset")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="planned" sortState={sort} onSort={onSort}>
+              {t("benchmarkColPlanned")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="executed" sortState={sort} onSort={onSort}>
+              {t("benchmarkColExecuted")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="noContext" sortState={sort} onSort={onSort}>
+              {t("benchmarkColNoContext")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="coverage" sortState={sort} onSort={onSort}>
+              {t("benchmarkColCoverage")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="globalScore" sortState={sort} onSort={onSort} title={t("benchmarkColGlobalScoreTooltip")}>
+              {t("benchmarkColGlobalScore")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="correctness" sortState={sort} onSort={onSort}>
+              {t("benchmarkColCorrectness")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="faithfulness" sortState={sort} onSort={onSort}>
+              {t("benchmarkColFaithfulness")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="hallucinationRate" sortState={sort} onSort={onSort} title={t("benchmarkColHallucinationTooltip")}>
+              {t("benchmarkColHallucination")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="recallAt5" sortState={sort} onSort={onSort}>
+              {t("benchmarkColRecallAt5")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="mrr" sortState={sort} onSort={onSort}>
+              {t("benchmarkColMrr")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="ndcgAt5" sortState={sort} onSort={onSort}>
+              {t("benchmarkColNdcgAt5")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="meanLatency" sortState={sort} onSort={onSort}>
+              {t("benchmarkColMeanLatency")}
+            </LabComparisonTh>
+            <LabComparisonTh sortKey="errors" sortState={sort} onSort={onSort}>
+              {t("benchmarkColErrors")}
+            </LabComparisonTh>
           </tr>
         </LabComparisonTableHead>
         <tbody>
@@ -100,9 +134,9 @@ export function RagComparisonTable({
                     </div>
                   ) : null}
                 </td>
-                <td className="p-2 font-mono">{String(planned || "—")}</td>
-                <td className="p-2 font-mono">{String(executed || "—")}</td>
-                <td className="p-2 font-mono">{planned > 0 ? String(noContext) : "—"}</td>
+                <td className="p-2 font-mono">{String(planned || "-")}</td>
+                <td className="p-2 font-mono">{String(executed || "-")}</td>
+                <td className="p-2 font-mono">{planned > 0 ? String(noContext) : "-"}</td>
                 <td className="p-2 font-mono">{formatRatioPercent(executed, planned)}</td>
                 <td className="p-2 font-mono" title={t("benchmarkColGlobalScoreTooltip")}>
                   {formatComparisonScore(row.scoreGlobal)}

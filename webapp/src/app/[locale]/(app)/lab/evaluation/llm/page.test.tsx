@@ -19,6 +19,7 @@ describe("LabLlmEvalPage", () => {
       </QueryClientProvider>,
     );
     expect(screen.getByTestId("lab-llm-eval-page")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-llm-eval-prompt-hint")).toHaveTextContent(/Assistant Configuration/i);
     expect(screen.getByTestId("lab-eval-guided-help")).toBeInTheDocument();
     expect(screen.queryByText(/Guided steps/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\/lab\/benchmarks/i)).not.toBeInTheDocument();

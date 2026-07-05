@@ -12,7 +12,7 @@ type PresetProfileCardProps = Readonly<{
 function boolLabel(value: unknown): string {
   if (value === true) return "On";
   if (value === false) return "Off";
-  return "—";
+  return "-";
 }
 
 export function PresetProfileCard({ values, presetId }: PresetProfileCardProps) {

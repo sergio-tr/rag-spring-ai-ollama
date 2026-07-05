@@ -128,7 +128,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             UUID evaluationRunId = LabJobPayloads.evaluationRunId(task.getRequestPayload());
             if (evaluationRunId == null) {
                 throw new IllegalStateException(
-                        "This embedding evaluation job is missing its run reference — start a new embedding"
+                        "This embedding evaluation job is missing its run reference - start a new embedding"
                                 + " benchmark from the Lab evaluation page with a compatible workbook.");
             }
             Map<String, Object> payload = runSingleEmbeddingRun(task, mutation, evaluationRunId);

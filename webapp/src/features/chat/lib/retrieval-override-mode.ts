@@ -1,4 +1,6 @@
-export type RetrievalOverrideMode = "preset" | "assistant_defaults" | "custom";
+export type RetrievalOverrideMode = "preset" | "project_settings" | "assistant_defaults" | "custom";
+
+export const RETRIEVAL_OVERRIDE_MODE_KEY = "retrievalOverrideMode";
 
 export type RetrievalDefaults = {
   topK: number;
@@ -35,12 +37,39 @@ export function numbersEqual(a: unknown, b: unknown): boolean {
   return a === b;
 }
 
+export function readPersistedRetrievalOverrideMode(
+  runtimeOverride: Record<string, unknown>,
+): RetrievalOverrideMode | null {
+  const raw = runtimeOverride[RETRIEVAL_OVERRIDE_MODE_KEY];
+  if (
+    raw === "preset" ||
+    raw === "project_settings" ||
+    raw === "assistant_defaults" ||
+    raw === "custom"
+  ) {
+    return raw;
+  }
+  return null;
+}
+
 export function inferRetrievalOverrideMode(
   runtimeOverride: Record<string, unknown>,
   assistantDefaults?: RetrievalDefaults | null,
+  projectDefaults?: RetrievalDefaults | null,
 ): RetrievalOverrideMode {
+  const explicit = readPersistedRetrievalOverrideMode(runtimeOverride);
+  if (explicit) {
+    return explicit;
+  }
   if (!hasRetrievalOverrideKeys(runtimeOverride)) {
     return "preset";
+  }
+  if (
+    projectDefaults &&
+    numbersEqual(runtimeOverride.topK, projectDefaults.topK) &&
+    numbersEqual(runtimeOverride.similarityThreshold, projectDefaults.similarityThreshold)
+  ) {
+    return "project_settings";
   }
   if (
     assistantDefaults &&
@@ -52,32 +81,65 @@ export function inferRetrievalOverrideMode(
   return "custom";
 }
 
+function resolveCustomRetrievalValues(
+  current: Record<string, unknown>,
+  seedFromEffective?: RetrievalDefaults | null,
+  assistantDefaults?: RetrievalDefaults | null,
+): Pick<RetrievalDefaults, "topK" | "similarityThreshold"> {
+  const seed = seedFromEffective ?? assistantDefaults;
+  const topK =
+    typeof current.topK === "number" && Number.isFinite(current.topK) ? current.topK : seed?.topK;
+  const similarityThreshold =
+    typeof current.similarityThreshold === "number" && Number.isFinite(current.similarityThreshold)
+      ? current.similarityThreshold
+      : seed?.similarityThreshold;
+  return {
+    topK: topK ?? 8,
+    similarityThreshold: similarityThreshold ?? 0,
+  };
+}
+
+/** Builds the PATCH payload for a retrieval source mode change (not a full snapshot). */
+export function buildRetrievalModePatch(
+  mode: RetrievalOverrideMode,
+  current: Record<string, unknown>,
+  seedFromEffective?: RetrievalDefaults | null,
+  assistantDefaults?: RetrievalDefaults | null,
+): Record<string, unknown> {
+  if (mode === "preset") {
+    return { [RETRIEVAL_OVERRIDE_MODE_KEY]: "preset" };
+  }
+  if (mode === "assistant_defaults") {
+    return { [RETRIEVAL_OVERRIDE_MODE_KEY]: "assistant_defaults" };
+  }
+  if (mode === "project_settings") {
+    return { [RETRIEVAL_OVERRIDE_MODE_KEY]: "project_settings" };
+  }
+  const values = resolveCustomRetrievalValues(current, seedFromEffective, assistantDefaults);
+  return {
+    [RETRIEVAL_OVERRIDE_MODE_KEY]: "custom",
+    topK: values.topK,
+    similarityThreshold: values.similarityThreshold,
+  };
+}
+
+/** @deprecated Prefer buildRetrievalModePatch for PATCH payloads. */
 export function buildRuntimeOverrideForRetrievalMode(
   current: Record<string, unknown>,
   mode: RetrievalOverrideMode,
   assistantDefaults?: RetrievalDefaults | null,
   seedFromEffective?: RetrievalDefaults | null,
 ): Record<string, unknown> {
-  const next = { ...current };
+  const patch = buildRetrievalModePatch(mode, current, seedFromEffective, assistantDefaults);
+  const next = { ...current, ...patch };
   if (mode === "preset") {
+    delete next[RETRIEVAL_OVERRIDE_MODE_KEY];
     for (const key of RETRIEVAL_OVERRIDE_KEYS) {
       delete next[key];
     }
-    return next;
-  }
-  if (mode === "assistant_defaults" && assistantDefaults) {
-    return {
-      ...next,
-      topK: assistantDefaults.topK,
-      similarityThreshold: assistantDefaults.similarityThreshold,
-    };
-  }
-  if (mode === "custom" && !hasRetrievalOverrideKeys(next) && seedFromEffective) {
-    return {
-      ...next,
-      topK: seedFromEffective.topK,
-      similarityThreshold: seedFromEffective.similarityThreshold,
-    };
+  } else if (mode === "assistant_defaults" || mode === "project_settings") {
+    delete next.topK;
+    delete next.similarityThreshold;
   }
   return next;
 }
@@ -90,7 +152,21 @@ export function buildInitialRuntimeOverrideForNewConversation(
     return undefined;
   }
   return {
-    topK: assistantDefaults.topK,
-    similarityThreshold: assistantDefaults.similarityThreshold,
+    [RETRIEVAL_OVERRIDE_MODE_KEY]: "assistant_defaults",
   };
+}
+
+/** Drops retrieval override keys when the active preset/runtime does not use retrieval. */
+export function sanitizeRuntimeOverridePatch(
+  patch: Record<string, unknown>,
+  useRetrieval: boolean,
+): Record<string, unknown> {
+  if (useRetrieval) {
+    return patch;
+  }
+  const next = { ...patch };
+  delete next[RETRIEVAL_OVERRIDE_MODE_KEY];
+  delete next.topK;
+  delete next.similarityThreshold;
+  return next;
 }

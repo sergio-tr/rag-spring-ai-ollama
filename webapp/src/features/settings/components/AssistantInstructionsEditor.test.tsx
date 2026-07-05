@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useForm } from "react-hook-form";
 import { useState } from "react";
@@ -81,19 +81,13 @@ describe("AssistantInstructionsEditor", () => {
     expect(screen.queryByTestId("assistant-answer-instructions-field")).not.toBeInTheDocument();
   });
 
-  it("preview configuration shows product-facing summary", async () => {
-    const user = userEvent.setup();
+  it("preview configuration is not shown in the instructions editor", () => {
     render(
       <IntlTestProvider locale="en">
         <EditorHarness mode="user" defaultSystem="System layer text." initialPersona="Answer style." />
       </IntlTestProvider>,
     );
-    const preview = screen.getByTestId("assistant-instructions-preview");
-    await user.click(within(preview).getByText(/Preview configuration/i));
-    expect(screen.getByTestId("assistant-preview-layer-system")).toHaveTextContent(/System layer text/);
-    expect(screen.getByTestId("assistant-preview-layer-answer")).toHaveTextContent(/Answer style/);
-    expect(screen.getByTestId("assistant-preview-layer-abstention")).toHaveTextContent(/platform safety defaults/i);
-    expect(preview.textContent ?? "").not.toMatch(/promptBundle|PromptBundleFingerprint|judgePrompt/i);
+    expect(screen.queryByTestId("assistant-instructions-preview")).not.toBeInTheDocument();
   });
 
   it("reset to default clears system instructions field", async () => {

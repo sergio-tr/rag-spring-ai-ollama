@@ -1400,7 +1400,7 @@ describe("LabEvaluationRunCard", () => {
       renderRagRouteCard();
       expect(await screen.findByTestId("lab-embedding-retrieval-parameters-section")).toBeInTheDocument();
       expect(screen.getByTestId("lab-rag-task-llm-callout")).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: /User settings/i })).toHaveAttribute("href", "/settings/user");
+      expect(screen.getByRole("link", { name: /Open Assistant Configuration/i })).toHaveAttribute("href", "/en/settings/user");
       expect(screen.queryByText("Generation parameters")).not.toBeInTheDocument();
       expect(screen.queryByTestId("lab-hp-temperature")).not.toBeInTheDocument();
       expect(screen.queryByTestId("lab-hyperparameters-form")).not.toBeInTheDocument();

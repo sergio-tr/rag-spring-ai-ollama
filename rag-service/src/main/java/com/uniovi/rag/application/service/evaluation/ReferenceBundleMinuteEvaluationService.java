@@ -11,7 +11,7 @@ import java.util.Map;
 
 /**
  * Product {@link EvaluationService} implementation for Lab benchmarks: supports typed benchmark runners and
- * judge helpers only — no classpath Map Q/A dataset.
+ * judge helpers only - no classpath Map Q/A dataset.
  */
 public final class ReferenceBundleMinuteEvaluationService extends AbstractMinuteEvaluationService {
 

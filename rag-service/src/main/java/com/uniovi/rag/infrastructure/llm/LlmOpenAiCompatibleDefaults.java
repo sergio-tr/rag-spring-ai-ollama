@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * Default OpenAI-compatible / LiteLLM settings ({@code POST /v1/chat/completions}).
- * API secrets are referenced by environment variable name only — never stored in properties.
+ * API secrets are referenced by environment variable name only - never stored in properties.
  */
 public class LlmOpenAiCompatibleDefaults {
 

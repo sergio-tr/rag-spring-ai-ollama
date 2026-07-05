@@ -72,7 +72,7 @@ class EvalLlmJobHandler implements LabJobHandler {
             UUID evaluationRunId = LabJobPayloads.evaluationRunId(task.getRequestPayload());
             if (evaluationRunId == null) {
                 throw new IllegalStateException(
-                        "This LLM evaluation job is missing its run reference — start a new LLM benchmark from the"
+                        "This LLM evaluation job is missing its run reference - start a new LLM benchmark from the"
                                 + " Lab evaluation page with a compatible workbook.");
             }
             Map<String, Object> payload = runSingleRun(task, mutation, evaluationRunId);
