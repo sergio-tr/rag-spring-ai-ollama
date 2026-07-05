@@ -1,4 +1,4 @@
-# Production/runtime deps for Docker (sklearn default model). No TensorFlow — see requirements-gpu.txt.
+# Production/runtime deps for Docker (sklearn default model). No TensorFlow - see requirements-gpu.txt.
 protobuf<6
 pandas
 openpyxl

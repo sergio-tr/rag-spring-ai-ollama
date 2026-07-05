@@ -34,6 +34,12 @@ class TrainingService(TracedService):
         """
         if not model_name or not model_name.strip():
             raise ValidationError("model_name must be non-empty")
+        from app.registry.model_registry import ModelRegistry
+
+        try:
+            ModelRegistry.assert_trainable_model_name(model_name)
+        except ValueError as e:
+            raise ValidationError(str(e)) from e
         return self.run_traced(
             "classifier.service.train",
             lambda: self._train_impl(

@@ -11,7 +11,7 @@ from app.services.classification_service import ClassificationService
 from app.services.evaluation_service import EvaluationService
 from app.services.model_registry_service import ModelRegistryService
 from app.services.training_service import TrainingService
-from app.training.trainer import TrainingPipeline
+from app.training.sklearn_trainer import SklearnTrainingPipeline
 
 
 class ServiceContainer:
@@ -25,7 +25,7 @@ class ServiceContainer:
         self._registry = ModelRegistry(self._config)
         self._loader = ModelLoader(self._config, self._registry)
         self._engine = InferenceEngine(self._loader, self._config)
-        self._training_pipeline = TrainingPipeline(self._config, self._registry)
+        self._training_pipeline = SklearnTrainingPipeline(self._config, self._registry)
         self._evaluation_pipeline = EvaluationPipeline(
             self._config, self._loader, self._registry
         )

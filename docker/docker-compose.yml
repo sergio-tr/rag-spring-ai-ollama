@@ -82,6 +82,11 @@ services:
       # Quieter TensorFlow / CUDA INFO logs when no GPU (still may print one absl line at startup).
       TF_CPP_MIN_LOG_LEVEL: "2"
       GLOG_minloglevel: "2"
+    volumes:
+      # Persist user-trained sklearn artifacts under MODELS_DIR/{modelId}/ (flat layout).
+      - classifier_custom_models:/app/models
+      # Shipped system default stays read-only; subpath mount overlays the named volume entry.
+      - ../classifier-service/models/default:/app/models/default:ro
     restart: unless-stopped
     healthcheck:
       # Process up and /health returns 200. Stricter checks (model loaded, classify OK) are in the backend Actuator readiness.
@@ -426,6 +431,7 @@ services:
 
 volumes:
   postgres_data:
+  classifier_custom_models:
   rag_binary_storage:
   prometheus_data:
   grafana_data:

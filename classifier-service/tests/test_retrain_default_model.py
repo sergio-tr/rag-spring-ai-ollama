@@ -1,4 +1,4 @@
-"""Tests for retrain_default_model.py — eval must never be used for training."""
+"""Tests for retrain_default_model.py - eval must never be used for training."""
 
 from __future__ import annotations
 
