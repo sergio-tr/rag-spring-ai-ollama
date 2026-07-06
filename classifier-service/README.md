@@ -3,13 +3,13 @@
 Query-type classification service for the RAG backend. It exposes an HTTP API used by the RAG service to classify user questions (e.g. `COUNT_DOCUMENTS`, `SUMMARIZE_MEETING`).
 
 **Target architecture (frozen model):** [Classifier System](../docs/architecture/target-architecture.md).  
-**Default model status:** [Classifier status freeze](../docs/research/classifier-status-freeze.md) (sklearn C3 default).
+**Default model status:** sklearn C3 (`metadata.json` in `models/default/`). Historical freeze: [Classifier status freeze](../docs/research/classifier-status-freeze.md) (superseded 2026-07-02).
 
 ## Architecture
 
 - **Domain models** (`app/models/`): `ClassificationResult`, `ModelMetadata`, `TrainingResult`, `ErrorDetail` - value objects for responses and errors.
 - **Exceptions** (`app/exceptions.py`): `ValidationError` (400), `ModelNotFoundError` (404), `ClassificationError` (503), `TrainingError` (500).
-- **Inference** (`app/inference/`): `ModelLoader` (loads and caches sklearn or Keras model + labels per `metadata.json`), `InferenceEngine` (runs prediction).
+- **Inference** (`app/inference/`): `ModelLoader` (loads and caches sklearn or legacy Keras model + labels per `metadata.json`), `InferenceEngine` (runs prediction).
 - **Registry** (`app/registry/`): `ModelRegistry` (list models, resolve paths, register trained models).
 - **Training** (`app/training/`): `TrainingPipeline` (Excel → train → save → register).
 - **Evaluation** (`app/evaluation/`): `EvaluationPipeline` (metrics + classification report and confusion matrix PNGs), `EvaluationResult`.
@@ -40,7 +40,7 @@ Error responses use a consistent shape: `{"code": "...", "message": "...", "deta
 
 Default datasets are under `data/`:
 
-- `basic_dataset_qa_clasificacion.xlsx` - training dataset (`Pregunta`/`Question`, `QueryType`).
+- `basic_dataset_qa_clasificacion_final.xlsx` - training dataset (213 rows; `Pregunta`/`Question`, `QueryType`).
 - `evaluation_dataset.xlsx` - default evaluation dataset used by `/evaluate` when no file is uploaded (`Pregunta`/`Question`, `QueryType`).
 
 These were moved from `rag-service/src/main/resources/python/` and are the single source of truth here.
@@ -49,7 +49,7 @@ These were moved from `rag-service/src/main/resources/python/` and are the singl
 
 ```bash
 pip install -r requirements.txt
-# Ensure models/default/model.joblib (sklearn default) or model.keras and models/default/labels.txt exist
+# Ensure models/default/model.joblib (sklearn default) and models/default/labels.txt exist
 uvicorn uvicorn_entry:app --host 0.0.0.0 --port 8000
 ```
 
@@ -64,6 +64,11 @@ docker compose -f docker/docker-compose.yml up -d classifier-service
 The **default** image uses `python:3.10-slim-bookworm` and `requirements-runtime.txt` only (sklearn 1.7 + FastAPI, **no TensorFlow**). It is about **600 MiB** and builds in under a minute on a typical CI runner.
 
 The default `model.joblib` (sklearn C3) is trained with **scikit-learn 1.7.x** on Python 3.10 - no Python 3.11 or CUDA base is required for serving.
+
+> **Default artifact:** **LinearSVC** (installed via `scripts/train_sklearn_classifier.py --variant C3`).  
+> HTTP `POST /train` (Lab custom models) uses **LogisticRegression** (`SklearnTrainingPipeline`) — different estimator from the shipped default.
+
+Legacy Keras `model.keras` is **not** loaded when `metadata.json` declares `modelType: sklearn`. A superseded C1 artifact may be kept under `models/archive/` for reference only.
 
 The previous default (`nvidia/cuda` base + `tensorflow[and-cuda]`) pulled **~10 GiB** because CUDA was installed twice (OS image + pip wheels) even though the production default model is **sklearn** (`models/default/model.joblib`).
 

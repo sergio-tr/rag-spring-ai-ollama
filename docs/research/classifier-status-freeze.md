@@ -1,102 +1,83 @@
 # Classifier status freeze
 
-**Effective:** 2026-06-29  
-**Gate:** Classifier Retrain and Failure Analysis (`classifier-retrain-failure-analysis-20250629`) - **CONDITIONAL_PASS**  
-**Evidence:** evaluation evidence package `classifier-status-freeze-20250629` (JSON/CSV exports; internal agent capture may use a local working directory).
+> **Superseded 2026-07-02 (closure 2026-07-06):** Default classifier promoted to sklearn **C3** (`LinearSVC`, char_wb TF-IDF). Held-out macro-F1 **0.9663** on `evaluation_dataset.xlsx` (60 rows). See `classifier-service/models/default/metadata.json`. **No retraining required.**
 
 ---
 
-## Summary decision
+## Current accepted state
 
-The **deployable Keras default classifier** (`classifier-service/models/default/`) is **not** accepted as a final production routing component. It remains a **documented experimental component** with known poor held-out performance after hygienic train-only retraining.
+| Item | Current value |
+|------|---------------|
+| Deployed default | sklearn C3, `models/default/model.joblib` |
+| Algorithm | `TfidfVectorizer(analyzer="char_wb", ngram_range=(3,5))` + **LinearSVC** |
+| Train dataset | `basic_dataset_qa_clasificacion_final.xlsx` (**213 rows**) |
+| Held-out eval | `evaluation_dataset.xlsx` (60 rows, 0 train overlap) |
+| Gold probe | `gold-subset-v1.json` (18 rows, report-only) |
+| Primary metrics | accuracy **0.9667**, macro-F1 **0.9663**, macro precision **0.9722**, macro recall **0.9667** (58/60) |
+| Gold subset probe | accuracy **0.9444** (17/18) |
+| Production routing | **Accepted** for default RAG path |
+| Retraining | **Not required** |
 
-**Embeddings and LLMs may proceed** in classifier-independent setups. **RAG preset comparisons must not** treat the current Keras default as an optimized or final classifier.
+### Held-out misclassifications (2)
 
----
+| True label | Predicted | Count |
+|------------|-----------|------:|
+| `COUNT_AND_EXPLAIN` | `FILTER_AND_LIST` | 1 |
+| `SUMMARIZE_MEETING` | `EXTRACT_ENTITIES` | 1 |
 
-## Measured macro-F1 (held-out `evaluation_dataset.xlsx`, 60 rows)
+### Custom Lab training vs default
 
-| Model / candidate | Train source | Uses eval for train? | Macro-F1 | Status |
-| --- | --- | --- | ---: | --- |
-| C0 - legacy Keras (pre-hygienic retrain) | train + eval (leaked) | **Yes** | 0.369 | **Invalid** - inflated by leakage |
-| **C1 - deployable Keras default** | clean train only (46 rows) | No | **0.013** | **Not production-quality** |
-| C2 - TF-IDF word + LinearSVC | clean train only | No | 0.661 | Offline analysis only |
-| **C3 - TF-IDF char_wb + LinearSVC** | clean train only | No | **0.797** | Best offline; **not served** |
-| C4 - TF-IDF char_wb + LogReg balanced | clean train only | No | 0.776 | Offline analysis only |
+| Path | Vectorizer | Estimator |
+|------|------------|-----------|
+| Default C3 (`train_sklearn_classifier.py --variant C3`) | char_wb TF-IDF (3–5) | **LinearSVC** |
+| HTTP `POST /train` (`SklearnTrainingPipeline`) | char_wb TF-IDF (3–5) | **LogisticRegression** (balanced) |
 
-Accuracy for C1: **0.083**. C1 collapses toward `COUNT_AND_EXPLAIN` on most eval rows.
-
----
-
-## Why embeddings and LLMs are not blocked
-
-| Layer | Classifier involvement |
-| --- | --- |
-| Embedding retrieval evaluation | **None** - retrieval metrics do not depend on query-type routing |
-| LLM oracle-context evaluation | **None** - context is provided; routing is bypassed |
-| RAG preset evaluation | **Conditional** - classifier may run but must be **disabled, frozen, deterministic-only, or explicitly reported** as weak |
-
-Classifier quality does **not** invalidate embedding or LLM layer studies when those layers are evaluated independently.
+Custom Lab models are registered under UUID subdirs; they do not overwrite the protected `default` id.
 
 ---
 
-## Why the classifier is not final
+## Historical context (2026-06-29 freeze — Keras superseded)
 
-1. **Train/eval leakage closed** (11 → 0 overlaps) - methodology is now defensible, but the legacy model was trained on leaked data.
-2. **Hygienic Keras retrain regressed** - macro-F1 0.369 → 0.013 when eval was removed from training.
-3. **Train set is small and imbalanced** - 46 rows, 12 classes, 2–8 examples per class.
-4. **Label boundaries are ambiguous** - especially `COUNT_DOCUMENTS` vs `COUNT_AND_EXPLAIN`, `GET_DURATION` overprediction.
-5. **Offline sklearn (C3) reaches 0.797** - shows the bottleneck is **architecture + data scale**, not the eval set itself.
-6. **Dataset expansion planned but not applied** - `proposed_train_expansion.json` (+50 train rows to reach ~8/class).
+The **Keras default classifier** (C1) was **not** accepted as a production routing component after hygienic train-only retraining (macro-F1 **0.013** on 46-row train set). That path is **superseded**; `modelType: sklearn` in `metadata.json` is authoritative. Legacy Keras training code remains for optional Lab/GPU use only (`requirements-gpu.txt`); it is **not** the final runtime for the shipped default.
+
+| Model / candidate (historical) | Train source | Macro-F1 (held-out) | Status |
+| --- | --- | ---: | --- |
+| C0 — legacy Keras (pre-hygienic) | train + eval (leaked) | 0.369 | Invalid — leakage |
+| C1 — Keras train-only | 46 rows | **0.013** | Superseded — not served |
+| C3 — sklearn char_wb + LinearSVC | 213 rows (final) | **0.9663** | **Deployed default** |
 
 ---
 
-## Campaign constraints
+## Campaign constraints (updated)
 
-### Allowed without classifier acceptance
+### Allowed
 
-- Embedding retrieval evaluation (classifier not involved)
-- LLM oracle-context evaluation (classifier not involved)
+- Embedding retrieval evaluation (classifier-independent)
+- LLM oracle-context evaluation (classifier-independent)
+- RAG preset evaluation with the **accepted sklearn C3 default** (document `classifierModelId=default` in exports)
 
-### RAG preset evaluation - required handling
+### RAG preset rows — when not using default
 
-One of:
-
-- Classifier **disabled** or routing **bypassed** for the campaign row
-- **Deterministic-only** routing (`ClassifierDeterministicResolver` high-precision rules)
-- **Frozen** current Keras default with explicit reporting: *weak classifier, macro-F1 0.013, not optimized*
-- Fixed classifier id documented in export manifest
+- Classifier **disabled** or routing **bypassed**
+- **Deterministic-only** routing (`ClassifierDeterministicResolver`)
+- Fixed custom classifier id documented in export manifest (Lab `/train` models use LogisticRegression — metrics not interchangeable with default)
 
 ### Not allowed
 
-- Claiming RAG improvements are due to classifier optimization while using C1
-- Running a **classifier comparison campaign** until an accepted model exists (macro-F1 ≥ 0.65 on held-out eval, or documented alternative)
-- Attributing final RAG quality to classifier without rerunning classifier campaign on accepted model
-
-**Rule:** No final RAG claim may attribute improvements to classifier until a classifier campaign is rerun with an accepted model.
+- Treating legacy Keras C1 as an optimized or final classifier
+- Attributing RAG improvements to classifier optimization without documenting the classifier version and held-out metrics
 
 ---
 
-## Next classifier options (post-freeze)
-
-| Option | Description | When to choose |
-| --- | --- | --- |
-| **A. Dataset expansion + Keras retry** | Apply `proposed_train_expansion.json` (+50 rows), retrain Keras train-only, target macro-F1 ≥ 0.65 | Prefer if staying on current serving stack |
-| **B. sklearn C3/C4 serving** | Serve TF-IDF char_wb + LinearSVC or LogReg as `models/default` | Prefer if fastest path to acceptable macro-F1 |
-| **C. Deterministic + ML hybrid** | High-precision rules first, ML fallback for ambiguous queries | Prefer for routing safety; document ambiguity policy |
-
----
-
-## Hygiene status (closed)
+## Hygiene status
 
 | Check | Status |
 | --- | --- |
-| Train/eval normalized overlap | **0** (audit PASS) |
-| `retrain_default_model.py` trains on eval | **No** - guards enforce train-only |
-| Regression baseline non-empty | **Yes** - post-retrain capture |
-| classifier-service pytest | **181/181 PASS** |
-| Backend classifier contract tests | **19/19 PASS** |
+| Train/eval normalized overlap | **0** |
+| `retrain_default_model.py` trains on eval | **No** — guards enforce train-only |
+| Default `id=default` protected from overwrite | **Yes** |
+| classifier-service pytest | Green (see closure evidence) |
 
 ---
 
-*Documentation only - no campaigns, retrain, or dataset changes in this freeze gate.*
+*Documentation only — classifier section closed 2026-07-06; no default retrain or overwrite.*
