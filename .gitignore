@@ -111,7 +111,7 @@ logs/
 ### Exceptions ###
 # Java
 !.mvn/wrapper/maven-wrapper.jar
-.m2/
+.m2*/
 !**/src/main/**/build/
 !**/src/test/**/build/
 !**/src/main/**/target/
