@@ -8,6 +8,7 @@ import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.application.service.runtime.llm.RagChatModelRoutingService;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.testsupport.llm.LlmModelCatalogTestSupport;
@@ -91,6 +92,7 @@ class UserPromptRuntimeUsageTest {
                 new RagLlmChatInvoker(
                         llmClientResolver,
                         resolvedLlmConfigResolver,
+                        RagLlmChatInvokerTestSupport.passthroughFinalAnswerResolver(),
                         objectMapper,
                         chatGenerationModelSelector,
                         modelCatalog,

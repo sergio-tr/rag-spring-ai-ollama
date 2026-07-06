@@ -17,6 +17,7 @@ import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.application.service.runtime.llm.RagChatModelRoutingService;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -67,6 +68,7 @@ class RagModelSelectionTest {
                 new RagLlmChatInvoker(
                         clientResolver,
                         configResolver,
+                        RagLlmChatInvokerTestSupport.passthroughFinalAnswerResolver(),
                         objectMapper,
                         chatGenerationModelSelector,
                         modelCatalog,

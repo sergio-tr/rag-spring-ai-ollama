@@ -32,6 +32,14 @@ public final class RagLlmCallBudgetPolicy {
 
     public static PresetBudget budgetFor(ExecutionContext ctx) {
         RagConfig rag = ctx.resolved().toRagConfig();
+        PresetBudget tier = tierBudget(rag);
+        int queryUnderstandingFloor = queryUnderstandingSecondaryFloor(rag);
+        int maxSecondary = Math.max(tier.maxSecondaryCalls(), queryUnderstandingFloor);
+        int maxTotal = Math.max(tier.maxTotalCalls(), maxSecondary + 1);
+        return new PresetBudget(maxSecondary, maxTotal, tier.interactive());
+    }
+
+    private static PresetBudget tierBudget(RagConfig rag) {
         if (!rag.memoryEnabled() && !rag.judgeEnabled() && !rag.reasoningEnabled()) {
             return new PresetBudget(1, 2, true);
         }
@@ -42,6 +50,18 @@ public final class RagLlmCallBudgetPolicy {
             return new PresetBudget(2, 3, true);
         }
         return new PresetBudget(2, 3, true);
+    }
+
+    /** Minimum secondary calls required for enabled query-understanding stages (expansion, NER). */
+    private static int queryUnderstandingSecondaryFloor(RagConfig rag) {
+        int floor = 0;
+        if (rag.expansionEnabled()) {
+            floor++;
+        }
+        if (rag.nerEnabled()) {
+            floor++;
+        }
+        return floor;
     }
 
     public static boolean isInteractiveChat(ExecutionContext ctx) {

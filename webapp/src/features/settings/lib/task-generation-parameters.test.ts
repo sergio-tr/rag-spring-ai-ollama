@@ -192,4 +192,21 @@ describe("task-generation-parameters", () => {
       seed: 7,
     });
   });
+
+  it("hides internal lab-only roles from settings rows", () => {
+    const roles = readTaskModelRolesFromConfig({}, [
+      ...catalogTasks,
+      {
+        id: "llm_baseline_evaluation",
+        role: "LLM_BASELINE_EVALUATION",
+        label: "LLM baseline evaluation",
+        inheritsMainModelByDefault: true,
+        settingsVisible: false,
+        defaultModelId: "gemma4:12b",
+        defaultParameters: { temperature: 0.1 },
+      },
+    ]);
+    expect(roles.map((r) => r.roleId)).not.toContain("llm_baseline_evaluation");
+    expect(roles.map((r) => r.roleId)).toContain("final_answer");
+  });
 });

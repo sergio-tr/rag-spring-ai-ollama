@@ -16,6 +16,7 @@ import com.uniovi.rag.application.port.llm.LlmChatClient;
 import com.uniovi.rag.application.port.llm.LlmChatRequest;
 import com.uniovi.rag.application.port.llm.LlmChatResponse;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.config.llm.TaskLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.testsupport.llm.LlmModelCatalogTestSupport;
@@ -58,6 +59,9 @@ class RagLlmChatInvokerTest {
     private ResolvedLlmConfigResolver resolvedLlmConfigResolver;
 
     @Mock
+    private TaskLlmConfigResolver taskLlmConfigResolver;
+
+    @Mock
     private LlmChatClient chatClient;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -71,6 +75,24 @@ class RagLlmChatInvokerTest {
     @AfterEach
     void tearDown() {
         OrchestrationLlmConfigScope.clear();
+    }
+
+    private void stubFinalAnswerFromConfig(ResolvedLlmConfig config) {
+        stubFinalAnswer(config, config.chatModel());
+    }
+
+    private void stubFinalAnswer(ResolvedLlmConfig config, String model) {
+        when(taskLlmConfigResolver.resolveFinalAnswer(any(), any()))
+                .thenReturn(
+                        new TaskLlmConfigResolver.FinalAnswerCallConfig(
+                                config,
+                                model,
+                                config.temperature(),
+                                true,
+                                true,
+                                false,
+                                "primary_inherited",
+                                "primary_inherited"));
     }
 
     @Test
@@ -88,6 +110,7 @@ class RagLlmChatInvokerTest {
                         "Responde en español.",
                         Map.of("top_p", 0.9));
         OrchestrationLlmConfigScope.bind(config);
+        stubFinalAnswerFromConfig(config);
         when(llmClientResolver.resolveChatClient(config)).thenReturn(chatClient);
         when(chatClient.chat(any())).thenReturn(LlmChatResponse.ofContent("hola"));
 
@@ -95,6 +118,7 @@ class RagLlmChatInvokerTest {
                 new RagLlmChatInvoker(
                         llmClientResolver,
                         resolvedLlmConfigResolver,
+                        taskLlmConfigResolver,
                         objectMapper,
                         chatGenerationModelSelector,
                         modelCatalog,
@@ -128,6 +152,7 @@ class RagLlmChatInvokerTest {
                         null,
                         Map.of());
         OrchestrationLlmConfigScope.bind(config);
+        stubFinalAnswerFromConfig(config);
         when(llmClientResolver.resolveChatClient(config)).thenReturn(chatClient);
         when(chatClient.chat(any()))
                 .thenThrow(OpenAiCompatibleLlmException.unauthorized(401));
@@ -136,6 +161,7 @@ class RagLlmChatInvokerTest {
                 new RagLlmChatInvoker(
                         llmClientResolver,
                         resolvedLlmConfigResolver,
+                        taskLlmConfigResolver,
                         objectMapper,
                         chatGenerationModelSelector,
                         modelCatalog,
@@ -161,10 +187,12 @@ class RagLlmChatInvokerTest {
                         null,
                         Map.of());
         OrchestrationLlmConfigScope.bind(config);
+        stubFinalAnswer(config, "gemma3:4b");
         RagLlmChatInvoker invoker =
                 new RagLlmChatInvoker(
                         llmClientResolver,
                         resolvedLlmConfigResolver,
+                        taskLlmConfigResolver,
                         objectMapper,
                         chatGenerationModelSelector,
                         modelCatalog,
@@ -189,12 +217,14 @@ class RagLlmChatInvokerTest {
                         null,
                         Map.of());
         OrchestrationLlmConfigScope.bind(config);
+        stubFinalAnswerFromConfig(config);
         when(llmClientResolver.resolveChatClient(config)).thenReturn(chatClient);
         when(chatClient.chat(any())).thenReturn(LlmChatResponse.ofContent("ok"));
         RagLlmChatInvoker invoker =
                 new RagLlmChatInvoker(
                         llmClientResolver,
                         resolvedLlmConfigResolver,
+                        taskLlmConfigResolver,
                         objectMapper,
                         chatGenerationModelSelector,
                         modelCatalog,
@@ -220,12 +250,14 @@ class RagLlmChatInvokerTest {
                         null,
                         Map.of());
         OrchestrationLlmConfigScope.bind(config);
+        stubFinalAnswerFromConfig(config);
         when(llmClientResolver.resolveChatClient(config)).thenReturn(chatClient);
         when(chatClient.chat(any())).thenReturn(LlmChatResponse.ofContent("ollama"));
         RagLlmChatInvoker invoker =
                 new RagLlmChatInvoker(
                         llmClientResolver,
                         resolvedLlmConfigResolver,
+                        taskLlmConfigResolver,
                         objectMapper,
                         chatGenerationModelSelector,
                         modelCatalog,

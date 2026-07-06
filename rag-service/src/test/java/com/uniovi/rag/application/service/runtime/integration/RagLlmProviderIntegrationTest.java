@@ -22,6 +22,7 @@ import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.application.service.runtime.llm.RagChatModelRoutingService;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.testsupport.llm.LlmModelCatalogTestSupport;
@@ -92,6 +93,7 @@ class RagLlmProviderIntegrationTest {
                 new RagLlmChatInvoker(
                         clientResolver,
                         configResolver,
+                        RagLlmChatInvokerTestSupport.passthroughFinalAnswerResolver(),
                         objectMapper,
                         chatGenerationModelSelector,
                         modelCatalog,
@@ -159,7 +161,7 @@ class RagLlmProviderIntegrationTest {
         LlmClientResolver mockResolver = mock(LlmClientResolver.class);
         RagLlmChatInvoker invoker =
                 new RagLlmChatInvoker(
-                        mockResolver, configResolver, objectMapper, chatGenerationModelSelector, modelCatalog, chatModelRoutingService);
+                        mockResolver, configResolver, RagLlmChatInvokerTestSupport.passthroughFinalAnswerResolver(), objectMapper, chatGenerationModelSelector, modelCatalog, chatModelRoutingService);
         when(mockResolver.resolveChatClient(openAiConfig)).thenReturn(openAiBoundClient);
         when(openAiBoundClient.chat(any())).thenReturn(LlmChatResponse.ofContent("lite"));
 
@@ -192,7 +194,7 @@ class RagLlmProviderIntegrationTest {
         LlmClientResolver mockResolver = mock(LlmClientResolver.class);
         RagLlmChatInvoker invoker =
                 new RagLlmChatInvoker(
-                        mockResolver, configResolver, objectMapper, chatGenerationModelSelector, modelCatalog, chatModelRoutingService);
+                        mockResolver, configResolver, RagLlmChatInvokerTestSupport.passthroughFinalAnswerResolver(), objectMapper, chatGenerationModelSelector, modelCatalog, chatModelRoutingService);
         when(mockResolver.resolveChatClient(openAiConfig)).thenReturn(openAiBoundClient);
         when(openAiBoundClient.chat(any())).thenReturn(LlmChatResponse.ofContent("lite"));
 

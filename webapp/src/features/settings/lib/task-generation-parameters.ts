@@ -75,6 +75,7 @@ export function readTaskModelRolesFromConfig(
     inheritsMainModelByDefault: boolean;
     defaultModelId?: string;
     defaultParameters?: Record<string, unknown>;
+    settingsVisible?: boolean;
   }>,
 ): TaskModelRoleForm[] {
   const nested = values?.[TASK_LLM_OVERRIDES_KEY];
@@ -83,7 +84,9 @@ export function readTaskModelRolesFromConfig(
       ? (nested as Record<string, unknown>)
       : {};
 
-  return catalogTasks.map((task) => {
+  const visibleTasks = catalogTasks.filter((task) => task.settingsVisible !== false);
+
+  return visibleTasks.map((task) => {
     const defaults = defaultParametersFromCatalog(task.defaultParameters);
     const row =
       overrides[task.id] && typeof overrides[task.id] === "object" && !Array.isArray(overrides[task.id])

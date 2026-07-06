@@ -22,13 +22,14 @@ public class TaskLlmCatalogService {
 
     public Map<String, Object> buildCatalog() {
         List<Map<String, Object>> tasks = new ArrayList<>();
-        for (TaskLlmTask task : TaskLlmTask.catalogTasks()) {
+        for (TaskLlmTask task : TaskLlmTask.settingsCatalogTasks()) {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("id", task.id());
             entry.put("role", task.name());
             entry.put("label", task.label());
             entry.put("inheritsMainModelByDefault", task.inheritsMainModelByDefault());
             entry.put("operationName", task.operationName());
+            entry.put("settingsVisible", task.visibleInSettings());
             var defaults = TaskLlmRoleDefaults.forTask(task);
             entry.put("defaultModelId", defaults.modelId());
             entry.put("defaultParameters", defaults.parameters().toMap());

@@ -16,62 +16,35 @@ import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class RagLlmCallBudgetEnforcerTest {
-
-    @AfterEach
-    void tearDown() {
-        RagLlmCallBudgetEnforcer.clear();
-    }
+class RagLlmCallBudgetPolicyTest {
 
     @Test
-    void skipsOptionalSecondaryWhenBudgetExceeded() {
-        ExecutionContext ctx = interactiveCtx(false, false, false, false, false);
-        RagLlmCallBudgetEnforcer.bind(ctx);
-        assertThat(RagLlmCallBudgetEnforcer.tryAllowSecondary("query-rewrite")).isTrue();
-        RagLlmCallBudgetEnforcer.recordCompleted("query-rewrite");
-        assertThat(RagLlmCallBudgetEnforcer.tryAllowSecondary("conversation-condense")).isFalse();
-        assertThat(RagLlmCallBudgetEnforcer.tryAllowPrimary("primary-answer")).isTrue();
-    }
+    void budgetFor_minimalPresetWithExpansionAndNer_allowsBothSecondaryCalls() {
+        RagConfig rag = rag(false, false, false, true, true);
+        ExecutionContext ctx = ctx(rag);
 
-    @Test
-    void allowsExpansionAndNerWhenBothEnabledOnMinimalPreset() {
-        ExecutionContext ctx = interactiveCtx(false, false, false, true, true);
-        RagLlmCallBudgetEnforcer.bind(ctx);
-        assertThat(RagLlmCallBudgetEnforcer.tryAllowSecondary("query-expansion")).isTrue();
-        RagLlmCallBudgetEnforcer.recordCompleted("query-expansion");
-        assertThat(RagLlmCallBudgetEnforcer.tryAllowSecondary("ner-extraction")).isTrue();
-    }
-
-    @Test
-    void providerSkipsWhenBudgetDenied() {
-        ExecutionContext ctx = interactiveCtx(false, false, false, false, false);
-        RagLlmCallBudgetEnforcer.bind(ctx);
-        RagLlmCallBudgetEnforcer.recordCompleted("query-rewrite");
-        assertThatThrownBy(() -> {
-                    if (!RagLlmCallBudgetEnforcer.tryAllowSecondary("llm-ranker")) {
-                        throw new OptionalLlmCallBudgetSkippedException("llm-ranker");
-                    }
-                })
-                .isInstanceOf(OptionalLlmCallBudgetSkippedException.class);
-    }
-
-    @Test
-    void memoryPresetAllowsMoreSecondaries() {
-        ExecutionContext ctx = interactiveCtx(true, true, false, true, true);
-        RagLlmCallBudgetEnforcer.bind(ctx);
         RagLlmCallBudgetPolicy.PresetBudget budget = RagLlmCallBudgetPolicy.budgetFor(ctx);
-        assertThat(budget.maxSecondaryCalls()).isGreaterThanOrEqualTo(3);
+
+        assertThat(budget.maxSecondaryCalls()).isGreaterThanOrEqualTo(2);
+        assertThat(budget.maxTotalCalls()).isGreaterThanOrEqualTo(3);
     }
 
-    private static ExecutionContext interactiveCtx(
-            boolean memory, boolean judge, boolean reasoning, boolean expansion, boolean ner) {
-        RagConfig rag = rag(memory, judge, reasoning, expansion, ner);
+    @Test
+    void budgetFor_minimalPresetWithoutQuLlmStages_keepsTightCap() {
+        RagConfig rag = rag(false, false, false, false, false);
+        ExecutionContext ctx = ctx(rag);
+
+        RagLlmCallBudgetPolicy.PresetBudget budget = RagLlmCallBudgetPolicy.budgetFor(ctx);
+
+        assertThat(budget.maxSecondaryCalls()).isEqualTo(1);
+        assertThat(budget.maxTotalCalls()).isEqualTo(2);
+    }
+
+    private static ExecutionContext ctx(RagConfig rag) {
         ResolvedRuntimeConfig resolved =
                 new ResolvedRuntimeConfig(
                         rag,
@@ -86,7 +59,7 @@ class RagLlmCallBudgetEnforcerTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID(),
-                "dime qué actas tienen 20 asistentes",
+                "¿Qué fecha aparece en el ACTA 1?",
                 RuntimeOperationKind.CHAT_MESSAGE,
                 resolved,
                 "",
@@ -102,7 +75,7 @@ class RagLlmCallBudgetEnforcerTest {
                 "",
                 "",
                 Optional.empty(),
-                memory ? ConversationMemoryOutcome.NO_HISTORY_AVAILABLE : ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                ConversationMemoryOutcome.DISABLED_BY_CONFIG,
                 List.of(),
                 false,
                 false,

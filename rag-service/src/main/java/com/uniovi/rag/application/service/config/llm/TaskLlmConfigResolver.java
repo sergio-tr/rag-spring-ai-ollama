@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.lang.Nullable;
@@ -71,16 +72,69 @@ public class TaskLlmConfigResolver {
         }
     }
 
+    public record FinalAnswerCallConfig(
+            ResolvedLlmConfig effectiveConfig,
+            String effectiveModel,
+            Double effectiveTemperature,
+            boolean inheritModel,
+            boolean inheritParameters,
+            boolean taskOverrideApplied,
+            String modelSource,
+            String paramSource) {}
+
     public EffectiveTaskLlmConfig resolve(
             TaskLlmTask task, UUID userId, UUID projectId, JsonNode runtimeOverride) {
         ResolvedLlmConfig base = resolvedLlmConfigResolver.resolve(userId, projectId, runtimeOverride);
-        TaskLlmOverride override = mergedOverride(task, userId, projectId, null, null, runtimeOverride);
+        return resolveWithBase(task, base, userId, projectId, null, runtimeOverride);
+    }
+
+    /**
+     * Resolves a task role against an already-orchestrated base config (e.g. {@link
+     * com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope}).
+     */
+    public EffectiveTaskLlmConfig resolveWithBase(
+            TaskLlmTask task,
+            ResolvedLlmConfig base,
+            UUID userId,
+            UUID projectId,
+            @Nullable UUID presetId,
+            @Nullable JsonNode requestRuntimeOverride) {
+        TaskLlmOverride override =
+                mergedOverride(task, userId, projectId, presetId, null, requestRuntimeOverride);
         String model = resolveEffectiveModel(base, task, override);
         TaskLlmGenerationParameters parameters = resolveEffectiveParameters(base, task, override);
         Double temperature = parameters.temperature();
         ResolvedLlmConfig merged = mergeTaskOverride(base, override, model, parameters);
         boolean applied = override != null && override.isActive() && override.hasActiveFields();
         return new EffectiveTaskLlmConfig(base, task, override, model, temperature, parameters, merged, applied);
+    }
+
+    /** Primary chat final-answer resolution using orchestration-bound base LLM config. */
+    public FinalAnswerCallConfig resolveFinalAnswer(ExecutionContext ctx, ResolvedLlmConfig orchestrationBase) {
+        Objects.requireNonNull(ctx, "ctx");
+        Objects.requireNonNull(orchestrationBase, "orchestrationBase");
+        UUID userId = ctx.userId();
+        UUID projectId = ctx.projectId();
+        UUID presetId = presetId(ctx);
+        EffectiveTaskLlmConfig effective =
+                resolveWithBase(TaskLlmTask.FINAL_ANSWER, orchestrationBase, userId, projectId, presetId, null);
+        TaskLlmOverride override = effective.override();
+        boolean inheritModel =
+                override != null
+                        ? override.effectiveInheritModel(TaskLlmTask.FINAL_ANSWER)
+                        : TaskLlmTask.FINAL_ANSWER.inheritsMainModelByDefault();
+        boolean inheritParameters = override != null && override.effectiveInheritParameters();
+        String modelSource = resolveFinalAnswerModelSource(ctx, orchestrationBase, override, inheritModel);
+        String paramSource = inheritParameters ? "primary_inherited" : "final_answer_role";
+        return new FinalAnswerCallConfig(
+                effective.mergedConfig(),
+                effective.effectiveModel(),
+                effective.effectiveTemperature(),
+                inheritModel,
+                inheritParameters,
+                effective.taskOverrideApplied(),
+                modelSource,
+                paramSource);
     }
 
     public SecondaryCallConfig resolveSecondaryCall(
@@ -160,6 +214,77 @@ public class TaskLlmConfigResolver {
             return null;
         }
         return objectMapper.createObjectNode().put("llmModel", chatModelFromSelector.trim());
+    }
+
+    private static UUID presetId(ExecutionContext ctx) {
+        if (ctx.resolved() == null
+                || ctx.resolved().provenance() == null
+                || ctx.resolved().provenance().presetId() == null) {
+            return null;
+        }
+        return ctx.resolved().provenance().presetId();
+    }
+
+    private String resolveFinalAnswerModelSource(
+            ExecutionContext ctx,
+            ResolvedLlmConfig orchestrationBase,
+            @Nullable TaskLlmOverride mergedOverride,
+            boolean inheritModel) {
+        if (!inheritModel && mergedOverride != null && mergedOverride.model() != null && !mergedOverride.model().isBlank()) {
+            return resolveOverrideLayerSource(ctx.userId(), ctx.projectId(), TaskLlmTask.FINAL_ANSWER);
+        }
+        if (ctx.chatModelOverride() != null && ctx.chatModelOverride().isPresent() && !ctx.chatModelOverride().get().isBlank()) {
+            return "conversation_primary";
+        }
+        if (orchestrationBase.chatModel() != null && !orchestrationBase.chatModel().isBlank()) {
+            return "primary_inherited";
+        }
+        return "user_system";
+    }
+
+    private String resolveOverrideLayerSource(UUID userId, UUID projectId, TaskLlmTask task) {
+        if (userId != null && projectId != null) {
+            TaskLlmOverride project =
+                    readLayerOverride(configurationSource.loadProject(userId, projectId), task);
+            if (project != null && project.isActive() && hasExplicitModel(project, task)) {
+                return "project";
+            }
+        }
+        if (userId != null) {
+            TaskLlmOverride user = readLayerOverride(configurationSource.loadUserDefault(userId), task);
+            if (user != null && user.isActive() && hasExplicitModel(user, task)) {
+                return "user";
+            }
+        }
+        TaskLlmOverride system = readLayerOverride(configurationSource.loadSystemDefaults(), task);
+        if (system != null && system.isActive() && hasExplicitModel(system, task)) {
+            return "user_system";
+        }
+        return "final_answer_override";
+    }
+
+    @Nullable
+    private static TaskLlmOverride readLayerOverride(Optional<Map<String, Object>> layer, TaskLlmTask task) {
+        if (layer.isEmpty()) {
+            return null;
+        }
+        Object nested = layer.get().get(PromptOverrideKeys.TASK_LLM_OVERRIDES_MAP_KEY);
+        if (!(nested instanceof Map<?, ?> map)) {
+            return null;
+        }
+        Object raw = map.get(task.id());
+        if (!(raw instanceof Map<?, ?> rawMap)) {
+            return null;
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> asMap = (Map<String, Object>) rawMap;
+        return TaskLlmOverride.fromMap(asMap);
+    }
+
+    private static boolean hasExplicitModel(TaskLlmOverride override, TaskLlmTask task) {
+        return !override.effectiveInheritModel(task)
+                && override.model() != null
+                && !override.model().isBlank();
     }
 
     public TaskLlmOverride mergedOverride(

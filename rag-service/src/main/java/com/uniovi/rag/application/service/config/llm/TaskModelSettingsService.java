@@ -174,7 +174,7 @@ public class TaskModelSettingsService {
 
     private Map<String, Object> buildResponse(UUID userId, UUID projectId) {
         List<Map<String, Object>> roles = new ArrayList<>();
-        for (TaskLlmTask task : TaskLlmTask.catalogTasks()) {
+        for (TaskLlmTask task : TaskLlmTask.settingsCatalogTasks()) {
             roles.add(toEffectiveSettings(task, userId, projectId).toResponseMap());
         }
         Map<String, Object> response = new LinkedHashMap<>();

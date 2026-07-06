@@ -27,6 +27,7 @@ import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.application.service.runtime.llm.RagChatModelRoutingService;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -80,7 +81,15 @@ class RagRuntimeProviderIntegrationTest {
     void setUp() {
         configResolver = new ResolvedLlmConfigResolver(configurationSource, llmProperties, objectMapper, modelCatalog);
         clientResolver = new LlmClientResolver(clientRegistry);
-        ragInvoker = new RagLlmChatInvoker(clientResolver, configResolver, objectMapper, selector, modelCatalog, chatModelRoutingService);
+        ragInvoker =
+                new RagLlmChatInvoker(
+                        clientResolver,
+                        configResolver,
+                        RagLlmChatInvokerTestSupport.passthroughFinalAnswerResolver(),
+                        objectMapper,
+                        selector,
+                        modelCatalog,
+                        chatModelRoutingService);
     }
 
     @AfterEach
@@ -94,7 +103,14 @@ class RagRuntimeProviderIntegrationTest {
         OrchestrationLlmConfigScope.bind(config);
         LlmClientResolver mockResolver = mock(LlmClientResolver.class);
         RagLlmChatInvoker invoker =
-                new RagLlmChatInvoker(mockResolver, configResolver, objectMapper, selector, modelCatalog, chatModelRoutingService);
+                new RagLlmChatInvoker(
+                        mockResolver,
+                        configResolver,
+                        RagLlmChatInvokerTestSupport.passthroughFinalAnswerResolver(),
+                        objectMapper,
+                        selector,
+                        modelCatalog,
+                        chatModelRoutingService);
         when(mockResolver.resolveChatClient(config)).thenReturn(openAiChatClient);
         when(openAiChatClient.chat(any())).thenReturn(LlmChatResponse.ofContent("openai"));
 
@@ -156,7 +172,14 @@ class RagRuntimeProviderIntegrationTest {
         OrchestrationLlmConfigScope.bind(config);
         LlmClientResolver mockResolver = mock(LlmClientResolver.class);
         RagLlmChatInvoker invoker =
-                new RagLlmChatInvoker(mockResolver, configResolver, objectMapper, selector, modelCatalog, chatModelRoutingService);
+                new RagLlmChatInvoker(
+                        mockResolver,
+                        configResolver,
+                        RagLlmChatInvokerTestSupport.passthroughFinalAnswerResolver(),
+                        objectMapper,
+                        selector,
+                        modelCatalog,
+                        chatModelRoutingService);
         when(mockResolver.resolveChatClient(config)).thenReturn(openAiChatClient);
         when(openAiChatClient.chat(any())).thenReturn(LlmChatResponse.ofContent("ok"));
 
