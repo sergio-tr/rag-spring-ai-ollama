@@ -51,6 +51,14 @@ public class EmbeddingIndexCompatibilityService {
     }
 
     /**
+     * Deployment default embedding model id (no explicit override), used to distinguish genuinely non-default
+     * (e.g. Lab benchmark) embedding indices from the normal product default at retrieval time.
+     */
+    public String deploymentDefaultEmbeddingModelId() {
+        return embeddingService.effectiveEmbeddingModelId(null);
+    }
+
+    /**
      * Stamps provider/model from effective runtime embedding resolution (same path as {@link #isProfileCompatible}).
      * For {@link LlmProvider#OPENAI_COMPATIBLE}, legacy Ollama ids in project profiles are replaced with the
      * configured catalog embedding model.

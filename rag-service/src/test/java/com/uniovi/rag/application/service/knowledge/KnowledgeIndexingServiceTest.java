@@ -424,6 +424,121 @@ class KnowledgeIndexingServiceTest {
     }
 
     @Test
+    void processDocument_documentLevel_acta_representationCoversTailAndMetadata() throws Exception {
+        PgVectorStore vectorStore = mock(PgVectorStore.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
+        BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
+        DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
+
+        MetadataMinuteDocumentService metadataService =
+                new MetadataMinuteDocumentService(mock(PgVectorStore.class), mock(ChatClient.class), mock(JdbcTemplate.class), 400);
+
+        KnowledgeIndexingService sut =
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataService);
+
+        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
+        KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
+        when(snapshot.getId()).thenReturn(UUID.randomUUID());
+        when(snapshot.getIndexProfileJsonb())
+                .thenReturn(Map.of("embeddingModelId", "mxbai-embed-large", "supportsMetadata", true));
+        when(doc.getId()).thenReturn(UUID.randomUUID());
+        when(doc.getProject().getId()).thenReturn(UUID.randomUUID());
+        when(doc.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
+        when(doc.getConversation()).thenReturn(null);
+        when(doc.getFileName()).thenReturn("ACTA 1.pdf");
+        when(doc.getMimeType()).thenReturn("application/pdf");
+
+        String actaContent =
+                Files.readString(Path.of("src/test/resources/acta-fixtures/acta-1.txt"), StandardCharsets.UTF_8);
+        Path tempFile = tempDir.resolve("acta1.txt");
+        Files.writeString(tempFile, actaContent, StandardCharsets.UTF_8);
+        when(ingestionService.extractContent(any())).thenReturn(actaContent);
+
+        sut.processDocument(
+                new KnowledgeDocumentIndexingRequest(
+                        doc,
+                        tempFile,
+                        "ACTA 1.pdf",
+                        "application/pdf",
+                        snapshot,
+                        "abc123",
+                        MaterializationStrategy.DOCUMENT_LEVEL,
+                        400));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Document>> docs = ArgumentCaptor.forClass(List.class);
+        verify(vectorStore).add(docs.capture());
+        assertThat(docs.getValue()).hasSize(1);
+        String text = docs.getValue().getFirst().getText();
+
+        // Not just the first ~400 chars any more: the closing line (well past the old cut point) must
+        // be reachable given the whole-document ceiling (1740 chars for this default config), even
+        // though the profile's chunkMaxChars is 400.
+        assertThat(text).contains("No habiendo más asuntos");
+        assertThat(text).contains("Presidente: Juan Pérez Gutiérrez");
+    }
+
+    @Test
+    void processDocument_hybrid_docTailVector_usesBalancedRepresentation_notFirstChunkOnly() throws Exception {
+        PgVectorStore vectorStore = mock(PgVectorStore.class);
+        JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
+        BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
+        DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
+
+        MetadataMinuteDocumentService metadataService =
+                new MetadataMinuteDocumentService(mock(PgVectorStore.class), mock(ChatClient.class), mock(JdbcTemplate.class), 400);
+
+        KnowledgeIndexingService sut =
+                sutWithRegistry(vectorStore, jdbcTemplate, ingestionService, storagePort, artifactRepo, metadataService);
+
+        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
+        KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
+        when(snapshot.getId()).thenReturn(UUID.randomUUID());
+        when(snapshot.getIndexProfileJsonb())
+                .thenReturn(Map.of("embeddingModelId", "mxbai-embed-large", "supportsMetadata", true));
+        when(doc.getId()).thenReturn(UUID.randomUUID());
+        when(doc.getProject().getId()).thenReturn(UUID.randomUUID());
+        when(doc.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
+        when(doc.getConversation()).thenReturn(null);
+        when(doc.getFileName()).thenReturn("ACTA 1.pdf");
+        when(doc.getMimeType()).thenReturn("application/pdf");
+
+        String actaContent =
+                Files.readString(Path.of("src/test/resources/acta-fixtures/acta-1.txt"), StandardCharsets.UTF_8);
+        Path tempFile = tempDir.resolve("acta1.txt");
+        Files.writeString(tempFile, actaContent, StandardCharsets.UTF_8);
+        when(ingestionService.extractContent(any())).thenReturn(actaContent);
+
+        sut.processDocument(
+                new KnowledgeDocumentIndexingRequest(
+                        doc,
+                        tempFile,
+                        "ACTA 1.pdf",
+                        "application/pdf",
+                        snapshot,
+                        "abc123",
+                        MaterializationStrategy.HYBRID,
+                        400));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Document>> docs = ArgumentCaptor.forClass(List.class);
+        verify(vectorStore).add(docs.capture());
+        List<Document> all = docs.getValue();
+        // Last vector is the doc-tail (chunkIndex == totalChunks - 1, appended after the per-chunk loop).
+        Document docTail = all.getLast();
+        assertThat(docTail.getText()).contains("No habiendo más asuntos");
+        assertThat(docTail.getText()).contains("Presidente: Juan Pérez Gutiérrez");
+
+        // The per-chunk vectors (CHUNK_LEVEL-equivalent layer of HYBRID) must be unaffected by this
+        // fix: still short, acta-prefixed section chunks, not routed through the new builder.
+        Document firstChunk = all.getFirst();
+        assertThat(firstChunk.getText().length()).isLessThanOrEqualTo(452);
+        assertThat(firstChunk.getMetadata()).containsKey("sectionType");
+    }
+
+    @Test
     void processDocument_throwsOnEmptyContent() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
         JdbcTemplate jdbcTemplate = jdbcTemplateReturningUpdateRows(1);
