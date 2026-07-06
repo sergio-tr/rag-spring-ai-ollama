@@ -106,6 +106,15 @@ public final class ChatProductPresetAlignment {
 
     private static void applyExperimentalProductCorrections(
             RagExperimentalPresetCode code, LinkedHashMap<String, Object> out) {
+        if (code == RagExperimentalPresetCode.P5) {
+            out.put("expansionEnabled", true);
+            out.put("nerEnabled", false);
+        }
+        if (code == RagExperimentalPresetCode.P6) {
+            out.put("expansionEnabled", true);
+            out.put("nerEnabled", true);
+        }
+
         if (code.ordinal() >= RagExperimentalPresetCode.P4.ordinal()
                 && code.ordinal() <= RagExperimentalPresetCode.P6.ordinal()) {
             out.put("toolsEnabled", false);

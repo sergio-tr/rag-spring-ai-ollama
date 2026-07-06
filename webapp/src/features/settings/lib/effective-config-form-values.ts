@@ -154,6 +154,7 @@ export function mergeEffectiveIntoFormValues(
   llmEffective: MeEffectiveLlmDefaultsResponse | undefined,
   embeddingEffective: MeEffectiveEmbeddingDefaultsResponse | undefined,
   provider: LlmProviderKind | null,
+  mode: SettingsSaveMode = "user",
 ): EffectiveFormMergeResult {
   const picked = pickFormValues(config, editableKeys);
   const additional = { ...readAdditionalParameters(config) };
@@ -176,6 +177,9 @@ export function mergeEffectiveIntoFormValues(
 
   for (const key of [...EMBEDDING_RESET_TOP_LEVEL_KEYS, ...RETRIEVAL_RESET_TOP_LEVEL_KEYS]) {
     if (!editableKeys.includes(key)) continue;
+    if (mode === "project" && RETRIEVAL_RESET_TOP_LEVEL_KEYS.includes(key as (typeof RETRIEVAL_RESET_TOP_LEVEL_KEYS)[number])) {
+      continue;
+    }
     const effectiveValue = readEffectiveEmbeddingField(config, embeddingEffective, key);
     if (isBlank(picked[key]) && !isBlank(effectiveValue)) {
       picked[key] = effectiveValue as string | number | boolean;
@@ -200,6 +204,12 @@ function readInheritanceBaseline(
   llmEffective: MeEffectiveLlmDefaultsResponse | undefined,
   provider: LlmProviderKind | null,
 ): unknown {
+  if (
+    mode === "project"
+    && RETRIEVAL_RESET_TOP_LEVEL_KEYS.includes(key as (typeof RETRIEVAL_RESET_TOP_LEVEL_KEYS)[number])
+  ) {
+    return undefined;
+  }
   if (mode === "project" && userStored && !isBlank(userStored[key])) {
     return userStored[key];
   }
@@ -238,6 +248,9 @@ export function buildStoredOverridesPatch(ctx: SettingsSaveContext): Record<stri
         valuesEqual(topK, stored.topK) && valuesEqual(threshold, stored.similarityThreshold);
       if (matchesStored) {
         // unchanged — do not clear overrides that happen to match inheritance baseline
+      } else if (mode === "project") {
+        patch.topK = topK;
+        patch.similarityThreshold = threshold;
       } else {
         const baselineTopK = readInheritanceBaseline(
           "topK",

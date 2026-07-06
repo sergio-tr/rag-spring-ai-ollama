@@ -140,8 +140,8 @@ describe("lab-benchmark-labels product display", () => {
 
   it("formatPresetDisplay handles missing metadata and raw codes", () => {
     expect(formatPresetDisplay(null, null)).toBe("");
-    expect(formatPresetDisplay("P6", "P6")).toBe("Metadata query intelligence");
-    expect(formatPresetDisplay("P6", "Custom label")).toBe("Metadata query intelligence");
+    expect(formatPresetDisplay("P6", "P6")).toBe("Structured query rewriter");
+    expect(formatPresetDisplay("P6", "Custom label")).toBe("Structured query rewriter");
   });
 
   it("formatGroupLabel returns normalized values for non-preset groups", () => {

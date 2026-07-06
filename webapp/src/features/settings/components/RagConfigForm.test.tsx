@@ -440,6 +440,8 @@ describe("RagConfigForm", () => {
     expect(screen.getByTestId("settings-collapsible-embedding")).toBeInTheDocument();
     expect(screen.getByTestId("settings-collapsible-retrieval")).toBeInTheDocument();
     expect(screen.getByTestId("settings-collapsible-classifier")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-collapsible-prompt")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("settings-collapsible-task-models")).not.toHaveAttribute("open");
     expect(screen.getByTestId("settings-retrieval-defaults")).toBeInTheDocument();
     expect(screen.getByTestId("embedding-defaults-settings")).toBeInTheDocument();
     expect(screen.queryByTestId("assistant-instructions-preview")).not.toBeInTheDocument();

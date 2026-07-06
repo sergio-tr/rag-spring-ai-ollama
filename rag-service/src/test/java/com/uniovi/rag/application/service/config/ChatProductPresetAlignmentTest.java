@@ -147,6 +147,27 @@ class ChatProductPresetAlignmentTest {
     }
 
     @Test
+    void p5QueryUnderstanding_expansionOnlyWithoutNerOrRewriteLane() {
+        Map<String, Object> p5 =
+                ChatProductPresetAlignment.effectiveProductRuntimeValues(RagExperimentalPresetCode.P5);
+        assertThat(p5)
+                .containsEntry("expansionEnabled", true)
+                .containsEntry("nerEnabled", false)
+                .containsEntry("toolsEnabled", false)
+                .containsEntry("useRetrieval", true);
+    }
+
+    @Test
+    void p6StructuredRewriter_enablesNerWithoutTools() {
+        Map<String, Object> p6 =
+                ChatProductPresetAlignment.effectiveProductRuntimeValues(RagExperimentalPresetCode.P6);
+        assertThat(p6)
+                .containsEntry("expansionEnabled", true)
+                .containsEntry("nerEnabled", true)
+                .containsEntry("toolsEnabled", false);
+    }
+
+    @Test
     void labCatalogRemainsUnchangedForP4Tools() {
         Map<String, Object> lab =
                 ExperimentalPresetCanonicalCatalog.effectiveRuntimeValues(RagExperimentalPresetCode.P4);

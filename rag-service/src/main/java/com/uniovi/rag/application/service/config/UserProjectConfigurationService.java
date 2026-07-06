@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.config;
 
 import com.uniovi.rag.application.config.PromptTemplateValidator;
 import com.uniovi.rag.domain.RagConfigurationLevel;
+import com.uniovi.rag.domain.config.RetrievalParameterKeys;
 import com.uniovi.rag.domain.config.SettingsConfigurationMerge;
 import com.uniovi.rag.domain.config.prompt.PromptOverrideKeys;
 import com.uniovi.rag.domain.llm.LlmConfigurationKeys;
@@ -59,16 +60,29 @@ public class UserProjectConfigurationService {
                 .orElse(Map.of());
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public Map<String, Object> getStoredProjectConfig(UUID userId, UUID projectId) {
         projectAccessService.requireOwnedProject(userId, projectId);
-        return ragConfigurationRepository
-                .findFirstByUser_IdAndProject_IdAndLevelAndActiveIsTrue(
-                        userId, projectId, RagConfigurationLevel.PROJECT)
-                .map(RagConfigurationEntity::getValues)
-                .filter(v -> v != null && !v.isEmpty())
-                .map(Map::copyOf)
-                .orElse(Map.of());
+        Optional<RagConfigurationEntity> existing =
+                ragConfigurationRepository.findFirstByUser_IdAndProject_IdAndLevelAndActiveIsTrue(
+                        userId, projectId, RagConfigurationLevel.PROJECT);
+        Map<String, Object> stored =
+                existing
+                        .map(RagConfigurationEntity::getValues)
+                        .filter(v -> v != null && !v.isEmpty())
+                        .map(Map::copyOf)
+                        .orElseGet(LinkedHashMap::new);
+        if (!hasStoredRetrievalDefaults(stored)) {
+            return materializeProjectRetrievalDefaults(userId, projectId);
+        }
+        return Map.copyOf(stored);
+    }
+
+    /** Copies the user's effective retrieval defaults into a new project's stored config once. */
+    @Transactional
+    public void seedProjectRetrievalDefaultsAtCreation(UUID userId, UUID projectId) {
+        projectAccessService.requireOwnedProject(userId, projectId);
+        materializeProjectRetrievalDefaults(userId, projectId);
     }
 
     @Transactional(readOnly = true)
@@ -220,5 +234,23 @@ public class UserProjectConfigurationService {
         if (source.containsKey(key)) {
             target.put(key, source.get(key));
         }
+    }
+
+    private Map<String, Object> materializeProjectRetrievalDefaults(UUID userId, UUID projectId) {
+        Map<String, Object> effectiveUser = getEffectiveUserConfig(userId);
+        Map<String, Object> seed = new LinkedHashMap<>();
+        copyIfPresent(seed, effectiveUser, RetrievalParameterKeys.TOP_K);
+        copyIfPresent(seed, effectiveUser, RetrievalParameterKeys.SIMILARITY_THRESHOLD);
+        if (seed.isEmpty()) {
+            RagConfig resolved = configResolverProvider.getObject().resolve(userId, null, null);
+            seed.put(RetrievalParameterKeys.TOP_K, resolved.topK());
+            seed.put(RetrievalParameterKeys.SIMILARITY_THRESHOLD, resolved.similarityThreshold());
+        }
+        return mergeProjectConfig(userId, projectId, seed);
+    }
+
+    private static boolean hasStoredRetrievalDefaults(Map<String, Object> stored) {
+        return stored.containsKey(RetrievalParameterKeys.TOP_K)
+                && stored.containsKey(RetrievalParameterKeys.SIMILARITY_THRESHOLD);
     }
 }

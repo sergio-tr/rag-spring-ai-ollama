@@ -22,4 +22,9 @@ describe("preset-base-feature-locking", () => {
     expect(isPresetControlledOffFeature("expansionEnabled", p3Base)).toBe(true);
     expect(isPresetControlledOffFeature("useRetrieval", p3Base)).toBe(false);
   });
+
+  it("P3 locks useRetrieval only", () => {
+    expect(presetBaseFeatures(p3Base)).toEqual(["useRetrieval"]);
+    expect(isPresetControlledOffFeature("toolsEnabled", p3Base)).toBe(true);
+  });
 });

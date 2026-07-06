@@ -88,6 +88,21 @@ describe("buildStoredOverridesPatch closeout", () => {
     expect(buildStoredOverridesPatch(ctx)).toEqual({ topK: 11, similarityThreshold: 0.22 });
   });
 
+  it("project save does not clear retrieval when values match current assistant defaults", () => {
+    const ctx: SettingsSaveContext = {
+      mode: "project",
+      stored: { topK: 8, similarityThreshold: 0.1 },
+      values: { topK: 8, similarityThreshold: 0.1 },
+      additionalParameters: {},
+      editableKeys: ["topK", "similarityThreshold"],
+      llmEffective,
+      embeddingEffective,
+      userStored: { topK: 12, similarityThreshold: 0.25 },
+      provider: "OPENAI_COMPATIBLE",
+    };
+    expect(buildStoredOverridesPatch(ctx)).toEqual({});
+  });
+
   it("user retrieval override matching system baseline is preserved on repeated save", () => {
     const stored = { topK: 8, similarityThreshold: 0.1 };
     const patch = buildStoredOverridesPatch(userCtx(stored, { topK: 8, similarityThreshold: 0.1 }));

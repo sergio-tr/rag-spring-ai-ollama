@@ -162,3 +162,116 @@ describe("ChatConfigurationPanelContent preset base feature locking", () => {
     expect(screen.getByTestId("chat-runtime-disable-tip-expansionEnabled")).toBeInTheDocument();
   });
 });
+
+function demoBestRuntimeState() {
+  return mockChatRuntimeState({
+    selectedPresetId: "cafe0001-0001-4001-8001-000000000003",
+    effectivePresetId: "cafe0001-0001-4001-8001-000000000003",
+    preset: {
+      kind: "PRODUCT",
+      code: "Demo_Best",
+      label: "Demo_Best",
+      chatSelectable: true,
+      supported: true,
+      supportStatus: null,
+      reasonIfUnsupported: null,
+    },
+    baseEffectiveConfig: {
+      useRetrieval: true,
+      toolsEnabled: true,
+      functionCallingEnabled: true,
+      useAdvisor: true,
+      expansionEnabled: true,
+      nerEnabled: true,
+      postRetrievalEnabled: true,
+      clarificationEnabled: true,
+      rankerEnabled: false,
+      judgeEnabled: false,
+      memoryEnabled: false,
+      reasoningEnabled: false,
+      adaptiveRoutingEnabled: false,
+    },
+    effectiveConfig: {
+      useRetrieval: true,
+      toolsEnabled: true,
+      functionCallingEnabled: true,
+      useAdvisor: true,
+      expansionEnabled: true,
+      nerEnabled: true,
+      postRetrievalEnabled: true,
+      clarificationEnabled: true,
+      rankerEnabled: false,
+      judgeEnabled: false,
+      memoryEnabled: false,
+      reasoningEnabled: false,
+      adaptiveRoutingEnabled: false,
+    },
+    effectiveRetrievalParameters: {
+      topK: 12,
+      similarityThreshold: 0.1,
+      topKSource: "PRESET_LOCKED",
+      similarityThresholdSource: "PRESET_LOCKED",
+    },
+    indexCompatibility: {
+      activeProjectSnapshotId: "snap-1",
+      activeConversationSnapshotId: null,
+      activeIndexProfileHash: "hash-1",
+      activeIndexProfile: {},
+      hasActiveIndex: true,
+      activeSnapshotCapabilities: {
+        materializationStrategy: "HYBRID",
+        supportsMetadata: true,
+        embeddingModelId: "mxbai",
+        chunkMaxChars: 400,
+        chunkOverlap: 40,
+      },
+    },
+  });
+}
+
+describe("ChatConfigurationPanelContent Demo_Best preset locking", () => {
+  beforeEach(() => {
+    hooksMock.useMeEffectiveEmbeddingDefaults.mockReturnValue({ data: null });
+    hooksMock.useProjectIndexProfile.mockReturnValue({
+      data: { materializationStrategy: "HYBRID", metadataEnabled: true },
+      isLoading: false,
+      isError: false,
+    });
+    hooksMock.useActiveProjectSnapshot.mockReturnValue({ data: null, isLoading: false, isError: false });
+    hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
+      data: {
+        capabilities: [
+          stubCap("useRetrieval"),
+          stubCap("toolsEnabled"),
+          stubCap("functionCallingEnabled"),
+          stubCap("useAdvisor"),
+          stubCap("rankerEnabled"),
+          stubCap("judgeEnabled"),
+          stubCap("memoryEnabled"),
+        ],
+      },
+      isLoading: false,
+    });
+    useChatToolbarStore.setState({
+      api: mockChatToolbarApi({ runtimeState: demoBestRuntimeState() }),
+    });
+  });
+
+  it("locks Demo_Best enabled base features", async () => {
+    renderSubject();
+    fireEvent.click(screen.getByTestId("chat-config-edit-button"));
+
+    expect((screen.getByTestId("chat-runtime-toggle-useRetrieval") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByTestId("chat-runtime-toggle-toolsEnabled") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByTestId("chat-runtime-preset-badge-useRetrieval")).toBeInTheDocument();
+  });
+
+  it("defers Demo_Best latency-off features", async () => {
+    renderSubject();
+    fireEvent.click(screen.getByTestId("chat-config-edit-button"));
+
+    expect((screen.getByTestId("chat-runtime-toggle-rankerEnabled") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByTestId("chat-runtime-toggle-judgeEnabled") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByTestId("chat-runtime-toggle-memoryEnabled") as HTMLInputElement).disabled).toBe(true);
+  });
+});

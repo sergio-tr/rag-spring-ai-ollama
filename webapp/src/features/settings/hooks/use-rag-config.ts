@@ -1,7 +1,8 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
+import { meEffectiveEmbeddingDefaultsQueryKey } from "@/features/settings/hooks/use-me-effective-embedding-defaults";
 
 export type ConfigSchemaField = {
   key: string;
@@ -58,6 +59,13 @@ export function useProjectStoredRagConfigQuery(projectId: string | undefined) {
   });
 }
 
+/** Refetch chat/runtime views that derive retrieval defaults from saved config. */
+export function invalidateRagConfigDependents(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: meEffectiveEmbeddingDefaultsQueryKey });
+  void qc.invalidateQueries({ queryKey: ["chat-runtime-state"] });
+  void qc.invalidateQueries({ queryKey: ["me", "llm", "effective-runtime"] });
+}
+
 export function usePutUserRagConfig() {
   const qc = useQueryClient();
   return useMutation({
@@ -69,6 +77,7 @@ export function usePutUserRagConfig() {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["config", "user"] });
+      invalidateRagConfigDependents(qc);
     },
   });
 }
@@ -89,6 +98,7 @@ export function usePutProjectRagConfig(projectId: string | undefined) {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["config", "project", projectId] });
+      invalidateRagConfigDependents(qc);
     },
   });
 }
@@ -102,6 +112,7 @@ export function useDeleteProjectRagConfig(projectId: string | undefined) {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["config", "project", projectId] });
+      invalidateRagConfigDependents(qc);
     },
   });
 }

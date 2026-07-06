@@ -762,13 +762,10 @@ export function ChatConfigurationPanelContent() {
   );
 
   const projectStoredRagConfigQuery = useProjectStoredRagConfigQuery(api?.projectId);
-  const projectRetrievalDefaults = useMemo(() => {
-    const fromProject = toRetrievalDefaults(projectStoredRagConfigQuery.data);
-    if (fromProject) {
-      return fromProject;
-    }
-    return assistantRetrievalDefaults;
-  }, [assistantRetrievalDefaults, projectStoredRagConfigQuery.data]);
+  const projectRetrievalDefaults = useMemo(
+    () => toRetrievalDefaults(projectStoredRagConfigQuery.data),
+    [projectStoredRagConfigQuery.data],
+  );
 
   const persistedRuntimeOverride = useMemo(
     () => (api?.runtimeState?.runtimeOverride ?? api?.runtimeOverride ?? {}) as Record<string, unknown>,

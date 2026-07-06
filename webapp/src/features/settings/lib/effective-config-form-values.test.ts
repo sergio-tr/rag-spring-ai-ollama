@@ -93,6 +93,20 @@ describe("effective-config-form-values", () => {
     expect(payload.similarityThreshold).toBe(0.15);
   });
 
+  it("does not merge live assistant retrieval defaults into project form state", () => {
+    const keys = ["topK", "similarityThreshold"];
+    const merged = mergeEffectiveIntoFormValues(
+      { topK: 6, similarityThreshold: 0.15 },
+      keys,
+      llmEffective,
+      embeddingEffective,
+      "OPENAI_COMPATIBLE",
+      "project",
+    );
+    expect(merged.formValues.topK).toBe(6);
+    expect(merged.formValues.similarityThreshold).toBe(0.15);
+  });
+
   it("clears only requested override keys", () => {
     const cleared = clearConfigOverrideKeys(
       { llmModel: "x", topK: 3, llmSystemPrompt: "stay" },

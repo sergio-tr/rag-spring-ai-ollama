@@ -79,6 +79,9 @@ describe("use-rag-config hooks", () => {
       expect.objectContaining({ method: "PUT" }),
     );
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["config", "user"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["me", "embedding", "effective-defaults"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["chat-runtime-state"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["me", "llm", "effective-runtime"] });
   });
 
   it("useUserStoredRagConfigQuery loads stored user config", async () => {
@@ -103,6 +106,9 @@ describe("use-rag-config hooks", () => {
       expect.objectContaining({ method: "PUT" }),
     );
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["config", "project", "p2"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["me", "embedding", "effective-defaults"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["chat-runtime-state"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["me", "llm", "effective-runtime"] });
   });
 
   it("useDeleteProjectRagConfig deletes and invalidates project config query", async () => {
@@ -116,5 +122,8 @@ describe("use-rag-config hooks", () => {
       expect.objectContaining({ method: "DELETE" }),
     );
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["config", "project", "p3"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["me", "embedding", "effective-defaults"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["chat-runtime-state"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["me", "llm", "effective-runtime"] });
   });
 });

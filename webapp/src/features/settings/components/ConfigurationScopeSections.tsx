@@ -15,12 +15,12 @@ export function SettingsCollapsibleSection({
   title,
   description,
   children,
-  defaultOpen = true,
+  defaultOpen = false,
   testId,
 }: SettingsCollapsibleSectionProps) {
   return (
     <details
-      open={defaultOpen}
+      open={defaultOpen ? true : undefined}
       className="min-w-0 max-w-full overflow-hidden rounded-md border border-border p-3"
       data-testid={testId}
     >

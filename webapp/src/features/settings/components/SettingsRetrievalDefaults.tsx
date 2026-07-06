@@ -6,16 +6,13 @@ import type { ConfigSchemaField } from "@/features/settings/hooks/use-rag-config
 import type { ConfigFormValues } from "@/features/settings/lib/build-config-zod";
 import { ConfigSchemaFieldRows } from "@/features/settings/components/config-schema-field-rows";
 import { labelConfigField } from "@/features/settings/lib/config-field-copy";
-import { isFieldInherited } from "@/features/settings/lib/effective-config-form-values";
 
 type SettingsRetrievalDefaultsProps = Readonly<{
   form: UseFormReturn<ConfigFormValues>;
   fields: ConfigSchemaField[];
-  storedOverrides?: Record<string, unknown>;
-  mode?: "user" | "project";
 }>;
 
-export function SettingsRetrievalDefaults({ form, fields, storedOverrides, mode = "user" }: SettingsRetrievalDefaultsProps) {
+export function SettingsRetrievalDefaults({ form, fields }: SettingsRetrievalDefaultsProps) {
   const t = useTranslations("Settings");
 
   if (fields.length === 0) {
@@ -28,13 +25,7 @@ export function SettingsRetrievalDefaults({ form, fields, storedOverrides, mode 
       <ConfigSchemaFieldRows
         fields={fields}
         form={form}
-        labelFor={(key) => {
-          const base = labelConfigField(key, (translationKey) => t(translationKey as never));
-          if (mode === "project" && isFieldInherited(storedOverrides, key)) {
-            return `${base} (${t("settingsRetrievalInheritedLabel")})`;
-          }
-          return base;
-        }}
+        labelFor={(key) => labelConfigField(key, (translationKey) => t(translationKey as never))}
         inputIdPrefix="cfg"
       />
     </div>

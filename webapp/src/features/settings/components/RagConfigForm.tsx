@@ -99,7 +99,8 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   const selectableModelsQ = useMeSelectableLlmModels("CHAT");
   const selectableEmbeddingQ = useMeSelectableLlmModels("EMBEDDING");
   const llmEffectiveQ = useMeEffectiveLlmDefaults();
-  const embeddingEffectiveQ = useMeEffectiveEmbeddingDefaults(mode === "project" ? projectId : null);
+  const embeddingEffectiveQ = useMeEffectiveEmbeddingDefaults(null);
+  const embeddingEffectiveForForm = mode === "user" ? embeddingEffectiveQ.data : undefined;
 
   const configData = mode === "user" ? userStoredQ.data : projectStoredQ.data;
   const configLoading = mode === "user" ? userStoredQ.isLoading : projectStoredQ.isLoading;
@@ -201,10 +202,10 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
         workingConfig,
         editableKeys,
         llmEffective: llmEffectiveQ.data,
-        embeddingEffective: embeddingEffectiveQ.data,
+        embeddingEffective: embeddingEffectiveForForm,
         effectiveProvider,
       }),
-    [workingConfig, editableKeys, llmEffectiveQ.data, embeddingEffectiveQ.data, effectiveProvider],
+    [workingConfig, editableKeys, llmEffectiveQ.data, embeddingEffectiveForForm, effectiveProvider, mode],
   );
   const lastFormSeedKey = useRef("");
 
@@ -216,11 +217,12 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
       workingConfig,
       editableKeys,
       llmEffectiveQ.data,
-      embeddingEffectiveQ.data,
+      embeddingEffectiveForForm,
       effectiveProvider,
+      mode,
     );
     form.reset(merged.formValues);
-  }, [form, formSeedKey, workingConfig, editableKeys, llmEffectiveQ.data, embeddingEffectiveQ.data, effectiveProvider]);
+  }, [form, formSeedKey, workingConfig, editableKeys, llmEffectiveQ.data, embeddingEffectiveForForm, effectiveProvider, mode]);
 
   const putUser = usePutUserRagConfig();
   const putProject = usePutProjectRagConfig(projectId);
@@ -259,7 +261,7 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
       additionalParameters,
       editableKeys,
       llmEffective: llmEffectiveQ.data,
-      embeddingEffective: embeddingEffectiveQ.data,
+      embeddingEffective: embeddingEffectiveForForm,
       userStored: mode === "project" ? userStoredQ.data : undefined,
       provider: effectiveProvider,
     });
@@ -337,8 +339,9 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
       config,
       editableKeys,
       llmEffectiveQ.data,
-      embeddingEffectiveQ.data,
+      embeddingEffectiveForForm,
       effectiveProvider,
+      mode,
     );
     form.reset(merged.formValues);
     setAdditionalParameters(readAdditionalParameters(config));
@@ -490,8 +493,6 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
                     <SettingsRetrievalDefaults
                       form={form}
                       fields={retrievalParameterFields}
-                      storedOverrides={workingConfig}
-                      mode="user"
                     />
                   </SettingsCollapsibleSection>
 
@@ -539,8 +540,6 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
                     <SettingsRetrievalDefaults
                       form={form}
                       fields={retrievalParameterFields}
-                      storedOverrides={workingConfig}
-                      mode="project"
                     />
                   </SettingsCollapsibleSection>
 

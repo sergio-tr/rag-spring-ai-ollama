@@ -183,4 +183,42 @@ class UserProjectConfigurationServiceTest {
         assertThat(cap.getValue()).containsEntry("topK", 5).containsEntry("classifierModelId", "my-tag");
         verify(ragConfigurationRepository).save(row);
     }
+
+    @Test
+    void getStoredProjectConfig_materializesRetrievalDefaultsWhenMissing() {
+        UUID uid = UUID.randomUUID();
+        UUID pid = UUID.randomUUID();
+        when(configResolverProvider.getObject()).thenReturn(configResolver);
+        when(projectAccessService.requireOwnedProject(uid, pid)).thenReturn(mock(ProjectEntity.class));
+        when(ragConfigurationRepository.findFirstByUser_IdAndProject_IdAndLevelAndActiveIsTrue(
+                        uid, pid, RagConfigurationLevel.PROJECT))
+                .thenReturn(Optional.empty());
+        when(configResolver.resolve(uid, null, null))
+                .thenReturn(
+                        RagConfig.fromFeatureConfiguration(
+                                new RagFeatureConfiguration(),
+                                8,
+                                0.35,
+                                "a",
+                                "b",
+                                "c",
+                                "SIMPLE"));
+        var user = mock(UserEntity.class);
+        when(userRepository.findById(uid)).thenReturn(Optional.of(user));
+        when(configResolver.resolve(uid, pid, null))
+                .thenReturn(
+                        RagConfig.fromFeatureConfiguration(
+                                new RagFeatureConfiguration(),
+                                8,
+                                0.35,
+                                "a",
+                                "b",
+                                "c",
+                                "SIMPLE"));
+
+        Map<String, Object> stored = service.getStoredProjectConfig(uid, pid);
+
+        assertThat(stored).containsEntry("topK", 8).containsEntry("similarityThreshold", 0.35);
+        verify(ragConfigurationRepository).save(any(RagConfigurationEntity.class));
+    }
 }
