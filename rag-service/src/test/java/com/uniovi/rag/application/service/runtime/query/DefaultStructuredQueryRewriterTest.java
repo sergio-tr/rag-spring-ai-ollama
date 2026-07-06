@@ -36,12 +36,12 @@ class DefaultStructuredQueryRewriterTest {
 
     @Mock private ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
 
-    private static ExecutionContext ctx(boolean toolsEnabled) {
+    private static ExecutionContext ctx(boolean nerEnabled) {
         RagConfig rag =
                 new RagConfig(
                 false,
+                nerEnabled,
                 false,
-                toolsEnabled,
                 false,
                 false,
                 false,

@@ -21,6 +21,8 @@ import java.util.UUID;
 @Service
 public class SnapshotCorpusAssembler {
 
+    public record CorpusDocumentRef(String documentId, String filename) {}
+
     private static final String SEPARATOR = "\n\n--- chunk ---\n\n";
 
     private final NamedParameterJdbcTemplate namedJdbc;
@@ -74,6 +76,26 @@ public class SnapshotCorpusAssembler {
         return out;
     }
 
+    /** Distinct corpus documents for source attribution on full-corpus answers. */
+    public List<CorpusDocumentRef> listCorpusDocuments(ExecutionContext ctx) {
+        KnowledgeSnapshotSelection snap = ctx.knowledgeSnapshotSelection();
+        List<UUID> snapshotIds = snap.orderedSnapshotIds();
+        if (snapshotIds.isEmpty()) {
+            return List.of();
+        }
+        RagExecutionContext holder = RagExecutionContextHolder.get();
+        if (holder == null || holder.resolvedConfig() == null || !holder.restrictsByProject()) {
+            return List.of();
+        }
+        UUID projectId;
+        try {
+            projectId = UUID.fromString(holder.projectId().trim());
+        } catch (Exception e) {
+            return List.of();
+        }
+        return fetchDistinctDocuments(projectId, holder, snapshotIds);
+    }
+
     private List<String> fetchContents(UUID projectId, RagExecutionContext ctx, List<UUID> snapshotIds) {
         assertSnapshotFilter(snapshotIds);
         MapSqlParameterSource p = new MapSqlParameterSource();
@@ -110,6 +132,54 @@ public class SnapshotCorpusAssembler {
                 """,
                 p,
                 (rs, rowNum) -> rs.getString(1));
+    }
+
+    private List<CorpusDocumentRef> fetchDistinctDocuments(
+            UUID projectId, RagExecutionContext ctx, List<UUID> snapshotIds) {
+        assertSnapshotFilter(snapshotIds);
+        MapSqlParameterSource p = new MapSqlParameterSource();
+        p.addValue("projectId", projectId);
+        p.addValue("snapshotIds", snapshotIds.stream().map(UUID::toString).toList());
+        if (ctx.documentFilterIsAll()) {
+            return namedJdbc.query(
+                    """
+                    SELECT DISTINCT
+                      metadata->>'document_id' AS document_id,
+                      metadata->>'filename' AS filename
+                    FROM vector_store
+                    WHERE project_id = :projectId
+                      AND metadata->>'indexSnapshotId' IN (:snapshotIds)
+                    ORDER BY filename NULLS LAST, document_id
+                    """,
+                    p,
+                    (rs, rowNum) ->
+                            new CorpusDocumentRef(
+                                    rs.getString("document_id"), rs.getString("filename")));
+        }
+        Set<String> allowed = new HashSet<>();
+        for (String id : ctx.documentFilter()) {
+            if (id != null && !id.isBlank() && !RagExecutionContext.ALL_DOCUMENTS.equalsIgnoreCase(id.trim())) {
+                allowed.add(id.trim());
+            }
+        }
+        if (allowed.isEmpty()) {
+            return List.of();
+        }
+        p.addValue("docIds", new ArrayList<>(allowed));
+        return namedJdbc.query(
+                """
+                SELECT DISTINCT
+                  metadata->>'document_id' AS document_id,
+                  metadata->>'filename' AS filename
+                FROM vector_store
+                WHERE project_id = :projectId
+                  AND metadata->>'indexSnapshotId' IN (:snapshotIds)
+                  AND metadata->>'document_id' IN (:docIds)
+                ORDER BY filename NULLS LAST, document_id
+                """,
+                p,
+                (rs, rowNum) ->
+                        new CorpusDocumentRef(rs.getString("document_id"), rs.getString("filename")));
     }
 
     private static void assertSnapshotFilter(List<UUID> snapshotIds) {

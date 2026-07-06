@@ -15,6 +15,7 @@ import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionMapper;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalSourceResolutionScope;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.infrastructure.observability.Loggable;
@@ -137,6 +138,7 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
                 ChatLatencyCollector.clear();
                 MetadataRequestCorpusCache.clear();
                 OrchestrationLlmConfigScope.clear();
+                RetrievalSourceResolutionScope.clear();
             }
         } catch (RagServiceException | ResponseStatusException | LlmProviderException | OpenAiCompatibleLlmException e) {
             throw e;
@@ -200,6 +202,7 @@ public class RuntimeQueryExecutionService implements QueryExecutionService, Logg
                 ChatLatencyCollector.clear();
                 MetadataRequestCorpusCache.clear();
                 OrchestrationLlmConfigScope.clear();
+                RetrievalSourceResolutionScope.clear();
             }
         } catch (RagServiceException | ResponseStatusException | LlmProviderException | OpenAiCompatibleLlmException e) {
             throw e;

@@ -145,7 +145,7 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         StructuredRewriteResult rewrite = rewriter.rewrite(
                 ctx, downstreamNormalized, classifierLabel, classifierQueryType, classifierStatus, entities);
         String rewriteStatus = "OK";
-        if (!ctx.resolved().toRagConfig().toolsEnabled()) {
+        if (!ctx.resolved().toRagConfig().nerEnabled()) {
             rewriteStatus = QU_NOTE_DISABLED;
         } else if (!rewrite.rewriteNotes().isEmpty()) {
             String first = rewrite.rewriteNotes().get(0).toUpperCase();

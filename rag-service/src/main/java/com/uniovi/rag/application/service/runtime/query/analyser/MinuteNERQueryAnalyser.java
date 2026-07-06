@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.config.ConfigurablePromptResolver;
 import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.application.service.runtime.optimization.OptionalLlmCallBudgetSkippedException;
 import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.util.NerDateFieldSupport;
@@ -246,6 +247,9 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
         try {
             return cacheable().analyseWithCache(query, NER_PROMPT, null);
+        } catch (OptionalLlmCallBudgetSkippedException e) {
+            log().info("NER: skipped LLM extraction for query (budget): {}", e.getMessage());
+            return createFallbackResponse(query);
         } catch (Exception e) {
             // Degraded path: return heuristic fallback; avoid ERROR + full stack on every LLM/cache glitch.
             log().warn("NER: Unexpected error analyzing query '{}': {}", query, e.getMessage());
@@ -263,6 +267,9 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         try {
             String template = resolvePromptTemplate(ctx);
             return analyseWithResolvedPrompt(ctx, query, template);
+        } catch (OptionalLlmCallBudgetSkippedException e) {
+            log().info("NER: skipped LLM extraction for query (budget): {}", e.getMessage());
+            return createFallbackResponse(query);
         } catch (Exception e) {
             log().warn("NER: Unexpected error analyzing query '{}': {}", query, e.getMessage());
             log().debug("NER: analysis failure detail", e);

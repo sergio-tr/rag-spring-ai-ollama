@@ -41,7 +41,8 @@ public class RetrievalContextExpander {
         List<String> notes = new ArrayList<>();
         List<RetrievalCandidate> working = new ArrayList<>(candidates);
 
-        if (shouldDedupeByDocument(plan)) {
+        boolean scopedAttendeeCount = isScopedAttendeeCountQuery(req != null ? req.queryText() : null);
+        if (shouldDedupeByDocument(plan) && !scopedAttendeeCount) {
             int before = working.size();
             working = dedupeByDocument(working);
             notes.add("count_dedupe:" + before + "->" + working.size());
@@ -60,7 +61,14 @@ public class RetrievalContextExpander {
         int cap = req != null ? Math.max(0, req.postFusionCap()) : 0;
         if (cap > 0 && working.size() > cap) {
             int beforeCap = working.size();
-            working = new ArrayList<>(working.subList(0, cap));
+            String query = req != null ? req.queryText() : null;
+            if (scopedAttendeeCount || ActaSectionContextPolicy.needsParticipantsExpansion(query)) {
+                working = applyCapPreservingRelevantSections(working, cap, query);
+            } else if (ActaSectionContextPolicy.focus(query) != ActaSectionContextPolicy.SectionFocus.NONE) {
+                working = applyCapPreservingRelevantSections(working, cap, query);
+            } else {
+                working = new ArrayList<>(working.subList(0, cap));
+            }
             notes.add("post_fusion_cap:" + beforeCap + "->" + working.size());
         }
 
@@ -111,7 +119,18 @@ public class RetrievalContextExpander {
                 || lower.contains("seccion")
                 || lower.contains("sección")
                 || lower.contains("duración")
-                || lower.contains("duracion");
+                || lower.contains("duracion")
+                || lower.contains("decisión")
+                || lower.contains("decisiones")
+                || lower.contains("acuerdo")
+                || lower.contains("acuerdos")
+                || lower.contains("cámara")
+                || lower.contains("camara")
+                || lower.contains("calefac")
+                || lower.contains("evaluación")
+                || lower.contains("evaluacion")
+                || lower.contains("videovigilanc")
+                || lower.contains("seguridad");
     }
 
     private List<RetrievalCandidate> expandActaSections(
@@ -145,30 +164,63 @@ public class RetrievalContextExpander {
                 }
                 siblings = neighborLoader.loadNeighborChunks(projectId, snapshotId, docId, chunkIndex, NEIGHBOR_RADIUS);
             }
+            double seedScore = seed.fusedRrfScore();
             for (RetrievalCandidate sibling : siblings) {
-                byId.putIfAbsent(sibling.candidateId(), sibling);
+                byId.putIfAbsent(sibling.candidateId(), withMinScore(sibling, seedScore));
             }
 
+            String query = req != null ? req.queryText() : null;
             if (needsHeaderContext(plan, req)) {
                 List<RetrievalCandidate> header =
                         neighborLoader.loadSectionSiblings(
                                 projectId, snapshotId, docId, ActaSectionChunk.SECTION_HEADER, 0);
                 for (RetrievalCandidate h : header) {
-                    byId.putIfAbsent(h.candidateId(), h);
+                    byId.putIfAbsent(h.candidateId(), withMinScore(h, seedScore));
                 }
             }
-            if (isScopedAttendeeCountQuery(req != null ? req.queryText() : null)) {
+            if (ActaSectionContextPolicy.needsParticipantsExpansion(query)
+                    || isScopedAttendeeCountQuery(query)) {
                 List<RetrievalCandidate> participants =
                         neighborLoader.loadSectionSiblings(
                                 projectId, snapshotId, docId, ActaSectionChunk.SECTION_PARTICIPANTS, 0);
                 for (RetrievalCandidate p : participants) {
-                    byId.putIfAbsent(p.candidateId(), p);
+                    byId.putIfAbsent(p.candidateId(), withMinScore(p, seedScore));
                 }
+            }
+            if (ActaSectionContextPolicy.needsAgendaExpansion(query)) {
+                addSectionSiblings(byId, projectId, snapshotId, docId, ActaSectionChunk.SECTION_AGENDA, seedScore);
+                addSectionSiblings(byId, projectId, snapshotId, docId, ActaSectionChunk.SECTION_CLOSING, seedScore);
+            }
+            if (ActaSectionContextPolicy.needsSummaryExpansion(query)) {
+                addSectionSiblings(byId, projectId, snapshotId, docId, ActaSectionChunk.SECTION_AGENDA, seedScore);
+                addSectionSiblings(byId, projectId, snapshotId, docId, ActaSectionChunk.SECTION_BODY, seedScore);
+                addSectionSiblings(byId, projectId, snapshotId, docId, ActaSectionChunk.SECTION_CLOSING, seedScore);
+            }
+            if (ActaSectionContextPolicy.needsBodyTopicExpansion(query)) {
+                addSectionSiblings(byId, projectId, snapshotId, docId, ActaSectionChunk.SECTION_BODY, seedScore);
+                addSectionSiblings(byId, projectId, snapshotId, docId, ActaSectionChunk.SECTION_AGENDA, seedScore);
             }
         }
 
         List<RetrievalCandidate> merged = mergeInBatchSectionSiblings(new ArrayList<>(byId.values()));
         return merged;
+    }
+
+    private void addSectionSiblings(
+            Map<String, RetrievalCandidate> byId,
+            UUID projectId,
+            UUID snapshotId,
+            String docId,
+            String sectionType,
+            double seedScore) {
+        List<RetrievalCandidate> siblings =
+                neighborLoader.loadSectionSiblings(projectId, snapshotId, docId, sectionType, 0);
+        if (siblings == null || siblings.isEmpty()) {
+            return;
+        }
+        for (RetrievalCandidate sibling : siblings) {
+            byId.putIfAbsent(sibling.candidateId(), withMinScore(sibling, seedScore));
+        }
     }
 
     private static boolean needsHeaderContext(QueryPlan plan, RetrievalRequest req) {
@@ -181,6 +233,9 @@ public class RetrievalContextExpander {
         }
         String lower = q.toLowerCase(Locale.ROOT);
         if (isScopedAttendeeCountQuery(q)) {
+            return true;
+        }
+        if (ActaSectionContextPolicy.needsParticipantsExpansion(q)) {
             return true;
         }
         return lower.contains("resum") || lower.contains("duración") || lower.contains("duracion");
@@ -315,5 +370,61 @@ public class RetrievalContextExpander {
         }
         String s = value.toString().trim();
         return s.isEmpty() ? null : s;
+    }
+
+    private static RetrievalCandidate withMinScore(RetrievalCandidate candidate, double minScore) {
+        if (candidate.fusedRrfScore() >= minScore) {
+            return candidate;
+        }
+        return new RetrievalCandidate(
+                candidate.candidateId(),
+                candidate.content(),
+                candidate.metadata(),
+                candidate.denseScore(),
+                candidate.sparseScore(),
+                candidate.denseRank(),
+                candidate.sparseRank(),
+                candidate.snapshotId(),
+                minScore);
+    }
+
+    /** Keep section-relevant evidence when post-fusion cap would drop it. */
+    private static List<RetrievalCandidate> applyCapPreservingRelevantSections(
+            List<RetrievalCandidate> candidates, int cap, String query) {
+        List<RetrievalCandidate> pinned = new ArrayList<>();
+        List<RetrievalCandidate> rest = new ArrayList<>();
+        for (RetrievalCandidate c : candidates) {
+            if (ActaSectionContextPolicy.shouldPinThroughCap(query, c) || isAttendeeSectionCandidate(c)) {
+                pinned.add(c);
+            } else {
+                rest.add(c);
+            }
+        }
+        List<RetrievalCandidate> out = new ArrayList<>(pinned);
+        for (RetrievalCandidate c : rest) {
+            if (out.size() >= cap) {
+                break;
+            }
+            out.add(c);
+        }
+        if (out.size() > cap) {
+            return new ArrayList<>(out.subList(0, cap));
+        }
+        return out;
+    }
+
+    private static boolean isAttendeeSectionCandidate(RetrievalCandidate candidate) {
+        if (candidate == null) {
+            return false;
+        }
+        String sectionType = stringOrNull(candidate.metadata().get("sectionType"));
+        if (ActaSectionChunk.SECTION_PARTICIPANTS.equals(sectionType)
+                || ActaSectionChunk.SECTION_HEADER.equals(sectionType)) {
+            return true;
+        }
+        String content = candidate.content() != null ? candidate.content().toLowerCase(Locale.ROOT) : "";
+        return content.contains("propietarios")
+                || content.contains("asistentes")
+                || content.contains("asistencia");
     }
 }

@@ -436,6 +436,37 @@ class AdvancedRetrievalPipelineTest {
     }
 
     @Test
+    void retrieve_actaNumberAnchorKeepsOnlyMatchingDocument() {
+        UUID sid = UUID.randomUUID();
+        ExecutionContext ctx = executionContext(sid, false, false);
+        QueryPlan plan = minimalPlan();
+        RetrievalRequest req =
+                retrievalRequestWithQuery(sid, RetrievalMode.DENSE_ONLY, "¿Cuántos asistentes hubo en el acta 3?");
+
+        RetrievalCandidate acta3 =
+                new RetrievalCandidate("a3", "18 asistentes", Map.of("filename", "ACTA 3.pdf"), 0.2, 0.0, 2, 0, sid, 0.9);
+        RetrievalCandidate acta6 =
+                new RetrievalCandidate("a6", "20 asistentes", Map.of("filename", "ACTA 6.pdf"), 0.1, 0.0, 1, 0, sid, 1.0);
+        List<RetrievalCandidate> dense = List.of(acta6, acta3);
+
+        when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
+        when(denseRetrievalStrategy.retrieveWithOutcome(req)).thenReturn(denseOutcome(dense));
+        when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
+        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+
+        var out = pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow");
+
+        assertThat(out.finalCandidates()).containsExactly(acta3);
+        assertThat(out.retrievalStageTraces())
+                .anyMatch(
+                        s ->
+                                "acta_anchor_grounding".equals(s.stageName())
+                                        && s.message().contains("actaNumber=3")
+                                        && s.message().contains("ACTA 3.pdf")
+                                        && s.message().contains("after=1"));
+    }
+
+    @Test
     void retrieve_setsEffectiveTopKAndSectionMergeReductionReasonInDiagnostics() {
         UUID sid = UUID.randomUUID();
         ExecutionContext ctx = executionContext(sid, false, false);

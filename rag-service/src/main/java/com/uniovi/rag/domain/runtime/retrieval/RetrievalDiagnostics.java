@@ -34,7 +34,13 @@ public record RetrievalDiagnostics(
         Optional<Integer> retrievalEffectiveTopK,
         Optional<Double> retrievalEffectiveSimilarityThreshold,
         Optional<Integer> retrievalDenseFetchLimit,
-        Optional<String> retrievalContextReductionReason) {
+        Optional<String> retrievalContextReductionReason,
+        /**
+         * Resolved {@code retrievalOverrideMode} (preset/project_settings/assistant_defaults/custom) that supplied
+         * {@link #retrievalEffectiveTopK()} / {@link #retrievalEffectiveSimilarityThreshold()} for this turn, when
+         * known (see phase-4-4 effective config trace / {@link RetrievalSourceResolutionScope}).
+         */
+        Optional<String> retrievalSourceMode) {
 
     public RetrievalDiagnostics {
         fusionMode = Objects.requireNonNullElseGet(fusionMode, Optional::empty);
@@ -53,6 +59,7 @@ public record RetrievalDiagnostics(
         retrievalDenseFetchLimit = Objects.requireNonNullElseGet(retrievalDenseFetchLimit, Optional::empty);
         retrievalContextReductionReason =
                 Objects.requireNonNullElseGet(retrievalContextReductionReason, Optional::empty);
+        retrievalSourceMode = Objects.requireNonNullElseGet(retrievalSourceMode, Optional::empty);
     }
 
     public RetrievalDiagnostics(
@@ -97,6 +104,7 @@ public record RetrievalDiagnostics(
                 compressionCharsAfter,
                 rerankOrderChanged,
                 dedupedCandidateCount,
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
@@ -154,6 +162,7 @@ public record RetrievalDiagnostics(
                 sparseTelemetry,
                 fusionTelemetry,
                 metadataFilterTelemetry,
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),

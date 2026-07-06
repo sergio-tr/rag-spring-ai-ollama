@@ -123,6 +123,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
         } else {
             String user = resolveRagUserTurn(ctx, q, effectivePromptContext, policy, docBound, mismatch, combinedPlan);
             String draft = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
+            draft = guardPrefixOnlyDraft(draft, q, effectivePromptContext, stages, tLlm);
             stages.add(stage("llm", tLlm, ExecutionStageOutcome.SUCCESS, ""));
             FactualAnswerVerificationLoop.Outcome verified =
                     FactualAnswerVerificationLoop.apply(
@@ -189,6 +190,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                         combinedPlan);
         String draft = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
         List<ExecutionStageTrace> stages = new ArrayList<>();
+        draft = guardPrefixOnlyDraft(draft, q, context, stages, tLlm);
         stages.add(stage("llm", tLlm, ExecutionStageOutcome.SUCCESS, "from_advisor_packed_context"));
         FactualAnswerVerificationLoop.Outcome verified =
                 FactualAnswerVerificationLoop.apply(
@@ -219,7 +221,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                         null,
                         Optional.empty(),
                         stages)
-                .withResponseSources(List.of());
+                .withResponseSources(ResponseSourcesBackfill.fromPackedContext(packed));
     }
 
     private static ExecutionStageTrace finalAnswerSourceStage(FinalAnswerSource source) {
@@ -284,6 +286,24 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
             return promptResolver.resolve(ConfigurablePromptGroup.FACTUAL_VERIFIER, ctx.userId(), ctx.projectId());
         }
         return FactualRevisionPrompts.defaultRevisionTemplate();
+    }
+
+    private String guardPrefixOnlyDraft(
+            String draft,
+            String query,
+            String contextText,
+            List<ExecutionStageTrace> stages,
+            long tLlm) {
+        if (!PrefixOnlyAnswerGuard.isPrefixOnlyFragment(draft)) {
+            return draft;
+        }
+        stages.add(
+                stage(
+                        "llm_prefix_only_guard",
+                        tLlm,
+                        ExecutionStageOutcome.FAILED,
+                        "raw_prefix_only=true"));
+        return PrefixOnlyAnswerGuard.resolveDraft(draft, query, contextText);
     }
 
     private static String preview(String s) {

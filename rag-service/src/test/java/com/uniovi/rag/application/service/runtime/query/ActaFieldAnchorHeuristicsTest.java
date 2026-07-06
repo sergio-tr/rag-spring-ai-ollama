@@ -67,6 +67,9 @@ class ActaFieldAnchorHeuristicsTest {
                         "¿Qué acuerdo se tomó sobre el ascensor en ACTA 6.pdf?"))
                 .isTrue();
         assertThat(ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference("presidente del acta 2"))
+                .isTrue();
+        assertThat(ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference(
+                        "cuales son los asistentes del acta del 25 de febrero del 2025?"))
                 .isFalse();
     }
 }

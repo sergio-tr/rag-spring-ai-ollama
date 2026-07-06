@@ -32,6 +32,13 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
         List<String> missing = new ArrayList<>();
 
         String qLower = normalized.normalizedText().toLowerCase(Locale.ROOT);
+
+        Optional<IncompleteQueryHeuristics.Signal> incomplete =
+                IncompleteQueryHeuristics.detect(normalized.normalizedText());
+        if (incomplete.isPresent()) {
+            return IncompleteQueryHeuristics.toAmbiguityAssessment(incomplete.get());
+        }
+
         if (ActaFieldAnchorHeuristics.isCorpusWideAggregate(qLower)) {
             return AmbiguityAssessment.sufficient();
         }

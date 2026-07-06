@@ -131,6 +131,17 @@ class AnswerQualityAdvisorTest {
         assertThat(assessment.preserveWithoutLlmJudge()).isTrue();
     }
 
+    @Test
+    void rejectsPrefixOnlyBasedAnswer() {
+        QueryPlan plan = plan("en qué actas se habla sobre cámaras", QueryType.FILTER_AND_LIST, List.of());
+
+        var assessment =
+                advisor.assess(null, plan, "Based", JudgeCandidateSource.WORKFLOW, Optional.empty());
+
+        assertThat(assessment.acceptable()).isFalse();
+        assertThat(assessment.reasons()).contains("prefix_only_answer");
+    }
+
     private static QueryPlan plan(String query, QueryType queryType, List<String> dates) {
         EntityExtractionResult entities =
                 new EntityExtractionResult(

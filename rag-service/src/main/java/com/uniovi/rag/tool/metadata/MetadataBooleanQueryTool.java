@@ -137,6 +137,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
 
         String answer = generateBooleanAnswerWithLLM(query, evidence, relevantMinutes.size());
         log().info("Generated answer for query: {} with {} evidence pieces", query, evidence.size());
+        publishMatchedMinutesContext(relevantMinutes, true);
         return ToolResult.from(formatResponse(answer, query), getClass());
     }
 

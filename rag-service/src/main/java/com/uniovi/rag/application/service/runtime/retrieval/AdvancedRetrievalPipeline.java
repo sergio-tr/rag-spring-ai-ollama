@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime.retrieval;
 
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.service.runtime.DateGroundingSupport;
+import com.uniovi.rag.application.service.runtime.query.ActaDocumentAnchorSupport;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
@@ -22,6 +23,7 @@ import com.uniovi.rag.domain.runtime.retrieval.RetrievedContextSet;
 import com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry;
 import com.uniovi.rag.domain.runtime.retrieval.MetadataFilterTelemetry;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalSourceResolutionScope;
 import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalTelemetry;
 import org.springframework.stereotype.Service;
 
@@ -239,7 +241,9 @@ public class AdvancedRetrievalPipeline {
                 : Optional.empty();
 
         long tFilterBasic = System.nanoTime();
-        List<RetrievalCandidate> filteredBasic = retrievalFilter.filterBasic(req, rerankResult.candidates());
+        List<RetrievalCandidate> boostedBasic =
+                MetadataRetrievalBooster.apply(req, plan, workflowName, rerankResult.candidates());
+        List<RetrievalCandidate> filteredBasic = retrievalFilter.filterBasic(req, boostedBasic);
         traces.add(stage("retrieval_filter_basic", tFilterBasic, ExecutionStageOutcome.SUCCESS, "count=" + filteredBasic.size()));
 
         boolean postRetrievalEnabled = ctx.resolved().toRagConfig().postRetrievalEnabled();
@@ -252,17 +256,19 @@ public class AdvancedRetrievalPipeline {
         if (!postRetrievalEnabled) {
             traces.add(skipped("retrieval_filter_advanced", "postRetrievalEnabled=false"));
             traces.add(skipped("retrieval_compress", "postRetrievalEnabled=false"));
-            filteredFinal = applyDateGrounding(req, filteredBasic, traces);
+            filteredFinal = applyActaAnchorGrounding(req, applyDateGrounding(req, filteredBasic, traces), traces);
         } else {
             long tFilterAdv = System.nanoTime();
-            List<RetrievalCandidate> advancedInput = retrievalFilter.filterAdvanced(req, plan, rerankResult.candidates());
+            List<RetrievalCandidate> advancedInput =
+                    MetadataRetrievalBooster.apply(req, plan, workflowName, rerankResult.candidates());
+            advancedInput = retrievalFilter.filterAdvanced(req, plan, advancedInput);
             MetadataConstraintFilter.FilterResult constraintResult =
                     metadataConstraintFilter.apply(req, plan, advancedInput);
             metadataFilterTelemetry = Optional.of(constraintResult.telemetry());
             if (constraintResult.telemetry().fallback()) {
                 traceNotes.add("metadata_filter_fallback");
             }
-            filteredFinal = applyDateGrounding(req, constraintResult.candidates(), traces);
+            filteredFinal = applyActaAnchorGrounding(req, applyDateGrounding(req, constraintResult.candidates(), traces), traces);
             traces.add(
                     stage(
                             "retrieval_filter_advanced",
@@ -330,8 +336,9 @@ public class AdvancedRetrievalPipeline {
         }
 
         RetrievalLayout layout = resolveRetrievalLayout(workflowName, plan);
+        boolean metadataRichContext = WORKFLOW_CHUNK_DENSE_METADATA.equals(workflowName);
         long tPack = System.nanoTime();
-        String prompt = retrievalPromptTextBuilder.build(compressed.candidates(), req.queryText(), layout);
+        String prompt = retrievalPromptTextBuilder.build(compressed.candidates(), req.queryText(), layout, metadataRichContext);
         traces.add(stage("context_pack", tPack, ExecutionStageOutcome.SUCCESS, "chars=" + (prompt != null ? prompt.length() : 0)));
         if (compressed.candidates().isEmpty()) {
             prompt = "";
@@ -403,7 +410,8 @@ public class AdvancedRetrievalPipeline {
                         Optional.of(req.postFusionCap()),
                         Optional.of(runtimeSimilarityThresholdUsed),
                         Optional.of(req.denseFetchLimit()),
-                        reductionReason);
+                        reductionReason,
+                        RetrievalSourceResolutionScope.current());
 
         return new CuratedContextSet(
                 compressed.candidates(),
@@ -481,7 +489,42 @@ public class AdvancedRetrievalPipeline {
         }
         Optional<DateGroundingSupport.RequestedDate> requested =
                 DateGroundingSupport.requestedDate(req.queryText(), req.entities().dates());
-        return requested.map(date -> DateGroundingSupport.preferExactDate(candidates, date)).orElse(candidates);
+        List<RetrievalCandidate> ordered =
+                requested.map(date -> DateGroundingSupport.preferExactDate(candidates, date)).orElse(candidates);
+        return applyActaAnchorOrder(req, ordered);
+    }
+
+    private static List<RetrievalCandidate> applyActaAnchorOrder(RetrievalRequest req, List<RetrievalCandidate> candidates) {
+        return ActaDocumentAnchorSupport.resolveActaNumber(req.queryText())
+                .map(n -> ActaDocumentAnchorSupport.preferActaAnchored(candidates, n))
+                .orElse(candidates);
+    }
+
+    private static List<RetrievalCandidate> applyActaAnchorGrounding(
+            RetrievalRequest req,
+            List<RetrievalCandidate> candidates,
+            List<ExecutionStageTrace> traces) {
+        Optional<Integer> acta = ActaDocumentAnchorSupport.resolveActaNumber(req.queryText());
+        if (acta.isEmpty()) {
+            traces.add(skipped("acta_anchor_grounding", "actaNumber=none"));
+            return candidates != null ? candidates : List.of();
+        }
+        List<RetrievalCandidate> safe = candidates != null ? candidates : List.of();
+        List<RetrievalCandidate> selected = ActaDocumentAnchorSupport.preferActaAnchored(safe, acta.get());
+        traces.add(
+                stage(
+                        "acta_anchor_grounding",
+                        System.nanoTime(),
+                        ExecutionStageOutcome.SUCCESS,
+                        "actaNumber="
+                                + acta.get()
+                                + " canonicalFilename="
+                                + ActaDocumentAnchorSupport.canonicalFilename(acta.get())
+                                + " before="
+                                + safe.size()
+                                + " after="
+                                + selected.size()));
+        return selected;
     }
 
     private static List<String> topCandidateIds(List<RetrievalCandidate> candidates, int max) {
@@ -528,6 +571,10 @@ public class AdvancedRetrievalPipeline {
             }
             String id = c.candidateId();
             if (id == null || id.isBlank()) {
+                continue;
+            }
+            if (ActaSectionContextPolicy.isProtectedFromCompression(req.queryText(), c)) {
+                out.add(id);
                 continue;
             }
             String docId = extractDocId(c);

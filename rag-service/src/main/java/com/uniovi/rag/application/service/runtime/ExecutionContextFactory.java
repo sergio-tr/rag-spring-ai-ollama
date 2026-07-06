@@ -27,6 +27,8 @@ import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import com.uniovi.rag.application.service.runtime.config.MaterializationAwareSnapshotResolver;
 import com.uniovi.rag.application.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.domain.config.RetrievalOverrideModeSupport;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalSourceResolutionScope;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.exception.llm.LlmSafeOperationLogger;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
@@ -108,6 +110,7 @@ public class ExecutionContextFactory {
                 conversationId != null
                         ? chatScopedRagConfigResolver.mergedConversationConfigAsJson(conversationId)
                         : null;
+        RetrievalSourceResolutionScope.bind(RetrievalOverrideModeSupport.readMode(merged, null));
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         userId, projectId, merged, correlationId);
@@ -147,6 +150,7 @@ public class ExecutionContextFactory {
         LabBenchmarkExecutionContext.LabRuntimeContext labCtx =
                 LabBenchmarkExecutionContext.currentLabRuntimeContext().orElse(null);
         UUID projectId = labCtx != null ? labCtx.projectId() : null;
+        RetrievalSourceResolutionScope.bind(RetrievalOverrideModeSupport.readMode(benchmarkTerminal, null));
         Optional<String> model = validateAndNormalizeChatModel(null, projectId, benchmarkTerminal, chatModelOverride);
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(

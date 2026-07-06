@@ -102,9 +102,12 @@ public final class FinalAnswerSynthesizer {
         cleaned = stripInternalLabels(cleaned);
         cleaned = ReasoningBlockSanitizer.stripReasoningBlocks(cleaned);
         cleaned = FinalAnswerStubSanitizer.sanitizeForUser(plan, cleaned, responseSources);
+        String query = extractQueryText(plan);
+        cleaned = correctDateDenialAgainstSources(query, cleaned, responseSources);
         cleaned = normalizeSafeSpanishPunctuation(cleaned);
         cleaned = ensureSentenceStart(cleaned);
         cleaned = FinalAnswerMarkdownSanitizer.sanitize(cleaned);
+        cleaned = PrefixOnlyAnswerGuard.resolve(cleaned, query, responseSources);
         return cleaned.trim();
     }
 
@@ -119,7 +122,7 @@ public final class FinalAnswerSynthesizer {
         if (answerText == null || answerText.isBlank()) {
             return answerText;
         }
-        String query = plan != null ? plan.rewrittenQueryText() : "";
+        String query = extractQueryText(plan);
         boolean spanish = RuntimeAnswerPrompts.requiresStrictDocumentGrounding(query)
                 || looksSpanish(query != null ? query : answerText);
 
@@ -127,6 +130,7 @@ public final class FinalAnswerSynthesizer {
         cleaned = stripInternalLabels(cleaned);
         cleaned = ReasoningBlockSanitizer.stripReasoningBlocks(cleaned);
         cleaned = FinalAnswerStubSanitizer.sanitizeForUser(plan, cleaned, responseSources);
+        cleaned = correctDateDenialAgainstSources(query, cleaned, responseSources);
         cleaned = normalizeUnavailableMessage(cleaned, spanish);
         cleaned = structureByQueryType(plan, cleaned, spanish);
         cleaned = enforceMultiMatchEnumeration(plan, cleaned, responseSources, spanish);
@@ -134,6 +138,7 @@ public final class FinalAnswerSynthesizer {
         cleaned = appendSourceReferencesIfMissing(cleaned, responseSources, spanish);
         cleaned = ensureSentenceStart(cleaned);
         cleaned = FinalAnswerMarkdownSanitizer.sanitize(cleaned);
+        cleaned = PrefixOnlyAnswerGuard.resolve(cleaned, query, responseSources);
         return cleaned.trim();
     }
 
@@ -452,5 +457,32 @@ public final class FinalAnswerSynthesizer {
                 || q.contains("cuant")
                 || q.contains("presidente")
                 || q.contains("asistent");
+    }
+
+    private static String extractQueryText(QueryPlan plan) {
+        if (plan == null) {
+            return "";
+        }
+        if (plan.rewrittenQueryText() != null && !plan.rewrittenQueryText().isBlank()) {
+            return plan.rewrittenQueryText();
+        }
+        if (plan.normalizedQueryText() != null && !plan.normalizedQueryText().isBlank()) {
+            return plan.normalizedQueryText();
+        }
+        if (plan.rawUserQuery() != null && !plan.rawUserQuery().isBlank()) {
+            return plan.rawUserQuery();
+        }
+        return "";
+    }
+
+    private static String correctDateDenialAgainstSources(
+            String query, String answer, List<Map<String, Object>> sources) {
+        if (answer == null || answer.isBlank()) {
+            return answer;
+        }
+        if (CorpusDateEvidenceAnswerGuard.answerDeniesDespiteMatchingSources(query, answer, sources)) {
+            return CorpusDateEvidenceAnswerGuard.groundedEvidenceReminder(query) + "\n\n" + answer;
+        }
+        return answer;
     }
 }

@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime.clarification;
 
 import com.uniovi.rag.application.service.runtime.optimization.DeterministicQueryRewriteShortcuts;
 import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
+import com.uniovi.rag.application.service.runtime.query.IncompleteQueryHeuristics;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
@@ -41,6 +42,23 @@ public class ClarificationPolicyResolver {
             String d = disableReason.get();
             return new ClarificationDecision(
                     false, ClarificationOutcome.DISABLED_BY_CONFIG, null, "disable_reason=" + d);
+        }
+
+        Optional<IncompleteQueryHeuristics.Signal> incomplete = IncompleteQueryHeuristics.detect(plan);
+        if (incomplete.isPresent()) {
+            ClarificationQuestionKind kind =
+                    switch (incomplete.get().reason()) {
+                        case INCOMPLETE_COUNT_FILTER, TRAILING_RELATIVE_CLAUSE ->
+                                ClarificationQuestionKind.GENERIC_MISSING_INFORMATION;
+                        case TRAILING_PREPOSITION -> ClarificationQuestionKind.MISSING_DATE;
+                    };
+            ClarificationQuestion q = clarificationQuestionGenerator.questionForKind(kind, plan);
+            ClarificationOutcome askOutcome =
+                    ctx.validPendingExistedAtLoad()
+                            ? ClarificationOutcome.ASKED_CLARIFICATION_AGAIN
+                            : ClarificationOutcome.ASKED_CLARIFICATION;
+            return new ClarificationDecision(
+                    true, askOutcome, q, incomplete.get().traceNote());
         }
 
         if (isCompoundMonthTopicAttendeeFilterQuery(plan)) {
@@ -102,6 +120,11 @@ public class ClarificationPolicyResolver {
                         .toList();
         AmbiguityStatus status = plan.ambiguityAssessment().status();
 
+        for (String f : missingLower) {
+            if (containsAnySubstring(f, "filter", "condition", "criteria", "predicate")) {
+                return Optional.of(ClarificationQuestionKind.GENERIC_MISSING_INFORMATION);
+            }
+        }
         for (String f : missingLower) {
             if (containsAnySubstring(f, "date", "time", "deadline")) {
                 return Optional.of(ClarificationQuestionKind.MISSING_DATE);

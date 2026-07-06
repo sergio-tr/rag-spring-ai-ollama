@@ -518,6 +518,50 @@ class DenseRetrievalStrategyTest {
     }
 
     @Test
+    void retrieve_doesNotClampThresholdWhenSnapshotEmbeddingMatchesDeploymentDefault() {
+        RagExecutionContextHolder.clear();
+        RagConfig rag = ragWithThreshold(0.5);
+        RagExecutionContextHolder.set(RagExecutionContext.forUnscopedExecution(rag, "t"));
+        EmbeddingIndexCompatibilityService compatibility = permissiveCompatibility();
+        lenient().when(compatibility.deploymentDefaultEmbeddingModelId()).thenReturn("nomic-embed-text");
+        denseRetrievalStrategy =
+                new DenseRetrievalStrategy(vectorStoreRegistry, vectorStore, ragVectorProperties, compatibility, 10, 0.15);
+
+        UUID sid = UUID.randomUUID();
+        RetrievalRequest req = baseRequestWithEmbeddingModel(sid, 5, "nomic-embed-text");
+        when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
+
+        DenseRetrievalOutcome outcome = denseRetrievalStrategy.retrieveWithOutcome(req);
+
+        ArgumentCaptor<SearchRequest> cap = ArgumentCaptor.forClass(SearchRequest.class);
+        verify(vectorStore).similaritySearch(cap.capture());
+        assertThat(cap.getValue().getSimilarityThreshold()).isEqualTo(0.5);
+        assertThat(outcome.similarityThresholdUsed()).isEqualTo(0.5);
+    }
+
+    @Test
+    void retrieve_clampsThresholdWhenSnapshotEmbeddingDiffersFromDeploymentDefault() {
+        RagExecutionContextHolder.clear();
+        RagConfig rag = ragWithThreshold(0.7);
+        RagExecutionContextHolder.set(RagExecutionContext.forUnscopedExecution(rag, "t"));
+        EmbeddingIndexCompatibilityService compatibility = permissiveCompatibility();
+        lenient().when(compatibility.deploymentDefaultEmbeddingModelId()).thenReturn("nomic-embed-text");
+        denseRetrievalStrategy =
+                new DenseRetrievalStrategy(vectorStoreRegistry, vectorStore, ragVectorProperties, compatibility, 10, 0.15);
+
+        UUID sid = UUID.randomUUID();
+        RetrievalRequest req = baseRequestWithEmbeddingModel(sid, 5, "bge-m3");
+        when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
+
+        DenseRetrievalOutcome outcome = denseRetrievalStrategy.retrieveWithOutcome(req);
+
+        ArgumentCaptor<SearchRequest> cap = ArgumentCaptor.forClass(SearchRequest.class);
+        verify(vectorStore).similaritySearch(cap.capture());
+        assertThat(cap.getValue().getSimilarityThreshold()).isEqualTo(0.15);
+        assertThat(outcome.similarityThresholdUsed()).isEqualTo(0.15);
+    }
+
+    @Test
     void retrieve_throwsWhenSnapshotEmbeddingModelIdRequiredButMissing() {
         UUID sid = UUID.randomUUID();
         when(ragVectorProperties.requireSnapshotEmbeddingModelId()).thenReturn(true);
@@ -557,6 +601,54 @@ class DenseRetrievalStrategyTest {
                 RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
                 RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
                 MaterializationStrategy.CHUNK_LEVEL);
+    }
+
+    private static RagConfig ragWithThreshold(double threshold) {
+        return new RagConfig(
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                5,
+                threshold,
+                "l",
+                "e",
+                "c",
+                "r",
+                false,
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                MaterializationStrategy.CHUNK_LEVEL);
+    }
+
+    private static RetrievalRequest baseRequestWithEmbeddingModel(UUID snapshotId, int topKDense, String embeddingModelId) {
+        return new RetrievalRequest(
+                "q",
+                Map.of(),
+                List.of(),
+                List.of(),
+                EntityExtractionResult.emptyWithNote(""),
+                RetrievalMode.DENSE_ONLY,
+                topKDense,
+                5,
+                10,
+                5,
+                24_000,
+                RetrievalPolicy.denseFetchLimit(10),
+                List.of(snapshotId),
+                UUID.randomUUID(),
+                Optional.empty(),
+                List.of("all"),
+                true,
+                Optional.of(embeddingModelId));
     }
 
     private static RetrievalRequest baseRequest(UUID snapshotId, int topKDense) {

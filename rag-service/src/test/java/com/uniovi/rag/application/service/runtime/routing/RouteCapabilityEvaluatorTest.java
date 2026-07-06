@@ -86,6 +86,51 @@ class RouteCapabilityEvaluatorTest {
         assertTrue(evaluator.evaluate(ok, sufficient).advisorEligible());
     }
 
+    @Test
+    void evaluate_structuredToolsNotEligible_forUnstructuredTopicPlan() {
+        RagConfig rag =
+                new RagConfig(
+                        false, false, true, false, false, false, false,
+                        false,
+                        true,
+                        false,
+                        false,
+                        false,
+                        true,
+                        5, 0.2, "l", "e", "c", "r",
+                        false,
+                        RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                        RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                        MaterializationStrategy.CHUNK_LEVEL);
+
+        QueryPlan topic =
+                new QueryPlan(
+                        QueryPlan.VERSION_P6_QU_CORE_V1,
+                        "en qué actas se habla sobre cámaras",
+                        "en qué actas se habla sobre cámaras",
+                        "en qué actas se habla sobre cámaras",
+                        "rw",
+                        "lbl",
+                        Optional.empty(),
+                        ClassifierStatus.OK,
+                        QueryIntent.FIND,
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled("norm", ""),
+                        ExpectedAnswerShape.UNKNOWN,
+                        new AmbiguityAssessment(AmbiguityStatus.SUFFICIENT, List.of(), List.of()),
+                        "corr",
+                        "",
+                        List.of());
+
+        RouteCapabilityEvaluator.RouteCapabilities caps = evaluator.evaluate(rag, topic);
+        assertFalse(caps.deterministicToolsEligible());
+        assertFalse(caps.functionCallingEligible());
+        assertTrue(caps.reasons().stream().anyMatch(r -> r.contains("not_applicable")));
+    }
+
     private static QueryPlan plan(AmbiguityStatus status) {
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,

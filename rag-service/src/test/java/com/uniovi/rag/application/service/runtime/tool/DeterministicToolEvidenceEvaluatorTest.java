@@ -124,6 +124,34 @@ class DeterministicToolEvidenceEvaluatorTest {
         assertThat(evaluation.singleKind()).contains(DeterministicToolKind.GET_FIELD_TOOL);
     }
 
+    @Test
+    void disabledClassifier_countIntentStillEligibleForToolRouting() {
+        QueryPlan plan =
+                new QueryPlan(
+                        QueryPlan.VERSION_P6_QU_CORE_V1,
+                        "raw",
+                        "raw",
+                        "norm",
+                        "rw",
+                        "lbl",
+                        Optional.empty(),
+                        ClassifierStatus.DISABLED,
+                        QueryIntent.COUNT,
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        StructuredRewriteResult.identityDisabled("norm", ""),
+                        ExpectedAnswerShape.SCALAR_COUNT,
+                        AmbiguityAssessment.sufficient(),
+                        "cid",
+                        "",
+                        List.of());
+        var evaluation = DeterministicToolEvidenceEvaluator.evaluate(plan);
+        assertThat(evaluation.toolApplicabilityEligible()).isTrue();
+        assertThat(evaluation.singleKind()).contains(DeterministicToolKind.COUNT_DOCUMENTS_TOOL);
+    }
+
     private static QueryPlan weakLivePlan(String question) {
         return new QueryPlan(
                 QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1,

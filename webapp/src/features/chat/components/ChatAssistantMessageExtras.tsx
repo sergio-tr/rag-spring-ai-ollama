@@ -113,7 +113,13 @@ function sourceSnippet(source: Record<string, unknown>): string | null {
 
 function sourceScore(source: Record<string, unknown>): string | null {
   const value = source.distance ?? source.score;
-  return typeof value === "number" ? value.toFixed(4) : value != null ? String(value) : null;
+  if (typeof value !== "number") {
+    return value != null ? String(value) : null;
+  }
+  // Lower is better (embedding distance), not a 0-1 "similarity" percentage. Label explicitly
+  // so it isn't misread as, or compared against, the "similarity threshold" setting (higher-is-better).
+  const label = typeof source.distanceLabel === "string" && source.distanceLabel.trim() ? source.distanceLabel : "distance";
+  return `${label}=${value.toFixed(4)}`;
 }
 
 function sourceDateMismatch(sourceDate: string | null, requestedDate: string | null): boolean {

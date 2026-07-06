@@ -57,6 +57,36 @@ class RuntimeRetrievedSourceMapperTest {
         assertThat(sources.get(0).metadata()).containsEntry("supportingAnswer", true);
     }
 
+    @Test
+    void preservesSectionTypeAndAttendeeCountInSourceMetadata() {
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("date_iso", "2025-08-25");
+        meta.put("sectionType", "participants");
+        meta.put("attendeesCount", 18);
+        RetrievalCandidate exact = candidate("ACTA 3.pdf", meta);
+
+        List<ChatSource> sources = RuntimeRetrievedSourceMapper.toChatSources(List.of(exact));
+
+        assertThat(sources.get(0).metadata())
+                .containsEntry("sectionType", "participants")
+                .containsEntry("attendeesCount", 18);
+    }
+
+    @Test
+    void preservesTopicsAndDecisionsInSourceMetadata() {
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("sectionType", "agenda");
+        meta.put("topics", List.of("cámaras de seguridad"));
+        meta.put("decisions", List.of("Instalar videovigilancia"));
+        RetrievalCandidate c = candidate("ACTA 1.pdf", meta);
+
+        List<ChatSource> sources = RuntimeRetrievedSourceMapper.toChatSources(List.of(c));
+
+        assertThat(sources.get(0).metadata())
+                .containsEntry("topics", List.of("cámaras de seguridad"))
+                .containsEntry("decisions", List.of("Instalar videovigilancia"));
+    }
+
     private static RetrievalCandidate candidate(String filename, Map<String, Object> metadata) {
         Map<String, Object> meta = new LinkedHashMap<>(metadata);
         meta.put("filename", filename);

@@ -18,6 +18,7 @@ import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.ArrayList;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -244,7 +245,331 @@ class RetrievalContextExpanderTest {
     }
 
     @Test
-    void expand_appliesPostFusionCapAfterExpansion() {
+    void expand_scopedAttendeeListQuery_loadsParticipantsSection() {
+        UUID snap = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        String doc = UUID.randomUUID().toString();
+        RetrievalCandidate headerHit =
+                new RetrievalCandidate(
+                        "h0",
+                        "Fecha: 25 de febrero de 2025",
+                        Map.of("projectDocumentId", doc, "sectionType", ActaSectionChunk.SECTION_HEADER, "chunkIndex", 0),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0.8);
+        RetrievalCandidate participants =
+                new RetrievalCandidate(
+                        "p0",
+                        "• Ana\n• Luis",
+                        Map.of(
+                                "projectDocumentId",
+                                doc,
+                                "sectionType",
+                                ActaSectionChunk.SECTION_PARTICIPANTS,
+                                "chunkIndex",
+                                1),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0);
+
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_PARTICIPANTS), anyInt()))
+                .thenReturn(List.of(participants));
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_HEADER), anyInt()))
+                .thenReturn(List.of(headerHit));
+
+        QueryPlan plan = mock(QueryPlan.class);
+        when(plan.queryIntent()).thenReturn(QueryIntent.LIST);
+        when(plan.expectedAnswerShape()).thenReturn(ExpectedAnswerShape.LIST);
+
+        RetrievalRequest req = mock(RetrievalRequest.class);
+        when(req.projectId()).thenReturn(projectId);
+        when(req.queryText()).thenReturn("cuales son los asistentes del acta del 25 de febrero del 2025?");
+        when(req.postFusionCap()).thenReturn(8);
+
+        var result = expander.expand(req, plan, List.of(headerHit));
+
+        assertThat(result.candidates()).extracting(RetrievalCandidate::candidateId).contains("p0");
+    }
+
+    @Test
+    void expand_decisionQuery_loadsAgendaSection() {
+        UUID snap = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        String doc = UUID.randomUUID().toString();
+        RetrievalCandidate headerHit =
+                new RetrievalCandidate(
+                        "h0",
+                        "Fecha: 25 de agosto de 2025",
+                        Map.of("projectDocumentId", doc, "sectionType", ActaSectionChunk.SECTION_HEADER, "chunkIndex", 0),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0.8);
+        RetrievalCandidate agenda =
+                new RetrievalCandidate(
+                        "a0",
+                        "Se acordó instalar cámaras",
+                        Map.of("projectDocumentId", doc, "sectionType", ActaSectionChunk.SECTION_AGENDA, "chunkIndex", 3),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0);
+
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_HEADER), anyInt()))
+                .thenReturn(List.of(headerHit));
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_AGENDA), anyInt()))
+                .thenReturn(List.of(agenda));
+
+        QueryPlan plan = mock(QueryPlan.class);
+        when(plan.queryIntent()).thenReturn(QueryIntent.FIND);
+        when(plan.expectedAnswerShape()).thenReturn(ExpectedAnswerShape.PARAGRAPH);
+
+        RetrievalRequest req = mock(RetrievalRequest.class);
+        when(req.projectId()).thenReturn(projectId);
+        when(req.queryText()).thenReturn("qué decisiones se tomaron en el acta del 25 de agosto de 2025?");
+        when(req.postFusionCap()).thenReturn(8);
+
+        var result = expander.expand(req, plan, List.of(headerHit));
+
+        assertThat(result.candidates()).extracting(RetrievalCandidate::candidateId).contains("a0");
+    }
+
+    @Test
+    void expand_decisionQuery_loadsClosingSection() {
+        UUID snap = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        String doc = UUID.randomUUID().toString();
+        RetrievalCandidate headerHit =
+                new RetrievalCandidate(
+                        "h0",
+                        "Fecha: 25 de agosto de 2025",
+                        Map.of("projectDocumentId", doc, "sectionType", ActaSectionChunk.SECTION_HEADER, "chunkIndex", 0),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0.8);
+        RetrievalCandidate closing =
+                new RetrievalCandidate(
+                        "c0",
+                        "Se acordó por unanimidad",
+                        Map.of("projectDocumentId", doc, "sectionType", ActaSectionChunk.SECTION_CLOSING, "chunkIndex", 5),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0);
+
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_AGENDA), anyInt()))
+                .thenReturn(List.of());
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_CLOSING), anyInt()))
+                .thenReturn(List.of(closing));
+
+        QueryPlan plan = mock(QueryPlan.class);
+        when(plan.queryIntent()).thenReturn(QueryIntent.FIND);
+
+        RetrievalRequest req = mock(RetrievalRequest.class);
+        when(req.projectId()).thenReturn(projectId);
+        when(req.queryText()).thenReturn("qué decisiones se tomaron en el acta del 25 de agosto de 2025?");
+
+        var result = expander.expand(req, plan, List.of(headerHit));
+
+        assertThat(result.candidates()).extracting(RetrievalCandidate::candidateId).contains("c0");
+    }
+
+    @Test
+    void expand_topicQuery_loadsBodySection() {
+        UUID snap = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        String doc = UUID.randomUUID().toString();
+        RetrievalCandidate headerHit =
+                new RetrievalCandidate(
+                        "h0",
+                        "ACTA 1",
+                        Map.of("projectDocumentId", doc, "sectionType", ActaSectionChunk.SECTION_HEADER, "chunkIndex", 0),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0.8);
+        RetrievalCandidate body =
+                new RetrievalCandidate(
+                        "b0",
+                        "Instalación de cámaras de videovigilancia",
+                        Map.of("projectDocumentId", doc, "sectionType", ActaSectionChunk.SECTION_BODY, "chunkIndex", 4),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0);
+
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_BODY), anyInt()))
+                .thenReturn(List.of(body));
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_AGENDA), anyInt()))
+                .thenReturn(List.of());
+
+        QueryPlan plan = mock(QueryPlan.class);
+        when(plan.queryIntent()).thenReturn(QueryIntent.FIND);
+
+        RetrievalRequest req = mock(RetrievalRequest.class);
+        when(req.projectId()).thenReturn(projectId);
+        when(req.queryText()).thenReturn("en qué actas se habla sobre cámaras de seguridad");
+
+        var result = expander.expand(req, plan, List.of(headerHit));
+
+        assertThat(result.candidates()).extracting(RetrievalCandidate::candidateId).contains("b0");
+    }
+
+    @Test
+    void expand_q10Summary_loadsAgendaBodyAndClosing() {
+        UUID snap = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        String doc = UUID.randomUUID().toString();
+        RetrievalCandidate headerHit =
+                new RetrievalCandidate(
+                        "h0",
+                        "ACTA 3",
+                        Map.of("projectDocumentId", doc, "sectionType", ActaSectionChunk.SECTION_HEADER, "chunkIndex", 0),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0.8);
+        RetrievalCandidate agenda =
+                new RetrievalCandidate(
+                        "a0",
+                        "Punto 1: presupuesto",
+                        Map.of("projectDocumentId", doc, "sectionType", ActaSectionChunk.SECTION_AGENDA, "chunkIndex", 2),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0);
+
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_AGENDA), anyInt()))
+                .thenReturn(List.of(agenda));
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_BODY), anyInt()))
+                .thenReturn(List.of());
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_CLOSING), anyInt()))
+                .thenReturn(List.of());
+
+        QueryPlan plan = mock(QueryPlan.class);
+        when(plan.queryIntent()).thenReturn(QueryIntent.SUMMARIZE);
+
+        RetrievalRequest req = mock(RetrievalRequest.class);
+        when(req.projectId()).thenReturn(projectId);
+        when(req.queryText()).thenReturn("resume los puntos tratados en ACTA 3");
+
+        var result = expander.expand(req, plan, List.of(headerHit));
+
+        assertThat(result.candidates()).extracting(RetrievalCandidate::candidateId).contains("a0");
+    }
+
+    @Test
+    void expand_scopedAttendeeCountQuery_preservesParticipantsThroughPostFusionCap() {
+        UUID snap = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        String doc = UUID.randomUUID().toString();
+        List<RetrievalCandidate> noise =
+                java.util.stream.IntStream.range(0, 10)
+                        .mapToObj(
+                                i ->
+                                        new RetrievalCandidate(
+                                                "n" + i,
+                                                "noise-" + i,
+                                                Map.of("projectDocumentId", UUID.randomUUID().toString(), "chunkIndex", i),
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                snap,
+                                                1.0 - i * 0.05))
+                        .toList();
+        RetrievalCandidate headerHit =
+                new RetrievalCandidate(
+                        "h0",
+                        "Fecha: 25 de agosto de 2025",
+                        Map.of("projectDocumentId", doc, "sectionType", ActaSectionChunk.SECTION_HEADER, "chunkIndex", 0),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0.55);
+        RetrievalCandidate participants =
+                new RetrievalCandidate(
+                        "p0",
+                        "Asistentes: 18 propietarios",
+                        Map.of(
+                                "projectDocumentId",
+                                doc,
+                                "sectionType",
+                                ActaSectionChunk.SECTION_PARTICIPANTS,
+                                "chunkIndex",
+                                1),
+                        0,
+                        0,
+                        0,
+                        0,
+                        snap,
+                        0);
+
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_PARTICIPANTS), anyInt()))
+                .thenReturn(List.of(participants));
+        when(neighborLoader.loadSectionSiblings(
+                        eq(projectId), eq(snap), eq(doc), eq(ActaSectionChunk.SECTION_HEADER), anyInt()))
+                .thenReturn(List.of(headerHit));
+
+        QueryPlan plan = mock(QueryPlan.class);
+        when(plan.queryIntent()).thenReturn(QueryIntent.COUNT);
+        when(plan.expectedAnswerShape()).thenReturn(ExpectedAnswerShape.SCALAR_COUNT);
+
+        RetrievalRequest req = mock(RetrievalRequest.class);
+        when(req.projectId()).thenReturn(projectId);
+        when(req.queryText())
+                .thenReturn("¿Cuántos propietarios asistieron a la reunión del 25 de agosto de 2025 (ACTA 3.pdf)?");
+        when(req.postFusionCap()).thenReturn(8);
+
+        List<RetrievalCandidate> seeds = new ArrayList<>();
+        seeds.add(headerHit);
+        seeds.addAll(noise);
+
+        var result = expander.expand(req, plan, seeds);
+
+        assertThat(result.candidates()).anyMatch(c -> c.content().contains("18 propietarios"));
+        assertThat(result.notes()).anyMatch(n -> n.startsWith("post_fusion_cap:"));
+    }
+
+    @Test
+    void expand_appliesPostFusionCap_whenSeedsExceedCap() {
         UUID snap = UUID.randomUUID();
         List<RetrievalCandidate> seeds =
                 List.of(

@@ -4055,6 +4055,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String answer =
                 StructuredMinuteMetadataSupport.formatFindParagraphTopicEvidenceAnswer(
                         query, bestMinute, bestParagraph, evidenceContext);
+        // Unlike the full ranking/clustering path in execute(), this fast single-topic exit must publish
+        publishMatchedMinutesContext(List.of(bestMinute), true);
         return Optional.of(ToolResult.from(formatResponse(answer, query), getClass()));
     }
 
@@ -4646,7 +4648,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String q = query.toLowerCase(Locale.ROOT);
         return q.matches(".*\\b\\d{4}-\\d{2}-\\d{2}\\b.*")
                 || q.matches(".*\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}\\b.*")
-                || q.matches(".*\\b\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4}\\b.*");
+                || q.matches(".*\\b\\d{1,2}\\s+de\\s+\\p{L}+\\s+de[l]?\\s+\\d{4}\\b.*");
     }
 
     protected String formatUnavailableSpecificMeetingDateMessage(String query, String isoDate) {

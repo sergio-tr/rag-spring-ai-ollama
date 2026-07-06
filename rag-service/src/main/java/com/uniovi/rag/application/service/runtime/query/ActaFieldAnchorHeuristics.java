@@ -225,12 +225,51 @@ public final class ActaFieldAnchorHeuristics {
                 || hasMonthNameInText(q);
     }
 
-    /** True when the query names a canonical uploaded acta file (e.g. {@code ACTA 6.pdf}). */
+    /** True when the query names a canonical uploaded acta (e.g. {@code ACTA 6.pdf} or {@code acta 3}). */
     public static boolean hasExplicitActaDocumentReference(String normalizedText) {
-        if (normalizedText == null || normalizedText.isBlank()) {
+        return ActaDocumentAnchorSupport.resolveActaNumber(normalizedText).isPresent();
+    }
+
+    /**
+     * Filename-anchored scalar field extraction (date, president, attendee count, end time) should use
+     * retrieval over deterministic tools or function calling on Demo Best.
+     */
+    public static boolean isExplicitActaFilenameFieldExtractionQuery(QueryPlan plan) {
+        if (plan == null) {
             return false;
         }
-        return normalizedText.matches("(?i).*\\bacta\\s+\\d+\\.pdf\\b.*");
+        String text =
+                firstNonBlank(plan.normalizedQueryText(), plan.rewrittenQueryText(), plan.rawUserQuery());
+        if (!hasExplicitActaDocumentReference(text)) {
+            return false;
+        }
+        String q = text.toLowerCase(Locale.ROOT);
+        boolean attendeeCount =
+                (q.contains("cuántos") || q.contains("cuantos") || q.contains("cuántas") || q.contains("cuantas"))
+                        && (q.contains("propietarios")
+                                || q.contains("asistentes")
+                                || q.contains("participantes"));
+        return q.contains("fecha")
+                || q.contains("lugar")
+                || q.contains("presid")
+                || q.contains("secretari")
+                || q.contains("duración")
+                || q.contains("duracion")
+                || q.contains("finaliz")
+                || q.contains("hora de")
+                || attendeeCount;
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
     }
 
     /** Slash-date resumen (e.g. hazme un resumen del 25/02/26) must not trigger acta-anchor clarification. */

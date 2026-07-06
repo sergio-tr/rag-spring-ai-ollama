@@ -432,6 +432,7 @@ public final class ChatExecutionTelemetryMapper {
         m.put("finalContextChunkCount", d.afterCompressionCount());
         d.retrievalEffectiveTopK().ifPresent(v -> m.put("retrievalEffectiveTopK", v));
         d.retrievalEffectiveSimilarityThreshold().ifPresent(v -> m.put("retrievalEffectiveSimilarityThreshold", v));
+        d.retrievalSourceMode().ifPresent(v -> m.put("retrievalSourceMode", v));
         d.retrievalDenseFetchLimit().ifPresent(v -> m.put("retrievalDenseFetchLimit", v));
         d.retrievalContextReductionReason().ifPresent(v -> m.put("retrievalContextReductionReason", v));
         m.put("retrievalProtectedCandidateCount", d.protectedCandidateCount());

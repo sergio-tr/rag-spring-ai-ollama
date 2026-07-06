@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
 import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
+import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.configuration.RagVectorProperties;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
@@ -207,12 +208,25 @@ public class DenseRetrievalStrategy {
     }
 
     /**
-     * Lab evaluation runs bind a non-default snapshot embedding (e.g. bge-m3). Preset thresholds such as P3's 0.7 are
-     * too strict for pgvector prefiltering against those indices; use the deployment default for search instead.
+     * Lab evaluation runs may bind a genuinely non-default snapshot embedding (e.g. bge-m3). Configured
+     * thresholds above the deployment default are too strict for pgvector prefiltering against those indices,
+     * so the deployment default is used for search instead. This must only fire for a snapshot embedding that
+     * actually differs from the deployment default: every product snapshot carries an explicit
+     * {@code embeddingModelId} (see {@code rag.vector.require-snapshot-embedding-model-id}), so checking mere
+     * presence (rather than non-default-ness) previously clamped every configured
+     * {@code similarityThreshold > 0.15} back down to 0.15 for ordinary product chat too — silently ignoring
+     * project/custom/assistant-configured thresholds above that value (see phase-4-4 RC-THR fix).
      */
     private double vectorSearchSimilarityThreshold(RetrievalRequest req, double presetThreshold) {
-        if (req.denseRetrievalEmbeddingModelId().filter(id -> id != null && !id.isBlank()).isPresent()
-                && presetThreshold > defaultSimilarityThreshold) {
+        if (presetThreshold <= defaultSimilarityThreshold) {
+            return presetThreshold;
+        }
+        String modelId = req.denseRetrievalEmbeddingModelId().filter(id -> id != null && !id.isBlank()).orElse(null);
+        if (modelId == null) {
+            return presetThreshold;
+        }
+        String deploymentDefault = embeddingIndexCompatibilityService.deploymentDefaultEmbeddingModelId();
+        if (!IndexProfileJsonSupport.embeddingKeysEquivalent(modelId, deploymentDefault)) {
             return defaultSimilarityThreshold;
         }
         return presetThreshold;

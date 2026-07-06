@@ -50,7 +50,8 @@ class ChatExecutionTelemetryMapperAdvancedRetrievalTest {
                         Optional.of(8),
                         Optional.of(0.1),
                         Optional.of(50),
-                        Optional.of("section_merge"));
+                        Optional.of("section_merge"),
+                        Optional.of("project_settings"));
         ExecutionTrace trace = mock(ExecutionTrace.class);
         stubTraceDefaults(trace);
         when(trace.retrievalUsed()).thenReturn(true);
@@ -89,6 +90,7 @@ class ChatExecutionTelemetryMapperAdvancedRetrievalTest {
         assertThat(telemetry.get("retrievalEffectiveSimilarityThreshold")).isEqualTo(0.1);
         assertThat(telemetry.get("retrievalDenseFetchLimit")).isEqualTo(50);
         assertThat(telemetry.get("retrievalContextReductionReason")).isEqualTo("section_merge");
+        assertThat(telemetry.get("retrievalSourceMode")).isEqualTo("project_settings");
     }
 
     @Test

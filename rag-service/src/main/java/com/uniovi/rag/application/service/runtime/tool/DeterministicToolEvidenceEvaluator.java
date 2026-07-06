@@ -146,7 +146,7 @@ public final class DeterministicToolEvidenceEvaluator {
                     .map(DeterministicToolApplicability::isApplicableQueryType)
                     .orElse(true);
             case LOW_CONFIDENCE, INVALID_OUTPUT -> true;
-            case UNAVAILABLE, TIMEOUT, INVALID_REQUEST -> true;
+            case UNAVAILABLE, TIMEOUT, INVALID_REQUEST, DISABLED -> true;
             default -> false;
         };
     }

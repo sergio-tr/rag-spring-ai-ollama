@@ -49,8 +49,8 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
             EntityExtractionResult entities) {
 
         RagConfig rag = ctx.resolved().toRagConfig();
-        if (!rag.toolsEnabled()) {
-            return StructuredRewriteResult.identityDisabled(normalized.normalizedText(), "toolsEnabled=false");
+        if (!rag.nerEnabled()) {
+            return StructuredRewriteResult.identityDisabled(normalized.normalizedText(), "nerEnabled=false");
         }
 
         Optional<StructuredRewriteResult> deterministic =
