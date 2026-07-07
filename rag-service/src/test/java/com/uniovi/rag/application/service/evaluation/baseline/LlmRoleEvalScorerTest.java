@@ -70,4 +70,88 @@ class LlmRoleEvalScorerTest {
         Map<String, Object> kw = (Map<String, Object>) ((Map<?, ?>) scored.get("scores")).get("keyword_coverage");
         assertThat(kw.get("metric")).isEqualTo(2.0 / 3.0);
     }
+
+    @Test
+    void entityF1_passesWhenEntitiesMatch() {
+        LlmRoleEvalCase c = baseCase("entity_f1", "Jorge Pérez; Ana López", "Jorge Pérez and Ana López");
+        Map<String, Object> scored = LlmRoleEvalScorer.score(c, "Jorge Pérez and Ana López", null);
+        assertThat(scored.get("roleEvalPassed")).isEqualTo(true);
+    }
+
+    @Test
+    void rankingOrder_requiresOrderedItems() {
+        LlmRoleEvalCase c = baseCase("ranking_order", "alpha\nbeta\ngamma", "alpha\nbeta\ngamma");
+        Map<String, Object> scored = LlmRoleEvalScorer.score(c, "alpha\nbeta\ngamma", null);
+        assertThat(scored.get("roleEvalPassed")).isEqualTo(true);
+    }
+
+    @Test
+    void memoryPreservation_checksKeywordsAndLength() {
+        LlmRoleEvalCase c =
+                new LlmRoleEvalCase(
+                        "LLM-MEM-001",
+                        "LLM_MEMORY",
+                        "MEMORY_CONDENSE",
+                        "MEMORY_STRICT",
+                        "input",
+                        "",
+                        "short expected",
+                        "alpha,beta",
+                        "",
+                        "memory_preservation",
+                        "",
+                        "");
+        Map<String, Object> scored = LlmRoleEvalScorer.score(c, "alpha beta condensed", null);
+        assertThat(scored.get("roleEvalPassed")).isEqualTo(true);
+    }
+
+    @Test
+    void judgeQa_failsWhenJudgeUnavailable() {
+        LlmRoleEvalCase c = baseCase("judge_qa", "expected", "actual");
+        Map<String, Object> scored = LlmRoleEvalScorer.score(c, "actual", null);
+        assertThat(scored.get("roleEvalPassed")).isEqualTo(false);
+    }
+
+    @Test
+    void unsupportedScoringType_fails() {
+        LlmRoleEvalCase c = baseCase("unknown_metric", "expected", "actual");
+        Map<String, Object> scored = LlmRoleEvalScorer.score(c, "actual", null);
+        assertThat(scored.get("roleEvalPassed")).isEqualTo(false);
+    }
+
+    @Test
+    void jsonSchema_failsOnInvalidJson() {
+        LlmRoleEvalCase c =
+                new LlmRoleEvalCase(
+                        "LLM-JS-002",
+                        "LLM_JSON",
+                        "METADATA_REASONING",
+                        "JSON_STRICT",
+                        "task",
+                        "",
+                        "{}",
+                        "",
+                        "",
+                        "json_schema",
+                        "answer",
+                        "");
+        Map<String, Object> scored = LlmRoleEvalScorer.score(c, "not-json", null);
+        assertThat(scored.get("roleEvalPassed")).isEqualTo(false);
+    }
+
+    private static LlmRoleEvalCase baseCase(String scoringType, String expected, String actual) {
+        return new LlmRoleEvalCase(
+                "LLM-T-001",
+                "SUBSET",
+                "QUERY_REWRITE",
+                "REWRITE_BALANCED",
+                "input",
+                "",
+                expected,
+                "",
+                "",
+                scoringType,
+                "",
+                "");
+    }
 }

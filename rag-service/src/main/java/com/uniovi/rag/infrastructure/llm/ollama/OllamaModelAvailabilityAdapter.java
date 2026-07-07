@@ -39,6 +39,7 @@ public class OllamaModelAvailabilityAdapter implements OllamaModelAvailabilityPo
         return matches(installedModelNames(client), modelName.trim());
     }
 
+    @SuppressWarnings("java:S2142") // Best-effort cache refresh on servlet threads: do not leave interrupt set.
     private Set<String> installedModelNames(OllamaApiClient client) {
         CachedModelNames snapshot = cachedNames.get();
         if (snapshot.isFresh(CACHE_TTL_MS)) {
@@ -53,7 +54,6 @@ public class OllamaModelAvailabilityAdapter implements OllamaModelAvailabilityPo
             log.warn("Ollama model list failed; using cached names when available: {}", e.getMessage());
             return snapshot.names();
         } catch (InterruptedException e) {
-            // Do not re-interrupt servlet worker threads: downstream JSON serialization would abort mid-response.
             log.warn("Ollama model list interrupted; using cached names when available");
             return snapshot.names();
         }

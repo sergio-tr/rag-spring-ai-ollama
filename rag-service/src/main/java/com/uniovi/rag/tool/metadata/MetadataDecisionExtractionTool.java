@@ -8,6 +8,7 @@ import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
@@ -160,21 +161,25 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             log().debug("Minute {} has no date, excluding when date '{}' was requested", minute.id(), date);
             return false;
         }
+
         LocalDate queryDate = parseDateFlexible(date);
         LocalDate minuteDate = parseDateFlexible(minute.date());
+
         if (queryDate == null) {
             log().warn("Could not parse query date '{}' for date validation. Keeping minute {} to avoid false negatives.",
                     date, minute.id());
             return true;
         }
+
         if (minuteDate == null) {
             log().warn("Could not parse minute date '{}' for minute {} (ID: {}). "
                             + "This may indicate an unsupported date format. Excluding from results.",
                     minute.date(), minute.id(), minute.id());
             return false;
         }
-        boolean matches = queryDate.equals(minuteDate)
-                || (queryDate.getYear() == minuteDate.getYear() && queryDate.getMonth() == minuteDate.getMonth());
+
+        boolean matches = YearMonth.from(queryDate).equals(YearMonth.from(minuteDate));
+
         if (!matches) {
             log().debug("Filtering out minute {} with date {} (parsed: {}) - requested: {} (parsed: {})",
                     minute.id(), minute.date(), minuteDate, date, queryDate);
@@ -182,6 +187,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             log().debug("Minute {} date {} (parsed: {}) matches requested date {} (parsed: {})",
                     minute.id(), minute.date(), minuteDate, date, queryDate);
         }
+
         return matches;
     }
 

@@ -15,6 +15,7 @@ import com.uniovi.rag.application.service.runtime.observability.RagLlmCallTeleme
 import com.uniovi.rag.application.service.runtime.optimization.OptionalLlmCallBudgetSkippedException;
 import com.uniovi.rag.application.service.runtime.optimization.RagLlmCallBudgetEnforcer;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import java.util.Objects;
 import java.util.Optional;
@@ -125,10 +126,13 @@ public class ProviderAwareSecondaryLlmExecutor {
 
         int inputChars =
                 RagLlmCallTelemetry.approxChars(systemPrompt) + RagLlmCallTelemetry.approxChars(userPrompt);
-        Integer retrievedChunks =
-                ctx != null && ctx.advisorPackedContextSet().isPresent()
-                        ? ctx.advisorPackedContextSet().get().totalBlockCount()
-                        : null;
+        Integer retrievedChunks = null;
+        if (ctx != null) {
+            Optional<PackedContextSet> packed = ctx.advisorPackedContextSet();
+            if (packed.isPresent()) {
+                retrievedChunks = packed.get().totalBlockCount();
+            }
+        }
         long startedAt = System.nanoTime();
         RagLlmCallTelemetry.logStarted(
                 ctx,

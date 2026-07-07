@@ -30,6 +30,6 @@ def predict_proba(pipeline: Pipeline, text: str) -> np.ndarray:
     if classes is None:
         raise ValueError("Classifier has no classes_ attribute")
     probs = np.zeros(len(classes), dtype=float)
-    idx = int(np.where(classes == pred)[0][0])
+    idx = int(np.nonzero(classes == pred)[0][0])
     probs[idx] = 1.0
     return probs

@@ -28,13 +28,17 @@ public final class PartialEvidenceAnswerSupport {
         }
         String query = queryText(plan);
         boolean spanish = QueryLanguagePolicy.looksSpanish(query != null ? query : answer);
+        String queryLower = query != null ? query.toLowerCase(Locale.ROOT) : "";
         boolean attendeeQuery =
-                query != null
-                        && (query.toLowerCase(Locale.ROOT).contains("asistieron")
-                                || query.toLowerCase(Locale.ROOT).contains("presentes")
-                                || query.toLowerCase(Locale.ROOT).contains("participantes"));
+                !queryLower.isBlank()
+                        && (queryLower.contains("asistieron")
+                                || queryLower.contains("presentes")
+                                || queryLower.contains("participantes")
+                                || queryLower.contains("attended")
+                                || queryLower.contains("attendees")
+                                || queryLower.contains("participants"));
         boolean mentionsCountOnly =
-                answer.matches("(?s).*(?:\\d+\\s+asistentes|\\d+\\s+participantes).*")
+                answer.matches("(?s).*(?:\\d+\\s+(?:asistentes|participantes|participants|attendees)).*")
                         && !answer.matches("(?s).*(?:Jorge|María|Manuel|Ana|Pedro|[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\\s+[A-ZÁÉÍÓÚÑ]).*");
         if (attendeeQuery && mentionsCountOnly) {
             if (spanish) {

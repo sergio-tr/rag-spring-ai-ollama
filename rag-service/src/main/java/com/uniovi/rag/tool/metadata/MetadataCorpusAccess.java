@@ -3,17 +3,18 @@ package com.uniovi.rag.tool.metadata;
 import com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry;
 import com.uniovi.rag.application.service.runtime.retrieval.MetadataCorpusChunkLoader;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.ai.document.Document;
 
 /** Request-scoped metadata corpus gateway (single JDBC load per turn). */
 public final class MetadataCorpusAccess {
 
-    private static volatile MetadataCorpusChunkLoader loader;
+    private static final AtomicReference<MetadataCorpusChunkLoader> LOADER = new AtomicReference<>();
 
     private MetadataCorpusAccess() {}
 
     public static void registerLoader(MetadataCorpusChunkLoader chunkLoader) {
-        loader = chunkLoader;
+        LOADER.set(chunkLoader);
     }
 
     /**
@@ -24,6 +25,7 @@ public final class MetadataCorpusAccess {
         if (cached != null) {
             return cached;
         }
+        MetadataCorpusChunkLoader loader = LOADER.get();
         if (MetadataRequestCorpusCache.loadAttempted() || loader == null) {
             return List.of();
         }

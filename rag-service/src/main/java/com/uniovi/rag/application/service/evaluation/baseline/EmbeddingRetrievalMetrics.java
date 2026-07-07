@@ -126,7 +126,7 @@ public final class EmbeddingRetrievalMetrics {
         double dcg = 0.0;
         for (int i = 0; i < limit; i++) {
             if (containsNormalized(goldIds, retrievedIds.get(i))) {
-                dcg += 1.0 / (Math.log(i + 2) / Math.log(2));
+                dcg += 1.0 / (Math.log(i + 2.0) / Math.log(2));
             }
         }
         int idealHits = Math.min(goldIds.size(), limit);
@@ -135,7 +135,7 @@ public final class EmbeddingRetrievalMetrics {
         }
         double idcg = 0.0;
         for (int i = 0; i < idealHits; i++) {
-            idcg += 1.0 / (Math.log(i + 2) / Math.log(2));
+            idcg += 1.0 / (Math.log(i + 2.0) / Math.log(2));
         }
         return idcg > 0.0 ? dcg / idcg : 0.0;
     }

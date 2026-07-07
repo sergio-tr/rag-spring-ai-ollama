@@ -89,11 +89,6 @@ public class KnowledgeConfigurationIntegrationService {
             CorpusScope corpusScope,
             UUID conversationId,
             UUID projectId) {
-        Optional<KnowledgeReindexDecision> metadataUpgrade =
-                metadataSnapshotUpgradeDecision(projection, corpusScope, conversationId, projectId);
-        if (metadataUpgrade.isPresent()) {
-            return metadataUpgrade.get();
-        }
         Optional<KnowledgeReindexDecision> profileUpgrade =
                 indexProfileSnapshotUpgradeDecision(projection, corpusScope, conversationId, projectId);
         if (profileUpgrade.isPresent()) {

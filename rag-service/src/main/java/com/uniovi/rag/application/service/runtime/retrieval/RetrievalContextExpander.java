@@ -61,7 +61,7 @@ public class RetrievalContextExpander {
         int cap = req != null ? Math.max(0, req.postFusionCap()) : 0;
         if (cap > 0 && working.size() > cap) {
             int beforeCap = working.size();
-            String query = req != null ? req.queryText() : null;
+            String query = req.queryText();
             if (scopedAttendeeCount || ActaSectionContextPolicy.needsParticipantsExpansion(query)) {
                 working = applyCapPreservingRelevantSections(working, cap, query);
             } else if (ActaSectionContextPolicy.focus(query) != ActaSectionContextPolicy.SectionFocus.NONE) {

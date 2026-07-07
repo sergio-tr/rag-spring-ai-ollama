@@ -18,6 +18,7 @@ import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
 import com.uniovi.rag.domain.llm.catalog.LlmModelUsageContext;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.llm.TaskLlmTask;
+import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import java.util.Objects;
 import java.util.Optional;
@@ -89,10 +90,9 @@ public class RagLlmChatInvoker {
                         config.additionalParameters());
         int inputChars =
                 RagLlmCallTelemetry.approxChars(mergedSystem) + RagLlmChatInvoker.approxChars(userMessage);
+        Optional<PackedContextSet> packedContext = ctx.advisorPackedContextSet();
         Integer retrievedChunks =
-                ctx.advisorPackedContextSet().isPresent()
-                        ? ctx.advisorPackedContextSet().get().totalBlockCount()
-                        : null;
+                packedContext.isPresent() ? packedContext.get().totalBlockCount() : null;
         long startedAt = System.nanoTime();
         String operation = TaskLlmTask.FINAL_ANSWER.operationName();
         LlmSafeOperationLogger.logStarted(log, "chat", config.provider(), model, config.baseUrl());
@@ -102,7 +102,7 @@ public class RagLlmChatInvoker {
                 config.chatProvider(),
                 model,
                 inputChars,
-                ctx.advisorPackedContextSet()
+                packedContext
                         .map(p -> RagLlmCallTelemetry.approxChars(p.promptContextText()))
                         .orElse(0),
                 retrievedChunks,

@@ -99,7 +99,7 @@ export function resolveIndexAwareDefaultPreset(
     if (product?.compatibility.selectable) {
       return {
         presetId,
-        source: product.preset.system ? "product" : "product",
+        source: "product",
         demoBestIncompatible,
         demoBestDisabledReason,
       };

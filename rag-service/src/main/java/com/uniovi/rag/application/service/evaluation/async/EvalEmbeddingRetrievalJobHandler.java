@@ -680,12 +680,10 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             return new ChunkIdCandidate("", false);
         }
         Map<String, Object> meta = d.getMetadata();
-        Object cid = meta != null
-                ? firstNonNull(
-                        meta.get(EvaluationGoldChunkMetadataSupport.KEY_EVALUATION_CHUNK_ID),
-                        meta.get("chunk_id"),
-                        meta.get("chunkId"))
-                : null;
+        Object cid = firstNonNull(
+                meta.get(EvaluationGoldChunkMetadataSupport.KEY_EVALUATION_CHUNK_ID),
+                meta.get("chunk_id"),
+                meta.get("chunkId"));
         if (cid != null) {
             return new ChunkIdCandidate(String.valueOf(cid), true);
         }

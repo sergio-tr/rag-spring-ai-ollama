@@ -35,10 +35,14 @@ public class KnowledgeIndexSnapshotProfileAccess {
      * Resolves profile JSON for a snapshot reference. Always reloads by id when present so callers
      * outside a Hibernate session never touch lazy entity state.
      */
+    @Transactional(readOnly = true)
     public Map<String, Object> resolveProfileJsonb(KnowledgeIndexSnapshotEntity snapshot) {
         if (snapshot == null || snapshot.getId() == null) {
             return Map.of();
         }
-        return loadProfileJsonb(snapshot.getId());
+        return repository
+                .findById(snapshot.getId())
+                .map(s -> s.getIndexProfileJsonb() != null ? s.getIndexProfileJsonb() : Map.<String, Object>of())
+                .orElse(Map.of());
     }
 }

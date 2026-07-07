@@ -233,7 +233,8 @@ public class TaskLlmConfigResolver {
         if (!inheritModel && mergedOverride != null && mergedOverride.model() != null && !mergedOverride.model().isBlank()) {
             return resolveOverrideLayerSource(ctx.userId(), ctx.projectId(), TaskLlmTask.FINAL_ANSWER);
         }
-        if (ctx.chatModelOverride() != null && ctx.chatModelOverride().isPresent() && !ctx.chatModelOverride().get().isBlank()) {
+        Optional<String> chatOverride = ctx.chatModelOverride();
+        if (chatOverride.isPresent() && !chatOverride.get().isBlank()) {
             return "conversation_primary";
         }
         if (orchestrationBase.chatModel() != null && !orchestrationBase.chatModel().isBlank()) {
