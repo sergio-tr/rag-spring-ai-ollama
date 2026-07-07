@@ -8,6 +8,7 @@ import com.uniovi.rag.domain.evaluation.workbook.EmbeddingCandidate;
 import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalQuery;
 import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
 import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
+import com.uniovi.rag.domain.evaluation.workbook.LlmRoleEvalCase;
 import com.uniovi.rag.domain.evaluation.workbook.MetricSpec;
 import com.uniovi.rag.domain.evaluation.workbook.ModelCandidate;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
@@ -59,6 +60,7 @@ public final class EvaluationWorkbookParser {
             parseCorpus(workbook, builder, report);
             parseChunkRegistry(workbook, builder, report);
             parseLlmReader(workbook, builder, report);
+            parseLlmRoleEvalCases(workbook, builder, report);
             parseEmbeddingQueries(workbook, builder, report);
             parseRagPresetQuestions(workbook, builder, report);
             parseLlmCandidates(workbook, builder, report);
@@ -286,6 +288,75 @@ public final class EvaluationWorkbookParser {
                     nvl(evalMethod)));
         }
         b.llmReaderQuestions(list);
+    }
+
+    private static void parseLlmRoleEvalCases(Workbook wb, EvaluationWorkbook.Builder b, ValidationReport report) {
+        Sheet sheet = wb.getSheet(WorkbookSheetNames.LLM_ROLE_EVAL_CASES);
+        if (sheet == null) {
+            return;
+        }
+        Row h = sheet.getRow(0);
+        if (h == null) {
+            return;
+        }
+        Map<String, Integer> hi = ExcelCellSupport.headerIndexMap(h);
+        requireCols(
+                report,
+                WorkbookSheetNames.LLM_ROLE_EVAL_CASES,
+                hi,
+                "case_id",
+                "subset",
+                "role_family",
+                "role_profile",
+                "input",
+                "expected_output",
+                "scoring_type");
+        if (!hi.containsKey("case_id") || !hi.containsKey("input")) {
+            return;
+        }
+        List<LlmRoleEvalCase> list = new ArrayList<>();
+        Set<String> ids = new HashSet<>();
+        int last = sheet.getLastRowNum();
+        for (int r = 1; r <= last; r++) {
+            Row row = sheet.getRow(r);
+            if (row == null || ExcelCellSupport.rowIsCompletelyEmpty(row, row.getLastCellNum())) {
+                continue;
+            }
+            String caseId = ExcelCellSupport.cellString(row, hi, "case_id", r + 1, true);
+            if (caseId == null || caseId.isBlank()) {
+                report.add(emptyRequired(WorkbookSheetNames.LLM_ROLE_EVAL_CASES, r + 1, "case_id"));
+                continue;
+            }
+            if (!ids.add(caseId.trim())) {
+                report.add(dupId(WorkbookSheetNames.LLM_ROLE_EVAL_CASES, r + 1, "case_id", caseId));
+                continue;
+            }
+            String input = ExcelCellSupport.cellString(row, hi, "input", r + 1, true);
+            if (input == null || input.isBlank()) {
+                report.add(emptyRequired(WorkbookSheetNames.LLM_ROLE_EVAL_CASES, r + 1, "input"));
+                continue;
+            }
+            String expected = ExcelCellSupport.cellString(row, hi, "expected_output", r + 1, false);
+            if (expected == null || expected.isBlank()) {
+                report.add(emptyRequired(WorkbookSheetNames.LLM_ROLE_EVAL_CASES, r + 1, "expected_output"));
+                continue;
+            }
+            list.add(
+                    new LlmRoleEvalCase(
+                            caseId.trim(),
+                            nvl(ExcelCellSupport.cellString(row, hi, "subset", r + 1, false)),
+                            nvl(ExcelCellSupport.cellString(row, hi, "role_family", r + 1, false)),
+                            nvl(ExcelCellSupport.cellString(row, hi, "role_profile", r + 1, false)),
+                            input,
+                            nvl(ExcelCellSupport.cellString(row, hi, "context", r + 1, false)),
+                            expected,
+                            nvl(ExcelCellSupport.cellString(row, hi, "expected_keywords", r + 1, false)),
+                            nvl(ExcelCellSupport.cellString(row, hi, "forbidden_terms", r + 1, false)),
+                            nvl(ExcelCellSupport.cellString(row, hi, "scoring_type", r + 1, false)),
+                            nvl(ExcelCellSupport.cellString(row, hi, "required_json_keys", r + 1, false)),
+                            nvl(ExcelCellSupport.cellString(row, hi, "notes", r + 1, false))));
+        }
+        b.llmRoleEvalCases(list);
     }
 
     private static void parseEmbeddingQueries(Workbook wb, EvaluationWorkbook.Builder b, ValidationReport report) {

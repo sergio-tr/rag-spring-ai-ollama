@@ -54,7 +54,13 @@ public final class LabDatasetGateValidator {
         // Enforce "recommended" minimums so a template-only upload yields a clear 422 with DATASET_TOO_SMALL.
         switch (type) {
             case LLM_MODEL_BASELINE -> {
-                if (wb.llmReaderQuestions().size() < 10) {
+                int qa = wb.llmReaderQuestions().size();
+                int role = wb.llmRoleEvalCases().size();
+                if (qa < 10 && role < 3) {
+                    report.add(tooSmall(WorkbookSheetNames.LLM_READER_QUESTIONS, 0, "LLM_JUDGE_QA requires at least 10 questions or 3 role-eval cases for uploads"));
+                } else if (qa >= 1 && qa < 10 && role >= 3) {
+                    // role-eval smoke slice upload: minimal QA + role cases
+                } else if (qa < 10) {
                     report.add(tooSmall(WorkbookSheetNames.LLM_READER_QUESTIONS, 0, "LLM_JUDGE_QA requires at least 10 questions for uploads"));
                 }
             }

@@ -166,7 +166,16 @@ public final class RagPresetAnalysisMetrics {
         copyIfPresent(out, compositionSeed, CompositionRouteTelemetryMapper.KEY_FACTUAL_VERIFIER_CONSIDERED);
         copyIfPresent(out, compositionSeed, CompositionRouteTelemetryMapper.KEY_COMPOSITION_FALLBACK_REASON);
 
-        AbstentionCorrectness abstentionCorrectness = abstentionCorrectness(answerability, abstention.abstained());
+        // A question is correctly handled as "unanswerable" either when the internal abstention
+        // flag fired, OR when the answer is a direct, high-precision negative claim (e.g. a
+        // deterministic tool route confidently reporting "no matching record exists") that never
+        // set the abstention flag in the first place. Without this OR, direct-answer routes
+        // (TOOL_FINAL, FUNCTION_FINAL) that correctly resolve an unanswerable question with a
+        // confident negative statement were scored as if they had wrongly failed to abstain.
+        boolean correctlyResolvedUnanswerable =
+                abstention.abstained() || AnswerabilityLabelRules.hasHighPrecisionNegativePhrasing(actualAnswer);
+        AbstentionCorrectness abstentionCorrectness =
+                abstentionCorrectness(answerability, abstention.abstained(), correctlyResolvedUnanswerable);
         out.put(KEY_ABSTENTION_CORRECTNESS, abstentionCorrectness.name());
         out.put(KEY_ABSTENTION_SCORE, abstentionScore(abstentionCorrectness));
 
@@ -174,6 +183,7 @@ public final class RagPresetAnalysisMetrics {
                 composeFinalScore(
                         answerability,
                         abstention.abstained(),
+                        correctlyResolvedUnanswerable,
                         exact,
                         contained,
                         structured,
@@ -186,11 +196,9 @@ public final class RagPresetAnalysisMetrics {
         }
 
         if (answerability == Answerability.UNANSWERABLE) {
-            out.put("correctAbstention", abstention.abstained());
+            out.put("correctAbstention", correctlyResolvedUnanswerable);
             out.put("wrongAbstention", false);
-            boolean negativeEvidenceFalsePositive =
-                    !abstention.abstained()
-                            && !AnswerabilityLabelRules.hasHighPrecisionNegativePhrasing(actualAnswer);
+            boolean negativeEvidenceFalsePositive = !correctlyResolvedUnanswerable;
             out.put("negativeEvidenceFalsePositive", negativeEvidenceFalsePositive);
         } else if (answerability == Answerability.ANSWERABLE) {
             out.put("correctAbstention", false);
@@ -222,9 +230,10 @@ public final class RagPresetAnalysisMetrics {
         return out;
     }
 
-    private static AbstentionCorrectness abstentionCorrectness(Answerability answerability, boolean abstained) {
+    private static AbstentionCorrectness abstentionCorrectness(
+            Answerability answerability, boolean abstained, boolean correctlyResolvedUnanswerable) {
         return switch (answerability) {
-            case UNANSWERABLE -> abstained ? AbstentionCorrectness.CORRECT : AbstentionCorrectness.WRONG;
+            case UNANSWERABLE -> correctlyResolvedUnanswerable ? AbstentionCorrectness.CORRECT : AbstentionCorrectness.WRONG;
             case ANSWERABLE -> abstained ? AbstentionCorrectness.WRONG : AbstentionCorrectness.NOT_APPLICABLE;
             case AMBIGUOUS, UNKNOWN, NEEDS_REVIEW -> AbstentionCorrectness.UNKNOWN;
         };
@@ -241,13 +250,14 @@ public final class RagPresetAnalysisMetrics {
     private static ScoreComposition composeFinalScore(
             Answerability answerability,
             boolean abstained,
+            boolean correctlyResolvedUnanswerable,
             boolean exact,
             boolean contained,
             StructuredEvaluationResult structured,
             Object semantic,
             AbstentionCorrectness abstentionCorrectness) {
         if (answerability == Answerability.UNANSWERABLE) {
-            return new ScoreComposition(abstained ? 1.0 : 0.0, null);
+            return new ScoreComposition(correctlyResolvedUnanswerable ? 1.0 : 0.0, null);
         }
         if (answerability == Answerability.ANSWERABLE && abstained) {
             return new ScoreComposition(0.0, null);

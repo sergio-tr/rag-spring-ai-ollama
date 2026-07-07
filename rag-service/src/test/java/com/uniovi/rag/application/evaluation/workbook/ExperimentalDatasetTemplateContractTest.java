@@ -21,6 +21,19 @@ class ExperimentalDatasetTemplateContractTest {
     private final EvaluationWorkbookParser parser = new EvaluationWorkbookParser();
 
     @Test
+    void llmTemplate_containsRoleEvalCasesHeaders() throws Exception {
+        byte[] bytes = ExperimentalDatasetTemplateFactory.buildTemplate(ExperimentalDatasetType.LLM_MODEL_BASELINE);
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+            Sheet sheet = wb.getSheet(WorkbookSheetNames.LLM_ROLE_EVAL_CASES);
+            assertThat(sheet).isNotNull();
+            Row header = sheet.getRow(0);
+            assertThat(cell(header, 0)).isEqualTo("case_id");
+            assertThat(cell(header, 3)).isEqualTo("role_profile");
+            assertThat(cell(header, 9)).isEqualTo("scoring_type");
+        }
+    }
+
+    @Test
     void llmTemplate_containsContextAndExpectedAnswerHeaders() throws Exception {
         byte[] bytes = ExperimentalDatasetTemplateFactory.buildTemplate(ExperimentalDatasetType.LLM_MODEL_BASELINE);
         try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {

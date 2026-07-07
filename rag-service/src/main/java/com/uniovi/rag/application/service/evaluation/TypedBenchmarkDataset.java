@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.evaluation;
 import com.uniovi.rag.domain.evaluation.workbook.CorpusDocument;
 import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalDataset;
 import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
+import com.uniovi.rag.domain.evaluation.workbook.LlmRoleEvalCase;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetDefinition;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 
@@ -28,6 +29,13 @@ public sealed interface TypedBenchmarkDataset {
         public RagPresetQuestions {
             questions = List.copyOf(questions);
             presetCatalog = presetCatalog == null ? List.of() : List.copyOf(presetCatalog);
+        }
+    }
+
+    record LlmRoleCases(List<LlmRoleEvalCase> cases) implements TypedBenchmarkDataset {
+
+        public LlmRoleCases {
+            cases = List.copyOf(cases);
         }
     }
 }

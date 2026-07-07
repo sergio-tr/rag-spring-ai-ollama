@@ -156,6 +156,38 @@ class EvaluationWorkbookParserTest {
     }
 
     @Test
+    void llmRoleEvalCases_referenceBundle_parses64Rows() throws Exception {
+        ClassPathResource r = new ClassPathResource(EvaluationReferenceBundleLoader.CLASSPATH_LOCATION);
+        try (InputStream in = r.getInputStream()) {
+            WorkbookParseResult result = parser.parse(in, ExperimentalDatasetType.REFERENCE_BUNDLE);
+            assertThat(result.validationReport().hasErrors()).isFalse();
+            assertThat(result.workbook().llmRoleEvalCases()).hasSize(64);
+            assertThat(result.workbook().llmRoleEvalCases().getFirst().caseId()).startsWith("LLM-");
+        }
+    }
+
+    @Test
+    void llmRoleEvalCases_duplicateCaseId_reportsDuplicate() throws Exception {
+        Workbook wb = new XSSFWorkbook();
+        Sheet sheet = wb.createSheet(WorkbookSheetNames.LLM_ROLE_EVAL_CASES);
+        writeRow(
+                sheet.createRow(0),
+                "case_id",
+                "subset",
+                "role_family",
+                "role_profile",
+                "input",
+                "context",
+                "expected_output",
+                "scoring_type");
+        writeRow(sheet.createRow(1), "LLM-RW-001", "LLM_REWRITE_EXPANSION", "QUERY_REWRITE", "REWRITE_STRICT", "q1", "", "out1", "normalized_match");
+        writeRow(sheet.createRow(2), "LLM-RW-001", "LLM_REWRITE_EXPANSION", "QUERY_REWRITE", "REWRITE_STRICT", "q2", "", "out2", "normalized_match");
+
+        WorkbookParseResult result = parse(wb, ExperimentalDatasetType.LLM_MODEL_BASELINE);
+        assertThat(codes(result, ValidationSeverity.ERROR)).contains(ValidationIssueCode.DUPLICATE_ID);
+    }
+
+    @Test
     void referenceBundle_classpathArtifact_hasNoErrors() throws Exception {
         ClassPathResource r = new ClassPathResource(EvaluationReferenceBundleLoader.CLASSPATH_LOCATION);
         assertThat(r.exists()).isTrue();

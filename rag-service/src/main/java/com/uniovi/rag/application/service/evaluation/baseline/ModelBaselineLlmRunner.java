@@ -69,6 +69,16 @@ public class ModelBaselineLlmRunner {
         return complete(snapshot, system, user);
     }
 
+    /** Role-eval row: {@code input} as task prompt with optional {@code context} oracle block. */
+    public String generateRoleCaseAnswer(
+            LlmExperimentalSnapshot snapshot, PromptProfileSnapshot prompts, String input, String context) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        Objects.requireNonNull(prompts, "prompts");
+        String user = buildRoleCaseUserTurn(input, context);
+        String system = prompts.effectiveSystemPrompt() != null ? prompts.effectiveSystemPrompt() : "";
+        return complete(snapshot, system, user);
+    }
+
     /**
      * Fixed-LLM answer step for {@link com.uniovi.rag.domain.evaluation.BenchmarkEvaluationProtocol#EMBEDDING_DOWNSTREAM_RAG}
      * (retrieval already executed by caller).
@@ -167,6 +177,25 @@ public class ModelBaselineLlmRunner {
                 %s
                 """
                 .formatted(applied, note, question);
+    }
+
+    private static String buildRoleCaseUserTurn(String input, String context) {
+        String prompt = input != null ? input.trim() : "";
+        String ctx = context != null ? context.trim() : "";
+        if (ctx.isEmpty()) {
+            return prompt;
+        }
+        if (prompt.isEmpty()) {
+            return "CONTEXT:\n" + ctx;
+        }
+        return """
+                CONTEXT:
+                %s
+
+                TASK:
+                %s
+                """
+                .formatted(ctx, prompt);
     }
 
     /** Useful for metrics attachment on result rows. */

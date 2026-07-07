@@ -25,6 +25,7 @@ import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCa
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
 import com.uniovi.rag.application.service.evaluation.metrics.DatasetQuestionSubsetSupport;
+import com.uniovi.rag.application.service.evaluation.metrics.RoleEvalCaseSubsetSupport;
 import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
 import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotOwnerType;
@@ -1116,6 +1117,7 @@ public class BenchmarkRunOrchestrator {
                 || request.autoReindexEffective()
                 || request.bootstrapCorpusFromClasspathDocsEffective()
                 || request.hasDatasetQuestionSubset()
+                || RoleEvalCaseSubsetSupport.isRoleEvalMode(request)
                 || !request.benchmarkRuntimeParameters().isEmpty()) {
             Map<String, Object> agg = new LinkedHashMap<>();
             if (run.getAggregatesJson() != null && !run.getAggregatesJson().isEmpty()) {
@@ -1125,6 +1127,7 @@ public class BenchmarkRunOrchestrator {
                 agg.put(AGG_KEY_REQUESTED_PRESET_CODES, request.experimentalPresetCodes());
             }
             DatasetQuestionSubsetSupport.applyToAggregates(agg, request);
+            RoleEvalCaseSubsetSupport.applyToAggregates(agg, request);
             if (request.autoReindexEffective()) {
                 agg.put(AGG_KEY_AUTO_REINDEX_POLICY, LabAutoReindexPolicy.fromRequest(request).toMap());
                 agg.put(AGG_KEY_AUTO_REINDEX_LOCK_ACQUIRED, Boolean.FALSE);
@@ -1335,6 +1338,10 @@ public class BenchmarkRunOrchestrator {
     private static int resolveDatasetItemCount(
             EvaluationDatasetEntity dataset, BenchmarkKind kind, StartBenchmarkRunRequest request) {
         if (request != null) {
+            Integer roleCount = RoleEvalCaseSubsetSupport.resolvedItemCount(request);
+            if (roleCount != null && roleCount > 0) {
+                return roleCount;
+            }
             Integer subsetCount = DatasetQuestionSubsetSupport.resolvedItemCount(request);
             if (subsetCount != null && subsetCount > 0) {
                 return subsetCount;

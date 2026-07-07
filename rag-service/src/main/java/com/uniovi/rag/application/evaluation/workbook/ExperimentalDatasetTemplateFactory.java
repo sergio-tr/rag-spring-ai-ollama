@@ -39,6 +39,21 @@ public final class ExperimentalDatasetTemplateFactory {
         XSSFWorkbook wb = new XSSFWorkbook();
         Sheet sheet = wb.createSheet(WorkbookSheetNames.LLM_READER_QUESTIONS);
         headerRow(sheet, "id", "question", "context_text", "expected_answer", "evaluation_notes");
+        Sheet roleCases = wb.createSheet(WorkbookSheetNames.LLM_ROLE_EVAL_CASES);
+        headerRow(
+                roleCases,
+                "case_id",
+                "subset",
+                "role_family",
+                "role_profile",
+                "input",
+                "context",
+                "expected_output",
+                "expected_keywords",
+                "forbidden_terms",
+                "scoring_type",
+                "required_json_keys",
+                "notes");
         return toBytes(wb);
     }
 

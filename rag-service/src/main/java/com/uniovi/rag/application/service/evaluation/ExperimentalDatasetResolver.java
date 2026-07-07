@@ -4,11 +4,13 @@ import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.evaluation.workbook.LabDatasetGateValidator;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
 import com.uniovi.rag.application.service.evaluation.metrics.DatasetQuestionSubsetSupport;
+import com.uniovi.rag.application.service.evaluation.metrics.RoleEvalCaseSubsetSupport;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalDataset;
 import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalQuery;
 import com.uniovi.rag.domain.evaluation.workbook.ExperimentalDatasetType;
 import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
+import com.uniovi.rag.domain.evaluation.workbook.LlmRoleEvalCase;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
 import com.uniovi.rag.domain.evaluation.workbook.WorkbookParseResult;
@@ -91,6 +93,18 @@ public class ExperimentalDatasetResolver {
 
         return switch (kind) {
             case LLM_JUDGE_QA -> {
+                if (RoleEvalCaseSubsetSupport.isRoleEvalMode(run)) {
+                    RoleEvalCaseSubsetSupport.RoleEvalFilter filter =
+                            RoleEvalCaseSubsetSupport.resolveFilterFromRun(run);
+                    List<LlmRoleEvalCase> cases =
+                            RoleEvalCaseSubsetSupport.filter(wb.llmRoleEvalCases(), filter);
+                    if (cases.isEmpty()) {
+                        throw new BenchmarkDatasetResolutionException(
+                                "Parsed workbook has no llm_role_eval_cases rows for role-eval run"
+                                        + (filter.unrestricted() ? "" : " after role-eval filter"));
+                    }
+                    yield new TypedBenchmarkDataset.LlmRoleCases(cases);
+                }
                 List<LlmReaderQuestion> qs =
                         DatasetQuestionSubsetSupport.filterLlmQuestions(wb.llmReaderQuestions(), subset);
                 if (qs.isEmpty()) {

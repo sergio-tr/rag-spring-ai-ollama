@@ -211,7 +211,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     LabPresetRunPlanModels.STRATEGY_VERSION,
                     null,
                     base,
-                    providerLabMetrics);
+                    providerLabMetrics,
+                    questions);
             EvaluationSummary summary =
                     single.evaluationSummary()
                             .withExtensions(
@@ -595,7 +596,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                 exec,
                                 base,
                                 EvaluationProvenanceSupport.mergeLabMetrics(
-                                        corpusDiagnostics.metrics(), providerLabMetrics));
+                                        corpusDiagnostics.metrics(), providerLabMetrics),
+                                questions);
                         allRows.addAll(rows);
                     }
                 } catch (Exception ex) {
@@ -1105,11 +1107,54 @@ public class TypedRagPresetBenchmarkOrchestrator {
             GroupExecution exec,
             RagFeatureConfiguration applicationDefaults,
             Map<String, Object> extraLabMetrics) {
+        enrichRows(
+                rows,
+                presetLabel,
+                preset,
+                llmModelId,
+                embeddingModelId,
+                indexGate,
+                groupKey,
+                runPlanVersion,
+                exec,
+                applicationDefaults,
+                extraLabMetrics,
+                null);
+    }
+
+    /**
+     * RAG-4A fix: EXECUTED rows built via {@link #toMutableRowMaps(List)} never went through
+     * {@link #baseRow(RagPresetQuestion, String, RagExperimentalPresetCode, String, String)}, so
+     * {@link #attachDatasetContract(Map, RagPresetQuestion)} (and therefore dataset-derived
+     * {@code answerability}) was only ever populated for terminal rows (not_supported/skipped/
+     * failed). This overload attaches the dataset contract for EXECUTED rows too, keyed by
+     * {@code dataset_question_id}, before falling back to {@link RagPresetAnalysisMetrics}'
+     * {@code DEFAULT_UNKNOWN}. Safe/idempotent: skipped when the row already carries a contract
+     * (terminal-row paths) or when the question cannot be matched by id.
+     */
+    private static void enrichRows(
+            List<Map<String, Object>> rows,
+            String presetLabel,
+            RagExperimentalPresetCode preset,
+            String llmModelId,
+            String embeddingModelId,
+            PreflightIndexCompatibility indexGate,
+            LabPresetRunGroupKey groupKey,
+            int runPlanVersion,
+            GroupExecution exec,
+            RagFeatureConfiguration applicationDefaults,
+            Map<String, Object> extraLabMetrics,
+            List<RagPresetQuestion> questionsForContract) {
         if (rows == null) {
             return;
         }
         String presetStr = preset != null ? preset.name() : null;
         LabPresetRunGroupKey gk = groupKey != null ? groupKey : LabPresetRunGroupKey.NO_INDEX;
+        Map<String, RagPresetQuestion> questionsById =
+                questionsForContract == null || questionsForContract.isEmpty()
+                        ? Map.of()
+                        : questionsForContract.stream()
+                                .collect(Collectors.toMap(RagPresetQuestion::id, q -> q, (a, b) -> a));
         for (Map<String, Object> row : rows) {
             if (presetStr != null) {
                 row.put(BenchmarkResultRowKeys.PRESET_CODE, presetStr);
@@ -1117,6 +1162,13 @@ public class TypedRagPresetBenchmarkOrchestrator {
             row.put(BenchmarkResultRowKeys.PRESET_LABEL, presetLabel);
             row.put(BenchmarkResultRowKeys.LLM_MODEL_ID, llmModelId);
             row.put(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID, embeddingModelId);
+            if (!questionsById.isEmpty() && !row.containsKey(JSON_KEY_DATASET_CONTRACT)) {
+                RagPresetQuestion q =
+                        questionsById.get(str(row.get(BenchmarkResultRowKeys.DATASET_QUESTION_ID)));
+                if (q != null) {
+                    attachDatasetContract(row, q);
+                }
+            }
             Map<String, Object> metrics =
                     buildLabMetricsPayload(presetLabel, preset, gk, indexGate, runPlanVersion, exec, applicationDefaults);
             mergeEvaluationTelemetryIntoMetrics(row, metrics);
@@ -1136,6 +1188,10 @@ public class TypedRagPresetBenchmarkOrchestrator {
             finalizeAnalysisMetrics(row, metrics, preset);
             row.put(JSON_KEY_METRICS_PAYLOAD, metrics);
         }
+    }
+
+    private static String str(Object o) {
+        return o == null ? null : String.valueOf(o);
     }
 
     private static void mergeEvaluationTelemetryIntoMetrics(Map<String, Object> row, Map<String, Object> metrics) {

@@ -279,6 +279,7 @@ public class EvaluationCanonicalPersistenceService {
                 }
             }
             metrics.put("baseline_metrics", copy);
+            promoteRoleEvalKeys(copy, metrics);
         }
         Object preset = row.get(BenchmarkResultRowKeys.PRESET_CODE);
         if (preset != null) {
@@ -311,6 +312,24 @@ public class EvaluationCanonicalPersistenceService {
         Object embMid = row.get(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID);
         if (embMid != null) {
             metrics.put(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID, embMid);
+        }
+    }
+
+    private static void promoteRoleEvalKeys(Map<String, Object> baseline, Map<String, Object> metrics) {
+        if (baseline == null || metrics == null) {
+            return;
+        }
+        for (String key :
+                List.of(
+                        BenchmarkResultRowKeys.ROLE_EVAL_SUBSET,
+                        BenchmarkResultRowKeys.ROLE_EVAL_ROLE_FAMILY,
+                        BenchmarkResultRowKeys.ROLE_EVAL_ROLE_PROFILE,
+                        BenchmarkResultRowKeys.ROLE_EVAL_SCORING_TYPE,
+                        BenchmarkResultRowKeys.ROLE_EVAL_PASSED)) {
+            Object v = baseline.get(key);
+            if (v != null) {
+                metrics.put(key, v);
+            }
         }
     }
 

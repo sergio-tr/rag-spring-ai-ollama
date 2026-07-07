@@ -151,6 +151,7 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.ExperimentalDatasetLabService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.ExperimentalDatasetResolver", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.metrics.RoleEvalCaseSubsetSupport", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabCampaignService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabCampaignTerminalPayloadBuilder", // ARCH-DEBT-LAB
