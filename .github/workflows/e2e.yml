@@ -38,8 +38,7 @@ jobs:
       - name: Build Next.js
         run: npm run build
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/install-playwright-chromium
 
       - name: Run Playwright smoke (@smoke, no @fullstack)
         run: npm run test:e2e:ci-fast

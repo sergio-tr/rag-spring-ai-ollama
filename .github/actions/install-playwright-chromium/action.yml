@@ -1,0 +1,14 @@
+name: Install Playwright Chromium (GHA)
+description: Disable broken Microsoft apt mirrors, then npx playwright install --with-deps chromium in webapp/.
+
+runs:
+  using: composite
+  steps:
+    - name: Disable broken GHA apt mirrors
+      shell: bash
+      run: bash "${GITHUB_WORKSPACE}/.github/scripts/disable-broken-gha-apt-mirrors.sh"
+
+    - name: Install Playwright Chromium with system deps
+      shell: bash
+      working-directory: webapp
+      run: npx playwright install --with-deps chromium

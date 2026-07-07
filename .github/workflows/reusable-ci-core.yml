@@ -173,7 +173,7 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm run build
-      - run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/install-playwright-chromium
       - name: Run Playwright (excludes @fullstack)
         run: npm run test:e2e:ci-fast
         env:
@@ -683,9 +683,7 @@ jobs:
           docker logs rag-reverse-proxy-ci || true
           exit 1
 
-      - name: Install Playwright browsers
-        working-directory: webapp
-        run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/install-playwright-chromium
 
       - name: E2E stack preflight (curl + auth, fail-fast)
         working-directory: webapp
@@ -852,9 +850,7 @@ jobs:
       - name: Install webapp dependencies
         working-directory: webapp
         run: npm install --no-audit --no-fund
-      - name: Install Playwright browsers
-        working-directory: webapp
-        run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/install-playwright-chromium
       - name: Run Playwright API tests
         working-directory: webapp
         run: npm run test:api

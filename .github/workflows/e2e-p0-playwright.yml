@@ -92,9 +92,9 @@ jobs:
 
       - name: Install Playwright dependencies
         working-directory: webapp
-        run: |
-          npm install --no-audit --no-fund
-          npx playwright install --with-deps chromium
+        run: npm install --no-audit --no-fund
+
+      - uses: ./.github/actions/install-playwright-chromium
 
       - name: Playwright P0 suite
         id: p0_tests
