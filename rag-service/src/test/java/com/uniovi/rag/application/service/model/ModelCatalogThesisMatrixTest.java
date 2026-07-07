@@ -32,14 +32,13 @@ class ModelCatalogThesisMatrixTest {
             "llama3.2:3b",
             "qwen3.5:2b",
             "qwen3.5:4b",
+            "gemma4:e2b",
             "gemma4:e4b");
 
     private static final List<String> THESIS_LLM_SMALL_MEDIUM = List.of("deepseek-r1:7b", "gemma4:12b", "qwen3.5:9b");
 
     private static final List<String> THESIS_LLM_MEDIUM =
             List.of("deepseek-v2:16b", "gpt-oss:20b", "gemma4:26b", "qwen3.6:27b");
-
-    private static final Set<String> EXCLUDED_FROM_CATALOG = Set.of("gemma4:e2b");
 
     private LlmModelCatalogService catalogService;
 
@@ -48,7 +47,7 @@ class ModelCatalogThesisMatrixTest {
         LlmProperties properties = new LlmProperties();
         LlmOpenAiCompatibleDefaults openAi = properties.getOpenAiCompatible();
         openAi.setDefaultChatModel("qwen3.6:35b");
-        openAi.setDefaultEmbeddingModel("hf.co/mixedbread-ai/mxbai-embed-large-v1:latest");
+        openAi.setDefaultEmbeddingModel("bge-m3");
         openAi.setAvailableChatModels(concat(
                 THESIS_LLM_SMALL, THESIS_LLM_SMALL_MEDIUM, THESIS_LLM_MEDIUM, List.of("qwen3.6:35b")));
         openAi.setAvailableEmbeddingModels(THESIS_EMBEDDING_MODELS);
@@ -81,14 +80,14 @@ class ModelCatalogThesisMatrixTest {
     }
 
     @Test
-    void excludedModels_areNotInDefaultCatalog() {
+    void gemma4e2b_isInSmallTierCatalog() {
         Set<String> configured = catalogService
                 .listConfigured(
                         LlmCatalogQuery.forProviderAndCapability(LlmProvider.OPENAI_COMPATIBLE, LlmModelCapability.CHAT))
                 .stream()
                 .map(e -> e.modelName())
                 .collect(Collectors.toSet());
-        assertThat(configured).doesNotContainAnyElementsOf(EXCLUDED_FROM_CATALOG);
+        assertThat(configured).contains("gemma4:e2b");
     }
 
     @Test

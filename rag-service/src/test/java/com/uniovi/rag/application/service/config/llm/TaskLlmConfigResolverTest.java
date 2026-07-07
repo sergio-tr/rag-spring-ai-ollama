@@ -92,8 +92,8 @@ class TaskLlmConfigResolverTest {
         assertThat(call.taskOverrideApplied()).isTrue();
         assertThat(call.effectiveModel()).isEqualTo("override-chat-model");
         assertThat(call.effectiveTemperature()).isEqualTo(0.2);
-        assertThat(call.effectiveConfig().additionalParameters()).containsEntry("topP", 1.0);
-        assertThat(call.effectiveConfig().additionalParameters()).containsEntry("maxTokens", 256);
+        assertThat(call.effectiveConfig().additionalParameters()).containsEntry("topP", 0.85);
+        assertThat(call.effectiveConfig().additionalParameters()).containsEntry("maxTokens", 384);
     }
 
     @Test
@@ -104,8 +104,8 @@ class TaskLlmConfigResolverTest {
                 resolver.resolveSecondaryCall(userId, projectId, "query-rewrite", null, null);
 
         assertThat(call.taskOverrideApplied()).isFalse();
-        assertThat(call.effectiveModel()).isEqualTo("qwen3.5:9b");
-        assertThat(call.effectiveTemperature()).isEqualTo(0.0);
+        assertThat(call.effectiveModel()).isEqualTo("qwen3.5:27b");
+        assertThat(call.effectiveTemperature()).isEqualTo(0.1);
     }
 
     @Test

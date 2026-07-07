@@ -26,58 +26,58 @@ public final class TaskLlmRoleDefaults {
         map.put(
                 TaskLlmTask.FINAL_ANSWER,
                 new RoleDefault(
-                        "gemma4:12b",
-                        params(0.1, 1.0, null, 1024, 0.0, 0.0, "text", false, null)));
+                        "qwen3.5:9b",
+                        params(0.1, 0.9, 42L, 1024, 0.0, 0.0, "text", false, null)));
         map.put(
                 TaskLlmTask.QUERY_REWRITE,
                 new RoleDefault(
-                        "qwen3.5:9b",
-                        params(0.0, 1.0, null, 256, 0.0, 0.0, "text", false, null)));
+                        "qwen3.5:27b",
+                        params(0.1, 0.85, 42L, 384, 0.0, 0.0, "text", false, null)));
         map.put(
                 TaskLlmTask.QUERY_EXPANSION,
                 new RoleDefault(
-                        "qwen3.5:9b",
-                        params(0.1, 1.0, null, 384, 0.0, 0.0, "text", false, null)));
+                        "qwen3.5:27b",
+                        params(0.2, 0.85, 42L, 512, 0.0, 0.0, "text", false, null)));
         map.put(
                 TaskLlmTask.MEMORY_CONDENSE,
                 new RoleDefault(
-                        "qwen3.5:9b",
-                        params(0.0, 1.0, null, 512, 0.0, 0.0, "text", false, null)));
+                        "ministral-3:14b",
+                        params(0.1, 0.9, 42L, 768, 0.0, 0.0, "text", false, null)));
         map.put(
                 TaskLlmTask.RUNTIME_JUDGE,
                 new RoleDefault(
-                        "gemma4:12b",
-                        params(0.0, 1.0, null, 512, 0.0, 0.0, "json_object", false, null)));
+                        "qwen3.5:9b",
+                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, "json_object", false, null)));
         map.put(
                 TaskLlmTask.RUNTIME_JUDGE_RETRY,
                 new RoleDefault(
-                        "gemma4:12b",
-                        params(0.0, 1.0, null, 512, 0.0, 0.0, "json_object", false, null)));
+                        "qwen3.5:9b",
+                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, "json_object", false, null)));
         map.put(
                 TaskLlmTask.FACTUAL_VERIFIER,
                 new RoleDefault(
-                        "gemma4:12b",
-                        params(0.0, 1.0, null, 512, 0.0, 0.0, "json_object", false, null)));
+                        "qwen3.5:9b",
+                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, "json_object", false, null)));
         map.put(
                 TaskLlmTask.LLM_RANKER,
                 new RoleDefault(
                         "qwen3.5:9b",
-                        params(0.0, 1.0, null, 384, 0.0, 0.0, "json_object", false, null)));
+                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, "json_object", false, null)));
         map.put(
                 TaskLlmTask.METADATA_REASONING,
                 new RoleDefault(
                         "qwen3.5:9b",
-                        params(0.0, 1.0, null, 512, 0.0, 0.0, "json_object", false, null)));
+                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, "json_object", false, null)));
         map.put(
                 TaskLlmTask.NER_EXTRACTION,
                 new RoleDefault(
                         "qwen3.5:9b",
-                        params(0.0, 1.0, null, 1024, 0.0, 0.0, "json_object", false, null)));
+                        params(0.0, 0.9, 42L, 1024, 0.0, 0.0, "json_object", false, null)));
         map.put(
                 TaskLlmTask.EVALUATION_JUDGE,
                 new RoleDefault(
                         "gemma4:12b",
-                        params(0.0, 1.0, null, 768, 0.0, 0.0, "json_object", false, null)));
+                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, "json_object", false, null)));
         map.put(
                 TaskLlmTask.LLM_BASELINE_EVALUATION,
                 new RoleDefault(

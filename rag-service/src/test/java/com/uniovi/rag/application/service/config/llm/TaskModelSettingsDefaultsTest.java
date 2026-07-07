@@ -25,7 +25,7 @@ class TaskModelSettingsDefaultsTest {
     @Test
     void finalAnswer_defaultModel_isNotCodellama() {
         var dto = TaskModelSettingsService.displayDefault(TaskLlmTask.FINAL_ANSWER);
-        assertThat(dto.modelId()).isEqualTo("gemma4:12b");
+        assertThat(dto.modelId()).isEqualTo("qwen3.5:9b");
         assertThat(dto.modelId()).doesNotContain("codellama");
     }
 

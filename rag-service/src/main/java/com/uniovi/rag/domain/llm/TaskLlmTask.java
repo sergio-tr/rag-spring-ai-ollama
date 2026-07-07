@@ -16,7 +16,7 @@ public enum TaskLlmTask {
     LLM_RANKER("llm_ranker", "LLM ranker", false),
     METADATA_REASONING("metadata_reasoning", "Metadata reasoning", false),
     NER_EXTRACTION("ner_extraction", "NER extraction", false),
-    EVALUATION_JUDGE("evaluation_judge", "Evaluation judge", true),
+    EVALUATION_JUDGE("evaluation_judge", "Evaluation judge", false),
     LLM_BASELINE_EVALUATION("llm_baseline_evaluation", "LLM baseline evaluation", true);
 
     private final String id;

@@ -8,6 +8,7 @@ const THESIS_CHAT_MODELS = [
   "llama3.2:3b",
   "qwen3.5:2b",
   "qwen3.5:4b",
+  "gemma4:e2b",
   "gemma4:e4b",
   "deepseek-r1:7b",
   "gemma4:12b",
@@ -42,7 +43,9 @@ test.describe("Lab evaluation model picker thesis matrix @api", () => {
     for (const id of THESIS_CHAT_MODELS) {
       expect(names, `missing thesis chat model ${id}`).toContain(id);
     }
-    expect(names).not.toContain("gemma4:e2b");
+    const gemmaE2b = (body.models ?? []).find((m) => m.modelName === "gemma4:e2b");
+    expect(gemmaE2b, "gemma4:e2b in catalog").toBeTruthy();
+    expect(gemmaE2b?.evalSelectable, "gemma4:e2b evalSelectable").toBe(true);
   });
 
   test("thesis embedding models appear and bge-m3 is eval selectable", async ({ request }) => {

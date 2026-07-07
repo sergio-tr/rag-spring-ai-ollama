@@ -2,8 +2,8 @@ import type { LabEvaluationModelDto } from "@/types/api";
 
 /** Thesis evaluation defaults when present in the configured catalog. */
 export const THESIS_DEFAULT_EMBEDDING_MODEL_ID = "bge-m3";
-export const THESIS_DEFAULT_PRIMARY_LLM_MODEL_ID = "gemma4:12b";
-export const THESIS_DEFAULT_SECONDARY_LLM_MODEL_ID = "qwen3.5:9b";
+export const THESIS_DEFAULT_PRIMARY_LLM_MODEL_ID = "qwen3.5:9b";
+export const THESIS_DEFAULT_SECONDARY_LLM_MODEL_ID = "gemma4:12b";
 
 function firstSelectableModelName(
   models: LabEvaluationModelDto[],

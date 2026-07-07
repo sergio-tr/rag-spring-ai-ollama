@@ -115,8 +115,8 @@ class RoleRuntimeResolutionTest {
 
         assertThat(call.effectiveModel()).isEqualTo("override-chat-model");
         assertThat(call.effectiveTemperature()).isEqualTo(0.2);
-        assertThat(call.effectiveConfig().additionalParameters()).containsEntry("topP", 1.0);
-        assertThat(call.effectiveConfig().additionalParameters()).containsEntry("maxTokens", 256);
+        assertThat(call.effectiveConfig().additionalParameters()).containsEntry("topP", 0.85);
+        assertThat(call.effectiveConfig().additionalParameters()).containsEntry("maxTokens", 384);
     }
 
     @Test

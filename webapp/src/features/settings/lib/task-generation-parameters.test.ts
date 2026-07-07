@@ -15,10 +15,11 @@ const catalogTasks = [
     role: "FINAL_ANSWER",
     label: "Final answer",
     inheritsMainModelByDefault: true,
-    defaultModelId: "gemma4:12b",
+    defaultModelId: "qwen3.5:9b",
     defaultParameters: {
       temperature: 0.1,
-      topP: 1,
+      topP: 0.9,
+      seed: 42,
       maxTokens: 1024,
       responseFormat: "text",
       think: false,
@@ -29,15 +30,14 @@ const catalogTasks = [
     role: "QUERY_REWRITE",
     label: "Query rewrite",
     inheritsMainModelByDefault: false,
-    defaultModelId: "qwen3.5:9b",
+    defaultModelId: "qwen3.5:27b",
     defaultParameters: {
-      temperature: 0,
-      topP: 0.8,
-      maxTokens: 256,
-      responseFormat: "json_object",
-      stopSequences: ["END"],
-      think: true,
-      timeoutSeconds: 30,
+      temperature: 0.1,
+      topP: 0.85,
+      seed: 42,
+      maxTokens: 384,
+      responseFormat: "text",
+      think: false,
     },
   },
 ];
@@ -107,7 +107,7 @@ describe("task-generation-parameters", () => {
         roleId: "query_rewrite",
         label: "Query rewrite",
         inheritModel: true,
-        modelId: "qwen3.5:9b",
+        modelId: "qwen3.5:27b",
         inheritParameters: true,
         parameters: defaultParametersFromCatalog(catalogTasks[1].defaultParameters),
         hasOverride: false,
@@ -132,8 +132,8 @@ describe("task-generation-parameters", () => {
       catalogTasks[1],
     );
     expect(reset.inheritModel).toBe(false);
-    expect(reset.modelId).toBe("qwen3.5:9b");
-    expect(reset.parameters.responseFormat).toBe("json_object");
+    expect(reset.modelId).toBe("qwen3.5:27b");
+    expect(reset.parameters.responseFormat).toBe("text");
     expect(reset.hasOverride).toBe(false);
   });
 
@@ -143,7 +143,7 @@ describe("task-generation-parameters", () => {
       roleId: "final_answer",
       label: "Final answer",
       inheritModel: true,
-      modelId: "gemma4:12b",
+      modelId: "qwen3.5:9b",
       inheritParameters: true,
       parameters: { temperature: 0.1, maxTokens: 1024, responseFormat: "text" },
     });
@@ -165,7 +165,7 @@ describe("task-generation-parameters", () => {
           roleId: "query_rewrite",
           label: "Query rewrite",
           inheritModel: false,
-          modelId: "qwen3.5:9b",
+          modelId: "qwen3.5:27b",
           inheritParameters: false,
           parameters: defaultParametersFromCatalog(catalogTasks[1].defaultParameters),
           hasOverride: false,

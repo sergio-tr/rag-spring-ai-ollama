@@ -11,10 +11,11 @@ const catalogTasks = [
     label: "Final answer",
     inheritsMainModelByDefault: true,
     operationName: "final-answer",
-    defaultModelId: "gemma4:12b",
+    defaultModelId: "qwen3.5:9b",
     defaultParameters: {
       temperature: 0.1,
-      topP: 1,
+      topP: 0.9,
+      seed: 42,
       maxTokens: 1024,
       responseFormat: "text",
       think: false,
@@ -27,11 +28,12 @@ const catalogTasks = [
     label: "Query rewrite",
     inheritsMainModelByDefault: false,
     operationName: "query-rewrite",
-    defaultModelId: "qwen3.5:9b",
+    defaultModelId: "qwen3.5:27b",
     defaultParameters: {
-      temperature: 0,
-      topP: 1,
-      maxTokens: 256,
+      temperature: 0.1,
+      topP: 0.85,
+      seed: 42,
+      maxTokens: 384,
       responseFormat: "text",
       think: false,
     },
@@ -50,8 +52,8 @@ vi.mock("@/features/chat/hooks/use-me-selectable-llm-models", () => ({
   useMeSelectableLlmModels: () => ({
     data: {
       models: [
-        { modelName: "gemma4:12b", displayName: "Gemma 4 12B", selectable: true },
         { modelName: "qwen3.5:9b", displayName: "Qwen 3.5 9B", selectable: true },
+        { modelName: "qwen3.5:27b", displayName: "Qwen 3.5 27B", selectable: true },
       ],
     },
     isLoading: false,

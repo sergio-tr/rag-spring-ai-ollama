@@ -26,7 +26,7 @@ test.describe("Model catalog thesis visibility @api", () => {
     expect(bge?.governanceAllowed).toBe(true);
   });
 
-  test("deepseek-r1:1.5b is in configured catalog and gemma4:e2b is not", async ({ request }) => {
+  test("deepseek-r1:1.5b and gemma4:e2b are in configured catalog", async ({ request }) => {
     const { email, password } = integrationCredentials();
     const token = await loginAndGetToken(request, email, password);
     const res = await request.get(productUrl("/llm/catalog"), {
@@ -39,6 +39,6 @@ test.describe("Model catalog thesis visibility @api", () => {
     const chat = (body.models ?? []).filter((m) => m.provider === "OPENAI_COMPATIBLE" && m.capability === "CHAT");
     const names = new Set(chat.map((m) => m.modelName));
     expect(names).toContain("deepseek-r1:1.5b");
-    expect(names).not.toContain("gemma4:e2b");
+    expect(names).toContain("gemma4:e2b");
   });
 });
