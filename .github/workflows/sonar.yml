@@ -108,7 +108,8 @@ jobs:
       - name: Run classifier tests with coverage
         working-directory: classifier-service
         run: |
-          pytest tests/unit tests/regression/test_baseline_lib.py \
+          pytest tests/unit tests/test_api.py tests/test_deterministic_resolver.py \
+            tests/regression/test_baseline_lib.py \
             -m "not integration and not slow" \
             -v
           python scripts/patch_coverage_xml_for_sonar.py

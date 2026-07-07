@@ -241,7 +241,8 @@ echo "==> Classifier: pytest + coverage.xml"
   "${CLASSIFIER_PYTHON}" -m pip install -r requirements.txt
   export MODELS_DIR=./models
   export DATA_DIR=./data
-  "${CLASSIFIER_PYTHON}" -m pytest tests/unit tests/regression/test_baseline_lib.py \
+  "${CLASSIFIER_PYTHON}" -m pytest tests/unit tests/test_api.py tests/test_deterministic_resolver.py \
+    tests/regression/test_baseline_lib.py \
     -m "not integration and not slow" \
     -v
   "${CLASSIFIER_PYTHON}" scripts/patch_coverage_xml_for_sonar.py
