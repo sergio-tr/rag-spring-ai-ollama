@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@/navigation";
 import { useTranslations } from "next-intl";
 import { formatProductPresetOptionLabel, formatProductPresetOptionTitle } from "@/features/chat/lib/preset-latency-tier";
@@ -33,7 +32,6 @@ import { useProjectIndexProfile } from "@/features/projects/hooks/use-project-in
 import {
   CompactSummaryRow,
 } from "@/features/chat/components/chat-config-compact-ui";
-import { chatFailureHintForCode, normalizeChatFailureCode } from "@/features/chat/lib/chat-job-errors";
 import {
   formatAdvancedTechnicalValidationIssue,
   formatRuntimeValidationIssueMessage,
@@ -59,7 +57,6 @@ import {
 import { ConfigScopeBadge, resolveFieldScope, type AssistantConfigScope } from "@/features/chat/lib/assistant-config-scope";
 import { useMeEffectiveEmbeddingDefaults } from "@/features/settings/hooks/use-me-effective-embedding-defaults";
 import { useProjectStoredRagConfigQuery } from "@/features/settings/hooks/use-rag-config";
-import { meEffectiveRuntimeQueryKey } from "@/features/settings/hooks/use-me-effective-runtime";
 import { ChatEffectiveRuntimeSummary } from "@/features/chat/components/ChatEffectiveRuntimeSummary";
 import { retrievalParameterSourceLabelKey } from "@/features/chat/lib/retrieval-parameter-source";
 import {
@@ -211,11 +208,6 @@ function RuntimeCheckboxFeatureRow({
 
 type EffectiveConfigMap = Record<string, unknown>;
 
-function actionableIssueCode(issue: RuntimeConfigValidationIssueDto): string | null {
-  const normalized = normalizeChatFailureCode(issue.code);
-  return normalized ?? (issue.code ? issue.code : null);
-}
-
 /**
  * Shared content for both the desktop side panel and the mobile drawer.
  *
@@ -226,7 +218,6 @@ function actionableIssueCode(issue: RuntimeConfigValidationIssueDto): string | n
  * 4) Runtime configuration
  */
 export function ChatConfigurationPanelContent() {
-  const queryClient = useQueryClient();
   const t = useTranslations("SectionActions");
   const tChat = useTranslations("Chat");
   const tSettings = useTranslations("Settings");
@@ -241,7 +232,6 @@ export function ChatConfigurationPanelContent() {
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const [editOpen, setEditOpen] = useState(false);
-  const [runtimeOpen, setRuntimeOpen] = useState(false);
   const [showIncompatiblePresets, setShowIncompatiblePresets] = useState(false);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
   const [advancedValidationText, setAdvancedValidationText] = useState<string | null>(null);
@@ -266,7 +256,6 @@ export function ChatConfigurationPanelContent() {
   const indexProfileQuery = useProjectIndexProfile(api?.projectId);
   const activeSnapQuery = useActiveProjectSnapshot(api?.projectId);
 
-  const effectiveLoading = Boolean(api?.runtimeStateLoading);
   const effectiveError = api?.runtimeStateError ?? null;
   const patchPending = Boolean(api?.patchConvPending);
 
@@ -1076,12 +1065,7 @@ export function ChatConfigurationPanelContent() {
             type="button"
             data-testid="chat-config-edit-button"
             className={cn(buttonVariants({ variant: "default", size: "sm" }))}
-            onClick={() => {
-              setEditOpen((open) => {
-                if (!open) setRuntimeOpen(true);
-                return !open;
-              });
-            }}
+            onClick={() => setEditOpen((open) => !open)}
           >
             {editOpen ? tChat("configEditClose") : tChat("configEditButton")}
           </button>
@@ -1251,12 +1235,7 @@ export function ChatConfigurationPanelContent() {
                   <optgroup label={tChat("presetGroupProduct")}>
                     {visibleProductPresets.map((item) => {
                       const reason = presetCompatibilityDisabledReason(item.compatibility);
-                      const baselineLabel = presetProductTierLabel(
-                        item.preset.id,
-                        projectIndexCaps,
-                        item.compatibility.selectable,
-                        tChat,
-                      );
+                      const baselineLabel = presetProductTierLabel();
                       const optionLabel =
                         reason != null
                           ? `${formatProductPresetOptionLabel(item.preset, tChat)} (${reason})`
@@ -1279,12 +1258,7 @@ export function ChatConfigurationPanelContent() {
                   <optgroup label={tChat("presetGroupExperimental")}>
                     {experimentalUnique.map((p) => {
                       const reason = presetIndexDisabledReason({ ...p, productPresetId: p.productPresetId });
-                      const baselineLabel = presetProductTierLabel(
-                        p.productPresetId,
-                        projectIndexCaps,
-                        experimentalPresetCompatibility.get(p.productPresetId)?.selectable ?? true,
-                        tChat,
-                      );
+                      const baselineLabel = presetProductTierLabel();
                       const optionLabel = reason
                         ? `${formatChatExperimentalPresetOptionLabel(p, presetCopyT)} (${reason})`
                         : baselineLabel

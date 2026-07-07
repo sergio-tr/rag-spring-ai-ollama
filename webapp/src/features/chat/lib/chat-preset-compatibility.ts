@@ -5,7 +5,6 @@ import type {
   ProjectCompatiblePresetsDto,
 } from "@/types/api";
 import {
-  classifyPresetProductTier,
   isPresetVisibleInSelector,
   type ProjectIndexCaps,
 } from "@/features/chat/lib/preset-product-selection";
@@ -124,11 +123,7 @@ export function compatibilityByExperimentalPresetId(
   return map;
 }
 
-export function presetProductTierLabel(
-  _presetId: string,
-  _projectIndex: ProjectIndexCaps | null | undefined,
-  _selectable: boolean,
-  _t: (key: string) => string,
-): string | null {
+/** Preserves selector API; product presets no longer expose baseline tier chips in chat. */
+export function presetProductTierLabel(): string | null {
   return null;
 }

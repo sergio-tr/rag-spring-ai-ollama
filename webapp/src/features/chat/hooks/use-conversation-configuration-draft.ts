@@ -10,10 +10,14 @@ export function useConversationConfigurationDraft(
   patchPending: boolean,
 ) {
   const draftRef = useRef<Record<string, unknown>>({});
+  const conversationIdRef = useRef(conversationId);
 
   useEffect(() => {
-    draftRef.current = { ...persistedConfiguration };
-  }, [conversationId]);
+    if (conversationIdRef.current !== conversationId) {
+      conversationIdRef.current = conversationId;
+      draftRef.current = { ...persistedConfiguration };
+    }
+  }, [conversationId, persistedConfiguration]);
 
   useEffect(() => {
     if (!patchPending) {

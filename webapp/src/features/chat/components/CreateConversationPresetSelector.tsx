@@ -132,12 +132,7 @@ export function CreateConversationPresetSelector({
         {showOptions
           ? visibleProductPresets.map((item) => {
               const reason = presetCompatibilityDisabledReason(item.compatibility);
-              const baselineLabel = presetProductTierLabel(
-                item.preset.id,
-                projectIndex,
-                item.compatibility.selectable,
-                t,
-              );
+              const baselineLabel = presetProductTierLabel();
               const label = toProductPresetDisplayName(item.preset.name);
               const display = baselineLabel ? `${label} — ${baselineLabel}` : label;
               const optionTitle = formatProductPresetOptionTitle(item.preset, t);
@@ -158,12 +153,7 @@ export function CreateConversationPresetSelector({
         {showOptions
           ? visibleExperimentalPresets.map((item) => {
               const reason = presetCompatibilityDisabledReason(item.compatibility);
-              const baselineLabel = presetProductTierLabel(
-                item.preset.productPresetId,
-                projectIndex,
-                item.compatibility.selectable,
-                t,
-              );
+              const baselineLabel = presetProductTierLabel();
               const label = formatChatExperimentalPresetOptionLabel(item.preset, presetCopyT);
               const display = baselineLabel ? `${label} — ${baselineLabel}` : label;
               return (

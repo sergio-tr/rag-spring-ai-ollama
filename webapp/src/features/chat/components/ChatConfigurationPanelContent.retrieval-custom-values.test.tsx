@@ -311,7 +311,7 @@ describe("ChatConfigurationPanelContent retrieval custom values", () => {
 
   it("reset clears custom retrieval overrides", () => {
     const saveRuntimeOverride = vi.fn();
-    useChatToolbarStore.setState((s) => ({
+    useChatToolbarStore.setState(() => ({
       api: {
         ...useChatToolbarStore.getState().api!,
         saveRuntimeOverride,

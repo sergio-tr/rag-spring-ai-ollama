@@ -205,7 +205,7 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
         embeddingEffective: embeddingEffectiveForForm,
         effectiveProvider,
       }),
-    [workingConfig, editableKeys, llmEffectiveQ.data, embeddingEffectiveForForm, effectiveProvider, mode],
+    [workingConfig, editableKeys, llmEffectiveQ.data, embeddingEffectiveForForm, effectiveProvider],
   );
   const lastFormSeedKey = useRef("");
 
@@ -365,18 +365,6 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   function onAdvancedJsonApply(parsed: Record<string, unknown>) {
     setWorkingConfig(parsed);
     reloadFormFromConfig(parsed);
-  }
-
-  function onAdditionalParameterChange(key: string, value: number | boolean | undefined) {
-    setAdditionalParameters((prev) => {
-      const next = { ...prev };
-      if (value === undefined) {
-        delete next[key];
-      } else {
-        next[key] = value;
-      }
-      return next;
-    });
   }
 
   if (mode === "project" && !projectId) {
