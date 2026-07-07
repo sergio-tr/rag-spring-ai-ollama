@@ -246,6 +246,10 @@ export async function runUiFullstackSmokeChecks(
       .getByTestId("rag-config-advanced-json")
       .evaluate((el) => (el as HTMLDetailsElement).open)
       .catch(() => true);
+    const promptSection = page.getByTestId("settings-collapsible-prompt");
+    if (!(await promptSection.evaluate((el) => (el as HTMLDetailsElement).open))) {
+      await promptSection.locator(":scope > summary").click();
+    }
     await expect(page.getByTestId("assistant-global-persona-input")).toBeVisible();
     await expect(page.getByLabel("Advanced configuration (JSON)")).not.toBeVisible();
     const mainText = await page.locator("main").innerText();
@@ -287,14 +291,15 @@ export async function runUiFullstackSmokeChecks(
     if (!(await panel.getByTestId("chat-edit-assistant-configuration-link").isVisible().catch(() => false))) {
       await panel.getByTestId("chat-config-edit-button").click({ timeout: 15_000 });
     }
-    const providerEl = panel.getByTestId("chat-llm-model-provider");
-    await expect(providerEl).toBeVisible({ timeout: 30_000 });
-    const providerText = (await providerEl.innerText()).trim();
+    const modelSelect = panel.getByTestId("chat-final-answer-model-select");
+    await expect(modelSelect).toBeVisible({ timeout: 30_000 });
+    const modelOptions = await modelSelect.locator("option").allTextContents();
+    const providerAware = modelOptions.some((o) => /Configured model provider|Local model provider/i.test(o));
     checks.push({
       id: "chat-model-selector-provider",
       description: "Selector chat muestra modelos del provider efectivo",
-      pass: /Configured model provider|Local model provider/i.test(providerText),
-      evidence: providerText,
+      pass: providerAware,
+      evidence: modelOptions.join(" | ").slice(0, 120),
     });
 
     const presetSelect = panel.getByTestId("chat-preset-select");

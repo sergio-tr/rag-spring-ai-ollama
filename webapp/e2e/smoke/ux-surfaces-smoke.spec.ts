@@ -28,6 +28,10 @@ test.describe("UX surfaces smoke @smoke", () => {
     const technicalSummary = technicalDetails.locator(":scope > summary");
     await expect(technicalSummary).toBeVisible();
     expect(await technicalDetails.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false);
+    const promptSection = page.getByTestId("settings-collapsible-prompt");
+    if (!(await promptSection.evaluate((el) => (el as HTMLDetailsElement).open))) {
+      await promptSection.locator(":scope > summary").click();
+    }
     await expect(page.getByTestId("assistant-global-persona-input")).toBeVisible();
     await expect(page.getByLabel("Advanced configuration (JSON)")).not.toBeVisible();
     const mainText = await page.locator("main").innerText();
@@ -52,17 +56,25 @@ test.describe("UX surfaces smoke @smoke", () => {
 
   test("chat model selector is provider-aware", async ({ page }) => {
     await openChatConfiguration(page);
-    await page.getByTestId("chat-config-edit-button").click({ timeout: 15_000 });
-    await expect(page.getByTestId("chat-llm-model-provider")).toHaveText(/Configured model provider/i, {
-      timeout: 15_000,
-    });
+    const panel = page.locator("#chat-configuration-side-panel, [data-testid='chat-configuration-side-panel']");
+    if (!(await panel.getByTestId("chat-edit-assistant-configuration-link").isVisible().catch(() => false))) {
+      await panel.getByTestId("chat-config-edit-button").click({ timeout: 15_000 });
+    }
+    const modelSelect = panel.getByTestId("chat-final-answer-model-select");
+    await expect(modelSelect).toBeVisible({ timeout: 15_000 });
+    const options = await modelSelect.locator("option").allTextContents();
+    expect(options.some((o) => /Configured model provider|Local model provider/i.test(o))).toBe(true);
   });
 
   test("chat preset selector uses human labels, not P-codes as primary text", async ({ page }) => {
     await openChatConfiguration(page);
-    await page.getByTestId("chat-config-edit-button").click({ timeout: 15_000 });
-    const presetSelect = page.getByTestId("chat-preset-select");
+    const panel = page.locator("#chat-configuration-side-panel, [data-testid='chat-configuration-side-panel']");
+    if (!(await panel.getByTestId("chat-edit-assistant-configuration-link").isVisible().catch(() => false))) {
+      await panel.getByTestId("chat-config-edit-button").click({ timeout: 15_000 });
+    }
+    const presetSelect = panel.getByTestId("chat-preset-select");
     await expect(presetSelect).toBeVisible({ timeout: 15_000 });
+    await expect(presetSelect).toBeEnabled({ timeout: 15_000 });
     const options = await presetSelect.locator("option").allTextContents();
     expect(options.some((o) => /Chunk \+ metadata retrieval/i.test(o))).toBe(true);
     expect(options.every((o) => !/^P\d+\s*[--]/.test(o.trim()))).toBe(true);
