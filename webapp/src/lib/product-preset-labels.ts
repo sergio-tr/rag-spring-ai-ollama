@@ -61,6 +61,11 @@ function normalizePresetCode(code: string): string {
   return code.trim().toUpperCase();
 }
 
+/** i18n keys exist only for experimental protocol codes (P0–P15), not product preset display names. */
+function isExperimentalPresetCode(code: string): boolean {
+  return /^P\d+$/.test(normalizePresetCode(code));
+}
+
 function isResolvedI18n(key: string, translated: string): boolean {
   if (!translated.trim()) return false;
   if (translated === key) return false;
@@ -77,7 +82,7 @@ export function productPresetLabel(code: string, t?: PresetCopyFn): string {
   if (demoMapped) return demoMapped;
 
   const normalized = normalizePresetCode(trimmed);
-  if (t) {
+  if (t && isExperimentalPresetCode(trimmed)) {
     const i18nKey = `presetDisplay.${normalized}`;
     const translated = t(i18nKey);
     if (isResolvedI18n(i18nKey, translated)) {
@@ -106,7 +111,7 @@ export function productPresetDescription(code: string, t?: PresetCopyFn): string
   }
 
   const normalized = normalizePresetCode(trimmed);
-  if (t) {
+  if (t && isExperimentalPresetCode(trimmed)) {
     const i18nKey = `presetDisplay.${normalized}Description`;
     const translated = t(i18nKey);
     if (isResolvedI18n(i18nKey, translated)) {

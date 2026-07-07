@@ -49,6 +49,7 @@ import { cn } from "@/lib/utils";
 import { productProviderLabel, productProviderLabelsFromSettings } from "@/lib/product-provider-labels";
 import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
 import {
+  ADVANCED_RUNTIME_ONLY_KEYS,
   ANSWER_QUALITY_FEATURE_KEY,
   chatRuntimeLabelKey,
   CLARIFICATION_FEATURE_KEY,
@@ -554,24 +555,14 @@ export function ChatConfigurationPanelContent() {
     : null;
 
   useEffect(() => {
-    const known = new Set(
-      [
-        "useRetrieval",
-        "naiveFullCorpusInPromptEnabled",
-        "expansionEnabled",
-        "toolsEnabled",
-        "functionCallingEnabled",
-        "nerEnabled",
-        "useAdvisor",
-        "reasoningEnabled",
-        "rankerEnabled",
-        "postRetrievalEnabled",
-        "clarificationEnabled",
-        "memoryEnabled",
-        "adaptiveRoutingEnabled",
-        "judgeEnabled",
-      ].map(String),
-    );
+    const known = new Set<string>([
+      ...RETRIEVAL_SETTING_KEYS,
+      ...ADVANCED_RUNTIME_ONLY_KEYS,
+      MEMORY_FEATURE_KEY,
+      CLARIFICATION_FEATURE_KEY,
+      ANSWER_QUALITY_FEATURE_KEY,
+      "expansionEnabled",
+    ]);
     const unknown = runtimeToggles.filter((c) => !known.has(c.key));
     if (unknown.length > 0 && process.env.NODE_ENV !== "production") {
       console.warn("[chat] Unknown runtime capability keys:", unknown.map((x) => x.key));
