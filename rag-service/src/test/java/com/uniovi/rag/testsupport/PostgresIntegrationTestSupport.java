@@ -28,23 +28,10 @@ public final class PostgresIntegrationTestSupport {
     public record PostgresBinding(DataSource dataSource, Runnable cleanup) {}
 
     public static boolean isJdbcIntegrationDatabaseAvailable() {
-        if (isGitHubActions()) {
-            return true;
-        }
         String user = jdbcUsername();
         String pass = jdbcPassword();
-        String explicit = System.getenv("INTEGRATION_JDBC_URL");
-        if (hasText(explicit) && canOpenPostgresJdbc(explicit, user, pass)) {
-            return true;
-        }
-        if (canOpenPostgresJdbc(CI_DEFAULT_INTEGRATION_JDBC_URL, user, pass)) {
-            return true;
-        }
-        String springUrl = resolveSpringDatasourceUrl();
-        if (hasText(springUrl) && canOpenPostgresJdbc(springUrl, user, pass)) {
-            return true;
-        }
-        if (canOpenPostgresJdbc(DEFAULT_SPRING_BOOT_PG_URL, user, pass)) {
+        String resolved = resolveJdbcIntegrationUrl();
+        if (hasText(resolved) && canOpenPostgresJdbc(resolved, user, pass)) {
             return true;
         }
         if (isLocalPostgresAdminAvailable()) {
@@ -104,7 +91,8 @@ public final class PostgresIntegrationTestSupport {
         String pass = jdbcPassword();
         if (hasText(externalUrl)
                 && CI_DEFAULT_INTEGRATION_JDBC_URL.equals(externalUrl)
-                && isLocalPostgresAdminAvailable()) {
+                && isLocalPostgresAdminAvailable()
+                && !isGitHubActions()) {
             recreateLocalDatabase("testdb");
             DataSource dataSource = dataSourceForUrl(externalUrl);
             applyClasspathScript(dataSource, "test-init.sql");
