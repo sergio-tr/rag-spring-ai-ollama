@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
 import com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures;
 import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationGoldCorpusFilenameSupport;
 import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
 import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
@@ -3709,7 +3710,12 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         return !activeSnapshotIds.contains(snapshotId);
     }
 
-    /** Acceptance corpus: canonical {@code ACTA N.pdf} only. */
+    /**
+     * Acceptance corpus: canonical {@code ACTA N.pdf} production documents, plus first-class
+     * evaluation-gold fixtures ({@code EvaluationGoldCorpusFilenameSupport}, e.g.
+     * {@code ACTA_6__ACTA_6_META.eval-gold.txt}) used by the benchmark/lab harness. Other
+     * {@code .txt} artifacts (ad-hoc/legacy fixtures outside both conventions) remain excluded.
+     */
     protected boolean isCanonicalPdfActaDocument(Document doc) {
         if (doc == null) {
             return false;
@@ -3718,6 +3724,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String filename = resolveMetadataFilename(flat);
         if (filename == null || filename.isBlank()) {
             return false;
+        }
+        if (EvaluationGoldCorpusFilenameSupport.isEvaluationGoldFilename(filename)) {
+            return true;
         }
         String lower = filename.trim().toLowerCase(Locale.ROOT);
         if (lower.endsWith(".txt")) {

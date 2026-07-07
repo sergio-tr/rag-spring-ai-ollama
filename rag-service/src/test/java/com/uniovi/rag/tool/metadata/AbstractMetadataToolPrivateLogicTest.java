@@ -161,6 +161,66 @@ class AbstractMetadataToolPrivateLogicTest {
         assertThat(out).hasSize(1);
     }
 
+    /**
+     * RAG-4B: {@code isCanonicalPdfActaDocument} must accept the first-class evaluation-gold
+     * filename convention ({@code EvaluationGoldCorpusFilenameSupport}), not just literal
+     * {@code ACTA N.pdf} filenames, otherwise every deterministic metadata tool drops 100% of the
+     * benchmark/lab evaluation corpus before any date/topic matching ever runs (see
+     * {@code .cursor/evidence/rag-4b-deterministic-tool-lookup-fix-20260707/04_root_cause.md}).
+     */
+    @Test
+    void isCanonicalPdfActaDocument_acceptsEvaluationGoldFilenamesAndCanonicalPdf() throws Exception {
+        AbstractMetadataTool tool = tool();
+        Method isCanonical = AbstractMetadataTool.class.getDeclaredMethod("isCanonicalPdfActaDocument", Document.class);
+        isCanonical.setAccessible(true);
+
+        Document evalGoldDoc =
+                new Document("text", Map.of("filename", "ACTA_6__ACTA_6_VIDEOSURVEILLANCE.eval-gold.txt"));
+        assertThat((Boolean) isCanonical.invoke(tool, evalGoldDoc)).isTrue();
+
+        Document canonicalPdfDoc = new Document("text", Map.of("filename", "ACTA 6.pdf"));
+        assertThat((Boolean) isCanonical.invoke(tool, canonicalPdfDoc)).isTrue();
+
+        Document legacyTxtDoc = new Document("text", Map.of("filename", "some_old_fixture.txt"));
+        assertThat((Boolean) isCanonical.invoke(tool, legacyTxtDoc)).isFalse();
+
+        Document noFilenameDoc = new Document("text", Map.of());
+        assertThat((Boolean) isCanonical.invoke(tool, noFilenameDoc)).isFalse();
+
+        assertThat((Boolean) isCanonical.invoke(tool, (Object) null)).isFalse();
+    }
+
+    /**
+     * RAG-4B: {@code collectInScopeCorpusRows} must keep evaluation-gold rows in scope instead of
+     * excluding every row (the observed live-log symptom: "Collected in-scope corpus rows: 0 rows
+     * (N excluded, ...)" for every deterministic tool on the real 60-question eval corpus).
+     */
+    @Test
+    void collectInScopeCorpusRows_keepsEvaluationGoldRows() throws Exception {
+        AbstractMetadataTool tool = tool();
+        Method collect = AbstractMetadataTool.class.getDeclaredMethod("collectInScopeCorpusRows", List.class);
+        collect.setAccessible(true);
+
+        Document acta6Meta =
+                new Document(
+                        "25/08/2026; sala; 19:15-20:45; 19 asistentes",
+                        Map.of(
+                                "filename", "ACTA_6__ACTA_6_META.eval-gold.txt",
+                                "document_id", "ACTA_6",
+                                "chunkId", "ACTA_6_META"));
+        Document acta6Elevator =
+                new Document(
+                        "Ascensor: propuestas para modernizar el ascensor.",
+                        Map.of(
+                                "filename", "ACTA_6__ACTA_6_ELEVATOR.eval-gold.txt",
+                                "document_id", "ACTA_6",
+                                "chunkId", "ACTA_6_ELEVATOR"));
+
+        @SuppressWarnings("unchecked")
+        List<Document> inScope = (List<Document>) collect.invoke(tool, List.of(acta6Meta, acta6Elevator));
+        assertThat(inScope).hasSize(2);
+    }
+
     private static AbstractMetadataTool tool() {
         ChatClient chatClient = ChatClientTestSupport.mockForUserPromptChain();
         ContextRetriever retriever = mock(ContextRetriever.class);

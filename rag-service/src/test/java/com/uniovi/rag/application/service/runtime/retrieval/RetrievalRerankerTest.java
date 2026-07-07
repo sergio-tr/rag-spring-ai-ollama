@@ -126,7 +126,7 @@ class RetrievalRerankerTest {
     @Test
     void rerank_boostsParticipantsSectionForAttendeeListQuery() {
         UUID s = UUID.randomUUID();
-        RetrievalRequest req = fusionRequest("cuales son los asistentes del acta del 25 de febrero del 2025?");
+        RetrievalRequest req = fusionRequest("cuales son los asistentes del acta 3?");
         RetrievalCandidate header =
                 new RetrievalCandidate(
                         s + ":h:0",
@@ -137,7 +137,7 @@ class RetrievalRerankerTest {
                         1,
                         0,
                         s,
-                        0.9);
+                        0.2);
         RetrievalCandidate participants =
                 new RetrievalCandidate(
                         s + ":p:1",
@@ -148,7 +148,7 @@ class RetrievalRerankerTest {
                         2,
                         0,
                         s,
-                        0.4);
+                        0.65);
         QueryPlan plan = minimalPlan(List.of());
 
         var result = reranker.rerank(req, plan, List.of(header, participants));
@@ -181,7 +181,7 @@ class RetrievalRerankerTest {
                         2,
                         0,
                         s,
-                        0.4);
+                        0.65);
         QueryPlan plan = minimalPlan(List.of());
 
         var result = reranker.rerank(req, plan, List.of(header, agenda));

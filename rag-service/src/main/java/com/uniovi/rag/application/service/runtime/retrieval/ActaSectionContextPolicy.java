@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.runtime.retrieval;
 import com.uniovi.rag.application.service.knowledge.document.ActaSectionChunk;
 import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -253,7 +254,7 @@ final class ActaSectionContextPolicy {
         if (meta == null) {
             return null;
         }
-        for (String key : java.util.List.of("chunkIndex", "chunk_index")) {
+        for (String key : List.of("chunkIndex", "chunk_index")) {
             Object raw = meta.get(key);
             if (raw instanceof Number number) {
                 return number.intValue();

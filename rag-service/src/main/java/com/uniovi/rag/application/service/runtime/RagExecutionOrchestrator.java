@@ -50,6 +50,7 @@ import com.uniovi.rag.application.service.runtime.routing.safety.ParentCandidate
 import java.util.Objects;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolNegativeFallbackPolicy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.application.service.runtime.routing.safety.RouteCandidateValidationResult;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
@@ -410,9 +411,20 @@ public class RagExecutionOrchestrator {
 
         DeterministicToolExecutionResult toolResult = deterministicToolStrategy.tryExecute(base, plan);
         RouteCandidateValidationResult toolValidation = null;
+        boolean toolNegativeDeferred =
+                toolResult.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS
+                        && toolResult.success()
+                        && DeterministicToolNegativeFallbackPolicy.shouldDeferToolTerminalFinish(
+                                rag.useRetrieval(), toolResult);
+        if (toolNegativeDeferred) {
+            telemetry.toolNegativeFallbackApplied(true)
+                    .toolCandidateRejected(true)
+                    .rejectCandidate("TOOL", DeterministicToolNegativeFallbackPolicy.REJECTION_REASON);
+        }
         if (toolResult.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS && toolResult.success()) {
             toolValidation = monotonicRouteSafetyService.validateToolResult(plan, toolResult);
-            if (DeterministicToolTerminalAnswerGuard.shouldFinishTerminal(plan, toolResult, toolValidation)) {
+            if (!toolNegativeDeferred
+                    && DeterministicToolTerminalAnswerGuard.shouldFinishTerminal(plan, toolResult, toolValidation)) {
                 boolean deterministicFinal =
                         DeterministicToolTerminalAnswerGuard.shouldMarkDeterministicToolFinal(
                                 plan, toolValidation);
@@ -578,6 +590,17 @@ public class RagExecutionOrchestrator {
             ExecutionOutcome retrievalOutcome,
             RouteCandidateValidationResult retrievalValidation,
             MonotonicSafetyTelemetry telemetry) {
+        if (toolScore.isPresent()
+                && DeterministicToolNegativeFallbackPolicy.shouldPreferRetrievalOverTool(
+                        toolResult,
+                        retrievalOutcome.result(),
+                        retrievalOutcome.trace().abstentionTriggered())) {
+            telemetry.toolNegativeFallbackApplied(true)
+                    .selectedCandidateSource("RETRIEVAL")
+                    .monotonicRegressionPrevented(true)
+                    .constraintCoverageStatus(retrievalValidation.constraintCoverageStatus());
+            return finalizeIntegratedRetrievalOutcome(retrievalOutcome, telemetry, true);
+        }
         if (toolScore.isPresent()) {
             boolean deterministicFinal =
                     DeterministicToolTerminalAnswerGuard.shouldMarkDeterministicToolFinal(
@@ -1522,16 +1545,23 @@ public class RagExecutionOrchestrator {
         if (rag.toolsEnabled()) {
             toolResult = deterministicToolStrategy.tryExecute(base, plan);
             if (toolResult.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS && toolResult.success()) {
-                RouteCandidateValidationResult validation =
-                        monotonicRouteSafetyService.validateToolResult(plan, toolResult);
-                if (validation.safe()) {
-                    toolScore =
-                            Optional.of(
-                                    new MonotonicRouteSafetyService.CandidateScore(
-                                            "TOOL", validation, toolResult.answerText()));
+                if (DeterministicToolNegativeFallbackPolicy.shouldDeferToolTerminalFinish(
+                        rag.useRetrieval(), toolResult)) {
+                    telemetry.toolNegativeFallbackApplied(true)
+                            .toolCandidateRejected(true)
+                            .rejectCandidate("TOOL", DeterministicToolNegativeFallbackPolicy.REJECTION_REASON);
                 } else {
-                    telemetry.toolCandidateRejected(true)
-                            .rejectCandidate("TOOL", String.join(",", validation.rejectionReasons()));
+                    RouteCandidateValidationResult validation =
+                            monotonicRouteSafetyService.validateToolResult(plan, toolResult);
+                    if (validation.safe()) {
+                        toolScore =
+                                Optional.of(
+                                        new MonotonicRouteSafetyService.CandidateScore(
+                                                "TOOL", validation, toolResult.answerText()));
+                    } else {
+                        telemetry.toolCandidateRejected(true)
+                                .rejectCandidate("TOOL", String.join(",", validation.rejectionReasons()));
+                    }
                 }
             }
         }
@@ -1949,6 +1979,16 @@ public class RagExecutionOrchestrator {
             }
             case TOOL -> {
                 MonotonicRouteSafetyService.CandidateScore winner = decision.nativeWinner().orElseThrow();
+                if (DeterministicToolNegativeFallbackPolicy.shouldPreferRetrievalOverTool(
+                        toolResult,
+                        retrievalOutcome.result(),
+                        retrievalOutcome.trace().abstentionTriggered())) {
+                    telemetry.toolNegativeFallbackApplied(true)
+                            .selectedCandidateSource("RETRIEVAL")
+                            .monotonicRegressionPrevented(true);
+                    appendMonotonicSafetyStage(clarifyAfterQu, telemetry);
+                    yield finalizeIntegratedRetrievalOutcome(retrievalOutcome, telemetry, true);
+                }
                 telemetry.selectedCandidateSource(winner.source())
                         .routeConfidence(winner.validation().confidence())
                         .constraintCoverageStatus(winner.validation().constraintCoverageStatus());
@@ -2388,10 +2428,28 @@ public class RagExecutionOrchestrator {
         if (applyFallbackTrace
                 && (telemetry.parentFallbackUsed()
                         || telemetry.functionCandidateRejected()
-                        || telemetry.toolCandidateRejected())) {
+                        || telemetry.toolCandidateRejected()
+                        || telemetry.toolNegativeFallbackApplied())) {
             trace =
                     trace.withIntegratedMonotonicFallback(
                             true, AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE.name());
+        }
+        if (telemetry.toolNegativeFallbackApplied()) {
+            ExecutionStageTrace finalSourceStage =
+                    new ExecutionStageTrace(
+                            "final_answer_source",
+                            0L,
+                            ExecutionStageOutcome.SUCCESS,
+                            "finalAnswerSource="
+                                    + DeterministicToolNegativeFallbackPolicy.FINAL_ANSWER_SOURCE
+                                    + " toolResultUsedAsFinal=false");
+            List<ExecutionStageTrace> withoutPriorFinalSource =
+                    trace.stages() == null
+                            ? List.of()
+                            : trace.stages().stream()
+                                    .filter(s -> s != null && !"final_answer_source".equals(s.stageName()))
+                                    .toList();
+            trace = trace.replacingStages(withoutPriorFinalSource).withAppendedStages(finalSourceStage);
         }
         ExecutionStageTrace monotonicStage =
                 new ExecutionStageTrace(

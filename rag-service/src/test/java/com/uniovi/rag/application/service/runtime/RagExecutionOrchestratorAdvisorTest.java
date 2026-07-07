@@ -41,6 +41,7 @@ import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
 import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
 import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
 import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
@@ -145,7 +146,7 @@ class RagExecutionOrchestratorAdvisorTest {
 
     @Test
     void function_calling_short_circuit_skips_advisor() {
-        QueryPlan plan = plan(AmbiguityStatus.SUFFICIENT);
+        QueryPlan plan = countDocumentsPlan(AmbiguityStatus.SUFFICIENT);
         ExecutionContext in = ctxWithoutPlan(ragFunctionCallingLane(), KnowledgeSnapshotSelection.empty());
 
         WorkflowSelector workflowSelector = mock(WorkflowSelector.class);
@@ -619,6 +620,29 @@ class RagExecutionOrchestratorAdvisorTest {
                 ctx.routingFallbackRouteKind(),
                 ctx.routingWorkflowSelectorInvoked(),
                 ctx.routingStageTraces());
+    }
+
+    private static QueryPlan countDocumentsPlan(AmbiguityStatus amb) {
+        return new QueryPlan(
+                QueryPlan.VERSION_P6_QU_CORE_V1,
+                "raw",
+                "¿Cuántas actas hay en el corpus?",
+                "cuantas actas hay en el corpus",
+                "cuantas actas hay en el corpus",
+                "COUNT_DOCUMENTS",
+                Optional.of(QueryType.COUNT_DOCUMENTS),
+                ClassifierStatus.OK,
+                QueryIntent.COUNT,
+                Map.of(),
+                List.of(),
+                List.of(),
+                EntityExtractionResult.emptyWithNote(""),
+                StructuredRewriteResult.identityDisabled("cuantas actas hay en el corpus", ""),
+                ExpectedAnswerShape.SCALAR_COUNT,
+                new AmbiguityAssessment(amb, List.of(), List.of()),
+                "cid",
+                "",
+                List.of());
     }
 
     private static QueryPlan plan(AmbiguityStatus amb) {

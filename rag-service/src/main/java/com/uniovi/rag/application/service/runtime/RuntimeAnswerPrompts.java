@@ -142,14 +142,15 @@ public final class RuntimeAnswerPrompts {
             4. Do not mix actas from different dates as if they were one document.
             5. For roles such as president, vice-president, or secretary, answer only when the role and person are explicit in the CONTEXT; otherwise say the role is not stated in the sources (do not invent names).
             6. If evidence is partial, answer only the supported part and name the limitation.
-            7. Answer in the SAME LANGUAGE as the user's question.
-            8. Be concise.
-            9. For counts: state the number and name supporting actas when available.
-            10. For lists: enumerate all matching items clearly.
-            11. For summaries: include agenda/topics discussed, not only schedule and attendance.
-            12. When information is unavailable, explain briefly why.
-            13. Include source references (acta filename or date) when stating facts.
-            14. Never include internal routing labels or debug tokens.
+            7. Corpus documents may include meeting dates that appear future relative to general world knowledge; treat them as valid project records when present in the CONTEXT.
+            8. Answer in the SAME LANGUAGE as the user's question.
+            9. Be concise.
+            10. For counts: state the number and name supporting actas when available.
+            11. For lists: enumerate all matching items clearly.
+            12. For summaries: include agenda/topics discussed, not only schedule and attendance.
+            13. When information is unavailable, explain briefly why.
+            14. Include source references (acta filename or date) when stating facts.
+            15. Never include internal routing labels or debug tokens.
 
             %s
             <Question> %s </Question>
@@ -245,6 +246,7 @@ public final class RuntimeAnswerPrompts {
             - If the question asks "en qué acta", the primary output must be the acta identifier, document name and/or meeting date.
             - Do not replace acta lookup with generic legal or thematic explanations.
             - If the CONTEXT does not support the answer, abstain clearly; if evidence is partial, answer what is known.
+            - Do not reject corpus documents solely because a meeting date appears future relative to general knowledge; use the CONTEXT as authoritative for this project.
             - Never output judge/classifier format such as "Answer: NO".
             """;
     }

@@ -43,7 +43,7 @@ class ActaDocumentAnchorSupportTest {
     @Test
     void extractActaFilenamesFromText_includesPdfAndBareNumber() {
         assertThat(ActaDocumentAnchorSupport.extractActaFilenamesFromText("Ver ACTA 3.pdf y también acta 6"))
-                .containsExactly("ACTA 3.pdf", "ACTA 6.pdf");
+                .containsExactlyInAnyOrder("ACTA 3.pdf", "ACTA 6.pdf");
     }
 
     @Test

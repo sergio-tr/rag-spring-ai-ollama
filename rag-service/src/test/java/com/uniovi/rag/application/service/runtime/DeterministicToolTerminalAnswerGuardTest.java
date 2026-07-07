@@ -53,7 +53,7 @@ class DeterministicToolTerminalAnswerGuardTest {
     }
 
     @Test
-    void guardEnabled_tierASafeToolTerminatesWithoutRetrievalFallback() {
+    void guardEnabled_tierANegativeToolDefersToRetrievalFallback() {
         DeterministicToolTerminalAnswerGuard.setAcceptanceGuardTestOverride(true);
         QueryPlan countPlan = plan("Número de actas en 2028.", QueryType.COUNT_DOCUMENTS);
         DeterministicToolExecutionResult tool =
@@ -64,7 +64,7 @@ class DeterministicToolTerminalAnswerGuardTest {
         assertThat(
                         DeterministicToolTerminalAnswerGuard.shouldFinishTerminal(
                                 countPlan, tool, safeValidation()))
-                .isTrue();
+                .isFalse();
         assertThat(
                         DeterministicToolTerminalAnswerGuard.shouldMarkDeterministicToolFinal(
                                 countPlan, safeValidation()))
@@ -92,7 +92,7 @@ class DeterministicToolTerminalAnswerGuardTest {
     }
 
     @Test
-    void guardEnabled_findParagraphSafeNegativeTerminates() {
+    void guardEnabled_findParagraphNegativeDefersToRetrievalFallback() {
         DeterministicToolTerminalAnswerGuard.setAcceptanceGuardTestOverride(true);
         QueryPlan fp02 =
                 plan(
@@ -109,7 +109,7 @@ class DeterministicToolTerminalAnswerGuardTest {
         assertThat(
                         DeterministicToolTerminalAnswerGuard.shouldFinishTerminal(
                                 fp02, tool, safeValidation()))
-                .isTrue();
+                .isFalse();
         assertThat(
                         DeterministicToolTerminalAnswerGuard.shouldMarkDeterministicToolFinal(
                                 fp02, safeValidation()))

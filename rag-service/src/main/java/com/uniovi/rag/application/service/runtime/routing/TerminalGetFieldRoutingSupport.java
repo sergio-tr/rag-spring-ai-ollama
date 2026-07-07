@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime.routing;
 
 import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolNegativeAnswerDetector;
 import com.uniovi.rag.application.service.runtime.query.ActaSlashDateSupport;
 import com.uniovi.rag.application.service.runtime.query.QueryPlanSlotEnricher;
 import com.uniovi.rag.domain.model.QueryType;
@@ -34,7 +35,9 @@ public final class TerminalGetFieldRoutingSupport {
             return false;
         }
         String answer = toolResult.answerText();
-        return answer != null && !answer.isBlank();
+        return answer != null
+                && !answer.isBlank()
+                && !DeterministicToolNegativeAnswerDetector.isNegativeOrNoData(answer);
     }
 
     public static boolean isTerminalMetadataGetField(QueryPlan plan) {

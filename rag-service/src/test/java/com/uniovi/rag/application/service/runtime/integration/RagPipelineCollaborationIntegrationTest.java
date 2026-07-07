@@ -273,7 +273,7 @@ class RagPipelineCollaborationIntegrationTest {
 
         assertThat(validation.safe()).isTrue();
         assertThat(DeterministicToolTerminalAnswerGuard.shouldFinishTerminal(plan, toolResult, validation))
-                .isTrue();
+                .isFalse();
         assertThat(answer.toLowerCase()).doesNotContain("se decidió");
     }
 

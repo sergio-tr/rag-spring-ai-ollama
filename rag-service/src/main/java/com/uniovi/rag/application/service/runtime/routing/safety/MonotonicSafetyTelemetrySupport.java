@@ -52,6 +52,7 @@ public final class MonotonicSafetyTelemetrySupport {
         put(parts, "baselineOverrideRejectedReason", telemetry.baselineOverrideRejectedReason());
         put(parts, "monotonicFloorApplied", telemetry.monotonicFloorApplied());
         put(parts, "monotonicFloorPreventedRegression", telemetry.monotonicFloorPreventedRegression());
+        put(parts, "toolNegativeFallbackApplied", telemetry.toolNegativeFallbackApplied());
         return String.join(" ", parts);
     }
 
@@ -102,7 +103,8 @@ public final class MonotonicSafetyTelemetrySupport {
                         "baselineOverrideAttempted",
                         "baselineOverrideAccepted",
                         "monotonicFloorApplied",
-                        "monotonicFloorPreventedRegression" ->
+                        "monotonicFloorPreventedRegression",
+                        "toolNegativeFallbackApplied" ->
                         target.put(key, Boolean.parseBoolean(value));
                 case "routeConfidence" -> {
                     try {
@@ -160,6 +162,7 @@ public final class MonotonicSafetyTelemetrySupport {
         m.put("baselineOverrideRejectedReason", telemetry.baselineOverrideRejectedReason());
         m.put("monotonicFloorApplied", telemetry.monotonicFloorApplied());
         m.put("monotonicFloorPreventedRegression", telemetry.monotonicFloorPreventedRegression());
+        m.put("toolNegativeFallbackApplied", telemetry.toolNegativeFallbackApplied());
         return Map.copyOf(m);
     }
 

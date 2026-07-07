@@ -107,6 +107,7 @@ public final class FinalAnswerSynthesizer {
         cleaned = normalizeSafeSpanishPunctuation(cleaned);
         cleaned = ensureSentenceStart(cleaned);
         cleaned = FinalAnswerMarkdownSanitizer.sanitize(cleaned);
+        cleaned = PartialEvidenceAnswerSupport.enrichIfPartial(plan, cleaned, responseSources);
         cleaned = PrefixOnlyAnswerGuard.resolve(cleaned, query, responseSources);
         return cleaned.trim();
     }
@@ -136,6 +137,7 @@ public final class FinalAnswerSynthesizer {
         cleaned = enforceMultiMatchEnumeration(plan, cleaned, responseSources, spanish);
         cleaned = enforceActaIdentifierContract(plan, cleaned, responseSources, spanish);
         cleaned = appendSourceReferencesIfMissing(cleaned, responseSources, spanish);
+        cleaned = PartialEvidenceAnswerSupport.enrichIfPartial(plan, cleaned, responseSources);
         cleaned = ensureSentenceStart(cleaned);
         cleaned = FinalAnswerMarkdownSanitizer.sanitize(cleaned);
         cleaned = PrefixOnlyAnswerGuard.resolve(cleaned, query, responseSources);

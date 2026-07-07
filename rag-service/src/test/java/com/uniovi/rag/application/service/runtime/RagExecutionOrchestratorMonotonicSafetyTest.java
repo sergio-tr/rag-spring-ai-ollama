@@ -445,7 +445,9 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
         assertThat(telemetry.get("parentPresetCode")).isEqualTo("P7");
         assertThat(telemetry.get("candidateRejectionReasons").toString())
                 .contains("function_abstention_despite_supported_parent");
-        assertThat(telemetry.get("finalAnswerSource")).isEqualTo(ParentFinalAnswerSources.PARENT_P7_FINAL);
+        assertThat(telemetry.get("finalAnswerSource").toString())
+                .contains("RETRIEVAL_FALLBACK");
+        assertThat(telemetry.get("toolResultUsedAsFinal")).isEqualTo(false);
     }
 
     @Test
@@ -1538,7 +1540,7 @@ class RagExecutionOrchestratorMonotonicSafetyTest {
             assertThat(telemetry.get("parentFinalAnswerHash"))
                     .isEqualTo(telemetry.get("selectedFinalAnswerHash"));
             assertThat(telemetry.get("toolResultUsedAsFinal")).isEqualTo(true);
-            assertThat(telemetry.get("finalAnswerSource")).isEqualTo("TOOL_FINAL");
+            assertThat(telemetry.get("finalAnswerSource")).isEqualTo(ParentFinalAnswerSources.PARENT_P7_FINAL);
         } finally {
             closeItem.run();
         }

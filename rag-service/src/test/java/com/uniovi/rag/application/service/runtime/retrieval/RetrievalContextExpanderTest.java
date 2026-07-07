@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.ArrayList;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -498,7 +499,7 @@ class RetrievalContextExpanderTest {
         UUID projectId = UUID.randomUUID();
         String doc = UUID.randomUUID().toString();
         List<RetrievalCandidate> noise =
-                java.util.stream.IntStream.range(0, 10)
+                IntStream.range(0, 10)
                         .mapToObj(
                                 i ->
                                         new RetrievalCandidate(

@@ -45,6 +45,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -118,7 +119,7 @@ class AdvancedRetrievalPipelineTest {
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
         when(denseRetrievalStrategy.retrieveWithOutcome(req)).thenReturn(emptyDenseOutcome());
         when(retrievalFilter.filterBasic(eq(req), eq(List.of()))).thenReturn(List.of());
-        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("");
+        when(retrievalPromptTextBuilder.build(any(), any(), any(), anyBoolean())).thenReturn("");
 
         var out = pipeline.retrieve(ctx, plan, "DocumentDenseRagWorkflow");
 
@@ -137,7 +138,7 @@ class AdvancedRetrievalPipelineTest {
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
         when(denseRetrievalStrategy.retrieveWithOutcome(req)).thenReturn(denseOutcome(dense));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
-        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+        when(retrievalPromptTextBuilder.build(any(), any(), any(), anyBoolean())).thenReturn("CTX");
 
         var out = pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow");
 
@@ -161,7 +162,7 @@ class AdvancedRetrievalPipelineTest {
         when(retrievalReranker.rerank(eq(req), eq(plan), eq(dense)))
                 .thenReturn(new RetrievalReranker.RerankResult(dense, List.of()));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
-        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+        when(retrievalPromptTextBuilder.build(any(), any(), any(), anyBoolean())).thenReturn("CTX");
 
         var out = pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow");
 
@@ -194,7 +195,7 @@ class AdvancedRetrievalPipelineTest {
                 .thenReturn(new MetadataConstraintFilter.FilterResult(dense, new MetadataFilterTelemetry(false, false)));
         when(contextCompressionStrategy.compressPreservingEvidence(eq(dense), anyInt(), any()))
                 .thenReturn(new ContextCompressionStrategy.CompressionResult(List.of(protectedDate), new CompressionOutcome(50, 10, 1, List.of("drop_lowest_rerank_tail_unprotected_first"))));
-        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+        when(retrievalPromptTextBuilder.build(any(), any(), any(), anyBoolean())).thenReturn("CTX");
 
         var out = pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow");
 
@@ -223,7 +224,7 @@ class AdvancedRetrievalPipelineTest {
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
         when(denseRetrievalStrategy.retrieveWithOutcome(req)).thenReturn(denseOutcome(dense));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
-        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+        when(retrievalPromptTextBuilder.build(any(), any(), any(), anyBoolean())).thenReturn("CTX");
 
         var out = pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow");
 
@@ -251,7 +252,7 @@ class AdvancedRetrievalPipelineTest {
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
         when(denseRetrievalStrategy.retrieveWithOutcome(req)).thenReturn(denseOutcome(dense));
         when(retrievalFilter.filterBasic(eq(req), any())).thenAnswer(inv -> inv.getArgument(1));
-        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+        when(retrievalPromptTextBuilder.build(any(), any(), any(), anyBoolean())).thenReturn("CTX");
 
         var out = pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow");
 
@@ -287,7 +288,7 @@ class AdvancedRetrievalPipelineTest {
                                 new FusionTelemetry(
                                         "DENSE_ONLY_FALLBACK", 1, dense.size(), 0, false)));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
-        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+        when(retrievalPromptTextBuilder.build(any(), any(), any(), anyBoolean())).thenReturn("CTX");
 
         var out = pipeline.retrieve(ctx, plan, "ChunkDenseMetadataWorkflow");
 
@@ -327,7 +328,7 @@ class AdvancedRetrievalPipelineTest {
                                 fused,
                                 new FusionTelemetry("RRF", 2, 1, 0, true)));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(List.of(dense));
-        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+        when(retrievalPromptTextBuilder.build(any(), any(), any(), anyBoolean())).thenReturn("CTX");
 
         var out = pipeline.retrieve(ctx, plan, "ChunkDenseMetadataWorkflow");
 
@@ -387,7 +388,7 @@ class AdvancedRetrievalPipelineTest {
                         inv ->
                                 realCompression.compressPreservingEvidence(
                                         inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
-        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+        when(retrievalPromptTextBuilder.build(any(), any(), any(), anyBoolean())).thenReturn("CTX");
 
         var out = pipeline.retrieve(ctx, plan, "ChunkDenseMetadataWorkflow");
 
@@ -421,7 +422,7 @@ class AdvancedRetrievalPipelineTest {
                                 new FusionTelemetry(
                                         "DENSE_ONLY_FALLBACK", 1, dense.size(), 0, false)));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
-        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+        when(retrievalPromptTextBuilder.build(any(), any(), any(), anyBoolean())).thenReturn("CTX");
 
         var out = pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow");
 
@@ -452,7 +453,7 @@ class AdvancedRetrievalPipelineTest {
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
         when(denseRetrievalStrategy.retrieveWithOutcome(req)).thenReturn(denseOutcome(dense));
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
-        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+        when(retrievalPromptTextBuilder.build(any(), any(), any(), anyBoolean())).thenReturn("CTX");
 
         var out = pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow");
 
@@ -489,7 +490,7 @@ class AdvancedRetrievalPipelineTest {
         when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
         when(retrievalContextExpander.expand(eq(req), eq(plan), eq(dense)))
                 .thenReturn(new RetrievalContextExpander.ExpansionResult(merged, merged.size(), List.of("section_expand:8->3")));
-        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+        when(retrievalPromptTextBuilder.build(any(), any(), any(), anyBoolean())).thenReturn("CTX");
 
         var out = pipeline.retrieve(ctx, plan, "ChunkDenseMetadataWorkflow");
 

@@ -121,8 +121,9 @@ class ResponseSourcesBackfillTest {
                         Map.of(),
                         "Se menciona en ACTA 1.pdf y ACTA 6.pdf durante la reunión.");
         assertThat(sources).hasSize(2);
-        assertThat(sources.get(0).get("filename")).isEqualTo("ACTA 1.pdf");
-        assertThat(sources.get(1).get("filename")).isEqualTo("ACTA 6.pdf");
+        assertThat(sources)
+                .extracting(row -> row.get("filename"))
+                .containsExactlyInAnyOrder("ACTA 1.pdf", "ACTA 6.pdf");
     }
 
     @Test

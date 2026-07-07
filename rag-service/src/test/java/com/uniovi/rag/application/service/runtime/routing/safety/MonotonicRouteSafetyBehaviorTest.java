@@ -74,7 +74,7 @@ class MonotonicRouteSafetyBehaviorTest {
 
         assertThat(validation.safe()).isTrue();
         assertThat(DeterministicToolTerminalAnswerGuard.shouldFinishTerminal(plan, toolResult, validation))
-                .isTrue();
+                .isFalse();
         assertThat(DeterministicToolTerminalAnswerGuard.shouldMarkDeterministicToolFinal(plan, validation))
                 .isTrue();
     }

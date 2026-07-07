@@ -41,7 +41,7 @@ class DefaultStructuredQueryRewriterTest {
                 new RagConfig(
                 false,
                 nerEnabled,
-                false,
+                true,
                 false,
                 false,
                 false,

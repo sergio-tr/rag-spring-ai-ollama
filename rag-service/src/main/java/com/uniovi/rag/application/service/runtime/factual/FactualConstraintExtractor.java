@@ -29,7 +29,7 @@ public final class FactualConstraintExtractor {
             Pattern.compile("\\b(cuántas|cuantas|cuántos|cuantos|número de|numero de|en cuántas|en cuantas|cuánto dur|cuanto dur|duración|duracion)\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern ABSENCE_SHAPE =
             Pattern.compile(
-                    "\\b(se hablo|se comento|verifica si|confirma si|ninguna|no existen|no hay|no se menciona|no se encuentra)\\b",
+                    "\\b(se hablo|se comento|ninguna|no existen|no hay|no se menciona|no se encuentra)\\b",
                     Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern TOPIC_ABSENCE_INQUIRY =
             Pattern.compile(
