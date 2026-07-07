@@ -45,6 +45,6 @@ export const compatiblePresetsQueryMock = {
 
 export const effectiveEmbeddingDefaultsMock = {
   data: {
-    retrievalOptions: { topK: 8, similarityThreshold: 0.25, materializationStrategy: "CHUNK_LEVEL" },
+    retrievalOptions: { topK: 12, similarityThreshold: 0.25, materializationStrategy: "CHUNK_LEVEL" },
   },
 } as const;

@@ -8,9 +8,12 @@ import com.uniovi.rag.domain.config.RetrievalOverrideModeSupport;
 import com.uniovi.rag.domain.config.RetrievalParameterKeys;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.domain.config.RagConfigurationMerge;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -201,15 +204,15 @@ class RagConfigAdvancedFeatureFlagPreservationTest {
                         false,
                         false,
                         false,
-                        com.uniovi.rag.domain.knowledge.MaterializationStrategy.CHUNK_LEVEL);
+                        MaterializationStrategy.CHUNK_LEVEL);
 
         RagConfig merged =
-                com.uniovi.rag.domain.config.RagConfigurationMerge.mergeCascade(
+                RagConfigurationMerge.mergeCascade(
                         base,
-                        java.util.Optional.empty(),
-                        java.util.Optional.empty(),
-                        java.util.Optional.of(sanitized),
-                        java.util.Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of(sanitized),
+                        Optional.empty(),
                         null,
                         null,
                         MAPPER);

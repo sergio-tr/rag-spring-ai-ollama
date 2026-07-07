@@ -821,7 +821,7 @@ export function ChatConfigurationPanelContent() {
     projectRetrievalDefaults,
   ]);
 
-  const committedTopK = getNumberValue("topK", effectiveRetrieval?.topK ?? 8);
+  const committedTopK = getNumberValue("topK", effectiveRetrieval?.topK ?? 12);
   const committedSimilarity = getNumberValue(
     "similarityThreshold",
     effectiveRetrieval?.similarityThreshold ?? 0,

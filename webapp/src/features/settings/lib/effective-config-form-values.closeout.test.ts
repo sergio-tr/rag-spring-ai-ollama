@@ -8,7 +8,8 @@ const embeddingEffective = {
   effectiveProvider: "OPENAI_COMPATIBLE" as const,
   embeddingModel: "bge-m3",
   embeddingOptions: { encodingFormat: "float", dimensions: 1024, timeoutSeconds: 30 },
-  retrievalOptions: { topK: 8, similarityThreshold: 0.1, materializationStrategy: "CHUNK_LEVEL" },
+  retrievalOptions: { topK: 12, similarityThreshold: 0.25, materializationStrategy: "CHUNK_LEVEL" },
+  indexingOptions: { batchSize: 32, maxInputChars: 2048, normalize: true },
   indexingOptions: { batchSize: 16, maxInputChars: 2048, normalize: false },
 };
 

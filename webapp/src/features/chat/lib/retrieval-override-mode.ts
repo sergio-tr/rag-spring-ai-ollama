@@ -94,8 +94,8 @@ function resolveCustomRetrievalValues(
       ? current.similarityThreshold
       : seed?.similarityThreshold;
   return {
-    topK: topK ?? 8,
-    similarityThreshold: similarityThreshold ?? 0,
+    topK: topK ?? 12,
+    similarityThreshold: similarityThreshold ?? 0.25,
   };
 }
 

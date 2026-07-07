@@ -22,8 +22,8 @@ describe("effective-config-form-values", () => {
     effectiveProvider: "OPENAI_COMPATIBLE" as const,
     embeddingModel: "bge-m3",
     embeddingOptions: { encodingFormat: "float", dimensions: 1024, timeoutSeconds: 30 },
-    retrievalOptions: { topK: 10, similarityThreshold: 0.35, materializationStrategy: "CHUNK_LEVEL" },
-    indexingOptions: { batchSize: 16, maxInputChars: 2048, normalize: false },
+  retrievalOptions: { topK: 12, similarityThreshold: 0.25, materializationStrategy: "CHUNK_LEVEL" },
+  indexingOptions: { batchSize: 32, maxInputChars: 2048, normalize: true },
   };
 
   it("merges effective values into empty user config form state", () => {
@@ -31,7 +31,7 @@ describe("effective-config-form-values", () => {
     const merged = mergeEffectiveIntoFormValues({}, keys, llmEffective, embeddingEffective, "OPENAI_COMPATIBLE");
     expect(merged.formValues.llmModel).toBe("gpt-main");
     expect(merged.formValues.llmTemperature).toBe(0.1);
-    expect(merged.formValues.topK).toBe(10);
+    expect(merged.formValues.topK).toBe(12);
     expect(merged.formValues.embeddingModel).toBe("bge-m3");
   });
 
@@ -116,9 +116,9 @@ describe("effective-config-form-values", () => {
   });
 
   it("reads effective embedding field from API response", () => {
-    expect(readEffectiveEmbeddingField(undefined, embeddingEffective, "topK")).toBe(10);
+    expect(readEffectiveEmbeddingField(undefined, embeddingEffective, "topK")).toBe(12);
     expect(readEffectiveEmbeddingField({ topK: 4 }, embeddingEffective, "topK")).toBe(4);
-    expect(readEffectiveEmbeddingField(undefined, embeddingEffective, "embeddingNormalize")).toBe(false);
+    expect(readEffectiveEmbeddingField(undefined, embeddingEffective, "embeddingNormalize")).toBe(true);
     expect(readEffectiveEmbeddingField(undefined, embeddingEffective, "unknownKey")).toBeUndefined();
   });
 
