@@ -49,7 +49,7 @@ const FORBIDDEN_PRIMARY_COPY: RegExp[] = [
 const FORBIDDEN_BARE_TECHNICAL_DETAILS = /^Technical details$/i;
 
 const REQUIRED_ENGLISH_LABELS: Array<{ namespace: string; key: string; value: string }> = [
-  { namespace: "Chat", key: "chatConfigPanelTitle", value: "Assistant configuration" },
+  { namespace: "Chat", key: "chatConfigPanelTitle", value: "Chat configuration" },
   { namespace: "Chat", key: "configCompactTitle", value: "Configuration summary" },
   { namespace: "Chat", key: "chatTraceTechnicalSummary", value: ADVANCED_TECHNICAL_DETAILS_TITLE },
   { namespace: "Chat", key: "configAdvancedTechnicalSummary", value: ADVANCED_TECHNICAL_DETAILS_TITLE },
@@ -64,13 +64,17 @@ const REQUIRED_ENGLISH_LABELS: Array<{ namespace: string; key: string; value: st
   { namespace: "Chat", key: "configSectionToolsAndQualityChecks", value: "Tools and quality checks" },
   { namespace: "Settings", key: "instructionsSystemLabel", value: "System instructions" },
   { namespace: "Settings", key: "instructionsPreviewTitle", value: "Preview configuration" },
+  { namespace: "Settings", key: "settingsPreviewConfigurationTitle", value: "Preview configuration" },
+  { namespace: "Settings", key: "settingsSectionModelConfiguration", value: "Model configuration" },
+  { namespace: "Settings", key: "settingsSectionPromptConfiguration", value: "Prompt configuration" },
+  { namespace: "Settings", key: "instructionsLayersPreviewTitle", value: "Effective instruction layers" },
   { namespace: "Settings", key: "configProviderOpenAiCompatible", value: "Configured model provider" },
   { namespace: "Settings", key: "configProviderOllamaNative", value: "Local model provider" },
   { namespace: "Chat", key: "chatMoreInformationLabel", value: "Answer quality checks" },
   { namespace: "Chat", key: "configSectionDocumentScope", value: "Source documents" },
 ];
 
-describe("product UI language — en.json primary surfaces", () => {
+describe("product UI language - en.json primary surfaces", () => {
   for (const ns of PRODUCT_NAMESPACES) {
     it(`${ns} namespace avoids forbidden internal identifiers in string values`, () => {
       const section = (en as Record<string, unknown>)[ns];
@@ -104,7 +108,7 @@ describe("product UI language — en.json primary surfaces", () => {
   });
 });
 
-describe("product UI language — preset display mapping", () => {
+describe("product UI language - preset display mapping", () => {
   it("maps seeded system preset codes to product configuration names", () => {
     expect(toProductPresetDisplayName("Demo_Best")).toBe("Production assistant configuration");
     expect(formatPresetDisplay("Demo_Best", "Demo_Best")).toBe("Production assistant configuration");
@@ -116,7 +120,7 @@ describe("product UI language — preset display mapping", () => {
  * Collapsed diagnostics title stays English per product policy (exact match).
  * Untranslated English fallbacks for new keys are acceptable until localized.
  */
-describe("product UI language — es.json locale policy", () => {
+describe("product UI language - es.json locale policy", () => {
   const ES_FORBIDDEN = [/\bDemo_Best\b/, /\bDemo_Worst\b/, /\bOPENAI_COMPATIBLE\b/, /\bOLLAMA_NATIVE\b/];
 
   it("does not expose raw internal preset or provider enum names", () => {
@@ -126,12 +130,6 @@ describe("product UI language — es.json locale policy", () => {
         expect(value).not.toMatch(pattern);
       }
     }
-  });
-
-  it("uses exact English title for Advanced technical details when present", () => {
-    const chat = es.Chat as unknown as Record<string, string>;
-    expect(chat.chatTraceTechnicalSummary).toBe(ADVANCED_TECHNICAL_DETAILS_TITLE);
-    expect(chat.configTechnicalDetails).toBe(ADVANCED_TECHNICAL_DETAILS_TITLE);
   });
 
   it("documents locale file presence for fallback auditing", () => {

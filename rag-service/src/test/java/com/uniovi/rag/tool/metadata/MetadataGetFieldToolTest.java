@@ -32,6 +32,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 class MetadataGetFieldToolTest {
 
+    private static final String ACTA5_ID = "acta-5-doc";
     private static final String ACTA6_ID = "acta-6-doc";
 
     private ChatClient chatClient;
@@ -55,6 +56,7 @@ class MetadataGetFieldToolTest {
                 new MetadataMinuteDocumentService(
                         mock(PgVectorStore.class), mock(ChatClient.class), mock(JdbcTemplate.class), 400);
         actaById = new LinkedHashMap<>();
+        loadActa(metadataService, "ACTA 5.pdf", "acta-5.txt", ACTA5_ID);
         loadActa(metadataService, "ACTA 6.pdf", "acta-6.txt", ACTA6_ID);
 
         when(retriever.retrieve(anyString())).thenReturn(List.of());
@@ -83,6 +85,39 @@ class MetadataGetFieldToolTest {
         assertThat(result.result())
                 .contains("Jorge Moreno Navarro", "Manuel Ortega Medina", "asistente", "presidencia")
                 .doesNotContainPattern("(?i)jorge.*presidente");
+    }
+
+    @Test
+    void presentesEstuvieronReturnsNameList() {
+        stubRetriever(docsForActa(ACTA5_ID));
+
+        ToolResult result =
+                tool.execute(
+                        ToolExecutionContext.of(
+                                "¿Quiénes estuvieron presentes en la reunión del 25 de febrero de 2026?",
+                                QueryType.GET_FIELD,
+                                null));
+
+        String answer = result.result().toLowerCase();
+        assertThat(answer).isNotEqualTo("none");
+        assertThat(answer).containsAnyOf("asistent", "particip", "present", "fueron:");
+        assertThat(answer).doesNotContain("solo se nombra");
+    }
+
+    @Test
+    void presentesReturnsNameList() {
+        stubRetriever(docsForActa(ACTA5_ID));
+
+        ToolResult result =
+                tool.execute(
+                        ToolExecutionContext.of(
+                                "dime los presentes en el acta del 25 de febrero de 2026",
+                                QueryType.GET_FIELD,
+                                null));
+
+        String answer = result.result().toLowerCase();
+        assertThat(answer).isNotEqualTo("none");
+        assertThat(answer).containsAnyOf("asistent", "particip", "present");
     }
 
     private void loadActa(

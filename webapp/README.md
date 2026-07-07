@@ -2,7 +2,7 @@
 
 Product UI for the RAG platform: projects, documents, settings (user/project RAG config, presets), Lab, and admin views. Uses **TanStack Query**, **Zustand** (`src/store/app.store.ts`), and **next-intl**.
 
-**Target architecture (frozen model):** [Platform subsystems — Workspace / Product](../docs/architecture/target-architecture.md).
+**Target architecture (frozen model):** [Platform subsystems - Workspace / Product](../docs/architecture/target-architecture.md).
 
 ## Environment
 
@@ -10,18 +10,18 @@ Copy `.env.example` to `.env` (or use `./docker/scripts/create-env-webapp.sh` fr
 
 | Variable | Role |
 | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | Spring Boot backend origin (e.g. `http://localhost:9000`). Empty when the UI is served behind the same origin as the API (reverse proxy). **If empty**, browser calls (including `POST /api/v5/auth/oauth/exchange` on the Google callback page) target **the same host:port as Next.js** — fine behind nginx on `:80`, but **404 / “OAuth sign-in failed”** if you browse only the webapp host port (e.g. `:8081`) without a proxy; then set this to `http://127.0.0.1:9000` and rebuild. |
+| `NEXT_PUBLIC_API_BASE_URL` | Spring Boot backend origin (e.g. `http://localhost:9000`). Empty when the UI is served behind the same origin as the API (reverse proxy). **If empty**, browser calls (including `POST /api/v5/auth/oauth/exchange` on the Google callback page) target **the same host:port as Next.js** - fine behind nginx on `:80`, but **404 / “OAuth sign-in failed”** if you browse only the webapp host port (e.g. `:8081`) without a proxy; then set this to `http://127.0.0.1:9000` and rebuild. |
 | `NEXT_PUBLIC_RAG_API_PREFIX` | Must match Spring `rag.api.product-base-path` (see `.env.example`). |
 | `NEXT_PUBLIC_TIMEZONE` | IANA timezone for next-intl (e.g. `UTC`). |
 | `NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME` / `NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME` | Cookie names for session route handlers. |
 | `NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED` | Show “Continue with Google” button (requires backend OAuth enabled and configured). |
 
-> **Important — `NEXT_PUBLIC_*` is baked at build time.** Next.js inlines every `process.env.NEXT_PUBLIC_*` reference into the client bundle during `next build`. Changing these values requires a rebuild and a process restart for the browser to see the new value:
+> **Important - `NEXT_PUBLIC_*` is baked at build time.** Next.js inlines every `process.env.NEXT_PUBLIC_*` reference into the client bundle during `next build`. Changing these values requires a rebuild and a process restart for the browser to see the new value:
 >
 > - **Local dev** (`npm run dev`): edit `webapp/.env`/`webapp/.env.local`, then **stop and restart** `npm run dev`.
 > - **Local production** (`npm run build && npm run start`): edit env, then run **both** `npm run build` and `npm run start` again.
 > - **Docker (Dockerfile)**: the `NEXT_PUBLIC_*` values are passed as `ARG` lines at build time. Set them in the build environment (or via `docker compose build --build-arg`) and **rebuild the image** (`docker compose build webapp`).
-> - **Docker Compose**: `docker/docker-compose.yml` forwards `NEXT_PUBLIC_*` from `webapp/.env` into the build args of the `webapp` service. After editing `webapp/.env`, run **`docker compose build webapp && docker compose up -d webapp`** — `docker compose restart webapp` alone will NOT bake new values into the bundle.
+> - **Docker Compose**: `docker/docker-compose.yml` forwards `NEXT_PUBLIC_*` from `webapp/.env` into the build args of the `webapp` service. After editing `webapp/.env`, run **`docker compose build webapp && docker compose up -d webapp`** - `docker compose restart webapp` alone will NOT bake new values into the bundle.
 >
 > The Google CTA on `/login` and `/register` reads `NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED` and targets `/api/v5/auth/oauth/google/start` as a plain `<a>` (full-page navigation), not a next-intl `<Link>`, so the browser does not prepend the active locale to that API path. **Google Cloud Console** must list the backend callback URL exactly as composed from `RAG_AUTH_BACKEND_BASE_URL` + `RAG_AUTH_OAUTH_GOOGLE_REDIRECT_PATH` (see `rag-service/README.md` and `rag-service/.env.example`) to avoid `redirect_uri_mismatch`.
 
@@ -36,6 +36,35 @@ Use **`PATCH {product}/conversations/{id}`** from the same UI for `presetId` / `
 **Index/project capabilities (vs per-chat runtime):** the Chat panel shows read-only index capabilities from **`GET {product}/projects/{id}/index-profile`** and the active snapshot from **`GET {product}/projects/{id}/knowledge/snapshots/active`**. Updates use **`PUT …/index-profile`** (project settings / creation flow); changing materialization/metadata-related settings after documents are indexed may require **reindex** per backend rules. Runtime validation uses **`POST …/runtime-config/validate`** with `indexCompatibility` / `requiresReindex` when the UI merges overrides.
 
 **Conversation bootstrap:** **`POST {product}/projects/{projectId}/conversations`** may include **`initialPresetId`**, **`initialRuntimeOverride`**, and **`documentFilter`** so chats start configured before the first message (`NewConversationDialog` from Chat, sidebar, or project cards). **`POST {product}/projects`** may send **`initialIndexProfile`** (persisted with the new project; see `NewProjectDialog`).
+
+### Conversation configuration customization
+
+Preset values are used as the initial configuration for each conversation.
+
+When the user changes a Chat feature toggle or retrieval value (`topK`, `similarityThreshold`), the conversation switches to **custom configuration** mode. The custom configuration is stored as a **full conversation-level configuration snapshot** (persisted in `runtime_override_jsonb`), not as partial runtime overrides. PATCH bodies merge into that snapshot; explicit `false` values are preserved across sequential edits.
+
+Users can **Reset to preset values** at any time (`clearRuntimeOverride: true` on PATCH). Changing the selected preset clears custom configuration and returns to preset mode.
+
+Feature toggles are independent unless the backend capability model defines a dependency or exclusion. Advisor, ranker, and post-retrieval are combinable when retrieval is enabled.
+
+**Preset selection (Chat + new conversation):** compatible presets from the backend are filtered by **product tier** for the active project index. **Recommended** presets show by default; **baseline** presets (e.g. P0/P1 on advanced indexes) appear only when **Show baseline presets** is checked; **incompatible** presets require **Show incompatible configurations**. HYBRID indexes may technically run document/chunk presets, but those are not recommended defaults. Default preset for a new conversation is the best **recommended** compatible preset (e.g. Demo_Best on HYBRID+metadata), not merely the first technically compatible entry.
+
+**Runtime error copy:** validation banners and toggle tips map backend codes (e.g. `UNSUPPORTED_RUNTIME_CONFIGURATION`) to short product messages (*Requires retrieval*, *Not supported by this index*). Raw backend flag names and codes appear only in collapsed **Advanced technical details**.
+
+**Query expansion:** `expansionEnabled` is an independent Chat runtime feature. When enabled, the system expands or rewrites the user query before routing, tools, retrieval, or final generation. It does not require retrieval and is available for all materialization strategies, including STRUCTURED_SEARCH. The original user query remains available for traceability.
+
+**Chat feature compatibility (materialization):**
+
+| Feature | DOCUMENT_LEVEL | CHUNK_LEVEL | HYBRID | STRUCTURED_SEARCH |
+| --- | --- | --- | --- | --- |
+| Query expansion | Allowed | Allowed | Allowed | Allowed |
+| Vector retrieval | Allowed | Allowed | Allowed | Disabled |
+| Full-context mode | Allowed | Allowed | Allowed | Disabled |
+| Advisor / ranker / post-retrieval | Allowed (requires retrieval) | Allowed (requires retrieval) | Allowed (requires retrieval) | Disabled |
+
+**STRUCTURED_SEARCH allowed:** query expansion, NER, tools, function calling, reasoning, adaptive routing, judge, memory, clarification.
+
+**STRUCTURED_SEARCH disabled:** vector retrieval, full-context mode, advisor, ranker, post-retrieval.
 
 **Move conversation:** `POST {product}/projects/{sourceProjectId}/conversations/{conversationId}/move?destinationProjectId=` (**204 No Content**) reassigns the chat to another project you own; only **chat-local** corpus documents move with it, not shared project documents. The UI clears the persisted document subset after a move (`MoveConversationDialog`, `useMoveConversation`).
 
@@ -99,14 +128,14 @@ The repository **does not commit** `package-lock.json` (ignored at repo root). U
 
 ```bash
 npm install
-npm run dev          # http://localhost:3000 — set NEXT_PUBLIC_API_BASE_URL to your rag-service
+npm run dev          # http://localhost:3000 - set NEXT_PUBLIC_API_BASE_URL to your rag-service
 npm run typecheck
 npm run build
 npm run test         # Vitest (unit)
-npm run test:coverage # Vitest + v8 coverage gate (80% lines/statements/functions/branches on instrumented `src/**`; see vitest.config.ts — App Router pages/layouts and a few lab/layout shells are excluded from the gate; behavior is covered via E2E or shared components)
+npm run test:coverage # Vitest + v8 coverage gate (80% lines/statements/functions/branches on instrumented `src/**`; see vitest.config.ts - App Router pages/layouts and a few lab/layout shells are excluded from the gate; behavior is covered via E2E or shared components)
 npm run test:e2e          # Playwright UI smoke: chromium only, excludes @fullstack
-npm run test:e2e:fullstack # Playwright UI @fullstack — Spring e2e + DB (see e2e/README.md)
-npm run test:api          # Playwright API (HTTP only, Spring API_BASE_URL) — see e2e/api/README.md
+npm run test:e2e:fullstack # Playwright UI @fullstack - Spring e2e + DB (see e2e/README.md)
+npm run test:api          # Playwright API (HTTP only, Spring API_BASE_URL) - see e2e/api/README.md
 ```
 
 After `npm run test:coverage`, open **`coverage/index.html`** in a browser for the HTML report (folder is gitignored at repo root). `lcov.info` is generated for IDE/Sonar extensions.
@@ -117,21 +146,21 @@ OpenAPI for the backend: `GET http://<backend>:9000/v3/api-docs` (see `rag-servi
 
 ## Authentication and long sessions
 
-`apiFetch` attaches the JWT, retries once on **401** via the **Next.js BFF** route **`{NEXT_PUBLIC_RAG_API_PREFIX}/auth/refresh`** (default **`/api/v5/auth/refresh`**), then throws. If the session cannot be refreshed, **`SessionExpiredBridge`** redirects to `/{locale}/login`. Login and register call the **backend** at **`{NEXT_PUBLIC_RAG_API_PREFIX}/auth/login`** (not a BFF route). Cookie session helpers live only under the BFF: **`…/auth/session`**, **`…/auth/refresh`**, **`…/auth/logout`** (implemented in `src/app/api/v5/auth/*`; nginx may also route unprefixed **`/api/auth/session|refresh|logout`** to the webapp — still BFF, not Spring).
+`apiFetch` attaches the JWT, retries once on **401** via the **Next.js BFF** route **`{NEXT_PUBLIC_RAG_API_PREFIX}/auth/refresh`** (default **`/api/v5/auth/refresh`**), then throws. If the session cannot be refreshed, **`SessionExpiredBridge`** redirects to `/{locale}/login`. Login and register call the **backend** at **`{NEXT_PUBLIC_RAG_API_PREFIX}/auth/login`** (not a BFF route). Cookie session helpers live only under the BFF: **`…/auth/session`**, **`…/auth/refresh`**, **`…/auth/logout`** (implemented in `src/app/api/v5/auth/*`; nginx may also route unprefixed **`/api/auth/session|refresh|logout`** to the webapp - still BFF, not Spring).
 
-After a successful session commit, the webapp schedules a **silent refresh** about **two minutes before** the access JWT `exp` (`src/lib/auth-access-scheduler.ts`), so active users are less likely to hit 401 during long-running chat jobs or ordinary requests. Backend defaults (override via env): access token **3600s**, refresh token **604800s** — see `rag-service/src/main/resources/application.properties` (`rag.jwt.access-ttl-seconds`, `rag.jwt.refresh-ttl-seconds`).
+After a successful session commit, the webapp schedules a **silent refresh** about **two minutes before** the access JWT `exp` (`src/lib/auth-access-scheduler.ts`), so active users are less likely to hit 401 during long-running chat jobs or ordinary requests. Backend defaults (override via env): access token **3600s**, refresh token **604800s** - see `rag-service/src/main/resources/application.properties` (`rag.jwt.access-ttl-seconds`, `rag.jwt.refresh-ttl-seconds`).
 
 ### Local HTTP / LAN / mobile smoke
 
-- **`npm run dev`** — listens on `localhost:3000` only (default Next dev server).
-- **`npm run dev:lan`** — binds **`0.0.0.0:3000`** so other devices on the LAN can load `http://<your-host-ip>:3000`.
+- **`npm run dev`** - listens on `localhost:3000` only (default Next dev server).
+- **`npm run dev:lan`** - binds **`0.0.0.0:3000`** so other devices on the LAN can load `http://<your-host-ip>:3000`.
 - Point **`NEXT_PUBLIC_API_BASE_URL`** at a backend URL reachable from the phone (often `http://<your-host-ip>:9000`).
-- Add that browser origin to **`RAG_CORS_ALLOWED_ORIGINS`** on Spring (comma-separated patterns). Dev defaults allow `http(s)://localhost:*` and `http(s)://127.0.0.1:*` only — **not** arbitrary LAN IPs.
+- Add that browser origin to **`RAG_CORS_ALLOWED_ORIGINS`** on Spring (comma-separated patterns). Dev defaults allow `http(s)://localhost:*` and `http(s)://127.0.0.1:*` only - **not** arbitrary LAN IPs.
 
 ### HTTPS in local dev
 
 - Prefer the **reverse-proxy** profile described in **`docker/compose.dev-proxy.yml`** (HTTP on `${REVERSE_PROXY_DEV_HTTP_PORT:-80}`, HTTPS on `${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}`). Mount TLS material via `TLS_CERT_PATH` / `TLS_KEY_PATH` (see `reverse-proxy` Dockerfile / README). Tools such as **[mkcert](https://github.com/FiloSottile/mkcert)** are suitable for generating trusted local certificates.
-- Alternatively terminate TLS only on Next (custom server) — not the default in this repo; proxy path keeps one origin for browser + BFF cookies.
+- Alternatively terminate TLS only on Next (custom server) - not the default in this repo; proxy path keeps one origin for browser + BFF cookies.
 
 **Chat layout / toolbar overflow (product notes):** [`docs/frontend/chat-layout.md`](../docs/frontend/chat-layout.md).
 
@@ -150,7 +179,7 @@ npm run doc
 | Topic | Detail |
 | ----- | ------ |
 | **Output directory** | `webapp/docs/api/` (configured in [`typedoc.json`](typedoc.json); **`entryPoints`** include `src/app`, `src/components`, `src/features`, `src/hooks`, `src/store`, `src/lib`, `src/types`) |
-| **Git** | **Do not commit** generated HTML — `webapp/docs/api/` is listed in the repo root [`.gitignore`](../.gitignore). Treat docs as **local output or CI artifacts** only. |
+| **Git** | **Do not commit** generated HTML - `webapp/docs/api/` is listed in the repo root [`.gitignore`](../.gitignore). Treat docs as **local output or CI artifacts** only. |
 | **CI** | Workflow [`.github/workflows/reusable-ci-core.yml`](../.github/workflows/reusable-ci-core.yml) job **`core_webapp`** runs `npm run doc` after `npm run build` and uploads the folder as artifact **`webapp-typedoc-api`** (retention 14 days). Download from the workflow run’s **Artifacts** to browse offline. |
 
 Operational detail stays in this README per [`documentation-guidelines.md`](../docs/development/documentation-guidelines.md).

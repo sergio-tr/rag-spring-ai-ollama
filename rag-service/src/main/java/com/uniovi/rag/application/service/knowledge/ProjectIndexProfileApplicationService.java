@@ -50,6 +50,7 @@ public class ProjectIndexProfileApplicationService {
 
         MaterializationStrategy strategy = parseStrategy(body != null ? body.materializationStrategy() : null);
         boolean metadataEnabled = body != null && Boolean.TRUE.equals(body.metadataEnabled());
+        validateStrategyMetadataCombination(strategy, metadataEnabled);
         String embedding = body != null ? body.embeddingModelId() : null;
         int chunkMaxChars = body != null && body.chunkMaxChars() != null ? body.chunkMaxChars() : 0;
         Integer chunkOverlap = body != null ? body.chunkOverlap() : null;
@@ -57,6 +58,7 @@ public class ProjectIndexProfileApplicationService {
 
         return toDto(
                 projectIndexProfileService.upsert(
+                        userId,
                         projectId, strategy, metadataEnabled, metadataProfile, embedding, chunkMaxChars, chunkOverlap));
     }
 
@@ -66,6 +68,15 @@ public class ProjectIndexProfileApplicationService {
             return MaterializationStrategy.valueOf(raw.trim());
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid materializationStrategy");
+        }
+    }
+
+    private static void validateStrategyMetadataCombination(
+            MaterializationStrategy strategy, boolean metadataEnabled) {
+        if (strategy == MaterializationStrategy.STRUCTURED_SEARCH && !metadataEnabled) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "STRUCTURED_SEARCH requires metadata-aware indexing. Enable metadata-aware index capability or choose another indexing strategy.");
         }
     }
 

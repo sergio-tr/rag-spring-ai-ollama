@@ -2,12 +2,12 @@
 
 On the Chat route (`webapp/src/app/[locale]/(app)/chat/page.tsx`):
 
-- **Conversation list sidebar** — can be collapsed with the panel control next to “New conversation”; collapse state is optionally restored from `sessionStorage` (`chat-conv-list-collapsed`).
-- **Move conversation** — `MoveConversationDialog` posts to the backend move endpoint and refreshes TanStack Query caches (`useMoveConversation`).
+- **Conversation list sidebar** - can be collapsed with the panel control next to “New conversation”; collapse state is optionally restored from `sessionStorage` (`chat-conv-list-collapsed`).
+- **Move conversation** - `MoveConversationDialog` posts to the backend move endpoint and refreshes TanStack Query caches (`useMoveConversation`).
 
 ---
 
-## UI enhancements branch — post-closure follow-up (May 2026)
+## UI enhancements branch - post-closure follow-up (May 2026)
 
 **Status:** Implemented on branch `ui-enhancements` (see repo history). This section records scope, touchpoints, and how to validate.
 
@@ -21,7 +21,7 @@ On the Chat route (`webapp/src/app/[locale]/(app)/chat/page.tsx`):
 | Dark mode | User-message edit `Textarea` uses theme foreground/background tokens (no white-on-white). |
 | Session | Default access JWT **3600s**, refresh **604800s** in `rag-service` `application.properties`; proactive refresh ~2 min before `exp` (`auth-access-scheduler.ts`); SSE POST retries once after refresh on 401 (`sse-post.ts`). |
 | CORS (dev) | `rag.cors.allowed-origins` defaults to `http(s)://localhost:*` and `http(s)://127.0.0.1:*` patterns; `SecurityConfiguration` `@Value` defaults aligned. Override with `RAG_CORS_ALLOWED_ORIGINS` for LAN IPs (comma-separated patterns). |
-| Local LAN dev | `npm run dev:lan` — Next binds `0.0.0.0:3000`. Point phone to `http://<host-ip>:3000`; set backend CORS and `NEXT_PUBLIC_API_BASE_URL` to reachable backend URL. |
+| Local LAN dev | `npm run dev:lan` - Next binds `0.0.0.0:3000`. Point phone to `http://<host-ip>:3000`; set backend CORS and `NEXT_PUBLIC_API_BASE_URL` to reachable backend URL. |
 | HTTPS dev | Optional nginx reverse proxy profile: `docker/compose.dev-proxy.yml` (ports 80 / 8444, TLS paths via env). Use mkcert or team certs as documented in `reverse-proxy` image README if needed. |
 
 ### Files touched (high level)
@@ -31,10 +31,10 @@ On the Chat route (`webapp/src/app/[locale]/(app)/chat/page.tsx`):
 
 ### Tests (recommended commands)
 
-- `cd webapp && npm run test` — Vitest (includes chat page toolbar overflow, sidebar logo, scheduler, session-client).
-- `cd webapp && npm run test:e2e:smoke` — smoke incl. mobile viewport shell check.
-- `cd webapp && npm run test:e2e:fullstack` — chat runtime incl. overflow + limit retrieval (requires stack).
-- `cd rag-service && mvn test` — backend unit tests after CORS/security edits.
+- `cd webapp && npm run test` - Vitest (includes chat page toolbar overflow, sidebar logo, scheduler, session-client).
+- `cd webapp && npm run test:e2e:smoke` - smoke incl. mobile viewport shell check.
+- `cd webapp && npm run test:e2e:fullstack` - chat runtime incl. overflow + limit retrieval (requires stack).
+- `cd rag-service && mvn test` - backend unit tests after CORS/security edits.
 
 ### Risks / notes
 
@@ -50,7 +50,7 @@ On the Chat route (`webapp/src/app/[locale]/(app)/chat/page.tsx`):
 
 ## E2E fullstack stabilization (chat + lab)
 
-**Status:** Completed alongside `ui-enhancements` — specs aligned to overflow menu, sheet scoping, and Lab warning contract.
+**Status:** Completed alongside `ui-enhancements` - specs aligned to overflow menu, sheet scoping, and Lab warning contract.
 
 ### Original failures (pre-fix)
 
@@ -81,7 +81,7 @@ On the Chat route (`webapp/src/app/[locale]/(app)/chat/page.tsx`):
 
 ### Limitations
 
-- **Lab JSON branch:** sync RAG eval can take up to **180s** and depends on backend/classifier/LLM; may still flake on overloaded CI — investigate timeouts before weakening assertions.
+- **Lab JSON branch:** sync RAG eval can take up to **180s** and depends on backend/classifier/LLM; may still flake on overloaded CI - investigate timeouts before weakening assertions.
 - **Fullstack:** Playwright requires the configured `webServer` and seed user (see `e2e/README.md`).
 
 ### Final state

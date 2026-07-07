@@ -13,6 +13,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -61,11 +62,15 @@ class ChatMessageJobHandlerTest {
     @Mock
     private RuntimeObservability observability;
 
+    @Mock
+    private RagRuntimeProperties ragRuntimeProperties;
+
     @InjectMocks
     private ChatMessageJobHandler handler;
 
     @BeforeEach
     void stubSourceContributor() {
+        lenient().when(ragRuntimeProperties.hasSecondaryModel()).thenReturn(false);
         lenient()
                 .when(chatRetrievalSourceContributor.buildSources(any(), any(), any(), any(), any()))
                 .thenReturn(List.of());

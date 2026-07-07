@@ -33,7 +33,7 @@ class RagApiExceptionHandlerTest {
         var res = handler.handleLlmProvider(ex, req);
         assertEquals(HttpStatus.UNAUTHORIZED, res.getStatusCode());
         assertNotNull(res.getBody());
-        assertEquals(ErrorCode.LLM_UNAUTHORIZED.name(), res.getBody().code());
+        assertEquals(ErrorCode.MODEL_AUTH_FAILED.name(), res.getBody().code());
         assertFalse(res.getBody().message().toLowerCase().contains("bearer"));
         assertFalse(res.getBody().message().contains("sk-"));
     }
@@ -53,7 +53,7 @@ class RagApiExceptionHandlerTest {
         req.setRequestURI("/api/v5/conversations/x/messages");
         var res = handler.handleLlmProvider(ex, req);
         assertEquals(HttpStatus.GATEWAY_TIMEOUT, res.getStatusCode());
-        assertEquals(ErrorCode.LLM_TIMEOUT.name(), res.getBody().code());
+        assertEquals(ErrorCode.MODEL_TIMEOUT.name(), res.getBody().code());
     }
 
     @Test
@@ -70,7 +70,7 @@ class RagApiExceptionHandlerTest {
         req.setRequestURI("/api/v5/conversations/x/messages");
         var res = handler.handleLlmProvider(ex, req);
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, res.getStatusCode());
-        assertEquals(ErrorCode.LLM_MISCONFIGURED.name(), res.getBody().code());
+        assertEquals(ErrorCode.MODEL_CONFIG_INVALID.name(), res.getBody().code());
         assertTrue(res.getBody().message().contains("LITELLM_API_KEY"));
     }
 

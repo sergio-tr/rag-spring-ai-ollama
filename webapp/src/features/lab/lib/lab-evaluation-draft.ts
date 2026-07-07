@@ -1,6 +1,10 @@
 import type { LabJobFollowMode } from "@/lib/lab-job-follow";
 import type { BenchmarkKind, ExperimentalDatasetListItemDto } from "@/types/api";
 import { sanitizeLabBenchmarkDraftPresetCodes } from "@/features/lab/lib/experimental-preset-selection";
+import {
+  THESIS_DEFAULT_EMBEDDING_MODEL_ID,
+  THESIS_DEFAULT_PRIMARY_LLM_MODEL_ID,
+} from "@/features/lab/lib/lab-evaluation-models";
 
 export type LabEvaluationDraftKind = Extract<
   BenchmarkKind,
@@ -15,8 +19,27 @@ export function labEvaluationDraftStorageKey(kind: LabEvaluationDraftKind): stri
 
 const V1_FORM_STORAGE_PREFIX = "rag-lab-form-v1:";
 
-/** Legacy constant removed — embedding defaults come from catalog API (`usableAsDefault`). */
+/** Legacy constant removed - embedding defaults come from catalog API (`usableAsDefault`). */
 export const LAB_DEFAULT_EMBEDDING_MODEL_ID = "";
+
+import { parseEmbeddingBenchmarkRuntimeParameters } from "@/features/lab/lib/lab-embedding-hyperparameters";
+
+export type LabResponseFormat = "text" | "json_object" | "json_schema";
+
+export type LabBenchmarkRuntimeParameters = {
+  temperature?: number;
+  topP?: number;
+  seed?: number;
+  maxTokens?: number;
+  presencePenalty?: number;
+  frequencyPenalty?: number;
+  responseFormat?: LabResponseFormat;
+  stop?: string[];
+  think?: boolean;
+  topK?: number;
+  similarityThreshold?: number;
+  secondaryLlmModelId?: string;
+};
 
 export type LabEvaluationDraftStored = {
   v: 1;
@@ -34,34 +57,156 @@ export type LabEvaluationDraftStored = {
   lastEvaluationRunId: string | null;
   /** Lab evaluation corpus for RAG/embedding document-backed runs. */
   corpusId: string | null;
+  /** When true, Lab may rebuild indexes for the selected embedding model (RAG / embedding runs). */
+  autoReindex: boolean;
+  /** When true, prefer reusing a compatible active snapshot instead of rebuilding. */
+  reuseCompatibleActiveSnapshot: boolean;
+  benchmarkRuntimeParameters: LabBenchmarkRuntimeParameters;
 };
 
-/** Legacy Ollama-only defaults removed from product catalog — cleared on load. */
-const LEGACY_STALE_LLM_MODEL_IDS = new Set(["gemma3:4b", "mistral:7b", "llama3.1:8b"]);
-const LEGACY_STALE_EMBEDDING_MODEL_IDS = new Set(["mxbai-embed-large:latest", "mxbai-embed-large"]);
+/** Legacy Ollama-only defaults removed from product catalog - cleared on load without warnings. */
+export const LEGACY_STALE_LLM_MODEL_IDS = new Set(["gemma3:4b", "mistral:7b", "llama3.1:8b"]);
+export const LEGACY_STALE_EMBEDDING_MODEL_IDS = new Set(["mxbai-embed-large:latest", "mxbai-embed-large"]);
+
+export function isLegacyStaleLabLlmModelId(modelId: string): boolean {
+  return LEGACY_STALE_LLM_MODEL_IDS.has(modelId.trim());
+}
+
+export function isLegacyStaleLabEmbeddingModelId(modelId: string): boolean {
+  return LEGACY_STALE_EMBEDDING_MODEL_IDS.has(modelId.trim());
+}
 
 export function stripLegacyStaleLabModelIds(
   draft: Omit<LabEvaluationDraftStored, "v">,
 ): Omit<LabEvaluationDraftStored, "v"> {
   const next = { ...draft };
-  if (LEGACY_STALE_LLM_MODEL_IDS.has(next.llmModelId.trim())) next.llmModelId = "";
-  next.llmModelIds = next.llmModelIds.filter((id) => !LEGACY_STALE_LLM_MODEL_IDS.has(id.trim()));
-  if (LEGACY_STALE_EMBEDDING_MODEL_IDS.has(next.embeddingModelId.trim())) next.embeddingModelId = "";
-  next.embeddingModelIds = next.embeddingModelIds.filter((id) => !LEGACY_STALE_EMBEDDING_MODEL_IDS.has(id.trim()));
+  if (isLegacyStaleLabLlmModelId(next.llmModelId)) next.llmModelId = "";
+  next.llmModelIds = next.llmModelIds.filter((id) => !isLegacyStaleLabLlmModelId(id));
+  if (isLegacyStaleLabEmbeddingModelId(next.embeddingModelId)) next.embeddingModelId = "";
+  next.embeddingModelIds = next.embeddingModelIds.filter((id) => !isLegacyStaleLabEmbeddingModelId(id));
   return next;
 }
 
+function filterModelIdsToCatalog(ids: string[], catalogIds: string[]): string[] {
+  if (catalogIds.length === 0) return ids;
+  const catalog = new Set(catalogIds.map((id) => id.trim()).filter(Boolean));
+  return ids.map((id) => id.trim()).filter((id) => id && catalog.has(id));
+}
+
+function draftModelFieldsChanged(
+  before: Omit<LabEvaluationDraftStored, "v">,
+  after: Omit<LabEvaluationDraftStored, "v">,
+): boolean {
+  return (
+    before.llmModelId !== after.llmModelId ||
+    before.embeddingModelId !== after.embeddingModelId ||
+    before.llmModelIds.join("|") !== after.llmModelIds.join("|") ||
+    before.embeddingModelIds.join("|") !== after.embeddingModelIds.join("|")
+  );
+}
+
+/** Strips legacy and catalog-invalid model ids; fills empty selections from catalog when available. */
 export function migrateLabDraftModelsFromCatalog(
   draft: Omit<LabEvaluationDraftStored, "v">,
   availableLlmModelIds: string[],
   availableEmbeddingModelIds: string[],
+  kind?: LabEvaluationDraftKind,
 ): Omit<LabEvaluationDraftStored, "v"> {
   let next = stripLegacyStaleLabModelIds(draft);
+
+  if (availableLlmModelIds.length > 0) {
+    const llmSet = new Set(availableLlmModelIds.map((id) => id.trim()).filter(Boolean));
+    if (next.llmModelId.trim() && !llmSet.has(next.llmModelId.trim())) {
+      next = { ...next, llmModelId: "" };
+    }
+    const filteredLlmIds = filterModelIdsToCatalog(next.llmModelIds, availableLlmModelIds);
+    if (filteredLlmIds.length !== next.llmModelIds.length) {
+      next = { ...next, llmModelIds: filteredLlmIds };
+    }
+  }
+
+  if (availableEmbeddingModelIds.length > 0) {
+    const embSet = new Set(availableEmbeddingModelIds.map((id) => id.trim()).filter(Boolean));
+    if (next.embeddingModelId.trim() && !embSet.has(next.embeddingModelId.trim())) {
+      next = { ...next, embeddingModelId: "" };
+    }
+    const filteredEmbIds = filterModelIdsToCatalog(next.embeddingModelIds, availableEmbeddingModelIds);
+    if (filteredEmbIds.length !== next.embeddingModelIds.length) {
+      next = { ...next, embeddingModelIds: filteredEmbIds };
+    }
+  }
+
   const firstLlm = availableLlmModelIds[0] ?? "";
   const firstEmb = availableEmbeddingModelIds[0] ?? "";
-  if (!next.llmModelId.trim() && firstLlm) next = { ...next, llmModelId: firstLlm };
-  if (!next.embeddingModelId.trim() && firstEmb) next = { ...next, embeddingModelId: firstEmb };
+  const thesisLlm = availableLlmModelIds.find((id) => id === THESIS_DEFAULT_PRIMARY_LLM_MODEL_ID) ?? "";
+  const thesisEmb = availableEmbeddingModelIds.find((id) => id === THESIS_DEFAULT_EMBEDDING_MODEL_ID) ?? "";
+  if (kind === "LLM_JUDGE_QA") {
+    if (next.llmModelIds.length === 0 && next.llmModelId.trim()) {
+      next = { ...next, llmModelIds: [next.llmModelId.trim()], llmModelId: "" };
+    }
+    if (next.llmModelIds.length === 0 && firstLlm) {
+      next = { ...next, llmModelIds: [firstLlm] };
+    }
+  } else if (kind !== "RAG_PRESET_END_TO_END" && !next.llmModelId.trim() && (thesisLlm || firstLlm)) {
+    next = { ...next, llmModelId: thesisLlm || firstLlm };
+  }
+  if (kind === "RAG_PRESET_END_TO_END") {
+    next = { ...next, llmModelId: "", llmModelIds: [] };
+  }
+  if (!next.embeddingModelId.trim() && (thesisEmb || firstEmb)) {
+    next = { ...next, embeddingModelId: thesisEmb || firstEmb };
+  }
+  if (next.embeddingModelIds.length === 0 && (thesisEmb || firstEmb)) {
+    next = { ...next, embeddingModelIds: [thesisEmb || firstEmb] };
+  }
   return next;
+}
+
+function readNumber(src: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const raw = src[key];
+    if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  }
+  return undefined;
+}
+
+function parseBenchmarkRuntimeParameters(raw: unknown): LabBenchmarkRuntimeParameters {
+  if (!raw || typeof raw !== "object") return {};
+  const src = raw as Record<string, unknown>;
+  const out: LabBenchmarkRuntimeParameters = {};
+  const temperature = readNumber(src, "temperature");
+  if (temperature != null) out.temperature = temperature;
+  const topP = readNumber(src, "topP", "top_p");
+  if (topP != null) out.topP = topP;
+  const seed = readNumber(src, "seed");
+  if (seed != null) out.seed = Math.trunc(seed);
+  const maxTokens = readNumber(src, "maxTokens", "max_tokens");
+  if (maxTokens != null) out.maxTokens = Math.trunc(maxTokens);
+  const presencePenalty = readNumber(src, "presencePenalty", "presence_penalty");
+  if (presencePenalty != null) out.presencePenalty = presencePenalty;
+  const frequencyPenalty = readNumber(src, "frequencyPenalty", "frequency_penalty");
+  if (frequencyPenalty != null) out.frequencyPenalty = frequencyPenalty;
+  const responseFormatRaw = src.responseFormat ?? src.response_format;
+  if (responseFormatRaw && typeof responseFormatRaw === "object") {
+    const type = (responseFormatRaw as Record<string, unknown>).type;
+    if (type === "json_object") out.responseFormat = "json_object";
+  } else if (responseFormatRaw === "json_object") {
+    out.responseFormat = "json_object";
+  }
+  if (Array.isArray(src.stop)) {
+    const stop = src.stop.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    if (stop.length > 0) out.stop = stop;
+  }
+  if (src.think === true) out.think = true;
+  const topK = readNumber(src, "topK", "top_k");
+  if (topK != null) out.topK = Math.trunc(topK);
+  const similarityThreshold = readNumber(src, "similarityThreshold", "similarity_threshold");
+  if (similarityThreshold != null) out.similarityThreshold = similarityThreshold;
+  Object.assign(out, parseEmbeddingBenchmarkRuntimeParameters(src));
+  if (typeof src.secondaryLlmModelId === "string" && src.secondaryLlmModelId.trim()) {
+    out.secondaryLlmModelId = src.secondaryLlmModelId.trim();
+  }
+  return out;
 }
 
 export function defaultLabEvaluationDraft(): Omit<LabEvaluationDraftStored, "v"> {
@@ -78,6 +223,9 @@ export function defaultLabEvaluationDraft(): Omit<LabEvaluationDraftStored, "v">
     followMode: "sse",
     lastEvaluationRunId: null,
     corpusId: null,
+    autoReindex: true,
+    reuseCompatibleActiveSnapshot: true,
+    benchmarkRuntimeParameters: {},
   };
 }
 
@@ -122,23 +270,27 @@ function migrateV1FormParsed(kind: LabEvaluationDraftKind, parsed: Record<string
 
 function finalizeLoadedDraft(kind: LabEvaluationDraftKind, stored: LabEvaluationDraftStored): LabEvaluationDraftStored {
   const stripped: LabEvaluationDraftStored = { ...stored, ...stripLegacyStaleLabModelIds(stored) };
+  const ragStripped: LabEvaluationDraftStored =
+    kind === "RAG_PRESET_END_TO_END"
+      ? { ...stripped, llmModelId: "", llmModelIds: [] }
+      : stripped;
   if (kind !== "RAG_PRESET_END_TO_END") {
-    if (stripped.llmModelId !== stored.llmModelId || stripped.embeddingModelId !== stored.embeddingModelId) {
-      saveLabEvaluationDraft(kind, stripped);
+    if (draftModelFieldsChanged(stored, ragStripped)) {
+      saveLabEvaluationDraft(kind, ragStripped);
     }
-    return stripped;
+    return ragStripped;
   }
   const { selected, removed } = sanitizeLabBenchmarkDraftPresetCodes(
-    stripped.selectedExperimentalPresetCodes,
+    ragStripped.selectedExperimentalPresetCodes,
     undefined,
     false,
   );
-  if (removed.length === 0 && stripped.llmModelId === stored.llmModelId && stripped.embeddingModelId === stored.embeddingModelId) {
-    return stripped;
+  const presetSanitized: LabEvaluationDraftStored = { ...ragStripped, selectedExperimentalPresetCodes: selected };
+  if (removed.length === 0 && !draftModelFieldsChanged(stored, presetSanitized)) {
+    return presetSanitized;
   }
-  const sanitized: LabEvaluationDraftStored = { ...stripped, selectedExperimentalPresetCodes: selected };
-  saveLabEvaluationDraft(kind, sanitized);
-  return sanitized;
+  saveLabEvaluationDraft(kind, presetSanitized);
+  return presetSanitized;
 }
 
 /** Loads draft and reports preset codes removed by static single-turn sanitation (P13/P14). */
@@ -211,6 +363,12 @@ export function loadLabEvaluationDraft(kind: LabEvaluationDraftKind): LabEvaluat
               : parsed.corpusId === null
                 ? null
                 : d.corpusId,
+          autoReindex: typeof parsed.autoReindex === "boolean" ? parsed.autoReindex : d.autoReindex,
+          reuseCompatibleActiveSnapshot:
+            typeof parsed.reuseCompatibleActiveSnapshot === "boolean"
+              ? parsed.reuseCompatibleActiveSnapshot
+              : d.reuseCompatibleActiveSnapshot,
+          benchmarkRuntimeParameters: parseBenchmarkRuntimeParameters(parsed.benchmarkRuntimeParameters),
         });
       }
     }
@@ -226,7 +384,7 @@ export function loadLabEvaluationDraft(kind: LabEvaluationDraftKind): LabEvaluat
       return finalizeLoadedDraft(kind, stored);
     }
   } catch {
-    // corrupted storage — fall through
+    // corrupted storage - fall through
   }
   return { v: 1, ...defaultLabEvaluationDraft() };
 }
@@ -289,22 +447,35 @@ export function computeLabEvaluationDraftWarnings(input: {
   const embSet = new Set(input.availableEmbeddingModelIds);
 
   const llmModelInvalid =
-    input.draft.llmModelId.trim() !== "" && input.kind !== "EMBEDDING_RETRIEVAL" ? !llmSet.has(input.draft.llmModelId.trim()) : false;
+    input.draft.llmModelId.trim() !== "" &&
+    input.kind !== "EMBEDDING_RETRIEVAL" &&
+    input.kind !== "LLM_JUDGE_QA" &&
+    input.kind !== "RAG_PRESET_END_TO_END" &&
+    !isLegacyStaleLabLlmModelId(input.draft.llmModelId)
+      ? !llmSet.has(input.draft.llmModelId.trim())
+      : false;
 
   const llmModelsInvalid =
     input.kind === "LLM_JUDGE_QA"
-      ? input.draft.llmModelIds.filter((m) => m.trim() !== "" && !llmSet.has(m.trim()))
+      ? input.draft.llmModelIds.filter(
+          (m) => m.trim() !== "" && !isLegacyStaleLabLlmModelId(m) && !llmSet.has(m.trim()),
+        )
       : [];
 
   const embeddingNeedsValidation =
     input.kind === "EMBEDDING_RETRIEVAL" || input.kind === "RAG_PRESET_END_TO_END";
   const embeddingModelInvalid =
-    embeddingNeedsValidation && input.draft.embeddingModelId.trim() !== ""
+    embeddingNeedsValidation &&
+    input.kind !== "EMBEDDING_RETRIEVAL" &&
+    input.draft.embeddingModelId.trim() !== "" &&
+    !isLegacyStaleLabEmbeddingModelId(input.draft.embeddingModelId)
       ? !embSet.has(input.draft.embeddingModelId.trim())
       : false;
   const embeddingModelsInvalid =
     input.kind === "EMBEDDING_RETRIEVAL"
-      ? input.draft.embeddingModelIds.filter((m) => m.trim() !== "" && !embSet.has(m.trim()))
+      ? input.draft.embeddingModelIds.filter(
+          (m) => m.trim() !== "" && !isLegacyStaleLabEmbeddingModelId(m) && !embSet.has(m.trim()),
+        )
       : [];
 
   const presetSet = new Set(input.catalogPresetCodes);

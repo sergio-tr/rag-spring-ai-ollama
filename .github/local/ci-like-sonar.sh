@@ -24,12 +24,12 @@
 # Disable auto-pick of /usr/lib/jvm/java-21-* when default java is older:
 #   SKIP_AUTO_JDK21=1 ./.github/local/sonar-local.sh
 #
-# Optional — publish analysis for the current branch (matches local branch name in SonarCloud):
+# Optional - publish analysis for the current branch (matches local branch name in SonarCloud):
 #   SONAR_BRANCH_NAME=$(git branch --show-current) ./.github/local/sonar-local.sh
 
 set -euo pipefail
 
-# Script lives in .github/local/ — repo root is two levels up.
+# Script lives in .github/local/ - repo root is two levels up.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 # shellcheck source=lib/common.sh
@@ -118,7 +118,7 @@ require_jdk21() {
     major="${BASH_REMATCH[1]}"
   fi
   if [[ -z "$major" ]]; then
-    echo "WARN: Could not parse Java version from: ${line} — continuing." >&2
+    echo "WARN: Could not parse Java version from: ${line} - continuing." >&2
     return 0
   fi
   if [[ "$major" -lt 21 ]]; then
@@ -241,7 +241,8 @@ echo "==> Classifier: pytest + coverage.xml"
   "${CLASSIFIER_PYTHON}" -m pip install -r requirements.txt
   export MODELS_DIR=./models
   export DATA_DIR=./data
-  "${CLASSIFIER_PYTHON}" -m pytest tests/unit tests/regression/test_baseline_lib.py \
+  "${CLASSIFIER_PYTHON}" -m pytest tests/unit tests/test_api.py tests/test_deterministic_resolver.py \
+    tests/regression/test_baseline_lib.py \
     -m "not integration and not slow" \
     -v
   "${CLASSIFIER_PYTHON}" scripts/patch_coverage_xml_for_sonar.py

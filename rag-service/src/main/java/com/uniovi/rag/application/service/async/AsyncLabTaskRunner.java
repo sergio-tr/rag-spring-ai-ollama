@@ -103,7 +103,7 @@ public class AsyncLabTaskRunner {
             AsyncTaskEntity pre = asyncTaskRepository.findById(taskId).orElse(null);
             if (pre == null) {
                 log.warn(
-                        "async_task_missing taskId={} — runner ran before the row was visible (transaction ordering bug if recurring)",
+                        "async_task_missing taskId={} - runner ran before the row was visible (transaction ordering bug if recurring)",
                         taskId);
                 return;
             }
@@ -112,7 +112,7 @@ public class AsyncLabTaskRunner {
                     mutation.markCancelled(taskId, "Cancelled before start");
                     return;
                 }
-                log.debug("async_task_skip taskId={} status={} — not queued (duplicate dispatch or already advanced)", taskId, pre.getStatus());
+                log.debug("async_task_skip taskId={} status={} - not queued (duplicate dispatch or already advanced)", taskId, pre.getStatus());
                 return;
             }
             type = pre.getTaskType();

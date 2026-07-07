@@ -36,12 +36,12 @@ class DefaultStructuredQueryRewriterTest {
 
     @Mock private ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
 
-    private static ExecutionContext ctx(boolean toolsEnabled) {
+    private static ExecutionContext ctx(boolean nerEnabled) {
         RagConfig rag =
                 new RagConfig(
                 false,
-                false,
-                toolsEnabled,
+                nerEnabled,
+                true,
                 false,
                 false,
                 false,
@@ -171,5 +171,34 @@ class DefaultStructuredQueryRewriterTest {
         assertFalse(r.rewriteApplied());
         assertEquals("meeting on 2026-02-25", r.rewrittenQueryText());
         assertTrue(r.rewriteNotes().get(0).startsWith("FALLBACK"));
+    }
+
+    @Test
+    void carriedAttendeeCount_preservesQueryWithoutDurationRewrite() {
+        DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(secondaryLlmExecutor, TestConfigurablePromptResolver.defaultsOnly());
+
+        NormalizedQuery nq =
+                new NormalizedQuery(
+                        "raw",
+                        "¿Cuántos asistentes tiene el acta del 25 de agosto del 2025?",
+                        List.of());
+        EntityExtractionResult entities =
+                new EntityExtractionResult(
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        List.of());
+
+        StructuredRewriteResult r =
+                rewriter.rewrite(ctx(true), nq, "GET_FIELD", Optional.of(QueryType.GET_FIELD), ClassifierStatus.OK, entities);
+        assertFalse(r.rewriteApplied());
+        assertEquals("¿Cuántos asistentes tiene el acta del 25 de agosto del 2025?", r.rewrittenQueryText());
+        assertFalse(r.rewrittenQueryText().toLowerCase().contains("duración"));
+        verifyNoInteractions(secondaryLlmExecutor);
     }
 }

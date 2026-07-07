@@ -27,7 +27,7 @@ Add new rows when you add files.
 | ID | Title | Status |
 | --- | --- | --- |
 | [0001](0001-lab-promotion-modes.md) | Research Lab promotion modes (A / B / C) | Accepted |
-| [0002](0002-multitenancy-assumption.md) | Multi-user ownership and project-scoped isolation (single PostgreSQL DB); **not** SaaS-grade multi-tenancy — see ADR body | Accepted |
+| [0002](0002-multitenancy-assumption.md) | Multi-user ownership and project-scoped isolation (single PostgreSQL DB); **not** SaaS-grade multi-tenancy - see ADR body | Accepted |
 | [0003](0003-evaluation-async-project-scope-and-dataset-dedup.md) | Project scope for evaluation/async_task; dataset dedup by owner+sha256 | Accepted |
 | [0004](0004-react-testing-library-behavior-first.md) | React component tests: behavior-first with Testing Library | Accepted |
 | [0005](0005-target-rag-architecture-and-runtime-center.md) | Target RAG architecture: runtime engine as normative center | Accepted |

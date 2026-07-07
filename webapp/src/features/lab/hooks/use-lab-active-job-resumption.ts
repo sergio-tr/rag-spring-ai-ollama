@@ -50,7 +50,7 @@ export function expectedBenchmarkKindForSection(sectionKey: LabJobSectionKey): B
   }
 }
 
-/** M0 — card must use a section key consistent with the benchmark kind. */
+/** M0 - card must use a section key consistent with the benchmark kind. */
 export function isSectionBenchmarkConsistent(sectionKey: LabJobSectionKey, benchmarkKind: BenchmarkKind): boolean {
   const expected = expectedBenchmarkKindForSection(sectionKey);
   return expected != null && expected === benchmarkKind;
@@ -61,7 +61,7 @@ function norm(s: string | null | undefined): string | null {
   return t ? t.toLowerCase() : null;
 }
 
-/** M1 + M2 — benchmark kind (case-insensitive) and project scope. */
+/** M1 + M2 - benchmark kind (case-insensitive) and project scope. */
 export function activeJobMatchesCard(
   job: ActiveLabJobDto,
   benchmarkKind: BenchmarkKind,
@@ -73,7 +73,7 @@ export function activeJobMatchesCard(
 
   const jp = norm(job.projectId);
   const cp = norm(activeProjectId);
-  // Lab-only jobs (no project) always match — LAB must not require an active project.
+  // Lab-only jobs (no project) always match - LAB must not require an active project.
   if (!jp) return true;
   // Project-scoped job: match when card has no active project or the same project.
   if (!cp) return true;

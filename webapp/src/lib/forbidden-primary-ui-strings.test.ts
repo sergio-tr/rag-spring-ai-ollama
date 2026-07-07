@@ -22,6 +22,8 @@ describe("forbidden-primary-ui-strings", () => {
   });
 
   it("allows product-facing copy", () => {
+    expect(containsForbiddenPrimaryUiString("")).toBe(false);
+    expect(containsForbiddenPrimaryUiString("   ")).toBe(false);
     expect(containsForbiddenPrimaryUiString("Saved configuration state")).toBe(false);
     expect(containsForbiddenPrimaryUiString("Configuration identifier")).toBe(false);
     expect(containsForbiddenPrimaryUiString("Advanced technical details")).toBe(false);
@@ -35,6 +37,8 @@ describe("forbidden-primary-ui-strings", () => {
         fallback,
       ),
     ).toBe(fallback);
+    expect(sanitizePrimaryUiCopy("snapshot", fallback)).toBe(fallback);
+    expect(sanitizePrimaryUiCopy("  valid label  ", fallback)).toBe("valid label");
   });
 
   it("exports patterns for visibility tests", () => {

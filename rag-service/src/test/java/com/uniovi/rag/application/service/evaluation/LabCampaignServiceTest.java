@@ -249,7 +249,7 @@ class LabCampaignServiceTest {
         assertThat(rows).hasSize(1);
         assertThat(rows.getFirst().get("presetLabel")).isNotEqualTo("gemma3:4b");
         assertThat(String.valueOf(rows.getFirst().get("comparisonLabel"))).isEqualTo(expectedLabel);
-        assertThat(expectedLabel).contains(" — ");
+        assertThat(expectedLabel).contains(" - ");
     }
 
     @Test

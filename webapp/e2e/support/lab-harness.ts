@@ -268,7 +268,7 @@ export async function assertLabRunButtonEnabled(
   testId: "lab-llm-run" | "lab-embedding-run" | "lab-rag-run",
 ): Promise<void> {
   const runButton = page.getByTestId(testId);
-  await expect(runButton, `${testId} must be enabled — active job may still block Run`).toBeEnabled({
+  await expect(runButton, `${testId} must be enabled - active job may still block Run`).toBeEnabled({
     timeout: 30_000,
   });
 }

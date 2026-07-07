@@ -241,7 +241,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceServiceMockTest {
 
     @Test
     void t10_mocksOnlyRunAndEntryRepositories() {
-        // Constructor wiring: no suite or definition service — verified by compile-time absence in this test class.
+        // Constructor wiring: no suite or definition service - verified by compile-time absence in this test class.
         assertThat(service).isNotNull();
     }
 

@@ -39,7 +39,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * T5: mock export service throws size exception — persistence must not be touched (separate slice from real export bean).
+ * T5: mock export service throws size exception - persistence must not be touched (separate slice from real export bean).
  */
 @WebMvcTest(controllers = RuntimeTraceRegressionSuiteRunExportController.class)
 @ContextConfiguration(classes = RagWebMvcTestApplication.class)

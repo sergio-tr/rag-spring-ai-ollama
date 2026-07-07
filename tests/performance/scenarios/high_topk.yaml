@@ -1,4 +1,4 @@
-# Requires product_chat + BENCHMARK_* env — applies project RAG config before chat.
+# Requires product_chat + BENCHMARK_* env - applies project RAG config before chat.
 name: high_topk
 description: Project-scoped topK=25 (compare with low top-k baseline).
 transport: product_chat

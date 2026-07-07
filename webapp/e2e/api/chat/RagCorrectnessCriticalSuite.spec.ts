@@ -73,7 +73,7 @@ function writeEvidence(conversationIds: Record<string, string>, logAudit: Record
   const generatedAt = new Date().toISOString();
 
   const matrixLines = [
-    "# RAG Correctness Critical Suite — results",
+    "# RAG Correctness Critical Suite - results",
     "",
     `**Generated:** ${generatedAt}`,
     `**Overall:** ${allPass ? "PASS" : "FAIL"}`,

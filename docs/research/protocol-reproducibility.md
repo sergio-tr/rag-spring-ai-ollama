@@ -10,7 +10,7 @@
 
 1. **Name the wave:** e.g. `W-PILOT-001`, `W-COMP-001` (use the same id in all run sheets for that wave).
 2. **Freeze git state:** record **full SHA** of the repository used to build/run the backend (and classifier/webapp if they participate in the experiment). No silent drift: if SHA changes mid-wave, **close the wave** and open a new one with new baselines.
-3. **Freeze runtime configuration intent:** list active Spring profiles (`dev`, `docker`, `e2e`, …) and **effective** overrides from environment (names only; no secrets in this repo — store redacted copies in secure secure annex if required).
+3. **Freeze runtime configuration intent:** list active Spring profiles (`dev`, `docker`, `e2e`, …) and **effective** overrides from environment (names only; no secrets in this repo - store redacted copies in secure secure annex if required).
 4. **Single large policy change per wave:** do not simultaneously change application code, Ollama model tag, and evaluation dataset between rows of the same ablation matrix. If a hotfix is mandatory, **re-tag the wave**, repeat the **full baseline** row, then continue.
 
 ---
@@ -43,7 +43,7 @@ Each dataset used for evaluation evidence must have one manifest row (can live i
 | `domain_notes` | Bias / coverage statement (language, topic, legal sensitivity). |
 | `owner_scope` | User/project id if project-scoped uploads apply. |
 
-**Canonical internal reference workbook:** `evaluation/rag_experiment_datasets_and_protocols.xlsx` (classpath in `rag-service`) — record `content_sha256` from the built artifact or source file. User-typed datasets record upload id + stored bytes hash per `evaluation_dataset` row.
+**Canonical internal reference workbook:** `evaluation/rag_experiment_datasets_and_protocols.xlsx` (classpath in `rag-service`) - record `content_sha256` from the built artifact or source file. User-typed datasets record upload id + stored bytes hash per `evaluation_dataset` row.
 
 ---
 
@@ -53,12 +53,12 @@ Each dataset used for evaluation evidence must have one manifest row (can live i
 
 - After run completion, call `GET {product}/lab/runs/{id}/export?format=csv` or `format=json`.
 - Store the file **outside** git if large; record in run sheet: `path_or_url`, `sha256`, `byte_size`.
-- Preserve the **first-line `#META:`** JSON when using CSV — it is part of the evidence header.
+- Preserve the **first-line `#META:`** JSON when using CSV - it is part of the evidence header.
 
 ### 4.2 Python micro-benchmark (`benchmark-report-v1`)
 
 - Validate output against `tests/performance/schema/benchmark-report-v1.schema.json` (gate **G-bench-schema**).
-- Use for **latency / estimated token** claims only — not as a substitute for Lab judge/retrieval metrics when the research question is answer quality.
+- Use for **latency / estimated token** claims only - not as a substitute for Lab judge/retrieval metrics when the research question is answer quality.
 
 ---
 

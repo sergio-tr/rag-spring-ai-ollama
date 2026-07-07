@@ -2,6 +2,8 @@ package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.config.ConfigurablePromptResolver;
 import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
+import com.uniovi.rag.application.service.runtime.optimization.DeterministicToolPromptBudgetPolicy;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import com.uniovi.rag.application.service.runtime.factual.FactualAnswerVerificationLoop;
 import com.uniovi.rag.application.service.runtime.factual.FactualConstraintExtractor;
 import com.uniovi.rag.application.service.runtime.factual.FactualQuestionConstraints;
@@ -80,6 +82,10 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
         String effectivePromptContext =
                 RuntimeAnswerPrompts.effectivePromptContextForDateGrounding(
                         rawPromptContext, curated.finalCandidates(), dateDecision);
+        boolean noRetrievedDocumentEvidence =
+                curated.finalCandidates().isEmpty()
+                        && (rawPromptContext == null || rawPromptContext.isBlank());
+        effectivePromptContext = budgetToolScopedContext(ctx, plan, effectivePromptContext, workflowName());
         stages.add(new ExecutionStageTrace(
                 "packed_context_preview",
                 0L,
@@ -100,7 +106,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
         String abstentionReason = "";
         FinalAnswerSource finalAnswerSource = FinalAnswerSource.GENERATED;
 
-        if (docBound && effectivePromptContext.isBlank()) {
+        if (docBound && (noRetrievedDocumentEvidence || effectivePromptContext.isBlank())) {
             answer = resolveInsufficientDocumentContextMessage(ctx, q);
             abstention = true;
             abstentionReason = "no_document_evidence";
@@ -120,6 +126,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
         } else {
             String user = resolveRagUserTurn(ctx, q, effectivePromptContext, policy, docBound, mismatch, combinedPlan);
             String draft = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
+            draft = guardPrefixOnlyDraft(draft, q, effectivePromptContext, stages, tLlm);
             stages.add(stage("llm", tLlm, ExecutionStageOutcome.SUCCESS, ""));
             FactualAnswerVerificationLoop.Outcome verified =
                     FactualAnswerVerificationLoop.apply(
@@ -174,6 +181,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
             FactualQuestionConstraints constraints,
             PackedContextSet packed) {
         String context = packed.promptContextText();
+        context = budgetToolScopedContext(ctx, ctx.queryPlan().orElse(null), context, workflowName());
         String user =
                 resolveRagUserTurn(
                         ctx,
@@ -185,6 +193,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                         combinedPlan);
         String draft = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
         List<ExecutionStageTrace> stages = new ArrayList<>();
+        draft = guardPrefixOnlyDraft(draft, q, context, stages, tLlm);
         stages.add(stage("llm", tLlm, ExecutionStageOutcome.SUCCESS, "from_advisor_packed_context"));
         FactualAnswerVerificationLoop.Outcome verified =
                 FactualAnswerVerificationLoop.apply(
@@ -215,7 +224,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                         null,
                         Optional.empty(),
                         stages)
-                .withResponseSources(List.of());
+                .withResponseSources(ResponseSourcesBackfill.fromPackedContext(packed));
     }
 
     private static ExecutionStageTrace finalAnswerSourceStage(FinalAnswerSource source) {
@@ -224,6 +233,20 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                 0L,
                 ExecutionStageOutcome.SUCCESS,
                 "finalAnswerSource=" + (source != null ? source.name() : FinalAnswerSource.GENERATED.name()));
+    }
+
+    private static String budgetToolScopedContext(
+            ExecutionContext ctx, QueryPlan plan, String context, String workflowName) {
+        QueryPlan effectivePlan = plan != null ? plan : ctx.queryPlan().orElse(null);
+        if (!DeterministicToolPromptBudgetPolicy.shouldUseToolScopedContext(effectivePlan, workflowName)) {
+            return context;
+        }
+        String preferred =
+                DeterministicToolEvidenceHolder.get()
+                        .map(DeterministicToolEvidenceHolder.Evidence::assembledContextText)
+                        .filter(s -> s != null && !s.isBlank())
+                        .orElse(context);
+        return DeterministicToolPromptBudgetPolicy.budgetPrimaryAnswerContext(preferred).textUsed();
     }
 
     private static String combinePlanBlocks(String answerPlanBlock, String constraintsBlock) {
@@ -266,6 +289,24 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
             return promptResolver.resolve(ConfigurablePromptGroup.FACTUAL_VERIFIER, ctx.userId(), ctx.projectId());
         }
         return FactualRevisionPrompts.defaultRevisionTemplate();
+    }
+
+    private String guardPrefixOnlyDraft(
+            String draft,
+            String query,
+            String contextText,
+            List<ExecutionStageTrace> stages,
+            long tLlm) {
+        if (!PrefixOnlyAnswerGuard.isPrefixOnlyFragment(draft)) {
+            return draft;
+        }
+        stages.add(
+                stage(
+                        "llm_prefix_only_guard",
+                        tLlm,
+                        ExecutionStageOutcome.FAILED,
+                        "raw_prefix_only=true"));
+        return PrefixOnlyAnswerGuard.resolveDraft(draft, query, contextText);
     }
 
     private static String preview(String s) {

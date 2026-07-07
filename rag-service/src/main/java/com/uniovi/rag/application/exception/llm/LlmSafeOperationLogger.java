@@ -15,7 +15,7 @@ public final class LlmSafeOperationLogger {
 
     /**
      * Single-line summary of {@link ResolvedLlmConfig} for startup and pre-RAG verification. Logs provider and model at
-     * INFO; baseUrl only at DEBUG — never {@code apiKeyEnv}, {@code secretName}, Bearer tokens, or resolved secrets.
+     * INFO; baseUrl only at DEBUG - never {@code apiKeyEnv}, {@code secretName}, Bearer tokens, or resolved secrets.
      */
     public static void logResolvedConfig(Logger log, ResolvedLlmConfig config) {
         Objects.requireNonNull(log, "log");

@@ -205,7 +205,7 @@ export function writeUiFullstackSmokeMd(result: UiSmokeResult): void {
     `**Stack:** Real (reverse-proxy / Playwright @fullstack)`,
     `**Overall:** ${result.allPass ? "PASS" : "FAIL"}`,
     "",
-    "## Checks (Phase 7 — mirrors offline S3 UX smoke)",
+    "## Checks (Phase 7 - mirrors offline S3 UX smoke)",
     "",
     "| # | ID | Check | Result | Evidence |",
     "|---|-----|-------|--------|----------|",
@@ -233,7 +233,7 @@ export async function runUiFullstackSmokeChecks(
 
   await loginAsSeedUser(page);
 
-  // 1. Settings — no raw JSON by default
+  // 1. Settings - no raw JSON by default
   try {
     await page.goto("/en/settings/user", { waitUntil: "domcontentloaded", timeout: 60_000 });
     await expect(page.getByTestId("user-rag-config-form")).toBeVisible({ timeout: 30_000 });
@@ -246,6 +246,10 @@ export async function runUiFullstackSmokeChecks(
       .getByTestId("rag-config-advanced-json")
       .evaluate((el) => (el as HTMLDetailsElement).open)
       .catch(() => true);
+    const promptSection = page.getByTestId("settings-collapsible-prompt");
+    if (!(await promptSection.evaluate((el) => (el as HTMLDetailsElement).open))) {
+      await promptSection.locator(":scope > summary").click();
+    }
     await expect(page.getByTestId("assistant-global-persona-input")).toBeVisible();
     await expect(page.getByLabel("Advanced configuration (JSON)")).not.toBeVisible();
     const mainText = await page.locator("main").innerText();
@@ -284,24 +288,25 @@ export async function runUiFullstackSmokeChecks(
       evidence: hashPass ? "compact summary only" : "technical keys visible",
     });
 
-    if (!(await panel.getByTestId("chat-llm-model-select").isVisible().catch(() => false))) {
+    if (!(await panel.getByTestId("chat-edit-assistant-configuration-link").isVisible().catch(() => false))) {
       await panel.getByTestId("chat-config-edit-button").click({ timeout: 15_000 });
     }
-    const providerEl = panel.getByTestId("chat-llm-model-provider");
-    await expect(providerEl).toBeVisible({ timeout: 30_000 });
-    const providerText = (await providerEl.innerText()).trim();
+    const modelSelect = panel.getByTestId("chat-final-answer-model-select");
+    await expect(modelSelect).toBeVisible({ timeout: 30_000 });
+    const modelOptions = await modelSelect.locator("option").allTextContents();
+    const providerAware = modelOptions.some((o) => /Configured model provider|Local model provider/i.test(o));
     checks.push({
       id: "chat-model-selector-provider",
       description: "Selector chat muestra modelos del provider efectivo",
-      pass: /Configured model provider|Local model provider/i.test(providerText),
-      evidence: providerText,
+      pass: providerAware,
+      evidence: modelOptions.join(" | ").slice(0, 120),
     });
 
     const presetSelect = panel.getByTestId("chat-preset-select");
     await expect(presetSelect).toBeVisible({ timeout: 15_000 });
     const options = await presetSelect.locator("option").allTextContents();
     const hasHuman = options.some((o) => /metadata|retrieval|chunk|demo|corpus/i.test(o));
-    const noPcodePrimary = options.every((o) => !/^P\d+\s*[—-]/.test(o.trim()));
+    const noPcodePrimary = options.every((o) => !/^P\d+\s*[--]/.test(o.trim()));
     checks.push({
       id: "chat-presets-human-labels",
       description: "Presets en chat no muestran P-code como label principal",
@@ -331,7 +336,7 @@ export async function runUiFullstackSmokeChecks(
     }
   }
 
-  // 5. Admin catalog — embedding compatibility (fallback: lab embedding eval)
+  // 5. Admin catalog - embedding compatibility (fallback: lab embedding eval)
   try {
     const probe = await request.post(productUrl("/auth/login"), {
       data: { email: adminEmail(), password: adminPassword() },
@@ -375,7 +380,7 @@ export async function runUiFullstackSmokeChecks(
     });
   }
 
-  // 6. Lab exports — primary JSON/CSV/bundle visible when results exist
+  // 6. Lab exports - primary JSON/CSV/bundle visible when results exist
   try {
     const { email, password } = integrationCredentials();
     const token = await loginAndGetToken(request, email, password);
@@ -451,7 +456,7 @@ export async function runUiFullstackSmokeChecks(
     });
   }
 
-  // 7. Provider-aware errors — no technical/Ollama leak on chat + lab
+  // 7. Provider-aware errors - no technical/Ollama leak on chat + lab
   try {
     await page.goto("/en/chat", { waitUntil: "domcontentloaded", timeout: 60_000 });
     const chatMain = await page.locator("main").innerText();
@@ -478,7 +483,7 @@ export async function runUiFullstackSmokeChecks(
     });
   }
 
-  // 8. No grave overflow — mobile toolbar on chat
+  // 8. No grave overflow - mobile toolbar on chat
   try {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/en/chat", { waitUntil: "domcontentloaded", timeout: 60_000 });

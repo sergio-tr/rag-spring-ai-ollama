@@ -43,7 +43,7 @@ jobs:
             --only-rules image_forbidden,yaml_error,build_invalid,build_missing_context,build_missing_dockerfile \
             2>&1 | tee /tmp/docker-compose-ci-compose-guard.log
 
-      - name: docker compose config — base + profiles
+      - name: docker compose config - base + profiles
         working-directory: docker
         run: |
           set -euo pipefail
@@ -52,7 +52,7 @@ jobs:
             --env-file ../observability/.env \
             config -q 2>&1 | tee /tmp/docker-compose-ci-config-base.log
 
-      - name: docker compose config — obs overlays + profiles
+      - name: docker compose config - obs overlays + profiles
         working-directory: docker
         run: |
           set -euo pipefail
@@ -67,7 +67,7 @@ jobs:
             --env-file ../observability/.env \
             config -q 2>&1 | tee /tmp/docker-compose-ci-config-obs.log
 
-      - name: docker compose config — prod-like
+      - name: docker compose config - prod-like
         working-directory: docker
         run: |
           set -euo pipefail

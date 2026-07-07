@@ -62,6 +62,10 @@ public class ProjectDocumentApplicationService {
                 .toList();
     }
 
+    public long countReadyDocuments(UUID projectId) {
+        return knowledgeDocumentRepository.countByProject_IdAndStatus(projectId, ProjectDocumentStatus.READY);
+    }
+
     public List<ProjectDocumentDto> listDocumentsForConversation(UUID userId, UUID projectId, UUID conversationId) {
         projectAccessService.requireConversationForUser(userId, conversationId);
         return knowledgeDocumentRepository.findByProject_IdOrderByUploadedAtDesc(projectId).stream()

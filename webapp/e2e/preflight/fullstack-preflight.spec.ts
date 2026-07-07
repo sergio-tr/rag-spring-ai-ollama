@@ -56,11 +56,20 @@ test.describe("Fullstack E2E preflight @preflight", () => {
 
     const panel = await openChatConfigurationPanel(page);
     await expect(panel.getByTestId("chat-preset-select")).toBeVisible({ timeout: 15_000 });
-    await expect(panel.getByTestId("chat-llm-model-select")).toBeVisible({ timeout: 15_000 });
+    await expect(panel.getByTestId("chat-edit-assistant-configuration-link")).toBeVisible({ timeout: 15_000 });
     await expect(panel.getByTestId("chat-classifier-select")).toBeVisible({ timeout: 15_000 });
-    await expandChatConfigurationRuntimeSection(panel);
-    await expect(panel.getByTestId("chat-runtime-toggle-similarityThreshold")).toBeVisible({
-      timeout: 15_000,
-    });
+
+    const retrievalSection = panel.getByTestId("chat-retrieval-settings-section");
+    await retrievalSection.scrollIntoViewIfNeeded();
+    const retrievalNotApplicable = panel.getByTestId("chat-retrieval-settings-not-applicable");
+    if (await retrievalNotApplicable.isVisible().catch(() => false)) {
+      // Fresh projects without a READY index default to a non-retrieval preset (e.g. P0).
+      await expect(retrievalNotApplicable).toBeVisible();
+    } else {
+      await expandChatConfigurationRuntimeSection(panel);
+      await expect(panel.getByTestId("chat-runtime-toggle-similarityThreshold")).toBeVisible({
+        timeout: 15_000,
+      });
+    }
   });
 });

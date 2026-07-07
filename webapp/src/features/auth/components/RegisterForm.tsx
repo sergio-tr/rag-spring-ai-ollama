@@ -32,12 +32,18 @@ function apiErrorCode(error: ApiError): string | undefined {
   return undefined;
 }
 
-export function RegisterForm() {
+type RegisterFormProps = {
+  /** Resolved on the server from runtime env; falls back to build-time flag in tests. */
+  oauthGoogleEnabled?: boolean;
+};
+
+export function RegisterForm({ oauthGoogleEnabled: oauthGoogleEnabledProp }: RegisterFormProps = {}) {
   const t = useTranslations("Auth");
   const locale = useLocale();
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
-  const oauthGoogleEnabled = process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === "true";
+  const oauthGoogleEnabled =
+    oauthGoogleEnabledProp ?? process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === "true";
   const privacyVersion = process.env.NEXT_PUBLIC_LEGAL_PRIVACY_VERSION ?? "";
   const termsVersion = process.env.NEXT_PUBLIC_LEGAL_TERMS_VERSION ?? "";
 

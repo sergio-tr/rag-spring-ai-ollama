@@ -21,6 +21,13 @@ public final class FinalAnswerSynthesizer {
 
     private FinalAnswerSynthesizer() {}
 
+    private static final Pattern JUDGE_FORMAT_LEAK =
+            Pattern.compile(
+                    "(?im)^\\s*Answer\\s*:\\s*(?:YES|NO)\\s*$|(?im)^\\s*Explanation\\s*:.*$|(?im)^\\s*FEEDBACK\\s*:.*$");
+    private static final Pattern ACTA_TOPIC_VAGUE =
+            Pattern.compile(
+                    "(?i)(?:en el acta correspondiente|en la reunión específica del documento consultado|documento consultado)",
+                    Pattern.UNICODE_CASE);
     private static final Pattern INTERNAL_LABEL =
             Pattern.compile(
                     "\\b(?:PARENT_P\\d+|PARENT_P[A-Z_]+|baseline_floor[\\w:]*|RETRIEVAL_WORKFLOW_ROUTE|DETERMINISTIC_TOOL_ROUTE|FUNCTION_CALLING_ROUTE|ADVISOR_ROUTE|deterministic-tool|function-calling|topic_not_in_context|not_in_context|function_sentinel_abstention|native_not_constraint_complete|advanced_preset_parent_floor|outcome=\\w+|routeKind=\\w+)\\b",
@@ -91,18 +98,24 @@ public final class FinalAnswerSynthesizer {
         if (answerText == null || answerText.isBlank()) {
             return answerText;
         }
-        String cleaned = stripInternalLabels(answerText);
+        String cleaned = stripJudgeFormatLeakage(answerText);
+        cleaned = stripInternalLabels(cleaned);
         cleaned = ReasoningBlockSanitizer.stripReasoningBlocks(cleaned);
         cleaned = FinalAnswerStubSanitizer.sanitizeForUser(plan, cleaned, responseSources);
+        String query = extractQueryText(plan);
+        cleaned = correctDateDenialAgainstSources(query, cleaned, responseSources);
         cleaned = normalizeSafeSpanishPunctuation(cleaned);
         cleaned = ensureSentenceStart(cleaned);
+        cleaned = FinalAnswerMarkdownSanitizer.sanitize(cleaned);
+        cleaned = PartialEvidenceAnswerSupport.enrichIfPartial(plan, cleaned, responseSources);
+        cleaned = PrefixOnlyAnswerGuard.resolve(cleaned, query, responseSources);
         return cleaned.trim();
     }
 
     private static String normalizeSafeSpanishPunctuation(String text) {
-        return text.replaceAll("\\s{2,}", " ")
-                .replaceAll(" \\.", ".")
-                .replaceAll(" ,", ",")
+        return MarkdownAnswerFormatter.collapseHorizontalWhitespacePreservingNewlines(text)
+                .replaceAll("(?m) \\.", ".")
+                .replaceAll("(?m) ,", ",")
                 .trim();
     }
 
@@ -110,25 +123,165 @@ public final class FinalAnswerSynthesizer {
         if (answerText == null || answerText.isBlank()) {
             return answerText;
         }
-        String query = plan != null ? plan.rewrittenQueryText() : "";
+        String query = extractQueryText(plan);
         boolean spanish = RuntimeAnswerPrompts.requiresStrictDocumentGrounding(query)
                 || looksSpanish(query != null ? query : answerText);
 
-        String cleaned = stripInternalLabels(answerText);
+        String cleaned = stripJudgeFormatLeakage(answerText);
+        cleaned = stripInternalLabels(cleaned);
         cleaned = ReasoningBlockSanitizer.stripReasoningBlocks(cleaned);
         cleaned = FinalAnswerStubSanitizer.sanitizeForUser(plan, cleaned, responseSources);
+        cleaned = correctDateDenialAgainstSources(query, cleaned, responseSources);
         cleaned = normalizeUnavailableMessage(cleaned, spanish);
         cleaned = structureByQueryType(plan, cleaned, spanish);
+        cleaned = enforceMultiMatchEnumeration(plan, cleaned, responseSources, spanish);
+        cleaned = enforceActaIdentifierContract(plan, cleaned, responseSources, spanish);
         cleaned = appendSourceReferencesIfMissing(cleaned, responseSources, spanish);
+        cleaned = PartialEvidenceAnswerSupport.enrichIfPartial(plan, cleaned, responseSources);
         cleaned = ensureSentenceStart(cleaned);
+        cleaned = FinalAnswerMarkdownSanitizer.sanitize(cleaned);
+        cleaned = PrefixOnlyAnswerGuard.resolve(cleaned, query, responseSources);
         return cleaned.trim();
+    }
+
+    public static String sanitizeJudgeLeakage(String text) {
+        if (text == null || text.isBlank()) {
+            return text;
+        }
+        return stripJudgeFormatLeakage(text);
+    }
+
+    private static String stripJudgeFormatLeakage(String text) {
+        String out = JUDGE_FORMAT_LEAK.matcher(text).replaceAll("").trim();
+        out = out.replaceAll("(?im)^\\s*Answer\\s*:\\s*(?:YES|NO)\\s*\\n?", "").trim();
+        return out;
+    }
+
+    private static final Pattern DATE_IN_TEXT =
+            Pattern.compile(
+                    "\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}\\b|\\b\\d{1,2}\\s+de\\s+[\\p{L}]+\\s+de\\s+\\d{4}\\b",
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
+    private static String enforceMultiMatchEnumeration(
+            QueryPlan plan, String text, List<Map<String, Object>> responseSources, boolean spanish) {
+        if (text == null || text.isBlank() || responseSources == null || responseSources.size() < 2) {
+            return text;
+        }
+        Optional<QueryType> qt = plan != null ? plan.classifierQueryType() : Optional.empty();
+        if (qt.isEmpty()
+                || (qt.get() != QueryType.FILTER_AND_LIST
+                        && qt.get() != QueryType.COUNT_DOCUMENTS
+                        && qt.get() != QueryType.COUNT_AND_EXPLAIN)) {
+            return text;
+        }
+        List<String> sourceRefs = extractAllSourceRefs(responseSources);
+        if (sourceRefs.size() < 2) {
+            return text;
+        }
+        int mentionedInAnswer = countDistinctActaMentions(text, sourceRefs);
+        if (mentionedInAnswer >= sourceRefs.size()) {
+            return text;
+        }
+        if (spanish) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Se encontraron ").append(sourceRefs.size()).append(" actas:\n\n");
+            for (String ref : sourceRefs) {
+                sb.append("- ").append(ref).append('\n');
+            }
+            return sb.toString().trim();
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("Found ").append(sourceRefs.size()).append(" matching actas:\n\n");
+        for (String ref : sourceRefs) {
+            sb.append("- ").append(ref).append('\n');
+        }
+        return sb.toString().trim();
+    }
+
+    private static List<String> extractAllSourceRefs(List<Map<String, Object>> responseSources) {
+        List<String> refs = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (Map<String, Object> src : responseSources) {
+            if (src == null) {
+                continue;
+            }
+            Object fn = src.get("filename");
+            if (fn == null) {
+                fn = src.get("documentId");
+            }
+            if (fn != null && !String.valueOf(fn).isBlank()) {
+                String ref = String.valueOf(fn).trim();
+                if (seen.add(ref)) {
+                    refs.add(ref);
+                }
+            }
+        }
+        return refs;
+    }
+
+    private static int countDistinctActaMentions(String text, List<String> sourceRefs) {
+        int count = 0;
+        String lower = text.toLowerCase(Locale.ROOT);
+        for (String ref : sourceRefs) {
+            if (lower.contains(ref.toLowerCase(Locale.ROOT))) {
+                count++;
+                continue;
+            }
+            Matcher date = DATE_IN_TEXT.matcher(ref);
+            if (date.find() && lower.contains(date.group().toLowerCase(Locale.ROOT))) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static String enforceActaIdentifierContract(
+            QueryPlan plan, String text, List<Map<String, Object>> responseSources, boolean spanish) {
+        if (plan == null || text == null || text.isBlank()) {
+            return text;
+        }
+        String query = plan.rewrittenQueryText() != null ? plan.rewrittenQueryText() : plan.normalizedQueryText();
+        if (query == null || !query.toLowerCase(Locale.ROOT).contains("en qué acta")
+                && !query.toLowerCase(Locale.ROOT).contains("en que acta")) {
+            return text;
+        }
+        if (ACTA_TOPIC_VAGUE.matcher(text).find()) {
+            List<String> refs = extractSourceRefs(responseSources);
+            if (!refs.isEmpty()) {
+                if (spanish) {
+                    return "Según las fuentes recuperadas, el tema aparece en " + String.join(", ", refs) + ".";
+                }
+                return "Based on the retrieved sources, the topic appears in " + String.join(", ", refs) + ".";
+            }
+        }
+        return text;
+    }
+
+    private static List<String> extractSourceRefs(List<Map<String, Object>> responseSources) {
+        List<String> refs = new ArrayList<>();
+        if (responseSources == null) {
+            return refs;
+        }
+        for (Map<String, Object> src : responseSources) {
+            if (src == null) {
+                continue;
+            }
+            Object fn = src.get("filename");
+            if (fn != null && !String.valueOf(fn).isBlank()) {
+                refs.add(String.valueOf(fn).trim());
+            }
+            if (refs.size() >= 3) {
+                break;
+            }
+        }
+        return refs;
     }
 
     private static String stripInternalLabels(String text) {
         String out = INTERNAL_LABEL.matcher(text).replaceAll("").trim();
-        out = out.replaceAll("\\s{2,}", " ").trim();
-        out = out.replaceAll(" \\.", ".").replaceAll(" ,", ",");
-        out = out.replaceAll("^[:;\\-]+\\s*", "").trim();
+        out = MarkdownAnswerFormatter.collapseHorizontalWhitespacePreservingNewlines(out).trim();
+        out = out.replaceAll("(?m) \\.", ".").replaceAll("(?m) ,", ",");
+        out = out.replaceAll("(?m)^[:;\\-]+\\s*", "").trim();
         return out;
     }
 
@@ -306,5 +459,32 @@ public final class FinalAnswerSynthesizer {
                 || q.contains("cuant")
                 || q.contains("presidente")
                 || q.contains("asistent");
+    }
+
+    private static String extractQueryText(QueryPlan plan) {
+        if (plan == null) {
+            return "";
+        }
+        if (plan.rewrittenQueryText() != null && !plan.rewrittenQueryText().isBlank()) {
+            return plan.rewrittenQueryText();
+        }
+        if (plan.normalizedQueryText() != null && !plan.normalizedQueryText().isBlank()) {
+            return plan.normalizedQueryText();
+        }
+        if (plan.rawUserQuery() != null && !plan.rawUserQuery().isBlank()) {
+            return plan.rawUserQuery();
+        }
+        return "";
+    }
+
+    private static String correctDateDenialAgainstSources(
+            String query, String answer, List<Map<String, Object>> sources) {
+        if (answer == null || answer.isBlank()) {
+            return answer;
+        }
+        if (CorpusDateEvidenceAnswerGuard.answerDeniesDespiteMatchingSources(query, answer, sources)) {
+            return CorpusDateEvidenceAnswerGuard.groundedEvidenceReminder(query) + "\n\n" + answer;
+        }
+        return answer;
     }
 }

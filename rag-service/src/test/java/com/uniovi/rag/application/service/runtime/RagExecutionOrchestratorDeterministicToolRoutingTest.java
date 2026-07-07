@@ -174,7 +174,7 @@ class RagExecutionOrchestratorDeterministicToolRoutingTest {
         QueryPlan plan = plan(AmbiguityStatus.SUFFICIENT);
         ExecutionContext in = ctx(p7Rag());
         RagExecutionOrchestratorHarness harness = orchestrator(in, plan, p7Rag());
-        String toolAnswer = "No existen actas correspondientes al año 2028 en el corpus.";
+        String toolAnswer = "Hay 2 actas correspondientes al año 2027 en el corpus.";
 
         when(harness.tools().tryExecute(any(), eq(plan)))
                 .thenReturn(

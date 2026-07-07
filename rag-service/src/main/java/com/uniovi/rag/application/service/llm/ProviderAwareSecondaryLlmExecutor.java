@@ -9,6 +9,11 @@ import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.config.llm.TaskLlmConfigResolver;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.application.service.runtime.llm.RagChatModelRoutingService;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmTimeoutPolicy;
+import com.uniovi.rag.application.service.runtime.observability.RagLlmCallTelemetry;
+import com.uniovi.rag.application.service.runtime.optimization.OptionalLlmCallBudgetSkippedException;
+import com.uniovi.rag.application.service.runtime.optimization.RagLlmCallBudgetEnforcer;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import java.util.Objects;
@@ -20,7 +25,7 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
- * Provider-aware secondary LLM calls (NER, error composer, rewrite, condense). Uses {@link LlmClientResolver} —
+ * Provider-aware secondary LLM calls (NER, error composer, rewrite, condense). Uses {@link LlmClientResolver} -
  * never the Spring AI default Ollama {@code ChatClient} bean.
  */
 @Service
@@ -36,24 +41,28 @@ public class ProviderAwareSecondaryLlmExecutor {
     private final TaskLlmConfigResolver taskLlmConfigResolver;
     private final ChatGenerationModelSelector chatGenerationModelSelector;
     private final ObjectMapper objectMapper;
+    private final RagChatModelRoutingService chatModelRoutingService;
 
     public ProviderAwareSecondaryLlmExecutor(
             LlmClientResolver llmClientResolver,
             ResolvedLlmConfigResolver resolvedLlmConfigResolver,
             TaskLlmConfigResolver taskLlmConfigResolver,
             ChatGenerationModelSelector chatGenerationModelSelector,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            RagChatModelRoutingService chatModelRoutingService) {
         this.llmClientResolver = llmClientResolver;
         this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
         this.taskLlmConfigResolver = taskLlmConfigResolver;
         this.chatGenerationModelSelector = chatGenerationModelSelector;
         this.objectMapper = objectMapper;
+        this.chatModelRoutingService = chatModelRoutingService;
     }
 
     public String complete(String operation, @Nullable String systemPrompt, String userPrompt) {
         TaskLlmConfigResolver.SecondaryCallConfig call =
                 taskLlmConfigResolver.resolveSecondaryCall(null, null, operation, null, null);
         return completeInternal(
+                null,
                 call.effectiveConfig(),
                 call.effectiveModel(),
                 operation,
@@ -79,10 +88,11 @@ public class ProviderAwareSecondaryLlmExecutor {
         TaskLlmConfigResolver.SecondaryCallConfig call =
                 taskLlmConfigResolver.resolveSecondaryCall(ctx, operation, temperatureOverride, selectorModel);
         String model = call.effectiveModel();
-        if (!call.taskOverrideApplied() && selectorModel != null && !selectorModel.isBlank()) {
+        if (!call.taskOverrideApplied() && !call.secondaryModelApplied() && selectorModel != null && !selectorModel.isBlank()) {
             model = selectorModel.trim();
         }
         return completeInternal(
+                ctx,
                 call.effectiveConfig(),
                 model,
                 operation,
@@ -93,6 +103,7 @@ public class ProviderAwareSecondaryLlmExecutor {
     }
 
     private String completeInternal(
+            @Nullable ExecutionContext ctx,
             ResolvedLlmConfig config,
             String model,
             String operation,
@@ -100,6 +111,9 @@ public class ProviderAwareSecondaryLlmExecutor {
             String userPrompt,
             @Nullable Double temperature,
             boolean taskOverrideApplied) {
+        if (!RagLlmCallBudgetEnforcer.tryAllowSecondary(operation)) {
+            throw new OptionalLlmCallBudgetSkippedException(operation);
+        }
         log.debug(
                 "Secondary LLM call: operation={} provider={} model={} baseUrl={} temperature={} taskOverride={}",
                 operation,
@@ -109,21 +123,69 @@ public class ProviderAwareSecondaryLlmExecutor {
                 temperature,
                 taskOverrideApplied);
 
-        LlmChatClient client = llmClientResolver.resolveChatClient(config);
-        LlmChatResponse response =
-                client.chat(
-                        LlmChatRequest.of(
-                                model,
-                                systemPrompt,
-                                userPrompt,
-                                temperature,
-                                config.timeoutMs(),
-                                config.additionalParameters()));
-        String content = response != null ? response.content() : null;
-        if (content == null || content.isBlank()) {
-            throw new IllegalStateException("Empty secondary LLM response for operation=" + operation);
+        int inputChars =
+                RagLlmCallTelemetry.approxChars(systemPrompt) + RagLlmCallTelemetry.approxChars(userPrompt);
+        Integer retrievedChunks =
+                ctx != null && ctx.advisorPackedContextSet().isPresent()
+                        ? ctx.advisorPackedContextSet().get().totalBlockCount()
+                        : null;
+        long startedAt = System.nanoTime();
+        RagLlmCallTelemetry.logStarted(
+                ctx,
+                operation,
+                config.chatProvider(),
+                model,
+                inputChars,
+                0,
+                retrievedChunks,
+                temperature);
+        String routedModel = model;
+        try {
+            routedModel = chatModelRoutingService.resolveSecondary(config.chatProvider(), model, ctx);
+            int timeoutMs = RagLlmTimeoutPolicy.effectiveTimeoutMs(ctx, "SECONDARY", config.timeoutMs());
+            LlmChatClient client = llmClientResolver.resolveChatClient(config);
+            LlmChatResponse response =
+                    client.chat(
+                            LlmChatRequest.of(
+                                    routedModel,
+                                    systemPrompt,
+                                    userPrompt,
+                                    temperature,
+                                    timeoutMs,
+                                    config.additionalParameters()));
+            String content = response != null ? response.content() : null;
+            if (content == null || content.isBlank()) {
+                throw new IllegalStateException("Empty secondary LLM response for operation=" + operation);
+            }
+            RagLlmCallTelemetry.logCompleted(
+                    ctx,
+                    operation,
+                    config.chatProvider(),
+                    routedModel,
+                    inputChars,
+                    0,
+                    retrievedChunks,
+                    elapsedMs(startedAt),
+                    "OK");
+            RagLlmCallBudgetEnforcer.recordCompleted(operation);
+            return content.trim();
+        } catch (RuntimeException e) {
+            RagLlmCallTelemetry.logFailed(
+                    ctx,
+                    operation,
+                    config.chatProvider(),
+                    routedModel,
+                    inputChars,
+                    0,
+                    elapsedMs(startedAt),
+                    e.getClass().getSimpleName(),
+                    e.getMessage());
+            throw e;
         }
-        return content.trim();
+    }
+
+    private static long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000L;
     }
 
     public ResolvedLlmConfig effectiveConfig() {

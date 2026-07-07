@@ -1,4 +1,4 @@
-# ADR 0012 — Backend refactoring governance (layer naming, statics, incremental cleanup)
+# ADR 0012 - Backend refactoring governance (layer naming, statics, incremental cleanup)
 
 ## Status
 
@@ -12,7 +12,7 @@ The `rag-service` codebase mixes established hexagonal packages (`domain`, `appl
 
 1. **Single normative reference** for incrementally refactoring the backend: [`docs/backend/refactoring-governance.md`](../backend/refactoring-governance.md) (Action Plan). Individual refactor slices must cite it and scope one bounded context or anchor package unless an emergency exception is documented.
 2. **Pragmatic Clean Architecture / DDD**: domain types stay framework-free where rules already apply; application services orchestrate use cases and ports; infrastructure holds adapters; REST stays in `interfaces.rest`. No mandate to rewrite working pre-refactor areas in one pass; use **slices** with explicit return on investment.
-3. **Layer naming and policies** (including static methods, rich domain vs services, `package-info.java`, and FQCN avoidance) follow the tables in that document — not ad hoc renames.
+3. **Layer naming and policies** (including static methods, rich domain vs services, `package-info.java`, and FQCN avoidance) follow the tables in that document - not ad hoc renames.
 4. **Quality gates** remain anchored in [Gates](../quality/README.md): `FD-single-gate-command` (`./mvnw clean verify` from `rag-service/` for production-impacting work). Documentation-only phases do not replace that baseline.
 5. **Frozen documentation** listed in the governance doc **denylist** must not be edited as part of style governance work unless a separate ADR or change request authorizes it.
 

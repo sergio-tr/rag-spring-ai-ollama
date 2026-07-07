@@ -18,11 +18,16 @@ record OpenAiChatCompletionRequest(
         @JsonProperty("presence_penalty") Double presencePenalty,
         @JsonProperty("frequency_penalty") Double frequencyPenalty,
         Integer seed,
-        @JsonProperty("response_format") Object responseFormat) {
+        @JsonProperty("response_format") Object responseFormat,
+        /**
+         * LiteLLM/Ollama passthrough: disable thinking mode so assistant {@code content} is populated
+         * instead of consuming the token budget in hidden reasoning.
+         */
+        Boolean think) {
 
     /** Backward-compatible 3-field constructor for tests and direct HTTP client usage. */
     OpenAiChatCompletionRequest(String model, List<OpenAiChatMessageDto> messages, Double temperature) {
-        this(model, messages, temperature, null, null, null, null, null, null, null);
+        this(model, messages, temperature, null, null, null, null, null, null, null, null);
     }
 }
 

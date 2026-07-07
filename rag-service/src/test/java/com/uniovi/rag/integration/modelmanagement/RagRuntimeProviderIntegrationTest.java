@@ -25,7 +25,9 @@ import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
 import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.application.service.runtime.llm.RagChatModelRoutingService;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -56,7 +58,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/** Phase 2 — RAG runtime provider wiring without live HTTP. */
+/** Phase 2 - RAG runtime provider wiring without live HTTP. */
 @ExtendWith(MockitoExtension.class)
 class RagRuntimeProviderIntegrationTest {
 
@@ -69,6 +71,7 @@ class RagRuntimeProviderIntegrationTest {
     private final LlmProperties llmProperties = LlmModelCatalogTestSupport.openAiLiteLlmProperties();
     private final LlmModelCatalogService modelCatalog = new LlmModelCatalogService(llmProperties);
     private final ChatGenerationModelSelector selector = new ChatGenerationModelSelector(modelCatalog);
+    private final RagChatModelRoutingService chatModelRoutingService = new RagChatModelRoutingService(modelCatalog);
 
     private ResolvedLlmConfigResolver configResolver;
     private LlmClientResolver clientResolver;
@@ -78,7 +81,15 @@ class RagRuntimeProviderIntegrationTest {
     void setUp() {
         configResolver = new ResolvedLlmConfigResolver(configurationSource, llmProperties, objectMapper, modelCatalog);
         clientResolver = new LlmClientResolver(clientRegistry);
-        ragInvoker = new RagLlmChatInvoker(clientResolver, configResolver, objectMapper, selector, modelCatalog);
+        ragInvoker =
+                new RagLlmChatInvoker(
+                        clientResolver,
+                        configResolver,
+                        RagLlmChatInvokerTestSupport.passthroughFinalAnswerResolver(),
+                        objectMapper,
+                        selector,
+                        modelCatalog,
+                        chatModelRoutingService);
     }
 
     @AfterEach
@@ -92,7 +103,14 @@ class RagRuntimeProviderIntegrationTest {
         OrchestrationLlmConfigScope.bind(config);
         LlmClientResolver mockResolver = mock(LlmClientResolver.class);
         RagLlmChatInvoker invoker =
-                new RagLlmChatInvoker(mockResolver, configResolver, objectMapper, selector, modelCatalog);
+                new RagLlmChatInvoker(
+                        mockResolver,
+                        configResolver,
+                        RagLlmChatInvokerTestSupport.passthroughFinalAnswerResolver(),
+                        objectMapper,
+                        selector,
+                        modelCatalog,
+                        chatModelRoutingService);
         when(mockResolver.resolveChatClient(config)).thenReturn(openAiChatClient);
         when(openAiChatClient.chat(any())).thenReturn(LlmChatResponse.ofContent("openai"));
 
@@ -154,7 +172,14 @@ class RagRuntimeProviderIntegrationTest {
         OrchestrationLlmConfigScope.bind(config);
         LlmClientResolver mockResolver = mock(LlmClientResolver.class);
         RagLlmChatInvoker invoker =
-                new RagLlmChatInvoker(mockResolver, configResolver, objectMapper, selector, modelCatalog);
+                new RagLlmChatInvoker(
+                        mockResolver,
+                        configResolver,
+                        RagLlmChatInvokerTestSupport.passthroughFinalAnswerResolver(),
+                        objectMapper,
+                        selector,
+                        modelCatalog,
+                        chatModelRoutingService);
         when(mockResolver.resolveChatClient(config)).thenReturn(openAiChatClient);
         when(openAiChatClient.chat(any())).thenReturn(LlmChatResponse.ofContent("ok"));
 

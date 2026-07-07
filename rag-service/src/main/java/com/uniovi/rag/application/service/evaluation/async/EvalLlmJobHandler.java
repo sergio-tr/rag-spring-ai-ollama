@@ -72,7 +72,7 @@ class EvalLlmJobHandler implements LabJobHandler {
             UUID evaluationRunId = LabJobPayloads.evaluationRunId(task.getRequestPayload());
             if (evaluationRunId == null) {
                 throw new IllegalStateException(
-                        "This LLM evaluation job is missing its run reference — start a new LLM benchmark from the"
+                        "This LLM evaluation job is missing its run reference - start a new LLM benchmark from the"
                                 + " Lab evaluation page with a compatible workbook.");
             }
             Map<String, Object> payload = runSingleRun(task, mutation, evaluationRunId);
@@ -87,6 +87,36 @@ class EvalLlmJobHandler implements LabJobHandler {
         try {
             mutation.appendProgressLine(taskId, "Resolving typed dataset for LLM_JUDGE_QA…");
             TypedBenchmarkDataset typed = experimentalDatasetResolver.resolve(evaluationRunId);
+            if (typed instanceof TypedBenchmarkDataset.LlmRoleCases roleCases) {
+                int runTotal = roleCases.cases().size();
+                String modelId =
+                        evaluationRunRepository
+                                .findById(evaluationRunId)
+                                .map(EvaluationRunEntity::getLlmModelId)
+                                .orElse(null);
+                labJobProgressTracker.emitRunStarted(taskId, evaluationRunId, runTotal, null, modelId, null);
+                mutation.appendProgressLine(
+                        taskId, "Parsed dataset LLM_ROLE_EVAL: " + runTotal + " role cases");
+                LlmJudgeEvaluationBatchResult res =
+                        modelBaselineEvaluationOrchestrator.runLlmRoleEvalBaseline(
+                                evaluationRunId,
+                                roleCases,
+                                labJobProgressTracker.itemProgressCallback(
+                                        taskId,
+                                        evaluationRunId,
+                                        runTotal,
+                                        null,
+                                        modelId,
+                                        null,
+                                        () -> cancellationService.throwIfCancellationRequested(taskId)),
+                                () -> cancellationService.throwIfCancellationRequested(taskId));
+                canonicalPersistence.persistLlmJudgeBatch(evaluationRunId, res, BenchmarkKind.LLM_JUDGE_QA);
+                if (res.evaluationSummary() != null && Boolean.TRUE.equals(res.evaluationSummary().cancelled())) {
+                    mutation.appendProgressLine(taskId, "Cancellation requested by user");
+                    throw new LabJobCancelledException("Cancellation requested by user");
+                }
+                return EvaluationPayloadMapper.toAsyncPayload(res);
+            }
             if (!(typed instanceof TypedBenchmarkDataset.LlmQuestions llm)) {
                 throw new IllegalStateException("Resolver returned unexpected payload for LLM_JUDGE_QA");
             }

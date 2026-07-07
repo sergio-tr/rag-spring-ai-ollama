@@ -1,8 +1,11 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { clearSessionCookie } from "@/features/auth/lib/session-client";
 import { onApiUnauthorized } from "@/lib/api-client";
-import { useRouter } from "@/navigation";
+import { useLocale } from "next-intl";
+import { resetRegisteredClientSessionState } from "@/lib/client-session-reset";
+import { hardNavigate } from "@/lib/hard-navigation";
 import { useEffect } from "react";
 
 /**
@@ -10,16 +13,17 @@ import { useEffect } from "react";
  * Login/register use `skipCredentials` and do not trigger this path.
  */
 export function SessionExpiredBridge() {
-  const router = useRouter();
+  const locale = useLocale();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     return onApiUnauthorized(() => {
-      void clearSessionCookie().then(() => {
-        // next-intl router applies the active locale; do not pass /{locale}/… again (would yield /en/en/login).
-        router.replace("/login");
+      void clearSessionCookie().then(async () => {
+        await resetRegisteredClientSessionState({ queryClient });
+        hardNavigate("/login", locale);
       });
     });
-  }, [router]);
+  }, [locale, queryClient]);
 
   return null;
 }

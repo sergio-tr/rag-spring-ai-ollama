@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime.advisor;
 
 import com.uniovi.rag.application.service.evaluation.metrics.matching.ExpectedAnswerNormalizer;
 import com.uniovi.rag.application.service.runtime.factual.FactualAnswerVerifier;
+import com.uniovi.rag.application.service.runtime.PrefixOnlyAnswerGuard;
 import com.uniovi.rag.application.service.runtime.factual.FactualConstraintExtractor;
 import com.uniovi.rag.application.service.runtime.factual.FactualQuestionConstraints;
 import com.uniovi.rag.application.service.runtime.factual.FactualVerifierFailureReason;
@@ -53,6 +54,9 @@ public class AnswerQualityAdvisor {
         String answer = answerText != null ? answerText.trim() : "";
         if (answer.isBlank()) {
             return AnswerQualityAssessment.rejected(List.of("empty_answer"), false);
+        }
+        if (PrefixOnlyAnswerGuard.isPrefixOnlyFragment(answer)) {
+            return AnswerQualityAssessment.rejected(List.of("prefix_only_answer"), false);
         }
         String context = resolveContextText(ctx);
         String folded = ExpectedAnswerNormalizer.normalizedFold(answer);

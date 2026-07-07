@@ -7,7 +7,7 @@ public final class RagBenchmarkHumanReasons {
 
     private RagBenchmarkHumanReasons() {}
 
-    /** Human text for terminal SKIPPED/FAILED rows — never implies in-flight index preparation. */
+    /** Human text for terminal SKIPPED/FAILED rows - never implies in-flight index preparation. */
     public static String terminalSkipHumanize(String codeOrMessage) {
         if (codeOrMessage == null || codeOrMessage.isBlank()) {
             return "This benchmark item could not be run.";

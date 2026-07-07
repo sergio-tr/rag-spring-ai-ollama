@@ -46,9 +46,9 @@ class LocalEvaluationDatasetStorageAdapterTest {
     }
 
     @Test
-    void sanitizeRelativeKey_defaultsWhenNull() throws Exception {
+    void sanitizeRelativeKey_defaultsWhenNull(@TempDir Path root) throws Exception {
         LocalEvaluationDatasetStorageAdapter adapter =
-                new LocalEvaluationDatasetStorageAdapter("", 1024 * 1024);
+                new LocalEvaluationDatasetStorageAdapter(root.toString(), 1024 * 1024);
         byte[] one = new byte[] {9};
         EvaluationDatasetStorePort.StoredDataset stored =
                 adapter.store(new ByteArrayInputStream(one), 1, null);

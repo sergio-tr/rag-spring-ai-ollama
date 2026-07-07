@@ -39,7 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RuntimeTraceRegressionSuiteDefinitionExportServiceArchitectureTest {
 
     /*
-     * FD-def-zip-svc-arch-inventory — @ArchTest members:
+     * FD-def-zip-svc-arch-inventory - @ArchTest members:
      *   exportPackageDoesNotDependOnInfrastructurePersistence
      *   exportServiceDoesNotDependOnFd28Types
      *   exportServiceDoesNotDependOnOrchestrator

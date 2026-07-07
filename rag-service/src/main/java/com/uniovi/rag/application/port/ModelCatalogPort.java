@@ -3,12 +3,18 @@ package com.uniovi.rag.application.port;
 import java.util.Set;
 
 /**
- * Governance view of which LLM model names may be selected at runtime (allowlist rows).
+ * Governance view of explicitly blocked model names in {@code allowed_model}.
+ * Models are allowed by default when present in the merged catalog unless listed here.
  */
 public interface ModelCatalogPort {
 
     /**
-     * LLM names marked in_allowlist in {@code allowed_model}. Empty means no extra restriction on overrides.
+     * LLM names marked {@code in_allowlist=false} in {@code allowed_model}.
      */
-    Set<String> allowedLlmNamesInGovernance();
+    Set<String> blockedLlmNamesInGovernance();
+
+    /**
+     * Embedding names marked {@code in_allowlist=false} in {@code allowed_model}.
+     */
+    Set<String> blockedEmbeddingNamesInGovernance();
 }

@@ -31,7 +31,7 @@ public class RetrievalRequestBuilder {
     public RetrievalRequest build(ExecutionContext ctx, QueryPlan plan) {
         RagConfig rag = ctx.resolved().toRagConfig();
         RetrievalMode mode = resolveMode(rag);
-        int topK = rag.topK() > 0 ? rag.topK() : 10;
+        int topK = rag.topK() > 0 ? rag.topK() : 8;
         int denseFetchLimit = RetrievalPolicy.denseFetchLimit(rag.topK());
         int fusionOutputCap = 2 * topK;
         int postFusionCap = topK;

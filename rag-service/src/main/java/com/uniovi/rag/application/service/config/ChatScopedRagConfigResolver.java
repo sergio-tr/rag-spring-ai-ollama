@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.config;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
+import com.uniovi.rag.domain.config.RetrievalParameterPolicySupport;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
@@ -20,7 +21,7 @@ import org.springframework.stereotype.Service;
  *
  * <p><b>Conversation terminal merge order</b> (each step overwrites keys on collision):
  * linked conversation {@code RagConfigurationEntity} values → preset values (or deterministic chat default preset)
- * → {@code runtime_override_jsonb} (diff keys; do not persist {@code llmModel} / {@code classifierModelId} here — use
+ * → {@code runtime_override_jsonb} (diff keys; do not persist {@code llmModel} / {@code classifierModelId} here - use
  * conversation columns). When stale JSON still contains those keys, column values applied afterward win.
  * → {@code conversations.llm_model} column → {@code conversations.classifier_model_id} column.
  * Request-scoped JSON (e.g. per-message {@code llmModel}) is merged later in {@link com.uniovi.rag.domain.config.RagConfigurationMerge}
@@ -120,12 +121,12 @@ public class ChatScopedRagConfigResolver {
             merged.putAll(c.getConfig().getValues());
         }
         if (c.getPreset() != null && c.getPreset().getValues() != null) {
-            merged.putAll(c.getPreset().getValues());
+            RetrievalParameterPolicySupport.mergePresetLayer(merged, c.getPreset().getValues());
         } else {
             chatPresetDefaults
                     .loadDeterministicDefaultPreset()
                     .filter(p -> p.getValues() != null && !p.getValues().isEmpty())
-                    .ifPresent(p -> merged.putAll(p.getValues()));
+                    .ifPresent(p -> RetrievalParameterPolicySupport.mergePresetLayer(merged, p.getValues()));
         }
         if (c.getRuntimeOverride() != null && !c.getRuntimeOverride().isEmpty()) {
             merged.putAll(c.getRuntimeOverride());

@@ -70,7 +70,7 @@ public class RagQueryConfiguration {
     @Bean
     public QuestionAnswerAdvisor questionAnswerAdvisor(
             PgVectorStore vectorStore,
-            @Value("${spring.ai.ollama.top-k:10}") int topK,
+            @Value("${spring.ai.ollama.top-k:8}") int topK,
             @Value("${spring.ai.ollama.similarity-threshold:0.7}") double similarityThreshold
     ) {
         return QuestionAnswerAdvisor.builder(vectorStore)
@@ -158,7 +158,7 @@ public class RagQueryConfiguration {
 
     /**
      * Shared {@link RestTemplate} for classifier HTTP calls. Uses {@link SimpleClientHttpRequestFactory}
-     * (HTTP/1.1) so uvicorn receives plain POST JSON — not JDK HttpClient HTTP/2 upgrade attempts.
+     * (HTTP/1.1) so uvicorn receives plain POST JSON - not JDK HttpClient HTTP/2 upgrade attempts.
      * Micrometer tracing still applies via {@link RestTemplateBuilder}.
      */
     @Bean(name = "classifierRestTemplate")
@@ -199,6 +199,7 @@ public class RagQueryConfiguration {
     @Bean
     public QueryAnalyser queryAnalyser(
             ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor,
+            ConfigurablePromptResolver promptResolver,
             RagImplementationProperties implProps,
             @Autowired(required = false) ObservabilitySupport observability
     ) {
@@ -209,7 +210,7 @@ public class RagQueryConfiguration {
         } else if (secondaryLlmExecutor == null) {
             raw = new NoOpQueryAnalyser();
         } else {
-            raw = new MinuteNERQueryAnalyser(secondaryLlmExecutor);
+            raw = new MinuteNERQueryAnalyser(secondaryLlmExecutor, promptResolver);
         }
         if (observability != null) {
             return new TracedQueryAnalyser(raw, observability);

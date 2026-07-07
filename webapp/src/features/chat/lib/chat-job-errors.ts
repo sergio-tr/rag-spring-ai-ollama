@@ -15,6 +15,17 @@ export const KNOWN_CHAT_JOB_FAILURE_CODES = [
   "REINDEX_IN_PROGRESS",
   "REINDEX_FAILED",
   "MODEL_UNAVAILABLE",
+  "MODEL_PROVIDER_UNAVAILABLE",
+  "MODEL_UNREACHABLE",
+  "MODEL_NOT_FOUND",
+  "MODEL_AUTH_FAILED",
+  "MODEL_TIMEOUT",
+  "MODEL_CONFIG_INVALID",
+  "EMBEDDING_MODEL_UNAVAILABLE",
+  "CHAT_MODEL_UNAVAILABLE",
+  "JUDGE_MODEL_UNAVAILABLE",
+  "SECONDARY_MODEL_UNAVAILABLE",
+  "MODEL_DIMENSION_MISMATCH",
   "CLASSIFIER_UNAVAILABLE",
   "DATE_MISMATCH",
   "NO_EXACT_ACTA_DATE",
@@ -55,7 +66,7 @@ export function chatFailureHintForCode(
   if (!normalized) {
     return null;
   }
-  if (normalized === "LLM_UNAVAILABLE") {
+  if (normalized === "LLM_UNAVAILABLE" || normalized === "MODEL_PROVIDER_UNAVAILABLE" || normalized === "MODEL_UNREACHABLE") {
     const key =
       provider === "OPENAI_COMPATIBLE"
         ? "chatJobFailure_LLM_UNAVAILABLE_OPENAI"
@@ -64,7 +75,7 @@ export function chatFailureHintForCode(
           : "chatJobFailure_LLM_UNAVAILABLE";
     return t(key);
   }
-  if (normalized === "MODEL_UNAVAILABLE") {
+  if (normalized === "MODEL_UNAVAILABLE" || normalized === "MODEL_NOT_FOUND" || normalized === "CHAT_MODEL_UNAVAILABLE") {
     const key =
       provider === "OPENAI_COMPATIBLE"
         ? "chatJobFailure_MODEL_UNAVAILABLE_OPENAI"

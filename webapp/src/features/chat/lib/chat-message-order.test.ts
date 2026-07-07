@@ -80,6 +80,10 @@ describe("messageSeq", () => {
   it("uses finite seq when present", () => {
     expect(messageSeq(msg("x", "USER", "c", 3), 7)).toBe(3);
   });
+
+  it("falls back when seq is not finite", () => {
+    expect(messageSeq({ ...msg("x", "USER", "c"), seq: Number.NaN }, 4)).toBe(4);
+  });
 });
 
 describe("sortMessagesBySeq tie-breakers", () => {
@@ -94,6 +98,14 @@ describe("sortMessagesBySeq tie-breakers", () => {
   it("falls back to id when seq and createdAt tie", () => {
     const input = [
       msg("b", "USER", "b", 1, "2025-01-01T00:00:00.000Z"),
+      msg("a", "ASSISTANT", "a", 1, "2025-01-01T00:00:00.000Z"),
+    ];
+    expect(sortMessagesBySeq(input).map((m) => m.id)).toEqual(["a", "b"]);
+  });
+
+  it("orders by createdAt when seq ties and timestamps differ", () => {
+    const input = [
+      msg("b", "USER", "b", 1, "2025-01-02T00:00:00.000Z"),
       msg("a", "ASSISTANT", "a", 1, "2025-01-01T00:00:00.000Z"),
     ];
     expect(sortMessagesBySeq(input).map((m) => m.id)).toEqual(["a", "b"]);

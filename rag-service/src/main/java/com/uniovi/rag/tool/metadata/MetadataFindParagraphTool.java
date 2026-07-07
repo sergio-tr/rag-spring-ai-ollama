@@ -114,7 +114,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         String answer = generateEnhancedParagraphAnswer(query, rankedResults, clusters);
         log().info("Generated find paragraph answer for query: {} with {} paragraphs in {} clusters", 
                    query, results.size(), clusters.size());
-        
+        publishMatchedMinutesContext(relevantMinutes, true);
         return ToolResult.from(formatResponse(answer, query), getClass());
     }
 

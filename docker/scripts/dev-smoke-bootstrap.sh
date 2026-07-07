@@ -253,7 +253,7 @@ main() {
   wait_for_url "${BASE_URL%/}/en/login" "frontend login page (${BASE_URL})"
   verify_login_api
   check_no_class_def_errors
-  echo "dev-smoke-bootstrap: PASS — stack ready for smoke / Playwright"
+  echo "dev-smoke-bootstrap: PASS - stack ready for smoke / Playwright"
   echo "Next: cd webapp && PLAYWRIGHT_BASE_URL=${BASE_URL} npm run test:e2e"
 }
 

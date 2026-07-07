@@ -23,7 +23,7 @@ type DeleteAllProjectDocumentsDialogProps = Readonly<{
   projectName: string | undefined;
 }>;
 
-/** Confirmation phrase — intentionally ASCII so EN/ES share one gate (operators paste reliably). */
+/** Confirmation phrase - intentionally ASCII so EN/ES share one gate (operators paste reliably). */
 export const DELETE_ALL_PROJECT_DOCUMENTS_PHRASE = "DELETE ALL DOCUMENTS";
 
 export function DeleteAllProjectDocumentsDialog({
@@ -52,7 +52,7 @@ export function DeleteAllProjectDocumentsDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("deleteAllTitle")}</DialogTitle>
-          <DialogDescription>{t("deleteAllDescription", { name: projectName ?? "—" })}</DialogDescription>
+          <DialogDescription>{t("deleteAllDescription", { name: projectName ?? "-" })}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           <Label htmlFor="delete-all-phrase">{t("deleteAllPhraseLabel")}</Label>

@@ -86,7 +86,7 @@ describe("AppContextBreadcrumb", () => {
         <AppContextBreadcrumb />
       </IntlTestProvider>,
     );
-    expect(screen.getByText(/assistant defaults/i)).toBeInTheDocument();
+    expect(screen.getByText(/Assistant Configuration/i)).toBeInTheDocument();
   });
 
   it("exposes breadcrumb nav landmark for assistive tech", () => {

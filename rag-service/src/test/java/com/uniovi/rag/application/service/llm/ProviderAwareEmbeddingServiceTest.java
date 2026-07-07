@@ -18,6 +18,7 @@ import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -86,10 +87,21 @@ class ProviderAwareEmbeddingServiceTest {
     }
 
     @Test
-    void effectiveEmbeddingModelIdUsesLiteLlmModelForOpenAiCompatible() {
+    void effectiveEmbeddingModelIdUsesLiteLlmModelForOpenAiCompatibleWhenNotInCatalog() {
         when(configResolver.resolve(null, null, null)).thenReturn(openAiConfig());
+        when(embeddingModelCatalogResolver.resolveIfAvailable(LlmProvider.OPENAI_COMPATIBLE, "mxbai-embed-large:latest"))
+                .thenReturn(Optional.empty());
 
         assertEquals("qwen3-embedding:8b", service.effectiveEmbeddingModelId("mxbai-embed-large:latest"));
+    }
+
+    @Test
+    void effectiveEmbeddingModelIdUsesCatalogModelForOpenAiCompatibleLabEmbedding() {
+        when(configResolver.resolve(null, null, null)).thenReturn(openAiConfig());
+        when(embeddingModelCatalogResolver.resolveIfAvailable(LlmProvider.OPENAI_COMPATIBLE, "bge-m3"))
+                .thenReturn(Optional.of("bge-m3"));
+
+        assertEquals("bge-m3", service.effectiveEmbeddingModelId("bge-m3"));
     }
 
     @Test

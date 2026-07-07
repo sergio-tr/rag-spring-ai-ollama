@@ -50,7 +50,7 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_withValidJsonFromLlm_returnsParsedObject() {
-        when(secondaryLlmExecutor.complete(eq("ner"), any(), any()))
+        when(secondaryLlmExecutor.complete(eq("ner-extraction"), any(), any()))
                 .thenReturn("{\"date\":[\"2025-01-15\"],\"answerType\":\"person\"}");
 
         JSONObject result = analyser.analyse("¿Quién presidió el 15 de enero de 2025?");
@@ -61,7 +61,7 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_llmThrows_returnsFallback() {
-        when(secondaryLlmExecutor.complete(eq("ner"), any(), any())).thenThrow(new RuntimeException("error"));
+        when(secondaryLlmExecutor.complete(eq("ner-extraction"), any(), any())).thenThrow(new RuntimeException("error"));
 
         JSONObject result = analyser.analyse("query");
 
@@ -70,7 +70,7 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_normalizesExtractedEntitiesAndInfersContext() {
-        when(secondaryLlmExecutor.complete(eq("ner"), any(), any()))
+        when(secondaryLlmExecutor.complete(eq("ner-extraction"), any(), any()))
                 .thenReturn(
                         """
                 ```json
@@ -100,7 +100,7 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_withNonJsonResponse_fallsBackAndKeepsDefaultShape() {
-        when(secondaryLlmExecutor.complete(eq("ner"), any(), any())).thenReturn("No JSON available");
+        when(secondaryLlmExecutor.complete(eq("ner-extraction"), any(), any())).thenReturn("No JSON available");
 
         JSONObject result = analyser.analyse("Who attended in march?");
 
@@ -112,7 +112,7 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_extractsJsonSubstring_whenResponseHasNoiseAroundObject() {
-        when(secondaryLlmExecutor.complete(eq("ner"), any(), any()))
+        when(secondaryLlmExecutor.complete(eq("ner-extraction"), any(), any()))
                 .thenReturn(
                         """
                 Here you go:
@@ -131,7 +131,7 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_duplicateKeys_inResponse_usesJacksonFallback_lastValueWins() {
-        when(secondaryLlmExecutor.complete(eq("ner"), any(), any()))
+        when(secondaryLlmExecutor.complete(eq("ner-extraction"), any(), any()))
                 .thenReturn(
                         """
                 {
@@ -149,7 +149,7 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_validateAndNormalize_fillsMissingFields_and_coercesStringFields() {
-        when(secondaryLlmExecutor.complete(eq("ner"), any(), any()))
+        when(secondaryLlmExecutor.complete(eq("ner-extraction"), any(), any()))
                 .thenReturn(
                         """
                 {
@@ -172,7 +172,7 @@ class MinuteNERQueryAnalyserTest {
 
     @Test
     void analyse_dateNormalization_supportsMultipleNumericFormats() {
-        when(secondaryLlmExecutor.complete(eq("ner"), any(), any()))
+        when(secondaryLlmExecutor.complete(eq("ner-extraction"), any(), any()))
                 .thenReturn(
                         """
                 {

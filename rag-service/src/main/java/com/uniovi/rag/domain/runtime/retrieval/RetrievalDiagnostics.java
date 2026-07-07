@@ -30,7 +30,17 @@ public record RetrievalDiagnostics(
         int dedupedCandidateCount,
         Optional<SparseRetrievalTelemetry> sparseTelemetry,
         Optional<FusionTelemetry> fusionTelemetry,
-        Optional<MetadataFilterTelemetry> metadataFilterTelemetry) {
+        Optional<MetadataFilterTelemetry> metadataFilterTelemetry,
+        Optional<Integer> retrievalEffectiveTopK,
+        Optional<Double> retrievalEffectiveSimilarityThreshold,
+        Optional<Integer> retrievalDenseFetchLimit,
+        Optional<String> retrievalContextReductionReason,
+        /**
+         * Resolved {@code retrievalOverrideMode} (preset/project_settings/assistant_defaults/custom) that supplied
+         * {@link #retrievalEffectiveTopK()} / {@link #retrievalEffectiveSimilarityThreshold()} for this turn, when
+         * known (see phase-4-4 effective config trace / {@link RetrievalSourceResolutionScope}).
+         */
+        Optional<String> retrievalSourceMode) {
 
     public RetrievalDiagnostics {
         fusionMode = Objects.requireNonNullElseGet(fusionMode, Optional::empty);
@@ -43,6 +53,13 @@ public record RetrievalDiagnostics(
         sparseTelemetry = Objects.requireNonNullElseGet(sparseTelemetry, Optional::empty);
         fusionTelemetry = Objects.requireNonNullElseGet(fusionTelemetry, Optional::empty);
         metadataFilterTelemetry = Objects.requireNonNullElseGet(metadataFilterTelemetry, Optional::empty);
+        retrievalEffectiveTopK = Objects.requireNonNullElseGet(retrievalEffectiveTopK, Optional::empty);
+        retrievalEffectiveSimilarityThreshold =
+                Objects.requireNonNullElseGet(retrievalEffectiveSimilarityThreshold, Optional::empty);
+        retrievalDenseFetchLimit = Objects.requireNonNullElseGet(retrievalDenseFetchLimit, Optional::empty);
+        retrievalContextReductionReason =
+                Objects.requireNonNullElseGet(retrievalContextReductionReason, Optional::empty);
+        retrievalSourceMode = Objects.requireNonNullElseGet(retrievalSourceMode, Optional::empty);
     }
 
     public RetrievalDiagnostics(
@@ -87,6 +104,66 @@ public record RetrievalDiagnostics(
                 compressionCharsAfter,
                 rerankOrderChanged,
                 dedupedCandidateCount,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty());
+    }
+
+    public RetrievalDiagnostics(
+            RetrievalMode retrievalMode,
+            Optional<RetrievalFusionMode> fusionMode,
+            String snapshotIdsJoined,
+            int denseCandidateCount,
+            int sparseCandidateCount,
+            int afterFusionCount,
+            int beforePostRetrievalCount,
+            int afterRerankCount,
+            int afterFilterCount,
+            int afterCompressionCount,
+            int protectedCandidateCount,
+            int droppedCandidateCount,
+            boolean rerankApplied,
+            List<String> beforeRerankTopCandidateIds,
+            List<String> afterRerankTopCandidateIds,
+            Optional<String> rerankScoreSummary,
+            int compressionCharsBefore,
+            int compressionCharsAfter,
+            boolean rerankOrderChanged,
+            int dedupedCandidateCount,
+            Optional<SparseRetrievalTelemetry> sparseTelemetry,
+            Optional<FusionTelemetry> fusionTelemetry,
+            Optional<MetadataFilterTelemetry> metadataFilterTelemetry) {
+        this(
+                retrievalMode,
+                fusionMode,
+                snapshotIdsJoined,
+                denseCandidateCount,
+                sparseCandidateCount,
+                afterFusionCount,
+                beforePostRetrievalCount,
+                afterRerankCount,
+                afterFilterCount,
+                afterCompressionCount,
+                protectedCandidateCount,
+                droppedCandidateCount,
+                rerankApplied,
+                beforeRerankTopCandidateIds,
+                afterRerankTopCandidateIds,
+                rerankScoreSummary,
+                compressionCharsBefore,
+                compressionCharsAfter,
+                rerankOrderChanged,
+                dedupedCandidateCount,
+                sparseTelemetry,
+                fusionTelemetry,
+                metadataFilterTelemetry,
+                Optional.empty(),
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty());

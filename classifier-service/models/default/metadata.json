@@ -1,0 +1,41 @@
+{
+  "name": "default",
+  "modelType": "sklearn",
+  "variant": "C3",
+  "createdAt": "2026-07-02T19:05:29.043237+00:00",
+  "train_dataset": "basic_dataset_qa_clasificacion_final.xlsx",
+  "primary_eval_dataset": "evaluation_dataset.xlsx",
+  "primary_eval": {
+    "dataset": "evaluation_dataset.xlsx",
+    "gate": true,
+    "metrics": {
+      "accuracy": 0.9666666666666667,
+      "macro_avg_f1": 0.9663299663299663,
+      "macro_avg_precision": 0.9722222222222223,
+      "macro_avg_recall": 0.9666666666666667,
+      "rows": 60,
+      "correct": 58
+    }
+  },
+  "synthetic_test": {
+    "dataset": "classifier_test_balanced.csv",
+    "gate": false,
+    "report_only": true,
+    "metrics": {
+      "accuracy": 0.8875,
+      "macro_avg_f1": 0.8867093934044399,
+      "rows": 240,
+      "correct": 213
+    }
+  },
+  "gold_subset": {
+    "dataset": "gold-subset-v1.json",
+    "gate": false,
+    "probe": true,
+    "metrics": {
+      "accuracy": 0.9444444444444444,
+      "rows": 18,
+      "correct": 17
+    }
+  }
+}

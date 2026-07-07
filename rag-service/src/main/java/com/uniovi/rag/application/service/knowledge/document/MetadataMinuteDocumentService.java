@@ -172,7 +172,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
     public static final String PROMPT_SUMMARY = """
         Provide a highly detailed summary of the entire meeting minutes content, following the indicated structure.
-        Do not include introductions or headers — only the detailed summary.
+        Do not include introductions or headers - only the detailed summary.
         """;
 
     public static final String SYSTEM_PROMPT_LINE_DATA = """
@@ -564,7 +564,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                     topics != null ? topics.size() : 0);
         }
 
-        // Log counts and presence flags only — avoid logging upload names or extracted document text.
+        // Log counts and presence flags only - avoid logging upload names or extracted document text.
         log().info(
                 LOG_EXTRACTED_MINUTE_FIELDS,
                 date != null,

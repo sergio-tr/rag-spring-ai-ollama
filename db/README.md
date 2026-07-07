@@ -37,9 +37,9 @@ Use `--force` to overwrite. The template is **db/.env.example**.
 
 If Postgres or Flyway logs show **`extension "vector" is not available`** or **`vector.control: No such file or directory`**, the **running server** does not include pgvector. Typical causes:
 
-1. **Stale image or volume**: the `postgres` container is still an old build or a non-compose Postgres. Run **`cd docker && docker compose … build --no-cache postgres`** then **`up -d postgres`**. If the data directory was created with a non-pgvector image, you may need a **new volume** (`docker compose … down -v` — **destructive**).
+1. **Stale image or volume**: the `postgres` container is still an old build or a non-compose Postgres. Run **`cd docker && docker compose … build --no-cache postgres`** then **`up -d postgres`**. If the data directory was created with a non-pgvector image, you may need a **new volume** (`docker compose … down -v` - **destructive**).
 2. **`SPRING_DATASOURCE_URL`** (or host port mapping) targets **another** PostgreSQL on your machine (local install, other compose project) without pgvector. Point the backend at the compose **`postgres`** service or install pgvector there.
-3. **Custom / manual `docker build`** of **`db/Dockerfile`** with a non-pgvector **`POSTGRES_BASE_IMAGE`** — use **`pgvector/pgvector:0.8.2-pg16-bookworm`** or install pgvector per the [pgvector install docs](https://github.com/pgvector/pgvector#installation).
+3. **Custom / manual `docker build`** of **`db/Dockerfile`** with a non-pgvector **`POSTGRES_BASE_IMAGE`** - use **`pgvector/pgvector:0.8.2-pg16-bookworm`** or install pgvector per the [pgvector install docs](https://github.com/pgvector/pgvector#installation).
 
 ## Using Docker Compose
 
@@ -72,7 +72,7 @@ Then in the backend (rag-service) use: `SPRING_DATASOURCE_URL=jdbc:postgresql://
 
 ## Flyway migrations (rag-service)
 
-The **authoritative application schema** is applied by **Flyway** from `rag-service/src/main/resources/db/migration/` when the Spring Boot app starts. **`db/init` does not own application tables** — only extensions and the monitoring role (see **00-extensions.sql** and **01-monitor-user.sh**).
+The **authoritative application schema** is applied by **Flyway** from `rag-service/src/main/resources/db/migration/` when the Spring Boot app starts. **`db/init` does not own application tables** - only extensions and the monitoring role (see **00-extensions.sql** and **01-monitor-user.sh**).
 
 **Extensions:** `V1__init_schema.sql` begins with `CREATE EXTENSION IF NOT EXISTS` for **`vector`**, **`hstore`**, and **`uuid-ossp`** so Flyway succeeds on databases that were **not** initialized via `db/init` (e.g. plain `CREATE DATABASE`). If your Flyway history already contains an applied **V1** from an older checksum, run **`./mvnw flyway:repair -pl rag-service`** (or the equivalent repair for your environment) after upgrading the repo.
 

@@ -11,6 +11,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -181,7 +182,7 @@ public final class StructuredMinuteMetadataSupport {
 
     /**
      * Returns {@code dd/MM/yyyy} only when the source date can be parsed reliably.
-     * Never invents a date — returns empty when conversion is not possible.
+     * Never invents a date - returns empty when conversion is not possible.
      */
     public static String resolveCanonicalSlashDate(Minute minute) {
         if (minute == null) {
@@ -441,7 +442,86 @@ public final class StructuredMinuteMetadataSupport {
             return formatCompoundMonthTopicAttendeeFilterAnswer(minutes, topic);
         }
 
+        if (isPlaceListQuery(q)) {
+            return formatPlaceListAnswer(query, minutes);
+        }
+
         return Optional.empty();
+    }
+
+    /** Corpus-wide place enumeration - metadata place field, not topic filter. */
+    public static boolean isPlaceListQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        return q.contains("dime los lugares")
+                || q.contains("lugares donde se han realizado")
+                || q.contains("lugares donde se celebr")
+                || q.contains("dónde se celebraron")
+                || q.contains("donde se celebraron");
+    }
+
+    public static Optional<String> formatPlaceListAnswer(String query, List<Minute> minutes) {
+        if (minutes == null || minutes.isEmpty()) {
+            return Optional.empty();
+        }
+        LinkedHashSet<String> places = new LinkedHashSet<>();
+        for (Minute minute : minutes) {
+            if (minute != null && minute.place() != null && !minute.place().isBlank()) {
+                places.add(minute.place().trim());
+            }
+        }
+        if (places.isEmpty()) {
+            return Optional.empty();
+        }
+        boolean spanish = querySeemsSpanish(query);
+        String list = joinNaturalLanguageList(new ArrayList<>(places), spanish);
+        if (spanish) {
+            if (places.size() == 1) {
+                return Optional.of("El lugar donde se han realizado las actas es " + list + ".");
+            }
+            return Optional.of("Los lugares donde se han realizado las actas son: " + list + ".");
+        }
+        if (places.size() == 1) {
+            return Optional.of("The meeting place is " + list + ".");
+        }
+        return Optional.of("The meeting places are: " + list + ".");
+    }
+
+    public static String formatExactAttendeeFallbackAnswer(String query, int threshold, List<Minute> exact) {
+        boolean spanish = querySeemsSpanish(query);
+        List<String> items =
+                exact.stream()
+                        .map(
+                                minute -> {
+                                    String source = formatSourceReference(minute);
+                                    String dateSlash = formatDateSlash(minute);
+                                    if (source.isBlank()) {
+                                        return dateSlash;
+                                    }
+                                    return source + (dateSlash.isBlank() ? "" : " (" + dateSlash + ")");
+                                })
+                        .filter(s -> s != null && !s.isBlank())
+                        .distinct()
+                        .toList();
+        String list = joinNaturalLanguageList(items, spanish);
+        if (spanish) {
+            return "No hay actas con más de "
+                    + threshold
+                    + " asistentes; las que tienen exactamente "
+                    + threshold
+                    + " son "
+                    + list
+                    + ".";
+        }
+        return "No minutes have more than "
+                + threshold
+                + " attendees; those with exactly "
+                + threshold
+                + " are "
+                + list
+                + ".";
     }
 
     /**
@@ -695,7 +775,7 @@ public final class StructuredMinuteMetadataSupport {
     }
 
     /**
-     * Deterministic answer for “which actas start at HH:mm?” — count, ACTA ids, slash dates, sources.
+     * Deterministic answer for “which actas start at HH:mm?” - count, ACTA ids, slash dates, sources.
      */
     public static String formatStartTimeListAnswer(String query, List<Minute> matching, String targetTime) {
         boolean spanish = querySeemsSpanish(query);
@@ -749,7 +829,7 @@ public final class StructuredMinuteMetadataSupport {
     }
 
     /**
-     * Deterministic answer for “which acta dates ended after HH:mm?” — slash dates and ACTA labels.
+     * Deterministic answer for “which acta dates ended after HH:mm?” - slash dates and ACTA labels.
      */
     public static String formatEndTimeAfterListAnswer(
             String query, List<Minute> matching, String thresholdTime) {
@@ -778,7 +858,7 @@ public final class StructuredMinuteMetadataSupport {
     }
 
   /**
-   * FD-CD-03: year-only COUNT_DOCUMENTS negative — corpus-scoped wording (no generic date template).
+   * FD-CD-03: year-only COUNT_DOCUMENTS negative - corpus-scoped wording (no generic date template).
    */
   public static String formatYearOnlyActaCorpusAbsence(String year) {
       return "No existen actas correspondientes al año " + year + " en el corpus.";
@@ -802,7 +882,7 @@ public final class StructuredMinuteMetadataSupport {
   }
 
     /**
-     * Deterministic answer for “how many meetings in year Y?” — count, ACTA ids, slash dates, sources.
+     * Deterministic answer for “how many meetings in year Y?” - count, ACTA ids, slash dates, sources.
      */
     public static String formatYearMeetingCountAnswer(String query, List<Minute> matching, String year) {
         boolean spanish = querySeemsSpanish(query);
@@ -852,7 +932,7 @@ public final class StructuredMinuteMetadataSupport {
     }
 
     /**
-     * Deterministic answer for “how many actas mention topic X?” — canonical labels and slash dates.
+     * Deterministic answer for “how many actas mention topic X?” - canonical labels and slash dates.
      */
     public static String formatTopicMeetingCountAnswer(String query, List<Minute> matching, String topic) {
         boolean spanish = querySeemsSpanish(query);
@@ -1359,7 +1439,7 @@ public final class StructuredMinuteMetadataSupport {
     }
 
     /**
-     * Whether an acta substantively discusses a topic (agenda item, topics, decisions) — not lexical
+     * Whether an acta substantively discusses a topic (agenda item, topics, decisions) - not lexical
      * chunk frequency.
      */
     public static boolean minuteDiscussesTopicForOccurrence(Minute minute, String topic) {

@@ -4,16 +4,16 @@ Policy guard for Docker Compose files (incremental migration helper).
 
 Rules (all are errors; exit code 1 if any violation):
 
-1. **image:** — forbidden (use local build + Dockerfile per repo policy).
-2. **build:** — if present as a mapping, **context** is required. If **dockerfile** is missing,
+1. **image:** - forbidden (use local build + Dockerfile per repo policy).
+2. **build:** - if present as a mapping, **context** is required. If **dockerfile** is missing,
    only the short form ``build: <path>`` (string) is accepted as an implicit Dockerfile at context root.
-3. **environment** — values must be parameterized with ``${...}`` or be a safe literal
+3. **environment** - values must be parameterized with ``${...}`` or be a safe literal
    (booleans, small non-negative integers, empty).
-4. **ports** — host side of each port mapping must reference ``${`` (no fixed host port literals).
-5. **expose** — each entry must not be a bare numeric port (must use indirection in future; flagged).
-6. **healthcheck** — ``interval``, ``timeout``, ``retries``, ``start_period`` must use ``${`` or
+4. **ports** - host side of each port mapping must reference ``${`` (no fixed host port literals).
+5. **expose** - each entry must not be a bare numeric port (must use indirection in future; flagged).
+6. **healthcheck** - ``interval``, ``timeout``, ``retries``, ``start_period`` must use ``${`` or
    be explicitly listed in HEALTHCHECK_DURATION_ALLOWLIST for grandfathering during migration.
-7. **healthcheck.test** — warn-level entries for obvious literal URLs/IPs (informational in same output).
+7. **healthcheck.test** - warn-level entries for obvious literal URLs/IPs (informational in same output).
 
 This script analyzes **each YAML file independently** (not merged stacks). Override-only fragments
 without ``image``/``build`` are expected for many services.
@@ -57,7 +57,7 @@ SAFE_ENV_STRINGS = frozenset(
     }
 )
 
-# Durations seen in healthchecks — allowed until migrated to env (explicit grandfathering).
+# Durations seen in healthchecks - allowed until migrated to env (explicit grandfathering).
 HEALTHCHECK_DURATION_ALLOWLIST = frozenset(
     {
         "5s",
@@ -97,7 +97,7 @@ def check_env_value(file: str, svc: str, key: str, raw: object) -> list[dict]:
         return out
     # Allow simple semver-like or model ids without spaces
     if re.fullmatch(r"[A-Za-z0-9._:\-/+]+", s) and len(s) < 120:
-        # Likely still a literal (model name, profile list) — flag
+        # Likely still a literal (model name, profile list) - flag
         pass
     out.append(
         {
@@ -163,10 +163,10 @@ def check_ports(file: str, svc: str, ports) -> list[dict]:
         parts = p.split(":")
         host = parts[0]
         if host == "":
-            continue  # ":9300" style — rare
+            continue  # ":9300" style - rare
         if is_parameterized(host):
             continue
-        # IPv6 in brackets — skip complex
+        # IPv6 in brackets - skip complex
         if host.startswith("["):
             continue
         if re.fullmatch(r"\d+", host):
@@ -358,7 +358,7 @@ def main() -> int:
             violations.append(
                 {
                     "file": path.name,
-                    "service": "—",
+                    "service": "-",
                     "rule": "yaml_error",
                     "detail": str(e),
                 }

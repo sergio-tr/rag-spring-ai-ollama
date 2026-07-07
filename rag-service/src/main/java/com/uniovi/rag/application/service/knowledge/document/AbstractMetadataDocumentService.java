@@ -76,7 +76,7 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
                 throw new IllegalArgumentException("Metadata extraction returned null or empty for file: " + filename);
             }
             
-            // Step 4b: Never insert duplicates — if document_id already exists, do not add
+            // Step 4b: Never insert duplicates - if document_id already exists, do not add
             Object docIdObj = metadata.get(METADATA_KEY_DOCUMENT_ID);
             String documentId = docIdObj != null ? docIdObj.toString() : null;
             if (documentId != null && !documentId.isBlank() && hasDocumentWithId(documentId)) {

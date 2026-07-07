@@ -57,8 +57,8 @@ export function InternalPromptConfigurationSection({
   }
 
   return (
-    <div className="flex flex-col gap-3" id="internal-prompt-configuration" data-testid="internal-prompt-configuration">
-      <p className="text-muted-foreground text-xs">{t("internalPromptsSectionDescription")}</p>
+    <div className="flex min-w-0 max-w-full flex-col gap-3" id="internal-prompt-configuration" data-testid="internal-prompt-configuration">
+      <p className="text-muted-foreground break-words text-xs">{t("internalPromptsSectionDescription")}</p>
       {editableGroups.map((group) => {
         const content = effectivePromptContent(group, overrides);
         const isCustom = Boolean(overrides[group.id]?.trim());
@@ -67,16 +67,16 @@ export function InternalPromptConfigurationSection({
           <details
             key={group.id}
             open={expanded}
-            className="rounded-md border bg-muted/20 p-3 text-sm"
+            className="min-w-0 max-w-full overflow-hidden rounded-md border bg-muted/20 p-3 text-sm"
             data-testid={`internal-prompt-group-${group.id}`}
             onToggle={(e) => {
               const el = e.currentTarget;
               setOpenGroupId(el.open ? group.id : null);
             }}
           >
-            <summary className="cursor-pointer font-medium">{group.componentLabel}</summary>
-            <div className="mt-3 flex flex-col gap-2">
-              <p className="text-muted-foreground text-xs">{group.description}</p>
+            <summary className="cursor-pointer break-words font-medium">{group.componentLabel}</summary>
+            <div className="mt-3 flex min-w-0 flex-col gap-2">
+              <p className="text-muted-foreground break-words text-xs">{group.description}</p>
               {group.requiredVariables.length > 0 ? (
                 <div className="flex flex-wrap gap-1">
                   {group.requiredVariables.map((v) => (
@@ -96,7 +96,7 @@ export function InternalPromptConfigurationSection({
                 id={`prompt-${group.id}`}
                 value={content}
                 rows={8}
-                className="font-mono text-xs"
+                className="w-full min-w-0 font-mono text-xs"
                 onChange={(e) => setGroupContent(group.id, e.target.value)}
               />
               <div className="flex flex-wrap gap-2">
@@ -104,6 +104,7 @@ export function InternalPromptConfigurationSection({
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="max-w-full whitespace-normal"
                   data-testid={`internal-prompt-reset-${group.id}`}
                   onClick={() => {
                     const nextOverrides = { ...overrides };
@@ -119,22 +120,22 @@ export function InternalPromptConfigurationSection({
                   {t("instructionsResetToDefault")}
                 </Button>
                 {isCustom ? (
-                  <span className="text-muted-foreground self-center text-xs">{t("internalPromptCustomized")}</span>
+                  <span className="text-muted-foreground min-w-0 self-center break-words text-xs">{t("internalPromptCustomized")}</span>
                 ) : null}
               </div>
             </div>
           </details>
         );
       })}
-      <details className="rounded-md border bg-muted/10 p-3 text-xs">
-        <summary className="cursor-pointer font-medium">{ADVANCED_TECHNICAL_DETAILS_TITLE}</summary>
-        <p className="text-muted-foreground mt-2">
+      <details className="min-w-0 max-w-full overflow-hidden rounded-md border bg-muted/10 p-3 text-xs">
+        <summary className="cursor-pointer break-words font-medium">{ADVANCED_TECHNICAL_DETAILS_TITLE}</summary>
+        <p className="text-muted-foreground mt-2 break-words">
           {t("internalPromptsTechnicalKey", { key: PROMPT_OVERRIDES_KEY })}
         </p>
         {catalogOnlyGroups.length > 0 ? (
           <ul className="text-muted-foreground mt-2 list-disc pl-4">
             {catalogOnlyGroups.map((g) => (
-              <li key={g.id}>{g.componentLabel} — {t("internalPromptCatalogOnly")}</li>
+              <li key={g.id}>{g.componentLabel} - {t("internalPromptCatalogOnly")}</li>
             ))}
           </ul>
         ) : null}

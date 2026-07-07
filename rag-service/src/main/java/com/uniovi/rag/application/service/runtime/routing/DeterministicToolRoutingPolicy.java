@@ -34,6 +34,16 @@ public class DeterministicToolRoutingPolicy {
             return structuredField.get();
         }
 
+        if (ActaFieldAnchorHeuristics.isExplicitActaFilenameFieldExtractionQuery(plan)) {
+            reasons.add("explicit_acta_filename_field_query");
+            return new AdaptiveRoutingDecision(
+                    AdaptiveRoutingMode.DISABLED,
+                    workflowFallback,
+                    Optional.empty(),
+                    List.copyOf(reasons),
+                    List.of());
+        }
+
         if (!rag.deterministicToolRoutingEnabled()) {
             reasons.add("deterministicToolRoutingEnabled=false");
             return new AdaptiveRoutingDecision(
@@ -87,6 +97,9 @@ public class DeterministicToolRoutingPolicy {
      */
     private static Optional<AdaptiveRoutingDecision> structuredClassifierFieldRoute(
             RagConfig rag, QueryPlan plan, AdaptiveRouteKind workflowFallback) {
+        if (ActaFieldAnchorHeuristics.isExplicitActaFilenameFieldExtractionQuery(plan)) {
+            return Optional.empty();
+        }
         if (!rag.toolsEnabled()) {
             return Optional.empty();
         }

@@ -287,7 +287,7 @@ function storedRagDraft(overrides: Record<string, unknown>) {
     explicitDraftClear: false,
     llmModelId: "",
     llmModelIds: [] as string[],
-    embeddingModelId: "nomic-embed-test",
+    embeddingModelId: "mxbai-embed:latest",
     embeddingModelIds: [] as string[],
     embeddingDownstreamRag: false,
     selectedExperimentalPresetCodes: Array.from({ length: 15 }, (_, i) => `P${i}`),
@@ -667,7 +667,7 @@ describe("LabEvaluationRunCard", () => {
     );
     expect(screen.getByTestId("lab-eval-run-name")).toHaveValue("Regression May");
     expect(screen.getByTestId("lab-benchmark-dataset-select")).toHaveValue(llmDataset.id);
-    expect(screen.getByTestId("lab-benchmark-llm-model")).toHaveValue("llama:judge");
+    expect(screen.getByTestId("lab-benchmark-llm-models-llama:judge")).toBeChecked();
 
     first.unmount();
 
@@ -686,7 +686,27 @@ describe("LabEvaluationRunCard", () => {
     );
     expect(screen.getByTestId("lab-eval-run-name")).toHaveValue("Regression May");
     expect(screen.getByTestId("lab-benchmark-dataset-select")).toHaveValue(llmDataset.id);
-    expect(screen.getByTestId("lab-benchmark-llm-model")).toHaveValue("llama:judge");
+    expect(screen.getByTestId("lab-benchmark-llm-models-llama:judge")).toBeChecked();
+  });
+
+  it("does not render misleading chat model tag combobox on LLM evaluation", () => {
+    render(
+      <LabEvalHarness>
+        <LabEvaluationRunCard
+          benchmarkKind="LLM_JUDGE_QA"
+          sectionKey="evaluation-llm"
+          taskTypeHint="LLM_EVALUATION"
+          cardTitle="LLM evaluation"
+          cardDescription="Benchmark the configured LLM against loaded evaluation questions."
+          runButtonTestId="lab-llm-run"
+          radioGroupName="follow-no-tag-combo"
+        />
+      </LabEvalHarness>,
+    );
+    expect(screen.getByTestId("lab-benchmark-llm-models-group")).toBeInTheDocument();
+    expect(screen.queryByTestId("lab-benchmark-llm-model")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Chat model tag/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Campaign tag/i)).toBeInTheDocument();
   });
 
   it("restores RAG preset picks P0–P10 from localStorage and sanitizes P11–P14", () => {
@@ -907,13 +927,12 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.getByRole("button", { name: /Run evaluation|Evaluate selected model/i })).toBeDisabled();
   });
 
-  it("submits single llmModelId from catalog select for LLM judge evaluation", async () => {
+  it("submits single llmModelId from model comparison checkboxes for LLM judge evaluation", async () => {
     const user = userEvent.setup();
     localStorage.setItem(
       "lab:evaluation-draft:v1:LLM_JUDGE_QA",
       storedLlmDraft({
-        llmModelId: "llama:judge",
-        llmModelIds: [],
+        llmModelIds: ["llama:judge"],
         corpusId: "corpus-1111-1111-1111-111111111111",
       }),
     );
@@ -937,7 +956,8 @@ describe("LabEvaluationRunCard", () => {
       </LabEvalHarness>,
     );
 
-    expect(screen.getByTestId("lab-benchmark-llm-model")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-benchmark-llm-models-group")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-benchmark-llm-models-llama:judge")).toBeChecked();
 
     await user.click(screen.getByTestId("lab-llm-run"));
 
@@ -958,8 +978,7 @@ describe("LabEvaluationRunCard", () => {
     localStorage.setItem(
       "lab:evaluation-draft:v1:LLM_JUDGE_QA",
       storedLlmDraft({
-        llmModelId: "llama:judge",
-        llmModelIds: [],
+        llmModelIds: ["llama:judge"],
         corpusId: "corpus-1111-1111-1111-111111111111",
       }),
     );
@@ -1018,7 +1037,7 @@ describe("LabEvaluationRunCard", () => {
       } as never);
     });
 
-    it("does not block single-model embedding evaluation when only one compatible model exists", () => {
+    it("does not block single-model embedding evaluation when only one compatible model exists", async () => {
       mockEvaluationCatalogs([], [
         {
           modelName: "mxbai-embed-large:latest",
@@ -1047,6 +1066,145 @@ describe("LabEvaluationRunCard", () => {
       );
 
       expect(screen.queryByTestId("lab-embedding-model-availability-blocked")).not.toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId("lab-embedding-run")).toBeEnabled());
+    });
+
+    it("enables embedding run when corpus needs reindex but documents are runnable", async () => {
+      useEvaluationCorpusMock.mockReturnValue({
+        ...defaultEvaluationCorpusApi,
+        effectiveCorpusId: "corpus-emb",
+        corpusRunnable: true,
+        corpusIndexReady: false,
+        corpusReady: true,
+        readiness: {
+          runnable: true,
+          reindexRequired: true,
+          activeSnapshotId: null,
+          snapshotBlocker: "INDEX_PREPARATION_REQUIRED",
+          primaryBlocker: null,
+          primaryBlockerMessage: null,
+        },
+      });
+      localStorage.setItem(
+        "lab:evaluation-draft:v1:EMBEDDING_RETRIEVAL",
+        storedEmbeddingDraft({ corpusId: "corpus-emb" }),
+      );
+
+      render(
+        <LabEvalHarness>
+          <LabEvaluationRunCard
+            benchmarkKind="EMBEDDING_RETRIEVAL"
+            sectionKey="evaluation-embedding"
+            taskTypeHint="EMBEDDING_EVALUATION"
+            cardTitle="Embedding evaluation"
+            cardDescription="Compare embedding models."
+            runButtonTestId="lab-embedding-run"
+            radioGroupName="follow-embedding-reindex"
+          />
+        </LabEvalHarness>,
+      );
+
+      await waitFor(() => expect(screen.getByTestId("lab-embedding-run")).toBeEnabled());
+      expect(screen.getByTestId("lab-corpus-index-will-prepare")).toBeInTheDocument();
+    });
+
+    it("shows disabled reason when no embedding model is selected", async () => {
+      mockEvaluationCatalogs([], []);
+      localStorage.setItem(
+        "lab:evaluation-draft:v1:EMBEDDING_RETRIEVAL",
+        storedEmbeddingDraft({
+          embeddingModelId: "",
+          embeddingModelIds: [],
+        }),
+      );
+
+      render(
+        <LabEvalHarness>
+          <LabEvaluationRunCard
+            benchmarkKind="EMBEDDING_RETRIEVAL"
+            sectionKey="evaluation-embedding"
+            taskTypeHint="EMBEDDING_EVALUATION"
+            cardTitle="Embedding evaluation"
+            cardDescription="Compare embedding models."
+            runButtonTestId="lab-embedding-run"
+            radioGroupName="follow-embedding-no-model"
+          />
+        </LabEvalHarness>,
+      );
+
+      await waitFor(() => expect(screen.getByTestId("lab-embedding-run")).toBeDisabled());
+      expect(screen.getByTestId("lab-eval-run-disabled-reason")).toHaveTextContent(
+        /Select at least one compatible embedding model/i,
+      );
+    });
+
+    it("submits embeddingModelIds on run click", async () => {
+      const user = userEvent.setup();
+      mockEvaluationCatalogs([], [
+        {
+          modelName: "hf-embed-a",
+          evalSelectable: true,
+          blockedReason: null,
+          blockedReasonCode: null,
+          runtimeStatus: "AVAILABLE",
+          embeddingDimensions: 1024,
+          compatibleWithCurrentVectorStore: true,
+          usableAsDefault: true,
+        },
+        {
+          modelName: "hf-embed-b",
+          evalSelectable: true,
+          blockedReason: null,
+          blockedReasonCode: null,
+          runtimeStatus: "AVAILABLE",
+          embeddingDimensions: 1024,
+          compatibleWithCurrentVectorStore: true,
+          usableAsDefault: false,
+        },
+      ]);
+      localStorage.setItem(
+        "lab:evaluation-draft:v1:EMBEDDING_RETRIEVAL",
+        storedEmbeddingDraft({
+          embeddingModelIds: ["hf-embed-a", "hf-embed-b"],
+          corpusId: "corpus-emb",
+        }),
+      );
+      vi.mocked(apiFetch).mockResolvedValue({
+        evaluationRunId: "run-emb-1",
+        asyncTaskId: "job-emb-1",
+      });
+
+      render(
+        <LabEvalHarness>
+          <LabEvaluationRunCard
+            benchmarkKind="EMBEDDING_RETRIEVAL"
+            sectionKey="evaluation-embedding"
+            taskTypeHint="EMBEDDING_EVALUATION"
+            cardTitle="Embedding evaluation"
+            cardDescription="Compare embedding models."
+            runButtonTestId="lab-embedding-run"
+            radioGroupName="follow-embedding-submit"
+          />
+        </LabEvalHarness>,
+      );
+
+      await waitFor(() => expect(screen.getByTestId("lab-embedding-run")).toBeEnabled());
+      await user.click(screen.getByTestId("lab-embedding-run"));
+
+      const call = vi.mocked(apiFetch).mock.calls.find((c) => {
+        const url = String(c[0] ?? "");
+        const method = (c[1] as RequestInit | undefined)?.method ?? "GET";
+        return url.includes("/lab/benchmarks/EMBEDDING_RETRIEVAL/runs") && method === "POST";
+      });
+      expect(call).toBeTruthy();
+      const body = JSON.parse(String((call?.[1] as RequestInit | undefined)?.body ?? "{}")) as {
+        embeddingModelIds?: string[];
+        llmModelIds?: string[];
+        autoReindex?: boolean;
+      };
+      expect(body.embeddingModelIds).toEqual(["hf-embed-a", "hf-embed-b"]);
+      expect(body.llmModelIds).toBeUndefined();
+      expect(body.autoReindex).toBe(true);
     });
 
     it("shows blocked message when comparison selects more models than catalog offers", () => {
@@ -1086,6 +1244,60 @@ describe("LabEvaluationRunCard", () => {
       const blocked = screen.getByTestId("lab-embedding-model-availability-blocked");
       expect(blocked).toHaveTextContent(
         "At least two compatible embedding models are required for comparison.",
+      );
+    });
+
+    it("shows retrieval parameters and embedding comparison section without a global embedding hyperparameter", async () => {
+      mockEvaluationCatalogs([], [
+        {
+          modelName: "bge-m3",
+          evalSelectable: true,
+          blockedReason: null,
+          blockedReasonCode: null,
+          runtimeStatus: "AVAILABLE",
+          embeddingDimensions: 1024,
+          compatibleWithCurrentVectorStore: true,
+          usableAsDefault: true,
+        },
+        {
+          modelName: "snowflake-arctic-embed2",
+          evalSelectable: true,
+          blockedReason: null,
+          blockedReasonCode: null,
+          runtimeStatus: "AVAILABLE",
+          embeddingDimensions: 1024,
+          compatibleWithCurrentVectorStore: true,
+          usableAsDefault: false,
+        },
+      ]);
+      localStorage.setItem(
+        "lab:evaluation-draft:v1:EMBEDDING_RETRIEVAL",
+        storedEmbeddingDraft({
+          embeddingModelIds: ["bge-m3", "snowflake-arctic-embed2"],
+        }),
+      );
+
+      render(
+        <LabEvalHarness>
+          <LabEvaluationRunCard
+            benchmarkKind="EMBEDDING_RETRIEVAL"
+            sectionKey="evaluation-embedding"
+            taskTypeHint="EMBEDDING_EVALUATION"
+            cardTitle="Embedding evaluation"
+            cardDescription="Compare embedding models."
+            runButtonTestId="lab-embedding-run"
+            radioGroupName="follow-embedding-ui"
+          />
+        </LabEvalHarness>,
+      );
+
+      await waitFor(() => expect(screen.getByText("Embedding evaluation parameters")).toBeInTheDocument());
+      expect(screen.getByRole("group", { name: "Embedding models to compare" })).toBeInTheDocument();
+      expect(screen.queryByTestId("lab-hp-embedding-model")).not.toBeInTheDocument();
+      expect(screen.getByTestId("embedding-evaluator-options-form")).toBeInTheDocument();
+      expect(screen.getByTestId("lab-hp-top-k")).toBeInTheDocument();
+      expect(screen.getByTestId("lab-comparison-selection-hint")).toHaveTextContent(
+        "Comparing 2 embedding models",
       );
     });
 
@@ -1140,6 +1352,152 @@ describe("LabEvaluationRunCard", () => {
       expect(screen.getByTestId("lab-benchmark-embedding-models-mxbai-embed-large:latest")).toBeInTheDocument();
       expect(screen.queryByTestId("lab-benchmark-embedding-models-nomic-embed-text:latest")).not.toBeInTheDocument();
       expect(screen.queryByTestId("lab-benchmark-embedding-models-qwen3-embedding:latest")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("evaluation route parameter visibility", () => {
+    function renderRagRouteCard() {
+      return render(
+        <LabEvalHarness>
+          <LabEvaluationRunCard
+            benchmarkKind="RAG_PRESET_END_TO_END"
+            sectionKey="evaluation-rag"
+            taskTypeHint="RAG_EVALUATION"
+            cardTitle="Run"
+            runButtonTestId="lab-rag-run"
+            radioGroupName="follow-rag-route"
+          />
+        </LabEvalHarness>,
+      );
+    }
+
+    beforeEach(() => {
+      vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+        data: [ragDataset],
+        isLoading: false,
+        isFetched: true,
+        isSuccess: true,
+      } as never);
+      localStorage.setItem(
+        "lab:evaluation-draft:v1:RAG_PRESET_END_TO_END",
+        storedRagDraft({
+          llmModelId: "llama:judge",
+          selectedExperimentalPresetCodes: ["P0"],
+          benchmarkRuntimeParameters: {
+            temperature: 0.9,
+            topP: 0.8,
+            seed: 1,
+            maxTokens: 256,
+            topK: 5,
+            similarityThreshold: 0.4,
+            secondaryLlmModelId: "llama:fast",
+          },
+        }),
+      );
+    });
+
+    it("RAG route hides generation parameters, LLM selector, and shows retrieval callout with settings link", async () => {
+      renderRagRouteCard();
+      expect(await screen.findByTestId("lab-embedding-retrieval-parameters-section")).toBeInTheDocument();
+      expect(screen.getByTestId("lab-rag-task-llm-callout")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /Open Assistant Configuration/i })).toHaveAttribute("href", "/en/settings/user");
+      expect(screen.queryByText("Generation parameters")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("lab-hp-temperature")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("lab-hyperparameters-form")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("lab-generation-parameters-section")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("lab-benchmark-llm-model")).not.toBeInTheDocument();
+      expect(screen.queryByText("Primary model snapshot / campaign label")).not.toBeInTheDocument();
+      expect(screen.queryByText(/campaign label/i)).not.toBeInTheDocument();
+      expect(screen.getByTestId("lab-hp-top-k")).toBeInTheDocument();
+      expect(screen.getByTestId("lab-hp-similarity-threshold")).toBeInTheDocument();
+      expect(screen.getByTestId("lab-benchmark-embedding-model")).toBeInTheDocument();
+    });
+
+    it("LLM route still shows generation parameters", async () => {
+      render(
+        <LabEvalHarness>
+          <LabEvaluationRunCard
+            benchmarkKind="LLM_JUDGE_QA"
+            sectionKey="evaluation-llm"
+            taskTypeHint="LLM_EVALUATION"
+            cardTitle="LLM evaluation"
+            runButtonTestId="lab-llm-run"
+            radioGroupName="follow-llm-route"
+          />
+        </LabEvalHarness>,
+      );
+      expect(await screen.findByTestId("lab-hyperparameters-form")).toBeInTheDocument();
+      expect(screen.getByTestId("lab-hp-temperature")).toBeInTheDocument();
+      expect(screen.queryByText("Generation parameters")).not.toBeInTheDocument();
+    });
+
+    it("embedding route shows retrieval parameters without generation", async () => {
+      vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+        data: [embeddingDataset],
+        isLoading: false,
+        isFetched: true,
+        isSuccess: true,
+      } as never);
+      localStorage.setItem(
+        "lab:evaluation-draft:v1:EMBEDDING_RETRIEVAL",
+        storedEmbeddingDraft({ embeddingModelIds: ["mxbai-embed:latest"] }),
+      );
+      render(
+        <LabEvalHarness>
+          <LabEvaluationRunCard
+            benchmarkKind="EMBEDDING_RETRIEVAL"
+            sectionKey="evaluation-embedding"
+            taskTypeHint="EMBEDDING_EVALUATION"
+            cardTitle="Embedding evaluation"
+            runButtonTestId="lab-embedding-run"
+            radioGroupName="follow-embedding-route"
+          />
+        </LabEvalHarness>,
+      );
+      expect(await screen.findByTestId("lab-hyperparameters-form")).toBeInTheDocument();
+      expect(screen.getByTestId("lab-hp-top-k")).toBeInTheDocument();
+      expect(screen.queryByTestId("lab-hp-temperature")).not.toBeInTheDocument();
+      expect(screen.queryByText("Generation parameters")).not.toBeInTheDocument();
+    });
+
+    it("RAG POST omits generation keys and llmModelId from benchmarkRuntimeParameters", async () => {
+      const user = userEvent.setup();
+      vi.mocked(apiFetch).mockResolvedValue({
+        evaluationRunId: "run-0000-0000-0000-000000000099",
+        asyncTaskId: "job-0000-0000-0000-000000000099",
+      });
+      renderRagRouteCard();
+      await user.click(await screen.findByTestId("lab-rag-run"));
+      const call = vi.mocked(apiFetch).mock.calls.find((c) => {
+        const url = String(c[0] ?? "");
+        const method = (c[1] as RequestInit | undefined)?.method ?? "GET";
+        return url.includes("/lab/benchmarks/RAG_PRESET_END_TO_END/runs") && method === "POST";
+      });
+      expect(call).toBeTruthy();
+      const body = JSON.parse(String((call?.[1] as RequestInit | undefined)?.body ?? "{}")) as {
+        llmModelId?: string;
+        llmModelIds?: string[];
+        embeddingModelId?: string;
+        benchmarkRuntimeParameters?: Record<string, unknown>;
+      };
+      expect(body.llmModelId).toBeUndefined();
+      expect(body.llmModelIds).toBeUndefined();
+      expect(body.embeddingModelId).toBe("mxbai-embed:latest");
+      const params = body.benchmarkRuntimeParameters ?? {};
+      expect(params.temperature).toBeUndefined();
+      expect(params.top_p).toBeUndefined();
+      expect(params.topP).toBeUndefined();
+      expect(params.seed).toBeUndefined();
+      expect(params.max_tokens).toBeUndefined();
+      expect(params.maxTokens).toBeUndefined();
+      expect(params.presence_penalty).toBeUndefined();
+      expect(params.frequency_penalty).toBeUndefined();
+      expect(params.response_format).toBeUndefined();
+      expect(params.stop).toBeUndefined();
+      expect(params.think).toBeUndefined();
+      expect(params.secondaryLlmModelId).toBeUndefined();
+      expect(params.topK).toBe(5);
+      expect(params.similarityThreshold).toBe(0.4);
     });
   });
 });

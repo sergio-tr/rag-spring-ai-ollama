@@ -3,3 +3,6 @@ import { routing } from "./i18n/routing";
 
 export const { Link, redirect, usePathname, useRouter, getPathname } =
   createNavigation(routing);
+
+export { localizedPath } from "./i18n/localized-path";
+export { useLocalizedPath } from "./i18n/use-localized-path";

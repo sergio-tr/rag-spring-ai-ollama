@@ -3,7 +3,7 @@
 Lightweight acceptance-batch performance smoke (Stage A/B/C).
 
 Measures sequential API chat latency per question and batch wall-clock duration.
-Does not score answers — only HTTP status, terminal job status, and timing.
+Does not score answers - only HTTP status, terminal job status, and timing.
 """
 
 from __future__ import annotations

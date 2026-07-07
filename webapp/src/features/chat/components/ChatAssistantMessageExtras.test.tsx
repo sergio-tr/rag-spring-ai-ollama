@@ -127,4 +127,36 @@ describe("ChatAssistantMessageExtras", () => {
     expect(groups).toHaveLength(1);
     expect(screen.getByTestId("chat-source-chunks-toggle")).toHaveTextContent(/2 chunks/i);
   });
+
+  it("shows retrieval stage counts and reduction reason when final context is below effective topK", async () => {
+    const user = userEvent.setup();
+    renderExtras({
+      id: "a-trace-reduction",
+      role: "ASSISTANT",
+      content: "Done",
+      createdAt: "",
+      sources: [],
+      queryType: "DOCUMENT",
+      pipelineSteps: [],
+      status: "DONE",
+      executionMetadata: {
+        traceId: "trace-2",
+        retrievalEffectiveTopK: 8,
+        retrievalEffectiveSimilarityThreshold: 0.1,
+        retrievalDenseCandidateCount: 8,
+        retrievalAfterFilterCount: 8,
+        retrievalAfterCompressionCount: 3,
+        retrievalContextReductionReason: "section_merge",
+      },
+    });
+    await user.click(screen.getByTestId("chat-message-metadata-toggle"));
+    const traceDisclosure = screen.getByTestId("chat-trace-disclosure");
+    await user.click(within(traceDisclosure).getByText(/Advanced technical details/i));
+    const trace = screen.getByTestId("chat-trace");
+    expect(trace).toHaveTextContent("effectiveTopK=8");
+    expect(trace).toHaveTextContent("threshold=0.1");
+    expect(trace).toHaveTextContent("dense=8");
+    expect(trace).toHaveTextContent("final=3");
+    expect(screen.getByTestId("chat-trace-reduction-reason")).toHaveTextContent(/Section merge/i);
+  });
 });

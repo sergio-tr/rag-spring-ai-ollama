@@ -23,7 +23,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * P43 / P53: ZIP export adapter (non-owning) — builds {@code manifest.json} + {@code run.json}; does not own
+ * P43 / P53: ZIP export adapter (non-owning) - builds {@code manifest.json} + {@code run.json}; does not own
  * storage-backed reads of persisted runs. {@link #exportRunZip} uses
  * {@link RuntimeTraceRegressionSuiteRunPersistenceService#loadByIdForUser(java.util.UUID, java.util.UUID)}; {@link
  * #exportRunZipForDefinition} uses {@link RuntimeTraceRegressionSuiteRunPersistenceService#loadByIdForUserAndDefinition}

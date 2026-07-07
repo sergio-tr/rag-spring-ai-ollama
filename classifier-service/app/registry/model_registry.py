@@ -147,8 +147,17 @@ class ModelRegistry(Loggable):
         Registers a model: writes artifact and labels under MODELS_DIR/{model_id}/ and metadata.json.
         metadata should include modelType ('keras' | 'sklearn') and training metrics.
         """
+        normalized_id = (model_id or "").strip()
+        if not normalized_id:
+            raise ValueError("model_id must be non-empty")
+        if normalized_id.lower() == self._config.DEFAULT_MODEL_TAG:
+            raise ValueError("Cannot register model under reserved id 'default'")
+
         base = self._ensure_models_dir()
-        dir_path = base / model_id
+        dir_path = base / normalized_id
+        default_dir = (Path(self._config.get_default_model_path()).parent).resolve()
+        if dir_path.resolve() == default_dir or str(dir_path.resolve()).startswith(str(default_dir) + os.sep):
+            raise ValueError("Cannot register model under models/default/")
         dir_path.mkdir(parents=True, exist_ok=True)
         meta = metadata or {}
         model_type = str(meta.get("modelType", "keras")).strip().lower()
@@ -167,6 +176,15 @@ class ModelRegistry(Loggable):
         }
         with open(dir_path / METADATA_FILENAME, "w", encoding="utf-8") as f:
             json.dump(meta_out, f, indent=2)
+
+    @staticmethod
+    def assert_trainable_model_name(model_name: str) -> None:
+        """Reject reserved display names used for web training."""
+        normalized = (model_name or "").strip()
+        if not normalized:
+            raise ValueError("model_name must be non-empty")
+        if normalized.lower() == Config.DEFAULT_MODEL_TAG:
+            raise ValueError("Model name 'default' is reserved; choose a custom tag")
 
     @staticmethod
     def create_new_model_id() -> str:

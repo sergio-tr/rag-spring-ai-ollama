@@ -4,6 +4,10 @@ import {
   formatChatPresetSelectLabel,
   type ChatExperimentalPresetOptionInput,
 } from "@/features/presets/lib/preset-display";
+import {
+  formatLatencyTierLabel,
+  resolveExperimentalPresetLatencyTier,
+} from "@/features/chat/lib/preset-latency-tier";
 
 export type { ChatExperimentalPresetOptionInput };
 
@@ -13,11 +17,13 @@ export function formatChatExperimentalPresetOptionLabel(
   t: (key: string) => string,
 ): string {
   const base = formatChatPresetSelectLabel(chatExperimentalPresetToDto(p), t);
+  const tier = formatLatencyTierLabel(resolveExperimentalPresetLatencyTier(p.code), t);
+  const withTier = `${base} (${tier})`;
   if (p.chatSelectable && p.supported) {
-    return base;
+    return withTier;
   }
   const hint = formatPresetSupportMessage(p.supportStatus, p.reasonIfUnsupported, t, "chatPresetNotSelectable");
-  return `${base} (${hint})`;
+  return `${withTier} (${hint})`;
 }
 
 const BENCHMARK_KIND_I18N: Record<string, string> = {
@@ -114,7 +120,7 @@ export const FORBIDDEN_PRIMARY_UI_PATTERNS: RegExp[] = [
   /\bFUTURE_MULTI_TURN_NOT_SELECTABLE\b/,
   /\bREQUIRES_MULTI_TURN\b/,
   /POST JSON/i,
-  /Lab API —/i,
+  /Lab API -/i,
   /POST \/api/i,
   /\bcorpus\b/i,
   /Missing preferred/i,

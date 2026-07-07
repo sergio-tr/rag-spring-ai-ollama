@@ -63,4 +63,27 @@ public final class IndexProfileJsonSupport {
         }
         return normalized;
     }
+
+    /**
+     * True when two embedding ids refer to the same logical model (exact normalized match or known LiteLLM alias
+     * families used in thesis embedding campaigns).
+     */
+    public static boolean embeddingKeysEquivalent(String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        if (normalizeEmbeddingKey(a).equals(normalizeEmbeddingKey(b))) {
+            return true;
+        }
+        return mixedbreadMxbaiAliasFamily(a) && mixedbreadMxbaiAliasFamily(b);
+    }
+
+    /** {@code mxbai-embed-large} and {@code hf.co/mixedbread-ai/mxbai-embed-large-v1} are deployment aliases. */
+    public static boolean mixedbreadMxbaiAliasFamily(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        String normalized = normalizeEmbeddingKey(raw);
+        return "mxbai-embed-large".equals(normalized) || normalized.contains("mixedbread-ai/mxbai-embed-large");
+    }
 }

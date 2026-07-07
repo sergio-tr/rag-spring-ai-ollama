@@ -8,6 +8,8 @@ import com.uniovi.rag.domain.config.capability.Capability;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetDefinition;
+import com.uniovi.rag.domain.chat.ChatExperimentalPresetCatalogItem;
+import com.uniovi.rag.domain.chat.RuntimePresetIndexRequirements;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.interfaces.rest.dto.ExperimentalPresetCatalogItemDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimePresetIndexRequirementsDto;
@@ -103,6 +105,44 @@ public class LabExperimentalPresetCatalogService {
         }
         out.sort(Comparator.comparingInt(ExperimentalPresetCatalogItemDto::protocolStageIndex));
         return out;
+    }
+
+    public List<ChatExperimentalPresetCatalogItem> listChatCatalog() {
+        return list().stream().map(LabExperimentalPresetCatalogService::toChatCatalogItem).toList();
+    }
+
+    private static ChatExperimentalPresetCatalogItem toChatCatalogItem(ExperimentalPresetCatalogItemDto dto) {
+        RuntimePresetIndexRequirements indexRequirements = null;
+        if (dto.indexRequirements() != null) {
+            indexRequirements =
+                    new RuntimePresetIndexRequirements(
+                            dto.indexRequirements().requiredMaterializationStrategy(),
+                            dto.indexRequirements().requiresMetadataSupport());
+        }
+        return new ChatExperimentalPresetCatalogItem(
+                dto.productPresetId(),
+                dto.code(),
+                dto.family(),
+                dto.label(),
+                dto.description(),
+                indexRequirements,
+                dto.requiredCapabilities(),
+                dto.supported(),
+                dto.supportStatus(),
+                dto.reasonIfUnsupported(),
+                dto.requiresMultiTurn(),
+                dto.mapsToRuntimeCapabilities(),
+                dto.allowedOutcomes(),
+                dto.chatSelectable(),
+                dto.labSelectable(),
+                dto.labOnly(),
+                dto.corpusRequired(),
+                dto.requiresSnapshot(),
+                dto.requiresProjectDocuments(),
+                dto.singleTurnBenchmarkSelectable(),
+                dto.protocolStageIndex(),
+                dto.parentPresetCode(),
+                dto.effectiveTerminalRuntimeJson());
     }
 
     private static String catalogLabel(RagPresetDefinition d, RagExperimentalPresetCode code) {

@@ -29,7 +29,7 @@ export async function installMinimalProductApiStub(page: Page): Promise<void> {
     },
     evaluations: { llm: false, rag: false, classifierProxy: false, asyncJobs: false },
     classifier: { configured: false, train: false, evaluate: false },
-    message: "Offline smoke stub — canonical benchmarks use POST …/lab/benchmarks/{kind}/runs.",
+    message: "Offline smoke stub - canonical benchmarks use POST …/lab/benchmarks/{kind}/runs.",
   });
 
   await page.route("**/api/v5/**", async (route) => {

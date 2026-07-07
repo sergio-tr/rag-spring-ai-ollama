@@ -19,14 +19,14 @@ test.describe("Phase 6 provider runtime acceptance @api @p0 @providerRuntime", (
       const openAiResult = await runOpenAiCompatibleLiveChecks(request);
       writeProviderAcceptanceMd(
         "OPENAI_COMPATIBLE_ACCEPTANCE.md",
-        "Provider runtime acceptance — OpenAI-compatible",
+        "Provider runtime acceptance - OpenAI-compatible",
         openAiResult,
       );
       expect(openAiResult.allPass, JSON.stringify(openAiResult.checks, null, 2)).toBe(true);
     } else {
       writeProviderAcceptanceMd(
         "OPENAI_COMPATIBLE_ACCEPTANCE.md",
-        "Provider runtime acceptance — OpenAI-compatible",
+        "Provider runtime acceptance - OpenAI-compatible",
         {
           providerMode: "SKIPPED",
           generatedAt: new Date().toISOString(),
@@ -50,7 +50,7 @@ test.describe("Phase 6 provider runtime acceptance @api @p0 @providerRuntime", (
       );
       writeProviderAcceptanceMd(
         "OLLAMA_NATIVE_ACCEPTANCE.md",
-        "Provider runtime acceptance — Ollama-native",
+        "Provider runtime acceptance - Ollama-native",
         ollamaSkipped,
       );
     } else {
@@ -60,7 +60,7 @@ test.describe("Phase 6 provider runtime acceptance @api @p0 @providerRuntime", (
       const ollamaResult = buildOllamaNativeSkippedResult(reason);
       writeProviderAcceptanceMd(
         "OLLAMA_NATIVE_ACCEPTANCE.md",
-        "Provider runtime acceptance — Ollama-native",
+        "Provider runtime acceptance - Ollama-native",
         ollamaResult,
       );
     }

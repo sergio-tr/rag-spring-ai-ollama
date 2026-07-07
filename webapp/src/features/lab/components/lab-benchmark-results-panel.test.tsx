@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
@@ -143,8 +144,8 @@ describe("LabBenchmarkResultsPanel", () => {
     openAdvancedExports();
     expect(screen.getByTestId("lab-export-campaign-items-json")).toBeInTheDocument();
     expect(fetchCampaignComparison).toHaveBeenCalledWith("recovered-campaign-id");
-    expect(screen.getByText("Answerable score")).toBeInTheDocument();
-    expect(screen.getByText("0.910")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-rag-comparison-table")).toBeInTheDocument();
+    expect(screen.getByText("Coverage")).toBeInTheDocument();
     expect(screen.queryByTestId("lab-benchmark-no-executed-warning")).not.toBeInTheDocument();
   });
 
@@ -697,8 +698,9 @@ describe("LabBenchmarkResultsPanel", () => {
 
     await waitFor(() => expect(screen.getByTestId("lab-campaign-comparison-panel")).toBeInTheDocument());
     expect(screen.getByTestId("lab-campaign-comparison-panel")).toHaveAttribute("data-comparison-axis", "PRESET_CODE");
-    expect(screen.getByText("Global score")).toBeInTheDocument();
-    expect(screen.getByText("Latency")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-rag-comparison-table")).toBeInTheDocument();
+    expect(screen.getByText("Coverage")).toBeInTheDocument();
+    expect(screen.getByText("NO_CONTEXT")).toBeInTheDocument();
   });
 
   it("shows derived error class filter when items expose error classes", async () => {
@@ -741,5 +743,240 @@ describe("LabBenchmarkResultsPanel", () => {
     fireEvent.change(errorSelect, { target: { value: "INDEX_PREPARATION" } });
     await waitFor(() => expect(screen.getByText(/Needs index/i)).toBeInTheDocument());
     expect(screen.queryByText(/Runtime issue/i)).not.toBeInTheDocument();
+  });
+
+  it("embedding campaign summary shows embedding ids and retrieval columns", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      benchmarkKind: "EMBEDDING_RETRIEVAL",
+      embeddingModelId: "bge-m3",
+      llmModelId: "qwen3.6:35b",
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 2 }, onExecuted: { n: 2, meanNormalizedExactMatch: 0.2 } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({ items: [] });
+    vi.mocked(fetchLabCampaignRuns).mockResolvedValue([
+      { runId: "r1", embeddingModelId: "bge-m3", llmModelId: "qwen3.6:35b", status: "SUCCEEDED" },
+      { runId: "r2", embeddingModelId: "snowflake-arctic-embed2", llmModelId: "qwen3.6:35b", status: "SUCCEEDED" },
+    ]);
+    vi.mocked(fetchCampaignComparison).mockResolvedValue({
+      comparisonAxis: "EMBEDDING_MODEL",
+      comparisonAxisLabel: "Embedding model",
+      rows: [
+        {
+          runId: "r1",
+          axisValue: "bge-m3",
+          embeddingModelId: "bge-m3",
+          modelLabel: "qwen3.6:35b",
+          executed: 2,
+          meanRecallAt1: 0.5,
+          meanMrr: 0.4,
+          meanNdcgAt5: 0.3,
+          meanLatencyMs: 200,
+        },
+        {
+          runId: "r2",
+          axisValue: "snowflake-arctic-embed2",
+          embeddingModelId: "snowflake-arctic-embed2",
+          modelLabel: "qwen3.6:35b",
+          executed: 2,
+          meanRecallAt1: 0.3,
+          meanMrr: 0.2,
+          meanLatencyMs: 150,
+        },
+      ],
+    } as never);
+    vi.mocked(fetchCampaignItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "emb-hit",
+          questionText: "Where is heating discussed?",
+          embeddingModelId: "bge-m3",
+          llmModelId: "qwen3.6:35b",
+          metricsPayload: {
+            gold_chunk_ids: ["ACTA_5_HEATING"],
+            retrieved_chunk_ids: ["ACTA_5_HEATING"],
+            recall_at_1: 1,
+            recall_at_3: 1,
+            recall_at_5: 1,
+            first_relevant_rank: 1,
+            mrr: 1,
+            retrieved: [{ score: 0.42, chunk_id: "ACTA_5_HEATING" }],
+          },
+          mvp: {
+            operational: { outcome: "EXECUTED", embeddingModelId: "bge-m3", modelId: "qwen3.6:35b", latencyMs: 120 },
+            retrieval: { recallAt1: 1, recallAt3: 1, recallAt5: 1, mrr: 1 },
+          },
+        },
+      ],
+    });
+
+    renderPanel({ evaluationRunId: baseRun.id, campaignId: "emb-campaign-2" });
+
+    await waitFor(() => expect(screen.getByTestId("lab-embedding-comparison-table")).toBeInTheDocument());
+    expect(screen.getByText("Recall@1")).toBeInTheDocument();
+    expect(screen.getAllByText("bge-m3").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("snowflake-arctic-embed2").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("qwen3.6:35b")).not.toBeInTheDocument();
+    expect(screen.getByTestId("lab-embedding-recommendation")).toBeInTheDocument();
+    expect(screen.queryByTestId("lab-results-filter-preset")).not.toBeInTheDocument();
+    expect(screen.getByTestId("lab-results-filter-hit-miss")).toBeInTheDocument();
+    expect(screen.getByTestId("lab-benchmark-per-item-table")).toBeInTheDocument();
+    expect(screen.queryByText("Preset")).not.toBeInTheDocument();
+    expect(screen.queryByText("Judge")).not.toBeInTheDocument();
+    expect(screen.queryByText("Hallucination")).not.toBeInTheDocument();
+    expect(screen.getAllByText("ACTA_5_HEATING").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Hit").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("embedding model filter limits per-item rows", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      benchmarkKind: "EMBEDDING_RETRIEVAL",
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 2 }, onExecuted: { n: 2, meanNormalizedExactMatch: null } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "a",
+          questionText: "Question A",
+          mvp: {
+            operational: { outcome: "EXECUTED", embeddingModelId: "bge-m3" },
+            retrieval: { recallAt1: 1 },
+          },
+          metricsPayload: { recall_at_1: 1, gold_chunk_ids: ["G1"], retrieved_chunk_ids: ["G1"] },
+        },
+        {
+          itemId: "b",
+          questionText: "Question B",
+          mvp: {
+            operational: { outcome: "EXECUTED", embeddingModelId: "snowflake-arctic-embed2" },
+            retrieval: { recallAt1: 0 },
+          },
+          metricsPayload: { recall_at_1: 0, gold_chunk_ids: ["G2"], retrieved_chunk_ids: ["X1"] },
+        },
+      ],
+    });
+
+    renderPanel({ evaluationRunId: baseRun.id });
+
+    await waitFor(() => expect(screen.getByTestId("lab-results-filter-model")).toBeInTheDocument());
+    const modelSelect = screen.getByTestId("lab-results-filter-model") as HTMLSelectElement;
+    fireEvent.change(modelSelect, { target: { value: "bge-m3" } });
+    await waitFor(() => expect(screen.getByText(/Question A/i)).toBeInTheDocument());
+    expect(screen.queryByText(/Question B/i)).not.toBeInTheDocument();
+  });
+
+  it("LLM per-item table omits Preset and shows Expected answer, Actual answer and Context", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue(baseRun);
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 1 }, onExecuted: { n: 1, meanNormalizedExactMatch: 0.8 } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "llm-1",
+          questionText: "What is the policy?",
+          expectedAnswer: "Policy text",
+          actualAnswer: "Generated policy answer",
+          contextText: "Supporting context paragraph",
+          mvp: {
+            generation: { correctness: 0.9, llmJudgeScore: 0.8, hallucinationRate: 0.1 },
+            operational: { outcome: "EXECUTED", modelId: "gemma3:4b" },
+          },
+        },
+      ],
+    });
+
+    renderPanel({ evaluationRunId: baseRun.id });
+
+    await waitFor(() => expect(screen.getByTestId("lab-benchmark-per-item-table")).toBeInTheDocument());
+    expect(screen.queryByText("Preset")).not.toBeInTheDocument();
+    expect(screen.getByText("Expected answer")).toBeInTheDocument();
+    expect(screen.getByText("Actual answer")).toBeInTheDocument();
+    expect(screen.getByText("Context")).toBeInTheDocument();
+    expect(screen.getByText("Policy text")).toBeInTheDocument();
+    expect(screen.getByText("Generated policy answer")).toBeInTheDocument();
+    expect(screen.getByText("Supporting context paragraph")).toBeInTheDocument();
+  });
+
+  it("RAG per-item table keeps Preset and shows Expected answer and Actual answer", async () => {
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue({
+      ...baseRun,
+      benchmarkKind: "RAG_PRESET_END_TO_END",
+    });
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 1 }, onExecuted: { n: 1, meanNormalizedExactMatch: 0.7 } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "rag-1",
+          questionText: "Summarize acta",
+          expectedAnswer: "Expected summary",
+          actualAnswer: "Actual summary",
+          presetCode: "P2",
+          presetLabel: "Dense retrieval",
+          metricsPayload: { retrieved_document_ids: "DOC_1;DOC_2" },
+          mvp: {
+            generation: { correctness: 0.7 },
+            operational: { outcome: "EXECUTED", presetCode: "P2", modelId: "gemma3:4b" },
+          },
+        },
+      ],
+    });
+
+    renderPanel({ evaluationRunId: baseRun.id });
+
+    await waitFor(() => expect(screen.getByTestId("lab-benchmark-per-item-table")).toBeInTheDocument());
+    expect(screen.getByText("Preset")).toBeInTheDocument();
+    expect(screen.getByText("Expected answer")).toBeInTheDocument();
+    expect(screen.getByText("Actual answer")).toBeInTheDocument();
+    expect(screen.getByText("Expected summary")).toBeInTheDocument();
+    expect(screen.getByText("Actual summary")).toBeInTheDocument();
+    expect(screen.getByText("2 doc(s)")).toBeInTheDocument();
+  });
+
+  it("per-item correctness header toggles sort order", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchLabEvaluationRun).mockResolvedValue(baseRun);
+    vi.mocked(fetchMvpRollupsJson).mockResolvedValue({
+      globalMacro: { outcomeCounts: { EXECUTED: 2 }, onExecuted: { n: 2, meanNormalizedExactMatch: 0.5 } },
+    });
+    vi.mocked(fetchMvpItemsBundle).mockResolvedValue({
+      items: [
+        {
+          itemId: "low",
+          questionText: "Low score question",
+          expectedAnswer: "A",
+          actualAnswer: "B",
+          mvp: { generation: { correctness: 0.2 }, operational: { outcome: "EXECUTED", modelId: "m1" } },
+        },
+        {
+          itemId: "high",
+          questionText: "High score question",
+          expectedAnswer: "C",
+          actualAnswer: "D",
+          mvp: { generation: { correctness: 0.9 }, operational: { outcome: "EXECUTED", modelId: "m1" } },
+        },
+      ],
+    });
+
+    renderPanel({ evaluationRunId: baseRun.id });
+    await waitFor(() => expect(screen.getByTestId("lab-sort-header-correctness")).toBeInTheDocument());
+
+    const rows = () =>
+      Array.from(screen.getByTestId("lab-benchmark-per-item-table").querySelectorAll("tbody tr")).map(
+        (row) => row.textContent ?? "",
+      );
+
+    expect(rows()[0]).toMatch(/High score question/);
+    await user.click(screen.getByTestId("lab-sort-header-correctness"));
+    expect(rows()[0]).toMatch(/High score question/);
+    await user.click(screen.getByTestId("lab-sort-header-correctness"));
+    expect(rows()[0]).toMatch(/Low score question/);
   });
 });

@@ -43,7 +43,7 @@ public class ConversationRecallGuard {
 
     /**
      * Blocks corpus retrieval for acta-scoped follow-ups when this conversation has no local date/meeting anchor
-     * (FD-ISO-01). Applies when clarification did not already ask — including presets with clarification disabled.
+     * (FD-ISO-01). Applies when clarification did not already ask - including presets with clarification disabled.
      */
     public boolean shouldShortCircuitAmbiguousActaQuery(ExecutionContext ctx) {
         Objects.requireNonNull(ctx, "ctx");
@@ -132,7 +132,9 @@ public class ConversationRecallGuard {
         if (ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(q)) {
             return false;
         }
-        if (ActaFieldAnchorHeuristics.hasExplicitDateInText(q) || isCorpusWideAggregate(q)) {
+        if (ActaFieldAnchorHeuristics.hasExplicitDateInText(q)
+                || ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference(q)
+                || ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)) {
             return false;
         }
         boolean participants =
@@ -186,7 +188,8 @@ public class ConversationRecallGuard {
 
     private boolean hasLocalConversationActaAnchor(ExecutionContext ctx) {
         String effective = effectiveQueryForActaGuard(ctx);
-        if (hasExplicitDateInText(effective)) {
+        if (hasExplicitDateInText(effective)
+                || ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference(effective)) {
             return true;
         }
         List<ConversationMemoryTurn> history = historyLoader.loadEligibleHistory(ctx);
@@ -206,24 +209,6 @@ public class ConversationRecallGuard {
             return effective;
         }
         return ctx.userQuery();
-    }
-
-    private static boolean isCorpusWideAggregate(String q) {
-        return q.contains("todas las actas")
-                || q.contains("cada acta")
-                || q.contains("cuántas actas")
-                || q.contains("cuantas actas")
-                || q.contains("hay actas")
-                || q.contains("todas las reuniones")
-                || q.contains("cuántas reuniones")
-                || q.contains("cuantas reuniones")
-                || q.contains("qué actas mencionan")
-                || q.contains("que actas mencionan")
-                || (q.contains("dime las actas")
-                        && (q.contains("mencionan") || q.contains("comentan")))
-                || (q.contains("dime que actas")
-                        && (q.contains("mencionan") || q.contains("comentan")))
-                || ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(q);
     }
 
     private static boolean hasExplicitDateInText(String text) {

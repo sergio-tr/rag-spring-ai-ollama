@@ -58,7 +58,7 @@ async function assertOk(
 
 /**
  * Mandatory API harness preflight. Throws {@link BlockedEnvironmentError} when the stack is unreachable
- * or missing seed fixtures — not a functional regression.
+ * or missing seed fixtures - not a functional regression.
  */
 export async function runApiStackPreflight(request: APIRequestContext): Promise<void> {
   const webBase = publicBaseUrl();

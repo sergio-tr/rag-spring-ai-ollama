@@ -5,6 +5,7 @@ import com.uniovi.rag.application.port.llm.LlmChatRequest;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.config.llm.TaskLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
+import com.uniovi.rag.application.service.llm.LlmProviderParameterFilter;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
@@ -18,7 +19,7 @@ import org.springframework.stereotype.Service;
 /**
  * Holds {@link Cacheable} LLM calls so they are invoked through the Spring proxy (not {@code this}).
  * Resolves {@link LlmChatClient} via {@link LlmClientResolver} from the effective {@link ResolvedLlmConfig}
- * (orchestration scope when bound, otherwise application defaults) — never the Spring default Ollama {@code ChatClient}.
+ * (orchestration scope when bound, otherwise application defaults) - never the Spring default Ollama {@code ChatClient}.
  */
 @Service
 public class MetadataLlmResponseCacheService {
@@ -96,6 +97,14 @@ public class MetadataLlmResponseCacheService {
                 return "";
             } catch (Exception e) {
                 lastException = e;
+                if (LlmProviderParameterFilter.isUnsupportedParamsError(e)) {
+                    log.error(
+                            "Unsupported LLM parameters in getCachedResponse (attempt {}): {}",
+                            attempt + 1,
+                            e.getMessage(),
+                            e);
+                    return "";
+                }
                 logLlmExceptionByKind(attempt + 1, e);
             }
         }

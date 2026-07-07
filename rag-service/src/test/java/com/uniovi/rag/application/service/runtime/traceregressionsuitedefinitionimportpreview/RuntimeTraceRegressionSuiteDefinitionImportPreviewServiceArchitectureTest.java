@@ -39,7 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RuntimeTraceRegressionSuiteDefinitionImportPreviewServiceArchitectureTest {
 
     /*
-     * FD-def-zip-svc-arch-inventory — @ArchTest members:
+     * FD-def-zip-svc-arch-inventory - @ArchTest members:
      *   p58_def_zip_preview_no_run_layer_accesses_in_declared_bodies
      *   p58_def_zip_preview_no_run_layer_constructor_or_field_dependencies
      *   p58_def_zip_preview_public_preview_import_zip_signature_frozen

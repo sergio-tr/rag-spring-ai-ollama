@@ -74,6 +74,25 @@ public final class ClassifierOverrides {
             return QueryType.COUNT_DOCUMENTS;
         }
 
+        if ((q.contains("en cuántas reuniones")
+                        || q.contains("en cuantas reuniones")
+                        || q.contains("dime en cuántas")
+                        || q.contains("dime en cuantas"))
+                && (q.contains("videovigilancia")
+                        || q.contains("cámaras")
+                        || q.contains("camaras")
+                        || q.contains("seguridad"))) {
+            return QueryType.COUNT_DOCUMENTS;
+        }
+
+        if (dated
+                && ((q.contains("quiénes") || q.contains("quienes"))
+                        && (q.contains("estuvieron presentes")
+                                || q.contains("estuvieron presente")
+                                || q.contains("presentes")))) {
+            return QueryType.GET_FIELD;
+        }
+
         if (dated
                 && (q.contains("quién fue") || q.contains("quien fue") || q.contains("y quién") || q.contains("y quien"))
                 && (q.contains("secretari") || q.contains("presidente") || q.contains("presidenta"))) {
@@ -160,6 +179,16 @@ public final class ClassifierOverrides {
         }
 
         if (dated
+                && (q.contains("cuántos asistentes")
+                        || q.contains("cuantos asistentes")
+                        || q.contains("cuántas personas asistieron")
+                        || q.contains("cuantas personas asistieron")
+                        || q.contains("cuántos participantes")
+                        || q.contains("cuantos participantes"))) {
+            return QueryType.GET_FIELD;
+        }
+
+        if (dated
                 && (q.contains("cuál fue la duración")
                         || q.contains("cual fue la duracion")
                         || q.contains("duración de la reunión")
@@ -176,16 +205,22 @@ public final class ClassifierOverrides {
             return QueryType.BOOLEAN_QUERY;
         }
 
-        if (dated && (q.contains("duración")
-                || q.contains("duracion")
-                || q.contains("duration")
-                || q.contains("cuánto dur")
-                || q.contains("cuanto dur"))) {
+        if (dated
+                && (q.contains("duración")
+                        || q.contains("duracion")
+                        || q.contains("duration")
+                        || q.contains("cuánto dur")
+                        || q.contains("cuanto dur"))
+                && !(q.contains("asistentes") || q.contains("participantes"))) {
             return QueryType.GET_DURATION;
         }
 
         if ((q.contains("resume") || q.contains("resum"))
                 && (dated || q.matches(".*\\b(año|ano)\\s+(del\\s+)?\\d{4}\\b.*"))) {
+            return QueryType.SUMMARIZE_MEETING;
+        }
+
+        if (ActaFieldAnchorHeuristics.isDatedSummaryRequest(q)) {
             return QueryType.SUMMARIZE_MEETING;
         }
 
@@ -243,6 +278,27 @@ public final class ClassifierOverrides {
 
         if (q.contains("en qué reuniones se mencion") || q.contains("en que reuniones se mencion")) {
             return QueryType.FILTER_AND_LIST;
+        }
+
+        if (ActaFieldAnchorHeuristics.hasMonthNameInText(q)
+                && q.contains("temas")
+                && q.contains("asistentes")) {
+            return QueryType.FILTER_AND_LIST;
+        }
+
+        if ((q.contains("hubo más") || q.contains("hubo mas") || q.contains("compara") || q.contains("compar"))
+                && (q.contains("asistent") || q.contains("reunion") || q.contains("reunión") || q.contains("mes"))) {
+            return QueryType.COMPARE;
+        }
+
+        if ((q.contains("compara") || q.contains("compar"))
+                && q.contains("propuestas")
+                && (q.contains("febrero") || q.contains("agosto"))) {
+            return QueryType.COMPARE;
+        }
+
+        if (q.contains("qué mes tuvo más") || q.contains("que mes tuvo mas")) {
+            return QueryType.COMPARE;
         }
 
         if (q.contains("qué reuniones incluyeron") || q.contains("que reuniones incluyeron")) {

@@ -46,6 +46,21 @@ class RagPresetAnalysisMetricsTest {
     }
 
     @Test
+    void toolFinalAnswerCountsAsRetrievalCoverageWithoutVectorChunks() {
+        Map<String, Object> mp = new LinkedHashMap<>();
+        mp.put("toolExecuted", true);
+        mp.put("toolResultUsedAsFinal", true);
+        mp.put("finalAnswerSource", "TOOL_FINAL");
+        mp.put("sourceCount", 0);
+
+        Map<String, Object> out =
+                RagPresetAnalysisMetrics.compute(mp, "dos actas", "El ascensor aparece en dos actas.", RagExperimentalPresetCode.P8);
+
+        assertThat(out.get("retrievalCoverageStatus")).isEqualTo(CoverageStatus.HAS_CONTEXT.name());
+        assertThat(out.get("sourceCoverageStatus")).isEqualTo(CoverageStatus.HAS_CONTEXT.name());
+    }
+
+    @Test
     void retrievalQualityUnavailableWithoutGoldLabels() {
         Map<String, Object> mp = new LinkedHashMap<>();
         mp.put("sourceCount", 2);

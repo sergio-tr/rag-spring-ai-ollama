@@ -15,7 +15,8 @@ public enum TaskLlmTask {
     FACTUAL_VERIFIER("factual_verifier", "Factual verifier", false),
     LLM_RANKER("llm_ranker", "LLM ranker", false),
     METADATA_REASONING("metadata_reasoning", "Metadata reasoning", false),
-    EVALUATION_JUDGE("evaluation_judge", "Evaluation judge", true),
+    NER_EXTRACTION("ner_extraction", "NER extraction", false),
+    EVALUATION_JUDGE("evaluation_judge", "Evaluation judge", false),
     LLM_BASELINE_EVALUATION("llm_baseline_evaluation", "LLM baseline evaluation", true);
 
     private final String id;
@@ -50,6 +51,7 @@ public enum TaskLlmTask {
             case FACTUAL_VERIFIER -> "factual-revision";
             case LLM_RANKER -> "llm-ranker";
             case METADATA_REASONING -> "metadata-reasoning";
+            case NER_EXTRACTION -> "ner-extraction";
             case EVALUATION_JUDGE -> "evaluation-judge";
             case LLM_BASELINE_EVALUATION -> "llm-baseline-evaluation";
         };
@@ -72,6 +74,15 @@ public enum TaskLlmTask {
         return List.of(values());
     }
 
+    /** Roles exposed in Assistant/Project task model settings and the public catalog API. */
+    public boolean visibleInSettings() {
+        return this != LLM_BASELINE_EVALUATION;
+    }
+
+    public static List<TaskLlmTask> settingsCatalogTasks() {
+        return catalogTasks().stream().filter(TaskLlmTask::visibleInSettings).toList();
+    }
+
     /** Maps runtime secondary LLM operation ids to configurable task overrides. */
     public static Optional<TaskLlmTask> fromOperation(String operation) {
         if (operation == null || operation.isBlank()) {
@@ -88,9 +99,10 @@ public enum TaskLlmTask {
             case "factual-revision", "answer-quality-check", "structured-answer-plan" -> Optional.of(FACTUAL_VERIFIER);
             case "reasoning-cot-pre", "reasoning-cot-post", "reasoning-plan-pre", "reasoning-plan-post" ->
                     Optional.of(FACTUAL_VERIFIER);
-            case "function-calling" -> Optional.of(FINAL_ANSWER);
+            case "function-calling", "final-answer", "primary-answer" -> Optional.of(FINAL_ANSWER);
             case "llm-baseline-evaluation" -> Optional.of(LLM_BASELINE_EVALUATION);
             case "evaluation-judge" -> Optional.of(EVALUATION_JUDGE);
+            case "ner", "ner-extraction" -> Optional.of(NER_EXTRACTION);
             default -> op.startsWith("metadata-") ? Optional.of(METADATA_REASONING) : Optional.empty();
         };
     }

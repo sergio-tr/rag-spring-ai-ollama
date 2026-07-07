@@ -41,4 +41,15 @@ public record RagIndexingEmbeddingProperties(
         int safetyCap = (int) Math.floor(maxInputChars * contextLengthSafetyRatio);
         return Math.max(64, Math.min(cappedProfile, safetyCap));
     }
+
+    /**
+     * Effective char cap for a single whole-document embed (DOCUMENT_LEVEL vector, HYBRID doc-tail
+     * vector). Unlike {@link #effectiveEmbedMaxChars(int)}, this does NOT apply {@link #maxChunkChars()}
+     * (a chunk-splitting safety cap, not a whole-document one) — only the model's real context ceiling
+     * ({@link #maxInputChars()} times {@link #contextLengthSafetyRatio()}).
+     */
+    public int effectiveWholeDocumentEmbedMaxChars() {
+        int safetyCap = (int) Math.floor(maxInputChars * contextLengthSafetyRatio);
+        return Math.max(64, safetyCap);
+    }
 }

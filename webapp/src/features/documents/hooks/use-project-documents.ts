@@ -117,7 +117,7 @@ export function useDeleteProjectDocument(projectId: string | undefined) {
 }
 
 /**
- * No bulk DELETE API — sequential per-document deletes scoped to `projectId` only.
+ * No bulk DELETE API - sequential per-document deletes scoped to `projectId` only.
  */
 export function useRetryProjectDocumentIngest(projectId: string | undefined) {
   const qc = useQueryClient();

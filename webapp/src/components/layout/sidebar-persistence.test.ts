@@ -29,4 +29,21 @@ describe("sidebar-persistence", () => {
     expect(p.expandedProjectIds).toEqual([]);
     expect(p.shellCollapsed).toBe(false);
   });
+
+  it("readSidebarPersistence returns defaults when storage is invalid JSON", () => {
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, "{not-json");
+    const p = readSidebarPersistence();
+    expect(p.expandedProjectIds).toEqual([]);
+    expect(p.sidebarWidthPx).toBeUndefined();
+  });
+
+  it("readSidebarPersistence ignores non-array expandedProjectIds", () => {
+    localStorage.setItem(
+      SIDEBAR_STORAGE_KEY,
+      JSON.stringify({ expandedProjectIds: "not-an-array", projectsCollapsed: true }),
+    );
+    const p = readSidebarPersistence();
+    expect(p.expandedProjectIds).toEqual([]);
+    expect(p.projectsCollapsed).toBe(true);
+  });
 });

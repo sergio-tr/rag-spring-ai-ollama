@@ -23,8 +23,8 @@ export function ProviderUnsupportedParametersPanel({
   if (unsupported.length === 0) return null;
 
   return (
-    <div className="space-y-2" data-testid="provider-unsupported-model-parameters">
-      <p className="text-muted-foreground text-xs">{t("modelParamsUnsupportedHint")}</p>
+    <div className="min-w-0 max-w-full space-y-2" data-testid="provider-unsupported-model-parameters">
+      <p className="text-muted-foreground break-words text-xs">{t("modelParamsUnsupportedHint")}</p>
       <ul className="space-y-2 text-xs">
         {unsupported.map((def) => {
           const stored = readParameterValue(config, def.storage, def.configKey);
@@ -32,18 +32,18 @@ export function ProviderUnsupportedParametersPanel({
           return (
             <li
               key={def.id}
-              className="flex flex-wrap items-baseline justify-between gap-2 rounded-md border border-dashed bg-muted/20 px-3 py-2"
+              className="flex min-w-0 flex-wrap items-baseline justify-between gap-2 rounded-md border border-dashed bg-muted/20 px-3 py-2"
               data-testid={`model-param-unsupported-${def.id}`}
             >
-              <span className="font-medium">{t(def.labelKey as never)}</span>
-              <span className="text-muted-foreground">
+              <span className="min-w-0 break-words font-medium">{t(def.labelKey as never)}</span>
+              <span className="text-muted-foreground min-w-0 shrink-0 break-all text-right">
                 {hasValue ? String(stored) : t("modelParamsUnsupportedNotConfigured")}
               </span>
             </li>
           );
         })}
       </ul>
-      <p className="text-muted-foreground text-[11px] leading-relaxed">{t("modelParamsUnsupportedFutureWork")}</p>
+      <p className="text-muted-foreground text-[11px] leading-relaxed break-words">{t("modelParamsUnsupportedFutureWork")}</p>
     </div>
   );
 }

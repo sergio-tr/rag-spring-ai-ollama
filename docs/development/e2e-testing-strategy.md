@@ -8,7 +8,7 @@
 
 ## Principles
 
-1. **Single PR pipeline:** [`ci.yml`](../../.github/workflows/ci.yml) runs on **pull requests** to **`dev`**, **`main`**, and **`master`**, and on **pushes** to **`main`** and **`master` only** (not on `push` to `dev` — avoids duplicate full DAG when a `dev` → `main` PR is open). It calls [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) once per run. That reusable workflow defines an explicit **`needs:`** DAG: core (backend, classifier, webapp, Playwright smoke) → stack integration → Playwright `@fullstack` → Sonar → **performance** (Gatling smoke + `infra_probe.py`) **only** when the PR targets **`main`** or **`master`**.
+1. **Single PR pipeline:** [`ci.yml`](../../.github/workflows/ci.yml) runs on **pull requests** to **`dev`**, **`main`**, and **`master`**, and on **pushes** to **`main`** and **`master` only** (not on `push` to `dev` - avoids duplicate full DAG when a `dev` → `main` PR is open). It calls [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) once per run. That reusable workflow defines an explicit **`needs:`** DAG: core (backend, classifier, webapp, Playwright smoke) → stack integration → Playwright `@fullstack` → Sonar → **performance** (Gatling smoke + `infra_probe.py`) **only** when the PR targets **`main`** or **`master`**.
 2. **Stack truth** without a browser: `tests/integration` pytest + HTTP (inside the DAG).
 3. **Full browser E2E:** Playwright `@fullstack` (inside the DAG).
 4. **Canonical HTTP smoke** for operators: Playwright **API** project (`webapp/e2e/api`, `npm run test:api`).

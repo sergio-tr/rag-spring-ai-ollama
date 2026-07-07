@@ -1,6 +1,6 @@
 # Full PR / push pipeline: single workflow_call to reusable-ci-core.yml (DAG with explicit needs:).
 # Triggers: pull_request on dev/main/master (pre-merge). push on main/master only (post-merge + deploy SHA
-# gate). No push@dev — avoids duplicate runs when a PR dev->main is open and dev is updated (push + synchronize).
+# gate). No push@dev - avoids duplicate runs when a PR dev->main is open and dev is updated (push + synchronize).
 name: CI
 
 on:

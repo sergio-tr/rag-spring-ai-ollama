@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.tool;
 
+import com.uniovi.rag.application.service.runtime.ResponseSourcesBackfill;
 import com.uniovi.rag.configuration.ToolDescriptor;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
@@ -81,6 +82,11 @@ public class DefaultDeterministicToolExecutor implements DeterministicToolExecut
         payload.put("toolName", toolName);
         payload.put("toolInputSummary", toolInputSummary);
         payload.put("toolOutputHash", hashText(mapped.answerText()));
+        List<Map<String, Object>> sources =
+                ResponseSourcesBackfill.fromToolExecution(payload, mapped.answerText());
+        if (!sources.isEmpty()) {
+            payload.put("responseSources", sources);
+        }
         List<String> notes = new ArrayList<>(baseNotes);
         notes.add("executed=" + kind);
         notes.add("toolOutputHash=" + payload.get("toolOutputHash"));

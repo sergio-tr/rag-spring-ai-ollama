@@ -43,8 +43,7 @@ const t = {
   catalogVectorCompatibleYes: "Yes",
   catalogVectorCompatibleNo: "No",
   catalogVectorCompatibleNa: "N/A",
-  modelAvailable: "Available",
-  modelMissing: "Not installed",
+  catalogGovernanceBlocked: "Blocked",
 };
 
 const chatOpenAiNotProbed: LlmCatalogModelDto = {
@@ -104,15 +103,15 @@ describe("AdminLlmCatalogSection", () => {
     renderSection([chatOpenAiNotProbed, chatUnavailable, embeddingIncompatible]);
 
     expect(screen.getByTestId("admin-catalog-row-OPENAI_COMPATIBLE-CHAT-gpt-oss:20b")).toBeInTheDocument();
-    expect(screen.getByTestId("admin-catalog-display-name-gpt-oss:20b")).toHaveTextContent("GPT OSS 20B");
-    expect(screen.getByTestId("admin-catalog-configured-gpt-oss:20b")).toHaveTextContent("Yes");
+    expect(screen.queryByTestId("admin-catalog-display-name-gpt-oss:20b")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("admin-catalog-configured-gpt-oss:20b")).not.toBeInTheDocument();
     expect(screen.getByTestId("admin-catalog-provider-gpt-oss:20b")).toHaveTextContent("Configured API catalog");
     expect(screen.getByTestId("admin-catalog-capability-gpt-oss:20b")).toHaveTextContent("CHAT");
     expect(screen.getByTestId("admin-catalog-runtime-status-gpt-oss:20b")).toHaveTextContent(
       /Configured \(remote not probed\)/i,
     );
-    expect(screen.getByTestId("admin-catalog-source-gpt-oss:20b")).toHaveTextContent(/Configured API catalog/i);
-    expect(screen.getByTestId("admin-catalog-not-probed-gpt-oss:20b")).toBeInTheDocument();
+    expect(screen.queryByTestId("admin-catalog-source-gpt-oss:20b")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("admin-catalog-not-probed-gpt-oss:20b")).not.toBeInTheDocument();
     expect(screen.queryByTestId("admin-catalog-unavailable-gpt-oss:20b")).not.toBeInTheDocument();
   });
 

@@ -40,6 +40,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -98,6 +99,9 @@ class AccountLifecycleIntegrationTest {
 
     @Autowired
     private BinaryStoragePort binaryStoragePort;
+
+    @Value("${rag.storage.root}")
+    private String binaryStorageRoot;
 
     @Autowired
     private RagAccountProperties accountProperties;
@@ -274,7 +278,7 @@ class AccountLifecycleIntegrationTest {
                         new ByteArrayInputStream("binary".getBytes(StandardCharsets.UTF_8)),
                         6,
                         project.getId() + "/" + UUID.randomUUID() + "/source.bin");
-        Path binaryPath = Path.of(System.getProperty("java.io.tmpdir"), "rag-storage").resolve(stored.relativeUri());
+        Path binaryPath = Path.of(binaryStorageRoot).resolve(stored.relativeUri());
 
         KnowledgeDocumentEntity doc =
                 knowledgeDocumentRepository.save(KnowledgeDocumentEntityFactory.newIngesting(project, "notes.pdf"));

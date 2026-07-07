@@ -15,7 +15,7 @@ services:
         condition: service_started
     ports:
       - "${REVERSE_PROXY_DEV_HTTP_PORT:-8080}:80"
-      - "${REVERSE_PROXY_DEV_HTTPS_PORT:-8443}:443"
+      - "${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}:443"
     volumes:
       - reverse_proxy_certs:/etc/nginx/certs
     environment:
@@ -26,7 +26,7 @@ services:
       REVERSE_PROXY_SERVER_NAME: ${REVERSE_PROXY_SERVER_NAME:-localhost}
       REVERSE_PROXY_ENFORCE_HTTPS: ${REVERSE_PROXY_ENFORCE_HTTPS:-0}
       # Host TLS port suffix for HTTP→HTTPS redirect (empty when HTTPS is on host :443).
-      REVERSE_PROXY_HTTPS_PORT_SUFFIX: ${REVERSE_PROXY_HTTPS_PORT_SUFFIX:-:8443}
+      REVERSE_PROXY_HTTPS_PORT_SUFFIX: ${REVERSE_PROXY_HTTPS_PORT_SUFFIX:-:8444}
       API_PROXY_CONNECT_TIMEOUT: ${API_PROXY_CONNECT_TIMEOUT:-10s}
       API_PROXY_SEND_TIMEOUT: ${API_PROXY_SEND_TIMEOUT:-900s}
       API_PROXY_READ_TIMEOUT: ${API_PROXY_READ_TIMEOUT:-900s}

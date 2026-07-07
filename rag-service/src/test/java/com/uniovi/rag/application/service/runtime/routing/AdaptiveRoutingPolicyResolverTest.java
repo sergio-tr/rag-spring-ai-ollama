@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.config.runtime.ConfigProvenance;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.config.validation.CompatibilityResult;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
@@ -61,9 +62,64 @@ class AdaptiveRoutingPolicyResolverTest {
     void resolve_selectsDeterministicToolRoute_thenWorkflowFallback() {
         RagConfig rag = rag(true, true, true, false, false);
         ExecutionContext ctx = ctx(rag);
-        AdaptiveRoutingDecision d = resolver.resolve(ctx, plan(AmbiguityStatus.SUFFICIENT));
+        AdaptiveRoutingDecision d = resolver.resolve(ctx, countDocumentsPlan());
         assertEquals(AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE, d.primaryRouteKind());
         assertEquals(Optional.of(AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE), d.fallbackWorkflowRouteKind());
+    }
+
+    @Test
+    void resolve_selectsRetrieval_forTopicQueryWithoutToolApplicability() {
+        RagConfig rag = rag(true, true, true, true, false);
+        ExecutionContext ctx = ctx(rag);
+        AdaptiveRoutingDecision d = resolver.resolve(ctx, topicPlan());
+        assertEquals(AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE, d.primaryRouteKind());
+        assertTrue(d.reasons().stream().anyMatch(r -> r.contains("not_applicable")));
+    }
+
+    private static QueryPlan countDocumentsPlan() {
+        return new QueryPlan(
+                QueryPlan.VERSION_P6_QU_CORE_V1,
+                "¿Cuántas actas mencionan asistentes?",
+                "¿Cuántas actas mencionan asistentes?",
+                "¿Cuántas actas mencionan asistentes?",
+                "rw",
+                QueryType.COUNT_DOCUMENTS.name(),
+                Optional.of(QueryType.COUNT_DOCUMENTS),
+                ClassifierStatus.OK,
+                QueryIntent.COUNT,
+                Map.of(),
+                List.of(),
+                List.of(),
+                EntityExtractionResult.emptyWithNote(""),
+                StructuredRewriteResult.identityDisabled("norm", ""),
+                ExpectedAnswerShape.SCALAR_COUNT,
+                new AmbiguityAssessment(AmbiguityStatus.SUFFICIENT, List.of(), List.of()),
+                "corr",
+                "",
+                List.of());
+    }
+
+    private static QueryPlan topicPlan() {
+        return new QueryPlan(
+                QueryPlan.VERSION_P6_QU_CORE_V1,
+                "en qué actas se habla sobre cámaras de seguridad",
+                "en qué actas se habla sobre cámaras de seguridad",
+                "en qué actas se habla sobre cámaras de seguridad",
+                "rw",
+                "lbl",
+                Optional.empty(),
+                ClassifierStatus.OK,
+                QueryIntent.FIND,
+                Map.of(),
+                List.of(),
+                List.of(),
+                EntityExtractionResult.emptyWithNote(""),
+                StructuredRewriteResult.identityDisabled("norm", ""),
+                ExpectedAnswerShape.UNKNOWN,
+                new AmbiguityAssessment(AmbiguityStatus.SUFFICIENT, List.of(), List.of()),
+                "corr",
+                "",
+                List.of());
     }
 
     private static RagConfig rag(

@@ -1,6 +1,6 @@
 package com.uniovi.rag.application.service;
 
-import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.application.service.model.ModelGovernanceService;
 import com.uniovi.rag.domain.config.runtime.ConfigProfileType;
 import com.uniovi.rag.infrastructure.persistence.ConfigProfileRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
@@ -41,7 +41,7 @@ class ConfigProfileApplicationServiceTest {
     private UserRepository userRepository;
 
     @Mock
-    private ModelCatalogPort modelCatalogPort;
+    private ModelGovernanceService modelGovernanceService;
 
     @Mock
     private AuditApplicationService auditApplicationService;
@@ -112,7 +112,6 @@ class ConfigProfileApplicationServiceTest {
         UUID userId = UUID.randomUUID();
         UserEntity actor = Mockito.mock(UserEntity.class);
         when(userRepository.findById(userId)).thenReturn(Optional.of(actor));
-        when(modelCatalogPort.allowedLlmNamesInGovernance()).thenReturn(Set.of());
 
         CreateConfigProfileRequest req =
                 new CreateConfigProfileRequest("INDEX", 1, "draft", Map.of("k", 1), false);
@@ -126,9 +125,10 @@ class ConfigProfileApplicationServiceTest {
     }
 
     @Test
-    void create_rejectsModelNotInAllowlist() {
+    void create_rejectsModelNotInCatalog() {
         UUID userId = UUID.randomUUID();
-        when(modelCatalogPort.allowedLlmNamesInGovernance()).thenReturn(Set.of("allowed-only"));
+        when(modelGovernanceService.isKnownChatModel(any(), any()))
+                .thenReturn(false);
 
         CreateConfigProfileRequest req =
                 new CreateConfigProfileRequest(

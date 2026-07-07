@@ -1,4 +1,4 @@
-# Azure VM — parameterization notes (no fixed IPs in runbooks)
+# Azure VM - parameterization notes (no fixed IPs in runbooks)
 
 **Purpose:** Deploy and operations documentation should remain valid when Azure **public IPs**, NICs, or scale-out patterns change. This page lists **parameterized** settings operators should use instead of hardcoding addresses in docs or scripts.
 
@@ -13,7 +13,7 @@
 | Literal public IPv4 in README/runbooks | **DNS name** (Azure DNS, custom domain CNAME to FQDN, or Azure-provided FQDN if enabled) |
 | Fixed private IP in team wiki | **Service name** / **Private DNS zone** / **subnet** documentation |
 
-**GitHub Actions:** Store `VM_HOST` as the **stable DNS name** of the VM (or private ingress hostname if using a relay). Rotate Azure public IP without changing secret semantics — only DNS A/AAAA updates.
+**GitHub Actions:** Store `VM_HOST` as the **stable DNS name** of the VM (or private ingress hostname if using a relay). Rotate Azure public IP without changing secret semantics - only DNS A/AAAA updates.
 
 ---
 
@@ -28,15 +28,15 @@
 
 | Concern | Practice |
 | --------- | ---------- |
-| Connection strings | Environment variables on VM or **Azure Key Vault** references — not committed |
+| Connection strings | Environment variables on VM or **Azure Key Vault** references - not committed |
 | `GHCR_TOKEN` | Short-lived PAT or org token in GitHub **Secrets**; rotate on schedule |
-| TLS | Terminate at **Application Gateway**, **Nginx**, or **Caddy** with certs from Key Vault or Let’s Encrypt — document **hostname**, not IP |
+| TLS | Terminate at **Application Gateway**, **Nginx**, or **Caddy** with certs from Key Vault or Let’s Encrypt - document **hostname**, not IP |
 
 ---
 
 ## IaC alignment
 
-If the team later adds Bicep/Terraform, **output** the deploy hostname and NSG names into the same variables used by `VM_HOST` and health-check URLs — single source of truth.
+If the team later adds Bicep/Terraform, **output** the deploy hostname and NSG names into the same variables used by `VM_HOST` and health-check URLs - single source of truth.
 
 ---
 

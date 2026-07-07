@@ -1,5 +1,18 @@
 import type { LabEvaluationModelDto } from "@/types/api";
 
+/** Thesis evaluation defaults when present in the configured catalog. */
+export const THESIS_DEFAULT_EMBEDDING_MODEL_ID = "bge-m3";
+export const THESIS_DEFAULT_PRIMARY_LLM_MODEL_ID = "qwen3.5:9b";
+export const THESIS_DEFAULT_SECONDARY_LLM_MODEL_ID = "gemma4:12b";
+
+function firstSelectableModelName(
+  models: LabEvaluationModelDto[],
+  predicate: (model: LabEvaluationModelDto) => boolean,
+): string | null {
+  const row = models.find((m) => m.evalSelectable && predicate(m));
+  return row?.modelName ?? null;
+}
+
 export function selectableEvalModelNames(models: LabEvaluationModelDto[]): string[] {
   return models
     .filter((m) => m.evalSelectable)
@@ -20,10 +33,36 @@ export function compatibleEmbeddingEvalModelNames(models: LabEvaluationModelDto[
 
 export function defaultEmbeddingModelId(models: LabEvaluationModelDto[]): string | null {
   const compatible = models.filter((m) => m.compatibleWithCurrentVectorStore === true);
+  const thesis = compatible.find(
+    (m) => m.evalSelectable && m.modelName === THESIS_DEFAULT_EMBEDDING_MODEL_ID,
+  );
+  if (thesis) return thesis.modelName;
   const preferred = compatible.find((m) => m.usableAsDefault && m.evalSelectable);
   if (preferred) return preferred.modelName;
   const firstSelectable = compatible.find((m) => m.evalSelectable);
   return firstSelectable?.modelName ?? null;
+}
+
+export function defaultLlmModelId(models: LabEvaluationModelDto[]): string | null {
+  const thesis = firstSelectableModelName(models, (m) => m.modelName === THESIS_DEFAULT_PRIMARY_LLM_MODEL_ID);
+  if (thesis) return thesis;
+  const preferred = firstSelectableModelName(models, (m) => m.usableAsDefault === true);
+  if (preferred) return preferred;
+  return firstSelectableModelName(models, () => true);
+}
+
+export function defaultSecondaryLlmModelId(
+  models: LabEvaluationModelDto[],
+  primaryLlmModelId?: string | null,
+): string | null {
+  const primary = primaryLlmModelId?.trim() ?? "";
+  const thesis = firstSelectableModelName(
+    models,
+    (m) => m.modelName === THESIS_DEFAULT_SECONDARY_LLM_MODEL_ID && m.modelName !== primary,
+  );
+  if (thesis) return thesis;
+  const alternate = models.find((m) => m.evalSelectable && m.modelName !== primary);
+  return alternate?.modelName ?? null;
 }
 
 export function isEmbeddingModelEvalSelectable(

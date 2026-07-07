@@ -144,14 +144,40 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             relevantMinutes = byMonth;
         }
 
-        // Step 3.6b: Filter by minimum attendees when query says "más de 18 asistentes"
+        // Step 3.6b: Filter by minimum attendees when query says "más de 18 asistentes" (strict > N)
         Integer minAttendees = extractMinAttendeesFromQuery(query);
         if (minAttendees != null) {
+            final int threshold = minAttendees;
             List<Minute> byMinCount = relevantMinutes.stream()
-                    .filter(m -> (m.numberOfAttendees() > 0 ? m.numberOfAttendees() : (m.attendees() != null ? m.attendees().size() : 0)) > minAttendees)
+                    .filter(m -> attendeeCount(m) > threshold)
                     .toList();
-            log().info("Filtered {} minutes by min attendees (>{}), {} remaining", relevantMinutes.size(), minAttendees, byMinCount.size());
+            if (byMinCount.isEmpty()) {
+                List<Minute> exact = relevantMinutes.stream()
+                        .filter(m -> attendeeCount(m) == threshold)
+                        .toList();
+                if (!exact.isEmpty()) {
+                    String msg = StructuredMinuteMetadataSupport.formatExactAttendeeFallbackAnswer(
+                            query, threshold, exact);
+                    log().info(
+                            "Min attendees >{} yielded 0; returning exact-{} fallback ({} actas)",
+                            threshold,
+                            threshold,
+                            exact.size());
+                    return ToolResult.from(formatResponse(msg, query), getClass());
+                }
+            }
+            log().info("Filtered {} minutes by min attendees (>{}), {} remaining", relevantMinutes.size(), threshold, byMinCount.size());
             relevantMinutes = byMinCount;
+        }
+
+        // Step 3.6c: Place enumeration - route to place field, not topic filter
+        if (StructuredMinuteMetadataSupport.isPlaceListQuery(query)) {
+            Optional<String> placeAnswer =
+                    StructuredMinuteMetadataSupport.formatPlaceListAnswer(query, relevantMinutes);
+            if (placeAnswer.isPresent()) {
+                publishMatchedMinutesContext(relevantMinutes, true);
+                return ToolResult.from(formatResponse(placeAnswer.get(), query), getClass());
+            }
         }
 
         // Step 3.6c: Filter by topic when query mentions a topic (e.g. August + video surveillance + >18 attendees → only ACTA 6 §4)
@@ -163,7 +189,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         }
 
         // Step 3.7: Additional filtering by topic + person if query requires it (AND logic)
-        // Do NOT apply when query is only "when/where did [person] attend" (e.g. Alejandro Torres) — would zero out valid results
+        // Do NOT apply when query is only "when/where did [person] attend" (e.g. Alejandro Torres) - would zero out valid results
         if (requiresTopicAndPersonFilter(query) && !isAttendeeListQuery(query)) {
             List<Minute> topicPersonFiltered =
                     filterMinutesByTopicAndPerson(query, relevantMinutes, ner, evidenceByKey);
@@ -186,6 +212,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         Optional<String> deterministicAnswer =
                 tryFormatDeterministicFilterListAnswer(query, relevantMinutes, ner);
         if (deterministicAnswer.isPresent()) {
+            publishMatchedMinutesContext(relevantMinutes, true);
             return ToolResult.from(formatResponse(deterministicAnswer.get(), query), getClass());
         }
 
@@ -570,6 +597,16 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         return null;
     }
 
+    private static int attendeeCount(Minute m) {
+        if (m == null) {
+            return 0;
+        }
+        if (m.numberOfAttendees() > 0) {
+            return m.numberOfAttendees();
+        }
+        return m.attendees() != null ? m.attendees().size() : 0;
+    }
+
     /** Extracts minimum attendees from query (e.g. Spanish "more than 18 attendees" patterns -> 18). Returns null if not found. */
     private Integer extractMinAttendeesFromQuery(String query) {
         if (query == null) return null;
@@ -627,7 +664,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     }
     
     /**
-     * Filters minutes by topic AND person (both conditions must be met — AND logic).
+     * Filters minutes by topic AND person (both conditions must be met - AND logic).
      * Example: attendees at meetings that discussed a topic and were chaired by a named person.
      */
     private List<Minute> filterMinutesByTopicAndPerson(

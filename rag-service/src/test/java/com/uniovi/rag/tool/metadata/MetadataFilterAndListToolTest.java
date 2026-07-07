@@ -455,4 +455,30 @@ class MetadataFilterAndListToolTest {
         when(retriever.retrieve(anyString())).thenReturn(docs);
         when(retriever.retrieveWithMetadataFilters(anyString(), any(JSONObject.class))).thenReturn(docs);
     }
+
+    @Test
+    void lugaresUsesPlaceField_notTopicFilter() {
+        stubRetriever(allDocs());
+        ToolResult result =
+                tool.execute(
+                        ToolExecutionContext.of(
+                                "dime los lugares donde se han realizado las actas",
+                                QueryType.FILTER_AND_LIST,
+                                null));
+        assertThat(result.result().toLowerCase()).contains("lugar");
+        assertThat(result.result().toLowerCase()).doesNotContain("no relevant");
+    }
+
+    @Test
+    void attendeeThreshold_strictGreaterWithExactFallback() {
+        stubRetriever(allDocs());
+        ToolResult result =
+                tool.execute(
+                        ToolExecutionContext.of(
+                                "quiero saber cuáles actas tienen más de 20 asistentes",
+                                QueryType.FILTER_AND_LIST,
+                                null));
+        String answer = result.result().toLowerCase();
+        assertThat(answer.contains("más de 20") || answer.contains("exactamente 20")).isTrue();
+    }
 }

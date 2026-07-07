@@ -151,11 +151,11 @@ export const FORBIDDEN_LAB_UI_PATTERNS: RegExp[] = [
   /\bcorpus and snapshot\b/i,
   /POST JSON/i,
   /canonical benchmark API/i,
-  /Lab API —/i,
+  /Lab API -/i,
   /POST \/api/i,
   /GET \/api/i,
   /Stopped watching here/i,
-  /Stopped waiting — the server job/i,
+  /Stopped waiting - the server job/i,
   /Status poll:/i,
   /Live stream:/i,
   /datasetId.*projectId.*llmModelId/i,
@@ -690,7 +690,7 @@ export async function assertLabRunStarted(page: Page): Promise<void> {
   const blockedByOtherJob = page.getByText(/Another Lab evaluation is already running/i);
   await expect(
     blockedByOtherJob,
-    "Another active Lab job blocks Run — cancel jobs (ensureNoActiveLabJobs) or run this file serially",
+    "Another active Lab job blocks Run - cancel jobs (ensureNoActiveLabJobs) or run this file serially",
   ).toHaveCount(0);
   await expect(page.getByText(/Live stream configuration error/i)).toHaveCount(0);
   await expect(page.getByTestId("lab-job-panel")).toBeVisible({ timeout: 30_000 });
@@ -709,6 +709,14 @@ export {
 export async function prepareLabE2eTest(page: Page): Promise<void> {
   await clearActiveProjectForLab(page);
   await prepareLabAuthenticatedHarness(page);
+}
+
+/** Lab campaign setup using admin credentials (empirical runs / exports). */
+export async function prepareLabAdminE2eTest(page: Page): Promise<void> {
+  await clearActiveProjectForLab(page);
+  const { loginAsAdminUser } = await import("./helpers");
+  await loginAsAdminUser(page);
+  await ensureNoActiveLabJobs(page);
 }
 
 /** Cancels active jobs and waits for terminal; fails if cleanup cannot complete. */
@@ -1266,18 +1274,52 @@ export async function pollLabJobTerminal(
   page: Page,
   jobId: string,
   timeoutMs = 240_000,
+  options?: {
+    log?: (line: string) => void;
+    campaignId?: string | null;
+  },
 ): Promise<LabJobStatusBody> {
   let latest: LabJobStatusBody = {};
+  let pollCount = 0;
+  let lastHttpStatus = 0;
+  let lastErrorBody = "";
+  const log = options?.log ?? (() => undefined);
   await expect
     .poll(
       async () => {
-        latest = await fetchLabJobStatus(page, jobId);
-        const status = (latest.status ?? "").toUpperCase();
-        return status === "SUCCEEDED" || status === "FAILED" || status === "CANCELLED";
+        pollCount += 1;
+        const headers = await authHeadersFromPage(page);
+        const res = await page.request.get(productApiUrl(`/lab/jobs/${jobId}`), { headers });
+        lastHttpStatus = res.status();
+        lastErrorBody = await res.text();
+        if (lastHttpStatus === 200) {
+          const raw = JSON.parse(lastErrorBody) as LabJobStatusBody;
+          const { campaignId, totalItems } = campaignFieldsFromJobStatus(raw);
+          latest = { ...raw, campaignId, totalItems };
+          const status = (latest.status ?? "").toUpperCase();
+          log(
+            `poll taskId=${jobId} runId=${typeof latest.result?.evaluationRunId === "string" ? latest.result.evaluationRunId : "n/a"} campaignId=${options?.campaignId ?? campaignId ?? "n/a"} status=${status} pollCount=${pollCount} lastHttpStatus=${lastHttpStatus}`,
+          );
+          return status === "SUCCEEDED" || status === "FAILED" || status === "CANCELLED";
+        }
+        log(
+          `poll taskId=${jobId} campaignId=${options?.campaignId ?? "n/a"} pollCount=${pollCount} lastHttpStatus=${lastHttpStatus} lastErrorBody=${lastErrorBody.slice(0, 240)}`,
+        );
+        if (lastHttpStatus === 404) {
+          throw new Error(
+            `Lab job not found while polling taskId=${jobId} (use asyncTaskId from POST /lab/benchmarks/.../runs, not evaluationRunId). Body: ${lastErrorBody.slice(0, 400)}`,
+          );
+        }
+        return false;
       },
       { timeout: timeoutMs, intervals: [800, 2000, 4000] },
     )
     .toBe(true);
+  if (lastHttpStatus !== 200) {
+    throw new Error(
+      `Lab job poll ended without HTTP 200 taskId=${jobId} lastHttpStatus=${lastHttpStatus} body=${lastErrorBody.slice(0, 400)}`,
+    );
+  }
   return latest;
 }
 

@@ -1,6 +1,6 @@
 # Docker and environment scripts
 
-**Location:** `docker/scripts/` — canonical implementations for Compose orchestration and `.env` generation. All command examples assume the **repository root** as the current directory, on **Linux** or **WSL2** (`bash`). **GitHub Actions** uses the same family of commands on `ubuntu-*` runners.
+**Location:** `docker/scripts/` - canonical implementations for Compose orchestration and `.env` generation. All command examples assume the **repository root** as the current directory, on **Linux** or **WSL2** (`bash`). **GitHub Actions** uses the same family of commands on `ubuntu-*` runners.
 
 ## Full stack verification (tests + coverage + Docker + integration)
 
@@ -76,7 +76,7 @@ Requires **Python 3** and **PyYAML** (same as the compose helpers below).
 | [`compose_inventory.py`](compose_inventory.py) | Lists every `docker/*.yml` and each service with `image` vs `build` (per-file, not merged stacks). |
 | [`compose_guard.py`](compose_guard.py) | Policy rules: no `image:` in `docker/*.yml`, valid `build:` blocks, optional env/port/healthcheck strictness. Full run may report **violations** for `environment_literal` / `healthcheck_*` during migration. **CI** uses `--only-rules image_forbidden,yaml_error,build_invalid,build_missing_context,build_missing_dockerfile` (see [`.github/workflows/docker-compose-ci.yml`](../../.github/workflows/docker-compose-ci.yml)). |
 
-**Mailpit** (`docker-compose.yml`, profile `dev-mail`): upstream image is pinned via **`docker/mailpit/Dockerfile`** and build arg **`MAILPIT_BASE_IMAGE`** (default `axllent/mailpit:v1.29.7`), because Compose services must use **`build:`** only — never a top-level **`image:`**. Enable with **`--mail`** on `up` / `build` / `down` / `config` (adds **`--profile dev-mail`**, service `mailpit`, and overlay **`compose.dev-mail.yml`** / **`compose.prod-mail.yml`** to point `backend-dev` / `backend` at `mailpit:1025`). UI: `http://127.0.0.1:${MAILPIT_HTTP_PORT:-8025}/`.
+**Mailpit** (`docker-compose.yml`, profile `dev-mail`): upstream image is pinned via **`docker/mailpit/Dockerfile`** and build arg **`MAILPIT_BASE_IMAGE`** (default `axllent/mailpit:v1.29.7`), because Compose services must use **`build:`** only - never a top-level **`image:`**. Enable with **`--mail`** on `up` / `build` / `down` / `config` (adds **`--profile dev-mail`**, service `mailpit`, and overlay **`compose.dev-mail.yml`** / **`compose.prod-mail.yml`** to point `backend-dev` / `backend` at `mailpit:1025`). UI: `http://127.0.0.1:${MAILPIT_HTTP_PORT:-8025}/`.
 
 ```bash
 python3 ./docker/scripts/compose_inventory.py
@@ -90,7 +90,7 @@ Exit code of `compose_guard.py` is **1** when any **enforced** rule fails (defau
 
 ## Interactive .env creation: `set-env.sh`
 
-`set-env.sh` only asks whether to create each component's `.env` (db, observability, rag-service, classifier-service, ollama, **webapp**). It does **not** run Docker Compose — use `./docker/scripts/up.sh dev` or `./docker/scripts/up.sh prod` afterward.
+`set-env.sh` only asks whether to create each component's `.env` (db, observability, rag-service, classifier-service, ollama, **webapp**). It does **not** run Docker Compose - use `./docker/scripts/up.sh dev` or `./docker/scripts/up.sh prod` afterward.
 
 ### Unified script: `docker-compose.sh` (build / up / down)
 
@@ -135,9 +135,9 @@ Entry point: [`docker-compose.sh`](docker-compose.sh). Shortcuts: [`up.sh`](up.s
 
 **Unified up** (`./docker/scripts/up.sh <dev|prod>`) can optionally create `.env` files before `compose up`:
 
-- **`--env <name>`** — run the matching `create-env-*.sh` once (repeatable). Names: `db`, `obs`, `rag`, `classifier`, `ollama`, `webapp`, `all`. Comma-separated values in one `--env` are allowed (e.g. `--env db,rag`).
-- **`--no-env-prompt`** — skip the interactive question below.
-- **(interactive TTY, no `--env`)** — prompts: `Run interactive .env setup (set-env.sh)? [y/N]`
+- **`--env <name>`** - run the matching `create-env-*.sh` once (repeatable). Names: `db`, `obs`, `rag`, `classifier`, `ollama`, `webapp`, `all`. Comma-separated values in one `--env` are allowed (e.g. `--env db,rag`).
+- **`--no-env-prompt`** - skip the interactive question below.
+- **(interactive TTY, no `--env`)** - prompts: `Run interactive .env setup (set-env.sh)? [y/N]`
 
 Env setup runs **before** `compose up`, not before `dev --down`.
 
@@ -154,7 +154,7 @@ Env setup runs **before** `compose up`, not before `dev --down`.
 
 **Compose layout:** `docker-compose.yml` (core + optional services behind **profiles**: `observability`, `logs`, `infra`, `ollama`, `dev-mail`, `cadvisor`, and **`rag`** for `backend-dev`). Overlays: `compose.dev.yml` (includes webapp ordering for `--rag`), `compose.dev-direct-ports.yml` (`--rag` without `--proxy`), `compose.dev-proxy.yml` (`--rag --proxy`, adds **`--profile proxy`**), `compose.dev-mail.yml` / `compose.prod-mail.yml` (`--mail`, SMTP + auth flags for Docker backends), `compose.obs.yml` (Spring OTLP for `backend` / `classifier-service`), `compose.gpu.yml`, `compose.rag-dev-obs.yml` (`--rag --obs`), `compose.prod.yml`, and `compose.prod-obs.yml` only with `prod --obs --obs-private`. Ollama HTTP URL is always from **`rag-service/.env`**; **`--ollama-remote`** only affects whether the **`ollama`** profile is started together with **`--gpu`/`--ollama`**.
 
-**Flags**: `dev`: `--all`, `--gpu`, `--ollama`, `--obs`, `--classifier`, `--logs`, `--infra`, **`--mail`**, `--rag`, **`--proxy`**, `--down`, `--volumes`. `prod`: **`--server`** (university production VM — `compose.prod-server.yml`, no Mailpit, remote LiteLLM), `--all`, `--obs`, `--obs-private`, `--gpu`, `--ollama`, `--logs`, `--infra`, **`--mail`** (nginx always). **`down.sh`**: same flags as `up` for `dev` or `prod`. For **`down dev`** / **`build dev`**, pass the **same** flags as `up dev` (including `--rag`, **`--proxy`**, `--mail`, `--all`).
+**Flags**: `dev`: `--all`, `--gpu`, `--ollama`, `--obs`, `--classifier`, `--logs`, `--infra`, **`--mail`**, `--rag`, **`--proxy`**, `--down`, `--volumes`. `prod`: **`--server`** (university production VM - `compose.prod-server.yml`, no Mailpit, remote LiteLLM), `--all`, `--obs`, `--obs-private`, `--gpu`, `--ollama`, `--logs`, `--infra`, **`--mail`** (nginx always). **`down.sh`**: same flags as `up` for `dev` or `prod`. For **`down dev`** / **`build dev`**, pass the **same** flags as `up dev` (including `--rag`, **`--proxy`**, `--mail`, `--all`).
 
 **Auth email with `--mail`:** set **`RAG_AUTH_WEBAPP_BASE_URL`** in `rag-service/.env` to the URL users open in the browser (e.g. `http://127.0.0.1` with **`--proxy`**, or `http://127.0.0.1:3000` for `npm run dev`). **`RAG_AUTH_MAIL_FROM`** must be non-empty (default `no-reply@local.test` is fine for Mailpit).
 
@@ -166,7 +166,7 @@ From `docker/` (env files are optional; compose uses defaults if a file is missi
 - With observability: add `-f compose.obs.yml`, **`--profile observability`**, and `--env-file ../observability/.env`
 - With Ollama in Docker (GPU): add `-f compose.gpu.yml`, **`--profile ollama`**, and `--env-file ../ollama/.env` (see `ollama/README.md`), or use `./docker/scripts/up.sh prod --ollama`. Host-Ollama is the default recommended demo mode and does not need the `ollama` profile.
 
-## Prod local (hardening) — `up` / `down` / `build`
+## Prod local (hardening) - `up` / `down` / `build`
 
 **Prod local** starts the stack with `compose.prod.yml` (reverse proxy + hardened ports for internal services).
 
@@ -277,12 +277,12 @@ Avoid using query paths as the basic connectivity smoke; keep smoke checks non-s
 
 Before tagging a release or snapshot, capture evidence for:
 
-1. **Compose syntax:** `docker compose … config -q` for `docker-compose.yml` with **`--profile logs`** (and other profiles as needed), for `docker-compose.yml` + `compose.obs.yml` + **`--profile observability`**, and for `docker-compose.yml` + `compose.prod.yml` (same env-file pattern as CI — see [`.github/workflows/observability-smoke.yml`](../../.github/workflows/observability-smoke.yml)).
+1. **Compose syntax:** `docker compose … config -q` for `docker-compose.yml` with **`--profile logs`** (and other profiles as needed), for `docker-compose.yml` + `compose.obs.yml` + **`--profile observability`**, and for `docker-compose.yml` + `compose.prod.yml` (same env-file pattern as CI - see [`.github/workflows/observability-smoke.yml`](../../.github/workflows/observability-smoke.yml)).
 2. **Runtime:** [`rag-service/scripts/smoke-test.sh`](../../rag-service/scripts/smoke-test.sh) against the running backend; Actuator health/readiness.
-3. **Deep stack (optional / nightly):** [`tests/full-stack-verify.sh`](../../tests/full-stack-verify.sh) — heavy; run manually or on a scheduled runner if not part of PR CI.
+3. **Deep stack (optional / nightly):** [`tests/full-stack-verify.sh`](../../tests/full-stack-verify.sh) - heavy; run manually or on a scheduled runner if not part of PR CI.
 
 Canonical orchestration remains **`./docker/scripts/up.sh`** and **`./docker/scripts/docker-compose.sh`**; do not maintain one-off compose examples that diverge from those scripts ([`../README.md`](../README.md)).
 
 ## Repo layout note
 
-`docker/scripts/` is the canonical location for Compose orchestration and `.env` generation. The file [`../../rag-service/scripts/up.sh`](../../rag-service/scripts/up.sh) **delegates** to `docker/scripts/up.sh` — it is not a second source of compose flags.
+`docker/scripts/` is the canonical location for Compose orchestration and `.env` generation. The file [`../../rag-service/scripts/up.sh`](../../rag-service/scripts/up.sh) **delegates** to `docker/scripts/up.sh` - it is not a second source of compose flags.

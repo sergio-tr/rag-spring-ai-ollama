@@ -124,12 +124,21 @@ final class RuntimeRetrievedSourceMapper {
         Map<String, Object> out = new LinkedHashMap<>();
         copy(out, meta, "page");
         copy(out, meta, "source");
-        copy(out, meta, "section");
+        copy(out, meta, "sectionType");
+        copy(out, meta, "actaDate");
+        copy(out, meta, "year");
+        copy(out, meta, "attendeesCount");
+        copy(out, meta, "numberOfAttendees");
+        copy(out, meta, "sectionExpanded");
         copy(out, meta, "date_iso");
         copy(out, meta, "documentDate");
         copy(out, meta, "detectedDate");
         copy(out, meta, "president");
         copy(out, meta, "secretary");
+        copy(out, meta, "topics");
+        copy(out, meta, "decisions");
+        copy(out, meta, "actaYear");
+        copy(out, meta, "year");
         return out;
     }
 

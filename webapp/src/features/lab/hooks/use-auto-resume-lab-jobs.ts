@@ -27,7 +27,7 @@ export type UseAutoResumeLabJobsOptions = Readonly<{
   onAutoFollow: (input: AutoResumeLabJobsFollowInput) => void | Promise<void>;
   /** When false, skip automatic SSE attach (e.g. user started another run). */
   canAutoFollow?: boolean;
-  /** Job id already being watched in this card — suppress duplicate auto-follow. */
+  /** Job id already being watched in this card - suppress duplicate auto-follow. */
   watchingJobId?: string | null;
   onFollowError?: (error: unknown, candidate: LabActiveJobResumeCandidate) => void;
 }>;

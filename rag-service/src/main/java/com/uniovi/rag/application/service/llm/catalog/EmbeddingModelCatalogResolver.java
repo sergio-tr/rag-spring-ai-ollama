@@ -9,6 +9,7 @@ import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 /**
@@ -58,5 +59,38 @@ public class EmbeddingModelCatalogResolver {
             }
         }
         return trimmed;
+    }
+
+    /**
+     * Returns the configured catalog model name when {@code requestedModelId} matches an available embedding entry;
+     * otherwise empty (caller should fall back to deployment default).
+     */
+    public Optional<String> resolveIfAvailable(LlmProvider provider, String requestedModelId) {
+        if (requestedModelId == null || requestedModelId.isBlank()) {
+            return Optional.empty();
+        }
+        LlmProvider effectiveProvider = provider != null ? provider : llmProperties.getEffectiveDefaultEmbeddingProvider();
+        String trimmed = requestedModelId.trim();
+        List<LlmCatalogEntry> entries =
+                modelCatalog.listConfigured(
+                        new LlmCatalogQuery(effectiveProvider, LlmModelCapability.EMBEDDING, null, null));
+        for (LlmCatalogEntry entry : entries) {
+            if (!entry.available()) {
+                continue;
+            }
+            if (entry.modelName().equals(trimmed)) {
+                return Optional.of(entry.modelName());
+            }
+        }
+        String normalized = IndexProfileJsonSupport.normalizeEmbeddingKey(trimmed);
+        for (LlmCatalogEntry entry : entries) {
+            if (!entry.available()) {
+                continue;
+            }
+            if (IndexProfileJsonSupport.normalizeEmbeddingKey(entry.modelName()).equals(normalized)) {
+                return Optional.of(entry.modelName());
+            }
+        }
+        return Optional.empty();
     }
 }

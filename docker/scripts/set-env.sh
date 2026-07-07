@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Interactive: create .env files for each component from .env.example (only if missing, unless the create-* script supports --force).
-# Does not run Docker Compose — use ./docker/scripts/up.sh dev|prod to start the stack.
+# Does not run Docker Compose - use ./docker/scripts/up.sh dev|prod to start the stack.
 # Run from repository root: ./docker/scripts/set-env.sh
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

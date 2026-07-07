@@ -26,7 +26,52 @@ public record QueryPlan(
         AmbiguityAssessment ambiguityAssessment,
         String correlationId,
         String classifierModelIdUsed,
-        List<String> pipelineNotes) {
+        List<String> pipelineNotes,
+        QueryExpansionResult queryExpansion) {
+
+    /** Backward-compatible constructor for callers without explicit expansion metadata. */
+    public QueryPlan(
+            String queryPlanVersion,
+            String rawUserQuery,
+            String effectivePlanningInputText,
+            String normalizedQueryText,
+            String rewrittenQueryText,
+            String classifierLabel,
+            Optional<QueryType> classifierQueryType,
+            ClassifierStatus classifierStatus,
+            QueryIntent queryIntent,
+            Map<String, String> slots,
+            List<String> targetEntities,
+            List<String> targetAttributes,
+            EntityExtractionResult entityExtractionResult,
+            StructuredRewriteResult structuredRewriteResult,
+            ExpectedAnswerShape expectedAnswerShape,
+            AmbiguityAssessment ambiguityAssessment,
+            String correlationId,
+            String classifierModelIdUsed,
+            List<String> pipelineNotes) {
+        this(
+                queryPlanVersion,
+                rawUserQuery,
+                effectivePlanningInputText,
+                normalizedQueryText,
+                rewrittenQueryText,
+                classifierLabel,
+                classifierQueryType,
+                classifierStatus,
+                queryIntent,
+                slots,
+                targetEntities,
+                targetAttributes,
+                entityExtractionResult,
+                structuredRewriteResult,
+                expectedAnswerShape,
+                ambiguityAssessment,
+                correlationId,
+                classifierModelIdUsed,
+                pipelineNotes,
+                QueryExpansionResult.skipped(normalizedQueryText));
+    }
 
     public static final String VERSION_P6_QU_CORE_V1 = "P6_QU_CORE_V1";
     public static final String VERSION_P11_QU_CLARIFICATION_CORE_V1 = "P11_QU_CLARIFICATION_CORE_V1";
@@ -52,6 +97,8 @@ public record QueryPlan(
         Objects.requireNonNull(correlationId, "correlationId");
         Objects.requireNonNull(classifierModelIdUsed, "classifierModelIdUsed");
         pipelineNotes = List.copyOf(Objects.requireNonNull(pipelineNotes, "pipelineNotes"));
+        queryExpansion =
+                queryExpansion != null ? queryExpansion : QueryExpansionResult.skipped(normalizedQueryText);
     }
 
     private static String requireSupportedQueryPlanVersion(String queryPlanVersion) {

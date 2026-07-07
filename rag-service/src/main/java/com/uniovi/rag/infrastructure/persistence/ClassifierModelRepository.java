@@ -23,4 +23,10 @@ public interface ClassifierModelRepository extends JpaRepository<ClassifierModel
 
     @Query("SELECT c FROM ClassifierModelEntity c WHERE c.owner.id = :ownerId AND c.active = true")
     List<ClassifierModelEntity> findActiveByOwner_Id(@Param("ownerId") UUID ownerId);
+
+    @Query(
+            "SELECT COUNT(c) > 0 FROM ClassifierModelEntity c WHERE c.owner.id = :ownerId AND lower(c.name) = lower(:name)")
+    boolean existsByOwner_IdAndNameIgnoreCase(@Param("ownerId") UUID ownerId, @Param("name") String name);
+
+    boolean existsByOwner_IdAndArtifactPath(UUID ownerId, String artifactPath);
 }

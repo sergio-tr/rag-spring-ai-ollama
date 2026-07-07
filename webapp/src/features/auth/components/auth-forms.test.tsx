@@ -15,6 +15,23 @@ vi.mock("@/navigation", () => ({
   useRouter: () => ({ push, refresh }),
 }));
 
+const queryClientMock = { clear: vi.fn() };
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => queryClientMock,
+}));
+
+const hardNavigate = vi.fn();
+vi.mock("@/lib/hard-navigation", () => ({
+  hardNavigate: (...args: unknown[]) => hardNavigate(...args),
+}));
+
+const resetRegisteredClientSessionState = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/lib/client-session-reset", () => ({
+  LAST_USER_ID_KEY: "rag_last_user_id",
+  resetRegisteredClientSessionState: (...args: unknown[]) =>
+    resetRegisteredClientSessionState(...args),
+}));
+
 vi.mock("@/features/auth/lib/session-client", () => ({
   commitSessionCookie: vi.fn().mockResolvedValue(undefined),
 }));
@@ -40,6 +57,11 @@ describe("LoginForm", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
     push.mockReset();
+    refresh.mockReset();
+    resetRegisteredClientSessionState.mockReset();
+    hardNavigate.mockReset();
+    queryClientMock.clear.mockReset();
+    sessionStorage.clear();
     vi.unstubAllEnvs();
     vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "false");
   });
@@ -135,7 +157,50 @@ describe("LoginForm", () => {
       accessToken: "a",
       refreshToken: "r",
     });
-    expect(push).toHaveBeenCalledWith("/projects");
+    expect(hardNavigate).toHaveBeenCalledWith("/projects", "en");
+  });
+
+  it("resets client state on every successful login", async () => {
+    const user = userEvent.setup();
+    sessionStorage.setItem("rag_last_user_id", "user-a");
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      accessToken: "a",
+      refreshToken: "r",
+      user: { id: "user-b", email: "b@b.com", name: "B", role: "USER" },
+    });
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/email/i), "b@b.com");
+    await user.type(screen.getByLabelText(/^password$/i), "secret1234");
+    await user.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await vi.waitFor(() => expect(resetRegisteredClientSessionState).toHaveBeenCalled());
+    expect(resetRegisteredClientSessionState).toHaveBeenCalledWith({ queryClient: queryClientMock });
+    expect(commitSessionCookie).toHaveBeenCalled();
+    expect(sessionStorage.getItem("rag_last_user_id")).toBe("user-b");
+  });
+
+  it("still resets client state when logging in as the same user", async () => {
+    const user = userEvent.setup();
+    sessionStorage.setItem("rag_last_user_id", "user-a");
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      accessToken: "a",
+      refreshToken: "r",
+      user: { id: "user-a", email: "a@a.com", name: "A", role: "USER" },
+    });
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/email/i), "a@a.com");
+    await user.type(screen.getByLabelText(/^password$/i), "secret1234");
+    await user.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await vi.waitFor(() => expect(commitSessionCookie).toHaveBeenCalled());
+    expect(resetRegisteredClientSessionState).toHaveBeenCalled();
+    expect(sessionStorage.getItem("rag_last_user_id")).toBe("user-a");
   });
 
   it("shows network error on generic failure", async () => {
@@ -499,7 +564,7 @@ describe("RegisterForm", () => {
       expect(push).toHaveBeenCalledWith("/register/pending?email=a%40b.com"),
     );
     expect(commitSessionCookie).not.toHaveBeenCalled();
-    expect(push).not.toHaveBeenCalledWith("/projects");
+    expect(hardNavigate).not.toHaveBeenCalled();
   });
 
   it("shows register error on conflict", async () => {

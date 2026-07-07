@@ -10,7 +10,7 @@ type IntlProviderProps = {
   messages: AbstractIntlMessages;
   /** IANA zone; must be non-empty on the server so `useTranslations` never sees a missing timeZone. */
   timeZone: string;
-  /** Unix ms from the server — avoids RSC `Date` serialization edge cases. */
+  /** Unix ms from the server - avoids RSC `Date` serialization edge cases. */
   nowMs: number;
   children: ReactNode;
 };

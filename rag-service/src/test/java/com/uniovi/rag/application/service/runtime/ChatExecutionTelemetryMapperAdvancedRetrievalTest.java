@@ -43,7 +43,15 @@ class ChatExecutionTelemetryMapperAdvancedRetrievalTest {
                         200,
                         120,
                         true,
-                        6);
+                        6,
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of(8),
+                        Optional.of(0.1),
+                        Optional.of(50),
+                        Optional.of("section_merge"),
+                        Optional.of("project_settings"));
         ExecutionTrace trace = mock(ExecutionTrace.class);
         stubTraceDefaults(trace);
         when(trace.retrievalUsed()).thenReturn(true);
@@ -78,6 +86,11 @@ class ChatExecutionTelemetryMapperAdvancedRetrievalTest {
         assertThat(telemetry.get("retrievalRoute")).isEqualTo("HYBRID_DENSE_SPARSE_METADATA");
         assertThat(telemetry.get("hybridApplied")).isEqualTo(true);
         assertThat(telemetry.get("candidateOrigins")).isEqualTo("dense=5;sparse=3;both=2;fused=6");
+        assertThat(telemetry.get("retrievalEffectiveTopK")).isEqualTo(8);
+        assertThat(telemetry.get("retrievalEffectiveSimilarityThreshold")).isEqualTo(0.1);
+        assertThat(telemetry.get("retrievalDenseFetchLimit")).isEqualTo(50);
+        assertThat(telemetry.get("retrievalContextReductionReason")).isEqualTo("section_merge");
+        assertThat(telemetry.get("retrievalSourceMode")).isEqualTo("project_settings");
     }
 
     @Test

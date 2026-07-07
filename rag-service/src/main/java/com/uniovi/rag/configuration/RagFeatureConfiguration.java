@@ -8,7 +8,7 @@ import java.util.HashMap;
 /**
  * Boolean feature flags under {@code rag.features.*}.
  * Implementation selection (process/simple, retriever, analyser) is in {@link RagImplementationProperties}.
- * <p><b>Tools</b>: two related flags — {@link #functionCallingEnabled} (Spring AI {@code ChatClient.tools(adapter)})
+ * <p><b>Tools</b>: two related flags - {@link #functionCallingEnabled} (Spring AI {@code ChatClient.tools(adapter)})
  * and {@link #toolsEnabled} (manual tools: deterministic adapter + {@link RagToolsConfiguration} registry).
  * Order: function-calling first when enabled; if it does not apply or fails, {@code tools} enables the manual path.
  * {@code metadata} still selects metadata vs non-metadata tool implementations on both paths.</p>

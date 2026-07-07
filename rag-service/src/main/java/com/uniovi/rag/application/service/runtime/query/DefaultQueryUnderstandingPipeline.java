@@ -8,6 +8,7 @@ import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
 import com.uniovi.rag.domain.runtime.query.NormalizedQuery;
+import com.uniovi.rag.domain.runtime.query.QueryExpansionResult;
 import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
@@ -32,6 +33,7 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
     private final QueryIntentResolver intentResolver;
     private final ExpectedAnswerShapeResolver answerShapeResolver;
     private final AmbiguityAssessmentService ambiguityAssessmentService;
+    private final QueryExpansionStage queryExpansionStage;
 
     public DefaultQueryUnderstandingPipeline(
             QueryClassifierAdapter classifierAdapter,
@@ -39,13 +41,15 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
             StructuredQueryRewriter rewriter,
             QueryIntentResolver intentResolver,
             ExpectedAnswerShapeResolver answerShapeResolver,
-            AmbiguityAssessmentService ambiguityAssessmentService) {
+            AmbiguityAssessmentService ambiguityAssessmentService,
+            QueryExpansionStage queryExpansionStage) {
         this.classifierAdapter = classifierAdapter;
         this.entityExtractionAdapter = entityExtractionAdapter;
         this.rewriter = rewriter;
         this.intentResolver = intentResolver;
         this.answerShapeResolver = answerShapeResolver;
         this.ambiguityAssessmentService = ambiguityAssessmentService;
+        this.queryExpansionStage = queryExpansionStage;
     }
 
     @Override
@@ -65,9 +69,38 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         notes.add(stageNote("qu_normalize", "OK", msSince(t0),
                 normalized.notes().isEmpty() ? "normalized" : String.join(",", normalized.notes())));
 
+        // 1b) Query expansion (independent of retrieval; uses task LLM when enabled)
+        long tExpand = System.nanoTime();
+        QueryExpansionResult expansion = queryExpansionStage.expand(ctx, normalized.normalizedText());
+        String downstreamQuery = expansion.downstreamQueryText();
+        NormalizedQuery downstreamNormalized = new NormalizedQuery(normalized.rawUserQuery(), downstreamQuery, normalized.notes());
+        String expandStatus;
+        if (!ctx.resolved().toRagConfig().expansionEnabled()) {
+            expandStatus = QU_NOTE_DISABLED;
+        } else if (expansion.applied()) {
+            expandStatus = "OK";
+        } else if ("FAILED".equals(expansion.strategy())) {
+            expandStatus = QU_NOTE_ERROR;
+        } else {
+            expandStatus = "OK";
+        }
+        notes.add(stageNote(
+                "qu_expand",
+                expandStatus,
+                msSince(tExpand),
+                "applied="
+                        + expansion.applied()
+                        + " strategy="
+                        + expansion.strategy()
+                        + " original="
+                        + truncateForTrace(expansion.originalQuery())
+                        + " expanded="
+                        + truncateForTrace(expansion.expandedQuery())
+                        + (expansion.traceNote().isBlank() ? "" : " note=" + expansion.traceNote())));
+
         // 2) Classify
         long t1 = System.nanoTime();
-        QueryClassifierAdapter.ClassifierOutcome c = classifierAdapter.classify(ctx, normalized.normalizedText());
+        QueryClassifierAdapter.ClassifierOutcome c = classifierAdapter.classify(ctx, downstreamNormalized.normalizedText());
         String classifyStatus = switch (c.classifierStatus()) {
             case OK -> "OK";
             case DISABLED -> QU_NOTE_DISABLED;
@@ -94,7 +127,7 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
 
         // 3) Extract entities
         long t2 = System.nanoTime();
-        EntityExtractionResult entities = entityExtractionAdapter.extract(ctx, normalized.normalizedText());
+        EntityExtractionResult entities = entityExtractionAdapter.extract(ctx, downstreamNormalized.normalizedText());
         String nerStatus;
         if (!ctx.resolved().toRagConfig().nerEnabled()) {
             nerStatus = QU_NOTE_DISABLED;
@@ -110,9 +143,9 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         // 4) Rewrite
         long t3 = System.nanoTime();
         StructuredRewriteResult rewrite = rewriter.rewrite(
-                ctx, normalized, classifierLabel, classifierQueryType, classifierStatus, entities);
+                ctx, downstreamNormalized, classifierLabel, classifierQueryType, classifierStatus, entities);
         String rewriteStatus = "OK";
-        if (!ctx.resolved().toRagConfig().toolsEnabled()) {
+        if (!ctx.resolved().toRagConfig().nerEnabled()) {
             rewriteStatus = QU_NOTE_DISABLED;
         } else if (!rewrite.rewriteNotes().isEmpty()) {
             String first = rewrite.rewriteNotes().get(0).toUpperCase();
@@ -129,7 +162,7 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         // 5) Resolve intent
         long t4 = System.nanoTime();
         QueryIntent intent = intentResolver.resolve(
-                normalized, classifierQueryType, classifierLabel, classifierStatus, rewrite, entities);
+                downstreamNormalized, classifierQueryType, classifierLabel, classifierStatus, rewrite, entities);
         notes.add(stageNote("qu_resolve_intent", "OK", msSince(t4), "queryIntent=" + intent.name()));
 
         // 6) Resolve expected answer shape
@@ -140,12 +173,12 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         // 7) Assess ambiguity
         long t6 = System.nanoTime();
         AmbiguityAssessment ambiguity = ambiguityAssessmentService.assess(
-                normalized, classifierQueryType, classifierLabel, classifierStatus, rewrite, entities);
+                downstreamNormalized, classifierQueryType, classifierLabel, classifierStatus, rewrite, entities);
         notes.add(stageNote("qu_assess_ambiguity", "OK", msSince(t6), "ambiguityStatus=" + ambiguity.status().name()));
 
         // 8) Build QueryPlan
         Map<String, String> slots = QueryPlanSlotEnricher.enrich(
-                normalized.normalizedText(), classifierQueryType, rewrite.slotFilling());
+                downstreamNormalized.normalizedText(), classifierQueryType, rewrite.slotFilling());
         return new QueryPlan(
                 QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1,
                 rawLiteral,
@@ -165,8 +198,17 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
                 ambiguity,
                 ctx.correlationId(),
                 c.classifierModelIdUsed(),
-                notes
+                notes,
+                expansion
         );
+    }
+
+    private static String truncateForTrace(String text) {
+        if (text == null) {
+            return "";
+        }
+        String trimmed = text.strip();
+        return trimmed.length() <= 120 ? trimmed : trimmed.substring(0, 117) + "...";
     }
 
     private static NormalizedQuery normalize(String rawUserQuery) {

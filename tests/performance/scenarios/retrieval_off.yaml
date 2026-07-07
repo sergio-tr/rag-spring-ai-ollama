@@ -1,5 +1,5 @@
 name: retrieval_off
-description: useRetrieval=false (project config) — requires product_chat + BENCHMARK_* env.
+description: useRetrieval=false (project config) - requires product_chat + BENCHMARK_* env.
 transport: product_chat
 product_chat:
   product_base_path: /api/v5

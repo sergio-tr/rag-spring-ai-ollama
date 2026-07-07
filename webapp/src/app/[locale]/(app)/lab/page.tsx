@@ -130,6 +130,32 @@ export default function LabOverviewPage() {
         <p className="text-muted-foreground text-xs">{t("adrDisclaimer")}</p>
       </CompactHelp>
 
+      <Card data-testid="lab-overview-uploaded-datasets">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">{t("overviewUploadedDatasetsTitle")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          {experimentalList.isLoading ? (
+            <p className="text-muted-foreground text-xs">{t("overviewUploadedDatasetsLoading")}</p>
+          ) : experimentalList.isError ? (
+            <p className="text-destructive text-xs" role="alert">
+              {t("overviewUploadedDatasetsError")}
+            </p>
+          ) : (
+            <>
+              <p className="text-muted-foreground text-xs">
+                {t("overviewUploadedDatasetsCounts", {
+                  total: experimentalList.data?.length ?? 0,
+                  custom: (experimentalList.data ?? []).filter((d) => !d.readOnly).length,
+                })}
+              </p>
+              <UploadedValidationBadges rows={experimentalList.data ?? []} t={t} />
+              <DatasetOverviewTable rows={experimentalList.data ?? []} t={t} />
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       <TechnicalDetails summary={t("compactStatusTechnicalSummary")} testId="lab-overview-status-technical">
         {isError && (
           <p className="text-destructive text-sm" role="alert">
@@ -152,7 +178,9 @@ export default function LabOverviewPage() {
                 <p className="text-muted-foreground mt-1 text-xs font-mono">{status.message}</p>
               </details>
             ) : null}
-            <div className="grid gap-3 sm:grid-cols-2">
+            <details className="rounded-md border bg-background/60 p-3" data-testid="lab-overview-developer-diagnostics">
+              <summary className="cursor-pointer font-medium text-foreground">{t("developerDiagnosticsSummary")}</summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Card className="border-dashed">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">{t("statusDatasets")}</CardTitle>
@@ -276,32 +304,8 @@ export default function LabOverviewPage() {
                   ) : null}
                 </CardContent>
               </Card>
-              <Card className="border-dashed sm:col-span-2">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">{t("overviewUploadedDatasetsTitle")}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  {experimentalList.isLoading ? (
-                    <p className="text-muted-foreground text-xs">{t("overviewUploadedDatasetsLoading")}</p>
-                  ) : experimentalList.isError ? (
-                    <p className="text-destructive text-xs" role="alert">
-                      {t("overviewUploadedDatasetsError")}
-                    </p>
-                  ) : (
-                    <>
-                      <p className="text-muted-foreground text-xs">
-                        {t("overviewUploadedDatasetsCounts", {
-                          total: experimentalList.data?.length ?? 0,
-                          custom: (experimentalList.data ?? []).filter((d) => !d.readOnly).length,
-                        })}
-                      </p>
-                      <UploadedValidationBadges rows={experimentalList.data ?? []} t={t} />
-                      <DatasetOverviewTable rows={experimentalList.data ?? []} t={t} />
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+              </div>
+            </details>
             <details className="text-xs">
               <summary className="cursor-pointer text-muted-foreground">{t("statusRawToggle")}</summary>
               <pre className="bg-muted/40 mt-2 max-h-[240px] overflow-auto rounded-md border p-3">

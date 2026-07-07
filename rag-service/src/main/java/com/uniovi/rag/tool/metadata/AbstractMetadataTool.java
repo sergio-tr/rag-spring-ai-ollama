@@ -7,9 +7,14 @@ import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
 import com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures;
 import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationGoldCorpusFilenameSupport;
 import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
 import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.advisor.MetadataToolContextAssembler;
+import com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry;
+import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import com.uniovi.rag.tool.AbstractTool;
 import com.uniovi.rag.tool.ToolResult;
 import com.uniovi.rag.util.DateParsingSupport;
@@ -127,6 +132,17 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /** Used by subclasses when calling {@code @Cacheable} methods to avoid self-invocation. */
     protected AbstractMetadataTool cacheable() {
         return cacheableSelf != null ? cacheableSelf : this;
+    }
+
+    /** Publishes matched actas for scoped LLM context assembly on hybrid tool+retrieval paths. */
+    protected void publishMatchedMinutesContext(List<Minute> minutes, boolean highConfidence) {
+        if (minutes == null || minutes.isEmpty()) {
+            return;
+        }
+        MetadataToolContextAssembler assembler = new MetadataToolContextAssembler();
+        String context = assembler.assembleFromMinutes(minutes);
+        DeterministicToolEvidenceHolder.set(
+                new DeterministicToolEvidenceHolder.Evidence(List.copyOf(minutes), context, highConfidence));
     }
 
     private String filterAndListPrompt(String query, String metadataJson) {
@@ -2612,6 +2628,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (query == null || query.trim().isEmpty()) {
             return null;
         }
+        if (StructuredMinuteMetadataSupport.isPlaceListQuery(query)) {
+            return null;
+        }
         
         // Try to extract from NER first
         if (ner != null && !ner.isEmpty()) {
@@ -2665,7 +2684,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
 
-        // Use literal topic when question explicitly mentions it (avoids LLM substituting heating for pool HVAC, etc.) — item 38
+        // Use literal topic when question explicitly mentions it (avoids LLM substituting heating for pool HVAC, etc.) - item 38
         String queryLower = query.toLowerCase().trim();
         if (queryLower.contains("calefacción") || queryLower.contains("calefaccion")) {
             log().info("Extracted topic from query (literal): calefacción");
@@ -3691,7 +3710,12 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         return !activeSnapshotIds.contains(snapshotId);
     }
 
-    /** Acceptance corpus: canonical {@code ACTA N.pdf} only. */
+    /**
+     * Acceptance corpus: canonical {@code ACTA N.pdf} production documents, plus first-class
+     * evaluation-gold fixtures ({@code EvaluationGoldCorpusFilenameSupport}, e.g.
+     * {@code ACTA_6__ACTA_6_META.eval-gold.txt}) used by the benchmark/lab harness. Other
+     * {@code .txt} artifacts (ad-hoc/legacy fixtures outside both conventions) remain excluded.
+     */
     protected boolean isCanonicalPdfActaDocument(Document doc) {
         if (doc == null) {
             return false;
@@ -3700,6 +3724,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String filename = resolveMetadataFilename(flat);
         if (filename == null || filename.isBlank()) {
             return false;
+        }
+        if (EvaluationGoldCorpusFilenameSupport.isEvaluationGoldFilename(filename)) {
+            return true;
         }
         String lower = filename.trim().toLowerCase(Locale.ROOT);
         if (lower.endsWith(".txt")) {
@@ -4037,6 +4064,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String answer =
                 StructuredMinuteMetadataSupport.formatFindParagraphTopicEvidenceAnswer(
                         query, bestMinute, bestParagraph, evidenceContext);
+        // Unlike the full ranking/clustering path in execute(), this fast single-topic exit must publish
+        publishMatchedMinutesContext(List.of(bestMinute), true);
         return Optional.of(ToolResult.from(formatResponse(answer, query), getClass()));
     }
 
@@ -4401,8 +4430,26 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
     /**
      * Widens retrieval for corpus-wide deterministic queries (topic counts, compound filters).
+     * Gated by {@link MetadataCorpusScanSettings#fullScanMaxDocuments()} on distinct acta count.
      */
     protected List<Document> retrieveCorpusDocumentsWithFallback(String query, String[] relevantFields) {
+        long start = System.nanoTime();
+        List<Document> cached = MetadataCorpusAccess.getOrLoadCorpusChunks();
+        if (!cached.isEmpty()) {
+            List<Document> merged = mergeChunksWithRichestMetadata(collectInScopeCorpusRows(cached));
+            log().info(
+                    "Corpus retrieval (jdbc cache) for '{}': raw={}, merged={} actas",
+                    query,
+                    cached.size(),
+                    merged.size());
+            RagToolTimingTelemetry.logTool(
+                    getClass().getSimpleName(),
+                    "corpus_merge",
+                    RagToolTimingTelemetry.elapsedMs(start),
+                    "OK",
+                    "raw=" + cached.size() + " merged=" + merged.size());
+            return merged;
+        }
         retriever.setTopK(200);
         retriever.setSimilarityThreshold(0.0);
         try {
@@ -4411,18 +4458,82 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             raw.addAll(retrieveAllDocuments(query, null));
             List<Document> merged = mergeChunksWithRichestMetadata(collectInScopeCorpusRows(raw));
             log().info(
-                    "Corpus retrieval for '{}': raw={}, merged={} actas",
+                    "Corpus retrieval (vector fallback) for '{}': raw={}, merged={} actas",
                     query,
                     raw.size(),
                     merged.size());
+            RagToolTimingTelemetry.logTool(
+                    getClass().getSimpleName(),
+                    "corpus_merge_vector",
+                    RagToolTimingTelemetry.elapsedMs(start),
+                    "OK",
+                    "raw=" + raw.size() + " merged=" + merged.size());
             return merged;
         } finally {
             retriever.restoreDefaultSettings();
         }
     }
 
+    protected int countDistinctCanonicalActas(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return 0;
+        }
+        Set<String> keys = new LinkedHashSet<>();
+        for (Document doc : docs) {
+            if (doc == null) {
+                continue;
+            }
+            String key = actaDedupeKey(doc);
+            if (key != null && !key.isBlank()) {
+                keys.add(key);
+            }
+        }
+        return keys.size();
+    }
+
+    protected boolean isSmallCorpusEligibleForFullScan(List<Document> broadScan) {
+        int distinct = countDistinctCanonicalActas(broadScan);
+        return distinct > 0 && distinct <= MetadataCorpusScanSettings.fullScanMaxDocuments();
+    }
+
+    protected boolean isCorpusWideMetadataQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        return ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)
+                || q.contains("en cuántas actas")
+                || q.contains("en cuantas actas")
+                || q.contains("en qué actas")
+                || q.contains("en que actas")
+                || q.contains("en cuántas reuniones")
+                || q.contains("en cuantas reuniones");
+    }
+
+    protected List<Document> retrieveWithSmallCorpusFullScanIfEligible(
+            String query, String[] relevantFields, JSONObject ner) {
+        if (!isCorpusWideMetadataQuery(query)) {
+            return retrieveDocumentsWithFallback(query, relevantFields, ner);
+        }
+        List<Document> broad = retrieveAllDocuments(query, ner);
+        if (!isSmallCorpusEligibleForFullScan(broad)) {
+            return retrieveDocumentsWithFallback(query, relevantFields, ner);
+        }
+        log().info(
+                "Small corpus full-scan (<= {} actas) for corpus-wide query",
+                MetadataCorpusScanSettings.fullScanMaxDocuments());
+        if (!broad.isEmpty()) {
+            return mergeChunksWithRichestMetadata(collectInScopeCorpusRows(broad));
+        }
+        return retrieveCorpusDocumentsWithFallback(query, relevantFields);
+    }
+
     /** Broad corpus scan not limited to the user question's semantic top-k. */
     protected List<Document> retrieveAllDocuments(String query, JSONObject ner) {
+        List<Document> cached = MetadataCorpusAccess.getOrLoadCorpusChunks();
+        if (!cached.isEmpty()) {
+            return cached;
+        }
         List<Document> broad = retriever.retrieve("acta reunión junta propietarios");
         if (broad == null || broad.isEmpty()) {
             broad = retriever.retrieve("reunión acta");
@@ -4448,15 +4559,29 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             log().debug("lookupDocumentsByDateIso: year-only anchor {}, skipping exact lookup", requestedDate);
             return List.of();
         }
-        retriever.setTopK(200);
-        retriever.setSimilarityThreshold(0.0);
-        try {
-            List<Document> docs =
-                    mergeChunksByDocumentId(retrieveCorpusDocumentsWithFallback(query, relevantFields));
-            return validateDateMatch(docs, requestedDate);
-        } finally {
-            retriever.restoreDefaultSettings();
+        long start = System.nanoTime();
+        List<Document> cached = MetadataCorpusAccess.getOrLoadCorpusChunks();
+        List<Document> docs;
+        if (!cached.isEmpty()) {
+            docs =
+                    mergeChunksByDocumentId(
+                            mergeChunksWithRichestMetadata(collectInScopeCorpusRows(cached)));
+            RagToolTimingTelemetry.logTool(
+                    getClass().getSimpleName(),
+                    "date_iso_lookup",
+                    RagToolTimingTelemetry.elapsedMs(start),
+                    "CACHE",
+                    "date=" + requestedDate);
+        } else {
+            retriever.setTopK(200);
+            retriever.setSimilarityThreshold(0.0);
+            try {
+                docs = mergeChunksByDocumentId(retrieveCorpusDocumentsWithFallback(query, relevantFields));
+            } finally {
+                retriever.restoreDefaultSettings();
+            }
         }
+        return validateDateMatch(docs, requestedDate);
     }
 
     protected boolean hasExplicitActaDate(String query, JSONObject ner) {
@@ -4532,7 +4657,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String q = query.toLowerCase(Locale.ROOT);
         return q.matches(".*\\b\\d{4}-\\d{2}-\\d{2}\\b.*")
                 || q.matches(".*\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}\\b.*")
-                || q.matches(".*\\b\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4}\\b.*");
+                || q.matches(".*\\b\\d{1,2}\\s+de\\s+\\p{L}+\\s+de[l]?\\s+\\d{4}\\b.*");
     }
 
     protected String formatUnavailableSpecificMeetingDateMessage(String query, String isoDate) {
@@ -5394,7 +5519,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 return minutes;
             }
             log().info(
-                    "Date filtering removed all minutes — no match for target dates {}. Query: {}",
+                    "Date filtering removed all minutes - no match for target dates {}. Query: {}",
                     targetDates,
                     query);
             return List.of();

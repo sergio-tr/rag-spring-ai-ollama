@@ -9,6 +9,7 @@ import com.uniovi.rag.domain.evaluation.snapshot.LlmExperimentalSnapshot;
 import com.uniovi.rag.domain.evaluation.snapshot.PromptProfileSnapshot;
 import com.uniovi.rag.domain.evaluation.workbook.DifficultyLevel;
 import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
+import com.uniovi.rag.domain.evaluation.workbook.LlmRoleEvalCase;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
@@ -60,6 +61,149 @@ public class ModelBaselineEvaluationOrchestrator {
         this.modelBaselineLlmRunner = modelBaselineLlmRunner;
         this.modelAvailabilityGate = modelAvailabilityGate;
         this.evaluationService = evaluationService;
+    }
+
+    /** Runs typed LLM role-eval rows with workbook scoring types. */
+    public LlmJudgeEvaluationBatchResult runLlmRoleEvalBaseline(
+            UUID evaluationRunId,
+            TypedBenchmarkDataset.LlmRoleCases bundle,
+            BiConsumer<Integer, Integer> itemProgress,
+            Runnable cancellationCheck) {
+        EvaluationRunEntity run =
+                evaluationRunId != null ? evaluationRunRepository.findById(evaluationRunId).orElse(null) : null;
+        LlmExperimentalSnapshot llmSnap = experimentalSnapshotFactory.buildLlmSnapshot(run);
+        EmbeddingExperimentalSnapshot embSnap = experimentalSnapshotFactory.buildEmbeddingSnapshot(run);
+        PromptProfileSnapshot prompts = PromptProfileSnapshotFactory.baselineLabProfile();
+        if (evaluationRunId != null) {
+            baselineRunSnapshotWriter.writeSnapshots(evaluationRunId, llmSnap, embSnap, prompts);
+        }
+
+        UUID runUserId = run != null && run.getUser() != null ? run.getUser().getId() : null;
+        boolean llmAvailable = modelAvailabilityGate.isChatModelAvailable(runUserId, llmSnap.model());
+
+        List<LlmJudgeItemResult> rows = new ArrayList<>();
+        List<LlmRoleEvalCase> cases = bundle.cases();
+        int total = cases.size();
+        int idx = 0;
+        boolean cancelled = false;
+        String cancelReason = null;
+        UUID judgeUserId = run != null && run.getUser() != null ? run.getUser().getId() : null;
+        AutoCloseable judgeScope = EvaluationJudgeExecutionScope.open(judgeUserId, null);
+        try {
+            for (LlmRoleEvalCase c : cases) {
+                try {
+                    if (cancellationCheck != null) {
+                        cancellationCheck.run();
+                    }
+                } catch (LabJobCancelledException ex) {
+                    cancelled = true;
+                    cancelReason = ex.getMessage();
+                    break;
+                }
+                idx++;
+                if (itemProgress != null) {
+                    itemProgress.accept(idx, total);
+                }
+
+                Map<String, Object> baselineMetrics = new LinkedHashMap<>();
+                baselineMetrics.put("benchmark_protocol", "LLM_ROLE_EVAL_CASE");
+                baselineMetrics.put("llm_model", llmSnap.model());
+                baselineMetrics.put(BenchmarkResultRowKeys.ROLE_EVAL_SUBSET, c.subset());
+                baselineMetrics.put(BenchmarkResultRowKeys.ROLE_EVAL_ROLE_FAMILY, c.roleFamily());
+                baselineMetrics.put(BenchmarkResultRowKeys.ROLE_EVAL_ROLE_PROFILE, c.roleProfile());
+                baselineMetrics.put(BenchmarkResultRowKeys.ROLE_EVAL_SCORING_TYPE, c.scoringType());
+
+                if (!llmAvailable) {
+                    baselineMetrics.put("reason", "model_not_available_for_effective_provider");
+                    baselineMetrics.put("reasonCode", MODEL_UNAVAILABLE);
+                    rows.add(roleCaseFailedRow(c, llmSnap, embSnap, baselineMetrics, MODEL_UNAVAILABLE, MODEL_UNAVAILABLE));
+                    continue;
+                }
+
+                long t0 = System.nanoTime();
+                LlmJudgeItemResult.Builder rowBuilder =
+                        LlmJudgeItemResult.builder()
+                                .question(c.input())
+                                .correctAnswer(c.expectedOutput())
+                                .datasetQuestionId(c.caseId())
+                                .itemOutcome(BenchmarkItemOutcome.EXECUTED)
+                                .evaluationProtocol("LLM_ROLE_EVAL_CASE")
+                                .llmModelId(llmSnap.model())
+                                .embeddingModelId(embSnap.model())
+                                .baselineMetrics(baselineMetrics);
+                try {
+                    String generated =
+                            modelBaselineLlmRunner.generateRoleCaseAnswer(
+                                    llmSnap, prompts, c.input(), c.context());
+                    generated = generated != null ? generated : "";
+                    rowBuilder.generatedAnswer(generated);
+                    Map<String, Object> scoring = LlmRoleEvalScorer.score(c, generated, evaluationService);
+                    rowBuilder.labMetricsPayload(scoring);
+                    baselineMetrics.put(BenchmarkResultRowKeys.ROLE_EVAL_PASSED, scoring.get("roleEvalPassed"));
+                    baselineMetrics.put("roleEvalScores", scoring.get("scores"));
+                    if (c.scoringType() != null && c.scoringType().contains("judge_qa")) {
+                        Object scores = scoring.get("scores");
+                        if (scores instanceof Map<?, ?> scoreMap && scoreMap.get("judge_qa") instanceof Map<?, ?> jq) {
+                            Object excerpt = jq.get("judgeExcerpt");
+                            rowBuilder.llmEvaluation(excerpt != null ? String.valueOf(excerpt) : "");
+                        }
+                    }
+                    rowBuilder.latencyMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
+                } catch (EvaluationJudgeException ex) {
+                    rowBuilder
+                            .llmEvaluation("")
+                            .itemOutcome(BenchmarkItemOutcome.FAILED)
+                            .errorCode(ex.errorCode())
+                            .errorMessage(ex.getMessage())
+                            .latencyMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
+                } catch (RuntimeException ex) {
+                    rowBuilder
+                            .generatedAnswer("")
+                            .llmEvaluation("")
+                            .itemOutcome(BenchmarkItemOutcome.FAILED)
+                            .errorCode(ex.getClass().getSimpleName())
+                            .errorMessage(
+                                    ex.getMessage() != null && !ex.getMessage().isBlank()
+                                            ? ex.getMessage()
+                                            : ex.getClass().getSimpleName())
+                            .latencyMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
+                }
+                rows.add(rowBuilder.build());
+            }
+        } finally {
+            closeQuietly(judgeScope);
+        }
+
+        EvaluationSummary summary = evaluationService.summarizeJudgeResults(rows);
+        if (cancelled) {
+            summary = summary.withCancellation(true, cancelReason, rows.size(), total);
+        }
+        return new LlmJudgeEvaluationBatchResult(
+                Map.of("baseline_phase5", true, "protocol_driver", "ModelBaselineEvaluationOrchestrator.roleEval"),
+                rows,
+                summary);
+    }
+
+    private static LlmJudgeItemResult roleCaseFailedRow(
+            LlmRoleEvalCase c,
+            LlmExperimentalSnapshot llmSnap,
+            EmbeddingExperimentalSnapshot embSnap,
+            Map<String, Object> baselineMetrics,
+            String errorCode,
+            String errorMessage) {
+        return LlmJudgeItemResult.builder()
+                .question(c.input())
+                .correctAnswer(c.expectedOutput())
+                .datasetQuestionId(c.caseId())
+                .itemOutcome(BenchmarkItemOutcome.MODEL_NOT_AVAILABLE)
+                .evaluationProtocol("LLM_ROLE_EVAL_CASE")
+                .llmModelId(llmSnap.model())
+                .embeddingModelId(embSnap.model())
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .baselineMetrics(baselineMetrics)
+                .latencyMs(0L)
+                .build();
     }
 
     /** Runs typed LLM baseline rows with judge scoring for canonical persistence. */

@@ -33,10 +33,10 @@ import java.util.UUID;
  * P42: read-only HTTP list/detail for persisted regression suite runs via {@link RuntimeTraceRegressionSuiteRunPersistenceService} only.
  *
  * <p>P46: two {@code POST} routes execute an ad hoc suite via {@link RuntimeTraceRegressionSuiteService#execute} then persist the
- * result with {@link RuntimeTraceRegressionSuiteRunPersistenceService#createRun} when the outcome allows — no bridge {@code @Service}.
+ * result with {@link RuntimeTraceRegressionSuiteRunPersistenceService#createRun} when the outcome allows - no bridge {@code @Service}.
  *
  * <p>P49: {@code DELETE …/runtime-trace-regression-suite-runs/{runId}} calls {@link
- * RuntimeTraceRegressionSuiteRunPersistenceService#deleteRunForUser} only — no bridge {@code @Service}.
+ * RuntimeTraceRegressionSuiteRunPersistenceService#deleteRunForUser} only - no bridge {@code @Service}.
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}")

@@ -72,6 +72,8 @@ describe("ClassifierRegistrySection", () => {
       expect(screen.getByTestId("classifier-registry-table")).toBeInTheDocument();
     });
     expect(screen.getByText("Model A")).toBeInTheDocument();
+    expect(screen.getByText(/Unique application name/i)).toBeInTheDocument();
+    expect(screen.getByText(/Classifier-service model id/i)).toBeInTheDocument();
   });
 
   it("confirms activation for the active project", async () => {

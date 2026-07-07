@@ -56,7 +56,7 @@ run_step() {
   if [[ "${status}" -ne 0 ]]; then
     FAILED_STEPS+=("${name}")
     append_result "${name}" "FAILED(${status})" "${duration}" "${log_path}"
-    log "FAIL ${name} (${duration}s) — see ${log_path}"
+    log "FAIL ${name} (${duration}s) - see ${log_path}"
   else
     append_result "${name}" "PASSED" "${duration}" "${log_path}"
     log "PASS ${name} (${duration}s)"

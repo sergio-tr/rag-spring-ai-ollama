@@ -13,7 +13,7 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/** T-M5-BE-filter-fallback — empty LLM filter must not drop non-empty acta content. */
+/** T-M5-BE-filter-fallback - empty LLM filter must not drop non-empty acta content. */
 class FilteredContextRetrieverFilterFallbackTest {
 
     @Test

@@ -4,7 +4,7 @@ import com.uniovi.rag.domain.runtime.clarification.PendingClarificationState;
 import org.springframework.stereotype.Component;
 
 /**
- * P11 frozen merge: {@code BASE:<base>\nQUESTION:<q>\nANSWER:<a>} — no trimming, no LLM.
+ * P11 frozen merge: {@code BASE:<base>\nQUESTION:<q>\nANSWER:<a>} - no trimming, no LLM.
  */
 @Component
 public class ClarifiedQueryRefiner {

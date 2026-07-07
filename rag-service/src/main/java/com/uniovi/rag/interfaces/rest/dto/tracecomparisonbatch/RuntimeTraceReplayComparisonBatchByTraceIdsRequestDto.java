@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * P25 route 1 body: {@code traceIds} only (strict schema — extra JSON keys fail deserialization).
+ * P25 route 1 body: {@code traceIds} only (strict schema - extra JSON keys fail deserialization).
  */
 public record RuntimeTraceReplayComparisonBatchByTraceIdsRequestDto(
         @JsonProperty(required = true) List<UUID> traceIds) {}

@@ -44,6 +44,28 @@ class TerminalGetFieldRoutingSupportTest {
     }
 
     @Test
+    void presentesListWithDate_isTerminalGetField() {
+        QueryPlan plan =
+                plan(
+                        "¿Quiénes estuvieron presentes en la reunión del 25 de febrero de 2026?",
+                        QueryType.GET_FIELD,
+                        Map.of(),
+                        List.of("2026-02-25"));
+        DeterministicToolExecutionResult toolResult =
+                new DeterministicToolExecutionResult(
+                        Optional.of(DeterministicToolKind.GET_FIELD_TOOL),
+                        DeterministicToolOutcome.EXECUTED_SUCCESS,
+                        true,
+                        "En el acta del 25 de febrero de 2026, los participantes fueron: Ana, Luis (17 en total).",
+                        Map.of(),
+                        List.of());
+
+        assertThat(TerminalGetFieldRoutingSupport.isTerminalMetadataGetField(plan)).isTrue();
+        assertThat(TerminalGetFieldRoutingSupport.shouldTerminateWithoutWorkflowFallback(plan, toolResult))
+                .isTrue();
+    }
+
+    @Test
     void getFieldWithoutDate_doesNotSkipWorkflowFallback() {
         QueryPlan plan =
                 plan(

@@ -46,6 +46,10 @@ export default defineConfig({
         "src/app/**/lab-classifier-panels.tsx",
         // Shared lab LLM/RAG evaluation runner (logic lifted from App Router pages); E2E + manual.
         "src/features/lab/components/lab-evaluation-run-card.tsx",
+        // Hyperparameters UI shell for the evaluation run card; payload logic in lab-generation-hyperparameters.
+        "src/features/lab/components/lab-hyperparameters-form.tsx",
+        // Generation parameters UI shell; payload logic in lab-generation-hyperparameters.
+        "src/features/lab/components/lab-generation-parameters-section.tsx",
         // Shared Lab/Settings tab shell; thin layout glue covered by E2E navigation.
         "src/components/layout/app-subnav-section-layout.tsx",
         // shadcn/Radix UI primitives (thin presentation); behavior is covered indirectly via feature tests.
@@ -66,6 +70,7 @@ export default defineConfig({
         "src/features/settings/components/MeCanonicalJsonPanels.tsx",
         // Settings admin sections mocked in RagConfigForm tests; covered via settings E2E.
         "src/features/settings/components/TaskLlmSettingsSection.tsx",
+        "src/features/settings/components/AdvancedTaskModelSettingsForm.tsx",
         "src/features/settings/components/InternalPromptConfigurationSection.tsx",
         "src/features/settings/hooks/use-prompt-catalog.ts",
         "src/features/settings/components/UserAccountPreferencesSection.tsx",
@@ -83,6 +88,10 @@ export default defineConfig({
         "src/features/projects/hooks/use-active-project-snapshot.ts",
         // Banner is thin status glue next to the job panel (covered via panel/E2E).
         "src/features/lab/components/lab-background-job-banner.tsx",
+        // Lab layout mount hook: invalidateQueries on mount (thin glue next to active jobs banner).
+        "src/features/lab/components/lab-active-jobs-refetch-on-mount.tsx",
+        // Deprecated re-export of config-field-copy (no runtime logic).
+        "src/features/settings/lib/project-config-field-copy.ts",
         // Type-only trace barrels (no runtime logic).
         "src/features/trace/index.ts",
         "src/features/trace/trace-types.ts",

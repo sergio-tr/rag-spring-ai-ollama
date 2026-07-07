@@ -1,10 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsAccountPage from "./page";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
+  useLocale: () => "en",
 }));
 
 vi.mock("next/navigation", () => ({
@@ -42,7 +44,12 @@ describe("SettingsAccountPage", () => {
 
   it("disables delete until email and confirm literal match", async () => {
     const user = userEvent.setup();
-    render(<SettingsAccountPage />);
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsAccountPage />
+      </QueryClientProvider>,
+    );
 
     const btn = await screen.findByTestId("account-delete-request");
     expect(btn).toBeDisabled();

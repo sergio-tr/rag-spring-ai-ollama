@@ -8,15 +8,19 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.application.service.model.ModelGovernanceService;
 import com.uniovi.rag.application.port.OllamaModelAvailabilityPort;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.catalog.LlmCatalogApiService;
+import com.uniovi.rag.testsupport.llm.LlmCatalogApiServiceTestSupport;
 import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.application.service.llm.catalog.MeSelectableLlmModelsService;
 import com.uniovi.rag.configuration.RagVectorProperties;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogRuntimeStatus;
+import com.uniovi.rag.domain.llm.catalog.LlmModelReasonCodes;
 import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
 import com.uniovi.rag.domain.product.ProductDemoModel;
 import com.uniovi.rag.infrastructure.llm.LlmOpenAiCompatibleDefaults;
@@ -26,33 +30,90 @@ import com.uniovi.rag.interfaces.rest.dto.me.llm.MeSelectableLlmModelDto;
 import com.uniovi.rag.interfaces.rest.dto.me.llm.MeSelectableLlmModelsResponseDto;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
-/** Phase 2 — user-scoped selectable chat models from properties catalog. */
+/** Phase 2 - user-scoped selectable chat models from properties catalog. */
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class MeSelectableLlmModelsIntegrationTest {
 
     private static final UUID USER_ID = UUID.fromString("00000000-0000-4000-8000-000000000099");
 
     @Mock private ResolvedLlmConfigResolver configResolver;
     @Mock private OllamaModelAvailabilityPort ollamaAvailability;
+    @Mock private ModelCatalogPort modelCatalogPort;
 
     private MeSelectableLlmModelsService service;
 
     @BeforeEach
     void setUp() {
+        when(modelCatalogPort.blockedLlmNamesInGovernance()).thenReturn(Set.of());
+        when(modelCatalogPort.blockedEmbeddingNamesInGovernance()).thenReturn(Set.of());
         LlmProperties properties = catalogProperties();
+        LlmModelCatalogService catalogService = new LlmModelCatalogService(properties);
+        ModelGovernanceService governanceService = new ModelGovernanceService(modelCatalogPort, catalogService);
         LlmCatalogApiService catalogApiService =
-                new LlmCatalogApiService(
-                        new LlmModelCatalogService(properties),
+                LlmCatalogApiServiceTestSupport.service(
+                        catalogService,
                         ollamaAvailability,
-                        new RagVectorProperties(1024, true));
-        service = new MeSelectableLlmModelsService(configResolver, catalogApiService);
+                        new RagVectorProperties(1024, true),
+                        modelCatalogPort,
+                        true);
+        service = new MeSelectableLlmModelsService(configResolver, catalogApiService, governanceService);
+    }
+
+    @Test
+    void selectableModelsRespectGovernanceBlocklist() {
+        when(configResolver.resolve(eq(USER_ID), isNull(), isNull())).thenReturn(openAiConfig());
+        when(modelCatalogPort.blockedLlmNamesInGovernance()).thenReturn(Set.of("openai-chat-b"));
+
+        MeSelectableLlmModelsResponseDto response =
+                service.listForUser(USER_ID, LlmModelCapability.CHAT);
+
+        assertThat(
+                        response.models().stream()
+                                .filter(m -> "openai-chat-b".equals(m.modelName()))
+                                .findFirst())
+                .isEmpty();
+        assertThat(
+                        response.models().stream()
+                                .filter(m -> "gpt-oss:20b".equals(m.modelName()))
+                                .findFirst())
+                .isPresent();
+    }
+
+    @Test
+    void deepseekAcceptedWhenInPropertiesCatalogWithoutDbRow() {
+        when(configResolver.resolve(eq(USER_ID), isNull(), isNull())).thenReturn(openAiConfig());
+
+        LlmProperties properties = catalogProperties();
+        properties.getOpenAiCompatible().setAvailableChatModels(List.of("gpt-oss:20b", "openai-chat-b", "deepseek-v2:16b"));
+        LlmModelCatalogService catalogService = new LlmModelCatalogService(properties);
+        ModelGovernanceService governanceService = new ModelGovernanceService(modelCatalogPort, catalogService);
+        LlmCatalogApiService catalogApiService =
+                LlmCatalogApiServiceTestSupport.service(
+                        catalogService,
+                        ollamaAvailability,
+                        new RagVectorProperties(1024, true),
+                        modelCatalogPort,
+                        true);
+        MeSelectableLlmModelsService localService =
+                new MeSelectableLlmModelsService(configResolver, catalogApiService, governanceService);
+
+        MeSelectableLlmModelsResponseDto response =
+                localService.listForUser(USER_ID, LlmModelCapability.CHAT);
+
+        assertThat(response.models())
+                .extracting(MeSelectableLlmModelDto::modelName)
+                .contains("deepseek-v2:16b");
     }
 
     @Test

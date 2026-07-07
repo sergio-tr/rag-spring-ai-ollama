@@ -1,4 +1,4 @@
-/** @deprecated Legacy preferred model ids removed — Lab defaults come from evaluation catalog API. */
+/** @deprecated Legacy preferred model ids removed - Lab defaults come from evaluation catalog API. */
 import { isLabComparisonAvailabilityBlocked } from "@/features/lab/lib/lab-comparison-availability";
 
 export const LLM_CAMPAIGN_PREFERRED_MODEL_IDS = [] as const;

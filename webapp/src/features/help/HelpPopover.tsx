@@ -8,7 +8,7 @@ import { Link } from "@/navigation";
 import { cn } from "@/lib/utils";
 
 export type HelpPopoverProps = Readonly<{
-  /** Accessible name for the help trigger (required — do not rely on hover). */
+  /** Accessible name for the help trigger (required - do not rely on hover). */
   triggerAriaLabel: string;
   title: string;
   message: string;

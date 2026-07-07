@@ -123,30 +123,15 @@ public class KnowledgeConfigurationIntegrationService {
     }
 
     /**
-     * When a preset requires metadata extraction but the active project snapshot was built without metadata,
-     * force a hard rebuild so chat/Lab presets (Demo_Best, P7, …) can run without manual DB flags.
+     * Project index capability ({@code supportsMetadata} on the active snapshot) is authoritative at creation
+     * time. Preset runtime flags must not silently upgrade snapshot metadata capability.
      */
     private Optional<KnowledgeReindexDecision> metadataSnapshotUpgradeDecision(
             KnowledgeBuildProjection projection,
             CorpusScope corpusScope,
             UUID conversationId,
             UUID projectId) {
-        if (!projection.metadataExtractionEnabled() || corpusScope != CorpusScope.PROJECT_SHARED) {
-            return Optional.empty();
-        }
-        Optional<KnowledgeIndexSnapshotEntity> active = knowledgeSnapshotService.findActiveProjectSnapshot(projectId);
-        if (active.isEmpty()) {
-            return Optional.empty();
-        }
-        IndexSnapshotCapabilities caps =
-                IndexSnapshotCapabilities.fromIndexProfile(active.get().getIndexProfileJsonb());
-        if (Boolean.TRUE.equals(caps.supportsMetadata())) {
-            return Optional.empty();
-        }
-        if (!knowledgePipelineOrchestrator.hasReadyDocumentsInScope(projectId, corpusScope, conversationId)) {
-            return Optional.empty();
-        }
-        return Optional.of(new KnowledgeReindexDecision(KnowledgeReindexKind.HARD_REBUILD));
+        return Optional.empty();
     }
 
     /**
@@ -165,10 +150,22 @@ public class KnowledgeConfigurationIntegrationService {
                 projection.materializationStrategy() != null
                         ? projection.materializationStrategy()
                         : MaterializationStrategy.CHUNK_LEVEL;
+        boolean metadataForHash = projection.metadataExtractionEnabled();
+        Optional<KnowledgeIndexSnapshotEntity> activeSnapshot =
+                knowledgeSnapshotService.findActiveProjectSnapshot(projectId);
+        if (activeSnapshot.isPresent() && metadataForHash) {
+            Boolean snapSupportsMetadata =
+                    IndexSnapshotCapabilities.fromIndexProfile(
+                                    activeSnapshot.get().getIndexProfileJsonb())
+                            .supportsMetadata();
+            if (!Boolean.TRUE.equals(snapSupportsMetadata)) {
+                metadataForHash = false;
+            }
+        }
         String expectedHash =
                 ProjectIndexProfile.computeProfileHash(
                         strategy,
-                        projection.metadataExtractionEnabled(),
+                        metadataForHash,
                         "",
                         projection.embeddingModelId(),
                         projection.chunkMaxChars(),

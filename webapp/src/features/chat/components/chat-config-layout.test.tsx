@@ -12,6 +12,7 @@ const hooksMock = vi.hoisted(() => ({
   useRuntimeConfigCapabilities: vi.fn(),
   useProjectIndexProfile: vi.fn(),
   useActiveProjectSnapshot: vi.fn(),
+  useMeEffectiveEmbeddingDefaults: vi.fn(),
 }));
 
 vi.mock("@/features/chat/hooks/use-runtime-config-capabilities", () => ({
@@ -25,6 +26,9 @@ vi.mock("@/features/projects/hooks/use-active-project-snapshot", () => ({
 }));
 vi.mock("@/features/lab/hooks/use-classifier-registry", () => ({
   useClassifierModelsQuery: () => ({ data: [], isError: false, isLoading: false }),
+}));
+vi.mock("@/features/settings/hooks/use-me-effective-embedding-defaults", () => ({
+  useMeEffectiveEmbeddingDefaults: (...args: unknown[]) => hooksMock.useMeEffectiveEmbeddingDefaults(...args),
 }));
 
 const LONG_MODEL =
@@ -41,6 +45,17 @@ function renderPanelContent() {
   );
 }
 
+function renderSidePanel() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <IntlTestProvider locale="en">
+        <ChatConfigurationSidePanel open onClose={() => undefined} />
+      </IntlTestProvider>
+    </QueryClientProvider>,
+  );
+}
+
 describe("chat config layout", () => {
   beforeEach(() => {
     hooksMock.useProjectIndexProfile.mockReturnValue({ data: null, isLoading: false, isError: false });
@@ -48,6 +63,9 @@ describe("chat config layout", () => {
     hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
       data: { capabilities: [] },
       isLoading: false,
+    });
+    hooksMock.useMeEffectiveEmbeddingDefaults.mockReturnValue({
+      data: { retrievalOptions: { topK: 8, similarityThreshold: 0.25, materializationStrategy: "CHUNK_LEVEL" } },
     });
   });
 
@@ -69,11 +87,7 @@ describe("chat config layout", () => {
   });
 
   it("config side panel constrains width and allows overflow wrap", () => {
-    render(
-      <IntlTestProvider locale="en">
-        <ChatConfigurationSidePanel open onClose={() => undefined} />
-      </IntlTestProvider>,
-    );
+    renderSidePanel();
 
     const panel = screen.getByTestId("chat-configuration-side-panel");
     expect(panel.className).toMatch(/min-w-0/);
@@ -107,6 +121,7 @@ describe("chat config layout", () => {
           conversationLlmModel: LONG_MODEL,
           conversationClassifierModelId: null,
           conversationModelsPinned: false,
+          configurationMode: "PRESET" as const,
           runtimeOverride: {},
           manualOverrideKeys: [],
           isCustom: false,
@@ -138,6 +153,9 @@ describe("chat config layout", () => {
         presets: [],
         presetsError: false,
         presetsLoading: false,
+        projectCompatiblePresets: null,
+        compatibleProductPresets: [],
+        compatibleExperimentalPresets: [],
         experimentalPresets: [],
         experimentalPresetsLoading: false,
         experimentalPresetsError: false,
@@ -186,6 +204,7 @@ describe("chat config layout", () => {
           conversationLlmModel: null,
           conversationClassifierModelId: null,
           conversationModelsPinned: false,
+          configurationMode: "PRESET" as const,
           runtimeOverride: {},
           manualOverrideKeys: [],
           isCustom: false,
@@ -227,6 +246,9 @@ describe("chat config layout", () => {
         presets: [],
         presetsError: false,
         presetsLoading: false,
+        projectCompatiblePresets: null,
+        compatibleProductPresets: [],
+        compatibleExperimentalPresets: [],
         experimentalPresets: [],
         experimentalPresetsLoading: false,
         experimentalPresetsError: false,
@@ -248,9 +270,151 @@ describe("chat config layout", () => {
     const user = userEvent.setup();
     await user.click(screen.getByTestId("chat-config-edit-button"));
 
-    const select = screen.getByTestId("chat-llm-model-select");
-    expect(select).toHaveAttribute("data-effective-provider", "OPENAI_COMPATIBLE");
-    expect(screen.getByTestId("chat-llm-model-provider")).toHaveTextContent(/Configured model provider/i);
-    expect(screen.getByRole("option", { name: /gpt-oss:20b/i })).toBeInTheDocument();
+    expect(screen.getByTestId("chat-edit-assistant-configuration-link")).toBeInTheDocument();
+  });
+
+  it("uses adaptive flex-wrap for retrieval parameters and feature badges", async () => {
+    hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
+      data: {
+        capabilities: [
+          {
+            key: "memoryEnabled",
+            label: "Memory",
+            description: "d",
+            category: "RUNTIME_HOT_SWAPPABLE",
+            visibleInChat: true,
+            configurableInChat: true,
+            implemented: true,
+            engineWired: true,
+            supportMode: "MULTI_TURN_REQUIRED",
+            displayOrder: 1,
+            requires: [],
+            excludes: [],
+            requiresIndexSnapshot: false,
+            requiresReindexWhenChanged: false,
+            reasonIfDisabled: null,
+            reasonIfNotImplemented: null,
+          },
+          {
+            key: "clarificationEnabled",
+            label: "Clarification",
+            description: "d",
+            category: "RUNTIME_HOT_SWAPPABLE",
+            visibleInChat: true,
+            configurableInChat: true,
+            implemented: true,
+            engineWired: true,
+            supportMode: "MULTI_TURN_REQUIRED",
+            displayOrder: 2,
+            requires: [],
+            excludes: [],
+            requiresIndexSnapshot: false,
+            requiresReindexWhenChanged: false,
+            reasonIfDisabled: null,
+            reasonIfNotImplemented: null,
+          },
+        ],
+      },
+      isLoading: false,
+    });
+
+    useChatToolbarStore.setState({
+      api: {
+        projectId: "p1",
+        conversationId: "c1",
+        runtimeOverride: {},
+        runtimeState: {
+          conversationId: "c1",
+          selectedPresetId: null,
+          effectivePresetId: "preset",
+          preset: {
+            kind: "DEFAULT",
+            code: null,
+            label: "Recommended Default",
+            chatSelectable: true,
+            supported: true,
+            supportStatus: null,
+            reasonIfUnsupported: null,
+          },
+          baseEffectiveConfig: { useRetrieval: true },
+          effectiveConfig: { useRetrieval: true },
+          effectiveRetrievalParameters: {
+            topK: 8,
+            similarityThreshold: 0.25,
+            topKSource: "PROJECT_DEFAULTS",
+            similarityThresholdSource: "PROJECT_DEFAULTS",
+          },
+          conversationLlmModel: null,
+          conversationClassifierModelId: null,
+          conversationModelsPinned: false,
+          configurationMode: "PRESET" as const,
+          runtimeOverride: {},
+          manualOverrideKeys: [],
+          isCustom: false,
+          validation: { valid: true, supported: true, errors: [], warnings: [] },
+          selectedWorkflow: null,
+          indexCompatibility: null,
+          requiresReindex: false,
+        },
+        runtimeStateLoading: false,
+        runtimeStateError: null,
+        refreshRuntimeState: vi.fn(),
+        saveRuntimeOverride: vi.fn(),
+        clearRuntimeOverride: vi.fn(),
+        openDeleteForActiveConversation: vi.fn(),
+        openMoveDialog: vi.fn(),
+        openDocumentsSheet: vi.fn(),
+        onAddDocuments: vi.fn(),
+        llmModelChoice: "",
+        setLlmModelChoice: vi.fn(),
+        classifierModelChoice: "",
+        setClassifierModelChoice: vi.fn(),
+        selectableLlmModels: [],
+        selectableLlmModelsLoading: false,
+        selectableLlmModelsEffectiveProvider: undefined,
+        modelsError: false,
+        modelsErrorMessage: "",
+        presetSelectValue: "",
+        onPresetChange: vi.fn(),
+        presets: [],
+        presetsError: false,
+        presetsLoading: false,
+        projectCompatiblePresets: null,
+        compatibleProductPresets: [],
+        compatibleExperimentalPresets: [],
+        experimentalPresets: [],
+        experimentalPresetsLoading: false,
+        experimentalPresetsError: false,
+        presetSelectDisabled: false,
+        syntheticPresetOptionNeeded: false,
+        presetLabelOpts: { systemSuffix: "", recommendedDefault: "", defaultConfiguration: "" },
+        limitDocs: false,
+        onLimitDocsChange: vi.fn(),
+        limitDocsDisabled: false,
+        limitDocsToggleNotice: null,
+        patchConvPending: false,
+        uploadPending: false,
+        uploadError: null,
+        uploadNotice: null,
+      },
+    });
+
+    renderPanelContent();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("chat-config-edit-button"));
+
+    const retrievalSection = screen.getByTestId("chat-retrieval-settings-section");
+    const retrievalRow = retrievalSection.querySelector(".flex.flex-wrap");
+    expect(retrievalRow?.className).toMatch(/flex-wrap/);
+    expect(screen.getByTestId("chat-runtime-toggle-topK")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-runtime-toggle-similarityThreshold")).toBeInTheDocument();
+
+    const memorySection = screen.getByTestId("chat-conversation-memory-section");
+    const clarificationSection = screen.getByTestId("chat-clarification-section");
+    expect(memorySection.querySelector(".flex-wrap")).toBeTruthy();
+    expect(clarificationSection.querySelector(".flex-wrap")).toBeTruthy();
+    expect(screen.getByText("Memory and clarification")).toBeInTheDocument();
+    expect(screen.getAllByText("Multi-turn").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Project setting").length).toBeGreaterThanOrEqual(2);
   });
 });

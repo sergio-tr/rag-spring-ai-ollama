@@ -19,6 +19,6 @@ python tests/regression/check_baseline.py
 
 ## Other tests in the service
 
-- `tests/unit/` — isolated logic (model loader, inference, config, etc.).
-- `tests/test_api.py` — API with `TestClient` (no network).
-- `tests/regression/test_baseline_lib.py` — pure harness logic only (no HTTP).
+- `tests/unit/` - isolated logic (model loader, inference, config, etc.).
+- `tests/test_api.py` - API with `TestClient` (no network).
+- `tests/regression/test_baseline_lib.py` - pure harness logic only (no HTTP).

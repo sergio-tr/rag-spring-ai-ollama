@@ -12,6 +12,7 @@ import com.uniovi.rag.application.service.chat.ChatRuntimeStateService;
 import com.uniovi.rag.interfaces.rest.dto.ChatPresetSummaryDto;
 import com.uniovi.rag.interfaces.rest.dto.ChatRuntimeStateDto;
 import com.uniovi.rag.interfaces.rest.dto.ChatRuntimeValidationDto;
+import com.uniovi.rag.interfaces.rest.dto.EffectiveRetrievalParametersDto;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import java.util.List;
@@ -84,6 +85,7 @@ class ChatRuntimeStateControllerWebMvcTest {
                                 LLM_MODEL,
                                 CLASSIFIER_MODEL_ID,
                                 true,
+                                "CUSTOM",
                                 Map.of(USE_RETRIEVAL, true),
                                 List.of(USE_RETRIEVAL),
                                 true,
@@ -97,7 +99,9 @@ class ChatRuntimeStateControllerWebMvcTest {
                                 null,
                                 null,
                                 List.of(),
-                                null));
+                                null,
+                                new EffectiveRetrievalParametersDto(
+                                        8, 0.25, "USER_DEFAULTS", "USER_DEFAULTS")));
 
         mockMvc.perform(get(path("/conversations/{conversationId}/runtime-state"), conversationId))
                 .andExpect(status().isOk())
@@ -107,6 +111,7 @@ class ChatRuntimeStateControllerWebMvcTest {
                 .andExpect(jsonPath("$.conversationLlmModel").value(LLM_MODEL))
                 .andExpect(jsonPath("$.conversationClassifierModelId").value(CLASSIFIER_MODEL_ID))
                 .andExpect(jsonPath("$.conversationModelsPinned").value(true))
+                .andExpect(jsonPath("$.configurationMode").value("CUSTOM"))
                 .andExpect(jsonPath("$.manualOverrideKeys[0]").value(USE_RETRIEVAL))
                 .andExpect(jsonPath("$.isCustom").value(true));
 

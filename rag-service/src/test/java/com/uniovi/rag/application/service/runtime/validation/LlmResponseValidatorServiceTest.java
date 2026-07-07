@@ -21,6 +21,12 @@ class LlmResponseValidatorServiceTest {
     }
 
     @Test
+    void isAcceptableFinalUserAnswer_rejectsPrefixOnlyBased() {
+        assertFalse(validator.isAcceptableFinalUserAnswer("Based"));
+        assertFalse(validator.isAcceptableFinalUserAnswer("Based\n\nFuentes consultadas: ACTA 1.pdf."));
+    }
+
+    @Test
     void isAcceptableFinalUserAnswer_acceptsSubstantiveAnswer() {
         assertTrue(
                 validator.isAcceptableFinalUserAnswer(

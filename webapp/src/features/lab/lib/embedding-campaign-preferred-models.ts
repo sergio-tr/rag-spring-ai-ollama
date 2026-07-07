@@ -1,5 +1,5 @@
 /**
- * @deprecated Phase 5 — use `GET /lab/evaluation-models` and `compatibleWithCurrentVectorStore` from catalog API.
+ * @deprecated Phase 5 - use `GET /lab/evaluation-models` and `compatibleWithCurrentVectorStore` from catalog API.
  * Retained for unit tests only; production Lab UI must not import this module.
  */
 import { isLabComparisonAvailabilityBlocked } from "@/features/lab/lib/lab-comparison-availability";

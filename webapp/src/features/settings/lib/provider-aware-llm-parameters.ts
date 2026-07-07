@@ -11,7 +11,7 @@ export type ModelParameterDef = Readonly<{
   configKey: string;
   storage: ModelParameterStorage;
   labelKey: string;
-  type: "number" | "integer";
+  type: "number" | "integer" | "boolean";
   min?: number;
   max?: number;
   /** Whether RagLlmChatInvoker + provider mapper apply this parameter at runtime. */
@@ -129,6 +129,14 @@ export const MODEL_PARAMETER_CATALOG: readonly ModelParameterDef[] = [
     storage: "additional",
     labelKey: "modelParamStop",
     type: "number",
+    applied: { OPENAI_COMPATIBLE: true, OLLAMA_NATIVE: false },
+  },
+  {
+    id: "think",
+    configKey: "think",
+    storage: "additional",
+    labelKey: "modelParamThink",
+    type: "boolean",
     applied: { OPENAI_COMPATIBLE: true, OLLAMA_NATIVE: false },
   },
 ] as const;

@@ -5,10 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.application.exception.llm.LlmConfigurationException;
 import com.uniovi.rag.application.exception.llm.LlmRemoteFailures;
+import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.application.service.model.ModelGovernanceService;
 import com.uniovi.rag.application.port.OllamaModelAvailabilityPort;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.catalog.EvaluationModelCatalogService;
@@ -29,11 +32,13 @@ import com.uniovi.rag.infrastructure.vector.ProviderAwareEmbeddingModelFactory;
 import com.uniovi.rag.interfaces.rest.dto.llm.catalog.LlmCatalogModelDto;
 import com.uniovi.rag.interfaces.rest.dto.llm.catalog.LlmCatalogResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.me.llm.MeSelectableLlmModelDto;
+import com.uniovi.rag.testsupport.llm.LlmCatalogApiServiceTestSupport;
 import com.uniovi.rag.testsupport.llm.LlmModelCatalogTestSupport;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,7 +52,7 @@ import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.document.Document;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Phase 6 — configured models stay visible; unavailable/incompatible models block with clear codes. */
+/** Phase 6 - configured models stay visible; unavailable/incompatible models block with clear codes. */
 @ExtendWith(MockitoExtension.class)
 class UnavailableModelHandlingIntegrationTest {
 
@@ -55,6 +60,7 @@ class UnavailableModelHandlingIntegrationTest {
 
     @Mock private ResolvedLlmConfigResolver configResolver;
     @Mock private OllamaModelAvailabilityPort ollamaAvailability;
+    @Mock private ModelCatalogPort modelCatalogPort;
     @Mock private ProviderAwareEmbeddingModelFactory embeddingModelFactory;
 
     private LlmCatalogApiService catalogApiService;
@@ -63,12 +69,15 @@ class UnavailableModelHandlingIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(modelCatalogPort.blockedLlmNamesInGovernance()).thenReturn(Set.of());
+        lenient().when(modelCatalogPort.blockedEmbeddingNamesInGovernance()).thenReturn(Set.of());
         LlmProperties properties = catalogProperties();
         LlmModelCatalogService catalog = LlmModelCatalogTestSupport.catalogFrom(properties);
+        ModelGovernanceService governanceService = new ModelGovernanceService(modelCatalogPort, catalog);
         catalogApiService =
-                new LlmCatalogApiService(
-                        catalog, ollamaAvailability, new RagVectorProperties(1024, true));
-        selectableService = new MeSelectableLlmModelsService(configResolver, catalogApiService);
+                LlmCatalogApiServiceTestSupport.service(
+                        catalog, ollamaAvailability, new RagVectorProperties(1024, true), modelCatalogPort, true);
+        selectableService = new MeSelectableLlmModelsService(configResolver, catalogApiService, governanceService);
         evaluationCatalogService = new EvaluationModelCatalogService(configResolver, catalogApiService);
     }
 
@@ -166,7 +175,7 @@ class UnavailableModelHandlingIntegrationTest {
         EvaluationModelCatalogService isolatedEval =
                 new EvaluationModelCatalogService(
                         configResolver,
-                        new LlmCatalogApiService(
+                        LlmCatalogApiServiceTestSupport.service(
                                 catalog, ollamaAvailability, new RagVectorProperties(1024, true)));
 
         assertThatThrownBy(

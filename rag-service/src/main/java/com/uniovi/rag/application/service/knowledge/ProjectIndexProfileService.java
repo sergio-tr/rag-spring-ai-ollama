@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.knowledge;
 
+import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
 import com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver;
@@ -20,11 +21,13 @@ public class ProjectIndexProfileService {
     private final int defaultChunkMaxChars;
     private final MaterializationStrategy defaultMaterializationStrategy;
     private final EmbeddingModelCatalogResolver embeddingModelCatalogResolver;
+    private final ResolvedLlmConfigResolver llmConfigResolver;
 
     public ProjectIndexProfileService(
             ProjectIndexProfileRepository repository,
             LlmProperties llmProperties,
             EmbeddingModelCatalogResolver embeddingModelCatalogResolver,
+            ResolvedLlmConfigResolver llmConfigResolver,
             @Value("${rag.chunk.max-chars:400}") int defaultChunkMaxChars,
             @Value("${rag.knowledge.materialization-strategy:CHUNK_LEVEL}") String defaultMaterializationStrategyRaw) {
         this.repository = repository;
@@ -32,6 +35,7 @@ public class ProjectIndexProfileService {
         this.defaultChunkMaxChars = defaultChunkMaxChars > 0 ? defaultChunkMaxChars : 400;
         this.defaultMaterializationStrategy = parseStrategy(defaultMaterializationStrategyRaw);
         this.embeddingModelCatalogResolver = embeddingModelCatalogResolver;
+        this.llmConfigResolver = llmConfigResolver;
     }
 
     public ProjectIndexProfile ensureDefault(UUID projectId) {
@@ -43,6 +47,7 @@ public class ProjectIndexProfileService {
     }
 
     public ProjectIndexProfile upsert(
+            UUID userId,
             UUID projectId,
             MaterializationStrategy materializationStrategy,
             boolean metadataEnabled,
@@ -60,7 +65,7 @@ public class ProjectIndexProfileService {
         e.setMaterializationStrategy((materializationStrategy != null ? materializationStrategy : defaultMaterializationStrategy).name());
         e.setMetadataEnabled(metadataEnabled);
         e.setMetadataProfile(metadataProfile);
-        e.setEmbeddingModelId(resolveEmbeddingModelId(embeddingModelId));
+        e.setEmbeddingModelId(resolveEmbeddingModelId(userId, embeddingModelId));
         e.setChunkMaxChars(chunkMaxChars > 0 ? chunkMaxChars : defaultChunkMaxChars);
         e.setChunkOverlap(chunkOverlap);
         e.setProfileHash(
@@ -76,7 +81,7 @@ public class ProjectIndexProfileService {
 
     private ProjectIndexProfile toResolvedDomain(ProjectIndexProfileEntity e) {
         ProjectIndexProfile base = toDomain(e);
-        String resolvedEmbedding = resolveEmbeddingModelId(base.embeddingModelId());
+        String resolvedEmbedding = resolveEmbeddingModelId(null, base.embeddingModelId());
         if (resolvedEmbedding.equals(base.embeddingModelId())) {
             return base;
         }
@@ -93,15 +98,26 @@ public class ProjectIndexProfileService {
                 base.updatedAt());
     }
 
-    private String resolveEmbeddingModelId(String embeddingModelId) {
-        if (embeddingModelId == null || embeddingModelId.isBlank()) {
-            return embeddingModelCatalogResolver.resolveForEffectiveProvider(defaultEmbeddingModelId);
+    private String resolveEmbeddingModelId(UUID userId, String embeddingModelId) {
+        if (embeddingModelId != null && !embeddingModelId.isBlank()) {
+            return embeddingModelCatalogResolver.resolveForEffectiveProvider(embeddingModelId.trim());
         }
-        return embeddingModelCatalogResolver.resolveForEffectiveProvider(embeddingModelId.trim());
+        if (userId != null) {
+            String userModel = blankToNull(llmConfigResolver.resolve(userId, null, null).embeddingModel());
+            if (userModel != null) {
+                return embeddingModelCatalogResolver.resolveForEffectiveProvider(userModel);
+            }
+        }
+        return embeddingModelCatalogResolver.resolveForEffectiveProvider(defaultEmbeddingModelId);
+    }
+
+    private static String blankToNull(String value) {
+        return value != null && !value.isBlank() ? value.trim() : null;
     }
 
     private ProjectIndexProfile createDefault(UUID projectId) {
         return upsert(
+                null,
                 projectId,
                 defaultMaterializationStrategy,
                 false,

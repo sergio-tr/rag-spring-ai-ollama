@@ -37,12 +37,12 @@ export function RagConfigAdvancedJsonPanel({ config, onApply }: RagConfigAdvance
   }
 
   return (
-    <details className="rounded-md border border-border p-3" data-testid="rag-config-advanced-json">
-      <summary className="cursor-pointer text-sm font-medium">{t("configAdvancedJsonSummary")}</summary>
-      <p className="text-muted-foreground mt-2 text-xs">{t("configAdvancedJsonHint")}</p>
+    <details className="min-w-0 max-w-full overflow-hidden rounded-md border border-border p-3" data-testid="rag-config-advanced-json">
+      <summary className="cursor-pointer break-words text-sm font-medium">{t("configAdvancedJsonSummary")}</summary>
+      <p className="text-muted-foreground mt-2 break-words text-xs">{t("configAdvancedJsonHint")}</p>
       <textarea
         aria-label={t("userConfigEditorLabel")}
-        className="border-input bg-background mt-3 min-h-40 w-full rounded-md border p-2 font-mono text-xs"
+        className="border-input bg-background mt-3 min-h-40 w-full min-w-0 rounded-md border p-2 font-mono text-xs"
         value={jsonText}
         onChange={(event) => setJsonText(event.target.value)}
       />

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 
+import com.uniovi.rag.application.service.embedding.EmbeddingOptionsValidator;
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.llm.catalog.EvaluationModelCatalogService;
@@ -55,6 +56,7 @@ class LabBenchmarkConfigPreflightServiceTest {
     @Mock private ProjectIndexProfileService projectIndexProfileService;
     @Mock private LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     @Mock private EvaluationModelCatalogService evaluationModelCatalogService;
+    @Mock private EmbeddingOptionsValidator embeddingOptionsValidator;
     @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
     @Mock private KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess;
 
@@ -76,6 +78,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         labIndexProfileOverrideFactory,
                         corpusAvailabilityGate,
                         evaluationModelCatalogService,
+                        embeddingOptionsValidator,
                         knowledgeIndexSnapshotRepository,
                         snapshotProfileAccess);
         lenient()
@@ -86,6 +89,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                 .thenReturn(Map.of("corpusAvailable", true, "vectorChunkRowCount", 10L));
         lenient().doNothing().when(evaluationModelCatalogService).assertHasCompatibleEmbeddingWhenRequired(any());
         lenient().doNothing().when(evaluationModelCatalogService).assertChatModelInCatalog(any(), any());
+        lenient().doNothing().when(embeddingOptionsValidator).validateRuntimeParameters(any(), any(), any());
     }
 
     @Test
@@ -195,7 +199,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
         LabBenchmarkConfigPreflightResult result =
                 service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req);
         assertThat(result.passed()).isTrue();
@@ -232,7 +236,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
         assertThatThrownBy(() -> service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(
@@ -273,7 +277,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
         LabBenchmarkConfigPreflightResult result =
                 service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req);
         assertThat(result.passed()).isTrue();
@@ -289,7 +293,17 @@ class LabBenchmarkConfigPreflightServiceTest {
         KnowledgeIndexSnapshotEntity snap = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
         when(snap.getId()).thenReturn(snapshotId);
         when(snap.getSignatureHash()).thenReturn("sig-current");
+        when(snapshotProfileAccess.resolveProfileJsonb(snap))
+                .thenReturn(
+                        Map.of(
+                                "materializationStrategy",
+                                "HYBRID",
+                                "supportsMetadata",
+                                true,
+                                "embeddingModelId",
+                                "mxbai-embed-large"));
         when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.of(snap));
+        when(knowledgeSnapshotService.findCorpusSnapshots(corpusId)).thenReturn(List.of(snap));
         KnowledgeDocumentEntity doc = Mockito.mock(KnowledgeDocumentEntity.class);
         when(evaluationCorpusApplicationService.requireContext(userId, corpusId))
                 .thenReturn(
@@ -341,7 +355,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
         assertThatThrownBy(() -> service.validateOrThrow(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(
@@ -396,7 +410,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
         LabBenchmarkConfigPreflightResult result =
                 service.validateOrThrow(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req);
         assertThat(result.passed()).isTrue();
@@ -422,6 +436,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                                 "embeddingModelId",
                                 "mxbai-embed-large"));
         when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.of(snap));
+        when(knowledgeSnapshotService.findCorpusSnapshots(corpusId)).thenReturn(List.of(snap));
         when(evaluationCorpusApplicationService.requireContext(userId, corpusId))
                 .thenReturn(
                         new EvaluationCorpusApplicationService.EvaluationCorpusContext(
@@ -478,7 +493,8 @@ class LabBenchmarkConfigPreflightServiceTest {
                         List.of(),
                         List.of(),
                         null,
-                        null);
+                        null,
+                        Map.of());
         LabBenchmarkConfigPreflightResult result =
                 service.validateOrThrow(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req);
         assertThat(result.passed()).isTrue();
@@ -487,12 +503,34 @@ class LabBenchmarkConfigPreflightServiceTest {
 
     @Test
     void ragRejectsHybridPresetWithChunkOnlySnapshotWhenAutoReindexDisabled() {
+        UUID userId = UUID.randomUUID();
         UUID corpusId = UUID.randomUUID();
+        UUID indexProjectId = UUID.randomUUID();
         KnowledgeIndexSnapshotEntity snap = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
         when(snap.getId()).thenReturn(UUID.randomUUID());
         when(snapshotProfileAccess.resolveProfileJsonb(snap))
                 .thenReturn(Map.of("materializationStrategy", "CHUNK_LEVEL", "supportsMetadata", true));
         when(knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId)).thenReturn(Optional.of(snap));
+        when(knowledgeSnapshotService.findCorpusSnapshots(corpusId)).thenReturn(List.of(snap));
+        when(evaluationCorpusApplicationService.requireContext(userId, corpusId))
+                .thenReturn(
+                        new EvaluationCorpusApplicationService.EvaluationCorpusContext(
+                                corpusId, indexProjectId, List.of(UUID.randomUUID()), List.of()));
+        ProjectIndexProfile profile =
+                new ProjectIndexProfile(
+                        indexProjectId,
+                        MaterializationStrategy.HYBRID,
+                        true,
+                        "meta-v1",
+                        "mxbai-embed-large",
+                        400,
+                        10,
+                        ProjectIndexProfile.computeProfileHash(
+                                MaterializationStrategy.HYBRID, true, "meta-v1", "mxbai-embed-large", 400, 10),
+                        Instant.now(),
+                        Instant.now());
+        when(projectIndexProfileService.ensureDefault(indexProjectId)).thenReturn(profile);
+        when(labIndexProfileOverrideFactory.buildEffectiveProfile(any(), any(), any())).thenReturn(profile);
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
                         UUID.randomUUID(),
@@ -520,8 +558,8 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
-        assertThatThrownBy(() -> service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.RAG_PRESET_END_TO_END, req))
+                        List.of(), List.of(), null, null, Map.of());
+        assertThatThrownBy(() -> service.validateOrThrow(userId, BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(
                         ex ->
@@ -564,7 +602,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
         assertThatThrownBy(() -> service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .satisfies(
                         ex ->
@@ -604,7 +642,7 @@ class LabBenchmarkConfigPreflightServiceTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
         assertThatThrownBy(() -> service.validateOrThrow(UUID.randomUUID(), BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .satisfies(
                         ex ->
@@ -670,7 +708,8 @@ class LabBenchmarkConfigPreflightServiceTest {
                 List.of(),
                 List.of(),
                 null,
-                null);
+                null,
+                Map.of());
     }
 
     private static StartBenchmarkRunRequest ragRequest(List<String> presets, String embeddingModelId) {
@@ -700,6 +739,6 @@ class LabBenchmarkConfigPreflightServiceTest {
                 null,
                 null,
                 null,
-                List.of(), List.of(), null, null);
+                List.of(), List.of(), null, null, Map.of());
     }
 }

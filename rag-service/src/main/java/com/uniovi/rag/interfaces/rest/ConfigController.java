@@ -165,9 +165,15 @@ public class ConfigController {
         return userProjectConfigurationService.getEffectiveUserConfig(principal.userId());
     }
 
+    @GetMapping("/user/stored")
+    public Map<String, Object> getStoredUserConfig(@AuthenticationPrincipal RagPrincipal principal) {
+        return userProjectConfigurationService.getStoredUserConfig(principal.userId());
+    }
+
     @Operation(
             summary = "Replace user-default RAG configuration",
-            description = "Persists USER_DEFAULT rag_configuration for the authenticated user.")
+            description =
+                    "Merges patch into USER_DEFAULT rag_configuration. Null values remove stored overrides.")
     @PutMapping("/user")
     public Map<String, Object> putUserConfig(
             @AuthenticationPrincipal RagPrincipal principal, @RequestBody Map<String, Object> body) {
@@ -178,6 +184,12 @@ public class ConfigController {
     public Map<String, Object> getProjectConfig(
             @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID projectId) {
         return userProjectConfigurationService.getEffectiveProjectConfig(principal.userId(), projectId);
+    }
+
+    @GetMapping("/project/{projectId}/stored")
+    public Map<String, Object> getStoredProjectConfig(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID projectId) {
+        return userProjectConfigurationService.getStoredProjectConfig(principal.userId(), projectId);
     }
 
     @PutMapping("/project/{projectId}")

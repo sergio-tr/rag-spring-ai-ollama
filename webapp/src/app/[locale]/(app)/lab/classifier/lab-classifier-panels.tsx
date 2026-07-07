@@ -15,6 +15,7 @@ import {
   traceLabJobStoppedWaiting,
 } from "@/features/lab/lib/lab-job-trace";
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
+import { registeredModelNameError } from "@/features/lab/lib/registered-model-validation";
 import { useQueryClient } from "@tanstack/react-query";
 import { LabJobPollTimeoutError } from "@/lib/async-task";
 import { ApiError, apiFetch, apiProductPath, getSafeApiErrorMessage } from "@/lib/api-client";
@@ -37,6 +38,49 @@ function classifierTrainApiPath(trainSync: boolean, projectId: string | undefine
   const q = params.toString();
   const querySuffix = q === "" ? "" : `?${q}`;
   return `/lab/classifier/train${querySuffix}`;
+}
+
+function formatTrainApiError(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    return getSafeApiErrorMessage(err);
+  }
+  return err instanceof Error ? err.message : fallback;
+}
+
+function TrainResultSummary(props: Readonly<{ result: unknown; translate: (key: string, values?: Record<string, string>) => string }>) {
+  const { result, translate } = props;
+  if (result == null || typeof result !== "object") {
+    return null;
+  }
+  const row = result as Record<string, unknown>;
+  const modelId = row.modelId ?? row.model_id;
+  const name = row.name;
+  const metrics = row.metrics;
+  if (modelId == null && name == null) {
+    return null;
+  }
+  return (
+    <div className="bg-muted/40 space-y-1 rounded-md border p-3 text-xs" data-testid="lab-classifier-train-result">
+      {modelId != null ? (
+        <p>
+          <span className="font-medium">{translate("classifierTrainResultModelId")}: </span>
+          <code>{String(modelId)}</code>
+        </p>
+      ) : null}
+      {name != null ? (
+        <p>
+          <span className="font-medium">{translate("classifierTrainResultName")}: </span>
+          {String(name)}
+        </p>
+      ) : null}
+      {metrics != null ? (
+        <p>
+          <span className="font-medium">{translate("classifierTrainResultMetrics")}: </span>
+          <code>{JSON.stringify(metrics)}</code>
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function handleClassifierTrainFollowCatch(
@@ -66,7 +110,7 @@ function handleClassifierTrainFollowCatch(
     opts.setTrainErr(opts.translate("jobRecoveryStaleShort"));
     return;
   }
-  opts.setTrainErr(err instanceof Error ? err.message : opts.translate("evalError"));
+  opts.setTrainErr(formatTrainApiError(err, opts.translate("evalError")));
 }
 
 function handleClassifierEvalFollowCatch(
@@ -219,12 +263,15 @@ export function LabClassifierTrainPanel(
   }, [resumeNonceTrain, resumeTrainFromPersisted]);
 
   const modelNameTrimmed = modelName.trim();
+  const reservedNameError = registeredModelNameError(modelNameTrimmed);
   const modelNameError =
-    modelNameTrimmed.length === 0
+    reservedNameError === "required"
       ? t("fieldRequired")
-      : modelNameTrimmed.length > 80
+      : reservedNameError === "tooLong"
         ? t("fieldTooLong")
-        : null;
+        : reservedNameError === "reserved"
+          ? t("classifierModelNameReserved")
+          : null;
 
   async function runTrain() {
     if (!trainFile) {
@@ -342,7 +389,7 @@ export function LabClassifierTrainPanel(
           <p className="text-muted-foreground text-xs leading-relaxed">{t("labAdvancedClassifierJobHelp")}</p>
         ) : null}
         <div className="grid gap-2">
-          <Label htmlFor="cmodel">New model name</Label>
+          <Label htmlFor="cmodel">{t("classifierModelName")}</Label>
           <Input
             id="cmodel"
             data-testid="lab-classifier-train-model-name"
@@ -350,10 +397,7 @@ export function LabClassifierTrainPanel(
             aria-invalid={modelNameError != null}
             onChange={(e) => setModelName(e.target.value)}
           />
-          <p className="text-muted-foreground text-xs">
-            This creates a new classifier model. To evaluate or activate an existing model, use the model selector
-            below.
-          </p>
+          <p className="text-muted-foreground text-xs">{t("classifierModelNameHelp")}</p>
           {modelNameError ? <p className="text-destructive text-xs">{modelNameError}</p> : null}
         </div>
         <div className="grid gap-2">
@@ -391,9 +435,12 @@ export function LabClassifierTrainPanel(
           />
         ) : null}
         {trainOut === null ? null : (
-          <pre className="bg-muted/40 max-h-[240px] overflow-auto rounded-md border p-3 text-xs">
-            {JSON.stringify(trainOut, null, 2)}
-          </pre>
+          <>
+            <TrainResultSummary result={trainOut} translate={t} />
+            <pre className="bg-muted/40 max-h-[240px] overflow-auto rounded-md border p-3 text-xs">
+              {JSON.stringify(trainOut, null, 2)}
+            </pre>
+          </>
         )}
       </CardContent>
     </Card>
@@ -713,6 +760,7 @@ export function LabClassifierEvalPanel(
               </>
             )}
           </select>
+          <p className="text-muted-foreground text-xs">{t("classifierEvalModelIdHelp")}</p>
         </div>
         <div className="grid gap-2">
           <Label htmlFor="efile">{t("classifierEvalFile")}</Label>
@@ -841,6 +889,7 @@ export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boole
               </>
             )}
           </select>
+          <p className="text-muted-foreground text-xs">{t("classifierModelIdHelp")}</p>
           {(modelsQuery.data ?? []).length === 0 ? (
             <p className="text-muted-foreground text-xs">
               {classifierOk

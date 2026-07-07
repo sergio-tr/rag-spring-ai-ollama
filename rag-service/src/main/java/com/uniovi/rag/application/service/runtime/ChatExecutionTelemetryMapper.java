@@ -134,6 +134,7 @@ public final class ChatExecutionTelemetryMapper {
         }
 
         putClassifierTelemetry(trace, m);
+        putQueryExpansionTelemetry(trace, m);
         putReasoningTelemetry(trace, m);
         trace.retrievalDiagnostics().ifPresent(d -> putRetrievalDiagnosticsTelemetry(trace, d, m));
         putDateGroundingTelemetry(trace, m);
@@ -323,6 +324,39 @@ public final class ChatExecutionTelemetryMapper {
         return msg.substring(start, end).trim();
     }
 
+    private static void putQueryExpansionTelemetry(ExecutionTrace trace, Map<String, Object> m) {
+        Optional<ExecutionStageTrace> stage =
+                trace.stages().stream().filter(s -> "qu_expand".equals(s.stageName())).findFirst();
+        if (stage.isEmpty()) {
+            m.put("query_expansion.enabled", false);
+            m.put("query_expansion.applied", false);
+            return;
+        }
+        String msg = stage.get().message() != null ? stage.get().message() : "";
+        boolean disabled = msg.contains("qu_status=DISABLED");
+        m.put("query_expansion.enabled", !disabled);
+        m.put("query_expansion.applied", msg.contains("applied=true"));
+        putTraceField(msg, "strategy=", "query_expansion.strategy", m);
+        putTraceField(msg, "original=", "query_expansion.original_query", m);
+        putTraceField(msg, "expanded=", "query_expansion.expanded_query", m);
+        if (msg.contains("qu_status=ERROR") || msg.contains(" note=")) {
+            putTraceField(msg, "note=", "query_expansion.warning", m);
+        }
+    }
+
+    private static void putTraceField(String msg, String key, String targetKey, Map<String, Object> m) {
+        int idx = msg.indexOf(key);
+        if (idx < 0) {
+            return;
+        }
+        String tail = msg.substring(idx + key.length()).trim();
+        int space = tail.indexOf(' ');
+        String value = space >= 0 ? tail.substring(0, space).trim() : tail.trim();
+        if (!value.isBlank()) {
+            m.put(targetKey, value);
+        }
+    }
+
     private static void putReasoningTelemetry(ExecutionTrace trace, Map<String, Object> m) {
         Optional<ExecutionStageTrace> plan =
                 trace.stages().stream().filter(s -> "reasoning_plan".equals(s.stageName())).findFirst();
@@ -396,6 +430,11 @@ public final class ChatExecutionTelemetryMapper {
         m.put("retrievalAfterFilterCount", d.afterFilterCount());
         m.put("retrievalAfterCompressionCount", d.afterCompressionCount());
         m.put("finalContextChunkCount", d.afterCompressionCount());
+        d.retrievalEffectiveTopK().ifPresent(v -> m.put("retrievalEffectiveTopK", v));
+        d.retrievalEffectiveSimilarityThreshold().ifPresent(v -> m.put("retrievalEffectiveSimilarityThreshold", v));
+        d.retrievalSourceMode().ifPresent(v -> m.put("retrievalSourceMode", v));
+        d.retrievalDenseFetchLimit().ifPresent(v -> m.put("retrievalDenseFetchLimit", v));
+        d.retrievalContextReductionReason().ifPresent(v -> m.put("retrievalContextReductionReason", v));
         m.put("retrievalProtectedCandidateCount", d.protectedCandidateCount());
         m.put("retrievalDroppedCandidateCount", d.droppedCandidateCount());
         m.put("retrievalRerankOrderChanged", d.rerankOrderChanged());

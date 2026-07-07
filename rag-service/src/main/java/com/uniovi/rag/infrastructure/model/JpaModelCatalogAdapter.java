@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Loads allowed LLM names from {@code allowed_model} (adapter for {@link ModelCatalogPort}).
+ * Loads explicitly blocked model names from {@code allowed_model} (adapter for {@link ModelCatalogPort}).
  */
 @Service
 public class JpaModelCatalogAdapter implements ModelCatalogPort {
@@ -25,12 +25,22 @@ public class JpaModelCatalogAdapter implements ModelCatalogPort {
 
     @Override
     @Transactional(readOnly = true)
-    public Set<String> allowedLlmNamesInGovernance() {
+    public Set<String> blockedLlmNamesInGovernance() {
+        return blockedNamesForType(AllowedModelType.LLM);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Set<String> blockedEmbeddingNamesInGovernance() {
+        return blockedNamesForType(AllowedModelType.EMBEDDING);
+    }
+
+    private Set<String> blockedNamesForType(AllowedModelType type) {
         List<AllowedModelEntity> rows = allowedModelRepository.findAll();
         Set<String> out = new HashSet<>();
         for (AllowedModelEntity row : rows) {
-            if (row.getType() == AllowedModelType.LLM && row.isInAllowlist() && row.getName() != null) {
-                out.add(row.getName());
+            if (row.getType() == type && !row.isInAllowlist() && row.getName() != null) {
+                out.add(row.getName().trim());
             }
         }
         return out;

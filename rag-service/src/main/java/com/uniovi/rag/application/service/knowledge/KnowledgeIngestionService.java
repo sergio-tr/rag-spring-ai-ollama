@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.knowledge;
 import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.llm.ModelPreflightService;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
@@ -52,6 +53,7 @@ public class KnowledgeIngestionService {
     private final ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     private final EntityManager entityManager;
     private final BinaryStoragePort binaryStoragePort;
+    private final ModelPreflightService modelPreflightService;
 
     public KnowledgeIngestionService(
             KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
@@ -61,7 +63,8 @@ public class KnowledgeIngestionService {
             ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService,
             ResolvedLlmConfigResolver resolvedLlmConfigResolver,
             EntityManager entityManager,
-            BinaryStoragePort binaryStoragePort) {
+            BinaryStoragePort binaryStoragePort,
+            ModelPreflightService modelPreflightService) {
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.projectDocumentIngestionService = projectDocumentIngestionService;
@@ -70,6 +73,7 @@ public class KnowledgeIngestionService {
         this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
         this.entityManager = entityManager;
         this.binaryStoragePort = binaryStoragePort;
+        this.modelPreflightService = modelPreflightService;
     }
 
     /**
@@ -331,6 +335,8 @@ public class KnowledgeIngestionService {
                     "A document with this filename already exists in the project.");
         }
 
+        modelPreflightService.requireProjectEmbeddingForIndexing(userId, projectId);
+
         KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newIngesting(project, original);
         row = knowledgeDocumentRepository.save(row);
         entityManager.flush();
@@ -365,6 +371,8 @@ public class KnowledgeIngestionService {
                     HttpStatus.CONFLICT,
                     "A document with this filename already exists in the conversation.");
         }
+
+        modelPreflightService.requireProjectEmbeddingForIndexing(userId, projectId);
 
         KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newChatLocalIngesting(conv.getProject(), conv, original);
         row = knowledgeDocumentRepository.save(row);

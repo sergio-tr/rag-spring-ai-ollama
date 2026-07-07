@@ -1,7 +1,7 @@
 package com.uniovi.rag.application.service.runtime.validation;
 
 import com.uniovi.rag.application.service.runtime.FinalAnswerStubSanitizer;
-import com.uniovi.rag.application.service.runtime.ReasoningBlockSanitizer;
+import com.uniovi.rag.application.service.runtime.PrefixOnlyAnswerGuard;
 import com.uniovi.rag.application.service.runtime.ReasoningBlockSanitizer;
 import java.util.Locale;
 import org.slf4j.Logger;
@@ -53,6 +53,10 @@ public class LlmResponseValidatorService implements ResponseValidator {
         }
         if (FinalAnswerStubSanitizer.isInternalStubOnly(response.trim())) {
             log.warn("FinalAnswer: internal metadata stub rejected: {}", abbreviate(response.trim()));
+            return false;
+        }
+        if (PrefixOnlyAnswerGuard.isPrefixOnlyFragment(response.trim())) {
+            log.warn("FinalAnswer: prefix-only grounding fragment rejected: {}", abbreviate(response.trim()));
             return false;
         }
         return true;

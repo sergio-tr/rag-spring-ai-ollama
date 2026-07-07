@@ -72,6 +72,37 @@ class UserProjectConfigurationServiceTest {
     }
 
     @Test
+    void putUserConfig_emptyPatchPreservesStoredRetrieval() {
+        UUID uid = UUID.randomUUID();
+        when(configResolverProvider.getObject()).thenReturn(configResolver);
+        var user = mock(UserEntity.class);
+        when(userRepository.findById(uid)).thenReturn(Optional.of(user));
+
+        RagConfigurationEntity row = mock(RagConfigurationEntity.class);
+        when(row.getValues()).thenReturn(new LinkedHashMap<>(Map.of("topK", 12, "similarityThreshold", 0.1)));
+        when(ragConfigurationRepository.findFirstByUser_IdAndLevelAndProjectIsNullAndActiveIsTrue(
+                        uid, RagConfigurationLevel.USER_DEFAULT))
+                .thenReturn(Optional.of(row));
+
+        when(configResolver.resolve(uid, null, null))
+                .thenReturn(
+                        RagConfig.fromFeatureConfiguration(
+                                new RagFeatureConfiguration(),
+                                12,
+                                0.1,
+                                "a",
+                                "b",
+                                "c",
+                                "SIMPLE"));
+
+        service.putUserConfig(uid, Map.of());
+
+        ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
+        verify(row).setValues(cap.capture());
+        assertThat(cap.getValue()).containsEntry("topK", 12).containsEntry("similarityThreshold", 0.1);
+    }
+
+    @Test
     void putUserConfig_updatesExistingRow() {
         UUID uid = UUID.randomUUID();
         when(configResolverProvider.getObject()).thenReturn(configResolver);
@@ -79,6 +110,7 @@ class UserProjectConfigurationServiceTest {
         when(userRepository.findById(uid)).thenReturn(Optional.of(user));
 
         RagConfigurationEntity row = mock(RagConfigurationEntity.class);
+        when(row.getValues()).thenReturn(new LinkedHashMap<>());
         when(ragConfigurationRepository.findFirstByUser_IdAndLevelAndProjectIsNullAndActiveIsTrue(
                         uid, RagConfigurationLevel.USER_DEFAULT))
                 .thenReturn(Optional.of(row));
@@ -150,5 +182,43 @@ class UserProjectConfigurationServiceTest {
         verify(row).setValues(cap.capture());
         assertThat(cap.getValue()).containsEntry("topK", 5).containsEntry("classifierModelId", "my-tag");
         verify(ragConfigurationRepository).save(row);
+    }
+
+    @Test
+    void getStoredProjectConfig_materializesRetrievalDefaultsWhenMissing() {
+        UUID uid = UUID.randomUUID();
+        UUID pid = UUID.randomUUID();
+        when(configResolverProvider.getObject()).thenReturn(configResolver);
+        when(projectAccessService.requireOwnedProject(uid, pid)).thenReturn(mock(ProjectEntity.class));
+        when(ragConfigurationRepository.findFirstByUser_IdAndProject_IdAndLevelAndActiveIsTrue(
+                        uid, pid, RagConfigurationLevel.PROJECT))
+                .thenReturn(Optional.empty());
+        when(configResolver.resolve(uid, null, null))
+                .thenReturn(
+                        RagConfig.fromFeatureConfiguration(
+                                new RagFeatureConfiguration(),
+                                8,
+                                0.35,
+                                "a",
+                                "b",
+                                "c",
+                                "SIMPLE"));
+        var user = mock(UserEntity.class);
+        when(userRepository.findById(uid)).thenReturn(Optional.of(user));
+        when(configResolver.resolve(uid, pid, null))
+                .thenReturn(
+                        RagConfig.fromFeatureConfiguration(
+                                new RagFeatureConfiguration(),
+                                8,
+                                0.35,
+                                "a",
+                                "b",
+                                "c",
+                                "SIMPLE"));
+
+        Map<String, Object> stored = service.getStoredProjectConfig(uid, pid);
+
+        assertThat(stored).containsEntry("topK", 8).containsEntry("similarityThreshold", 0.35);
+        verify(ragConfigurationRepository).save(any(RagConfigurationEntity.class));
     }
 }

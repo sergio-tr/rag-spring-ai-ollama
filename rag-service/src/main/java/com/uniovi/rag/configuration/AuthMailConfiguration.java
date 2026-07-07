@@ -57,11 +57,11 @@ public class AuthMailConfiguration {
                                 + "Set SPRING_MAIL_HOST for live delivery or RAG_AUTH_MAIL_DELIVERY_MODE=smtp.");
             } else {
                 log.info(
-                        "Auth mail delivery-mode=outbox-only — confirmation emails are queued in mail_outbox only "
+                        "Auth mail delivery-mode=outbox-only - confirmation emails are queued in mail_outbox only "
                                 + "(no SMTP sweep).");
             }
         } else if (resolved == EffectiveAuthMailDelivery.ResolvedMode.SMTP) {
-            log.info("Auth mail delivery-mode=smtp — mail_outbox rows will be sent via JavaMailSender.");
+            log.info("Auth mail delivery-mode=smtp - mail_outbox rows will be sent via JavaMailSender.");
         }
 
         if (resolved == EffectiveAuthMailDelivery.ResolvedMode.SMTP

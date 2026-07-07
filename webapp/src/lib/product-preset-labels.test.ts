@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   productPresetDescription,
   productPresetInternalCodeChip,
@@ -49,8 +49,21 @@ describe("productPresetLabel", () => {
     expect(productPresetDescription("P99", t)).toBe("");
   });
 
+  it("productPresetDescription maps Demo_Best to accurate capability copy", () => {
+    expect(productPresetDescription("Demo_Best")).toContain("Hybrid retrieval");
+    expect(productPresetDescription("Demo_Best")).toContain("Memory, judge, and extended reasoning");
+  });
+
   it("productPresetInternalCodeChip exposes P-codes only for experimental presets", () => {
     expect(productPresetInternalCodeChip("P4")).toBe("P4");
     expect(productPresetInternalCodeChip("demo_best")).toBeNull();
+  });
+
+  it("skips i18n lookup for human-readable product preset names", () => {
+    const t = vi.fn((key: string) => key);
+    expect(productPresetDescription("Chunk preset", t)).toBe("");
+    expect(productPresetDescription("Direct LLM", t)).toBe("");
+    expect(productPresetLabel("Hybrid preset", t)).toBe("Hybrid preset");
+    expect(t).not.toHaveBeenCalled();
   });
 });

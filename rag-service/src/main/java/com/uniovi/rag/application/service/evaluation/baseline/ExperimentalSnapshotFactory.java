@@ -1,6 +1,10 @@
 package com.uniovi.rag.application.service.evaluation.baseline;
 
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.evaluation.BenchmarkRuntimeParametersSupport;
+import com.uniovi.rag.application.service.embedding.EmbeddingBenchmarkRuntimeParameters;
+import com.uniovi.rag.domain.embedding.EmbeddingRequestOptions;
+import com.uniovi.rag.domain.embedding.IndexingRequestOptions;
 import com.uniovi.rag.application.service.evaluation.LabBenchmarkDefaultModelResolver;
 import com.uniovi.rag.application.service.llm.catalog.LlmCatalogApiService;
 import com.uniovi.rag.domain.evaluation.snapshot.EmbeddingExperimentalSnapshot;
@@ -28,7 +32,7 @@ public class ExperimentalSnapshotFactory {
     public ExperimentalSnapshotFactory(
             LabBenchmarkDefaultModelResolver defaultModelResolver,
             ResolvedLlmConfigResolver configResolver,
-            @Value("${spring.ai.ollama.top-k:10}") int defaultTopK,
+            @Value("${spring.ai.ollama.top-k:8}") int defaultTopK,
             @Value("${spring.ai.ollama.options.num-ctx:8192}") int defaultNumCtx) {
         this.defaultModelResolver = defaultModelResolver;
         this.configResolver = configResolver;
@@ -46,8 +50,11 @@ public class ExperimentalSnapshotFactory {
                 runOverride != null && !runOverride.isBlank()
                         ? ExperimentalSnapshotFieldSource.RUN_OVERRIDE
                         : ExperimentalSnapshotFieldSource.RESOLVED_CONFIG;
-        return ResolvedLlmExperimentalSnapshotMapper.toLlmSnapshot(
-                config, model, modelSource, defaultTopK, defaultNumCtx);
+        LlmExperimentalSnapshot snap =
+                ResolvedLlmExperimentalSnapshotMapper.toLlmSnapshot(
+                        config, model, modelSource, defaultTopK, defaultNumCtx);
+        return BenchmarkRuntimeParametersSupport.applyToLlmSnapshot(
+                snap, BenchmarkRuntimeParametersSupport.readFromRun(run));
     }
 
     public EmbeddingExperimentalSnapshot buildEmbeddingSnapshot(EvaluationRunEntity run) {
@@ -67,7 +74,12 @@ public class ExperimentalSnapshotFactory {
         fieldSources.put("embeddingProvider", ExperimentalSnapshotFieldSource.RESOLVED_CONFIG.name());
 
         Integer dim = run != null && run.getEmbeddingDimensions() != null ? run.getEmbeddingDimensions() : null;
-        if (dim != null) {
+        Map<String, Object> runtime = BenchmarkRuntimeParametersSupport.readFromRun(run);
+        EmbeddingRequestOptions embeddingOptions = EmbeddingBenchmarkRuntimeParameters.readEmbeddingOptions(runtime);
+        if (dim == null && embeddingOptions.dimensions() != null) {
+            dim = embeddingOptions.dimensions();
+            fieldSources.put("dimension", ExperimentalSnapshotFieldSource.RUN_OVERRIDE.name());
+        } else if (dim != null) {
             fieldSources.put("dimension", ExperimentalSnapshotFieldSource.RUN_ENTITY.name());
         } else if (model != null) {
             var resolvedDim = LlmCatalogApiService.resolveEmbeddingDimensions(model);
@@ -82,25 +94,42 @@ public class ExperimentalSnapshotFactory {
         }
 
         List<String> unsupported = new ArrayList<>();
-        unsupported.add("normalize");
+        IndexingRequestOptions indexing = EmbeddingBenchmarkRuntimeParameters.readIndexingOptions(runtime);
+        Integer batchSize = indexing.batchSize();
+        Boolean normalize = indexing.normalize();
+        String truncateStrategy = indexing.truncate();
+
+        if (normalize == null) {
+            unsupported.add("normalize");
+            fieldSources.put("normalize", ExperimentalSnapshotFieldSource.UNSUPPORTED.name());
+        } else {
+            fieldSources.put("normalize", ExperimentalSnapshotFieldSource.RUN_OVERRIDE.name());
+        }
         unsupported.add("queryPrefix");
         unsupported.add("passagePrefix");
-        unsupported.add("batchSize");
-        unsupported.add("truncateStrategy");
-        fieldSources.put("truncateStrategy", ExperimentalSnapshotFieldSource.NOT_APPLIED.name());
-        fieldSources.put("normalize", ExperimentalSnapshotFieldSource.UNSUPPORTED.name());
         fieldSources.put("queryPrefix", ExperimentalSnapshotFieldSource.UNSUPPORTED.name());
         fieldSources.put("passagePrefix", ExperimentalSnapshotFieldSource.UNSUPPORTED.name());
-        fieldSources.put("batchSize", ExperimentalSnapshotFieldSource.UNSUPPORTED.name());
+        if (batchSize == null) {
+            unsupported.add("batchSize");
+            fieldSources.put("batchSize", ExperimentalSnapshotFieldSource.UNSUPPORTED.name());
+        } else {
+            fieldSources.put("batchSize", ExperimentalSnapshotFieldSource.RUN_OVERRIDE.name());
+        }
+        if (truncateStrategy == null) {
+            unsupported.add("truncateStrategy");
+            fieldSources.put("truncateStrategy", ExperimentalSnapshotFieldSource.NOT_APPLIED.name());
+        } else {
+            fieldSources.put("truncateStrategy", ExperimentalSnapshotFieldSource.RUN_OVERRIDE.name());
+        }
 
         return new EmbeddingExperimentalSnapshot(
                 model,
                 dim,
+                normalize,
                 null,
                 null,
-                null,
-                null,
-                null,
+                batchSize,
+                truncateStrategy,
                 config.chatProvider().name(),
                 config.embeddingProvider().name(),
                 Map.copyOf(fieldSources),

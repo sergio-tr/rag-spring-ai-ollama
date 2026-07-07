@@ -18,6 +18,7 @@ import com.uniovi.rag.application.service.account.ProjectVisualStyleValidator;
 import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileApplicationService;
 import com.uniovi.rag.interfaces.rest.dto.ProjectIndexProfileDto;
 import com.uniovi.rag.application.service.preset.PresetService;
+import com.uniovi.rag.application.service.config.UserProjectConfigurationService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -45,6 +46,7 @@ public class ProjectService {
     private final AuditApplicationService auditApplicationService;
     private final ProjectIndexProfileApplicationService projectIndexProfileApplicationService;
     private final EvaluationCorpusRepository evaluationCorpusRepository;
+    private final UserProjectConfigurationService userProjectConfigurationService;
 
     public ProjectService(
             ProjectRepository projectRepository,
@@ -55,7 +57,8 @@ public class ProjectService {
             PresetService presetService,
             AuditApplicationService auditApplicationService,
             ProjectIndexProfileApplicationService projectIndexProfileApplicationService,
-            EvaluationCorpusRepository evaluationCorpusRepository) {
+            EvaluationCorpusRepository evaluationCorpusRepository,
+            UserProjectConfigurationService userProjectConfigurationService) {
         this.projectRepository = projectRepository;
         this.userRepository = userRepository;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
@@ -65,6 +68,7 @@ public class ProjectService {
         this.auditApplicationService = auditApplicationService;
         this.projectIndexProfileApplicationService = projectIndexProfileApplicationService;
         this.evaluationCorpusRepository = evaluationCorpusRepository;
+        this.userProjectConfigurationService = userProjectConfigurationService;
     }
 
     @Transactional(readOnly = true)
@@ -100,6 +104,7 @@ public class ProjectService {
         } else {
             indexProfile = projectIndexProfileApplicationService.get(userId, p.getId());
         }
+        userProjectConfigurationService.seedProjectRetrievalDefaultsAtCreation(userId, p.getId());
         return toSummary(p, indexProfile);
     }
 

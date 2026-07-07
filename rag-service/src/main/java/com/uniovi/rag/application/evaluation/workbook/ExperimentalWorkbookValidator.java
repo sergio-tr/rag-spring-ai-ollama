@@ -4,6 +4,7 @@ import com.uniovi.rag.domain.evaluation.workbook.ChunkRegistryEntry;
 import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalQuery;
 import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
 import com.uniovi.rag.domain.evaluation.workbook.ExperimentalDatasetType;
+import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationIssue;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationIssueCode;
@@ -79,6 +80,27 @@ public final class ExperimentalWorkbookValidator {
     private static void validateLlmBaseline(EvaluationWorkbook wb, ValidationReport report) {
         if (!physicalSheetPresent(WorkbookSheetNames.LLM_READER_QUESTIONS, wb)) {
             report.add(missingSheetIssue(WorkbookSheetNames.LLM_READER_QUESTIONS));
+            return;
+        }
+        validateLlmExpectedAnswers(wb, report);
+    }
+
+    private static void validateLlmExpectedAnswers(EvaluationWorkbook wb, ValidationReport report) {
+        if (wb.llmReaderQuestions().isEmpty()) {
+            return;
+        }
+        int row = 2;
+        for (LlmReaderQuestion q : wb.llmReaderQuestions()) {
+            if (q.expectedAnswer() == null || q.expectedAnswer().isBlank()) {
+                report.add(new ValidationIssue(
+                        ValidationSeverity.ERROR,
+                        ValidationIssueCode.EMPTY_REQUIRED_CELL,
+                        WorkbookSheetNames.LLM_READER_QUESTIONS,
+                        row,
+                        "expected_answer",
+                        "LLM workbook requires expected_answer for each question row"));
+            }
+            row++;
         }
     }
 
@@ -86,17 +108,66 @@ public final class ExperimentalWorkbookValidator {
         if (!physicalSheetPresent(WorkbookSheetNames.EMBEDDING_RETRIEVAL_QUERIES, wb)) {
             report.add(missingSheetIssue(WorkbookSheetNames.EMBEDDING_RETRIEVAL_QUERIES));
         }
-        if (!physicalSheetPresent(WorkbookSheetNames.CHUNK_REGISTRY, wb)) {
+        if (!physicalSheetPresent(WorkbookSheetNames.CHUNK_REGISTRY, wb)
+                && wb.embeddingRetrievalQueries().stream().anyMatch(ExperimentalWorkbookValidator::requiresChunkRegistry)) {
             report.add(missingSheetIssue(WorkbookSheetNames.CHUNK_REGISTRY));
         }
+        validateEmbeddingExpectedTargets(wb, report);
         validateGoldChunksAgainstRegistry(wb, report);
+    }
+
+    private static boolean requiresChunkRegistry(EmbeddingRetrievalQuery q) {
+        return q.goldChunkIds() != null && !q.goldChunkIds().isEmpty();
+    }
+
+    private static void validateEmbeddingExpectedTargets(EvaluationWorkbook wb, ValidationReport report) {
+        int row = 2;
+        for (EmbeddingRetrievalQuery q : wb.embeddingRetrievalQueries()) {
+            boolean hasDoc = q.goldDocumentIds() != null && !q.goldDocumentIds().isEmpty();
+            boolean hasChunk = q.goldChunkIds() != null && !q.goldChunkIds().isEmpty();
+            boolean hasContent = q.expectedAnswer() != null && !q.expectedAnswer().isBlank();
+            if (!hasDoc && !hasChunk && !hasContent) {
+                report.add(new ValidationIssue(
+                        ValidationSeverity.ERROR,
+                        ValidationIssueCode.EMPTY_REQUIRED_CELL,
+                        WorkbookSheetNames.EMBEDDING_RETRIEVAL_QUERIES,
+                        row,
+                        "expected_document_id",
+                        "Embedding workbook requires query and at least one expected result field"
+                                + " (expected_document_id, expected_chunk_id, expected_relevant_chunk_ids,"
+                                + " or expected_content)"));
+            }
+            row++;
+        }
     }
 
     private static void validateRagPresetBenchmark(EvaluationWorkbook wb, ValidationReport report) {
         if (!physicalSheetPresent(WorkbookSheetNames.RAG_PRESET_QUESTIONS_ENRICHED, wb)) {
             report.add(missingSheetIssue(WorkbookSheetNames.RAG_PRESET_QUESTIONS_ENRICHED));
+            return;
         }
+        validateRagExpectedAnswers(wb, report);
         validateGoldChunksAgainstRegistry(wb, report);
+    }
+
+    private static void validateRagExpectedAnswers(EvaluationWorkbook wb, ValidationReport report) {
+        int row = 2;
+        for (RagPresetQuestion q : wb.ragPresetQuestionsEnriched()) {
+            if (q.unanswerableDeclared() && q.unanswerable()) {
+                row++;
+                continue;
+            }
+            if (q.expectedAnswer() == null || q.expectedAnswer().isBlank()) {
+                report.add(new ValidationIssue(
+                        ValidationSeverity.ERROR,
+                        ValidationIssueCode.EMPTY_REQUIRED_CELL,
+                        WorkbookSheetNames.RAG_PRESET_QUESTIONS_ENRICHED,
+                        row,
+                        "expected_answer",
+                        "RAG workbook requires expected_answer for each question row"));
+            }
+            row++;
+        }
     }
 
     private static void validateClassifier(EvaluationWorkbook wb, ValidationReport report) {
@@ -107,7 +178,7 @@ public final class ExperimentalWorkbookValidator {
                     "classifier",
                     0,
                     "",
-                    "No rows with columns Question and QueryType found"));
+                    "No rows with columns Question and query_type (or legacy querytype) found"));
         }
     }
 

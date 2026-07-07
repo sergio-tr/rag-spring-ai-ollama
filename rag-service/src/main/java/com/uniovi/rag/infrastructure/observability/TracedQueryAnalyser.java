@@ -1,6 +1,7 @@
 package com.uniovi.rag.infrastructure.observability;
 
 import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
+import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import org.json.JSONObject;
 
 import java.util.Map;
@@ -35,6 +36,22 @@ public final class TracedQueryAnalyser implements QueryAnalyser {
                                 "hasEntities", "pending"),
                         "result",
                         () -> delegate.analyse(query)));
+    }
+
+    @Override
+    public JSONObject analyse(ExecutionContext ctx, String query) {
+        if (observability == null) {
+            return delegate.analyse(ctx, query);
+        }
+        observability.recordCounter("rag.analyser.calls", "analyser", delegate.getClass().getSimpleName());
+        return observability.recordTimer("rag.analyser.analyse", () ->
+                observability.runWithSpan(
+                        "rag.analyser.analyse",
+                        Map.of(
+                                "queryLength", TelemetryRedaction.queryLength(query),
+                                "hasEntities", "pending"),
+                        "result",
+                        () -> delegate.analyse(ctx, query)));
     }
 
 }

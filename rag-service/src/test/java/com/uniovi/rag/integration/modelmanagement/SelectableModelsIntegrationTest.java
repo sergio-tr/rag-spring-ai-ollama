@@ -22,7 +22,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/** Phase 2 — selectable models API service wiring. */
+/** Phase 2 - selectable models API service wiring. */
 @ExtendWith(MockitoExtension.class)
 class SelectableModelsIntegrationTest {
 

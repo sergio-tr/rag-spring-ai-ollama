@@ -34,6 +34,8 @@ public class RagApiExceptionHandler implements Loggable {
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("provider", ex.provider() != null ? ex.provider().name() : null);
         details.put("operation", ex.operation());
+        details.put("modelId", ex.model());
+        details.put("retryable", ex.retryable());
         if (ex.detail() != null && !ex.detail().isBlank()) {
             details.put("detail", ex.detail());
         }

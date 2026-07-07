@@ -11,7 +11,7 @@ import {
 
 const uxExperimentalPresets = [
   {
-    productPresetId: "exp-preset-p0",
+    productPresetId: "cafe0001-0001-4001-8001-000000000010",
     code: "P0",
     label: "Indexed text answers",
     description: "Baseline without retrieval",
@@ -29,7 +29,7 @@ const uxExperimentalPresets = [
     labOnly: false,
   },
   {
-    productPresetId: "exp-preset-p4",
+    productPresetId: "cafe0001-0001-4001-8001-000000000014",
     code: "P4",
     label: "Chunk + metadata retrieval",
     description: "Hybrid retrieval preset",
@@ -47,6 +47,17 @@ const uxExperimentalPresets = [
     labOnly: false,
   },
 ];
+
+const uxCompatibleExperimentalPresets = uxExperimentalPresets.map((preset) => ({
+  preset,
+  compatibility: {
+    selectable: true,
+    disabledReasonCode: null,
+    disabledReason: null,
+    indexRequirements: null,
+    compatibleWithActiveIndex: true,
+  },
+}));
 
 const uxConfigSchema = {
   version: 1,
@@ -203,6 +214,26 @@ export async function installUxSurfacesApiStub(
       await fulfillJson({
         productPresets: [],
         experimentalPresets: uxExperimentalPresets,
+      });
+      return;
+    }
+
+    const compatiblePresetsMatch = path.match(/^\/projects\/([^/]+)\/compatible-presets/);
+    if (method === "GET" && compatiblePresetsMatch) {
+      await fulfillJson({
+        projectId: compatiblePresetsMatch[1],
+        effectiveEmbeddingModelId: "mxbai-embed-large",
+        hasActiveIndex: true,
+        readyDocumentCount: 1,
+        activeSnapshotCapabilities: {
+          materializationStrategy: "CHUNK_LEVEL",
+          supportsMetadata: true,
+          embeddingModelId: "mxbai-embed-large",
+          chunkMaxChars: 400,
+          chunkOverlap: null,
+        },
+        productPresets: [],
+        experimentalPresets: uxCompatibleExperimentalPresets,
       });
       return;
     }

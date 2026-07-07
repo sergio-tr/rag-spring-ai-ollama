@@ -19,6 +19,15 @@ vi.mock("@/navigation", () => ({
   useRouter: () => ({ replace }),
 }));
 
+vi.mock("@/lib/api-client", () => ({
+  apiFetch: vi.fn().mockResolvedValue({
+    preferences: { locale: "en" },
+    personalization: { theme: "system" },
+    schemaVersion: 1,
+  }),
+  apiProductPath: (path: string) => path,
+}));
+
 describe("AppearanceLanguagePanel", () => {
   beforeEach(() => {
     setTheme.mockClear();

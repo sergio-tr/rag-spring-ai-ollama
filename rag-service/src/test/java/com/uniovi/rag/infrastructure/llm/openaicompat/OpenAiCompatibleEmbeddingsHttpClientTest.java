@@ -37,7 +37,7 @@ class OpenAiCompatibleEmbeddingsHttpClientTest {
                             });
 
             OpenAiCompatibleEmbeddingsHttpClient client = new OpenAiCompatibleEmbeddingsHttpClient();
-            OpenAiEmbeddingRequest body = new OpenAiEmbeddingRequest("qwen3-embedding:8b", "hola");
+            OpenAiEmbeddingRequest body = new OpenAiEmbeddingRequest("qwen3-embedding:8b", "hola", null, null, null);
             OpenAiEmbeddingResponse response = client.post(server.baseUrl(), "test-key", body, 5_000);
 
             assertEquals(3, response.data().getFirst().embedding().size());
@@ -68,7 +68,7 @@ class OpenAiCompatibleEmbeddingsHttpClientTest {
                     exchange -> respond(exchange, 200, SUCCESS_BODY));
 
             OpenAiCompatibleEmbeddingsHttpClient client = new OpenAiCompatibleEmbeddingsHttpClient();
-            OpenAiEmbeddingRequest body = new OpenAiEmbeddingRequest("qwen3-embedding:8b", List.of("hola"));
+            OpenAiEmbeddingRequest body = new OpenAiEmbeddingRequest("qwen3-embedding:8b", List.of("hola"), null, null, null);
             OpenAiEmbeddingResponse response = client.post(server.baseUrl(), "test-key", body, 5_000);
 
             assertEquals(3, response.data().getFirst().embedding().size());

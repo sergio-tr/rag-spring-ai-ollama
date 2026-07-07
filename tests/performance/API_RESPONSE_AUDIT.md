@@ -1,4 +1,4 @@
-# RAG / chat JSON — audit for micro-benchmarks
+# RAG / chat JSON - audit for micro-benchmarks
 
 This file is the **source of truth** for what the Python micro-benchmarks can parse from HTTP responses.
 
@@ -22,9 +22,9 @@ This file is the **source of truth** for what the Python micro-benchmarks can pa
 
 **Poll:** `GET {product}/lab/jobs/{jobId}` → `AsyncTaskStatusDto` with `result` map.
 
-**Chat handler result keys** (success): `answer`, `queryType`, `sources`, `pipelineSteps`, `phase` — see [`ChatMessageJobHandler`](../../rag-service/src/main/java/com/uniovi/rag/service/async/chat/ChatMessageJobHandler.java).
+**Chat handler result keys** (success): `answer`, `queryType`, `sources`, `pipelineSteps`, `phase` - see [`ChatMessageJobHandler`](../../rag-service/src/main/java/com/uniovi/rag/service/async/chat/ChatMessageJobHandler.java).
 
-**Tokens / model id:** Same as historical query — no token fields in `result`. Optional `llmModel` on `PostMessageRequest` if the client sends it. Assistant message persistence may store `llmModel` / `durationMs` in DB metadata — **not** required for these benchmarks.
+**Tokens / model id:** Same as historical query - no token fields in `result`. Optional `llmModel` on `PostMessageRequest` if the client sends it. Assistant message persistence may store `llmModel` / `durationMs` in DB metadata - **not** required for these benchmarks.
 
 ## Project RAG flags (scenarios)
 

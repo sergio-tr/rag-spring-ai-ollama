@@ -51,7 +51,7 @@ export function isStoredPersonalizationThemeUnsupported(stored: Record<string, u
   return raw !== "light" && raw !== "dark" && raw !== "system";
 }
 
-/** PUT `/me/preferences` body fragment — merges structured locale over the last loaded map (keeps extra keys). */
+/** PUT `/me/preferences` body fragment - merges structured locale over the last loaded map (keeps extra keys). */
 export function buildPreferencesPutPayload(
   stored: Record<string, unknown>,
   values: PreferencesFormValues,
@@ -59,7 +59,7 @@ export function buildPreferencesPutPayload(
   return { ...stored, locale: values.locale };
 }
 
-/** PUT `/me/personalization` body fragment — merges structured theme over the last loaded map (keeps extra keys). */
+/** PUT `/me/personalization` body fragment - merges structured theme over the last loaded map (keeps extra keys). */
 export function buildPersonalizationPutPayload(
   stored: Record<string, unknown>,
   values: PersonalizationFormValues,

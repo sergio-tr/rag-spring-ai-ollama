@@ -7,7 +7,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Sealed suite entry — exactly two variants (P30). Maps to P24 batch selection.
+ * Sealed suite entry - exactly two variants (P30). Maps to P24 batch selection.
  */
 public sealed interface RuntimeTraceRegressionSuiteEntry
         permits RuntimeTraceRegressionSuiteEntry.ByTraceIds, RuntimeTraceRegressionSuiteEntry.ByConversation {

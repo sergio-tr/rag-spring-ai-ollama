@@ -107,9 +107,10 @@ describe("useLabEvaluationDraft", () => {
     await waitFor(() => {
       const saved = JSON.parse(localStorage.getItem(result.current.storageKey) ?? "{}") as Record<string, unknown>;
       expect(saved.datasetId).toBe("ds-known");
+      expect(saved.embeddingModelId).not.toBe("missing-embed");
     });
     expect(result.current.warnings.datasetIncompatibleWithBenchmark).toBe(true);
-    expect(result.current.warnings.embeddingModelInvalid).toBe(true);
+    expect(result.current.warnings.embeddingModelInvalid).toBe(false);
     expect(result.current.warnings.presetsUnknown).toEqual(["P99"]);
 
     act(() => {

@@ -3,6 +3,7 @@ package com.uniovi.rag.infrastructure.llm.openaicompat;
 import com.uniovi.rag.application.port.llm.LlmChatClient;
 import com.uniovi.rag.application.port.llm.LlmChatRequest;
 import com.uniovi.rag.application.port.llm.LlmChatResponse;
+import com.uniovi.rag.application.service.llm.LlmProviderParameterFilter;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 
@@ -14,14 +15,17 @@ public class ResolvedConfigOpenAiCompatibleLlmChatClient implements LlmChatClien
     private final ResolvedLlmConfig config;
     private final OpenAiCompatibleApiKeyResolver apiKeyResolver;
     private final OpenAiCompatibleChatCompletionsHttpClient httpClient;
+    private final LlmProviderParameterFilter parameterFilter;
 
     public ResolvedConfigOpenAiCompatibleLlmChatClient(
             ResolvedLlmConfig config,
             OpenAiCompatibleApiKeyResolver apiKeyResolver,
-            OpenAiCompatibleChatCompletionsHttpClient httpClient) {
+            OpenAiCompatibleChatCompletionsHttpClient httpClient,
+            LlmProviderParameterFilter parameterFilter) {
         this.config = config;
         this.apiKeyResolver = apiKeyResolver;
         this.httpClient = httpClient;
+        this.parameterFilter = parameterFilter;
     }
 
     @Override
@@ -31,7 +35,8 @@ public class ResolvedConfigOpenAiCompatibleLlmChatClient implements LlmChatClien
         }
         String apiKey = apiKeyResolver.resolve(config.effectiveApiKeyEnv());
         long timeoutMs = resolveTimeoutMs(request);
-        OpenAiChatCompletionRequest apiRequest = OpenAiCompatibleChatMapper.toApiRequest(request);
+        LlmChatRequest filtered = parameterFilter.filterChatRequest(request, config.chatProvider());
+        OpenAiChatCompletionRequest apiRequest = OpenAiCompatibleChatMapper.toApiRequest(filtered);
         OpenAiChatCompletionResponse apiResponse =
                 httpClient.post(config.baseUrl(), apiKey, apiRequest, timeoutMs);
         return OpenAiCompatibleChatMapper.toPortResponse(apiResponse, request.model());

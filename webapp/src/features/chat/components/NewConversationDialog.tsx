@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,12 +13,19 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useChatPresetsCatalog } from "@/features/chat/hooks/use-chat-presets-catalog";
+import {
+  CreateConversationPresetSelector,
+  resolveCreateConversationPresetSelection,
+} from "@/features/chat/components/CreateConversationPresetSelector";
+import { useProjectCompatiblePresets } from "@/features/chat/hooks/use-project-compatible-presets";
 import { useCreateConversation } from "@/features/chat/hooks/use-conversations";
+import { useMeEffectiveEmbeddingDefaults } from "@/features/settings/hooks/use-me-effective-embedding-defaults";
+import { retrievalParameterSourceLabelKey } from "@/features/chat/lib/retrieval-parameter-source";
+import { buildInitialRuntimeOverrideForNewConversation, toRetrievalDefaults } from "@/features/chat/lib/retrieval-override-mode";
 import { useProjectDocuments } from "@/features/documents/hooks/use-project-documents";
 import type { ConversationDto } from "@/types/api";
-import {  getSafeApiErrorMessage } from "@/lib/api-client";
-import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
+import { resolveIndexAwareDefaultPreset } from "@/features/chat/lib/resolve-index-aware-default-preset";
+import { getSafeApiErrorMessage } from "@/lib/api-client";
 
 export type NewConversationDialogProps = {
   projectId: string;
@@ -34,34 +41,44 @@ export function NewConversationDialog({
   onCreated,
 }: Readonly<NewConversationDialogProps>) {
   const t = useTranslations("Chat");
-  const catalog = useChatPresetsCatalog();
+  const catalog = useProjectCompatiblePresets(projectId, { enabled: open });
   const docs = useProjectDocuments(projectId);
   const createConv = useCreateConversation(projectId);
+  const effectiveEmbedding = useMeEffectiveEmbeddingDefaults();
 
   const [title, setTitle] = useState("");
   const [presetValue, setPresetValue] = useState("");
+  const [showIncompatiblePresets, setShowIncompatiblePresets] = useState(false);
   const [scope, setScope] = useState<"all" | "pick">("all");
   const [selectedDocIds, setSelectedDocIds] = useState<Record<string, boolean>>({});
   const [localError, setLocalError] = useState<string | null>(null);
+  const [useAssistantRetrievalDefaults, setUseAssistantRetrievalDefaults] = useState(false);
 
   function handleOpenChange(next: boolean) {
     if (!next) {
       setTitle("");
       setPresetValue("");
+      setShowIncompatiblePresets(false);
       setScope("all");
       setSelectedDocIds({});
       setLocalError(null);
+      setUseAssistantRetrievalDefaults(false);
     }
     onOpenChange(next);
   }
 
-  const readyDocs = useMemo(
-    () => (docs.data ?? []).filter((d) => d.status === "READY"),
-    [docs.data],
-  );
+  const readyDocs = (docs.data ?? []).filter((d) => d.status === "READY");
 
   async function submit() {
     setLocalError(null);
+    if (!projectId.trim()) {
+      setLocalError(t("presetCompatibilityProjectRequired"));
+      return;
+    }
+    if (catalog.isError) {
+      setLocalError(t("presetsLoadError"));
+      return;
+    }
     let filter: string[] = [];
     if (scope === "pick") {
       filter = Object.entries(selectedDocIds)
@@ -72,11 +89,32 @@ export function NewConversationDialog({
         return;
       }
     }
+    const resolvedDefault = resolveIndexAwareDefaultPreset(catalog.data);
+    const effectivePresetInput = presetValue.trim() || resolvedDefault.presetId || "";
+    const { selectedValue, compatibility } = resolveCreateConversationPresetSelection(
+      catalog,
+      effectivePresetInput,
+      showIncompatiblePresets,
+    );
+    if (!selectedValue) {
+      setLocalError(t("presetNoCompatibleAvailable"));
+      return;
+    }
+    if (compatibility && !compatibility.selectable) {
+      setLocalError(compatibility.disabledReason ?? t("presetsLoadError"));
+      return;
+    }
     try {
+      const assistantDefaults = toRetrievalDefaults(effectiveEmbedding.data?.retrievalOptions);
+      const initialRuntimeOverride = buildInitialRuntimeOverrideForNewConversation(
+        useAssistantRetrievalDefaults,
+        assistantDefaults,
+      );
       const created = await createConv.mutateAsync({
         title: title.trim() ? title.trim() : undefined,
         documentFilter: filter,
-        initialPresetId: presetValue.trim() ? presetValue.trim() : undefined,
+        initialPresetId: selectedValue,
+        initialRuntimeOverride,
       });
       handleOpenChange(false);
       await onCreated(created);
@@ -109,41 +147,38 @@ export function NewConversationDialog({
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="new-conv-preset" className="text-xs">
-              {t("presetInitialLabel")}
-            </Label>
-            <select
-              id="new-conv-preset"
-              data-testid="chat-new-conversation-preset"
-              className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
-              value={presetValue}
-              disabled={catalog.isLoading}
-              onChange={(e) => setPresetValue(e.target.value)}
-            >
-              <option value="">{t("presetServerDefault")}</option>
-              {(catalog.data?.productPresets ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {toProductPresetDisplayName(p.name)}
-                  {p.system ? ` (${t("presetSystem")})` : ""}
-                </option>
-              ))}
-              {(catalog.data?.experimentalPresets ?? []).map((exp) => (
-                <option
-                  key={exp.productPresetId}
-                  value={exp.productPresetId}
-                  disabled={!exp.chatSelectable || !exp.supported}
-                >
-                  {exp.code} — {exp.label}
-                  {!exp.supported || !exp.chatSelectable ? " (N/A)" : ""}
-                </option>
-              ))}
-            </select>
-            {catalog.isError ? (
-              <p className="text-destructive text-xs" role="alert">
-                {t("presetsLoadError")}
+          <CreateConversationPresetSelector
+            projectId={projectId}
+            value={presetValue}
+            onChange={setPresetValue}
+            showIncompatiblePresets={showIncompatiblePresets}
+            onShowIncompatiblePresetsChange={setShowIncompatiblePresets}
+            enabled={open}
+          />
+
+          <div
+            className="rounded-md border bg-muted/20 p-3 text-xs"
+            data-testid="new-conversation-retrieval-summary"
+          >
+            <p className="font-medium">{t("newConversationRetrievalSummaryTitle")}</p>
+            <p className="text-muted-foreground mt-1">{t("newConversationRetrievalSummaryHint")}</p>
+            {effectiveEmbedding.data?.retrievalOptions ? (
+              <p className="mt-2" data-testid="new-conversation-retrieval-values">
+                {t("configRetrievalTopKLabel")}: {effectiveEmbedding.data.retrievalOptions.topK} (
+                {t(retrievalParameterSourceLabelKey("USER_DEFAULTS"))}) ·{" "}
+                {t("configRetrievalSimilarityLabel")}: {effectiveEmbedding.data.retrievalOptions.similarityThreshold} (
+                {t(retrievalParameterSourceLabelKey("USER_DEFAULTS"))})
               </p>
             ) : null}
+            <label className="mt-3 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                data-testid="new-conversation-use-assistant-retrieval-defaults"
+                checked={useAssistantRetrievalDefaults}
+                onChange={(e) => setUseAssistantRetrievalDefaults(e.target.checked)}
+              />
+              {t("newConversationUseAssistantRetrievalDefaults")}
+            </label>
           </div>
 
           <fieldset className="flex flex-col gap-2 rounded-md border p-3">
@@ -206,7 +241,7 @@ export function NewConversationDialog({
             type="button"
             data-testid="chat-new-conversation-create"
             onClick={() => void submit()}
-            disabled={createConv.isPending}
+            disabled={createConv.isPending || catalog.isLoading || catalog.isError || !projectId.trim()}
           >
             {t("wizardCreate")}
           </Button>

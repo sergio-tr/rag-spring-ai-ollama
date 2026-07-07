@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 /**
- * P30 regression suite orchestration — delegates each entry to {@link RuntimeTraceReplayComparisonBatchService#execute}
+ * P30 regression suite orchestration - delegates each entry to {@link RuntimeTraceReplayComparisonBatchService#execute}
  * exactly once, sequentially.
  */
 @Service

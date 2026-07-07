@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * Client-side validation on register (no successful registration — avoids duplicate email in CI).
+ * Client-side validation on register (no successful registration - avoids duplicate email in CI).
  */
 test.describe("Register form validation", () => {
   test("empty submit shows validation alerts @smoke", async ({ page }) => {

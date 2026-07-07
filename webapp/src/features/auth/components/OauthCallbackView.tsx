@@ -1,16 +1,20 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
-import { useRouter } from "@/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { ApiError, apiFetch, authApiPath } from "@/lib/api-client";
 import { commitSessionCookie } from "@/features/auth/lib/session-client";
+import { LAST_USER_ID_KEY, resetRegisteredClientSessionState } from "@/lib/client-session-reset";
+import { hardNavigate } from "@/lib/hard-navigation";
+import { setStoredUserRole } from "@/lib/user-role";
 import type { LoginResponse } from "@/types/api";
 
 export function OauthCallbackView({ provider }: { provider: "google" }) {
   const t = useTranslations("Auth");
-  const router = useRouter();
+  const locale = useLocale();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const code = searchParams.get("code") ?? "";
 
@@ -28,13 +32,16 @@ export function OauthCallbackView({ provider }: { provider: "google" }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code }),
         });
+        const nextUserId = data.user.id;
+        await resetRegisteredClientSessionState({ queryClient });
         await commitSessionCookie({
           accessToken: data.accessToken,
           refreshToken: data.refreshToken,
         });
+        sessionStorage.setItem(LAST_USER_ID_KEY, nextUserId);
+        setStoredUserRole(data.user.role);
         if (!cancelled) {
-          router.replace("/projects");
-          router.refresh();
+          hardNavigate("/projects", locale);
         }
       } catch (e) {
         if (!cancelled) {
@@ -52,7 +59,7 @@ export function OauthCallbackView({ provider }: { provider: "google" }) {
     return () => {
       cancelled = true;
     };
-  }, [code, provider, router, t]);
+  }, [code, locale, provider, queryClient, t]);
 
   return <p className="text-muted-foreground text-sm">{message}</p>;
 }

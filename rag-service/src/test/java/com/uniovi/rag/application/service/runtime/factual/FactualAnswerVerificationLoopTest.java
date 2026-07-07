@@ -55,7 +55,8 @@ class FactualAnswerVerificationLoopTest {
                         prompt -> "Sí, se habló de videovigilancia otra vez.");
         assertThat(outcome.finalAnswerSource()).isEqualTo(FinalAnswerSource.FORCED_ABSTENTION);
         assertThat(outcome.abstentionTriggered()).isTrue();
-        assertThat(outcome.answerText()).contains("No consta en las fuentes disponibles");
+        assertThat(outcome.answerText())
+                .contains("No tengo contexto suficiente en las actas proporcionadas para responder con seguridad.");
     }
 
     @Test

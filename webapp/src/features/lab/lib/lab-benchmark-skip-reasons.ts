@@ -8,7 +8,7 @@ export function mapBenchmarkSkipReason(
 ): { primary: string; technical: string } {
   const raw = (rawCodeOrMessage ?? "").trim();
   const code = extractTechnicalErrorCode(raw) ?? (raw && /^[A-Z][A-Z0-9_]+$/.test(raw) ? raw : null);
-  const technical = raw || "—";
+  const technical = raw || "-";
 
   if (!code) {
     if (raw.includes("prepare the required index") || raw.includes("will prepare")) {

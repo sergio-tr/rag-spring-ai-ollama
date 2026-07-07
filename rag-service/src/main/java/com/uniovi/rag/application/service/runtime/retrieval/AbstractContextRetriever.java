@@ -238,11 +238,16 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         return similarityThreshold;
     }
 
+    protected String buildContentWithOptionalMetadataPrefix(Document doc, String content) {
+        return buildContentWithOptionalMetadataPrefix(doc, content, false);
+    }
+
     /**
      * Builds content with optional metadata prefix (Acta: date. Presidente: X. Temas: Y. Contenido: )
-     * when the document has date_iso/date, president or topics in metadata. Otherwise returns content unchanged.
+     * when the document has date_iso/date, president or topics in metadata. When {@code metadataRich},
+     * also surfaces sectionType and attendee count for metadata-capable workflows.
      */
-    protected String buildContentWithOptionalMetadataPrefix(Document doc, String content) {
+    protected String buildContentWithOptionalMetadataPrefix(Document doc, String content, boolean metadataRich) {
         if (doc == null) {
             return content != null ? content : "";
         }
@@ -257,6 +262,10 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             date = String.valueOf(meta.get("date"));
         }
         String president = meta.containsKey("president") ? String.valueOf(meta.get("president")) : null;
+        String secretary = metadataRich && meta.containsKey("secretary") ? String.valueOf(meta.get("secretary")) : null;
+        String sectionType =
+                metadataRich && meta.containsKey("sectionType") ? String.valueOf(meta.get("sectionType")) : null;
+        String attendeesCount = metadataRich ? attendeesCountLabel(meta) : null;
         Object topicsObj = meta.get("topics");
         String topicsStr = null;
         if (topicsObj instanceof List<?> list) {
@@ -264,15 +273,29 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         } else if (topicsObj != null) {
             topicsStr = topicsObj.toString();
         }
-        if (date == null && president == null && (topicsStr == null || topicsStr.isBlank())) {
+        if (date == null && president == null && (topicsStr == null || topicsStr.isBlank())
+                && secretary == null && sectionType == null && attendeesCount == null) {
             return content != null ? content : "";
         }
         StringBuilder prefix = new StringBuilder("Acta: ");
         if (date != null) prefix.append(date).append(". ");
         if (president != null) prefix.append("Presidente: ").append(president).append(". ");
+        if (secretary != null && !secretary.isBlank()) prefix.append("Secretario: ").append(secretary).append(". ");
+        if (attendeesCount != null) prefix.append("Asistentes: ").append(attendeesCount).append(". ");
+        if (sectionType != null && !sectionType.isBlank()) prefix.append("Sección: ").append(sectionType).append(". ");
         if (topicsStr != null && !topicsStr.isBlank()) prefix.append("Temas: ").append(topicsStr).append(". ");
         prefix.append("Contenido: ");
         return prefix + (content != null ? content : "");
+    }
+
+    private static String attendeesCountLabel(Map<String, Object> meta) {
+        for (String key : List.of("attendeesCount", "numberOfAttendees")) {
+            Object value = meta.get(key);
+            if (value != null && !String.valueOf(value).isBlank()) {
+                return String.valueOf(value).trim();
+            }
+        }
+        return null;
     }
 
     public abstract String filterDocumentContent(Document doc, String query, JSONObject entities);

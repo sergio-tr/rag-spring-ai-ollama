@@ -9,6 +9,7 @@ import com.uniovi.rag.application.service.runtime.memory.ConversationCondensePro
 import com.uniovi.rag.application.service.runtime.query.QueryRewritePromptSources;
 import com.uniovi.rag.application.service.runtime.query.expand.MinuteDocumentStructureExpander;
 import com.uniovi.rag.application.service.runtime.ranking.LLMAsJudgeRanker;
+import com.uniovi.rag.application.service.runtime.query.analyser.MinuteNERQueryAnalyser;
 import java.util.List;
 
 /**
@@ -152,6 +153,14 @@ public enum ConfigurablePromptGroup {
             List.of(),
             false,
             true),
+    NER_EXTRACTION(
+            "ner_extraction",
+            "NER extraction",
+            "Named-entity extraction prompt for meeting-minutes query analysis.",
+            List.of("{query}"),
+            List.of(),
+            false,
+            true),
     FUNCTION_CALLING_USER_ASSEMBLY(
             "function_calling_user_assembly",
             "Function calling user assembly",
@@ -221,7 +230,7 @@ public enum ConfigurablePromptGroup {
         return usesLlmSystemPromptKey;
     }
 
-    /** When false, prompt is catalog/documentation only — runtime does not apply overrides yet. */
+    /** When false, prompt is catalog/documentation only - runtime does not apply overrides yet. */
     public boolean runtimeEditable() {
         return runtimeEditable;
     }
@@ -248,6 +257,7 @@ public enum ConfigurablePromptGroup {
             case METADATA_GET_FIELD -> MetadataConfigurablePromptSources.GET_FIELD;
             case METADATA_SUMMARIZE_MEETING -> MetadataMinuteDocumentService.SYSTEM_PROMPT_SUMMARY;
             case EVALUATION_JUDGE -> EvaluationJudgePromptSources.defaultTemplate();
+            case NER_EXTRACTION -> MinuteNERQueryAnalyser.defaultPromptTemplate();
             case FUNCTION_CALLING_USER_ASSEMBLY ->
                     "Assembled at runtime from the query plan (see FunctionCallingPrompts).";
         };

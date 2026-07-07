@@ -35,19 +35,25 @@ public class RetrievalReranker {
             double slotMatch = slotMatch(plan, c);
             double locality = localityBonus(c, windowMin);
             double dateScore = dateScore(req, c);
+            double sectionScore = ActaSectionContextPolicy.sectionRerankAdjustment(req.queryText(), c);
             double s = W_RRF * c.fusedRrfScore()
                     + W_ENTITY * entityOverlap
                     + W_SLOT * slotMatch
                     + W_LOCALITY * locality
-                    + dateScore;
+                    + dateScore
+                    + sectionScore;
             scored.add(new Scored(c, s));
         }
+        // candidate.denseScore() holds the raw pgvector cosine "distance" (lower = more similar; see
+        // RetrievalCandidate/DenseRetrievalStrategy#extractDenseScore and ChatSourceMapper's "distance" label),
+        // so composite-score ties must be broken toward the *lowest* distance, not the highest. Using
+        // reverseOrder() here previously picked the least-similar candidate on a tie (phase-4-4 score-semantics
+        // audit).
         scored.sort(
                 Comparator.<Scored, Double>comparing(Scored::score)
                         .reversed()
                         .thenComparing(
-                                s -> Double.isFinite(s.candidate().denseScore()) ? s.candidate().denseScore() : -1.0,
-                                Comparator.reverseOrder())
+                                s -> Double.isFinite(s.candidate().denseScore()) ? s.candidate().denseScore() : Double.MAX_VALUE)
                         .thenComparing(s -> s.candidate().candidateId()));
 
         List<RetrievalCandidate> ordered = new ArrayList<>();

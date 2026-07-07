@@ -10,9 +10,9 @@
 
 | Item | Status |
 | --- | --- |
-| RQ1 / H1 conclusion | `TBD` — requires Lab exports for rows A2 and A1. |
-| RQ2 / H2 conclusion | `TBD` — requires Lab exports for rows A3 and A4. |
-| Latency budget `L` (ms p95) | `TBD` — set from micro-benchmark or Lab timing policy. |
+| RQ1 / H1 conclusion | `TBD` - requires Lab exports for rows A2 and A1. |
+| RQ2 / H2 conclusion | `TBD` - requires Lab exports for rows A3 and A4. |
+| Latency budget `L` (ms p95) | `TBD` - set from micro-benchmark or Lab timing policy. |
 
 ---
 
@@ -20,7 +20,7 @@
 
 | Row | Benchmark | Config / k | Primary DV | p95 latency (if measured) |
 | --- | --- | --- | --- | --- |
-| A2 | `LLM_JUDGE_QA` | — | `TBD` | `TBD` |
+| A2 | `LLM_JUDGE_QA` | - | `TBD` | `TBD` |
 | A1 | `RAG_PRESET_END_TO_END` | snapshot `TBD` | `TBD` | `TBD` |
 | A3 | `EMBEDDING_RETRIEVAL` | `k1` | `TBD` | `TBD` |
 | A4 | `EMBEDDING_RETRIEVAL` | `k2` | `TBD` | `TBD` |
@@ -31,8 +31,8 @@
 
 | Threat | Mitigation used | Residual risk |
 | --- | --- | --- |
-| **Dataset bias** (minutes-only, language) | Manifest + domain notes in pilot sheet | External validity limited — state clearly in external write-ups. |
-| **Non-reproducibility** (Ollama, temperature) | Freeze model tags; `N≥3` if stochastic | Residual variance — report spread. |
+| **Dataset bias** (minutes-only, language) | Manifest + domain notes in pilot sheet | External validity limited - state clearly in external write-ups. |
+| **Non-reproducibility** (Ollama, temperature) | Freeze model tags; `N≥3` if stochastic | Residual variance - report spread. |
 | **Concurrent engineering change** | SHA freeze + wave ids | Low if protocol followed; high if hotfixes unlogged. |
 | **Metric mismatch** | Lab for quality; micro-benchmark for latency only | Low if tables never mix roles. |
 | **Lab vs product drift** | ADR 0009 + explicit parity checks *(inventory “to verify”)* | Medium until parity rows executed. |
@@ -41,8 +41,8 @@
 
 ## 4. Metric limitations (normative statements)
 
-1. **Python micro-benchmarks** use **estimated** tokens (`estimated: true` in schema) — fine for **rough** cost/latency narratives; not for tokenizer-accurate billing claims.
-2. **Gatling** measures **load** — not interchangeable with single-host micro-benchmark samples.
+1. **Python micro-benchmarks** use **estimated** tokens (`estimated: true` in schema) - fine for **rough** cost/latency narratives; not for tokenizer-accurate billing claims.
+2. **Gatling** measures **load** - not interchangeable with single-host micro-benchmark samples.
 3. **JaCoCo / coverage** (`mvn verify`) prove **tested code quality**, not **RAG answer quality**.
 
 ---
@@ -61,7 +61,7 @@
 
 ## 6. Failure conditions (formal review)
 
-Per plan — declare failure and revise before strong claims if:
+Per plan - declare failure and revise before strong claims if:
 
 - More than **50%** of comparative rows lack manifest + SHA.
 - Any “better than baseline” claim lacks **B-SUB-X** row.

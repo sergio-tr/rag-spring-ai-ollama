@@ -22,6 +22,8 @@ public final class ReasoningBlockSanitizer {
             Pattern.compile(
                     "\\b(?:PARENT_P\\d+|PARENT_P[A-Z_]+|baseline_floor[\\w:]*|RETRIEVAL_WORKFLOW_ROUTE|DETERMINISTIC_TOOL_ROUTE|FUNCTION_CALLING_ROUTE|ADVISOR_ROUTE|deterministic-tool|function-calling|topic_not_in_context|not_in_context|function_sentinel_abstention|native_not_constraint_complete|advanced_preset_parent_floor|outcome=\\w+|routeKind=\\w+)\\b",
                     Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern JUDGE_FORMAT_LINE =
+            Pattern.compile("(?im)^\\s*(?:Answer|Explanation|FEEDBACK)\\s*:.*$");
     private static final Pattern REDACTED_REASONING_TOKEN =
             Pattern.compile("(?im)^\\s*redacted_reasoning\\s*$");
 
@@ -43,12 +45,13 @@ public final class ReasoningBlockSanitizer {
         out = THINK_TAGS.matcher(out).replaceAll("");
         out = THINK_TAG_TRAILING.matcher(out).replaceAll("");
         out = stripReactLabeledLines(out);
+        out = JUDGE_FORMAT_LINE.matcher(out).replaceAll("");
         out = INTERNAL_JSON_PLAN.matcher(out).replaceAll("");
         out = ROUTING_LABELS.matcher(out).replaceAll("");
         out = REDACTED_REASONING_TOKEN.matcher(out).replaceAll("");
-        out = out.replaceAll("\\s{2,}", " ").trim();
-        out = out.replaceAll(" \\.", ".").replaceAll(" ,", ",");
-        out = out.replaceAll("^[:;\\-]+\\s*", "").trim();
+        out = MarkdownAnswerFormatter.collapseHorizontalWhitespacePreservingNewlines(out).trim();
+        out = out.replaceAll("(?m) \\.", ".").replaceAll("(?m) ,", ",");
+        out = out.replaceAll("(?m)^[:;\\-]+\\s*", "").trim();
         return out;
     }
 

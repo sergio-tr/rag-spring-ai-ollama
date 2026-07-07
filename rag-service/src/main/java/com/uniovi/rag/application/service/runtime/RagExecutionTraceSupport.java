@@ -351,6 +351,7 @@ public final class RagExecutionTraceSupport {
 
 	private static boolean isFrozenQuStageName(String name) {
 		return "qu_normalize".equals(name)
+				|| "qu_expand".equals(name)
 				|| "qu_classify".equals(name)
 				|| "qu_extract_entities".equals(name)
 				|| "qu_rewrite".equals(name)

@@ -13,11 +13,13 @@ import com.uniovi.rag.infrastructure.vector.PgVectorStoreRegistry;
 import com.uniovi.rag.application.service.knowledge.document.ActaSectionChunk;
 import com.uniovi.rag.application.service.knowledge.document.ActaSectionChunker;
 import com.uniovi.rag.application.service.knowledge.document.ByteArrayMultipartFile;
+import com.uniovi.rag.application.service.knowledge.document.DocumentRepresentationBuilder;
 import com.uniovi.rag.application.service.knowledge.document.KnowledgeChunkMetadataFactory;
 import com.uniovi.rag.application.service.knowledge.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.application.service.knowledge.document.ProjectDocumentIngestionService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationGoldChunkMetadataSupport;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationGoldCorpusFilenameSupport;
+import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -105,9 +107,15 @@ public class KnowledgeIndexingService {
         parsed.put("mimeType", ct != null ? ct : "");
         saveArtifact(doc, DocumentArtifactType.PARSED, parsed, now);
 
+        Map<String, Object> indexProfile =
+                snapshot.getIndexProfileJsonb() != null ? snapshot.getIndexProfileJsonb() : Map.of();
+        boolean metadataCapable =
+                Boolean.TRUE.equals(IndexSnapshotCapabilities.fromIndexProfile(indexProfile).supportsMetadata());
         Optional<Map<String, Object>> structuredActa =
-                metadataMinuteDocumentService.tryExtractDeterministicMetadataForIndexing(
-                        content, name, doc.getId().toString());
+                metadataCapable
+                        ? metadataMinuteDocumentService.tryExtractDeterministicMetadataForIndexing(
+                                content, name, doc.getId().toString())
+                        : Optional.empty();
         Map<String, Object> meta = buildMetadataPayload(effectiveStrategy, content, name, structuredActa);
         saveArtifact(doc, DocumentArtifactType.METADATA, meta, now);
 
@@ -118,6 +126,7 @@ public class KnowledgeIndexingService {
         }
 
         int embedMaxChars = indexingEmbeddingGuard.effectiveEmbedMaxChars(effectiveChunkMaxChars);
+        int wholeDocumentEmbedMaxChars = indexingEmbeddingGuard.effectiveWholeDocumentEmbedMaxChars();
 
         List<String> chunks;
         List<ActaSectionChunk> actaSections = List.of();
@@ -144,8 +153,13 @@ public class KnowledgeIndexingService {
         int totalVectors = computeTotalVectorCount(effectiveStrategy, chunks);
 
         if (effectiveStrategy == MaterializationStrategy.DOCUMENT_LEVEL) {
-            IndexingEmbeddingGuard.SafeEmbedText safe =
-                    indexingEmbeddingGuard.prepareForEmbedding(content, embedMaxChars);
+            DocumentRepresentationBuilder.Representation representation =
+                    DocumentRepresentationBuilder.build(
+                            content,
+                            displayName,
+                            structuredActa.orElse(null),
+                            structuredActa.isPresent(),
+                            wholeDocumentEmbedMaxChars);
             Map<String, Object> vm =
                     KnowledgeChunkMetadataFactory.buildV2(
                             doc.getCorpusScope(),
@@ -158,7 +172,7 @@ public class KnowledgeIndexingService {
                             0,
                             1,
                             contentHash,
-                            safe.truncated());
+                            representation.truncated());
             structuredActa.ifPresent(acta -> KnowledgeChunkMetadataFactory.mergeActaStructuredFields(vm, acta));
             if (!actaSections.isEmpty()) {
                 KnowledgeChunkMetadataFactory.mergeSectionFields(vm, actaSections.getFirst(), structuredActa.orElse(null), displayName);
@@ -167,8 +181,7 @@ public class KnowledgeIndexingService {
                     gold ->
                             EvaluationGoldChunkMetadataSupport.mergeGoldIds(
                                     vm, gold.evaluationDocumentId(), gold.evaluationChunkId()));
-            String embedText = withActaPrefix(safe.text(), structuredActa.orElse(null));
-            vectorDocs.add(new Document(embedText, vm));
+            vectorDocs.add(new Document(representation.text(), vm));
         } else {
             for (int i = 0; i < chunks.size(); i++) {
                 IndexingEmbeddingGuard.SafeEmbedText safe =
@@ -199,8 +212,13 @@ public class KnowledgeIndexingService {
         }
 
         if (effectiveStrategy == MaterializationStrategy.HYBRID) {
-            IndexingEmbeddingGuard.SafeEmbedText safeDoc =
-                    indexingEmbeddingGuard.prepareForEmbedding(content, embedMaxChars);
+            DocumentRepresentationBuilder.Representation representationDoc =
+                    DocumentRepresentationBuilder.build(
+                            content,
+                            displayName,
+                            structuredActa.orElse(null),
+                            structuredActa.isPresent(),
+                            wholeDocumentEmbedMaxChars);
             Map<String, Object> vmDoc =
                     KnowledgeChunkMetadataFactory.buildV2(
                             doc.getCorpusScope(),
@@ -213,16 +231,20 @@ public class KnowledgeIndexingService {
                             chunks.size(),
                             totalVectors,
                             contentHash,
-                            safeDoc.truncated());
+                            representationDoc.truncated());
             structuredActa.ifPresent(acta -> KnowledgeChunkMetadataFactory.mergeActaStructuredFields(vmDoc, acta));
-            String embedText = withActaPrefix(safeDoc.text(), structuredActa.orElse(null));
-            vectorDocs.add(new Document(embedText, vmDoc));
+            vectorDocs.add(new Document(representationDoc.text(), vmDoc));
         }
 
         if (!vectorDocs.isEmpty()) {
-            Map<String, Object> indexProfile = snapshot.getIndexProfileJsonb();
+            if (snapshot.getIndexProfileJsonb() != null) {
+                indexProfile = snapshot.getIndexProfileJsonb();
+            }
             if (snapshot.getOwnerType() == KnowledgeSnapshotOwnerType.EVALUATION_CORPUS) {
                 embeddingIndexCompatibilityService.assertIndexingCompatibleForEvaluationSnapshot(indexProfile);
+            } else if (req.ingestionProfile() != null) {
+                embeddingIndexCompatibilityService.assertIndexingCompatibleForProjectIngestion(
+                        indexProfile, req.ingestionProfile());
             } else {
                 embeddingIndexCompatibilityService.assertIndexingCompatible(indexProfile);
             }
@@ -243,7 +265,7 @@ public class KnowledgeIndexingService {
             int updated =
                     backfillVectorStoreProjectIdForDocument(projectId, doc.getId(), snapshotId, indexSigHex);
             if (updated == 0) {
-                // Retry without indexSignatureHash — Spring AI metadata shape can omit or alter the hash key.
+                // Retry without indexSignatureHash - Spring AI metadata shape can omit or alter the hash key.
                 updated = backfillVectorStoreProjectIdForDocument(projectId, doc.getId(), snapshotId, null);
             }
             if (updated == 0) {
@@ -512,6 +534,9 @@ public class KnowledgeIndexingService {
     private void saveArtifact(
             KnowledgeDocumentEntity doc, DocumentArtifactType type, Map<String, Object> payload, Instant createdAt) {
         String hash = ArtifactPayloadHasher.sha256Hex(payload);
+        // Re-materialization (re-index, profile change, reprocess) must replace the previous artifact of this
+        // type, not append to it — see DocumentArtifactRepository#deleteByDocument_IdAndArtifactType javadoc.
+        documentArtifactRepository.deleteByDocument_IdAndArtifactType(doc.getId(), type);
         DocumentArtifactEntity e = DocumentArtifactEntity.newRow();
         e.setDocument(doc);
         e.setArtifactType(type);

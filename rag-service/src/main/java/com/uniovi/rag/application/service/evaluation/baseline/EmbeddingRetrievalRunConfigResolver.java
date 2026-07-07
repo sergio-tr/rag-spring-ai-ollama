@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation.baseline;
 
+import com.uniovi.rag.application.service.evaluation.BenchmarkRuntimeParametersSupport;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.ResolvedConfigSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
@@ -29,7 +30,7 @@ public class EmbeddingRetrievalRunConfigResolver {
     public EmbeddingRetrievalRunConfigResolver(
             EvaluationRunRepository evaluationRunRepository,
             ResolvedConfigSnapshotRepository resolvedConfigSnapshotRepository,
-            @Value("${spring.ai.ollama.top-k:80}") int defaultTopK,
+            @Value("${spring.ai.ollama.top-k:8}") int defaultTopK,
             @Value("${spring.ai.ollama.similarity-threshold:0.25}") double defaultSimilarityThreshold) {
         this.evaluationRunRepository = evaluationRunRepository;
         this.resolvedConfigSnapshotRepository = resolvedConfigSnapshotRepository;
@@ -43,10 +44,20 @@ public class EmbeddingRetrievalRunConfigResolver {
             return defaultsWithoutSnapshot();
         }
         EvaluationRunEntity run = evaluationRunRepository.findById(evaluationRunId).orElse(null);
-        if (run == null || run.getResolvedConfigSnapshot() == null) {
+        if (run == null) {
             return defaultsWithoutSnapshot();
         }
-        return fromSnapshotEntity(run.getResolvedConfigSnapshot());
+        Map<String, Object> runtime = BenchmarkRuntimeParametersSupport.readFromRun(run);
+        Params base =
+                run.getResolvedConfigSnapshot() == null
+                        ? defaultsWithoutSnapshot()
+                        : fromSnapshotEntity(run.getResolvedConfigSnapshot());
+        return new Params(
+                BenchmarkRuntimeParametersSupport.overlayTopK(base.topK(), runtime),
+                BenchmarkRuntimeParametersSupport.overlaySimilarityThreshold(base.similarityThreshold(), runtime),
+                base.rankerEnabled(),
+                base.metadataEnabled(),
+                base.expansionEnabled());
     }
 
     public Params defaultsWithoutSnapshot() {

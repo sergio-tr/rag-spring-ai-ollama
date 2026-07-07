@@ -1,5 +1,7 @@
 package com.uniovi.rag.migration;
 
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport;
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport.PostgresBinding;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
 import org.junit.jupiter.api.AfterAll;
@@ -7,8 +9,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import javax.sql.DataSource;
 
@@ -18,35 +18,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Applies all Flyway scripts to a clean Postgres (with pgvector) and asserts the latest version.
- * Skips when Docker is unavailable (local dev without Docker); CI runners provide Docker.
+ * Uses Testcontainers when Docker works; otherwise a fresh database on local Postgres (WSL-friendly).
  */
-@EnabledIf(value = "com.uniovi.rag.testsupport.TestEnvironment#isDockerAvailable",
-        disabledReason = "Docker required for isolated Flyway verification database")
+@EnabledIf(
+        value = "com.uniovi.rag.testsupport.TestEnvironment#isIsolatedFlywayPostgresAvailable",
+        disabledReason = "Postgres admin URL or Docker required for isolated Flyway verification database")
 class FlywayMigrationsIntegrationTest {
 
-    private static PostgreSQLContainer<?> postgres;
+    private static PostgresBinding postgresBinding;
 
     private static DataSource dataSource;
 
     @BeforeAll
     static void startPostgres() {
-        postgres = new PostgreSQLContainer<>("pgvector/pgvector:0.8.2-pg16-bookworm")
-                .withDatabaseName("flyway_verify")
-                .withUsername("test")
-                .withPassword("test")
-                .withInitScript("testcontainers-vectordb-init.sql");
-        postgres.start();
-        dataSource = new DriverManagerDataSource(
-                postgres.getJdbcUrl(),
-                postgres.getUsername(),
-                postgres.getPassword()
-        );
+        postgresBinding = PostgresIntegrationTestSupport.startIsolatedDatabase("flyway_verify", "testcontainers-vectordb-init.sql");
+        dataSource = postgresBinding.dataSource();
     }
 
     @AfterAll
     static void stopPostgres() {
-        if (postgres != null) {
-            postgres.stop();
+        if (postgresBinding != null) {
+            postgresBinding.cleanup().run();
         }
     }
 

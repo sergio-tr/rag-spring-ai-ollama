@@ -33,7 +33,7 @@ test.describe("LAB live job and refresh resume @fullstack", () => {
     await assertLabJobPanelShowsActivePhase(page, 60_000);
 
     await expect(page.getByText(/Stopped watching here/i)).toHaveCount(0);
-    await expect(page.getByText(/Stopped waiting — the server job/i)).toHaveCount(0);
+    await expect(page.getByText(/Stopped waiting - the server job/i)).toHaveCount(0);
 
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: /research lab|laboratorio/i }).first()).toBeVisible({

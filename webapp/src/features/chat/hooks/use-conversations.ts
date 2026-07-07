@@ -32,7 +32,9 @@ export function mergeConversationPatchOptimistic(
   if (body.clearRuntimeOverride) {
     next.runtimeOverride = {};
   } else if (body.runtimeOverride !== undefined) {
-    next.runtimeOverride = body.runtimeOverride ? { ...body.runtimeOverride } : {};
+    next.runtimeOverride = body.runtimeOverride
+      ? { ...(conv.runtimeOverride ?? {}), ...body.runtimeOverride }
+      : {};
   }
   if (body.clearLlmModel) {
     next.llmModel = null;

@@ -55,7 +55,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RuntimeTraceRegressionSuiteHttpMappingInventoryTest {
 
     /*
-     * FD-p59-arch-inventory — @Test methods:
+     * FD-p59-arch-inventory - @Test methods:
      *   p59_collision_keys_unique
      *   p59_controller_beans
      *   p59_handler_count_matches_tracked_inventory
@@ -64,6 +64,11 @@ class RuntimeTraceRegressionSuiteHttpMappingInventoryTest {
 
     private static final String TRACKED_INVENTORY = "p59-runtime-trace-regression-suite-http-inventory.md";
     private static final String EM_DASH = "\u2014";
+
+    private static boolean isEmptyInventoryCell(String cell) {
+        String s = cell.strip();
+        return s.isEmpty() || s.equals("-") || s.equals(EM_DASH);
+    }
 
     private static final Set<Class<?>> FD_P59_CONTROLLER_SET =
             Set.of(
@@ -94,7 +99,7 @@ class RuntimeTraceRegressionSuiteHttpMappingInventoryTest {
     @Autowired private Environment environment;
 
     /**
-     * FD-p59-collision-key — collision key from live {@link RequestMappingInfo} (no source reconstruction).
+     * FD-p59-collision-key - collision key from live {@link RequestMappingInfo} (no source reconstruction).
      */
     public static String toCollisionKey(RequestMappingInfo info, RequestMethod requestMethod) {
         String p = patternListP(info);
@@ -335,8 +340,8 @@ class RuntimeTraceRegressionSuiteHttpMappingInventoryTest {
                                 http,
                                 pathRaw,
                                 controller,
-                                consumesCell.equals(EM_DASH) ? "" : consumesCell,
-                                producesCell.equals(EM_DASH) ? "" : producesCell));
+                                isEmptyInventoryCell(consumesCell) ? "" : consumesCell,
+                                isEmptyInventoryCell(producesCell) ? "" : producesCell));
             }
         }
         return rows;

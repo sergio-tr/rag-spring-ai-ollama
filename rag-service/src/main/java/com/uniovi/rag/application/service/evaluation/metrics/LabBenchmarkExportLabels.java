@@ -81,21 +81,21 @@ public final class LabBenchmarkExportLabels {
         String mk = metricKey.trim();
         if (mk.startsWith("recall") || "mrr".equals(mk) || "retrievedCount".equals(mk) || "goldFound".equals(mk)) {
             if (kind == BenchmarkKind.LLM_JUDGE_QA) {
-                return "Not applicable — direct LLM evaluation has no retrieval step.";
+                return "Not applicable - direct LLM evaluation has no retrieval step.";
             }
             if ("FAILED".equals(outcome) || "SKIPPED".equals(outcome)) {
-                return "Not available — run did not complete generation for this item.";
+                return "Not available - run did not complete generation for this item.";
             }
-            return "Not applicable — no retrieval metrics for this benchmark row.";
+            return "Not applicable - no retrieval metrics for this benchmark row.";
         }
         if ("llmJudgeScore".equals(mk) || "semanticScore".equals(mk) || "faithfulness".equals(mk) || "sourceSupport".equals(mk)) {
-            return "Not available — judge did not score this item.";
+            return "Not available - judge did not score this item.";
         }
         if ("FAILED".equals(outcome)) {
-            return "Not available — run failed before generation completed.";
+            return "Not available - run failed before generation completed.";
         }
         if ("SKIPPED".equals(outcome) || "NOT_SUPPORTED".equals(outcome)) {
-            return "Not applicable — item was skipped or not supported.";
+            return "Not applicable - item was skipped or not supported.";
         }
         return "Not available for this item.";
     }

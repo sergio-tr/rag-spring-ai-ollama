@@ -4,7 +4,7 @@
 # Run from repository root. Requires: Docker (Maven runs in the same image definition as the backend), Python 3.11+, Node.js 22 + npm (webapp; same major as CI).
 #
 # Step 1 builds the rag-service Dockerfile "build" stage (same JDK as docker-compose backend via RAG_JAVA_JDK_BASE_IMAGE),
-# then runs ./mvnw verify with the working tree mounted — no extra ad-hoc JDK image, no JDK on the host unless MAVEN_ON_HOST=1.
+# then runs ./mvnw verify with the working tree mounted - no extra ad-hoc JDK image, no JDK on the host unless MAVEN_ON_HOST=1.
 #
 # Usage:
 #   ./tests/full-stack-verify.sh

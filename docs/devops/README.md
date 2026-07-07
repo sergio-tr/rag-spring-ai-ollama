@@ -4,7 +4,7 @@ Normative reference for **pull request validation**, **workflow alignment**, **D
 
 ## Pull requests and branch gates
 
-**Entry workflow:** [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) invokes [`.github/workflows/reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) (`workflow_call`). It runs on **`pull_request`** to `dev`, `main`, and `master`, and on **`push`** to **`main` and `master` only** (post-merge and deploy SHA alignment; not on `push` to `dev` — see [`.github/ci/dev-pr-gate.md`](../../.github/ci/dev-pr-gate.md)).
+**Entry workflow:** [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) invokes [`.github/workflows/reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) (`workflow_call`). It runs on **`pull_request`** to `dev`, `main`, and `master`, and on **`push`** to **`main` and `master` only** (post-merge and deploy SHA alignment; not on `push` to `dev` - see [`.github/ci/dev-pr-gate.md`](../../.github/ci/dev-pr-gate.md)).
 
 ### Branch protection checklist (required checks vs GitHub UI labels)
 
@@ -24,7 +24,7 @@ GitHub Rulesets / branch protection **required status checks** must match the **
 | `sonar` | SonarCloud Scan | No (release-quality lane; run on PRs to `main`/`master` and push `main`/`master`) |
 | `performance` | Performance (Gatling + infra probe) | No for `dev` (runs only when PR base is `main` or `master`) |
 
-**Separate workflow** [`.github/workflows/docker-compose-ci.yml`](../../.github/workflows/docker-compose-ci.yml): job **Env, compose guard, docker compose config** — see [Compose validation (two layers)](#compose-validation-two-layers) below.
+**Separate workflow** [`.github/workflows/docker-compose-ci.yml`](../../.github/workflows/docker-compose-ci.yml): job **Env, compose guard, docker compose config** - see [Compose validation (two layers)](#compose-validation-two-layers) below.
 
 ### Job DAG (names as in GitHub Actions)
 
@@ -77,7 +77,7 @@ Compose defaults for the same prefix live under **Compose parameterization** bel
 | `ollama` | [`ollama/Dockerfile`](../../ollama/Dockerfile) | No | Yes | optional overlays |
 | Observability | [`observability/*/Dockerfile`](../../observability/) | No | Yes | `docker-compose.yml` profiles + `compose.obs.yml` |
 
-**Source of truth for GHCR tags:** [`build-images.yml`](../../.github/workflows/build-images.yml) — SHA tag + `:latest` (non-contractual) + release tag when built from a published GitHub Release (optional extra tag on manual `workflow_dispatch`).
+**Source of truth for GHCR tags:** [`build-images.yml`](../../.github/workflows/build-images.yml) - SHA tag + `:latest` (non-contractual) + release tag when built from a published GitHub Release (optional extra tag on manual `workflow_dispatch`).
 
 ## Compose parameterization (source of truth)
 
@@ -118,4 +118,4 @@ Deeper detail: [`docs/testing/README.md`](../testing/README.md), [`docs/operatio
 
 When extending this hub, prefer edits under `docs/devops/**`, `docs/testing/**`, and cross-links from `docs/architecture/**` only when the system-level story changes. Do not use this document as justification to edit [`DATA_MODEL.md`](../architecture/DATA_MODEL.md) or [`configuration-resolution-model.md`](../architecture/configuration-resolution-model.md); those files follow their own change control.
 
-**Local Docker full-stack guide:** [Local Docker development — scripts, URLs, Ollama, HTTPS](local-docker-dev-guide.md).
+**Local Docker full-stack guide:** [Local Docker development - scripts, URLs, Ollama, HTTPS](local-docker-dev-guide.md).

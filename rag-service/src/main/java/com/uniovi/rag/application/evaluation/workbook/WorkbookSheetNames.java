@@ -7,6 +7,7 @@ public final class WorkbookSheetNames {
     public static final String CORPUS_DOCUMENTS = "corpus_documents";
     public static final String CHUNK_REGISTRY = "chunk_registry";
     public static final String LLM_READER_QUESTIONS = "llm_reader_questions";
+    public static final String LLM_ROLE_EVAL_CASES = "llm_role_eval_cases";
     public static final String EMBEDDING_RETRIEVAL_QUERIES = "embedding_retrieval_queries";
     public static final String RAG_PRESET_QUESTIONS_ENRICHED = "rag_preset_questions_enriched";
     public static final String LLM_CANDIDATES = "llm_candidates";

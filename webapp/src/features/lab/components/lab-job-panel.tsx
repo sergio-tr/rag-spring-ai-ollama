@@ -34,13 +34,13 @@ type LabJobPanelProps = Readonly<{
   progressSnapshot?: LabProgressSnapshot;
   /** Shown while waiting for first SSE tick */
   queuedHint?: boolean;
-  /** Legacy local abort flag — mapped to reconnecting copy, not a destructive error */
+  /** Legacy local abort flag - mapped to reconnecting copy, not a destructive error */
   stoppedWaiting?: boolean;
   /** Canonical SSE connection state from {@link useLabJobLiveStream}. */
   connectionState?: LabJobLiveConnectionState | null;
   /** Monotonic seconds since async watch began (local UI clock). */
   watchElapsedSeconds?: number;
-  /** Debug/fallback only — hidden in normal live-watcher flow. */
+  /** Debug/fallback only - hidden in normal live-watcher flow. */
   showResumeFallback?: boolean;
   onResumeLive?: () => void;
 }>;

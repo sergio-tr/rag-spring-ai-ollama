@@ -10,7 +10,7 @@ import scala.concurrent.duration.DurationInt
  * Realistic mixed workload: weighted mix of login and admin (or product fallback).
  *
  * Profiles (see tests/gatling/README.md): {@code smoke}, {@code load}, {@code stress}, {@code spike}, {@code soak}.
- * Default traffic mix: 70% auth / 30% admin (or product fallback) — override with {@code GATLING_MIX_*_PCT}.
+ * Default traffic mix: 70% auth / 30% admin (or product fallback) - override with {@code GATLING_MIX_*_PCT}.
  *
  * Uses [[users.csv]] (multi-row feeder; replace with distinct accounts for realistic isolation) and
  * stable product reads (no snapshot dependency).

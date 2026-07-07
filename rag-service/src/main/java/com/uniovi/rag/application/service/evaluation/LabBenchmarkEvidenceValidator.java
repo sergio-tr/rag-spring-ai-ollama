@@ -155,7 +155,7 @@ public class LabBenchmarkEvidenceValidator {
             return Optional.of(
                     new EvidenceFailure(
                             FAILURE_CODE_SKIPPED_WITHOUT_REASON,
-                            "One or more skipped items are missing a skip reason — check export rows."));
+                            "One or more skipped items are missing a skip reason - check export rows."));
         }
         if (tally.notSupportedMissingReason()) {
             return Optional.of(
@@ -186,18 +186,18 @@ public class LabBenchmarkEvidenceValidator {
                 return Optional.of(
                         new EvidenceFailure(
                                 FAILURE_CODE_ALL_SKIPPED,
-                                "Every benchmark item was skipped — check knowledge base, models, and preset compatibility."));
+                                "Every benchmark item was skipped - check knowledge base, models, and preset compatibility."));
             }
             if (tally.notSupported() > 0 && tally.notSupported() == tally.accountedItems()) {
                 return Optional.of(
                         new EvidenceFailure(
                                 FAILURE_CODE_NO_EXECUTED_ITEMS,
-                                "Every benchmark item was not supported — check presets and index compatibility."));
+                                "Every benchmark item was not supported - check presets and index compatibility."));
             }
             return Optional.of(
                     new EvidenceFailure(
                             FAILURE_CODE_NO_EXECUTED_ITEMS,
-                            "No benchmark items executed — the run cannot be reported as a successful evaluation."));
+                            "No benchmark items executed - the run cannot be reported as a successful evaluation."));
         }
         return Optional.empty();
     }

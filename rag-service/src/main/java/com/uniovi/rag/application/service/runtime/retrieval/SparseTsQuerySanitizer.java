@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
  */
 final class SparseTsQuerySanitizer {
 
-    /** Clock times such as {@code 8:30} — colon is invalid inside {@code to_tsquery} atoms. */
+    /** Clock times such as {@code 8:30} - colon is invalid inside {@code to_tsquery} atoms. */
     private static final Pattern TIME_TOKEN = Pattern.compile("^\\d{1,2}:\\d{2}$");
 
     /** Times embedded in a longer websearch/plain query. */

@@ -73,6 +73,8 @@ class ClassifierModelRegistryServiceTest {
                 .thenReturn(Optional.empty());
         UserEntity owner = mock(UserEntity.class);
         when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
+        when(classifierModelRepository.existsByOwner_IdAndNameIgnoreCase(userId, "m1")).thenReturn(false);
+        when(classifierModelRepository.existsByOwner_IdAndArtifactPath(userId, "my-tag-1")).thenReturn(false);
 
         Map<String, Object> res = Map.of("modelId", "my-tag-1", "name", "m1", "metrics", Map.of("loss", 0.1));
 
@@ -87,6 +89,20 @@ class ClassifierModelRegistryServiceTest {
     }
 
     @Test
+    void registerAfterSuccessfulTrain_skipsWhenDuplicateNameExists() {
+        when(classifierModelRepository.findByOwnerIdAndSourceTaskId(userId, taskId.toString()))
+                .thenReturn(Optional.empty());
+        UserEntity owner = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
+        when(classifierModelRepository.existsByOwner_IdAndNameIgnoreCase(userId, "m1")).thenReturn(true);
+
+        service.registerAfterSuccessfulTrain(
+                userId, taskId, "lab", Map.of("modelId", "my-tag-1", "name", "m1"), 50, 8);
+
+        verify(classifierModelRepository, never()).save(any());
+    }
+
+    @Test
     void registerAfterSuccessfulTrain_skipsWhenAlreadyRegisteredForTask() {
         ClassifierModelEntity existing = new ClassifierModelEntity();
         when(classifierModelRepository.findByOwnerIdAndSourceTaskId(userId, taskId.toString()))
@@ -96,6 +112,51 @@ class ClassifierModelRegistryServiceTest {
                 userId, taskId, "lab", Map.of("modelId", "x"), 50, 8);
 
         verify(classifierModelRepository, never()).save(any());
+    }
+
+    @Test
+    void listForUserWithSync_excludesDbRowWhenArtifactRemovedFromDisk() {
+        when(classifierLabPort.isConfigured()).thenReturn(true);
+        when(classifierLabPort.listModels()).thenReturn(List.of(Map.of("id", "default", "name", "Default model")));
+
+        ClassifierModelEntity stale = new ClassifierModelEntity();
+        stale.setId(UUID.randomUUID());
+        stale.setName("gone");
+        stale.setArtifactPath("deleted-tag");
+        stale.setStatus(ClassifierModelStatus.READY);
+        stale.setHyperparams(Map.of(ClassifierModelRegistryService.HP_SOURCE_TASK_ID, "task-gone"));
+        when(classifierModelRepository.findByOwner_IdOrderByTrainedAtDesc(userId)).thenReturn(List.of(stale));
+
+        List<ClassifierModelResponseDto> list = service.listForUserWithSync(userId);
+
+        assertThat(list).extracting(ClassifierModelResponseDto::inferenceTag).containsExactly("default");
+    }
+
+    @Test
+    void listForUserWithSync_includesGlobalCustomModelsFromClassifierService() {
+        UserEntity owner = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
+        when(classifierLabPort.isConfigured()).thenReturn(true);
+        when(classifierLabPort.listModels())
+                .thenReturn(
+                        List.of(
+                                Map.of("id", "default", "name", "Default model"),
+                                Map.of(
+                                        "id",
+                                        "a1b2c3d4",
+                                        "name",
+                                        "shared-custom",
+                                        "createdAt",
+                                        "2020-01-01T00:00:00Z",
+                                        "metrics",
+                                        Map.of("accuracy", 0.9, "macro_avg_f1", 0.88))));
+        when(classifierModelRepository.findByOwner_IdAndArtifactPath(userId, "default")).thenReturn(Optional.empty());
+        when(classifierModelRepository.findByOwner_IdOrderByTrainedAtDesc(userId)).thenReturn(List.of());
+
+        List<ClassifierModelResponseDto> list = service.listForUserWithSync(userId);
+
+        assertThat(list).extracting(ClassifierModelResponseDto::inferenceTag).contains("default", "a1b2c3d4");
+        verify(classifierModelRepository, atLeastOnce()).save(any());
     }
 
     @Test

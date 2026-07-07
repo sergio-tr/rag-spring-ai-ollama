@@ -18,7 +18,7 @@ object ScenarioBlocks {
     .acceptHeader("application/json")
     .userAgentHeader("gatling-rag-mixed/1.0")
 
-  /** POST {product}/auth/login — requires {@code email} and {@code password} (users feeder). */
+  /** POST {product}/auth/login - requires {@code email} and {@code password} (users feeder). */
   def authLogin: ChainBuilder =
     exec(
       http("mix POST login")

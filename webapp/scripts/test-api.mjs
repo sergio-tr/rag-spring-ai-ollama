@@ -151,7 +151,7 @@ function runPlaywrightApi(extraArgs = []) {
           ? []
           : [
               "--grep-invert",
-              // Shallow API smoke only — live-stack closure suites need real LLM / LiteLLM (see e2e/api/README.md).
+              // Shallow API smoke only - live-stack closure suites need real LLM / LiteLLM (see e2e/api/README.md).
               "@chatAcceptance|@ragCrit|@eightCase|@multiturn|@phaseCGateway|@phaseC|@critical|@providerRuntime",
             ]),
         ...extraArgs,

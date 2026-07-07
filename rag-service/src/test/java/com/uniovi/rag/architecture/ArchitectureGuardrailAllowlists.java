@@ -32,6 +32,8 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.auth.OauthLoginService", // ARCH-DEBT-AUTH
             "com.uniovi.rag.application.service.chat.ChatRuntimeCompatibilitySupport", // ARCH-DEBT-CHAT
             "com.uniovi.rag.application.service.chat.ChatRuntimeStateService", // ARCH-DEBT-CHAT
+            "com.uniovi.rag.application.service.chat.MaterializationFeatureGateService", // ARCH-DEBT-CHAT
+            "com.uniovi.rag.application.service.chat.PresetBaseFeatureSupport", // ARCH-DEBT-CHAT
             "com.uniovi.rag.application.service.chat.async.ChatMessageJobHandler", // ARCH-DEBT-CHAT
             "com.uniovi.rag.application.service.classifier.ClassifierModelRegistryService", // ARCH-DEBT-CLASSIFIER
             "com.uniovi.rag.application.service.evaluation.BenchmarkRunOrchestrator", // ARCH-DEBT-LAB
@@ -61,6 +63,7 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.llm.catalog.LlmModelRuntimeReasonSupport", // ARCH-DEBT-ADMIN-MODEL
             "com.uniovi.rag.application.service.llm.catalog.MeSelectableLlmModelsService", // ARCH-DEBT-ADMIN-MODEL
             "com.uniovi.rag.application.service.llm.LlmErrorComposer", // ARCH-DEBT-QUERY-RUNTIME
+            "com.uniovi.rag.application.service.llm.ModelPreflightService", // ARCH-DEBT-QUERY-RUNTIME
             "com.uniovi.rag.application.service.me.MeDocumentQueryService", // ARCH-DEBT-KNOWLEDGE
             "com.uniovi.rag.application.service.me.MeSummaryApplicationService", // ARCH-DEBT-ME
             "com.uniovi.rag.application.service.me.UserMePersonalizationService", // ARCH-DEBT-ME
@@ -142,11 +145,13 @@ public final class ArchitectureGuardrailAllowlists {
             "com.uniovi.rag.application.service.config.UserProjectConfigurationService", // ARCH-DEBT-RUNTIME-CONFIG
             "com.uniovi.rag.application.service.evaluation.BenchmarkDatasetCompatibility", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.BenchmarkRunOrchestrator", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.BenchmarkRuntimeParametersSupport", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabBenchmarkEvidenceValidator", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.RagBenchmarkOutcomeTally", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.EvaluationCanonicalPersistenceService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.ExperimentalDatasetLabService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.ExperimentalDatasetResolver", // ARCH-DEBT-LAB
+            "com.uniovi.rag.application.service.evaluation.metrics.RoleEvalCaseSubsetSupport", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabCampaignBenchmarkExecutor", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabCampaignService", // ARCH-DEBT-LAB
             "com.uniovi.rag.application.service.evaluation.LabCampaignTerminalPayloadBuilder", // ARCH-DEBT-LAB

@@ -1,4 +1,4 @@
-"""Tests for retrain_default_model.py — eval must never be used for training."""
+"""Tests for retrain_default_model.py - eval must never be used for training."""
 
 from __future__ import annotations
 
@@ -107,7 +107,7 @@ def test_real_datasets_have_zero_overlap():
     from app.config import Config
 
     data_dir = Path(Config().get_data_dir())
-    train_df = load_classification_dataset(data_dir / "basic_dataset_qa_clasificacion_clean.xlsx")
+    train_df = load_classification_dataset(data_dir / "basic_dataset_qa_clasificacion_final.xlsx")
     eval_df = load_classification_dataset(data_dir / "evaluation_dataset.xlsx")
     train_norms = {normalize_question(q) for q in train_df["Question"]}
     eval_norms = {normalize_question(q) for q in eval_df["Question"]}

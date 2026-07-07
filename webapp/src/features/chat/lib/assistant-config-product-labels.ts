@@ -2,7 +2,6 @@
 export const RETRIEVAL_SETTING_KEYS = new Set([
   "useRetrieval",
   "naiveFullCorpusInPromptEnabled",
-  "expansionEnabled",
   "nerEnabled",
   "toolsEnabled",
   "metadataEnabled",

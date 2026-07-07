@@ -6,7 +6,7 @@ import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegression
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteExecutionFailedEntryResult;
 
 /**
- * Bounded per-entry row — discriminated by {@code entryStatus} (P31).
+ * Bounded per-entry row - discriminated by {@code entryStatus} (P31).
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record RuntimeTraceRegressionSuiteEntryResponseDto(

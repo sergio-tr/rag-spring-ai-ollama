@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { ChatConfigurationPanelContent } from "./ChatConfigurationPanelContent";
 import { useChatToolbarStore, type ChatToolbarApi } from "@/features/chat/store/chat-toolbar.store";
-import type { MeSelectableLlmModelDto } from "@/types/api";
 
 const hooksMock = vi.hoisted(() => ({
   useRuntimeConfigCapabilities: vi.fn(),
@@ -27,29 +26,6 @@ vi.mock("@/features/lab/hooks/use-classifier-registry", () => ({
   useClassifierModelsQuery: (...args: unknown[]) => hooksMock.useClassifierModelsQuery(...args),
 }));
 
-const LEGACY_MODEL_IDS = ["gemma3:4b", "mistral:7b", "llama3.1:8b"] as const;
-
-const apiModels: MeSelectableLlmModelDto[] = [
-  {
-    modelName: "gpt-oss:20b",
-    displayName: "gpt-oss:20b",
-    selectable: true,
-    disabledReason: null,
-    disabledReasonCode: null,
-    usableAsDefault: true,
-    runtimeStatus: "UNKNOWN",
-  },
-  {
-    modelName: "ollama-missing",
-    displayName: "ollama-missing",
-    selectable: false,
-    disabledReason: "Model not installed locally in Ollama",
-    disabledReasonCode: "LLM_MODEL_UNAVAILABLE",
-    usableAsDefault: false,
-    runtimeStatus: "UNAVAILABLE",
-  },
-];
-
 function baseToolbarApi(overrides: Partial<ChatToolbarApi> = {}): ChatToolbarApi {
   return {
     projectId: "p1",
@@ -69,10 +45,11 @@ function baseToolbarApi(overrides: Partial<ChatToolbarApi> = {}): ChatToolbarApi
         reasonIfUnsupported: null,
       },
       baseEffectiveConfig: { useRetrieval: true },
-      effectiveConfig: { useRetrieval: true },
+      effectiveConfig: { useRetrieval: true, llmModel: "gpt-oss:20b" },
       conversationLlmModel: null,
       conversationClassifierModelId: null,
       conversationModelsPinned: false,
+      configurationMode: "PRESET" as const,
       runtimeOverride: {},
       manualOverrideKeys: [],
       isCustom: false,
@@ -94,7 +71,7 @@ function baseToolbarApi(overrides: Partial<ChatToolbarApi> = {}): ChatToolbarApi
     setLlmModelChoice: vi.fn(),
     classifierModelChoice: "",
     setClassifierModelChoice: vi.fn(),
-    selectableLlmModels: apiModels,
+    selectableLlmModels: [],
     selectableLlmModelsLoading: false,
     selectableLlmModelsEffectiveProvider: "OPENAI_COMPATIBLE" as const,
     modelsError: false,
@@ -104,6 +81,9 @@ function baseToolbarApi(overrides: Partial<ChatToolbarApi> = {}): ChatToolbarApi
     presets: [],
     presetsError: false,
     presetsLoading: false,
+    projectCompatiblePresets: null,
+    compatibleProductPresets: [],
+    compatibleExperimentalPresets: [],
     experimentalPresets: [],
     experimentalPresetsLoading: false,
     experimentalPresetsError: false,
@@ -133,7 +113,7 @@ function renderSubject() {
   );
 }
 
-describe("ChatConfigurationPanelContent LLM model selector", () => {
+describe("ChatConfigurationPanelContent LLM models (Assistant Configuration)", () => {
   beforeEach(() => {
     hooksMock.useProjectIndexProfile.mockReturnValue({ data: null, isLoading: false, isError: false });
     hooksMock.useActiveProjectSnapshot.mockReturnValue({ data: null, isLoading: false, isError: false });
@@ -150,78 +130,44 @@ describe("ChatConfigurationPanelContent LLM model selector", () => {
     await user.click(screen.getByTestId("chat-config-edit-button"));
   }
 
-  it("chat selector renders API models", async () => {
+  it("links to Assistant Configuration instead of a generic LLM selector", async () => {
     useChatToolbarStore.setState({ api: baseToolbarApi() });
     await openModelSection();
 
-    const select = screen.getByTestId("chat-llm-model-select");
-    expect(select).toBeInTheDocument();
-    expect(select).toHaveAttribute("data-effective-provider", "OPENAI_COMPATIBLE");
-    expect(screen.getByTestId("chat-llm-model-provider")).toHaveTextContent(/Configured model provider/i);
-    expect(screen.getByRole("option", { name: /gpt-oss:20b/i })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /ollama-missing \(unavailable\)/i })).toBeInTheDocument();
+    expect(screen.queryByTestId("chat-llm-model-select")).not.toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /Open Assistant Configuration/i })).toBeInTheDocument();
+    expect(await screen.findByTestId("chat-llm-configuration-hint")).toHaveTextContent(/Assistant Configuration/i);
   });
 
-  it("hardcoded legacy models do not appear", async () => {
-    useChatToolbarStore.setState({ api: baseToolbarApi() });
-    await openModelSection();
-
-    const select = screen.getByTestId("chat-llm-model-select");
-    const text = select.textContent ?? "";
-    for (const legacy of LEGACY_MODEL_IDS) {
-      expect(text).not.toContain(legacy);
-    }
-  });
-
-  it("unavailable model is disabled", async () => {
-    useChatToolbarStore.setState({ api: baseToolbarApi() });
-    await openModelSection();
-
-    const unavailable = screen.getByRole("option", { name: /ollama-missing \(unavailable\)/i });
-    expect(unavailable).toBeDisabled();
-    expect(screen.getByTestId("chat-llm-model-unavailable-hints").textContent).toMatch(/not installed/i);
-  });
-
-  it("invalid current selection shows warning", async () => {
-    useChatToolbarStore.setState({
-      api: baseToolbarApi({ llmModelChoice: "mistral:7b" }),
-    });
-    await openModelSection();
-
-    expect(screen.getByTestId("chat-llm-model-selection-invalid")).toBeInTheDocument();
-    expect(screen.getByTestId("chat-llm-model-selection-invalid").textContent).toMatch(/mistral:7b/i);
-    expect(screen.getByTestId("chat-llm-model-invalid-option")).toBeInTheDocument();
-  });
-
-  it("API failure shows error", async () => {
+  it("shows optional final-answer override with scoped label in edit section", async () => {
     useChatToolbarStore.setState({
       api: baseToolbarApi({
-        selectableLlmModels: [],
-        modelsError: true,
-        modelsErrorMessage: "Could not load models catalog.",
+        selectableLlmModels: [
+          {
+            modelName: "gpt-oss:20b",
+            displayName: "GPT OSS 20B",
+            selectable: true,
+            disabledReason: null,
+            disabledReasonCode: null,
+            usableAsDefault: true,
+            runtimeStatus: "NOT_PROBED",
+          },
+        ],
       }),
     });
     await openModelSection();
 
-    expect(screen.getByTestId("chat-error-code-MODEL_UNAVAILABLE")).toHaveTextContent(/Could not load models catalog/i);
+    expect(screen.getByTestId("chat-final-answer-model-select")).toBeInTheDocument();
+    expect(screen.getByText(/This optional override only pins the final answer model for this conversation/i)).toBeInTheDocument();
+    expect(screen.getByText(/role-based models from Assistant Configuration/i)).toBeInTheDocument();
   });
 
-  it("shows empty catalog message when API returns no models", async () => {
+  it("shows effective model label in summary row", async () => {
     useChatToolbarStore.setState({
-      api: baseToolbarApi({ selectableLlmModels: [] }),
+      api: baseToolbarApi({ llmModelChoice: "gpt-oss:20b" }),
     });
     await openModelSection();
 
-    expect(screen.getByTestId("chat-llm-model-catalog-empty")).toBeInTheDocument();
-  });
-
-  it("shows loading state while models are loading", async () => {
-    useChatToolbarStore.setState({
-      api: baseToolbarApi({ selectableLlmModels: [], selectableLlmModelsLoading: true }),
-    });
-    await openModelSection();
-
-    expect(screen.getByTestId("chat-llm-models-loading")).toBeInTheDocument();
-    expect(screen.getByTestId("chat-llm-model-select")).toBeDisabled();
+    expect(screen.getByTestId("chat-llm-configuration-hint")).toBeInTheDocument();
   });
 });

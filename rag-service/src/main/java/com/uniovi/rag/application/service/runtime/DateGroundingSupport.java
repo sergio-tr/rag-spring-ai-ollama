@@ -23,7 +23,7 @@ public final class DateGroundingSupport {
     private static final Pattern ISO_DATE = Pattern.compile("\\b(\\d{4}-\\d{2}-\\d{2})\\b");
     private static final Pattern DMY_NUMERIC = Pattern.compile("\\b(\\d{1,2})[/-](\\d{1,2})[/-](\\d{4})\\b");
     private static final Pattern D_DE_M_DE_Y = Pattern.compile(
-            "\\b(\\d{1,2})\\s+de\\s+([a-záéíóúñ]+)\\s+de\\s+(\\d{4})\\b",
+            "\\b(\\d{1,2})\\s+de\\s+([a-záéíóúñ]+)\\s+de[l]?\\s+(\\d{4})\\b",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern MONTH_YEAR = Pattern.compile(
             "\\b([a-záéíóúñ]+)\\s+(\\d{4})\\b",

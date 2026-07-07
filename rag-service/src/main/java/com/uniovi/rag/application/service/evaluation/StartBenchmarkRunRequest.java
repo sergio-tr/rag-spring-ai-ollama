@@ -2,9 +2,12 @@ package com.uniovi.rag.application.service.evaluation;
 
 import com.uniovi.rag.domain.evaluation.EvaluationRunKind;
 
-import java.util.Objects;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Body for {@code POST /lab/benchmarks/{kind}/runs} (JSON benchmarks).
@@ -63,7 +66,9 @@ public record StartBenchmarkRunRequest(
         /** Optional classpath gold subset manifest id (e.g. gold-subset-v1). */
         String goldSubsetManifestId,
         /** When true, Lab may use workbook expected query type as a routing oracle (benchmark only). */
-        Boolean routingQueryTypeOracleEnabled) {
+        Boolean routingQueryTypeOracleEnabled,
+        /** Optional runtime overrides (temperature, topK, think, etc.) persisted on the evaluation run. */
+        Map<String, Object> benchmarkRuntimeParameters) {
 
     public StartBenchmarkRunRequest {
         runKind = runKind == null ? EvaluationRunKind.PRODUCT_EXPLORATION : runKind;
@@ -109,6 +114,16 @@ public record StartBenchmarkRunRequest(
                         ? goldSubsetManifestId.trim()
                         : null;
         routingQueryTypeOracleEnabled = Boolean.TRUE.equals(routingQueryTypeOracleEnabled);
+        benchmarkRuntimeParameters =
+                benchmarkRuntimeParameters == null
+                        ? Map.of()
+                        : benchmarkRuntimeParameters.entrySet().stream()
+                                .filter(e -> e.getKey() != null && !e.getKey().isBlank() && e.getValue() != null)
+                                .collect(Collectors.toMap(
+                                        e -> e.getKey().trim(),
+                                        Map.Entry::getValue,
+                                        (a, b) -> b,
+                                        LinkedHashMap::new));
     }
 
     public boolean embeddingDownstreamRagEffective() {

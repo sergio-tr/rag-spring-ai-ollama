@@ -36,13 +36,15 @@ export function RagConfigModelWarnings({
 
   return (
     <div
-      className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100"
+      className="min-w-0 max-w-full break-words rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100"
       data-testid="rag-config-model-warnings"
       role="status"
     >
       <ul className="list-disc space-y-1 pl-4">
         {warnings.map((warning) => (
-          <li key={warning}>{warning}</li>
+          <li key={warning} className="break-words">
+            {warning}
+          </li>
         ))}
       </ul>
     </div>

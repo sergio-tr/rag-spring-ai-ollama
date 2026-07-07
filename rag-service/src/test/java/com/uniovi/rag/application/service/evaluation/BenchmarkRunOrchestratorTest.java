@@ -25,6 +25,7 @@ import com.uniovi.rag.application.service.evaluation.config.LabRuntimeConfigReas
 import com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.application.service.embedding.EmbeddingOptionsValidator;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
@@ -56,6 +57,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import com.uniovi.rag.application.service.llm.ModelPreflightService;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -119,6 +121,7 @@ class BenchmarkRunOrchestratorTest {
     @Mock private ProjectIndexProfileService projectIndexProfileService;
     @Mock private LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     @Mock private ObjectProvider<RuntimeObservability> runtimeObservability;
+    @Mock private ModelPreflightService modelPreflightService;
     private final LabPresetAxisSupport labPresetAxisSupport =
             new LabPresetAxisSupport(new EvaluationReferenceBundleLoader(evaluationWorkbookParser));
     private final LabBenchmarkDefaultModelResolver labBenchmarkDefaultModelResolver =
@@ -205,7 +208,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
         when(evaluationCorpusReadinessService.getReadiness(any(), eq(TEST_CORPUS_ID)))
                 .thenReturn(
                         new EvaluationCorpusReadinessDto(
@@ -252,7 +255,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -279,6 +282,7 @@ class BenchmarkRunOrchestratorTest {
                         labIndexProfileOverrideFactory,
                         corpusAvailabilityGate,
                         Mockito.mock(EvaluationModelCatalogService.class),
+                        Mockito.mock(EmbeddingOptionsValidator.class),
                         Mockito.mock(KnowledgeIndexSnapshotRepository.class),
                         Mockito.mock(KnowledgeIndexSnapshotProfileAccess.class));
         BenchmarkRunOrchestrator orch =
@@ -304,7 +308,7 @@ class BenchmarkRunOrchestratorTest {
                         realPreflight,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -333,7 +337,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -369,7 +373,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -398,7 +402,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -467,7 +471,8 @@ class BenchmarkRunOrchestratorTest {
                         List.of(),
                         List.of(),
                         null,
-                        null);
+                        null,
+                        Map.of());
 
         orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req);
 
@@ -499,7 +504,7 @@ class BenchmarkRunOrchestratorTest {
                 labBenchmarkConfigPreflightService,
                 labPresetAxisSupport,
                 labBenchmarkDefaultModelResolver,
-                runtimeObservability);
+                runtimeObservability, modelPreflightService);
     }
 
     @Test
@@ -540,7 +545,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         try {
             orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.LLM_JUDGE_QA, req);
@@ -577,7 +582,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -624,7 +629,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(LabJobConcurrencyException.class);
@@ -655,7 +660,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.empty());
@@ -686,7 +691,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "ADMIN", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -721,7 +726,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -759,7 +764,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -794,7 +799,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -840,7 +845,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(UUID.randomUUID()), List.of(), null, null);
+                        List.of(UUID.randomUUID()), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -879,7 +884,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -935,7 +940,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(snapId), List.of(), null, null);
+                        List.of(snapId), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -974,7 +979,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1070,7 +1075,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(snapA, snapB), List.of(), null, null);
+                        List.of(snapA, snapB), List.of(), null, null, Map.of());
 
         orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req);
 
@@ -1106,7 +1111,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1212,7 +1217,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(snapA, snapB, snapC), List.of(), null, null);
+                        List.of(snapA, snapB, snapC), List.of(), null, null, Map.of());
 
         BenchmarkJobAccepted accepted =
                 orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req);
@@ -1253,7 +1258,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1306,7 +1311,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -1344,7 +1349,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1444,7 +1449,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(snapA, snapB), List.of(), null, null);
+                        List.of(snapA, snapB), List.of(), null, null, Map.of());
 
         orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req);
 
@@ -1493,7 +1498,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1538,7 +1543,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(LabDatasetGateException.class)
@@ -1573,7 +1578,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -1602,7 +1607,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -1637,7 +1642,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -1666,7 +1671,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -1701,7 +1706,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -1730,7 +1735,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.LLM_JUDGE_QA, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -1765,7 +1770,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -1794,7 +1799,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)
@@ -1829,7 +1834,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -1893,7 +1898,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         BenchmarkJobAccepted accepted =
                 orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req);
@@ -1947,7 +1952,7 @@ class BenchmarkRunOrchestratorTest {
                         labBenchmarkConfigPreflightService,
                         labPresetAxisSupport,
                         labBenchmarkDefaultModelResolver,
-                        runtimeObservability);
+                        runtimeObservability, modelPreflightService);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -2010,7 +2015,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
                 .isInstanceOf(ResponseStatusException.class)

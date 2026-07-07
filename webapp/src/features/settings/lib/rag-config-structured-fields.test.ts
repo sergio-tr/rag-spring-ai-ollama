@@ -34,4 +34,22 @@ describe("structuredConfigFields", () => {
     expect(instructionFields.map((f) => f.key)).toEqual(["llmSystemPrompt"]);
     expect(behaviorFields.map((f) => f.key)).toEqual(["topK"]);
   });
+
+  it("appends unknown editable fields after ordered keys", () => {
+    const fields: ConfigSchemaField[] = [
+      { key: "llmModel", type: "string", userEditable: true },
+      { key: "customFlag", type: "boolean", userEditable: true },
+    ];
+    const ordered = structuredConfigFields(fields).map((field) => field.key);
+    expect(ordered).toEqual(["llmModel", "customFlag"]);
+  });
+
+  it("skips non-editable fields unless they are forced into the structured form", () => {
+    const fields: ConfigSchemaField[] = [
+      { key: "hiddenFlag", type: "boolean", userEditable: false },
+      { key: "embeddingModel", type: "string", userEditable: false },
+    ];
+    const ordered = structuredConfigFields(fields).map((field) => field.key);
+    expect(ordered).toEqual(["embeddingModel"]);
+  });
 });

@@ -22,7 +22,7 @@ Do **not** mix Path A and Path B in the same CI job (no Python Testcontainers al
 | Auth + product smoke, `GET /projects`, SYS chains | **Playwright API** (`webapp/e2e/api/`) |
 | Browser UX, full flows | **Playwright E2E** (`webapp/e2e/`) |
 
-**Removed from pytest:** `GET {product}/projects` happy path after login — covered by Playwright API (`login.api.spec.ts`, `projects.api.spec.ts`, `system-smoke.chain.spec.ts`).
+**Removed from pytest:** `GET {product}/projects` happy path after login - covered by Playwright API (`login.api.spec.ts`, `projects.api.spec.ts`, `system-smoke.chain.spec.ts`).
 
 **Phase 8E (JSON safety vs HTML):** `test_stack_integration.py` asserts authenticated **`GET {product}/lab/status`** shape, **`POST {product}/me/account/export`** **202** payload, and unknown product route **404** with **`application/json`** (via `_assert_json_response_not_html`).
 
@@ -119,7 +119,7 @@ pip install -r tests/integration/requirements.txt
 pytest tests/integration/test_tc_postgres_smoke.py -v
 ```
 
-To point a **local** Spring process at the same container after extensions are created, start the container by running the smoke test once with `INTEGRATION_TC_PRINT_JDBC=1` (prints a suggested `SPRING_DATASOURCE_URL`), then run `./mvnw spring-boot:run` with profile `e2e` in another terminal — advanced and not automated here.
+To point a **local** Spring process at the same container after extensions are created, start the container by running the smoke test once with `INTEGRATION_TC_PRINT_JDBC=1` (prints a suggested `SPRING_DATASOURCE_URL`), then run `./mvnw spring-boot:run` with profile `e2e` in another terminal - advanced and not automated here.
 
 ## Observability tests (`INTEGRATION_CHECK_OBS`)
 

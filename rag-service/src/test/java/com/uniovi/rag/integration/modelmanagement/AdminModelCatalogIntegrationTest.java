@@ -17,7 +17,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/** Phase 2 — admin model catalog presentation (service DTO mapping). */
+/** Phase 2 - admin model catalog presentation (service DTO mapping). */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class AdminModelCatalogIntegrationTest {

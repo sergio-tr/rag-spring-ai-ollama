@@ -8,7 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Domain validation for suite definition commands (P33 §12) — invoked by the application service before mapping to JPA.
+ * Domain validation for suite definition commands (P33 §12) - invoked by the application service before mapping to JPA.
  */
 public final class RuntimeTraceRegressionSuiteDefinitionValidation {
 

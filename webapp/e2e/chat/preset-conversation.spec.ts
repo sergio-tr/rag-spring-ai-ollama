@@ -27,7 +27,7 @@ test.describe("Preset on conversation", () => {
     const textarea = page.getByTestId("chat-message-composer");
     await expect(textarea).toBeEnabled({ timeout: 15_000 });
 
-    // Avoid racing GET /conversations against POST create — UI navigates with conversationId in query.
+    // Avoid racing GET /conversations against POST create - UI navigates with conversationId in query.
     await expect(page).toHaveURL(/[?&]conversationId=[a-f0-9-]{36}/i, { timeout: 15_000 });
     const conversationId = new URL(page.url()).searchParams.get("conversationId");
     expect(conversationId).toBeTruthy();

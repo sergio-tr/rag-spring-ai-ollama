@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime.config;
 
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
+import com.uniovi.rag.domain.chat.IndexCompatibilityMessages;
 
 public record IndexCompatibilityResult(
         boolean compatible,
@@ -32,19 +33,28 @@ public record IndexCompatibilityResult(
             return IndexCompatibilityResult.ok();
         }
         if (!hasActiveIndex) {
-            return noActiveIndex("No active index snapshot. This preset requires an indexed corpus; reindex the project.");
+            return noActiveIndex(IndexCompatibilityMessages.NO_ACTIVE_INDEX);
         }
         String snapStrategy = snap != null ? snap.materializationStrategy() : null;
         if (snapStrategy == null || snapStrategy.isBlank()) {
-            return requiresReindex("INDEX_CAPABILITY_MISSING", "Active index snapshot is missing materializationStrategy; reindex the project.");
+            return requiresReindex(
+                    "INDEX_CAPABILITY_MISSING",
+                    "Active index snapshot is missing materialization strategy.");
         }
 
-        boolean strategyOk = satisfiesStrategy(req.requiredMaterialization(), snapStrategy);
+        String normalizedSnap = snapStrategy.trim().toUpperCase();
+        if ("STRUCTURED_SEARCH".equals(normalizedSnap)) {
+            return requiresReindex(
+                    "STRUCTURED_SEARCH_RETRIEVAL_UNSUPPORTED",
+                    IndexCompatibilityMessages.STRUCTURED_SEARCH_RETRIEVAL_UNSUPPORTED);
+        }
+
+        boolean strategyOk = satisfiesStrategy(req.requiredMaterialization(), normalizedSnap);
         if (!strategyOk) {
             return requiresReindex(
                     "MATERIALIZATION_NOT_SUPPORTED",
-                    "Preset requires " + req.requiredMaterialization().name()
-                            + " but active snapshot is " + snapStrategy + ". Reindex is required.");
+                    IndexCompatibilityMessages.forRequiredMaterializationStrategy(
+                            req.requiredMaterialization().name()));
         }
 
         if (req.requiresMetadataSupport()) {
@@ -52,11 +62,17 @@ public record IndexCompatibilityResult(
             if (supportsMetadata == null || !supportsMetadata) {
                 return requiresReindex(
                         "METADATA_SUPPORT_REQUIRED",
-                        "Preset requires index metadata support but active snapshot does not support metadata. Reindex is required.");
+                        IndexCompatibilityMessages.METADATA_SUPPORT_REQUIRED);
             }
         }
 
         return IndexCompatibilityResult.ok();
+    }
+
+    static String materializationRequiredMessage(
+            ExperimentalPresetCanonicalCatalog.RequiredMaterialization required) {
+        return IndexCompatibilityMessages.forRequiredMaterializationStrategy(
+                required != null ? required.name() : null);
     }
 
     private static boolean satisfiesStrategy(

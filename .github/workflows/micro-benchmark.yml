@@ -1,4 +1,4 @@
-# Optional Python micro-benchmarks (retrieval / infra probe). Not a load test — no PR gates.
+# Optional Python micro-benchmarks (retrieval / infra probe). Not a load test - no PR gates.
 name: Micro-benchmark (Python)
 
 on:
@@ -76,7 +76,7 @@ jobs:
 
       - name: Skip notice (no base URL)
         if: env.BENCHMARK_BASE_URL == ''
-        run: echo "Skipping benchmark — set repository variable BENCHMARK_BASE_URL or workflow dispatch base_url"
+        run: echo "Skipping benchmark - set repository variable BENCHMARK_BASE_URL or workflow dispatch base_url"
 
       - name: Upload benchmark JSON
         if: env.BENCHMARK_BASE_URL != ''

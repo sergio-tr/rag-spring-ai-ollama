@@ -1,5 +1,7 @@
 package com.uniovi.rag.migration;
 
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport;
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport.PostgresBinding;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -7,8 +9,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import javax.sql.DataSource;
 import java.sql.Timestamp;
@@ -19,25 +19,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * JDBC checks for P33 schema (CHECK constraints, cascade, unique index) — no Spring context.
+ * JDBC checks for P33 schema (CHECK constraints, cascade, unique index) - no Spring context.
  */
-@EnabledIf(value = "com.uniovi.rag.testsupport.TestEnvironment#isDockerAvailable", disabledReason = "Docker required for isolated Postgres")
+@EnabledIf(
+        value = "com.uniovi.rag.testsupport.TestEnvironment#isIsolatedFlywayPostgresAvailable",
+        disabledReason = "Postgres admin URL or Docker required for isolated Postgres")
 class RuntimeTraceRegressionSuiteDefinitionFlywaySchemaIntegrationTest {
 
-    private static PostgreSQLContainer<?> postgres;
+    private static PostgresBinding postgresBinding;
     private static DataSource dataSource;
 
     @BeforeAll
     static void startPostgres() {
-        postgres =
-                new PostgreSQLContainer<>("pgvector/pgvector:0.8.2-pg16-bookworm")
-                        .withDatabaseName("p33_schema")
-                        .withUsername("test")
-                        .withPassword("test")
-                        .withInitScript("testcontainers-vectordb-init.sql");
-        postgres.start();
-        dataSource =
-                new DriverManagerDataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+        postgresBinding =
+                PostgresIntegrationTestSupport.startIsolatedDatabase("p33_schema", "testcontainers-vectordb-init.sql");
+        dataSource = postgresBinding.dataSource();
         // Ensure schema resolution is stable across environments (search_path / Flyway defaults can differ).
         Flyway.configure()
                 .dataSource(dataSource)
@@ -65,8 +61,8 @@ class RuntimeTraceRegressionSuiteDefinitionFlywaySchemaIntegrationTest {
 
     @AfterAll
     static void stopPostgres() {
-        if (postgres != null) {
-            postgres.stop();
+        if (postgresBinding != null) {
+            postgresBinding.cleanup().run();
         }
     }
 

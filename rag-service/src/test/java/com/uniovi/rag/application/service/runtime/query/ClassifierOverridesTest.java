@@ -311,11 +311,56 @@ class ClassifierOverridesTest {
     }
 
     @Test
+    void masAsistentesAgostoVsFebrero_compare() {
+        assertEquals(
+                QueryType.COMPARE,
+                ClassifierOverrides.apply(
+                        "¿Hubo más asistentes en la reunión de agosto o en la de febrero de 2025?",
+                        QueryType.GET_FIELD));
+    }
+
+    @Test
+    void febreroTemasAndAttendeeThreshold_filterAndList() {
+        assertEquals(
+                QueryType.FILTER_AND_LIST,
+                ClassifierOverrides.apply(
+                        "¿Qué temas se discutieron en las reuniones celebradas en febrero que contaron con más de 15 asistentes?",
+                        QueryType.GET_FIELD));
+    }
+
+    @Test
     void endTimeAfter830MapsToFilterAndList() {
         assertEquals(
                 QueryType.FILTER_AND_LIST,
                 ClassifierOverrides.apply(
                         "dime las fechas de las actas que terminaron más tarde de las 8:30",
                         QueryType.SUMMARIZE_MEETING));
+    }
+
+    @Test
+    void presentesEstuvieronWithDateMapsToGetField() {
+        assertEquals(
+                QueryType.GET_FIELD,
+                ClassifierOverrides.apply(
+                        "¿Quiénes estuvieron presentes en la reunión del 25 de febrero de 2026?",
+                        QueryType.FIND_PARAGRAPH));
+    }
+
+    @Test
+    void videovigilanciaMeetingCountMapsToCountDocuments() {
+        assertEquals(
+                QueryType.COUNT_DOCUMENTS,
+                ClassifierOverrides.apply(
+                        "Dime en cuántas reuniones se trató el asunto de videovigilancia (cámaras de seguridad).",
+                        QueryType.FIND_PARAGRAPH));
+    }
+
+    @Test
+    void attendeeCountExpandedQueryBlocksGetDuration() {
+        assertEquals(
+                QueryType.GET_FIELD,
+                ClassifierOverrides.apply(
+                        "¿Cuántos asistentes tiene el acta del 25 de agosto del 2025?",
+                        QueryType.GET_DURATION));
     }
 }

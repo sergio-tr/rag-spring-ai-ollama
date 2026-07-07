@@ -23,4 +23,18 @@ describe("parseAuthApiErrorCode", () => {
     });
     expect(parseAuthApiErrorCode(err)).toBeUndefined();
   });
+
+  it("returns undefined when code is missing or not a string", () => {
+    const missingCode = new ApiError(400, "Bad Request", {
+      kind: "http",
+      rawBodyPreview: JSON.stringify({ message: "only message" }),
+    });
+    expect(parseAuthApiErrorCode(missingCode)).toBeUndefined();
+
+    const numericCode = new ApiError(400, "Bad Request", {
+      kind: "http",
+      rawBodyPreview: JSON.stringify({ code: 42 }),
+    });
+    expect(parseAuthApiErrorCode(numericCode)).toBeUndefined();
+  });
 });

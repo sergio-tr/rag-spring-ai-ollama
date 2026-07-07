@@ -4,6 +4,7 @@ import com.uniovi.rag.domain.llm.LlmConfigurationKeys;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -33,6 +34,12 @@ class RagConfigValueSanitizerTest {
                         IllegalArgumentException.class,
                         () -> RagConfigValueSanitizer.sanitize(Map.of("apiKey", "sk-secret")));
         assertTrue(ex.getMessage().contains("llmApiKeyEnv"));
+    }
+
+    @Test
+    void sanitize_reportsDroppedKeys() {
+        assertThat(RagConfigValueSanitizer.droppedKeys(Map.of("unknownField", "x", "topK", 5)))
+                .containsExactly("unknownField");
     }
 
     @Test

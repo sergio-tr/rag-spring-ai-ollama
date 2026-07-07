@@ -1,6 +1,9 @@
 package com.uniovi.rag.application.service.runtime.clarification;
 
+import com.uniovi.rag.application.service.runtime.optimization.DeterministicQueryRewriteShortcuts;
 import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
+import com.uniovi.rag.application.service.runtime.query.IncompleteQueryHeuristics;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationQuestion;
@@ -41,6 +44,23 @@ public class ClarificationPolicyResolver {
                     false, ClarificationOutcome.DISABLED_BY_CONFIG, null, "disable_reason=" + d);
         }
 
+        Optional<IncompleteQueryHeuristics.Signal> incomplete = IncompleteQueryHeuristics.detect(plan);
+        if (incomplete.isPresent()) {
+            ClarificationQuestionKind kind =
+                    switch (incomplete.get().reason()) {
+                        case INCOMPLETE_COUNT_FILTER, TRAILING_RELATIVE_CLAUSE ->
+                                ClarificationQuestionKind.GENERIC_MISSING_INFORMATION;
+                        case TRAILING_PREPOSITION -> ClarificationQuestionKind.MISSING_DATE;
+                    };
+            ClarificationQuestion q = clarificationQuestionGenerator.questionForKind(kind, plan);
+            ClarificationOutcome askOutcome =
+                    ctx.validPendingExistedAtLoad()
+                            ? ClarificationOutcome.ASKED_CLARIFICATION_AGAIN
+                            : ClarificationOutcome.ASKED_CLARIFICATION;
+            return new ClarificationDecision(
+                    true, askOutcome, q, incomplete.get().traceNote());
+        }
+
         if (isCompoundMonthTopicAttendeeFilterQuery(plan)) {
             return new ClarificationDecision(
                     false, ClarificationOutcome.NOT_NEEDED, null, "compound_month_topic_attendee_filter");
@@ -49,6 +69,11 @@ public class ClarificationPolicyResolver {
         if (isCorpusWideExactAttendeeCountListingQuery(plan)) {
             return new ClarificationDecision(
                     false, ClarificationOutcome.NOT_NEEDED, null, "corpus_wide_exact_attendee_count_listing");
+        }
+
+        if (isCorpusWideListingQuery(plan)) {
+            return new ClarificationDecision(
+                    false, ClarificationOutcome.NOT_NEEDED, null, "corpus_wide_listing_exempt");
         }
 
         AmbiguityStatus status = plan.ambiguityAssessment().status();
@@ -96,6 +121,11 @@ public class ClarificationPolicyResolver {
         AmbiguityStatus status = plan.ambiguityAssessment().status();
 
         for (String f : missingLower) {
+            if (containsAnySubstring(f, "filter", "condition", "criteria", "predicate")) {
+                return Optional.of(ClarificationQuestionKind.GENERIC_MISSING_INFORMATION);
+            }
+        }
+        for (String f : missingLower) {
             if (containsAnySubstring(f, "date", "time", "deadline")) {
                 return Optional.of(ClarificationQuestionKind.MISSING_DATE);
             }
@@ -130,6 +160,39 @@ public class ClarificationPolicyResolver {
     private static boolean containsAnySubstring(String fieldLower, String... needles) {
         for (String n : needles) {
             if (fieldLower.contains(n)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isCorpusWideListingQuery(QueryPlan plan) {
+        if (plan == null) {
+            return false;
+        }
+        for (String candidate :
+                List.of(plan.normalizedQueryText(), plan.rewrittenQueryText(), plan.rawUserQuery())) {
+            if (candidate == null || candidate.isBlank()) {
+                continue;
+            }
+            String q = candidate.toLowerCase(Locale.ROOT);
+            if (!ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)
+                    && DeterministicQueryRewriteShortcuts.matches(candidate).isEmpty()) {
+                continue;
+            }
+            Optional<QueryType> classifier = plan.classifierQueryType();
+            if (classifier.isPresent()) {
+                QueryType type = classifier.get();
+                if (type == QueryType.FILTER_AND_LIST
+                        || type == QueryType.COUNT_DOCUMENTS
+                        || type == QueryType.FIND_PARAGRAPH
+                        || type == QueryType.SUMMARIZE_TOPIC
+                        || type == QueryType.COUNT_AND_EXPLAIN
+                        || type == QueryType.COMPARE) {
+                    return true;
+                }
+            }
+            if (DeterministicQueryRewriteShortcuts.matches(candidate).isPresent()) {
                 return true;
             }
         }

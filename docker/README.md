@@ -2,9 +2,9 @@
 
 Orchestration files (`docker-compose.yml`, `compose.*.yml`) and operational documentation for the stack.
 
-**See also:** [Deployment model](../docs/architecture/deployment-model.md), [runbook — Docker VM](../docs/operations/runbook-docker-vm.md).
+**See also:** [Deployment model](../docs/architecture/deployment-model.md), [runbook - Docker VM](../docs/operations/runbook-docker-vm.md).
 
-**Target architecture (frozen model):** [ADR 0006 — Keycloak & HTTPS foundation](../docs/adr/0006-keycloak-identity-and-https-foundation.md).
+**Target architecture (frozen model):** [ADR 0006 - Keycloak & HTTPS foundation](../docs/adr/0006-keycloak-identity-and-https-foundation.md).
 
 **Images:** Every `FROM` in this monorepo targets a **Linux** userland (OpenJDK/Eclipse Temurin, Node, Python slim, Ollama CUDA variants, etc.). **Postgres** is built from **`db/Dockerfile`**; **`docker-compose.yml`** passes a **fixed** pgvector pin **`pgvector/pgvector:0.8.2-pg16-bookworm`** as `POSTGRES_BASE_IMAGE` (see [db/README.md](../db/README.md)). Loki, Promtail, node-exporter, and cAdvisor use thin Dockerfiles under **`observability/*/`** with tags from **`observability/.env`**. Compose is validated on **Linux** hosts and in **CI** (`ubuntu-*`); use Linux or WSL2 locally for parity.
 
@@ -156,8 +156,8 @@ Compose uses **`build:`** with `context` + `dockerfile` and **`args`** fed from 
 ## Parameterization policy
 
 - **Pinned upstream bases** live in component `*.env` / `*.env.example` (e.g. `POSTGRES_BASE_IMAGE`, `*_BASE_IMAGE` in `observability/.env.example`). Compose references them as `${VAR:-default}` where appropriate.
-- **No `image:`** keys in `docker/*.yml` — thin Dockerfiles wrap official bases; CI checks this via [`compose_guard.py`](scripts/compose_guard.py).
-- **GitHub Actions** Postgres **service containers** in workflows are **not** Compose; they still declare a pinned `image:` (see [`reusable-ci-core.yml`](../.github/workflows/reusable-ci-core.yml)) — that is expected and outside `docker/*.yml`.
+- **No `image:`** keys in `docker/*.yml` - thin Dockerfiles wrap official bases; CI checks this via [`compose_guard.py`](scripts/compose_guard.py).
+- **GitHub Actions** Postgres **service containers** in workflows are **not** Compose; they still declare a pinned `image:` (see [`reusable-ci-core.yml`](../.github/workflows/reusable-ci-core.yml)) - that is expected and outside `docker/*.yml`.
 
 ## CI validation
 

@@ -7,7 +7,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Ordered suite entry in a create/update command — mirrors P30 {@code RuntimeTraceRegressionSuiteEntry} shapes.
+ * Ordered suite entry in a create/update command - mirrors P30 {@code RuntimeTraceRegressionSuiteEntry} shapes.
  */
 public sealed interface RuntimeTraceRegressionSuiteDefinitionEntrySpec
         permits RuntimeTraceRegressionSuiteDefinitionEntrySpec.ByTraceIds,

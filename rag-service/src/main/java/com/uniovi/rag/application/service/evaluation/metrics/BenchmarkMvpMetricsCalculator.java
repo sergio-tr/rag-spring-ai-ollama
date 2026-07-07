@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Per-row MVP metrics for exports — computed from persisted {@link EvaluationResultEntity} (+ run fallbacks).
+ * Per-row MVP metrics for exports - computed from persisted {@link EvaluationResultEntity} (+ run fallbacks).
  */
 public final class BenchmarkMvpMetricsCalculator {
 
@@ -166,6 +166,11 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("queryType", str(mvp.get("queryType")));
         row.put("difficulty", str(mvp.get("difficulty")));
         row.put("datasetQuestionId", str(mvp.get("datasetQuestionId")));
+        row.put("roleEvalSubset", str(mp.get(BenchmarkResultRowKeys.ROLE_EVAL_SUBSET)));
+        row.put("roleEvalRoleFamily", str(mp.get(BenchmarkResultRowKeys.ROLE_EVAL_ROLE_FAMILY)));
+        row.put("roleEvalRoleProfile", str(mp.get(BenchmarkResultRowKeys.ROLE_EVAL_ROLE_PROFILE)));
+        row.put("roleEvalScoringType", str(mp.get(BenchmarkResultRowKeys.ROLE_EVAL_SCORING_TYPE)));
+        row.put("roleEvalPassed", csvVal(mp.get(BenchmarkResultRowKeys.ROLE_EVAL_PASSED)));
 
         row.put("recallAt1", csvVal(ret.get("recallAt1")));
         row.put("recallAt3", csvVal(ret.get("recallAt3")));

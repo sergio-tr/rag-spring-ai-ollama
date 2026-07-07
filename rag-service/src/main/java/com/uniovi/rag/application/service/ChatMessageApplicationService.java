@@ -6,6 +6,7 @@ import com.uniovi.rag.domain.MessageProcessingStatus;
 import com.uniovi.rag.domain.MessageRole;
 import com.uniovi.rag.application.port.AfterCommitTaskScheduler;
 import com.uniovi.rag.application.service.chat.ChatRuntimeCompatibilitySupport;
+import com.uniovi.rag.application.service.llm.ModelPreflightService;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.infrastructure.persistence.ConversationDraftRepository;
@@ -65,6 +66,7 @@ public class ChatMessageApplicationService {
     private final RuntimeConfigValidationService runtimeConfigValidationService;
     private final ChatPresetDefaults chatPresetDefaults;
     private final ObjectProvider<RuntimeObservability> runtimeObservability;
+    private final ModelPreflightService modelPreflightService;
 
     public ChatMessageApplicationService(
             ProjectAccessService projectAccessService,
@@ -80,7 +82,8 @@ public class ChatMessageApplicationService {
             ChatMessageWorkService chatMessageWorkService,
             RuntimeConfigValidationService runtimeConfigValidationService,
             ChatPresetDefaults chatPresetDefaults,
-            ObjectProvider<RuntimeObservability> runtimeObservability) {
+            ObjectProvider<RuntimeObservability> runtimeObservability,
+            ModelPreflightService modelPreflightService) {
         this.projectAccessService = projectAccessService;
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -95,6 +98,7 @@ public class ChatMessageApplicationService {
         this.runtimeConfigValidationService = runtimeConfigValidationService;
         this.chatPresetDefaults = chatPresetDefaults;
         this.runtimeObservability = runtimeObservability;
+        this.modelPreflightService = modelPreflightService;
     }
 
     @Transactional
@@ -116,6 +120,14 @@ public class ChatMessageApplicationService {
                                 effectivePresetId != null ? effectivePresetId.toString() : null,
                                 null,
                                 Map.of())));
+
+        String persistedLlmEarly =
+                conv.getLlmModel() != null && !conv.getLlmModel().isBlank() ? conv.getLlmModel().trim() : null;
+        String effectiveLlmEarly =
+                body.llmModel() != null && !body.llmModel().isBlank() ? body.llmModel().trim() : persistedLlmEarly;
+        modelPreflightService.requireChatForMessage(
+                userId, project != null ? project.getId() : null, effectiveLlmEarly);
+
         UUID continueId = body.continueAfterUserMessageId();
 
         MessageEntity userMsg;

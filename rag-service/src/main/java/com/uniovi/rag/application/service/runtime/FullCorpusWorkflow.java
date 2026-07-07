@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Component
@@ -89,6 +90,11 @@ public class FullCorpusWorkflow extends AbstractExecutionWorkflow {
         stages.add(
                 RuntimeAnswerPrompts.runtimeAnswerMetaStage(
                         policy, corpusSafe.length(), 0, abstention, abstentionReason));
+        List<Map<String, Object>> responseSources =
+                corpusSafe.isBlank()
+                        ? List.of()
+                        : ResponseSourcesBackfill.fromCorpusDocuments(
+                                snapshotCorpusAssembler.listCorpusDocuments(ctx));
         return RagExecutionResult.withPlaceholderTrace(
                 answer,
                 workflowName(),
@@ -96,7 +102,8 @@ public class FullCorpusWorkflow extends AbstractExecutionWorkflow {
                 false,
                 ctx.knowledgeSnapshotSelection().orderedSnapshotIds(),
                 null,
-                stages);
+                stages)
+                .withResponseSources(responseSources);
     }
 
     @Override

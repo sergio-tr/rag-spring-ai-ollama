@@ -1,6 +1,8 @@
 package com.uniovi.rag.application.service.llm.catalog;
 
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
+import com.uniovi.rag.application.service.embedding.EmbeddingCapabilityResolver;
+import com.uniovi.rag.domain.embedding.EmbeddingModelCapabilities;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
@@ -23,11 +25,15 @@ public class LabEvaluationModelsService {
 
     private final ResolvedLlmConfigResolver configResolver;
     private final EvaluationModelCatalogService evaluationModelCatalogService;
+    private final EmbeddingCapabilityResolver embeddingCapabilityResolver;
 
     public LabEvaluationModelsService(
-            ResolvedLlmConfigResolver configResolver, EvaluationModelCatalogService evaluationModelCatalogService) {
+            ResolvedLlmConfigResolver configResolver,
+            EvaluationModelCatalogService evaluationModelCatalogService,
+            EmbeddingCapabilityResolver embeddingCapabilityResolver) {
         this.configResolver = configResolver;
         this.evaluationModelCatalogService = evaluationModelCatalogService;
+        this.embeddingCapabilityResolver = embeddingCapabilityResolver;
     }
 
     public LabEvaluationModelsResponseDto listForUser(
@@ -60,10 +66,14 @@ public class LabEvaluationModelsService {
                 effectiveProvider, capability, List.copyOf(models), hasCompatible);
     }
 
-    private static LabEvaluationModelDto toEvaluationDto(
+    private LabEvaluationModelDto toEvaluationDto(
             LlmCatalogModelDto entry, LlmModelCapability capability, LlmProvider effectiveProvider) {
         boolean evalSelectable = computeEvalSelectable(entry, capability);
         String blockedReason = evalSelectable ? null : blockedReason(entry, capability, effectiveProvider);
+        EmbeddingModelCapabilities caps =
+                capability == LlmModelCapability.EMBEDDING
+                        ? embeddingCapabilityResolver.resolve(effectiveProvider, entry.modelName())
+                        : new EmbeddingModelCapabilities(false, List.of(), false, null, null, false, false);
         return new LabEvaluationModelDto(
                 entry.modelName(),
                 evalSelectable,
@@ -72,7 +82,14 @@ public class LabEvaluationModelsService {
                 entry.runtimeStatus(),
                 entry.embeddingDimensions(),
                 entry.compatibleWithCurrentVectorStore(),
-                entry.usableAsDefault());
+                entry.usableAsDefault(),
+                caps.supportsEncodingFormat(),
+                caps.supportedEncodingFormats(),
+                caps.supportsDimensions(),
+                caps.defaultDimensions(),
+                caps.maxInputTokens(),
+                caps.supportsNormalize(),
+                caps.supportsTruncate());
     }
 
     static boolean computeEvalSelectable(LlmCatalogModelDto entry, LlmModelCapability capability) {

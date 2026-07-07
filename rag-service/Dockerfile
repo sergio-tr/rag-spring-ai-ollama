@@ -6,7 +6,7 @@ ARG JRE_BASE_IMAGE=eclipse-temurin:21-jre-alpine
 FROM ${JDK_BASE_IMAGE} AS build
 WORKDIR /app
 
-# Maven Wrapper (mvnw + .mvn/) — no Maven install required on host or base image.
+# Maven Wrapper (mvnw + .mvn/) - no Maven install required on host or base image.
 # Wrapper lives only under rag-service/ (single copy in the repo).
 COPY mvnw ./mvnw
 COPY .mvn ./.mvn

@@ -161,6 +161,20 @@ export async function installLayoutProductApiStub(page: Page): Promise<void> {
       return;
     }
 
+    const compatiblePresetsMatch = path.match(/^\/projects\/([^/]+)\/compatible-presets/);
+    if (compatiblePresetsMatch) {
+      await fulfillJson({
+        projectId: compatiblePresetsMatch[1],
+        effectiveEmbeddingModelId: "mxbai-embed-large",
+        hasActiveIndex: false,
+        readyDocumentCount: 0,
+        activeSnapshotCapabilities: null,
+        productPresets: [],
+        experimentalPresets: [],
+      });
+      return;
+    }
+
     const activeSnapshotMatch = path.match(/^\/projects\/([^/]+)\/knowledge\/snapshots\/active$/);
     if (activeSnapshotMatch) {
       await fulfillJson(null);

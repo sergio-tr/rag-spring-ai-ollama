@@ -14,7 +14,7 @@ from app.query_type_contract import JAVA_QUERY_TYPES, LEGACY_TRAINING_LABEL_MAP
 
 @pytest.mark.parametrize(
     "filename",
-    ["basic_dataset_qa_clasificacion.xlsx", "evaluation_dataset.xlsx"],
+    ["basic_dataset_qa_clasificacion_final.xlsx", "evaluation_dataset.xlsx"],
 )
 def test_dataset_query_types_are_java_enum_labels(filename: str):
     data_dir = Path(Config().get_data_dir())

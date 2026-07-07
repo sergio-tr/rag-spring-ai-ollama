@@ -30,7 +30,7 @@ public class DefaultNamedEntityExtractionAdapter implements NamedEntityExtractio
             return EntityExtractionResult.emptyWithNote("DISABLED");
         }
         try {
-            JSONObject json = analyser.analyse(normalizedText);
+            JSONObject json = analyser.analyse(ctx, normalizedText);
             return map(json, normalizedText);
         } catch (Exception e) {
             return EntityExtractionResult.emptyWithNote("FALLBACK: " + safeMsg(e));

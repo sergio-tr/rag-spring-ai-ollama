@@ -1,4 +1,4 @@
-# Manual fullstack lane — mirrors reusable-ci-core.yml job e2e_fullstack (preflight + @critical only).
+# Manual fullstack lane - mirrors reusable-ci-core.yml job e2e_fullstack (preflight + @critical only).
 # Authoritative PR gate: ci.yml → reusable-ci-core.yml.
 name: E2E fullstack (Playwright + API)
 
@@ -42,6 +42,8 @@ jobs:
       NEXT_PUBLIC_API_BASE_URL: ""
       NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
       E2E_ADMIN_ENABLED: "1"
+      E2E_ADMIN_EMAIL: admin@e2e.local
+      E2E_ADMIN_PASSWORD: e2e
       REVERSE_PROXY_HTTP_PORT: "8080"
       REVERSE_PROXY_HTTPS_PORT: "8443"
       RAG_LLM_DEFAULT_PROVIDER: OLLAMA_NATIVE

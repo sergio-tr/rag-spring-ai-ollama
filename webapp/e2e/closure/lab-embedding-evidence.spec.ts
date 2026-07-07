@@ -116,7 +116,7 @@ test.describe("Closure LAB embedding model evidence @closure @fullstack", () => 
       expect(reqSnaps.every((id) => typeof id === "string" && id.trim().length > 0)).toBe(true);
       evidenceLog(`client sent indexSnapshotIds count=${reqSnaps.length}`);
     } else {
-      evidenceLog("indexSnapshotIds omitted — backend auto-aligns snapshots");
+      evidenceLog("indexSnapshotIds omitted - backend auto-aligns snapshots");
     }
 
     const job = await waitForSingleActiveLabJob(page, "EMBEDDING_RETRIEVAL");

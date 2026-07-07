@@ -32,9 +32,13 @@ export function usePromptCatalogQuery() {
 
 export type TaskLlmCatalogTask = {
   id: string;
+  role?: string;
   label: string;
   inheritsMainModelByDefault: boolean;
   operationName: string;
+  defaultModelId?: string;
+  defaultParameters?: Record<string, unknown>;
+  supportedParameters?: string[];
 };
 
 export type TaskLlmCatalogResponse = {

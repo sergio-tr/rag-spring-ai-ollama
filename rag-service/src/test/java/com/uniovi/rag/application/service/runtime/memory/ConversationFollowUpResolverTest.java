@@ -355,8 +355,96 @@ class ConversationFollowUpResolverTest {
     }
 
     @Test
+    void attendeeCountCarryOver_ellipticalDate() {
+        List<ConversationMemoryTurn> history =
+                List.of(
+                        new ConversationMemoryTurn(
+                                UUID.randomUUID(),
+                                1,
+                                MessageRole.USER,
+                                "¿Cuántos asistentes tiene el acta del 25 de febrero de 2026?"),
+                        new ConversationMemoryTurn(
+                                UUID.randomUUID(),
+                                2,
+                                MessageRole.ASSISTANT,
+                                "El acta del 25 de febrero de 2026 tuvo 17 asistentes."));
+
+        assertThat(ConversationFollowUpResolver.expand(history, "y la del 25 de agosto de 2026"))
+                .get()
+                .asString()
+                .contains("asistentes")
+                .contains("25 de agosto de 2026");
+    }
+
+    @Test
+    void attendeeCountCarryOver_ellipticalDateDelYear() {
+        List<ConversationMemoryTurn> history =
+                List.of(
+                        new ConversationMemoryTurn(
+                                UUID.randomUUID(),
+                                1,
+                                MessageRole.USER,
+                                "¿Cuántos asistentes tiene el acta del 25 de febrero de 2026?"),
+                        new ConversationMemoryTurn(
+                                UUID.randomUUID(),
+                                2,
+                                MessageRole.ASSISTANT,
+                                "El acta del 25 de febrero de 2026 tuvo 17 asistentes."));
+
+        assertThat(ConversationFollowUpResolver.expand(history, "y la del 25 de agosto del 2025"))
+                .get()
+                .asString()
+                .contains("asistentes")
+                .contains("25 de agosto del 2025");
+    }
+
+    @Test
     void expand_bareParticipantCount_withoutHistory_returnsEmpty() {
         assertThat(ConversationFollowUpResolver.expand(List.of(), "¿Cuántos participantes asistieron?"))
                 .isEmpty();
+    }
+
+    @Test
+    void rewriteCannotOverrideCarriedField_ellipticalSlashDate() {
+        List<ConversationMemoryTurn> history =
+                List.of(
+                        new ConversationMemoryTurn(
+                                UUID.randomUUID(),
+                                1,
+                                MessageRole.USER,
+                                "¿Cuántos asistentes tiene el acta del 25 de febrero de 2026?"),
+                        new ConversationMemoryTurn(
+                                UUID.randomUUID(),
+                                2,
+                                MessageRole.ASSISTANT,
+                                "17 asistentes."));
+
+        assertThat(ConversationFollowUpResolver.expand(history, "y la del 25/02/25"))
+                .get()
+                .asString()
+                .contains("asistentes")
+                .contains("25/02/25");
+    }
+
+    @Test
+    void topicFollowUp_corpusWideSearch() {
+        List<ConversationMemoryTurn> history =
+                List.of(
+                        new ConversationMemoryTurn(
+                                UUID.randomUUID(),
+                                1,
+                                MessageRole.USER,
+                                "Hazme un resumen de lo que se comenta sobre las zonas comunes"),
+                        new ConversationMemoryTurn(
+                                UUID.randomUUID(),
+                                2,
+                                MessageRole.ASSISTANT,
+                                "Resumen de zonas comunes."));
+
+        assertThat(ConversationFollowUpResolver.expand(history, "y qué se dice sobre renovar la pintura"))
+                .get()
+                .asString()
+                .containsIgnoringCase("renovar la pintura")
+                .containsIgnoringCase("actas");
     }
 }

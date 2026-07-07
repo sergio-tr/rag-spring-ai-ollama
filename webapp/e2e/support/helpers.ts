@@ -341,6 +341,33 @@ export async function loginAsSeedUser(page: Page): Promise<void> {
   await waitForProjectsPageReady(page, loginTimeoutMs);
 }
 
+/** Logs in with dev/admin seed credentials via API and bootstraps the browser session. */
+export async function loginAsAdminUser(page: Page): Promise<void> {
+  await registerE2eLayoutPersistenceReset(page);
+  let loginRes: APIResponse | null = null;
+  let loginBody = "";
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    loginRes = await page.request.post(productApiUrl("/auth/login"), {
+      data: { email: adminEmail(), password: adminPassword() },
+      headers: { "Content-Type": "application/json" },
+    });
+    loginBody = await loginRes.text();
+    if (loginRes.ok()) break;
+    if ([502, 503, 504].includes(loginRes.status())) {
+      await page.waitForTimeout(400 + attempt * 350);
+      continue;
+    }
+    break;
+  }
+  if (!loginRes) {
+    throw new Error("admin API login request missing");
+  }
+  expect(loginRes.ok(), `admin API login failed: ${loginRes.status()} ${loginBody}`).toBeTruthy();
+  const tokens = JSON.parse(loginBody) as LoginResponse;
+  expect(tokens.accessToken, "admin API login access token").toBeTruthy();
+  await bootstrapBrowserSession(page, tokens);
+}
+
 /** Surfaces dialog role=alert errors when Create does not close the modal. */
 async function assertProjectCreateDialogClosedOrSurfaceError(dialog: Locator): Promise<void> {
   const closed = await dialog
@@ -379,14 +406,17 @@ export async function createAndActivateProject(page: Page, projectName: string):
     : page.getByRole("button", { name: /new project|nuevo proyecto/i }).first();
   await expect(newProjectTrigger).toBeEnabled({ timeout: 15_000 });
   await newProjectTrigger.click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByTestId("new-project-dialog");
   await expect(dialog).toBeVisible();
   await dialog.locator("#proj-name").fill(projectName);
-  await dialog.getByRole("button", { name: /^(create|crear)$/i }).click();
+  // Tall dialog scrolls internally; requestSubmit avoids flaky "outside viewport" clicks on Create.
+  await dialog.locator("form").evaluate((form: HTMLFormElement) => {
+    form.requestSubmit();
+  });
   await assertProjectCreateDialogClosedOrSurfaceError(dialog);
   const projectCard = page.locator('[data-slot="card"]').filter({ hasText: projectName }).first();
   await expect(projectCard).toBeVisible({ timeout: 20_000 });
-  // Require the actual active marker — not "Set active only", which also contains the substring "active".
+  // Require the actual active marker - not "Set active only", which also contains the substring "active".
   await expect(projectCard.getByRole("button", { name: /^(Active|Activo)$/i })).toBeVisible({
     timeout: 20_000,
   });
@@ -441,15 +471,20 @@ export async function openChatConfigurationPanel(page: Page): Promise<Locator> {
   return panel;
 }
 
-/** Expands the runtime overrides block inside an open configuration panel. */
+/** Scrolls the retrieval/runtime overrides block into view inside an open configuration panel. */
 export async function expandChatConfigurationRuntimeSection(panel: Locator): Promise<void> {
   const topK = panel.getByTestId("chat-runtime-toggle-topK");
   if (await topK.isVisible().catch(() => false)) {
     return;
   }
-  const collapsible = panel.getByTestId("chat-config-runtime-collapsible");
-  await collapsible.scrollIntoViewIfNeeded();
-  await collapsible.click();
+  const retrievalSection = panel.getByTestId("chat-retrieval-settings-section");
+  await retrievalSection.scrollIntoViewIfNeeded();
+  const notApplicable = panel.getByTestId("chat-retrieval-settings-not-applicable");
+  if (await notApplicable.isVisible().catch(() => false)) {
+    throw new Error(
+      "Retrieval settings are not applicable for the current preset (useRetrieval=false)."
+    );
+  }
   await expect(topK).toBeVisible({ timeout: 15_000 });
 }
 
@@ -578,7 +613,7 @@ export async function createNewChatConversation(
   await expect(presetSelect).toBeVisible({ timeout: 20_000 });
   const compatibleChunkPreset = presetSelect
     .locator("option")
-    .filter({ hasText: /P3 .*chunk-level dense retrieval/i })
+    .filter({ hasText: /chunk-level (dense )?retrieval/i })
     .first();
   if ((await compatibleChunkPreset.count()) > 0 && !(await compatibleChunkPreset.isDisabled())) {
     const value = await compatibleChunkPreset.getAttribute("value");
@@ -785,7 +820,7 @@ export async function sendChatMessage(page: Page, message: string, options?: Sen
   await expect(dialog).toBeVisible({ timeout: 15_000 });
   const presetSelect = dialog.getByLabel(/initial preset/i);
   await expect(presetSelect).toBeVisible({ timeout: 15_000 });
-  const compatibleChunkPreset = presetSelect.locator("option").filter({ hasText: /P3 .*chunk-level dense retrieval/i }).first();
+  const compatibleChunkPreset = presetSelect.locator("option").filter({ hasText: /chunk-level (dense )?retrieval/i }).first();
   if ((await compatibleChunkPreset.count()) > 0 && !(await compatibleChunkPreset.isDisabled())) {
     const value = await compatibleChunkPreset.getAttribute("value");
     if (value) {
@@ -805,7 +840,7 @@ export async function sendChatMessage(page: Page, message: string, options?: Sen
   }
 
   throw new Error(
-    "sendChatMessage: could not send — Send stayed disabled after refill, Enter did not clear the composer, " +
+    "sendChatMessage: could not send - Send stayed disabled after refill, Enter did not clear the composer, " +
       "and retry after starting a new conversation failed.",
   );
 }

@@ -434,6 +434,9 @@ public class LabEvaluationSnapshotService {
         if (snapshot == null || snapshot.getId() == null) {
             return false;
         }
+        if (!matchesGroupMaterialization(snapshot, groupKey)) {
+            return false;
+        }
         return indexSnapshotCompatibilityService
                 .evaluateReuse(
                         resolveUserId(run),
@@ -446,6 +449,29 @@ public class LabEvaluationSnapshotService {
                         groupKey,
                         false)
                 .eligible();
+    }
+
+    private boolean matchesGroupMaterialization(
+            KnowledgeIndexSnapshotEntity snapshot, LabPresetRunGroupKey groupKey) {
+        String required = requiredMaterializationForGroup(groupKey);
+        if (required == null) {
+            return true;
+        }
+        IndexSnapshotCapabilities caps =
+                IndexSnapshotCapabilities.fromIndexProfile(snapshotProfileAccess.resolveProfileJsonb(snapshot));
+        return required.equalsIgnoreCase(caps.materializationStrategy());
+    }
+
+    private static String requiredMaterializationForGroup(LabPresetRunGroupKey groupKey) {
+        if (groupKey == null) {
+            return null;
+        }
+        return switch (groupKey) {
+            case DOCUMENT_LEVEL -> "DOCUMENT_LEVEL";
+            case CHUNK_LEVEL, CHUNK_LEVEL_METADATA -> "CHUNK_LEVEL";
+            case HYBRID_METADATA -> "HYBRID";
+            case DIRECT_LLM, NO_INDEX, MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN -> null;
+        };
     }
 
     private boolean snapshotEligibleForReuse(

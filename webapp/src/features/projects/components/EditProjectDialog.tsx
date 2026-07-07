@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { usePatchProject } from "@/features/projects/hooks/use-projects";
 import { cn } from "@/lib/utils";
 import type { ProjectSummary } from "@/types/api";
-import Link from "next/link";
+import { Link } from "@/navigation";
 
 const PROJECT_ICONS = [
   "folder",

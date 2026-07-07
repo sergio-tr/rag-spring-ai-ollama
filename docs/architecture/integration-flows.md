@@ -8,13 +8,13 @@ How the browser hits Spring vs Next by path: [webapp-edge-routing.mmd](webapp-ed
 
 The product API expects **JWT**-based auth for protected routes; public routes include health, auth login/register, OpenAPI (non-prod), and any explicitly configured permit-all paths. Visual overview: [security-api-boundaries.mmd](security-api-boundaries.mmd).
 
-**Detail:** Spring configuration and endpoints — [../../rag-service/README.md](../../rag-service/README.md); web client behaviour — [../../webapp/README.md](../../webapp/README.md).
+**Detail:** Spring configuration and endpoints - [../../rag-service/README.md](../../rag-service/README.md); web client behaviour - [../../webapp/README.md](../../webapp/README.md).
 
 ## RAG query path
 
 Orchestration from the product API through configuration resolution and `RagExecutionOrchestrator` to **Ollama** and optional **classifier-service**: [rag-request-flow.mmd](rag-request-flow.mmd).
 
-**Detail:** Package map — [BACKEND_PACKAGES.md](BACKEND_PACKAGES.md); classifier — [../../classifier-service/README.md](../../classifier-service/README.md).
+**Detail:** Package map - [BACKEND_PACKAGES.md](BACKEND_PACKAGES.md); classifier - [../../classifier-service/README.md](../../classifier-service/README.md).
 
 ## Chat (async job)
 

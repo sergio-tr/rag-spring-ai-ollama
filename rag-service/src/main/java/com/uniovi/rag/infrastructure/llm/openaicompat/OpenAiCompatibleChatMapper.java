@@ -29,10 +29,16 @@ final class OpenAiCompatibleChatMapper {
                 readDouble(additional, "topP", "top_p"),
                 readInteger(additional, "maxTokens", "max_tokens"),
                 readStop(additional),
-                null,
-                null,
+                readDouble(additional, "presencePenalty", "presence_penalty"),
+                readDouble(additional, "frequencyPenalty", "frequency_penalty"),
                 readInteger(additional, "seed"),
-                readResponseFormat(additional));
+                readResponseFormat(additional),
+                resolveThinkDisabled(additional));
+    }
+
+    /** Only forwards explicit {@code think} when present; defaults are applied upstream by {@code LlmProviderParameterFilter}. */
+    static Boolean resolveThinkDisabled(Map<String, Object> additional) {
+        return readBoolean(additional, "think");
     }
 
     static LlmChatResponse toPortResponse(OpenAiChatCompletionResponse response, String requestedModel) {
@@ -73,6 +79,22 @@ final class OpenAiCompatibleChatMapper {
             case ASSISTANT -> "assistant";
             case TOOL -> "tool";
         };
+    }
+
+    private static Boolean readBoolean(Map<String, Object> parameters, String... keys) {
+        if (parameters == null || parameters.isEmpty()) {
+            return null;
+        }
+        for (String key : keys) {
+            if (!parameters.containsKey(key)) {
+                continue;
+            }
+            Object raw = parameters.get(key);
+            if (raw instanceof Boolean bool) {
+                return bool;
+            }
+        }
+        return null;
     }
 
     private static Integer readInteger(Map<String, Object> parameters, String... keys) {
@@ -153,10 +175,21 @@ final class OpenAiCompatibleChatMapper {
         if (statusCode == 404) {
             return OpenAiCompatibleLlmException.endpointNotFound(completionsUrl, statusCode);
         }
+        if (statusCode == 400 && looksLikeUnsupportedParamsError(body)) {
+            return OpenAiCompatibleLlmException.unsupportedParams(snippet);
+        }
         if (statusCode == 400 && looksLikeModelError(body)) {
             return OpenAiCompatibleLlmException.invalidModel(snippet);
         }
         return OpenAiCompatibleLlmException.httpError(statusCode, snippet);
+    }
+
+    private static boolean looksLikeUnsupportedParamsError(String body) {
+        if (body == null || body.isBlank()) {
+            return false;
+        }
+        String lower = body.toLowerCase(Locale.ROOT);
+        return lower.contains("unsupportedparamserror") || lower.contains("does not support parameters");
     }
 
     private static boolean looksLikeModelError(String body) {

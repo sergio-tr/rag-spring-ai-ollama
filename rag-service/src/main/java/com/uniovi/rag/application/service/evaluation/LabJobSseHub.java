@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -44,10 +45,18 @@ public class LabJobSseHub {
                 if (event.terminal()) {
                     sub.onTerminal().accept(event);
                 }
-            } catch (IOException ex) {
-                log.debug("lab_job_sse_send_failed taskId={} eventId={}", taskId, event.eventId(), ex);
+            } catch (Exception ex) {
                 remove(taskId, sub);
-                sub.emitter().completeWithError(ex);
+                if (isClientDisconnected(ex)) {
+                    log.debug("lab_job_sse_client_disconnected taskId={} eventId={}", taskId, event.eventId());
+                } else {
+                    log.warn(
+                            "lab_job_sse_send_failed taskId={} eventId={} error={}",
+                            taskId,
+                            event.eventId(),
+                            ex.toString());
+                }
+                completeEmitterQuietly(sub.emitter());
             }
         }
     }
@@ -58,11 +67,7 @@ public class LabJobSseHub {
             return;
         }
         for (Subscription sub : subs) {
-            try {
-                sub.emitter().complete();
-            } catch (Exception ignored) {
-                // emitter may already be closed
-            }
+            completeEmitterQuietly(sub.emitter());
         }
     }
 
@@ -81,6 +86,29 @@ public class LabJobSseHub {
                 .id(Long.toString(event.eventId()))
                 .name("job-event")
                 .data(event, MediaType.APPLICATION_JSON));
+    }
+
+    public static boolean isClientDisconnected(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof IOException) {
+                return true;
+            }
+            if (t instanceof IllegalStateException) {
+                return true;
+            }
+            if (t instanceof AsyncRequestNotUsableException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static void completeEmitterQuietly(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (Exception ignored) {
+            // emitter may already be closed
+        }
     }
 
     public record Registration(Runnable unregister) {}

@@ -54,7 +54,7 @@ test.describe("Chat RAG", () => {
     await expect(panel.getByTestId("chat-runtime-toggle-similarityThreshold")).toBeVisible({
       timeout: 15_000,
     });
-    await expect(panel.getByTestId("chat-config-runtime-refresh-effective")).toBeVisible({
+    await expect(panel.getByTestId("chat-retrieval-override-mode")).toBeVisible({
       timeout: 15_000,
     });
 

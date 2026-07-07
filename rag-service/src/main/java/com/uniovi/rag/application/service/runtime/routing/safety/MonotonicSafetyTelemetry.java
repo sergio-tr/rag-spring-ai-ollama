@@ -39,6 +39,7 @@ public final class MonotonicSafetyTelemetry {
     private String baselineOverrideRejectedReason = "";
     private boolean monotonicFloorApplied;
     private boolean monotonicFloorPreventedRegression;
+    private boolean toolNegativeFallbackApplied;
 
     public static MonotonicSafetyTelemetry create() {
         return new MonotonicSafetyTelemetry();
@@ -215,6 +216,11 @@ public final class MonotonicSafetyTelemetry {
         return this;
     }
 
+    public MonotonicSafetyTelemetry toolNegativeFallbackApplied(boolean v) {
+        toolNegativeFallbackApplied = v;
+        return this;
+    }
+
     public MonotonicSafetyTelemetry augmentFunctionRejectionWhenRetrievalSupported(
             RouteCandidateValidationResult functionValidation) {
         return augmentFunctionRejectionWhenAlternateSupported(functionValidation, "function_abstention_despite_supported_retrieval");
@@ -380,5 +386,9 @@ public final class MonotonicSafetyTelemetry {
 
     public boolean monotonicFloorPreventedRegression() {
         return monotonicFloorPreventedRegression;
+    }
+
+    public boolean toolNegativeFallbackApplied() {
+        return toolNegativeFallbackApplied;
     }
 }

@@ -42,7 +42,7 @@ public class DocumentStatusController {
     }
 
     /**
-     * Re-ingest: requires a new file body (MVP — source files are not retained server-side).
+     * Re-ingest: requires a new file body (MVP - source files are not retained server-side).
      */
     @PostMapping(value = "/{documentId}/reindex", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ProjectDocumentDto> reindex(

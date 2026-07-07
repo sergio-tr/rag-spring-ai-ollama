@@ -59,7 +59,7 @@ export function resolvePresetDisplayName(
   const code = p.code.trim();
   const label = (p.label ?? "").trim();
   if (label && label !== code) {
-    const stripped = label.replace(new RegExp(`^${code}\\s*[—–-]?\\s*`, "i"), "").trim();
+    const stripped = label.replace(new RegExp(`^${code}\\s*[-–-]?\\s*`, "i"), "").trim();
     if (stripped && stripped !== code && !/^P\d+(_|$|\s)/i.test(stripped)) {
       return stripped;
     }
@@ -99,7 +99,7 @@ export function toPresetDisplayModel(
   };
 }
 
-/** Chat select option — human display name only (no P-code). */
+/** Chat select option - human display name only (no P-code). */
 export function formatChatPresetSelectLabel(
   p: ExperimentalPresetCatalogItemDto,
   t?: PresetCopyFn,
@@ -107,7 +107,7 @@ export function formatChatPresetSelectLabel(
   return resolvePresetDisplayName(p, t);
 }
 
-/** Tooltip / technical details — includes internal code and short description. */
+/** Tooltip / technical details - includes internal code and short description. */
 export function formatChatPresetTechnicalTitle(
   p: ExperimentalPresetCatalogItemDto,
   t?: PresetCopyFn,
@@ -119,7 +119,7 @@ export function formatChatPresetTechnicalTitle(
   return parts.join(" · ");
 }
 
-/** Lab checkbox primary label — functional name only (code lives in secondary chip / tooltip). */
+/** Lab checkbox primary label - functional name only (code lives in secondary chip / tooltip). */
 export function formatLabExperimentalPresetLabel(
   p: ExperimentalPresetCatalogItemDto,
   t?: PresetCopyFn,

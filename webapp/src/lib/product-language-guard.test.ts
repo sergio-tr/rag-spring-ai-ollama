@@ -90,7 +90,7 @@ describe("product language guard", () => {
   });
 });
 
-describe("product language guard — messages", () => {
+describe("product language guard - messages", () => {
   it("en.json product namespaces avoid forbidden visible copy", () => {
     const violations = scanMessagesJson("messages/en.json", en);
     expect(violations, formatViolations(violations)).toHaveLength(0);
@@ -102,7 +102,7 @@ describe("product language guard — messages", () => {
   });
 });
 
-describe("product language guard — app and features source", () => {
+describe("product language guard - app and features source", () => {
   const scanRoots = [
     join(webappRoot, "src/app"),
     join(webappRoot, "src/features"),
@@ -124,7 +124,7 @@ describe("product language guard — app and features source", () => {
   }
 });
 
-describe("product language guard — thesis evidence markdown", () => {
+describe("product language guard - thesis evidence markdown", () => {
   const dirs = evidenceClosureDirs();
 
   it("finds at least one assistant-configuration evidence directory", () => {

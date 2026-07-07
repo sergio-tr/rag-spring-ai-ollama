@@ -27,6 +27,7 @@ import com.uniovi.rag.application.service.async.AsyncLabTaskRunner;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.chat.async.ChatJobCancellationRegistry;
 import com.uniovi.rag.application.service.config.ChatPresetDefaults;
+import com.uniovi.rag.application.service.llm.ModelPreflightService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import java.util.List;
 import java.util.Map;
@@ -53,22 +54,22 @@ class ChatMessageApplicationServiceValidationTest {
         afterCommitTaskScheduler = mock(AfterCommitTaskScheduler.class);
         runtimeConfigValidationService = mock(RuntimeConfigValidationService.class);
         chatPresetDefaults = mock(ChatPresetDefaults.class);
-        sut =
-                new ChatMessageApplicationService(
-                        projectAccessService,
-                        messageRepository,
-                        mock(ConversationRepository.class),
-                        mock(ConversationDraftRepository.class),
-                        mock(UserRepository.class),
-                        asyncTaskRepository,
-                        mock(AsyncLabTaskRunner.class),
-                        afterCommitTaskScheduler,
-                        mock(ChatJobCancellationRegistry.class),
-                        mock(AsyncTaskMutationService.class),
-                        mock(ChatMessageWorkService.class),
-                        runtimeConfigValidationService,
-                        chatPresetDefaults,
-                        mock(ObjectProvider.class));
+        sut =new ChatMessageApplicationService(
+                projectAccessService,
+                messageRepository,
+                mock(ConversationRepository.class),
+                mock(ConversationDraftRepository.class),
+                mock(UserRepository.class),
+                asyncTaskRepository,
+                mock(AsyncLabTaskRunner.class),
+                afterCommitTaskScheduler,
+                mock(ChatJobCancellationRegistry.class),
+                mock(AsyncTaskMutationService.class),
+                mock(ChatMessageWorkService.class),
+                runtimeConfigValidationService,
+                chatPresetDefaults,
+                mock(ObjectProvider.class),
+                mock(ModelPreflightService.class));
     }
 
     @Test

@@ -32,7 +32,7 @@ exclude_lines =
     assert False
 
 [xml]
-# Path written by `pytest --cov-report=xml` — matches sonar-project.properties
+# Path written by `pytest --cov-report=xml` - matches sonar-project.properties
 output = coverage.xml
 
 [html]

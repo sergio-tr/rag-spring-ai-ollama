@@ -38,7 +38,7 @@ public class RagEvaluationConfiguration {
         ChatClient chatClient,
         PgVectorStore vectorStore,
         JdbcTemplate jdbcTemplate,
-        @Value("${spring.ai.ollama.top-k:80}") int topK,
+        @Value("${spring.ai.ollama.top-k:8}") int topK,
         @Value("${spring.ai.ollama.similarity-threshold:0.25}") double similarityThreshold,
         @Value("${rag.classifier.service.url:http://localhost:8000}") String classifierServiceUrl,
         @Value("${rag.classifier.model-id:default}") String classifierModelId,

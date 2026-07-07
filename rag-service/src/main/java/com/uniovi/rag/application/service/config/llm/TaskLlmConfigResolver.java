@@ -4,16 +4,20 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ConfigurationSourcePort;
 import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.domain.config.PresetProfilePayloadMerge;
 import com.uniovi.rag.domain.config.prompt.PromptOverrideKeys;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import com.uniovi.rag.domain.llm.TaskLlmGenerationParameters;
 import com.uniovi.rag.domain.llm.TaskLlmOverride;
+import com.uniovi.rag.domain.llm.TaskLlmRoleDefaults;
 import com.uniovi.rag.domain.llm.TaskLlmTask;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.lang.Nullable;
@@ -26,14 +30,20 @@ public class TaskLlmConfigResolver {
     private final ConfigurationSourcePort configurationSource;
     private final ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     private final ObjectMapper objectMapper;
+    private final RagRuntimeProperties ragRuntimeProperties;
+    private final SystemTaskLlmDefaultsProvider systemTaskLlmDefaultsProvider;
 
     public TaskLlmConfigResolver(
             ConfigurationSourcePort configurationSource,
             ResolvedLlmConfigResolver resolvedLlmConfigResolver,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            RagRuntimeProperties ragRuntimeProperties,
+            SystemTaskLlmDefaultsProvider systemTaskLlmDefaultsProvider) {
         this.configurationSource = configurationSource;
         this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
         this.objectMapper = objectMapper;
+        this.ragRuntimeProperties = ragRuntimeProperties;
+        this.systemTaskLlmDefaultsProvider = systemTaskLlmDefaultsProvider;
     }
 
     public record EffectiveTaskLlmConfig(
@@ -42,6 +52,7 @@ public class TaskLlmConfigResolver {
             TaskLlmOverride override,
             String effectiveModel,
             Double effectiveTemperature,
+            TaskLlmGenerationParameters effectiveParameters,
             ResolvedLlmConfig mergedConfig,
             boolean taskOverrideApplied) {}
 
@@ -49,24 +60,83 @@ public class TaskLlmConfigResolver {
             ResolvedLlmConfig effectiveConfig,
             String effectiveModel,
             Double effectiveTemperature,
-            boolean taskOverrideApplied) {}
+            boolean taskOverrideApplied,
+            boolean secondaryModelApplied) {
+
+        public SecondaryCallConfig(
+                ResolvedLlmConfig effectiveConfig,
+                String effectiveModel,
+                Double effectiveTemperature,
+                boolean taskOverrideApplied) {
+            this(effectiveConfig, effectiveModel, effectiveTemperature, taskOverrideApplied, false);
+        }
+    }
+
+    public record FinalAnswerCallConfig(
+            ResolvedLlmConfig effectiveConfig,
+            String effectiveModel,
+            Double effectiveTemperature,
+            boolean inheritModel,
+            boolean inheritParameters,
+            boolean taskOverrideApplied,
+            String modelSource,
+            String paramSource) {}
 
     public EffectiveTaskLlmConfig resolve(
             TaskLlmTask task, UUID userId, UUID projectId, JsonNode runtimeOverride) {
         ResolvedLlmConfig base = resolvedLlmConfigResolver.resolve(userId, projectId, runtimeOverride);
-        TaskLlmOverride override = mergedOverride(task, userId, projectId, null, null, runtimeOverride);
-        String model = resolveEffectiveModel(base, override);
-        Double temperature = resolveEffectiveTemperature(base, override);
-        ResolvedLlmConfig merged = mergeTaskOverride(base, override, model, temperature);
-        boolean applied = override != null && override.isActive() && hasActiveFields(override);
-        return new EffectiveTaskLlmConfig(base, task, override, model, temperature, merged, applied);
+        return resolveWithBase(task, base, userId, projectId, null, runtimeOverride);
     }
 
     /**
-     * Resolves effective config for a secondary LLM call identified by {@code operation}.
-     *
-     * @param temperatureOverride explicit caller temperature; used only when task override omits temperature
+     * Resolves a task role against an already-orchestrated base config (e.g. {@link
+     * com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope}).
      */
+    public EffectiveTaskLlmConfig resolveWithBase(
+            TaskLlmTask task,
+            ResolvedLlmConfig base,
+            UUID userId,
+            UUID projectId,
+            @Nullable UUID presetId,
+            @Nullable JsonNode requestRuntimeOverride) {
+        TaskLlmOverride override =
+                mergedOverride(task, userId, projectId, presetId, null, requestRuntimeOverride);
+        String model = resolveEffectiveModel(base, task, override);
+        TaskLlmGenerationParameters parameters = resolveEffectiveParameters(base, task, override);
+        Double temperature = parameters.temperature();
+        ResolvedLlmConfig merged = mergeTaskOverride(base, override, model, parameters);
+        boolean applied = override != null && override.isActive() && override.hasActiveFields();
+        return new EffectiveTaskLlmConfig(base, task, override, model, temperature, parameters, merged, applied);
+    }
+
+    /** Primary chat final-answer resolution using orchestration-bound base LLM config. */
+    public FinalAnswerCallConfig resolveFinalAnswer(ExecutionContext ctx, ResolvedLlmConfig orchestrationBase) {
+        Objects.requireNonNull(ctx, "ctx");
+        Objects.requireNonNull(orchestrationBase, "orchestrationBase");
+        UUID userId = ctx.userId();
+        UUID projectId = ctx.projectId();
+        UUID presetId = presetId(ctx);
+        EffectiveTaskLlmConfig effective =
+                resolveWithBase(TaskLlmTask.FINAL_ANSWER, orchestrationBase, userId, projectId, presetId, null);
+        TaskLlmOverride override = effective.override();
+        boolean inheritModel =
+                override != null
+                        ? override.effectiveInheritModel(TaskLlmTask.FINAL_ANSWER)
+                        : TaskLlmTask.FINAL_ANSWER.inheritsMainModelByDefault();
+        boolean inheritParameters = override != null && override.effectiveInheritParameters();
+        String modelSource = resolveFinalAnswerModelSource(ctx, orchestrationBase, override, inheritModel);
+        String paramSource = inheritParameters ? "primary_inherited" : "final_answer_role";
+        return new FinalAnswerCallConfig(
+                effective.mergedConfig(),
+                effective.effectiveModel(),
+                effective.effectiveTemperature(),
+                inheritModel,
+                inheritParameters,
+                effective.taskOverrideApplied(),
+                modelSource,
+                paramSource);
+    }
+
     public SecondaryCallConfig resolveSecondaryCall(
             ExecutionContext ctx,
             String operation,
@@ -88,7 +158,13 @@ public class TaskLlmConfigResolver {
         Optional<TaskLlmTask> taskOpt = TaskLlmTask.fromOperation(operation);
         if (taskOpt.isEmpty()) {
             Double temp = coalesceTemperature(base.temperature(), temperatureOverride);
-            return new SecondaryCallConfig(base, base.chatModel(), temp, false);
+            String model = resolveRuntimeSecondaryModel(base);
+            boolean secondaryApplied = ragRuntimeProperties.hasSecondaryModel();
+            if (secondaryApplied) {
+                model = ragRuntimeProperties.effectiveSecondaryModel();
+            }
+            ResolvedLlmConfig merged = secondaryApplied ? mergeTaskOverride(base, null, model, TaskLlmGenerationParameters.fromMap(Map.of("temperature", temp))) : base;
+            return new SecondaryCallConfig(merged, model, temp, false, secondaryApplied);
         }
         EffectiveTaskLlmConfig effective = resolve(taskOpt.get(), userId, projectId, runtimeOverride);
         Double temp = effective.effectiveTemperature();
@@ -96,7 +172,41 @@ public class TaskLlmConfigResolver {
                 && (effective.override() == null || effective.override().temperature() == null)) {
             temp = temperatureOverride;
         }
-        return new SecondaryCallConfig(effective.mergedConfig(), effective.effectiveModel(), temp, effective.taskOverrideApplied());
+        String model = effective.effectiveModel();
+        boolean secondaryApplied = false;
+        if (!effective.taskOverrideApplied()
+                && !effective.task().inheritsMainModelByDefault()
+                && ragRuntimeProperties.hasSecondaryModel()) {
+            model = ragRuntimeProperties.effectiveSecondaryModel();
+            secondaryApplied = true;
+        }
+        ResolvedLlmConfig mergedConfig =
+                secondaryApplied
+                        ? mergeTaskOverride(
+                                effective.mergedConfig(),
+                                null,
+                                model,
+                                effective.effectiveParameters().mergeOverlay(
+                                        new TaskLlmGenerationParameters(temp, null, null, null, null, null, null, List.of(), null, null)))
+                        : effective.mergedConfig();
+        if (temperatureOverride != null
+                && (effective.override() == null || effective.override().temperature() == null)) {
+            mergedConfig =
+                    mergeTaskOverride(
+                            mergedConfig,
+                            null,
+                            model,
+                            effective.effectiveParameters().mergeOverlay(
+                                    new TaskLlmGenerationParameters(temp, null, null, null, null, null, null, List.of(), null, null)));
+        }
+        return new SecondaryCallConfig(
+                mergedConfig, model, temp, effective.taskOverrideApplied(), secondaryApplied);
+    }
+
+    private String resolveRuntimeSecondaryModel(ResolvedLlmConfig base) {
+        return ragRuntimeProperties.hasSecondaryModel()
+                ? ragRuntimeProperties.effectiveSecondaryModel()
+                : base.chatModel();
     }
 
     private JsonNode buildRuntimeOverride(ExecutionContext ctx, @Nullable String chatModelFromSelector) {
@@ -104,6 +214,77 @@ public class TaskLlmConfigResolver {
             return null;
         }
         return objectMapper.createObjectNode().put("llmModel", chatModelFromSelector.trim());
+    }
+
+    private static UUID presetId(ExecutionContext ctx) {
+        if (ctx.resolved() == null
+                || ctx.resolved().provenance() == null
+                || ctx.resolved().provenance().presetId() == null) {
+            return null;
+        }
+        return ctx.resolved().provenance().presetId();
+    }
+
+    private String resolveFinalAnswerModelSource(
+            ExecutionContext ctx,
+            ResolvedLlmConfig orchestrationBase,
+            @Nullable TaskLlmOverride mergedOverride,
+            boolean inheritModel) {
+        if (!inheritModel && mergedOverride != null && mergedOverride.model() != null && !mergedOverride.model().isBlank()) {
+            return resolveOverrideLayerSource(ctx.userId(), ctx.projectId(), TaskLlmTask.FINAL_ANSWER);
+        }
+        if (ctx.chatModelOverride() != null && ctx.chatModelOverride().isPresent() && !ctx.chatModelOverride().get().isBlank()) {
+            return "conversation_primary";
+        }
+        if (orchestrationBase.chatModel() != null && !orchestrationBase.chatModel().isBlank()) {
+            return "primary_inherited";
+        }
+        return "user_system";
+    }
+
+    private String resolveOverrideLayerSource(UUID userId, UUID projectId, TaskLlmTask task) {
+        if (userId != null && projectId != null) {
+            TaskLlmOverride project =
+                    readLayerOverride(configurationSource.loadProject(userId, projectId), task);
+            if (project != null && project.isActive() && hasExplicitModel(project, task)) {
+                return "project";
+            }
+        }
+        if (userId != null) {
+            TaskLlmOverride user = readLayerOverride(configurationSource.loadUserDefault(userId), task);
+            if (user != null && user.isActive() && hasExplicitModel(user, task)) {
+                return "user";
+            }
+        }
+        TaskLlmOverride system = readLayerOverride(configurationSource.loadSystemDefaults(), task);
+        if (system != null && system.isActive() && hasExplicitModel(system, task)) {
+            return "user_system";
+        }
+        return "final_answer_override";
+    }
+
+    @Nullable
+    private static TaskLlmOverride readLayerOverride(Optional<Map<String, Object>> layer, TaskLlmTask task) {
+        if (layer.isEmpty()) {
+            return null;
+        }
+        Object nested = layer.get().get(PromptOverrideKeys.TASK_LLM_OVERRIDES_MAP_KEY);
+        if (!(nested instanceof Map<?, ?> map)) {
+            return null;
+        }
+        Object raw = map.get(task.id());
+        if (!(raw instanceof Map<?, ?> rawMap)) {
+            return null;
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> asMap = (Map<String, Object>) rawMap;
+        return TaskLlmOverride.fromMap(asMap);
+    }
+
+    private static boolean hasExplicitModel(TaskLlmOverride override, TaskLlmTask task) {
+        return !override.effectiveInheritModel(task)
+                && override.model() != null
+                && !override.model().isBlank();
     }
 
     public TaskLlmOverride mergedOverride(
@@ -137,41 +318,63 @@ public class TaskLlmConfigResolver {
         return merged.get(task.id());
     }
 
-    private static String resolveEffectiveModel(ResolvedLlmConfig base, TaskLlmOverride override) {
-        if (override != null && override.isActive() && override.model() != null && !override.model().isBlank()) {
-            return override.model().trim();
+    private String resolveEffectiveModel(ResolvedLlmConfig base, TaskLlmTask task, @Nullable TaskLlmOverride override) {
+        TaskLlmRoleDefaults.RoleDefault systemBaseline = systemTaskLlmDefaultsProvider.baselineFor(task);
+        if (override != null && override.isActive()) {
+            if (override.effectiveInheritModel(task)) {
+                return base.chatModel();
+            }
+            if (override.model() != null && !override.model().isBlank()) {
+                return override.model().trim();
+            }
         }
-        return base.chatModel();
+        if (task.inheritsMainModelByDefault()) {
+            return base.chatModel();
+        }
+        return systemBaseline.modelId();
     }
 
-    private static Double resolveEffectiveTemperature(ResolvedLlmConfig base, TaskLlmOverride override) {
-        if (override != null && override.isActive() && override.temperature() != null) {
-            return override.temperature();
+    private TaskLlmGenerationParameters resolveEffectiveParameters(
+            ResolvedLlmConfig base, TaskLlmTask task, @Nullable TaskLlmOverride override) {
+        TaskLlmRoleDefaults.RoleDefault systemBaseline = systemTaskLlmDefaultsProvider.baselineFor(task);
+        if (override != null && override.isActive() && override.effectiveInheritParameters()) {
+            return parametersFromBaseConfig(base);
         }
-        if (base.temperature() != null) {
-            return base.temperature();
+        TaskLlmGenerationParameters effective = systemBaseline.parameters();
+        if (override != null && override.isActive()) {
+            effective = effective.mergeOverlay(override.parameterOverlay());
         }
-        return ProviderAwareSecondaryLlmExecutor.SECONDARY_TASK_DEFAULT_TEMPERATURE;
+        return effective;
+    }
+
+    private static TaskLlmGenerationParameters parametersFromBaseConfig(ResolvedLlmConfig base) {
+        TaskLlmGenerationParameters fromAdditional = TaskLlmGenerationParameters.fromMap(base.additionalParameters());
+        return new TaskLlmGenerationParameters(
+                        base.temperature(),
+                        fromAdditional.topP(),
+                        fromAdditional.seed(),
+                        fromAdditional.maxTokens(),
+                        fromAdditional.presencePenalty(),
+                        fromAdditional.frequencyPenalty(),
+                        fromAdditional.responseFormat(),
+                        fromAdditional.stopSequences(),
+                        fromAdditional.think(),
+                        base.timeoutMs() != null ? base.timeoutMs() / 1000 : fromAdditional.timeoutSeconds())
+                .mergeOverlay(fromAdditional);
     }
 
     private static ResolvedLlmConfig mergeTaskOverride(
-            ResolvedLlmConfig base, TaskLlmOverride override, String model, Double temperature) {
-        if (override == null || !override.isActive()) {
+            ResolvedLlmConfig base,
+            @Nullable TaskLlmOverride override,
+            String model,
+            TaskLlmGenerationParameters parameters) {
+        if (parameters == null) {
             return base;
         }
         Map<String, Object> additional = new LinkedHashMap<>(base.additionalParameters());
-        if (override.topP() != null) {
-            additional.put("topP", override.topP());
-        }
-        if (override.maxTokens() != null) {
-            additional.put("maxTokens", override.maxTokens());
-        }
-        if (override.seed() != null) {
-            additional.put("seed", override.seed());
-        }
-        if (override.stop() != null && !override.stop().isEmpty()) {
-            additional.put("stop", override.stop());
-        }
+        additional.putAll(parameters.toAdditionalParameters());
+        Integer timeoutMs =
+                parameters.timeoutSeconds() != null ? parameters.timeoutSeconds() * 1000 : base.timeoutMs();
         return new ResolvedLlmConfig(
                 base.chatProvider(),
                 base.embeddingProvider(),
@@ -180,19 +383,10 @@ public class TaskLlmConfigResolver {
                 base.embeddingModel(),
                 base.apiKeyEnv(),
                 base.secretName(),
-                temperature,
-                base.timeoutMs(),
+                parameters.temperature() != null ? parameters.temperature() : base.temperature(),
+                timeoutMs,
                 base.systemPrompt(),
                 additional);
-    }
-
-    private static boolean hasActiveFields(TaskLlmOverride override) {
-        return (override.model() != null && !override.model().isBlank())
-                || override.temperature() != null
-                || override.topP() != null
-                || override.maxTokens() != null
-                || override.seed() != null
-                || (override.stop() != null && !override.stop().isEmpty());
     }
 
     private static Double coalesceTemperature(@Nullable Double base, @Nullable Double override) {

@@ -36,14 +36,18 @@ export function ConfigSchemaFieldRows(props: Readonly<{
   return (
     <>
       {effectiveProviderLabel ? (
-        <div className="flex flex-col gap-1" data-testid="config-effective-provider">
+        <div className="flex min-w-0 max-w-full flex-col gap-1" data-testid="config-effective-provider">
           <span className="text-muted-foreground text-xs font-medium">{labelFor("provider")}</span>
           <output className="text-sm">{effectiveProviderLabel}</output>
         </div>
       ) : null}
       {fields.map((f) => (
-        <div key={f.key} className="flex flex-col gap-2">
-          {labelFor(f.key) ? <Label htmlFor={`${inputIdPrefix}-${f.key}`}>{labelFor(f.key)}</Label> : null}
+        <div key={f.key} className="flex min-w-0 max-w-full flex-col gap-2">
+          {labelFor(f.key) ? (
+            <Label htmlFor={`${inputIdPrefix}-${f.key}`} className="min-w-0 break-words">
+              {labelFor(f.key)}
+            </Label>
+          ) : null}
           {f.key === "llmModel" && llmModelOptions.length > 0 ? (
             <Controller
               name={f.key}
@@ -116,6 +120,7 @@ export function ConfigSchemaFieldRows(props: Readonly<{
           ) : (
             <Input
               id={`${inputIdPrefix}-${f.key}`}
+              data-testid={`config-field-${f.key}`}
               type={f.type === "integer" || f.type === "number" ? "number" : "text"}
               step={
                 f.type === "integer"

@@ -49,7 +49,7 @@ No `maven-failsafe-plugin` is configured for separate IT execution; integration-
 
 ## Parity
 
-When you change `<excludes>`, update **`sonar.coverage.exclusions`** in [`sonar-project.properties`](../../sonar-project.properties) for the same **Java** intent — see [coverage-strategy.md](coverage-strategy.md).
+When you change `<excludes>`, update **`sonar.coverage.exclusions`** in [`sonar-project.properties`](../../sonar-project.properties) for the same **Java** intent - see [coverage-strategy.md](coverage-strategy.md).
 
 ## Master exclude narrative
 
