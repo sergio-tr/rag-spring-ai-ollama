@@ -444,6 +444,8 @@ run_playwright_fullstack() {
     -e E2E_ALLOW_INSECURE_COOKIES="true" \
     -e E2E_LOGIN_TIMEOUT_MS="25000" \
     -e E2E_ADMIN_ENABLED="1" \
+    -e E2E_ADMIN_EMAIL="admin@e2e.local" \
+    -e E2E_ADMIN_PASSWORD="e2e" \
     -e PLAYWRIGHT_SKIP_WEBSERVER="1" \
     -e PLAYWRIGHT_BASE_URL="https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}" \
     -e PLAYWRIGHT_WORKERS="1" \
