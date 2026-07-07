@@ -28,9 +28,11 @@ import com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import org.springframework.ai.chat.client.ChatClient;
 
 import java.util.List;
@@ -54,6 +56,11 @@ import java.util.LinkedHashMap;
 import org.mockito.Mockito;
 
 class ChunkDenseMetadataWorkflowTest {
+
+    @BeforeEach
+    void clearToolEvidenceHolder() {
+        DeterministicToolEvidenceHolder.clear();
+    }
 
     @Test
     void execute_whenAdvisorPackedContextPresent_skipsAdvancedRetrieval() {
@@ -145,6 +152,49 @@ class ChunkDenseMetadataWorkflowTest {
         RagExecutionResult out = wf.execute(ctx);
 
         assertThat(out.answerText()).isEqualTo(RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES);
+    }
+
+    @Test
+    void T_M5_BE_emptyContext_docBoundQuestion_abstainsEvenWithStaleToolEvidence() {
+        DeterministicToolEvidenceHolder.set(
+                new DeterministicToolEvidenceHolder.Evidence(
+                        List.of(), "stale tool context from another request", true));
+
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
+        AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
+        when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
+                .thenReturn(
+                        new CuratedContextSet(
+                                List.of(),
+                                "",
+                                new CompressionOutcome(0, 0, 0, List.of()),
+                                List.of(),
+                                new RetrievalDiagnostics(
+                                        RetrievalMode.DENSE_ONLY,
+                                        Optional.empty(),
+                                        "",
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        false,
+                                        List.of(),
+                                        List.of(),
+                                        Optional.empty(), 0, 0, false, 0),
+                                List.of(),
+                                List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
+
+        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(llmChatInvoker, pipeline, null);
+        ExecutionContext ctx = minimalCtx(Optional.empty(), "hazme un resumen del acta del 25 de febrero de 2025");
+        RagExecutionResult out = wf.execute(ctx);
+
+        assertThat(out.answerText()).isEqualTo(RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES);
+        verify(llmChatInvoker, never()).invoke(any(), anyString(), anyString());
     }
 
     @Test

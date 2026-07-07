@@ -82,6 +82,9 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
         String effectivePromptContext =
                 RuntimeAnswerPrompts.effectivePromptContextForDateGrounding(
                         rawPromptContext, curated.finalCandidates(), dateDecision);
+        boolean noRetrievedDocumentEvidence =
+                curated.finalCandidates().isEmpty()
+                        && (rawPromptContext == null || rawPromptContext.isBlank());
         effectivePromptContext = budgetToolScopedContext(ctx, plan, effectivePromptContext, workflowName());
         stages.add(new ExecutionStageTrace(
                 "packed_context_preview",
@@ -103,7 +106,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
         String abstentionReason = "";
         FinalAnswerSource finalAnswerSource = FinalAnswerSource.GENERATED;
 
-        if (docBound && effectivePromptContext.isBlank()) {
+        if (docBound && (noRetrievedDocumentEvidence || effectivePromptContext.isBlank())) {
             answer = resolveInsufficientDocumentContextMessage(ctx, q);
             abstention = true;
             abstentionReason = "no_document_evidence";
