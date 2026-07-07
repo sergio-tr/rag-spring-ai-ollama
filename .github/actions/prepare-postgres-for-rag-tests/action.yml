@@ -17,8 +17,22 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        if command -v psql >/dev/null 2>&1 && command -v pg_isready >/dev/null 2>&1; then
+          echo "postgresql-client tools already available ($(psql --version))"
+          exit 0
+        fi
+        # ubuntu-latest runners occasionally ship Microsoft apt mirrors that return invalid
+        # InRelease metadata (NOSPLIT). Disable them so postgresql-client install is not blocked.
+        for f in /etc/apt/sources.list.d/*; do
+          if [ -f "$f" ] && grep -q 'packages.microsoft.com' "$f" 2>/dev/null; then
+            echo "Disabling apt source: $f"
+            sudo mv "$f" "${f}.disabled-by-rag-ci"
+          fi
+        done
         sudo apt-get update
-        sudo apt-get install -y postgresql-client
+        sudo apt-get install -y --no-install-recommends postgresql-client
+        command -v psql >/dev/null
+        command -v pg_isready >/dev/null
 
     - name: Wait for Postgres, extensions, testdb, test-init
       shell: bash
