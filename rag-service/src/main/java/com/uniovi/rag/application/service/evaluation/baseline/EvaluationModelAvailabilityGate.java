@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation.baseline;
 
+import com.uniovi.rag.application.port.OllamaModelAvailabilityPort;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.catalog.EvaluationModelCatalogService;
 import com.uniovi.rag.domain.llm.LlmProvider;
@@ -10,21 +11,21 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /**
- * Provider-aware model availability for Lab baselines. Uses Ollama tag probes only for
+ * Provider-aware model availability for Lab baselines. Uses {@link OllamaModelAvailabilityPort} only for
  * {@link LlmProvider#OLLAMA_NATIVE}; catalog membership for {@link LlmProvider#OPENAI_COMPATIBLE}.
  */
 @Component
 public class EvaluationModelAvailabilityGate {
 
-    private final OllamaModelCatalogClient ollamaModelCatalogClient;
+    private final OllamaModelAvailabilityPort ollamaModelAvailability;
     private final EvaluationModelCatalogService evaluationModelCatalogService;
     private final ResolvedLlmConfigResolver configResolver;
 
     public EvaluationModelAvailabilityGate(
-            OllamaModelCatalogClient ollamaModelCatalogClient,
+            OllamaModelAvailabilityPort ollamaModelAvailability,
             EvaluationModelCatalogService evaluationModelCatalogService,
             ResolvedLlmConfigResolver configResolver) {
-        this.ollamaModelCatalogClient = ollamaModelCatalogClient;
+        this.ollamaModelAvailability = ollamaModelAvailability;
         this.evaluationModelCatalogService = evaluationModelCatalogService;
         this.configResolver = configResolver;
     }
@@ -35,7 +36,7 @@ public class EvaluationModelAvailabilityGate {
         }
         ResolvedLlmConfig config = configResolver.resolve(userId, null, null);
         return switch (config.chatProvider()) {
-            case OLLAMA_NATIVE -> ollamaModelCatalogClient.isModelAvailable(modelId);
+            case OLLAMA_NATIVE -> ollamaModelAvailability.isModelPresent(modelId);
             case OPENAI_COMPATIBLE -> isCatalogModel(userId, LlmModelCapability.CHAT, config.chatProvider(), modelId);
         };
     }
@@ -46,7 +47,7 @@ public class EvaluationModelAvailabilityGate {
         }
         ResolvedLlmConfig config = configResolver.resolve(userId, null, null);
         return switch (config.embeddingProvider()) {
-            case OLLAMA_NATIVE -> ollamaModelCatalogClient.isModelAvailable(modelId);
+            case OLLAMA_NATIVE -> ollamaModelAvailability.isModelPresent(modelId);
             case OPENAI_COMPATIBLE ->
                     isCatalogEmbedding(userId, config.embeddingProvider(), modelId);
         };

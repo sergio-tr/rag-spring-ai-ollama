@@ -5,6 +5,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.uniovi.rag.application.port.OllamaModelAvailabilityPort;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.catalog.EvaluationModelCatalogService;
 import com.uniovi.rag.domain.llm.LlmProvider;
@@ -24,7 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class EvaluationModelAvailabilityGateTest {
 
-    @Mock private OllamaModelCatalogClient ollamaModelCatalogClient;
+    @Mock private OllamaModelAvailabilityPort ollamaModelAvailability;
     @Mock private EvaluationModelCatalogService evaluationModelCatalogService;
     @Mock private ResolvedLlmConfigResolver configResolver;
 
@@ -64,10 +65,10 @@ class EvaluationModelAvailabilityGateTest {
 
         EvaluationModelAvailabilityGate gate =
                 new EvaluationModelAvailabilityGate(
-                        ollamaModelCatalogClient, evaluationModelCatalogService, configResolver);
+                        ollamaModelAvailability, evaluationModelCatalogService, configResolver);
 
         assertThat(gate.isChatModelAvailable(userId, "gpt-oss:20b")).isTrue();
-        verifyNoInteractions(ollamaModelCatalogClient);
+        verifyNoInteractions(ollamaModelAvailability);
     }
 
     @Test
@@ -91,10 +92,10 @@ class EvaluationModelAvailabilityGateTest {
 
         EvaluationModelAvailabilityGate gate =
                 new EvaluationModelAvailabilityGate(
-                        ollamaModelCatalogClient, evaluationModelCatalogService, configResolver);
+                        ollamaModelAvailability, evaluationModelCatalogService, configResolver);
 
         assertThat(gate.isChatModelAvailable(userId, "unknown-model")).isFalse();
-        verifyNoInteractions(ollamaModelCatalogClient);
+        verifyNoInteractions(ollamaModelAvailability);
     }
 
     @Test
@@ -113,13 +114,13 @@ class EvaluationModelAvailabilityGateTest {
                                 null,
                                 null,
                                 Map.of()));
-        when(ollamaModelCatalogClient.isModelAvailable("gemma3:4b")).thenReturn(true);
+        when(ollamaModelAvailability.isModelPresent("gemma3:4b")).thenReturn(true);
 
         EvaluationModelAvailabilityGate gate =
                 new EvaluationModelAvailabilityGate(
-                        ollamaModelCatalogClient, evaluationModelCatalogService, configResolver);
+                        ollamaModelAvailability, evaluationModelCatalogService, configResolver);
 
         assertThat(gate.isChatModelAvailable(userId, "gemma3:4b")).isTrue();
-        verify(ollamaModelCatalogClient).isModelAvailable("gemma3:4b");
+        verify(ollamaModelAvailability).isModelPresent("gemma3:4b");
     }
 }
