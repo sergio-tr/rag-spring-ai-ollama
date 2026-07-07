@@ -406,10 +406,13 @@ export async function createAndActivateProject(page: Page, projectName: string):
     : page.getByRole("button", { name: /new project|nuevo proyecto/i }).first();
   await expect(newProjectTrigger).toBeEnabled({ timeout: 15_000 });
   await newProjectTrigger.click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByTestId("new-project-dialog");
   await expect(dialog).toBeVisible();
   await dialog.locator("#proj-name").fill(projectName);
-  await dialog.getByRole("button", { name: /^(create|crear)$/i }).click();
+  // Tall dialog scrolls internally; requestSubmit avoids flaky "outside viewport" clicks on Create.
+  await dialog.locator("form").evaluate((form: HTMLFormElement) => {
+    form.requestSubmit();
+  });
   await assertProjectCreateDialogClosedOrSurfaceError(dialog);
   const projectCard = page.locator('[data-slot="card"]').filter({ hasText: projectName }).first();
   await expect(projectCard).toBeVisible({ timeout: 20_000 });
@@ -468,15 +471,20 @@ export async function openChatConfigurationPanel(page: Page): Promise<Locator> {
   return panel;
 }
 
-/** Expands the runtime overrides block inside an open configuration panel. */
+/** Scrolls the retrieval/runtime overrides block into view inside an open configuration panel. */
 export async function expandChatConfigurationRuntimeSection(panel: Locator): Promise<void> {
   const topK = panel.getByTestId("chat-runtime-toggle-topK");
   if (await topK.isVisible().catch(() => false)) {
     return;
   }
-  const collapsible = panel.getByTestId("chat-config-runtime-collapsible");
-  await collapsible.scrollIntoViewIfNeeded();
-  await collapsible.click();
+  const retrievalSection = panel.getByTestId("chat-retrieval-settings-section");
+  await retrievalSection.scrollIntoViewIfNeeded();
+  const notApplicable = panel.getByTestId("chat-retrieval-settings-not-applicable");
+  if (await notApplicable.isVisible().catch(() => false)) {
+    throw new Error(
+      "Retrieval settings are not applicable for the current preset (useRetrieval=false)."
+    );
+  }
   await expect(topK).toBeVisible({ timeout: 15_000 });
 }
 
@@ -605,7 +613,7 @@ export async function createNewChatConversation(
   await expect(presetSelect).toBeVisible({ timeout: 20_000 });
   const compatibleChunkPreset = presetSelect
     .locator("option")
-    .filter({ hasText: /P3 .*chunk-level dense retrieval/i })
+    .filter({ hasText: /chunk-level (dense )?retrieval/i })
     .first();
   if ((await compatibleChunkPreset.count()) > 0 && !(await compatibleChunkPreset.isDisabled())) {
     const value = await compatibleChunkPreset.getAttribute("value");
@@ -812,7 +820,7 @@ export async function sendChatMessage(page: Page, message: string, options?: Sen
   await expect(dialog).toBeVisible({ timeout: 15_000 });
   const presetSelect = dialog.getByLabel(/initial preset/i);
   await expect(presetSelect).toBeVisible({ timeout: 15_000 });
-  const compatibleChunkPreset = presetSelect.locator("option").filter({ hasText: /P3 .*chunk-level dense retrieval/i }).first();
+  const compatibleChunkPreset = presetSelect.locator("option").filter({ hasText: /chunk-level (dense )?retrieval/i }).first();
   if ((await compatibleChunkPreset.count()) > 0 && !(await compatibleChunkPreset.isDisabled())) {
     const value = await compatibleChunkPreset.getAttribute("value");
     if (value) {
