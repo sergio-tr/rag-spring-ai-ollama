@@ -16,7 +16,7 @@ TLS_CERT_ORGANIZATION="${TLS_CERT_ORGANIZATION:-University of Oviedo}"
 TLS_CERT_ORGANIZATIONAL_UNIT="${TLS_CERT_ORGANIZATIONAL_UNIT:-RAG System}"
 TLS_CERT_COMMON_NAME="${TLS_CERT_COMMON_NAME:-localhost}"
 
-# SAN defaults: localhost for dev; override via compose/.env for production (uniovi.es, 156.35.95.27, …).
+# SAN defaults: localhost for dev; override via compose/.env for production (ngrok hostname, uniovi.es, …).
 TLS_CERT_DNS_1="${TLS_CERT_DNS_1:-localhost}"
 TLS_CERT_DNS_2="${TLS_CERT_DNS_2:-}"
 TLS_CERT_DNS_3="${TLS_CERT_DNS_3:-}"

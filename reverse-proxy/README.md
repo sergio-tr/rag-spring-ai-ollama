@@ -55,35 +55,33 @@ PUBLIC_API_URL=https://localhost:8444/api/v5
 NEXT_PUBLIC_APP_URL=https://localhost:8444
 ```
 
-## Production (university application server)
+## Production (ngrok reserved domain)
 
-Application server: `156.35.95.27`. Replace `uniovi.es` with the real hostname if different.
+Public URL: `https://hatchback-obsession-staring.ngrok-free.dev` (ngrok tunnels to host HTTP port 80).
 
 ```env
 REVERSE_PROXY_HTTP_PORT=80
 REVERSE_PROXY_HTTPS_PORT=443
-REVERSE_PROXY_ENFORCE_HTTPS=1
+REVERSE_PROXY_ENFORCE_HTTPS=0
 REVERSE_PROXY_HTTPS_PORT_SUFFIX=
-REVERSE_PROXY_SERVER_NAME=uniovi.es
-TLS_CERT_COMMON_NAME=uniovi.es
-TLS_CERT_DNS_1=uniovi.es
-TLS_CERT_DNS_2=www.uniovi.es
-TLS_CERT_DNS_3=rag.uniovi.es
-TLS_CERT_IP_1=156.35.95.27
-PUBLIC_APP_URL=https://uniovi.es
-PUBLIC_API_URL=https://uniovi.es/api/v5
-NEXT_PUBLIC_APP_URL=https://uniovi.es
-RAG_AUTH_WEBAPP_BASE_URL=https://uniovi.es
-RAG_AUTH_BACKEND_BASE_URL=https://uniovi.es
-RAG_CORS_ALLOWED_ORIGINS=https://uniovi.es
+REVERSE_PROXY_SERVER_NAME=hatchback-obsession-staring.ngrok-free.dev
+TLS_CERT_COMMON_NAME=hatchback-obsession-staring.ngrok-free.dev
+TLS_CERT_DNS_1=hatchback-obsession-staring.ngrok-free.dev
+TLS_CERT_IP_1=127.0.0.1
+PUBLIC_APP_URL=https://hatchback-obsession-staring.ngrok-free.dev
+PUBLIC_API_URL=https://hatchback-obsession-staring.ngrok-free.dev/api/v5
+NEXT_PUBLIC_APP_URL=https://hatchback-obsession-staring.ngrok-free.dev
+RAG_AUTH_WEBAPP_BASE_URL=https://hatchback-obsession-staring.ngrok-free.dev
+RAG_AUTH_BACKEND_BASE_URL=https://hatchback-obsession-staring.ngrok-free.dev
+RAG_CORS_ALLOWED_ORIGINS=https://hatchback-obsession-staring.ngrok-free.dev
 ```
 
 **Manual steps:**
 
-1. Publish host port **443** in Docker Compose and allow it on the university firewall.
-2. Configure **DNS** for the public hostname → `156.35.95.27`.
-3. **Google OAuth:** authorized redirect URI must match the production HTTPS callback exactly, e.g. `https://uniovi.es/api/v5/auth/oauth/google/callback`.
-4. Self-signed certificates show a browser warning unless trusted manually. For public production, mount a **CA-signed** cert at `TLS_CERT_PATH` / `TLS_KEY_PATH` (pre-populate the volume to skip auto-generation).
+1. Run ngrok: `ngrok http --url=hatchback-obsession-staring.ngrok-free.dev 80`
+2. **Google OAuth:** authorized redirect URI must match exactly:
+   `https://hatchback-obsession-staring.ngrok-free.dev/api/v5/auth/oauth/google/callback`
+3. TLS is terminated by ngrok externally; reverse-proxy may use a self-signed cert for local HTTPS health checks.
 
 ## TLS environment variables
 

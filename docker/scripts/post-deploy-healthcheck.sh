@@ -8,11 +8,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DOCKER_DIR="$ROOT_DIR/docker"
 
-HTTPS_PORT="${PRODUCTION_HTTPS_PORT:-8443}"
-PROXY_URL="${DEPLOY_HEALTH_URL:-https://127.0.0.1:${HTTPS_PORT}/actuator/health/liveness}"
+HTTPS_PORT="${PRODUCTION_HTTPS_PORT:-443}"
+HTTP_PORT="${PRODUCTION_HTTP_PORT:-80}"
 BACKEND_PORT="${SERVER_PORT:-9000}"
 MAX_WAIT_SEC="${DEPLOY_HEALTH_MAX_WAIT_SEC:-180}"
 SLEEP_SEC="${DEPLOY_HEALTH_RETRY_SEC:-5}"
+
+# Post-deploy checks must hit the local reverse-proxy. ngrok is optional and often offline during CI.
+default_proxy_url="https://127.0.0.1:${HTTPS_PORT}/actuator/health/liveness"
+PROXY_URL="${DEPLOY_HEALTH_URL:-$default_proxy_url}"
+case "$PROXY_URL" in
+  https://127.0.0.1:*|http://127.0.0.1:*|https://localhost:*|http://localhost:*)
+    ;;
+  *)
+    echo "::warning::DEPLOY_HEALTH_URL is not localhost (${PROXY_URL}); using ${default_proxy_url} for reverse-proxy check." >&2
+    PROXY_URL="$default_proxy_url"
+    ;;
+esac
+PROXY_URL_HTTP="http://127.0.0.1:${HTTP_PORT}/actuator/health/liveness"
 
 COMPOSE=(
   docker compose
@@ -62,16 +75,27 @@ echo "Backend liveness: OK"
 
 echo "Checking reverse-proxy HTTPS: $PROXY_URL"
 elapsed=0
-until curl -fsSk --max-time 20 "$PROXY_URL" >/dev/null 2>&1; do
-  if [ "$elapsed" -ge "$MAX_WAIT_SEC" ]; then
-    echo "::error::Reverse-proxy HTTPS health failed after ${MAX_WAIT_SEC}s." >&2
-    echo "Proxy URL: $PROXY_URL" >&2
-    "${COMPOSE[@]}" ps reverse-proxy backend webapp || true
-    "${COMPOSE[@]}" logs --tail 80 reverse-proxy || true
-    exit 1
+proxy_ok=false
+until [ "$elapsed" -ge "$MAX_WAIT_SEC" ]; do
+  if curl -fsSk --max-time 20 "$PROXY_URL" >/dev/null 2>&1; then
+    proxy_ok=true
+    break
+  fi
+  if curl -fsS --max-time 20 "$PROXY_URL_HTTP" >/dev/null 2>&1; then
+    echo "Reverse-proxy HTTP health OK (${PROXY_URL_HTTP}); HTTPS check still preferred for prod."
+    proxy_ok=true
+    break
   fi
   echo "Reverse-proxy HTTPS not ready (${elapsed}s / ${MAX_WAIT_SEC}s)..."
   sleep "$SLEEP_SEC"
   elapsed=$((elapsed + SLEEP_SEC))
 done
-echo "Reverse-proxy HTTPS health: OK"
+if [ "$proxy_ok" != true ]; then
+  echo "::error::Reverse-proxy health failed after ${MAX_WAIT_SEC}s." >&2
+  echo "Tried HTTPS: $PROXY_URL" >&2
+  echo "Tried HTTP:  $PROXY_URL_HTTP" >&2
+  "${COMPOSE[@]}" ps reverse-proxy backend webapp || true
+  "${COMPOSE[@]}" logs --tail 80 reverse-proxy || true
+  exit 1
+fi
+echo "Reverse-proxy health: OK"

@@ -40,6 +40,8 @@ except ImportError as e:  # pragma: no cover
     print("PyYAML is required: pip install pyyaml", file=sys.stderr)
     raise SystemExit(1) from e
 
+from compose_yaml_loader import load_compose_yaml
+
 # Safe environment literals (string form) during migration.
 SAFE_ENV_STRINGS = frozenset(
     {
@@ -353,7 +355,7 @@ def main() -> int:
 
     for path in files:
         try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            data = load_compose_yaml(path.read_text(encoding="utf-8"))
         except Exception as e:
             violations.append(
                 {

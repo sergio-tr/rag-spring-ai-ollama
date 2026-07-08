@@ -7,7 +7,7 @@
 
 ## Summary
 
-The workflow runs on a **self-hosted** runner on the application server (`156.35.95.27`). It syncs `DEPLOY_DIR` to `origin/main`, bootstraps missing `.env` files from each module's `.env.example`, **writes GitHub repository secrets into those `.env` files** (`docker/scripts/apply_deploy_secrets.py`), validates Compose, builds and starts the production stack locally, then curls `DEPLOY_HEALTH_URL`.
+The workflow runs on a **self-hosted** runner on the university application server. It syncs `DEPLOY_DIR` to `origin/main`, bootstraps missing `.env` files from each module's `.env.example`, **writes GitHub repository secrets into those `.env` files** (`docker/scripts/apply_deploy_secrets.py`), validates Compose, builds and starts the production stack locally, then curls `DEPLOY_HEALTH_URL`.
 
 **No SSH:** Legacy secrets `VM_HOST`, `VM_USER`, `VM_SSH_KEY`, and `VM_DEPLOY_DIR` are **obsolete**. Use repository **Variables** instead.
 
@@ -28,10 +28,11 @@ The workflow runs on a **self-hosted** runner on the application server (`156.35
 | Variable | Use | Notes |
 | -------- | ----- | -------- |
 | `DEPLOY_DIR` | Git checkout path on the runner host | Must be a git repository; `.env` files bootstrapped then secrets applied each deploy |
-| `DEPLOY_HEALTH_URL` | Post-deploy health check | Optional; defaults to `https://127.0.0.1:8443/actuator/health/liveness` (uses `curl -k` for self-signed TLS) |
-| `PRODUCTION_PUBLIC_HOST` | Public hostname or IP | Optional; default **`156.35.95.27`** |
-| `PRODUCTION_HTTPS_PORT` | Host HTTPS port | Optional; default **`8443`** (set **`443`** in phase 2) |
-| `PRODUCTION_HTTP_PORT` | Host HTTP port | Optional; default **`80`** |
+| `DEPLOY_HEALTH_URL` | Post-deploy health check (localhost only) | Optional; defaults to `https://127.0.0.1:443/actuator/health/liveness` (`curl -k`). **Do not** use the ngrok/public URL here — ngrok may be offline during deploy. |
+| `PRODUCTION_PUBLIC_HOST` | Public hostname for OAuth and browser URLs | Optional; default **`hatchback-obsession-staring.ngrok-free.dev`** |
+| `PRODUCTION_HTTPS_PORT` | Public HTTPS port in URLs | Optional; default **`443`** |
+| `PRODUCTION_HTTP_PORT` | Host HTTP port (ngrok tunnel target) | Optional; default **`80`** |
+| `PRODUCTION_ENFORCE_HTTPS` | Redirect HTTP→HTTPS at reverse-proxy | Optional; default **`0`** (ngrok terminates TLS) |
 | `LITELLM_BASE_URL` | LiteLLM on model server | Optional; default **`http://156.35.160.78:4000`** |
 | `LITELLM_CHAT_MODEL` | Default chat model via LiteLLM | Optional; default **`qwen3.5:9b`** (must exist on LiteLLM) |
 | `LITELLM_EMBEDDING_MODEL` | Default embedding model via LiteLLM | Optional; default **`bge-m3`** |
