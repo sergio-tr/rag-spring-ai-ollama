@@ -19,26 +19,30 @@ jobs:
     steps:
       - name: Validate required configuration
         env:
-          DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
+          DEPLOY_DIR_RAW: ${{ vars.DEPLOY_DIR }}
           DEPLOY_HEALTH_URL: ${{ vars.DEPLOY_HEALTH_URL }}
         run: |
           set -euo pipefail
-          required_vars=(DEPLOY_DIR DEPLOY_HEALTH_URL)
+          required_vars=(DEPLOY_DIR_RAW DEPLOY_HEALTH_URL)
           for name in "${required_vars[@]}"; do
             if [ -z "${!name:-}" ]; then
-              echo "::error::$name is required (set as a repository or environment variable)"
+              var_label="${name%_RAW}"
+              echo "::error::${var_label} is required (set as a repository or environment variable)"
               exit 1
             fi
           done
+          DEPLOY_DIR="${DEPLOY_DIR_RAW/#\~/$HOME}"
+          DEPLOY_DIR="${DEPLOY_DIR%/}"
           if [ ! -d "$DEPLOY_DIR/.git" ]; then
-            echo "::error::DEPLOY_DIR is not a git repository: $DEPLOY_DIR"
+            echo "::error::DEPLOY_DIR is not a git repository: $DEPLOY_DIR (configured as: $DEPLOY_DIR_RAW)"
             exit 1
           fi
+          echo "DEPLOY_DIR=$DEPLOY_DIR" >> "$GITHUB_ENV"
           echo "Deploy directory: $DEPLOY_DIR"
           echo "Health check URL configured (value not printed)."
 
       - name: Sync repository to origin/main
-        working-directory: ${{ vars.DEPLOY_DIR }}
+        working-directory: ${{ env.DEPLOY_DIR }}
         run: |
           set -euo pipefail
           git fetch origin main
@@ -46,13 +50,13 @@ jobs:
           echo "Deployed commit: $(git rev-parse --short HEAD)"
 
       - name: Validate Compose configuration
-        working-directory: ${{ vars.DEPLOY_DIR }}
+        working-directory: ${{ env.DEPLOY_DIR }}
         run: |
           set -euo pipefail
           ./docker/scripts/docker-compose.sh config prod --server --obs --obs-private --no-env-prompt
 
       - name: Deploy stack
-        working-directory: ${{ vars.DEPLOY_DIR }}
+        working-directory: ${{ env.DEPLOY_DIR }}
         run: |
           set -euo pipefail
           ./docker/scripts/docker-compose.sh build prod --server --obs --obs-private --no-env-prompt
@@ -66,8 +70,8 @@ jobs:
           curl -fsS --max-time 120 "$DEPLOY_HEALTH_URL"
 
       - name: Deployment diagnostics
-        if: always()
-        working-directory: ${{ vars.DEPLOY_DIR }}
+        if: always() && env.DEPLOY_DIR != ''
+        working-directory: ${{ env.DEPLOY_DIR }}
         run: |
           set -euo pipefail
           cd docker
