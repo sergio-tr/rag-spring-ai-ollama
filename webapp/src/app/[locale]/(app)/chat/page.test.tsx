@@ -27,6 +27,7 @@ const chatExplainMocks = vi.hoisted(() => ({
 }));
 
 const routerPushMock = vi.fn();
+const routerReplaceMock = vi.fn();
 
 function setMatchMediaDesktop(isDesktop: boolean) {
   Object.defineProperty(window, "matchMedia", {
@@ -48,7 +49,7 @@ vi.mock("@/navigation", () => ({
   Link: ({ children, href }: { children: React.ReactNode; href: string }) => (
     <a href={href}>{children}</a>
   ),
-  useRouter: () => ({ push: routerPushMock, refresh: vi.fn() }),
+  useRouter: () => ({ push: routerPushMock, replace: routerReplaceMock, refresh: vi.fn() }),
   usePathname: () => "/en/chat",
 }));
 

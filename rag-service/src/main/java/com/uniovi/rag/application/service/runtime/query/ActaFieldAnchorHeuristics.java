@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime.query;
 
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.util.QueryDateSupport;
 import java.util.Locale;
 
 /** Shared heuristics for acta-scoped field queries that require a meeting/date anchor (FD-CL-01). */
@@ -219,7 +220,7 @@ public final class ActaFieldAnchorHeuristics {
         if (q == null || q.isBlank()) {
             return false;
         }
-        return com.uniovi.rag.util.QueryDateSupport.hasExplicitDateSignalInText(q)
+        return QueryDateSupport.hasExplicitDateSignalInText(q)
                 || hasMonthNameInText(q);
     }
 
