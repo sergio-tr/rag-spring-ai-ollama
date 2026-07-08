@@ -89,6 +89,21 @@ public class LlmManualHealthCheckService {
                     result.latencyMs(),
                     result.status());
             return result;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LlmProviderException translated =
+                    LlmExceptionTranslator.translate(e, config, operation, config.chatModel());
+            long latencyMs = elapsedMs(startedAt);
+            LlmSafeOperationLogger.logFailed(
+                    log,
+                    operation,
+                    config.provider(),
+                    config.chatModel(),
+                    config.baseUrl(),
+                    latencyMs,
+                    translated.failureKind().name(),
+                    translated.publicMessage());
+            return LlmHealthCheckResult.failure(config, latencyMs, translated.publicMessage());
         } catch (Exception e) {
             LlmProviderException translated =
                     LlmExceptionTranslator.translate(e, config, operation, config.chatModel());

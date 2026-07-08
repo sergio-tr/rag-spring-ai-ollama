@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
+import com.uniovi.rag.util.QueryDateSupport;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -42,10 +43,7 @@ public class RouteCandidateConstraintValidator {
             Pattern.compile(
                     "\\b(cero|uno|un|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d+)\\s+(actas?|reuniones?|personas?|asistentes?)\\b",
                     Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern CONCRETE_ACTA_DATE =
-            Pattern.compile(
-                    "\\b\\d{1,2}\\s+de\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\s+de\\s+\\d{4}\\b",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern CONCRETE_ACTA_DATE = QueryDateSupport.LONG_DATE_PHRASE;
     private static final Pattern SLASH_DATE = Pattern.compile("\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b");
     private static final Pattern ISO_DATE = Pattern.compile("\\b(19|20)\\d{2}-(\\d{2})-(\\d{2})\\b");
     private static final Map<String, Integer> SPANISH_MONTH_TO_NUMBER =

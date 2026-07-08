@@ -240,6 +240,21 @@ public class AdminModelsService {
                     probe.userMessage(),
                     probe.technicalDetail(),
                     pullSummary);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return new AdminModelCheckResponse(
+                    resolvedId,
+                    type,
+                    true,
+                    true,
+                    pulled,
+                    false,
+                    matches,
+                    now,
+                    "MODEL_EMBEDDING_PROBE_FAILED",
+                    "Interrupted during embedding probe",
+                    ex.getClass().getSimpleName(),
+                    pullSummary);
         } catch (Exception ex) {
             String detail = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
             return new AdminModelCheckResponse(

@@ -15,6 +15,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 /**
@@ -30,7 +31,7 @@ public class EvaluationReferenceBundleLoader {
     private static final Pattern PROTOCOL_VERSION_ITEM = Pattern.compile(".*protocol.*version.*", Pattern.CASE_INSENSITIVE);
 
     private final EvaluationWorkbookParser parser;
-    private volatile ReferenceBundleSnapshot cache;
+    private final AtomicReference<ReferenceBundleSnapshot> cache = new AtomicReference<>();
 
     public EvaluationReferenceBundleLoader(EvaluationWorkbookParser parser) {
         this.parser = parser;
@@ -40,16 +41,18 @@ public class EvaluationReferenceBundleLoader {
      * Returns a lazily cached snapshot. Safe for concurrent calls after first load.
      */
     public ReferenceBundleSnapshot getSnapshot() {
-        ReferenceBundleSnapshot s = cache;
+        ReferenceBundleSnapshot s = cache.get();
         if (s != null) {
             return s;
         }
         synchronized (this) {
-            if (cache != null) {
-                return cache;
+            s = cache.get();
+            if (s != null) {
+                return s;
             }
-            cache = loadFresh();
-            return cache;
+            ReferenceBundleSnapshot loaded = loadFresh();
+            cache.set(loaded);
+            return loaded;
         }
     }
 

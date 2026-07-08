@@ -53,7 +53,7 @@ describe("use-conversations", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
 
-  it("useCreateConversation posts and invalidates", async () => {
+  it("useCreateConversation posts and seeds conversation cache", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce({
       id: "c2",
       title: "N",

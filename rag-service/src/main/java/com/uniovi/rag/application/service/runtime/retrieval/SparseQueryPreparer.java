@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.runtime.retrieval;
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.retrieval.SparseQueryPreparation;
+import com.uniovi.rag.util.QueryDateSupport;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,10 +21,7 @@ public class SparseQueryPreparer {
     private static final Pattern PAREN_PHRASE = Pattern.compile("\\(([^)]+)\\)");
     private static final Pattern YEAR = Pattern.compile("\\b(19|20)\\d{2}\\b");
     private static final Pattern DATE_SLASH = Pattern.compile("\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b");
-    private static final Pattern DATE_SPANISH =
-            Pattern.compile(
-                    "\\b\\d{1,2}\\s+de\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\s+de\\s+\\d{4}\\b",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern DATE_SPANISH = QueryDateSupport.LONG_DATE_PHRASE;
 
     private final SparseDomainSynonyms synonyms;
 

@@ -681,9 +681,6 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             return null;
         }
         Map<String, Object> metadata = doc.getMetadata();
-        if (metadata == null) {
-            return null;
-        }
         for (String key : List.of("chunk_index", "chunkIndex")) {
             Object chunkIndex = metadata.get(key);
             if (chunkIndex instanceof Number number) {

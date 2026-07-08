@@ -2,6 +2,7 @@ import type { ProjectCompatiblePresetsDto } from "@/types/api";
 import {
   DEMO_BEST_PRESET_ID,
   listRecommendedSelectablePresetIds,
+  P3_PRESET_ID,
   type ProjectIndexCaps,
 } from "@/features/chat/lib/preset-product-selection";
 
@@ -10,16 +11,15 @@ export {
   P3_PRESET_ID,
 } from "@/features/chat/lib/preset-product-selection";
 
-/** Experimental fallback order when Demo_Best is incompatible (P8 → P4 → P3 → P2 → P0). */
+/** Experimental fallback order when P3 is incompatible (P8 → P4 → P2 → P0). */
 export const EXPERIMENTAL_DEFAULT_PRESET_PRIORITY = [
   "cafe0001-0001-4001-8001-000000000018", // P8 HYBRID + metadata
   "cafe0001-0001-4001-8001-000000000014", // P4 CHUNK_LEVEL + metadata
-  "cafe0001-0001-4001-8001-000000000013", // P3 CHUNK_LEVEL
   "cafe0001-0001-4001-8001-000000000012", // P2 DOCUMENT_LEVEL
   "cafe0001-0001-4001-8001-000000000010", // P0 direct LLM
 ] as const;
 
-export type IndexAwareDefaultPresetSource = "demo_best" | "product" | "experimental";
+export type IndexAwareDefaultPresetSource = "p3_default" | "product" | "experimental";
 
 export type IndexAwareDefaultPresetResult = {
   presetId: string | null;
@@ -82,19 +82,29 @@ export function resolveIndexAwareDefaultPreset(
   const demoBestDisabledReason = demoBestEntry?.compatibility.disabledReason?.trim() || null;
   const recommended = recommendedPresetIds(catalog, projectIndex);
 
-  if (recommended.includes(DEMO_BEST_PRESET_ID) && isSelectableProduct(catalog, DEMO_BEST_PRESET_ID)) {
-    return {
-      presetId: DEMO_BEST_PRESET_ID,
-      source: "demo_best",
-      demoBestIncompatible: false,
-      demoBestDisabledReason: null,
-    };
-  }
-
   const demoBestIncompatible = Boolean(demoBestEntry && demoBestEntry.compatibility.selectable !== true);
 
+  if (recommended.includes(P3_PRESET_ID)) {
+    if (isSelectableProduct(catalog, P3_PRESET_ID)) {
+      return {
+        presetId: P3_PRESET_ID,
+        source: "p3_default",
+        demoBestIncompatible,
+        demoBestDisabledReason,
+      };
+    }
+    if (isSelectableExperimental(catalog, P3_PRESET_ID)) {
+      return {
+        presetId: P3_PRESET_ID,
+        source: "p3_default",
+        demoBestIncompatible,
+        demoBestDisabledReason,
+      };
+    }
+  }
+
   for (const presetId of recommended) {
-    if (presetId === DEMO_BEST_PRESET_ID) continue;
+    if (presetId === P3_PRESET_ID || presetId === DEMO_BEST_PRESET_ID) continue;
     const product = catalog.productPresets.find((entry) => entry.preset.id === presetId);
     if (product?.compatibility.selectable) {
       return {

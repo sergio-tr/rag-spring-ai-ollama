@@ -275,6 +275,14 @@ _Update SHA when merging if different._
 | R-011 | JaCoCo only | `com/uniovi/rag/application/service/evaluation/**` | RESIDUAL_EXCEPTION | Lab benchmark orchestration; not converged to measured set yet. | Ledger EXC-024 | 6.09/6.12 |
 | R-012 | Sonar only | `classifier-service/...` entries | NON_JAVA_MODULE | Python classifier paths; excluded from Sonar coverage. | Existing Sonar config | 6.12 |
 | R-013 | Sonar only | `webapp/...` entries | NON_JAVA_MODULE | Webapp files excluded from Sonar coverage per project policy. | Existing Sonar config | 6.12 |
+| R-014 | JaCoCo + Sonar | `AuthPublicConfig` | RESIDUAL_EXCEPTION | Auth public config record; no business invariants. | Sonar 0% new-code row 2026-07-08 | 6.12 |
+| R-015 | JaCoCo + Sonar | `EvaluationDataset` | RESIDUAL_EXCEPTION | Workbook DTO; covered via parser integration, not unit bundle. | Sonar 0% new-code row 2026-07-08 | 6.12 |
+| R-016 | JaCoCo + Sonar | `ExperimentalDatasetMetrics` | RESIDUAL_EXCEPTION | Lab metrics DTO; low ROI for bundle gate. | Sonar 0% new-code row 2026-07-08 | 6.12 |
+| R-017 | JaCoCo + Sonar | `JudgeSummarizableRow` | RESIDUAL_EXCEPTION | Judge export row type; structural. | Sonar 0% new-code row 2026-07-08 | 6.12 |
+| R-018 | JaCoCo + Sonar | `LlmRuntimeStatus` | RESIDUAL_EXCEPTION | Catalog status enum/record; structural. | Sonar 0% new-code row 2026-07-08 | 6.12 |
+| R-019 | JaCoCo + Sonar | `QueryClassifier` | RESIDUAL_EXCEPTION | Classifier port interface; adapter tested elsewhere. | Sonar 0% new-code row 2026-07-08 | 6.12 |
+| R-020 | JaCoCo + Sonar | `RuntimeObservability` | RESIDUAL_EXCEPTION | OTLP/metrics glue; excluded from bundle (no unit ROI). | Sonar 0% new-code row 2026-07-08 | 6.12 |
+| R-021 | JaCoCo + Sonar | `UnsupportedEmbeddingProviderException` | RESIDUAL_EXCEPTION | Thin exception type. | Sonar 0% new-code row 2026-07-08 | 6.12 |
 
 ### Local gates
 

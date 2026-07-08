@@ -665,6 +665,26 @@ class StructuredActaDeterministicToolsTest {
     }
 
     @Test
+    void getField_fdGf06_spanishLongDateWithDelYear_twentyNamesPreserved() {
+        MetadataGetFieldTool tool = new MetadataGetFieldTool(chatClient, retriever, extractor, llmCache);
+        Map<String, Object> meta = actaById.get("acta-2-doc");
+        List<Document> hybrid =
+                List.of(
+                        toDoc("acta-2-chunk-0", meta, "chunk-a"),
+                        toDoc("acta-2-chunk-1", meta, "chunk-b"));
+        stubRetriever(hybrid);
+
+        ToolResult result =
+                tool.execute(
+                        ToolExecutionContext.of(
+                                "dime los asistentes del acta del 25 de febrero del 2025",
+                                QueryType.GET_FIELD,
+                                null));
+
+        assertThat(result.result()).contains("20 en total");
+    }
+
+    @Test
     void getField_fdGf06_hybridChunks_twentyNamesPreserved() {
         MetadataGetFieldTool tool = new MetadataGetFieldTool(chatClient, retriever, extractor, llmCache);
         Map<String, Object> meta = actaById.get("acta-2-doc");

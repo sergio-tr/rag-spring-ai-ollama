@@ -51,10 +51,10 @@ public final class FactualAnswerVerifier {
 
     private static void checkDate(
             FactualQuestionConstraints constraints, String context, String answer, List<FactualVerifierFailureReason> failures) {
-        if (constraints.requiredDateIso().isEmpty()) {
+        if (!constraints.requiredDateIso().isPresent()) {
             return;
         }
-        String required = constraints.requiredDateIso().get();
+        String required = constraints.requiredDateIso().orElseThrow();
         Optional<DateGroundingSupport.RequestedDate> requested = parseRequestedDate(required);
         if (requested.isEmpty()) {
             return;
@@ -101,10 +101,10 @@ public final class FactualAnswerVerifier {
 
     private static void checkEntity(
             FactualQuestionConstraints constraints, String context, String answer, List<FactualVerifierFailureReason> failures) {
-        if (constraints.requiredEntity().isEmpty()) {
+        if (!constraints.requiredEntity().isPresent()) {
             return;
         }
-        String entity = FactualTextSupport.normalize(constraints.requiredEntity().get());
+        String entity = FactualTextSupport.normalize(constraints.requiredEntity().orElseThrow());
         String normContext = FactualTextSupport.normalize(context);
         String normAnswer = FactualTextSupport.normalize(answer);
         if (looksAffirmative(normAnswer) && normAnswer.contains(entity) && !normContext.contains(entity)) {
@@ -114,10 +114,10 @@ public final class FactualAnswerVerifier {
 
     private static void checkNumeric(
             FactualQuestionConstraints constraints, String context, String answer, List<FactualVerifierFailureReason> failures) {
-        if (constraints.numericConstraint().isEmpty()) {
+        if (!constraints.numericConstraint().isPresent()) {
             return;
         }
-        FactualQuestionConstraints.NumericConstraint nc = constraints.numericConstraint().get();
+        FactualQuestionConstraints.NumericConstraint nc = constraints.numericConstraint().orElseThrow();
         Integer answerNumber = firstInteger(answer);
         if (answerNumber == null) {
             return;

@@ -108,7 +108,6 @@ export function labPhaseToTraceStatus(phase: LabJobUiPhase): TraceStatus {
     case "live":
     case "queued":
     case "running":
-    case "cancelling":
     case "unknown_running":
       return "in_progress";
     default:

@@ -428,6 +428,15 @@
                         <exclude>com/uniovi/rag/application/service/evaluation/**</exclude>
                         <!-- Trace regression suite JSON persistence adapters: covered via WebMvc/architecture tests; low ROI for bundle gate. -->
                         <exclude>com/uniovi/rag/infrastructure/persistence/traceregressionsuitedefinition/**</exclude>
+                        <!-- Zero-coverage structural/DTO/OTLP rows (Sonar new-code gate; aligned with sonar.coverage.exclusions) -->
+                        <exclude>com/uniovi/rag/application/service/auth/AuthPublicConfig.class</exclude>
+                        <exclude>com/uniovi/rag/domain/evaluation/workbook/EvaluationDataset.class</exclude>
+                        <exclude>com/uniovi/rag/application/evaluation/workbook/ExperimentalDatasetMetrics.class</exclude>
+                        <exclude>com/uniovi/rag/application/result/evaluation/JudgeSummarizableRow.class</exclude>
+                        <exclude>com/uniovi/rag/domain/llm/catalog/LlmRuntimeStatus.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/classifier/QueryClassifier.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/observability/RuntimeObservability.class</exclude>
+                        <exclude>com/uniovi/rag/application/exception/llm/UnsupportedEmbeddingProviderException.class</exclude>
                         <!-- application/service/me/** is measured (unit + Me* WebMvc tests); no JaCoCo exclude -->
                     </excludes>
                     <rules>

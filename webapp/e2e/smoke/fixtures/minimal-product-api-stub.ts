@@ -80,7 +80,25 @@ export async function installMinimalProductApiStub(page: Page): Promise<void> {
     }
 
     if (path === "/config/user") {
-      await fulfillJson({});
+      await fulfillJson({ topK: 5, llmModel: "llama3.2" });
+      return;
+    }
+
+    if (path.startsWith("/me/llm/selectable-models")) {
+      await fulfillJson({
+        effectiveProvider: "OPENAI_COMPATIBLE",
+        capability: "CHAT",
+        models: [
+          {
+            modelName: "gpt-oss:20b",
+            displayName: "GPT OSS 20B",
+            selectable: true,
+            disabledReason: null,
+            isDefault: true,
+            runtimeStatus: "AVAILABLE",
+          },
+        ],
+      });
       return;
     }
 

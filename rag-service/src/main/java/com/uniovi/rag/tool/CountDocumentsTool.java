@@ -2,6 +2,7 @@ package com.uniovi.rag.tool;
 
 import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
+import com.uniovi.rag.util.QueryDateSupport;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -182,9 +183,7 @@ public class CountDocumentsTool extends AbstractTool {
             return v.length() > 60 ? v.substring(0, 60).trim() : v;
         }
         // fallback Spanish canonical used in PDFs
-        Matcher m2 =
-                Pattern.compile("(?iu)(\\d{1,2}\\s+de\\s+[\\p{L}]+\\s+de\\s+\\d{4})", FECHA_LINE_FLAGS)
-                        .matcher(content);
+        Matcher m2 = QueryDateSupport.LONG_DATE_PHRASE.matcher(content);
         if (m2.find()) return m2.group(1).trim();
         return null;
     }

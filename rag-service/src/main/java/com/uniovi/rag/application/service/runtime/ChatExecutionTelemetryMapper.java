@@ -393,8 +393,9 @@ public final class ChatExecutionTelemetryMapper {
         if (trace == null || !trace.retrievalUsed()) {
             return -1;
         }
-        if (trace.retrievalDiagnostics().isPresent()) {
-            RetrievalDiagnostics d = trace.retrievalDiagnostics().get();
+        var retrievalDiagnostics = trace.retrievalDiagnostics();
+        if (retrievalDiagnostics.isPresent()) {
+            RetrievalDiagnostics d = retrievalDiagnostics.get();
             if (d.afterCompressionCount() > 0) {
                 return d.afterCompressionCount();
             }

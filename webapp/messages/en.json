@@ -111,8 +111,6 @@
     "chatMenuLabel": "Chat actions",
     "settingsMenuLabel": "Settings actions",
     "newProject": "New project",
-    "deleteAllProjects": "Delete all projects",
-    "deleteAllProjectsUnavailable": "Not available - delete projects individually from each project card.",
     "refreshDocumentList": "Refresh document list",
     "deleteAllDocuments": "Delete all documents",
     "deleteAllDocumentsLoadingHint": "Loading document list…",

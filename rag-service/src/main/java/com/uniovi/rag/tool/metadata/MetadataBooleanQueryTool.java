@@ -889,7 +889,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
                         min,
                         max);
             }
-            return spanish ? "No." : "No.";
+            return "No.";
         }
         if (spanish) {
             return String.format(

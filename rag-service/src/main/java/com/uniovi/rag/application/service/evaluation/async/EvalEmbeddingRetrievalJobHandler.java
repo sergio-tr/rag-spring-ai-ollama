@@ -654,9 +654,6 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             return "";
         }
         Map<String, Object> meta = d.getMetadata();
-        if (meta == null) {
-            return "";
-        }
         Object id = meta.get(EvaluationGoldChunkMetadataSupport.KEY_EVALUATION_DOCUMENT_ID);
         if (id == null) {
             id = meta.get("document_id");
@@ -692,13 +689,10 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             return new ChunkIdCandidate(normalizedDocId + ":" + idx, true);
         }
         // Last resort: use the vector store row id (debug only, not scorable against workbook gold ids).
-        return new ChunkIdCandidate(d.getId() != null ? String.valueOf(d.getId()) : "", false);
+        return new ChunkIdCandidate(String.valueOf(d.getId()), false);
     }
 
     private static Integer extractChunkIndex(Map<String, Object> meta) {
-        if (meta == null) {
-            return null;
-        }
         Object v = meta.get("chunk_index");
         if (v == null) {
             v = meta.get("chunkIndex");

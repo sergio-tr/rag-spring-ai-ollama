@@ -78,17 +78,13 @@ public class DefaultDeterministicToolResolver implements DeterministicToolResolv
                     REASON_UNSUPPORTED_QUERY_TYPE);
         }
         if (matches.size() > 1) {
-            String suppressionReason =
-                    evaluation.heuristicRouteUsed() && !evaluation.routingOracleUsed()
-                            ? REASON_HEURISTIC_AMBIGUOUS
-                            : REASON_HEURISTIC_AMBIGUOUS;
             return notApplicable(
                     mode,
                     ctx,
                     plan,
                     evaluation,
                     List.of("tool_ambiguous_match", matches.toString()),
-                    suppressionReason);
+                    REASON_HEURISTIC_AMBIGUOUS);
         }
 
         DeterministicToolKind kind = matches.iterator().next();

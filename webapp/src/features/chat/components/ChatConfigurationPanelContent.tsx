@@ -509,7 +509,8 @@ export function ChatConfigurationPanelContent() {
   const effectivePresetId = api?.runtimeState?.effectivePresetId ?? null;
   const selectedPresetValue = runtimeSelectedPresetId ?? effectivePresetId ?? "";
   const selectedInProduct = !!api?.presets?.some((p) => p.id === runtimeSelectedPresetId);
-  const selectedExperimental = (Array.isArray(api?.experimentalPresets) ? api?.experimentalPresets : []).find(
+  const experimentalPresets = api?.experimentalPresets;
+  const selectedExperimental = (Array.isArray(experimentalPresets) ? experimentalPresets : []).find(
     (p) => p.productPresetId === runtimeSelectedPresetId,
   );
 
