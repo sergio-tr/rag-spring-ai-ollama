@@ -1,6 +1,6 @@
 # Runbook: Linux VM + Docker Compose (production application server)
 
-**Audience:** Operators deploying the stack on the **university application server** (`156.35.95.27`) using a **self-hosted GitHub Actions runner** and Docker Compose.
+**Audience:** Operators deploying the stack on the **university application server** (self-hosted GitHub Actions runner) and Docker Compose.
 
 **Related:** [deploy-workflow-audit.md](deploy-workflow-audit.md), [../../docker/README.md](../../docker/README.md), [../../docker/scripts/README.md](../../docker/scripts/README.md).
 

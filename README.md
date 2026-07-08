@@ -184,7 +184,8 @@ The system is deployed inside the **University of Oviedo** network. External acc
 
 | Role | Host |
 | --- | --- |
-| Application server (Docker Compose + self-hosted runner) | `156.35.95.27` |
+| Application server (Docker Compose + self-hosted runner) | Private university network (runner on application VM) |
+| Public URL (ngrok reserved domain) | `https://hatchback-obsession-staring.ngrok-free.dev` |
 | Model-serving server (LiteLLM → Ollama) | `156.35.160.78` |
 
 **Architecture:** A **self-hosted GitHub Actions runner** on the application server checks out the repository locally and runs Docker Compose. GitHub does **not** open inbound SSH to the university machine; the runner maintains **outbound HTTPS** to GitHub.
@@ -203,8 +204,8 @@ The system is deployed inside the **University of Oviedo** network. External acc
 
 | Item | Value |
 | --- | --- |
-| Production application URL | TODO - set after DNS/TLS |
-| Backend API URL | TODO - same-origin via reverse proxy when applicable |
+| Production application URL | `https://hatchback-obsession-staring.ngrok-free.dev` |
+| Backend API URL | Same-origin via reverse proxy (`/api/v5`) |
 | Privacy Policy | `{FRONTEND_PUBLIC_URL}/en/privacy-policy` |
 | Terms of Use | `{FRONTEND_PUBLIC_URL}/en/terms` |
 | GitHub Pages documentation | [https://sergio-tr.github.io/rag-spring-ai-ollama/](https://sergio-tr.github.io/rag-spring-ai-ollama/) |

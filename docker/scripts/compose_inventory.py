@@ -13,11 +13,7 @@ import argparse
 import sys
 from pathlib import Path
 
-try:
-    import yaml
-except ImportError as e:  # pragma: no cover
-    print("PyYAML is required: pip install pyyaml", file=sys.stderr)
-    raise SystemExit(1) from e
+from compose_yaml_loader import load_compose_yaml
 
 
 def format_profiles(svc: dict) -> str:
@@ -66,7 +62,7 @@ def main() -> int:
 
     for path in files:
         try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            data = load_compose_yaml(path.read_text(encoding="utf-8"))
         except Exception as e:
             rows.append((path.name, "-", "error", str(e), "-"))
             continue
