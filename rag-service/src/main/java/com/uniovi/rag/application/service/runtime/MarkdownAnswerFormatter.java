@@ -17,19 +17,19 @@ public final class MarkdownAnswerFormatter {
     private static final Pattern MERGED_LIST_AND_PROSE =
             Pattern.compile(
                     "^(.+?)\\s+((?:The|According|En|Según|In|La\\s|El\\s|Los\\s|Las\\s).+)$",
-                    Pattern.UNICODE_CASE);
+                    Pattern.UNICODE_CASE | Pattern.CANON_EQ);
     private static final Pattern INLINE_SOURCE_ON_LINE =
             Pattern.compile(
                     "^(.+?)\\s+((?:Source|Fuentes?(?:\\s+consultadas)?|Fuente)\\s*:.+)$",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ);
     private static final Pattern SOURCE_ONLY_LINE =
             Pattern.compile(
                     "^(?:Source|Fuentes?(?:\\s+consultadas)?|Fuente)\\s*:.+$",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ);
     private static final Pattern PARAGRAPH_START =
             Pattern.compile(
                     "^(?:The|According|En|Según|In|La\\s|El\\s|Los\\s|Las\\s|Based|Se\\s+encontr)",
-                    Pattern.UNICODE_CASE);
+                    Pattern.UNICODE_CASE | Pattern.CANON_EQ);
     private static final Pattern BULLET_PREFIX = Pattern.compile("^[*\\-]\\s+(.*)$");
 
     private MarkdownAnswerFormatter() {}

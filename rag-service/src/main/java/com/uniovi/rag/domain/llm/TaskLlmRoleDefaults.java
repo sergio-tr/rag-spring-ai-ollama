@@ -7,6 +7,9 @@ import java.util.Map;
 /** Built-in system defaults per {@link TaskLlmTask} role. */
 public final class TaskLlmRoleDefaults {
 
+    private static final String DEFAULT_JSON_OBJECT = "json_object";
+    private static final String DEFAULT_QWEN_9B = "qwen3.5:9b";
+
     private static final Map<TaskLlmTask, RoleDefault> DEFAULTS = buildDefaults();
 
     private TaskLlmRoleDefaults() {}
@@ -46,38 +49,38 @@ public final class TaskLlmRoleDefaults {
         map.put(
                 TaskLlmTask.RUNTIME_JUDGE,
                 new RoleDefault(
-                        "qwen3.5:9b",
-                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, "json_object", false, null)));
+                        DEFAULT_QWEN_9B,
+                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, DEFAULT_JSON_OBJECT, false, null)));
         map.put(
                 TaskLlmTask.RUNTIME_JUDGE_RETRY,
                 new RoleDefault(
-                        "qwen3.5:9b",
-                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, "json_object", false, null)));
+                        DEFAULT_QWEN_9B,
+                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, DEFAULT_JSON_OBJECT, false, null)));
         map.put(
                 TaskLlmTask.FACTUAL_VERIFIER,
                 new RoleDefault(
-                        "qwen3.5:9b",
-                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, "json_object", false, null)));
+                        DEFAULT_QWEN_9B,
+                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, DEFAULT_JSON_OBJECT, false, null)));
         map.put(
                 TaskLlmTask.LLM_RANKER,
                 new RoleDefault(
-                        "qwen3.5:9b",
-                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, "json_object", false, null)));
+                        DEFAULT_QWEN_9B,
+                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, DEFAULT_JSON_OBJECT, false, null)));
         map.put(
                 TaskLlmTask.METADATA_REASONING,
                 new RoleDefault(
-                        "qwen3.5:9b",
-                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, "json_object", false, null)));
+                        DEFAULT_QWEN_9B,
+                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, DEFAULT_JSON_OBJECT, false, null)));
         map.put(
                 TaskLlmTask.NER_EXTRACTION,
                 new RoleDefault(
-                        "qwen3.5:9b",
-                        params(0.0, 0.9, 42L, 1024, 0.0, 0.0, "json_object", false, null)));
+                        DEFAULT_QWEN_9B,
+                        params(0.0, 0.9, 42L, 1024, 0.0, 0.0, DEFAULT_JSON_OBJECT, false, null)));
         map.put(
                 TaskLlmTask.EVALUATION_JUDGE,
                 new RoleDefault(
                         "gemma4:12b",
-                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, "json_object", false, null)));
+                        params(0.0, 0.9, 42L, 512, 0.0, 0.0, DEFAULT_JSON_OBJECT, false, null)));
         map.put(
                 TaskLlmTask.LLM_BASELINE_EVALUATION,
                 new RoleDefault(

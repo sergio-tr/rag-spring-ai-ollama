@@ -16,7 +16,7 @@ export type SimilarityConstraints = {
 };
 
 const PARTIAL_INTEGER = /^\d*$/;
-const PARTIAL_DECIMAL = /^-?\d*\.?\d*$/;
+const PARTIAL_DECIMAL = /^-?(?:\d+\.?\d*|\d*\.\d+)$/;
 
 export function formatNumericDraftValue(value: number): string {
   return String(value);

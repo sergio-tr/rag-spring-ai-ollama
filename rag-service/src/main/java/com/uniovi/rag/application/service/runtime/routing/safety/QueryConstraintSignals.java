@@ -23,19 +23,19 @@ public record QueryConstraintSignals(
         boolean presidedByConstraint,
         boolean absenceLikely) {
 
-    private static final Pattern YEAR = Pattern.compile("\\b(19|20)\\d{2}\\b");
+    private static final Pattern YEAR = Pattern.compile("\\b(19|20)\\d{2}\\b", Pattern.CANON_EQ);
     private static final Pattern SPANISH_MONTH =
             Pattern.compile(
                     "\\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\b",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ);
     private static final Pattern TOPIC_AFTER =
             Pattern.compile(
                     "(?:mencion(?:a|an|ó|o)|habl(?:ó|o)|trat(?:ó|o)|sobre|respecto a|relacion(?:ado)? con)\\s+(?:el |la |los |las )?([\\p{L}]{4,})",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ);
     private static final Pattern PRESIDED_BY =
             Pattern.compile(
                     "presidid[ao]s?\\s+por\\s+([\\p{L}]+(?:\\s+[\\p{L}]+){0,4})",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ);
     private static final Set<String> STOP_TOPICS =
             Set.of(
                     "reunion",

@@ -124,15 +124,7 @@ public final class RoleEvalCaseSubsetSupport {
             }
         }
         if (!filter.caseIds().isEmpty()) {
-            List<LlmRoleEvalCase> explicit = new ArrayList<>();
-            for (String id : filter.caseIds()) {
-                LlmRoleEvalCase row = byId.get(id);
-                if (row == null) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown llm_role_eval_cases case_id: " + id);
-                }
-                explicit.add(row);
-            }
-            return List.copyOf(explicit);
+            return resolveExplicitCases(byId, filter.caseIds());
         }
         List<LlmRoleEvalCase> out = new ArrayList<>();
         for (LlmRoleEvalCase c : cases) {
@@ -168,6 +160,19 @@ public final class RoleEvalCaseSubsetSupport {
             return request.datasetQuestionIds().size();
         }
         return null;
+    }
+
+    private static List<LlmRoleEvalCase> resolveExplicitCases(
+            Map<String, LlmRoleEvalCase> byId, List<String> caseIds) {
+        List<LlmRoleEvalCase> explicit = new ArrayList<>();
+        for (String id : caseIds) {
+            LlmRoleEvalCase row = byId.get(id);
+            if (row == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown llm_role_eval_cases case_id: " + id);
+            }
+            explicit.add(row);
+        }
+        return List.copyOf(explicit);
     }
 
     private static boolean matches(LlmRoleEvalCase c, RoleEvalFilter filter) {

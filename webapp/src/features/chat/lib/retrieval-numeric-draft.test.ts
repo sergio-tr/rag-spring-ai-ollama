@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createNumericDraftFromValue,
+  formatNumericDraftValue,
   parseSimilarityDraft,
   parseTopKDraft,
   shouldShowDraftError,
@@ -61,6 +62,13 @@ describe("shouldShowDraftError", () => {
   it("shows invalid errors immediately", () => {
     const draft = parseTopKDraft("abc", topKConstraints);
     expect(shouldShowDraftError(draft, { focused: true, touched: true })).toBe(true);
+  });
+});
+
+describe("formatNumericDraftValue", () => {
+  it("stringifies committed numbers", () => {
+    expect(formatNumericDraftValue(12)).toBe("12");
+    expect(formatNumericDraftValue(0.25)).toBe("0.25");
   });
 });
 

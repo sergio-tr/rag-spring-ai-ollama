@@ -15,7 +15,7 @@ public final class PartialEvidenceAnswerSupport {
                     "(?i)(?:limitaci[oó]n|no\\s+(?:se\\s+)?(?:detall|incluy|list)|"
                             + "sin\\s+nombres|no\\s+consta|fragmento|parcial|"
                             + "only\\s+partial|not\\s+(?:fully|completely)\\s+(?:available|listed))",
-                    Pattern.UNICODE_CASE);
+                    Pattern.UNICODE_CASE | Pattern.CANON_EQ);
 
     private static final Pattern COUNT_ONLY_ANSWER =
             Pattern.compile(
