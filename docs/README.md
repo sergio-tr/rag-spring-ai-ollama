@@ -62,7 +62,7 @@
 
 | Stack | Command | Output |
 | --- | --- | --- |
-| Java | `cd rag-service && ./mvnw javadoc:javadoc` | `rag-service/target/site/apidocs` |
+| Java | `cd rag-service && ./mvnw javadoc:javadoc` | `rag-service/target/reports/apidocs` |
 | OpenAPI | `/v3/api-docs` when enabled; or `rag-service/scripts/export-openapi.sh` | JSON |
 | TypeScript | `cd webapp && npm run doc` | `webapp/docs/api` |
 

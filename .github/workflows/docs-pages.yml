@@ -53,7 +53,7 @@ jobs:
           rm -rf "$SITE_DIR"
           mkdir -p "$SITE_DIR/backend-javadoc" "$SITE_DIR/frontend-typedoc" "$SITE_DIR/classifier"
           cp docs/index.html "$SITE_DIR/index.html"
-          cp -r rag-service/target/site/apidocs/. "$SITE_DIR/backend-javadoc/"
+          cp -r rag-service/target/reports/apidocs/. "$SITE_DIR/backend-javadoc/"
           cp -r webapp/docs/api/. "$SITE_DIR/frontend-typedoc/"
           cat > "$SITE_DIR/classifier/index.html" <<'EOF'
           <!DOCTYPE html>
