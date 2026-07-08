@@ -10,6 +10,7 @@
 
 - **OS:** Linux x86_64 with Docker Engine and Compose plugin (`docker compose`).
 - **Self-hosted runner:** Installed, online, labeled for `runs-on: self-hosted`; runner user in the `docker` group (or equivalent).
+- **Docker config:** On native Linux, `~/.docker/config.json` must **not** reference `docker-credential-desktop` (Windows/WSL Desktop helper). See [troubleshooting](#7-troubleshooting) below.
 - **Network:** Outbound HTTPS to `github.com`; application server → LiteLLM on model server `156.35.160.78` (confirm port, default `4000`).
 - **Repo:** Clone the monorepo to the path in GitHub Variable **`DEPLOY_DIR`** (same path the deploy workflow uses).
 - **GitHub Variables:** `DEPLOY_DIR`, `DEPLOY_HEALTH_URL` (required). Enable **Pages → GitHub Actions** for documentation site.
@@ -81,7 +82,33 @@ See [../../observability/README.md](../../observability/README.md).
 
 ---
 
-## 7. GitHub Actions vs manual
+## 7. Troubleshooting
+
+### `docker-credential-desktop.exe: exec format error` during `docker build`
+
+The runner user (`eii`) has a **Docker Desktop** credential helper in `~/.docker/config.json`. That binary is for Windows/WSL Desktop and **fails on native Linux**.
+
+**Fix on the server (one-time):**
+
+```bash
+# As the self-hosted runner user (eii)
+cat ~/.docker/config.json   # often contains "credsStore": "desktop" or docker-credential-desktop
+
+# Option A — deploy workflow runs fix-linux-docker-credentials.sh automatically after merge
+cd ~/rag-spring-ai-ollama
+bash ./docker/scripts/fix-linux-docker-credentials.sh
+
+# Option B — manual quick fix
+mkdir -p ~/.docker
+printf '{}\n' > ~/.docker/config.json
+# or edit and remove "credsStore" / "credHelpers" keys
+```
+
+Then retry deploy. Public Docker Hub pulls do not need a credential helper on the application server.
+
+---
+
+## 8. GitHub Actions vs manual
 
 | Method | When |
 | ------ | ---- |
